@@ -117,7 +117,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -190,7 +190,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
     ],
 )
 
@@ -237,7 +237,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -339,7 +339,7 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
         "@pybind11",
     ],
 )

@@ -40,7 +40,7 @@ struct KernelgenFinalBufferizePass
 
   void runOnOperation() override {
     mlir::PassManager pm(&getContext());
-    pm.addPass(mlir::CreateFinalBufferizePass(/*alignment=*/64,
+    pm.addPass(mlir::createFinalBufferizePass(/*alignment=*/64,
                                               populateExtraBufferizeDialects,
                                               populateExtraBufferizePatterns));
     (void)runPipeline(pm, getOperation());

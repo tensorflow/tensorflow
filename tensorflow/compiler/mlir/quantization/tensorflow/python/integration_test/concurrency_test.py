@@ -78,7 +78,7 @@ class MultiThreadedTest(test.TestCase):
     model = quantize_model.quantize(
         temp_path, ['serving_default'], [tag_constants.SERVING],
         quantization_options=quantization_options,
-        representative_dataset=data_gen)
+        representative_dataset=data_gen())
     return model
 
   @test_util.run_in_graph_and_eager_modes

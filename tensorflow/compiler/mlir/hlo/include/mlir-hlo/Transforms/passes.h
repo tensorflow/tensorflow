@@ -72,20 +72,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCopyRemovalPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 
 // Pass to lower index cast on tensors to tensor dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass();
 
 // Pass to simplify shape ops.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeSimplification();
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
 
 // Pass to tranform compute computations (hlo and linalg) on values to their
 // corresponding counterparts on buffers. Also bufferizes function signatures.
-std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass();
 
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass();
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
+std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc = {},
     BufferizePatternsCallback pc = {});
 
@@ -93,15 +93,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
 // from a flattened memref to a single pointer. The pointer is converted to
 // `pointer_type`, if provided.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreatePropagateStaticShapesToKernelPass(Type pointer_type = {});
+createPropagateStaticShapesToKernelPass(Type pointerType = {});
 
 // Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
 // and unroll factors provided through `unroll_factors`.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTileLoopsPass(
-    ArrayRef<int64_t> tile_sizes = {}, ArrayRef<int64_t> unroll_factors = {});
+std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
+    ArrayRef<int64_t> tileSizes = {}, ArrayRef<int64_t> unrollFactors = {});
 
 namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass();
+std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
 std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
 }  // namespace hlo

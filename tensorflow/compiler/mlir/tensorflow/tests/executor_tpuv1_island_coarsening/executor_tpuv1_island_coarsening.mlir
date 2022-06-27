@@ -212,14 +212,13 @@ func.func @fuse_in_replicated_output_op() {
 // TODO(b/188046643): Fuse op for partitioned variable within the island.
 
 // Check that we bring in TPUPartitionedInput operand producers.
-// DISABLED-CHECK-LABEL: func @fuse_in_partitioned_input_op
+// CHECK-LABEL: func @fuse_in_partitioned_input_op
 func.func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
-  // expected-error @+1 {{Graph contains some unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: tf_executor.island
-// DISABLED-CHECK-NEXT: = "tf.Const"
-// DISABLED-CHECK-NEXT: = "tf.TPUPartitionedInput"
-// DISABLED-CHECK-NEXT: = "tf.AddV2"
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.TPUPartitionedInput"
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
     %outputs, %control = tf_executor.island wraps "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", device = "", partition_dim = 0 : i64} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
     %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
@@ -231,14 +230,13 @@ func.func @fuse_in_partitioned_input_op(%arg0: tensor<2x4xf32>, %arg1: tensor<2x
 // -----
 
 // Check that we bring in TPUPartitionedOutput users.
-// DISABLED-CHECK-LABEL: func @fuse_in_partitioned_output_op
+// CHECK-LABEL: func @fuse_in_partitioned_output_op
 func.func @fuse_in_partitioned_output_op() {
-  // expected-error @+1 {{Graph contains some unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: tf_executor.island
-// DISABLED-CHECK-NEXT: = "tf.Const"
-// DISABLED-CHECK-NEXT: = "tf.AddV2"
-// DISABLED-CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
     %outputs_3, %control_4 = tf_executor.island wraps "tf.AddV2"(%outputs_0, %outputs_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
     %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_3) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
@@ -268,13 +266,12 @@ func.func @fuse_in_special_tpu_operand_producer_of_first_island() {
 // -----
 
 // Check that we bring in special TPU consumer ops of first island.
-// DISABLED-CHECK-LABEL: func @fuse_in_special_tpu_consumer_of_first_island
+// CHECK-LABEL: func @fuse_in_special_tpu_consumer_of_first_island
 func.func @fuse_in_special_tpu_consumer_of_first_island() {
-  // expected-error @+1 {{Graph contains some unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: tf_executor.island
-// DISABLED-CHECK-NEXT: = "tf.Const"
-// DISABLED-CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
     %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
     %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%outputs_0) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
     tf_executor.fetch
@@ -285,15 +282,14 @@ func.func @fuse_in_special_tpu_consumer_of_first_island() {
 // -----
 
 // Check that we bring in chain of TPUReplicatedInput, TPUPartitionedInput operand producers.
-// DISABLED-CHECK-LABEL: func @fuse_in_chain_special_ops_producers
+// CHECK-LABEL: func @fuse_in_chain_special_ops_producers
 func.func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
-  // expected-error @+1 {{Graph contains some unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: tf_executor.island
-// DISABLED-CHECK-NEXT: = "tf.Const"
-// DISABLED-CHECK-NEXT: = "tf.TPUPartitionedInput"
-// DISABLED-CHECK-NEXT: = "tf.TPUReplicatedInput"
-// DISABLED-CHECK-NEXT: = "tf.AddV2"
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.TPUPartitionedInput"
+// CHECK-NEXT: = "tf.TPUReplicatedInput"
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
     %partitioned_out, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", device = "", partition_dim = 0 : i64} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
     %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedInput"(%partitioned_out) {N = 1 : i64, T = i32, device = "", index = 0 : i64, is_mirrored_variable = false} : (tensor<4x4xf32>) -> tensor<4x4xf32>
     %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
@@ -306,15 +302,14 @@ func.func @fuse_in_chain_special_ops_producers(%arg0: tensor<2x4xf32>, %arg1: te
 // -----
 
 // Check that we bring in chain of TPUReplicatedOutput, TPUPartitionedOutput users.
-// DISABLED-CHECK-LABEL: func @fuse_in_chain_special_ops_consumers
+// CHECK-LABEL: func @fuse_in_chain_special_ops_consumers
 func.func @fuse_in_chain_special_ops_consumers() {
-  // expected-error @+1 {{Graph contains some unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: tf_executor.island
-// DISABLED-CHECK-NEXT: = "tf.Const"
-// DISABLED-CHECK-NEXT: = "tf.AddV2"
-// DISABLED-CHECK-NEXT: = "tf.TPUReplicatedOutput"
-// DISABLED-CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
     %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
     %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
     %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
@@ -327,15 +322,14 @@ func.func @fuse_in_chain_special_ops_consumers() {
 // -----
 
 // Check that we can bring in special TPU output ops out of order.
-// DISABLED-CHECK-LABEL: func @fuse_in_special_ops_out_of_order
+// CHECK-LABEL: func @fuse_in_special_ops_out_of_order
 func.func @fuse_in_special_ops_out_of_order() {
-  // expected-error @+1 {{Graph contains some unsupported ops}}
   tf_executor.graph {
-// DISABLED-CHECK: tf_executor.island
-// DISABLED-CHECK-NEXT: = "tf.Const"
-// DISABLED-CHECK-NEXT: = "tf.SomeOp"
-// DISABLED-CHECK-NEXT: = "tf.TPUReplicatedOutput"
-// DISABLED-CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.SomeOp"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
     %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
     %some_out:2, %some_control = tf_executor.island wraps "tf.SomeOp"(%const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>) -> (tensor<4x4xf32>, tensor<4x4xf32>)
     %partitioned_out:2, %control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%some_out#1) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)

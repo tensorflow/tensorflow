@@ -1606,6 +1606,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return shape.IsTuple() && shape.tuple_shapes_size() >= 2 &&
                shape.tuple_shapes(0).IsTuple();
       };
+      optional<int64_t> async_group_id;
+      attrs["async_group_id"] = {/*required=*/false, AttrTy::kInt64,
+                                 &async_group_id};
       if (async_wrapped_opcode) {
         std::vector<HloInstruction*> async_wrapped_operands;
         std::vector<Shape> async_wrapped_operand_shapes;
@@ -1666,14 +1669,14 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncStart) {
         return builder->AddInstruction(HloInstruction::CreateAsyncStart(
-            *shape, operands, *async_computation));
+            *shape, operands, *async_computation, async_group_id));
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
-            *shape, operands[0], *async_computation));
+            *shape, operands[0], *async_computation, async_group_id));
       }
       return builder->AddInstruction(HloInstruction::CreateAsyncDone(
-          *shape, operands[0], *async_computation));
+          *shape, operands[0], *async_computation, async_group_id));
     }
     case HloOpcode::kCopyStart: {
       // If the is_cross_program_prefetch attribute is not present then default

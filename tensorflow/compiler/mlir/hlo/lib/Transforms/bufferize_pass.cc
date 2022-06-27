@@ -345,20 +345,20 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 }  // namespace
 
 namespace hlo {
-std::unique_ptr<OperationPass<ModuleOp>> CreateOneShotBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass() {
   return std::make_unique<OneShotBufferizePass>();
 }
 }  // namespace hlo
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateComputeOpAndFuncBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass() {
   return std::make_unique<ComputeOpAndFuncBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass() {
+std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass() {
   return std::make_unique<FinalBufferizePass>();
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass(
+std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc,
     BufferizePatternsCallback pc) {
   auto pass = std::make_unique<FinalBufferizePass>(alignment);

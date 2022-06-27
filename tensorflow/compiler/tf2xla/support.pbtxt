@@ -5,6 +5,7 @@ support {
 }
 support {
   graph_op_name: "Abs"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -25,16 +26,19 @@ support {
 }
 support {
   graph_op_name: "Acos"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Acosh"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Add"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -43,6 +47,7 @@ support {
 }
 support {
   graph_op_name: "AddN"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -51,6 +56,7 @@ support {
 }
 support {
   graph_op_name: "AddV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -59,18 +65,22 @@ support {
 }
 support {
   graph_op_name: "AdjustContrastv2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AdjustHue"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AdjustSaturation"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "All"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -83,6 +93,7 @@ support {
 }
 support {
   graph_op_name: "Angle"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -124,6 +135,7 @@ support {
 }
 support {
   graph_op_name: "Any"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -177,18 +189,22 @@ support {
 }
 support {
   graph_op_name: "ApproxTopK"
+  supports_xla_compilation: true
 }
 support {
   graph_op_name: "ApproximateEqual"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ArgMax"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ArgMin"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -196,16 +212,19 @@ support {
 }
 support {
   graph_op_name: "Asin"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Asinh"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Assert"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -226,6 +245,7 @@ support {
 }
 support {
   graph_op_name: "AssignAddVariableOp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -233,28 +253,34 @@ support {
 }
 support {
   graph_op_name: "AssignSubVariableOp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AssignVariableOp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AssignVariableXlaConcatND"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Atan"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Atan2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Atanh"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -272,21 +298,25 @@ support {
 }
 support {
   graph_op_name: "AvgPool"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AvgPool3D"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AvgPool3DGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "AvgPoolGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -349,16 +379,19 @@ support {
 }
 support {
   graph_op_name: "BatchMatMul"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BatchMatMulV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BatchMatMulV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -405,11 +438,13 @@ support {
 }
 support {
   graph_op_name: "BatchToSpace"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BatchToSpaceND"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -418,6 +453,7 @@ support {
 }
 support {
   graph_op_name: "BesselI0e"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -425,6 +461,7 @@ support {
 }
 support {
   graph_op_name: "BesselI1e"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -453,20 +490,24 @@ support {
 }
 support {
   graph_op_name: "Betainc"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BiasAdd"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BiasAddGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BiasAddV1"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -475,21 +516,25 @@ support {
 }
 support {
   graph_op_name: "Bitcast"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BitwiseAnd"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BitwiseOr"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BitwiseXor"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -588,19 +633,23 @@ support {
 }
 support {
   graph_op_name: "BroadcastArgs"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BroadcastGradientArgs"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "BroadcastTo"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Bucketize"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -641,20 +690,24 @@ support {
 }
 support {
   graph_op_name: "Case"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Cast"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Ceil"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "CheckNumerics"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -663,6 +716,7 @@ support {
 }
 support {
   graph_op_name: "Cholesky"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -676,6 +730,7 @@ support {
 }
 support {
   graph_op_name: "ClipByValue"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -687,6 +742,7 @@ support {
 }
 support {
   graph_op_name: "CollectiveAssignGroupV2"
+  supports_xla_compilation: true
 }
 support {
   graph_op_name: "CollectiveBcastRecv"
@@ -718,6 +774,7 @@ support {
 }
 support {
   graph_op_name: "CollectiveReduceV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -728,11 +785,13 @@ support {
 }
 support {
   graph_op_name: "Complex"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ComplexAbs"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -753,15 +812,18 @@ support {
 }
 support {
   graph_op_name: "Concat"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ConcatOffset"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ConcatV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -782,15 +844,18 @@ support {
 }
 support {
   graph_op_name: "Conj"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ConjugateTranspose"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Const"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -799,22 +864,27 @@ support {
 }
 support {
   graph_op_name: "ControlTrigger"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Conv2D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Conv2DBackpropFilter"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Conv2DBackpropInput"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Conv3D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -822,6 +892,7 @@ support {
 }
 support {
   graph_op_name: "Conv3DBackpropFilterV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -829,6 +900,7 @@ support {
 }
 support {
   graph_op_name: "Conv3DBackpropInputV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -842,11 +914,13 @@ support {
 }
 support {
   graph_op_name: "Cos"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Cosh"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -870,6 +944,7 @@ support {
 }
 support {
   graph_op_name: "Cross"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -911,10 +986,12 @@ support {
 }
 support {
   graph_op_name: "Cumprod"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Cumsum"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -928,10 +1005,12 @@ support {
 }
 support {
   graph_op_name: "DataFormatDimMap"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DataFormatVecPermute"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1068,22 +1147,27 @@ support {
 }
 support {
   graph_op_name: "DepthToSpace"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DepthwiseConv2dNative"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DepthwiseConv2dNativeBackpropFilter"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DepthwiseConv2dNativeBackpropInput"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Dequantize"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1104,19 +1188,23 @@ support {
 }
 support {
   graph_op_name: "DeviceIndex"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Diag"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DiagPart"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Digamma"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1137,11 +1225,13 @@ support {
 }
 support {
   graph_op_name: "Div"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DivNoNan"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1165,10 +1255,12 @@ support {
 }
 support {
   graph_op_name: "DynamicPartition"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "DynamicStitch"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1183,26 +1275,31 @@ support {
 }
 support {
   graph_op_name: "Einsum"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Elu"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "EluGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Empty"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "EmptyTensorList"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1246,6 +1343,7 @@ support {
 }
 support {
   graph_op_name: "EnsureShape"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1253,21 +1351,25 @@ support {
 }
 support {
   graph_op_name: "Equal"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Erf"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Erfc"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Erfinv"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1278,11 +1380,13 @@ support {
 }
 support {
   graph_op_name: "Exp"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ExpandDims"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1402,6 +1506,7 @@ support {
 }
 support {
   graph_op_name: "Expm1"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1413,6 +1518,7 @@ support {
 }
 support {
   graph_op_name: "ExtractImagePatches"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1423,15 +1529,18 @@ support {
 }
 support {
   graph_op_name: "FFT"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FFT2D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FFT3D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1445,32 +1554,39 @@ support {
 }
 support {
   graph_op_name: "FakeParam"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxArgs"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxArgsGradient"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxVars"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxVarsGradient"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxVarsPerChannel"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FakeQuantWithMinMaxVarsPerChannelGradient"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1481,6 +1597,7 @@ support {
 }
 support {
   graph_op_name: "Fill"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1516,16 +1633,19 @@ support {
 }
 support {
   graph_op_name: "Floor"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FloorDiv"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FloorMod"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1555,30 +1675,36 @@ support {
 }
 support {
   graph_op_name: "FusedBatchNorm"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FusedBatchNormGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FusedBatchNormGradV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FusedBatchNormGradV3"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FusedBatchNormV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "FusedBatchNormV3"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1596,16 +1722,19 @@ support {
 }
 support {
   graph_op_name: "Gather"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "GatherNd"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "GatherV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1635,11 +1764,13 @@ support {
 }
 support {
   graph_op_name: "Greater"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "GreaterEqual"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1654,6 +1785,7 @@ support {
 }
 support {
   graph_op_name: "HSVToRGB"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1673,36 +1805,44 @@ support {
 }
 support {
   graph_op_name: "IFFT"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IFFT2D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IFFT3D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IRFFT"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IRFFT2D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IRFFT3D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Identity"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IdentityN"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1714,18 +1854,22 @@ support {
 }
 support {
   graph_op_name: "If"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Igamma"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IgammaGradA"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Igammac"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1733,6 +1877,7 @@ support {
 }
 support {
   graph_op_name: "Imag"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1756,6 +1901,7 @@ support {
 }
 support {
   graph_op_name: "InTopKV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1805,6 +1951,7 @@ support {
 }
 support {
   graph_op_name: "Inv"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1813,11 +1960,13 @@ support {
 }
 support {
   graph_op_name: "Invert"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "InvertPermutation"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1829,16 +1978,19 @@ support {
 }
 support {
   graph_op_name: "IsFinite"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IsInf"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "IsNan"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1889,6 +2041,7 @@ support {
 }
 support {
   graph_op_name: "L2Loss"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1900,10 +2053,12 @@ support {
 }
 support {
   graph_op_name: "LRN"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "LRNGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -1917,11 +2072,13 @@ support {
 }
 support {
   graph_op_name: "LeakyRelu"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "LeakyReluGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1930,6 +2087,7 @@ support {
 }
 support {
   graph_op_name: "LeftShift"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -1942,26 +2100,31 @@ support {
 }
 support {
   graph_op_name: "Less"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "LessEqual"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Lgamma"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "LinSpace"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ListDiff"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2014,11 +2177,13 @@ support {
 }
 support {
   graph_op_name: "Log"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Log1p"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2027,6 +2192,7 @@ support {
 }
 support {
   graph_op_name: "LogSoftmax"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2035,16 +2201,19 @@ support {
 }
 support {
   graph_op_name: "LogicalAnd"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "LogicalNot"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "LogicalOr"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2088,6 +2257,7 @@ support {
 }
 support {
   graph_op_name: "LowerBound"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2131,6 +2301,7 @@ support {
 }
 support {
   graph_op_name: "MatMul"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2142,6 +2313,7 @@ support {
 }
 support {
   graph_op_name: "MatrixBandPart"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2150,28 +2322,34 @@ support {
 }
 support {
   graph_op_name: "MatrixDiag"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixDiagPart"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixDiagPartV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixDiagPartV3"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixDiagV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixDiagV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2179,6 +2357,7 @@ support {
 }
 support {
   graph_op_name: "MatrixInverse"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2186,20 +2365,24 @@ support {
 }
 support {
   graph_op_name: "MatrixSetDiag"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixSetDiagV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixSetDiagV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MatrixSolve"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2210,10 +2393,12 @@ support {
 }
 support {
   graph_op_name: "MatrixTriangularSolve"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Max"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2222,34 +2407,41 @@ support {
 }
 support {
   graph_op_name: "MaxPool"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MaxPool3D"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MaxPool3DGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MaxPool3DGradGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MaxPoolGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MaxPoolGradGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MaxPoolGradGradV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2257,6 +2449,7 @@ support {
 }
 support {
   graph_op_name: "MaxPoolGradV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2264,6 +2457,7 @@ support {
 }
 support {
   graph_op_name: "MaxPoolV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2271,11 +2465,13 @@ support {
 }
 support {
   graph_op_name: "Maximum"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Mean"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2293,20 +2489,24 @@ support {
 }
 support {
   graph_op_name: "Min"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Minimum"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MirrorPad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MirrorPadGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2314,6 +2514,7 @@ support {
 }
 support {
   graph_op_name: "Mod"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2321,11 +2522,13 @@ support {
 }
 support {
   graph_op_name: "Mul"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "MulNoNan"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2346,6 +2549,7 @@ support {
 }
 support {
   graph_op_name: "Multinomial"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2383,6 +2587,7 @@ support {
 }
 support {
   graph_op_name: "Ndtri"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2390,6 +2595,7 @@ support {
 }
 support {
   graph_op_name: "Neg"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2398,6 +2604,7 @@ support {
 }
 support {
   graph_op_name: "NextAfter"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2406,6 +2613,7 @@ support {
 }
 support {
   graph_op_name: "NoOp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2419,9 +2627,11 @@ support {
 }
 support {
   graph_op_name: "NonMaxSuppressionV3"
+  supports_xla_compilation: true
 }
 support {
   graph_op_name: "NonMaxSuppressionV4"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2435,6 +2645,7 @@ support {
 }
 support {
   graph_op_name: "NotEqual"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2443,6 +2654,7 @@ support {
 }
 support {
   graph_op_name: "OneHot"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2451,6 +2663,7 @@ support {
 }
 support {
   graph_op_name: "OnesLike"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2517,16 +2730,19 @@ support {
 }
 support {
   graph_op_name: "Pack"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Pad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "PadV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2550,6 +2766,7 @@ support {
 }
 support {
   graph_op_name: "ParallelDynamicStitch"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2576,6 +2793,7 @@ support {
 }
 support {
   graph_op_name: "ParameterizedTruncatedNormal"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2607,6 +2825,7 @@ support {
 }
 support {
   graph_op_name: "PartitionedCall"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2618,19 +2837,23 @@ support {
 }
 support {
   graph_op_name: "PlaceholderWithDefault"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Polygamma"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "PopulationCount"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Pow"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2645,6 +2868,7 @@ support {
 }
 support {
   graph_op_name: "PreventGradient"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2666,6 +2890,7 @@ support {
 }
 support {
   graph_op_name: "Prod"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2677,6 +2902,7 @@ support {
 }
 support {
   graph_op_name: "Qr"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2685,15 +2911,18 @@ support {
 }
 support {
   graph_op_name: "QuantizeAndDequantizeV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "QuantizeAndDequantizeV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "QuantizeAndDequantizeV4"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2860,18 +3089,22 @@ support {
 }
 support {
   graph_op_name: "RFFT"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RFFT2D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RFFT3D"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RGBToHSV"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2915,6 +3148,7 @@ support {
 }
 support {
   graph_op_name: "RandomGammaGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2928,6 +3162,7 @@ support {
 }
 support {
   graph_op_name: "RandomShuffle"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2939,20 +3174,24 @@ support {
 }
 support {
   graph_op_name: "RandomStandardNormal"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RandomUniform"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RandomUniformInt"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Range"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -2961,6 +3200,7 @@ support {
 }
 support {
   graph_op_name: "Rank"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -2972,10 +3212,12 @@ support {
 }
 support {
   graph_op_name: "ReadVariableOp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ReadVariableXlaSplitND"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3022,11 +3264,13 @@ support {
 }
 support {
   graph_op_name: "Real"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RealDiv"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3038,11 +3282,13 @@ support {
 }
 support {
   graph_op_name: "Reciprocal"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ReciprocalGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3095,20 +3341,24 @@ support {
 }
 support {
   graph_op_name: "Relu"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Relu6"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Relu6Grad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ReluGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3132,14 +3382,17 @@ support {
 }
 support {
   graph_op_name: "Resampler"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResamplerGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Reshape"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3154,14 +3407,17 @@ support {
 }
 support {
   graph_op_name: "ResizeBilinear"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResizeBilinearGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResizeNearestNeighbor"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3182,26 +3438,32 @@ support {
 }
 support {
   graph_op_name: "ResourceApplyAdaMax"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdadelta"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdagrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdagradDA"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdagradV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyAdam"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3209,46 +3471,57 @@ support {
 }
 support {
   graph_op_name: "ResourceApplyAddSign"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyCenteredRMSProp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyFtrl"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyFtrlV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyGradientDescent"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyKerasMomentum"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyMomentum"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyPowerSign"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyProximalAdagrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyProximalGradientDescent"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceApplyRMSProp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3259,6 +3532,7 @@ support {
 }
 support {
   graph_op_name: "ResourceGather"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3266,26 +3540,32 @@ support {
 }
 support {
   graph_op_name: "ResourceScatterAdd"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterDiv"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterMax"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterMin"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterMul"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterNdAdd"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3296,18 +3576,22 @@ support {
 }
 support {
   graph_op_name: "ResourceScatterNdSub"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterNdUpdate"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterSub"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ResourceScatterUpdate"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3348,6 +3632,7 @@ support {
 }
 support {
   graph_op_name: "ResourceStridedSliceAssign"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3403,14 +3688,17 @@ support {
 }
 support {
   graph_op_name: "Reverse"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ReverseSequence"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ReverseV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3419,11 +3707,13 @@ support {
 }
 support {
   graph_op_name: "RightShift"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Rint"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3582,10 +3872,12 @@ support {
 }
 support {
   graph_op_name: "RngReadAndSkip"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RngSkip"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3594,21 +3886,25 @@ support {
 }
 support {
   graph_op_name: "Roll"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Round"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Rsqrt"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "RsqrtGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3665,6 +3961,7 @@ support {
 }
 support {
   graph_op_name: "ScatterNd"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3721,11 +4018,13 @@ support {
 }
 support {
   graph_op_name: "Select"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SelectV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3734,15 +4033,18 @@ support {
 }
 support {
   graph_op_name: "SelfAdjointEigV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Selu"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SeluGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3772,11 +4074,13 @@ support {
 }
 support {
   graph_op_name: "Shape"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ShapeN"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3811,31 +4115,37 @@ support {
 }
 support {
   graph_op_name: "Sigmoid"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SigmoidGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Sign"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Sin"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Sinh"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Size"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3850,6 +4160,7 @@ support {
 }
 support {
   graph_op_name: "Slice"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -3858,6 +4169,7 @@ support {
 }
 support {
   graph_op_name: "Snapshot"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -3877,44 +4189,53 @@ support {
 }
 support {
   graph_op_name: "Softmax"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SoftmaxCrossEntropyWithLogits"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Softplus"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SoftplusGrad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Softsign"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SoftsignGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SpaceToBatch"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SpaceToBatchND"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SpaceToDepth"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4000,6 +4321,7 @@ support {
 }
 support {
   graph_op_name: "SparseMatMul"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4092,6 +4414,7 @@ support {
 }
 support {
   graph_op_name: "SparseSoftmaxCrossEntropyWithLogits"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4118,6 +4441,7 @@ support {
 }
 support {
   graph_op_name: "SparseToDense"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4128,11 +4452,13 @@ support {
 }
 support {
   graph_op_name: "Split"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SplitV"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4141,26 +4467,31 @@ support {
 }
 support {
   graph_op_name: "Sqrt"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SqrtGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Square"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "SquaredDifference"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Squeeze"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4172,6 +4503,7 @@ support {
 }
 support {
   graph_op_name: "StackCloseV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4179,6 +4511,7 @@ support {
 }
 support {
   graph_op_name: "StackPopV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4186,10 +4519,12 @@ support {
 }
 support {
   graph_op_name: "StackPushV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StackV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4206,6 +4541,7 @@ support {
 }
 support {
   graph_op_name: "StatefulPartitionedCall"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4217,38 +4553,47 @@ support {
 }
 support {
   graph_op_name: "StatefulStandardNormalV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatefulTruncatedNormal"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatefulUniform"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatefulUniformFullInt"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatefulUniformInt"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessCase"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessIf"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessMultinomial"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessParameterizedTruncatedNormal"
+  supports_xla_compilation: true
 }
 support {
   graph_op_name: "StatelessRandomBinomial"
@@ -4258,22 +4603,27 @@ support {
 }
 support {
   graph_op_name: "StatelessRandomGetAlg"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomGetKeyCounter"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomGetKeyCounterAlg"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomNormal"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomNormalV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4281,26 +4631,32 @@ support {
 }
 support {
   graph_op_name: "StatelessRandomUniform"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomUniformFullInt"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomUniformFullIntV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomUniformInt"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomUniformIntV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessRandomUniformV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4311,14 +4667,17 @@ support {
 }
 support {
   graph_op_name: "StatelessTruncatedNormal"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessTruncatedNormalV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StatelessWhile"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4341,11 +4700,13 @@ support {
 }
 support {
   graph_op_name: "StopGradient"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "StridedSlice"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4354,6 +4715,7 @@ support {
 }
 support {
   graph_op_name: "StridedSliceGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4398,6 +4760,7 @@ support {
 }
 support {
   graph_op_name: "Sub"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4406,6 +4769,7 @@ support {
 }
 support {
   graph_op_name: "Sum"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4414,6 +4778,7 @@ support {
 }
 support {
   graph_op_name: "Svd"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4487,16 +4852,19 @@ support {
 }
 support {
   graph_op_name: "Tan"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Tanh"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TanhGrad"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4514,6 +4882,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayCloseV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4524,6 +4893,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayConcatV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4534,6 +4904,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayGatherV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4544,6 +4915,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayGradV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4560,6 +4932,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayReadV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4570,6 +4943,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayScatterV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4580,6 +4954,7 @@ support {
 }
 support {
   graph_op_name: "TensorArraySizeV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4590,6 +4965,7 @@ support {
 }
 support {
   graph_op_name: "TensorArraySplitV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4600,6 +4976,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4610,6 +4987,7 @@ support {
 }
 support {
   graph_op_name: "TensorArrayWriteV3"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4626,34 +5004,42 @@ support {
 }
 support {
   graph_op_name: "TensorListConcatV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListElementShape"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListFromTensor"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListGather"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListGetItem"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListLength"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListPopBack"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListPushBack"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4661,6 +5047,7 @@ support {
 }
 support {
   graph_op_name: "TensorListReserve"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4677,14 +5064,17 @@ support {
 }
 support {
   graph_op_name: "TensorListSetItem"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListSplit"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorListStack"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4707,22 +5097,27 @@ support {
 }
 support {
   graph_op_name: "TensorScatterAdd"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorScatterMax"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorScatterMin"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorScatterSub"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TensorScatterUpdate"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4734,6 +5129,7 @@ support {
 }
 support {
   graph_op_name: "TensorStridedSliceUpdate"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4762,6 +5158,7 @@ support {
 }
 support {
   graph_op_name: "Tile"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4773,6 +5170,7 @@ support {
 }
 support {
   graph_op_name: "ToBool"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4783,6 +5181,7 @@ support {
 }
 support {
   graph_op_name: "TopKV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4794,6 +5193,7 @@ support {
 }
 support {
   graph_op_name: "Transpose"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4802,19 +5202,23 @@ support {
 }
 support {
   graph_op_name: "TridiagonalSolve"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TruncateDiv"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TruncateMod"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "TruncatedNormal"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4849,6 +5253,7 @@ support {
 }
 support {
   graph_op_name: "Unique"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4856,6 +5261,7 @@ support {
 }
 support {
   graph_op_name: "UniqueV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4866,6 +5272,7 @@ support {
 }
 support {
   graph_op_name: "Unpack"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -4877,18 +5284,22 @@ support {
 }
 support {
   graph_op_name: "UnsortedSegmentMax"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "UnsortedSegmentMin"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "UnsortedSegmentProd"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "UnsortedSegmentSum"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4899,6 +5310,7 @@ support {
 }
 support {
   graph_op_name: "UpperBound"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4906,6 +5318,7 @@ support {
 }
 support {
   graph_op_name: "VarIsInitializedOp"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4914,6 +5327,7 @@ support {
 }
 support {
   graph_op_name: "VariableShape"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4921,10 +5335,12 @@ support {
 }
 support {
   graph_op_name: "Where"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "While"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -4971,56 +5387,68 @@ support {
 }
 support {
   graph_op_name: "Xdivy"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaBroadcastHelper"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaConcatND"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaConv"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaConvV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaDequantize"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaDot"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaDotV2"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaDynamicSlice"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaDynamicUpdateSlice"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaEinsum"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaGather"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -5029,18 +5457,22 @@ support {
 }
 support {
   graph_op_name: "XlaIf"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaKeyValueSort"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaPad"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaRecv"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -5048,6 +5480,7 @@ support {
 }
 support {
   graph_op_name: "XlaReduce"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -5056,35 +5489,43 @@ support {
 }
 support {
   graph_op_name: "XlaReduceWindow"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaRemoveDynamicDimensionSize"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaReplicaId"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaRngBitGenerator"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaScatter"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSelectAndScatter"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSelfAdjointEig"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSend"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
@@ -5092,71 +5533,87 @@ support {
 }
 support {
   graph_op_name: "XlaSetBound"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSetDynamicDimensionSize"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSharding"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSort"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSplitND"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSpmdFullToShardShape"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSpmdShardToFullShape"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaSvd"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaVariadicReduce"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaVariadicReduceV2"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaVariadicSort"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "XlaWhile"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Xlog1py"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Xlogy"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "ZerosLike"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "Zeta"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
@@ -5165,31 +5622,38 @@ support {
 }
 support {
   graph_op_name: "_Arg"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "_ArrayToList"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "_EagerConst"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "_FusedBatchNormEx"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "_ListToArray"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "_Retval"
+  supports_xla_compilation: true
   supports_new_bridge: true
 }
 support {
   graph_op_name: "_UnaryOpsComposition"
+  supports_xla_compilation: true
   supports_old_bridge: true
   supports_new_bridge: true
 }

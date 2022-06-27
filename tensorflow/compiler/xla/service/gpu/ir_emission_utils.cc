@@ -636,7 +636,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     return false;
   }
 
-  auto maybe_lhs = GetAllocationSlice(parameter.memref(), allocations);
+  auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
   auto maybe_rhs = GetAllocationSlice(output_buffers[0], allocations);
   return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }

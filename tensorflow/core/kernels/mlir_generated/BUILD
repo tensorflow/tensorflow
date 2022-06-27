@@ -1445,11 +1445,12 @@ gpu_kernel_library(
     name = "gpu_cast_kernels",
     op = "cast",
     # We generate all combinations of input types/output types from the set
-    # {i1, i8, i16, i32, i64, ui8, ui16, ui32, ui64, f16, f32, f64} to the set.
+    # {i1, i8, i16, i32, i64, ui8, ui16, ui32, ui64, f16, f32, f64, c64, c128}
+    # to the set
     # {i1, i8, i16, i32, i64, ui8, ui16, ui32, ui64, f16, f32, f64, c64, c128}.
     # The easiest way to do this is to repeat each input type 14 times and match
     # it with the 14 different output types (thus, the list of 14 different
-    # output types needs to be repeated 12 times).
+    # output types needs to be repeated 14 times).
     output_types = [
         "i1",
         "i8",
@@ -1465,11 +1466,12 @@ gpu_kernel_library(
         "f64",
         "c64",
         "c128",
-    ] * 12,
+    ] * 14,
     tile_size = "256",
     types = ["i1"] * 14 + ["i8"] * 14 + ["i16"] * 14 + ["i32"] * 14 +
             ["i64"] * 14 + ["ui8"] * 14 + ["ui16"] * 14 + ["ui32"] * 14 +
-            ["ui64"] * 14 + ["f16"] * 14 + ["f32"] * 14 + ["f64"] * 14,
+            ["ui64"] * 14 + ["f16"] * 14 + ["f32"] * 14 + ["f64"] * 14 +
+            ["c64"] * 14 + ["c128"] * 14,
 )
 
 gpu_kernel_library(

@@ -52,13 +52,13 @@ class PreemptionSyncManager {
   // 1) This must be called during every possible sync point so that the library
   //    is aware of each task's progress.
   // 2) This assumes that each task begins from the same point.
-  //    Internally, we use a counter to track the number of calls that have been
-  //    made to record each task's current progress.
+  //    Internally, it updates a counter to track the last `step_counter` passed
+  //    in as argument to record each task's current progress.
   // Example use case: this can be called during every training step for every
   // task. Once a preemption notice is received, all tasks will agree on a safe
   // step to pause training and handle the preemption (e.g. save checkpoint and
   // exit, or wait for preempted task to restart, then resume training).
-  virtual bool ReachedSyncPoint() = 0;
+  virtual bool ReachedSyncPoint(int step_counter) = 0;
 };
 
 std::unique_ptr<PreemptionSyncManager> CreatePreemptionSyncManager();

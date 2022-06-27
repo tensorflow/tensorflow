@@ -310,6 +310,8 @@ class TensorWithLayout {
 
   const absl::optional<NodeDef> const_value() const { return const_value_; }
 
+  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
+
  protected:
   TensorWithLayout(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                    const MeshWithParallelDevice& mesh, const Layout& layout,
@@ -346,6 +348,9 @@ class TensorWithLayout {
   std::vector<int64_t> local_shape_;
 
   absl::optional<TF_DataType> dtype_;
+
+  // Resource input attributes for embedding inputs.
+  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // Extension of TensorWithLayout which holds resource handle with layout.
@@ -384,8 +389,6 @@ class ResourceHandleWithLayout : public TensorWithLayout {
   void UpdateAttrs(const EmbeddingResourceAttrs& attrs,
                    TF_Status* status) override;
 
-  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
-
   void UpdateDirtyness(bool is_dirty, TF_Status* status) {
     if (!attrs_.has_value()) {
       TF_SetStatus(status, TF_INTERNAL,
@@ -422,7 +425,6 @@ class ResourceHandleWithLayout : public TensorWithLayout {
   // The shape and dtype of the tensor pointed to by this resource tensor.
   absl::optional<TensorShapeProto> dereferenced_shape_;
   absl::optional<DataType> dereferenced_dtype_;
-  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // TensorWithLayout for SparseTensors.

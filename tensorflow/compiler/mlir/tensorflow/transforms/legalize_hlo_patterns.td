@@ -40,7 +40,7 @@ def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
 // Return intermediate shape before broadcasting, wrapped in a constant op.
 def ExpandedShape : NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
 
-def : Pat<(HLO_ConstOp $value), (TF_ConstOp $value)>;
+def : Pat<(HLO_ConstantOp $value), (TF_ConstOp $value)>;
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
@@ -265,25 +265,25 @@ def : Pat<(HLO_SelectOp
               (HLO_CompareOp (HLO_SubOp:$frac
                                $input,
                                (HLO_FloorOp:$floor $input)),
-                             (HLO_ConstOp $half),
+                             (HLO_ConstantOp $half),
                              HLO_ComparisonDirectionValue<"GT">,
                              $compare_type0),
               (HLO_AndOp
                 (HLO_CompareOp
                   $frac1,
-                  (HLO_ConstOp $half1),
+                  (HLO_ConstantOp $half1),
                   HLO_ComparisonDirectionValue<"EQ">,
                   $compare_type1),
                 (HLO_CompareOp
                   (HLO_SubOp
                     $floor1,
                     (HLO_MulOp
-                      (HLO_FloorOp (HLO_MulOp $input, (HLO_ConstOp $half2))),
-                      (HLO_ConstOp $two))),
-                  (HLO_ConstOp $one1),
+                      (HLO_FloorOp (HLO_MulOp $input, (HLO_ConstantOp $half2))),
+                      (HLO_ConstantOp $two))),
+                  (HLO_ConstantOp $one1),
                   HLO_ComparisonDirectionValue<"EQ">,
                   $compare_type2))),
-            (HLO_AddOp $floor2, (HLO_ConstOp $one)),
+            (HLO_AddOp $floor2, (HLO_ConstantOp $one)),
             $floor3),
           (TF_RoundOp $input),
           [(FloatValueEquals<"1.0"> $one),
@@ -313,13 +313,13 @@ def : Pat<(HLO_SelectOp
               (HLO_CompareOp
                 (HLO_CompareOp:$rltz
                   (HLO_RemOp:$rem $arg, $arg1),
-                  (HLO_ConstOp $cst),
+                  (HLO_ConstantOp $cst),
                   HLO_ComparisonDirectionValue<"LT">,
                   $compare_type),
-                (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstOp $cst1), HLO_ComparisonDirectionValue<"LT">, $compare_type1),
+                (HLO_CompareOp:$arg1ltz $arg1, (HLO_ConstantOp $cst1), HLO_ComparisonDirectionValue<"LT">, $compare_type1),
                 HLO_ComparisonDirectionValue<"NE">,
                 $compare_type2),
-              (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+              (HLO_CompareOp:$rnz $rem1, (HLO_ConstantOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
             (HLO_AddOp $rem2, $arg1),
             $rem3),
           (TF_FloorModOp $arg, $arg1),
@@ -345,12 +345,12 @@ def : Pat<(HLO_SelectOp
 def : Pat<(HLO_SelectOp
             (HLO_AndOp
               (HLO_CompareOp:$rltz
-                (HLO_RemOp:$rem $arg, (HLO_ConstOp $cst)),
-                (HLO_ConstOp $cst1),
+                (HLO_RemOp:$rem $arg, (HLO_ConstantOp $cst)),
+                (HLO_ConstantOp $cst1),
                 HLO_ComparisonDirectionValue<"LT">,
                 $compare_type),
-              (HLO_CompareOp:$rnz $rem1, (HLO_ConstOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
-            (HLO_AddOp $rem2, (HLO_ConstOp $cst3)),
+              (HLO_CompareOp:$rnz $rem1, (HLO_ConstantOp $cst2), HLO_ComparisonDirectionValue<"NE">, $compare_type3)),
+            (HLO_AddOp $rem2, (HLO_ConstantOp $cst3)),
             $rem3),
           (TF_FloorModOp $arg, (TF_ConstOp $cst3)),
           [(FloatValueGreaterThanZero $cst),
@@ -393,7 +393,7 @@ def : Pat<(HLO_RoundOp
               (HLO_AndOp
                 (HLO_CompareOp
                   (HLO_RemOp:$rem $arg0, $arg1),
-                  (HLO_ConstOp $cst),
+                  (HLO_ConstantOp $cst),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
                 (HLO_CompareOp
@@ -405,7 +405,7 @@ def : Pat<(HLO_RoundOp
                 (HLO_DivOp:$div
                   (HLO_SubOp $arg0, $rem2),
                   $arg1b),
-                (HLO_ConstOp $cst_neg1)),
+                (HLO_ConstantOp $cst_neg1)),
               $div1)),
           (TF_FloorDivOp $arg0, $arg1),
           [(FloatValueEquals<"0.0"> $cst),
@@ -448,20 +448,20 @@ def : Pat<(HLO_RoundOp
             (HLO_SelectOp
               (HLO_AndOp
                 (HLO_CompareOp
-                  (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
-                  (HLO_ConstOp $cst_zero),
+                  (HLO_RemOp:$rem $arg0, (HLO_ConstantOp:$cst $cstv)),
+                  (HLO_ConstantOp $cst_zero),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
                 (HLO_CompareOp
-                  (HLO_ConstOp $cst_sgn),
+                  (HLO_ConstantOp $cst_sgn),
                   (HLO_SignOp $rem1),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_MulOp:$mul
                   (HLO_SubOp $arg0, $rem2),
-                  (HLO_ConstOp $cst_recip)),
-                (HLO_ConstOp $cst_neg1)),
+                  (HLO_ConstantOp $cst_recip)),
+                (HLO_ConstantOp $cst_neg1)),
               $mul1)),
           (TF_FloorDivOp $arg0, $cst),
           [(FloatValueEquals<"0.0"> $cst_zero),
@@ -506,20 +506,20 @@ def : Pat<(HLO_RoundOp
             (HLO_SelectOp
               (HLO_AndOp
                 (HLO_CompareOp
-                  (HLO_RemOp:$rem $arg0, (HLO_ConstOp:$cst $cstv)),
-                  (HLO_ConstOp $cst_zero),
+                  (HLO_RemOp:$rem $arg0, (HLO_ConstantOp:$cst $cstv)),
+                  (HLO_ConstantOp $cst_zero),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
                 (HLO_CompareOp
-                  (HLO_ConstOp $cst_sgn),
+                  (HLO_ConstantOp $cst_sgn),
                   (HLO_SignOp $rem1),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
                   (HLO_SubOp $arg0, $rem2),
-                  (HLO_ConstOp $cstv1)),
-                (HLO_ConstOp $cst_neg1)),
+                  (HLO_ConstantOp $cstv1)),
+                (HLO_ConstantOp $cst_neg1)),
               $div1)),
           (TF_FloorDivOp $arg0, $cst),
           [(FloatValueEquals<"0.0"> $cst_zero),
@@ -570,13 +570,13 @@ def : Pat<(HLO_RoundOp
                 (HLO_CompareOp
                   (HLO_RemOp:$rem $arg0,
                     (HLO_BroadcastInDimOp:$bcst
-                      (HLO_ConstOp $cstv),
+                      (HLO_ConstantOp $cstv),
                       $broadcast_dimension)),
-                  (HLO_ConstOp $cst_zero),
+                  (HLO_ConstantOp $cst_zero),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type),
                 (HLO_CompareOp
-                  (HLO_ConstOp $cst_sgn),
+                  (HLO_ConstantOp $cst_sgn),
                   (HLO_SignOp $rem1),
                   HLO_ComparisonDirectionValue<"NE">,
                   $compare_type1)),
@@ -584,7 +584,7 @@ def : Pat<(HLO_RoundOp
                 (HLO_DivOp:$div
                   (HLO_SubOp $arg0, $rem2),
                   $bcst1),
-                (HLO_ConstOp $cst_neg1)),
+                (HLO_ConstantOp $cst_neg1)),
               $div1)),
           (TF_FloorDivOp $arg0, $bcst),
           [(FloatValueEquals<"0.0"> $cst_zero),

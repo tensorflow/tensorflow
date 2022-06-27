@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h.inc"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/lhlo_utils.h"
@@ -53,6 +53,9 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"
+
 namespace mlir {
 namespace lmhlo {
 
@@ -63,6 +66,33 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.cc.inc"
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_structs.cc.inc"
+      >();
+}
+
+// Entry point for Attribute parsing, TableGen generated code will handle the
+// dispatch to the individual classes.
+Attribute LmhloDialect::parseAttribute(DialectAsmParser& parser,
+                                       Type type) const {
+  StringRef attrTag;
+  if (failed(parser.parseKeyword(&attrTag))) return Attribute();
+  {
+    Attribute attr;
+    auto parseResult = generatedAttributeParser(parser, attrTag, type, attr);
+    if (parseResult.hasValue()) return attr;
+  }
+  parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
+  return Attribute();
+}
+
+// Entry point for Attribute printing, TableGen generated code will handle the
+// dispatch to the individual classes.
+void LmhloDialect::printAttribute(Attribute attr, DialectAsmPrinter& os) const {
+  LogicalResult result = generatedAttributePrinter(attr, os);
+  (void)result;
+  assert(succeeded(result));
 }
 
 //===----------------------------------------------------------------------===//
@@ -71,8 +101,8 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 
 LogicalResult AbsOp::verify() {
   AbsOp op = *this;
-  auto operandType = getElementTypeOrSelf(op.input().getType());
-  auto outputType = getElementTypeOrSelf(op.output().getType());
+  auto operandType = getElementTypeOrSelf(op.getInput().getType());
+  auto outputType = getElementTypeOrSelf(op.getOutput().getType());
   if (auto complexType = operandType.dyn_cast<ComplexType>()) {
     if (complexType.getElementType() != outputType) {
       return op.emitOpError(
@@ -120,9 +150,9 @@ LogicalResult ReduceScatterOp::verify() {
   if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
   if (failed(mlir::hlo::VerifyReduceScatter(
-          op, /*operand_types=*/op.operands().getTypes(),
-          /*result_types=*/op.results().getTypes(),
-          /*scatter_dimension=*/op.scatter_dimension())))
+          op, /*operand_types=*/op.getInputs().getTypes(),
+          /*result_types=*/op.getOutputs().getTypes(),
+          /*scatter_dimension=*/op.getScatterDimension())))
     return failure();
   return success();
 }
@@ -136,7 +166,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
   if (!index.hasValue()) {
-    for (auto& branch : branches())
+    for (auto& branch : getBranches())
       regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
   }
   // If the predecessor is one of the branches, branch back to the parent
@@ -151,23 +181,23 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
 LogicalResult CollectivePermuteOp::verify() {
   CollectivePermuteOp op = *this;
   return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
-      op, op.source_target_pairs());
+      op, op.getSourceTargetPairs());
 }
 
 //===----------------------------------------------------------------------===//
-// ConstOp.
+// ConstantOp.
 //===----------------------------------------------------------------------===//
 
 /// An lho.constant on an memref that is locally allocated and with no other
 /// users (other than dealloc's) can be erased.
 // TODO: This can be generalized to an arbitrary op by making use of memory
 // effects (write memory effect).
-struct EraseConstOp : public OpRewritePattern<ConstOp> {
-  using OpRewritePattern<ConstOp>::OpRewritePattern;
+struct EraseConstantOp : public OpRewritePattern<ConstantOp> {
+  using OpRewritePattern<ConstantOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(ConstOp op,
+  LogicalResult matchAndRewrite(ConstantOp op,
                                 PatternRewriter& rewriter) const override {
-    Value memref = op.output();
+    Value memref = op.getOutput();
     if (!memref.getDefiningOp<memref::AllocOp>()) {
       return failure();
     }
@@ -181,9 +211,9 @@ struct EraseConstOp : public OpRewritePattern<ConstOp> {
   }
 };
 
-void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                          MLIRContext* context) {
-  results.add<EraseConstOp>(context);
+void ConstantOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                             MLIRContext* context) {
+  results.add<EraseConstantOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -192,9 +222,10 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult CustomCallOp::verify() {
   CustomCallOp op = *this;
-  if (op.target_arg_mapping()) {
-    CustomCallTargetArgMapping mapping = *op.target_arg_mapping();
-    auto verifyMapping = [&](int64_t targetNum, size_t opNum, ArrayAttr mapping,
+  if (op.getTargetArgMapping()) {
+    CustomCallTargetArgMappingAttr mapping = *op.getTargetArgMapping();
+    auto verifyMapping = [&](int64_t targetNum, size_t opNum,
+                             ArrayRef<int64_t> mapping,
                              StringRef kind) -> LogicalResult {
       if (targetNum < opNum)
         return op.emitOpError("number of target " + kind + " (")
@@ -210,14 +241,13 @@ LogicalResult CustomCallOp::verify() {
       std::unordered_set<int64_t> entries;
       // Each entry in the mapping should be < target_num and an entry cannot
       // appear more than once.
-      for (Attribute entry : mapping) {
-        int64_t intEntry = entry.cast<IntegerAttr>().getInt();
+      for (int64_t entry : mapping) {
         // ODS verification will ensure that these entries are integers.
-        if (!entries.insert(intEntry).second)
+        if (!entries.insert(entry).second)
           return op.emitOpError("entry ")
-                 << intEntry
-                 << " cannot appear more than once in the mapping for " << kind;
-        if (intEntry < 0 || intEntry >= targetNum)
+                 << entry << " cannot appear more than once in the mapping for "
+                 << kind;
+        if (entry < 0 || entry >= targetNum)
           return op.emitOpError(
                      "entries in mapping for " + kind +
                      " must be >= 0 and less than target's number of " + kind +
@@ -226,10 +256,10 @@ LogicalResult CustomCallOp::verify() {
       }
       return success();
     };
-    if (failed(verifyMapping(mapping.num_args().getInt(), op.args().size(),
-                             mapping.args_to_target_args(), "args")) ||
-        failed(verifyMapping(mapping.num_results().getInt(), op.output().size(),
-                             mapping.results_to_target_results(), "results")))
+    if (failed(verifyMapping(mapping.getNumArgs(), op.getArgs().size(),
+                             mapping.getArgsToTargetArgs(), "args")) ||
+        failed(verifyMapping(mapping.getNumResults(), op.getOutput().size(),
+                             mapping.getResultsToTargetResults(), "results")))
       return failure();
   }
   return success();
@@ -246,8 +276,8 @@ LogicalResult CustomCallOp::verify() {
 //     configurations are applied to the operand.
 LogicalResult PadOp::verify() {
   PadOp op = *this;
-  auto operandType = op.operand().getType().dyn_cast<ShapedType>();
-  auto outputType = op.output().getType().dyn_cast<ShapedType>();
+  auto operandType = op.getOperand().getType().dyn_cast<ShapedType>();
+  auto outputType = op.getOutput().getType().dyn_cast<ShapedType>();
   if (!(operandType && outputType && operandType.hasRank() &&
         outputType.hasRank())) {
     return success();
@@ -261,9 +291,9 @@ LogicalResult PadOp::verify() {
            << ") is not same as operand's rank(" << rank << ")";
   }
 
-  auto edgePadLowRanges = op.edge_padding_low().getValues<int64_t>();
-  auto edgePadHighRanges = op.edge_padding_high().getValues<int64_t>();
-  auto interiorPadRanges = op.interior_padding().getValues<int64_t>();
+  auto edgePadLowRanges = op.getEdgePaddingLow().getValues<int64_t>();
+  auto edgePadHighRanges = op.getEdgePaddingHigh().getValues<int64_t>();
+  auto interiorPadRanges = op.getInteriorPadding().getValues<int64_t>();
   // Checks if padding configurations are specified for each dimension.
   if (edgePadLowRanges.size() != rank || edgePadHighRanges.size() != rank ||
       interiorPadRanges.size() != rank) {
@@ -309,7 +339,7 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
                                 PatternRewriter& rewriter) const override {
     // Find the only `lmhlo.copy` in the body of `reduce`.
     CopyOp theOnlyCopy;
-    for (auto& op : reduce.body().front()) {
+    for (auto& op : reduce.getBody().front()) {
       if (auto copy = dyn_cast<lmhlo::CopyOp>(op)) {
         if (theOnlyCopy == nullptr) {
           theOnlyCopy = copy;
@@ -322,22 +352,22 @@ struct RemoveCopyInReduceBody : public OpRewritePattern<ReduceOp> {
     if (!theOnlyCopy) return failure();
 
     auto newReduce = rewriter.cloneWithoutRegions(reduce);
-    auto& oldReduceBody = reduce.body().front();
+    auto& oldReduceBody = reduce.getBody().front();
     Block* newBlock = rewriter.createBlock(
-        &newReduce.body(), newReduce.body().end(),
+        &newReduce.getBody(), newReduce.getBody().end(),
         oldReduceBody.getArgumentTypes(),
         SmallVector<Location>(oldReduceBody.getNumArguments(),
                               reduce.getLoc()));
 
     mlir::BlockAndValueMapping bvm;
-    for (auto item : llvm::zip(reduce.body().front().getArguments(),
+    for (auto item : llvm::zip(reduce.getBody().front().getArguments(),
                                newBlock->getArguments())) {
       bvm.map(std::get<0>(item), std::get<1>(item));
     }
-    bvm.map(theOnlyCopy.operand(), bvm.lookup(theOnlyCopy.output()));
+    bvm.map(theOnlyCopy.getOperand(), bvm.lookup(theOnlyCopy.getOutput()));
 
     rewriter.setInsertionPointToStart(newBlock);
-    for (auto& op : reduce.body().front()) {
+    for (auto& op : reduce.getBody().front()) {
       if (llvm::isa<lmhlo::CopyOp>(op) || llvm::isa<memref::DeallocOp>(op) ||
           llvm::isa<memref::AllocOp>(op))
         continue;
@@ -360,7 +390,7 @@ void ReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // For reduce-window, all `inputs` need to have compatible shapes.
 LogicalResult ReduceWindowOp::verify() {
   ReduceWindowOp op = *this;
-  if (failed(verifyCompatibleShapes(op.inputs().getTypes())))
+  if (failed(verifyCompatibleShapes(op.getInputs().getTypes())))
     return op.emitOpError() << "requires same shape for all operands";
   return success();
 }
@@ -375,16 +405,16 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
   if (!index.hasValue() || index.getValue() == 1) {
-    regions.push_back(RegionSuccessor(&cond(), cond().getArguments()));
+    regions.push_back(RegionSuccessor(&getCond(), getCond().getArguments()));
     return;
   }
   // If the predecessor is the cond region, we can branch to the body region
   // or back to the parent operation.
-  regions.push_back(RegionSuccessor(&body(), body().getArguments()));
+  regions.push_back(RegionSuccessor(&getBody(), getBody().getArguments()));
   regions.push_back(RegionSuccessor());
 }
 
-Region& WhileOp::getLoopBody() { return body(); }
+Region& WhileOp::getLoopBody() { return getBody(); }
 
 // suppress warning.
 
@@ -418,7 +448,8 @@ void FusionOp::getSuccessorRegions(Optional<unsigned> index,
     regions.push_back(RegionSuccessor());
   } else {
     // If the predecessor is the FusionOp, branch into the region.
-    regions.push_back(RegionSuccessor(&region(), region().getArguments()));
+    regions.push_back(
+        RegionSuccessor(&getRegion(), getRegion().getArguments()));
   }
 }
 

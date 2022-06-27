@@ -25,7 +25,6 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
-include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.td"
 
 class LHLOGPU_Op<string mnemonic, list<Trait> traits = []> :
   Op<LmhloGpuDialect, mnemonic,
@@ -169,8 +168,8 @@ def LHLOGPU_AllReduceStartOp :
     Performs an asynchronous custom reduction across replicas.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
@@ -186,8 +185,8 @@ def LHLOGPU_AllReduceDoneOp:
   let summary = "AllReduceDone operator";
   let arguments = (ins
     HLO_Token:$token,
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs
   );
 }
 

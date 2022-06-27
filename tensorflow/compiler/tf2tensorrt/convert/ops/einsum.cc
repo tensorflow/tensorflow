@@ -471,8 +471,7 @@ Status ConditionEinsumOperand(TRTNetworkBuilder* builder,
     StatusOr<TRT_TensorOrWeights> result =
         ConditionEinsumWeights(builder, **operand, desc, need_transpose);
     TRT_ENSURE_OK(result);
-    *operand =
-        std::make_unique<TRT_TensorOrWeights>(result.ConsumeValueOrDie());
+    *operand = std::make_unique<TRT_TensorOrWeights>(std::move(result).value());
   }
 
   // If we didn't convert the operand to a tensor, we can return here.
@@ -645,18 +644,18 @@ Status ParseEquation(const std::string& equation,
   auto desc = EinsumDescriptor::Create(**input_a, input_labels[0], label_types,
                                        EinsumLayout::BFC);
   TF_RETURN_IF_ERROR(desc.status());
-  *descriptor_a = desc.ConsumeValueOrDie();
+  *descriptor_a = std::move(desc).value();
 
   desc = EinsumDescriptor::Create(**input_b, input_labels[1], label_types,
                                   EinsumLayout::BCF, *descriptor_a);
   TF_RETURN_IF_ERROR(desc.status());
-  *descriptor_b = desc.ConsumeValueOrDie();
+  *descriptor_b = std::move(desc).value();
 
   auto out_transpose =
       GetOutputTranspose(**descriptor_a, **descriptor_b, output_labels);
 
   TRT_ENSURE_OK(out_transpose)
-  *final_transpose = out_transpose.ConsumeValueOrDie();
+  *final_transpose = std::move(out_transpose).value();
   return Status::OK();
 }
 

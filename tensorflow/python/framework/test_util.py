@@ -2603,6 +2603,7 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        # for compatibility with TF1 test cases
         if sparse_tensor.is_sparse(tensor):
           return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
                                                  tensor.values.numpy(),
@@ -2617,11 +2618,18 @@ class TensorFlowTestCase(googletest.TestCase):
               indices=tensor.indices.numpy(),
               dense_shape=None
               if tensor.dense_shape is None else tensor.dense_shape.numpy())
-        # Convert tensors and composite tensors to numpy arrays.
-        return nest.map_structure(lambda t: t.numpy(), tensor,
-                                  expand_composites=True)
+        else:
+          if hasattr(tensor, "numpy") and callable(tensor.numpy):
+            return tensor.numpy()
+          else:
+            # Try our best to convert CompositeTensor components to NumPy
+            # arrays. Officially, we don't support NumPy arrays as
+            # CompositeTensor components. So don't be surprised if this doesn't
+            # work.
+            return nest.map_structure(lambda t: t.numpy(), tensor,
+                                      expand_composites=True)
       except AttributeError as e:
-        six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
+        raise ValueError(f"Unsupported type {type(tensor).__name__!r}.") from e
 
   def _eval_helper(self, tensors):
     if tensors is None:

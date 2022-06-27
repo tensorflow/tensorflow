@@ -1600,7 +1600,7 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     if (compatible) {
       auto subshape_result = TryGetSubshape(bounded_shape, index);
       if (subshape_result.ok()) {
-        const Shape* bounded_sub_shape = subshape_result.ConsumeValueOrDie();
+        const Shape* bounded_sub_shape = std::move(subshape_result).value();
         if (sub_shape.IsTuple()) {
           if (!bounded_sub_shape->IsTuple()) {
             compatible = false;

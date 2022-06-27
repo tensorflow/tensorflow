@@ -90,7 +90,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 78
+// Next ID: 79
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -327,6 +327,11 @@ message HloInstructionProto {
   // TODO(b/189822916): Remove this field when all clients are migrated to the
   // status-returning API.
   CustomCallApiVersion custom_call_api_version = 77;
+
+  // Represents a unique identifier for an async group which consists of an
+  // async start, async done, and zero or more async update operations.
+  // Negative async_group_id is equivalent to no async group id.
+  int64 async_group_id = 78;
 }
 
 // Serialization of HloComputation.

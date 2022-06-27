@@ -32,8 +32,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader

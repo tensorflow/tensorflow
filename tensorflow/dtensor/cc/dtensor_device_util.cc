@@ -52,6 +52,128 @@ struct FunctionArgument {
   NodeDefBuilder::NodeOut output;
 };
 
+std::unique_ptr<parallel_device::ParallelTensor>
+BroadcastTensorHandleToParallelTensor(TFE_Context* context,
+                                      TFE_TensorHandle* tensor,
+                                      const MeshWithParallelDevice& mesh,
+                                      TF_Status* status) {
+  // Broadcast tensor value to local devices.
+  const Mesh& target_mesh = mesh.mesh_config();
+  absl::Span<const std::string> local_devices = target_mesh.local_devices();
+  const int num_local_devices = local_devices.size();
+
+  std::vector<parallel_device::TensorHandlePtr> components;
+  components.reserve(num_local_devices);
+  for (int i = 0; i < num_local_devices; ++i) {
+    // Create tensor copies to each local devices specifie by `target_mesh`.
+    components.emplace_back(TFE_TensorHandleCopyToDevice(
+        tensor, context, local_devices[i].c_str(), status));
+    if (TF_GetCode(status) != TF_OK) {
+      TF_SetStatus(
+          status, TF_INTERNAL,
+          absl::StrCat(
+              "Unable to copy tensor value for broadcast. Original message: ",
+              TF_Message(status))
+              .c_str());
+      return nullptr;
+    }
+  }
+
+  std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
+      parallel_device::ParallelTensor::FromTensorHandles(
+          mesh.parallel_device(), std::move(components), status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  return parallel_tensor;
+}
+
+// Broadcast a single non-parallel resource tensor onto `mesh` with a fully
+// replicated sharding spec. Does not take ownership of `tensor`.
+std::unique_ptr<TensorWithLayout> BroadcastResourceTensor(
+    TFE_Context* context, TFE_TensorHandle* tensor,
+    const MeshWithParallelDevice& mesh, const std::string& dtensor_device_name,
+    TF_Status* status) {
+  // Only broadcast resource tensors that point to scalars since they are
+  // always replicated. We also still want to catch honest user errors so
+  // error out on non-scalars.
+  // Resolve the Tensor as resource handle and get the shape and dtype
+  // of the tensor it points to.
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tf_tensor(
+      TFE_TensorHandleResolve(tensor, status), TF_DeleteTensor);
+  Tensor t;
+  Status convert_status = TF_TensorToTensor(tf_tensor.get(), &t);
+  if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
+    TF_SetStatus(status, TF_INTERNAL, convert_status.error_message().c_str());
+    return nullptr;
+  }
+  // Replicate this resource handle to all devices without changing the
+  // associated device of the resource itself.
+  ResourceHandle r = t.flat<ResourceHandle>()(0);
+  if (r.dtypes_and_shapes().empty()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Expected resource handle to have at least one underlying "
+                 "dtype and shape during broadcasting.");
+    return nullptr;
+  }
+  PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
+  int64_t num_elements = partial_shape.num_elements();
+
+  // Only broadcast scalar resource tensors onto a CPU mesh. Copying
+  // resource tensors to non CPU device is not supported.
+  if (num_elements != 1 || !mesh.mesh_config().is_cpu_mesh()) {
+    std::string error_message =
+        "Using a non-DTensor variable with DTensor is only supported for "
+        "scalar variables copying to a CPU mesh. If you are using a scope "
+        "based API, create "
+        "variables inside the DTensor scope.\n";
+
+    // Get the stack_trace and Summaries from the resource tensor.
+    absl::StrAppend(
+        &error_message, "Offending variable summary: ", r.SummarizeValue(),
+        "\nStack trace: ", DefinitionLocationMsg(r.definition_stack_trace()));
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, error_message.c_str());
+    return nullptr;
+  }
+
+  LOG(INFO) << "Broadcasting resource tensor to a dtensor resource tensor.";
+  if (mesh.mesh_config().is_remote()) {
+    TF_DataType dtype = TFE_TensorHandleDataType(tensor);
+    std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+    auto layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), shape.size());
+
+    auto ret = TensorWithLayout::Dummy(shape, dtype, mesh, layout);
+    return ret;
+  }
+
+  std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
+      BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  StatusOr<std::unique_ptr<TensorWithLayout>> result = TensorWithLayout::Wrap(
+      std::move(parallel_tensor), mesh,
+      Layout::ReplicatedOnMesh(mesh.mesh_config(), partial_shape.dims()));
+  if (!result.ok()) {
+    TF_SetStatus(
+        status, TF_INTERNAL,
+        absl::StrCat("Error creating a TensorWithLayout from a resource tensor "
+                     "during broadcasting with original error message:",
+                     result.status().error_message())
+            .c_str());
+    return nullptr;
+  }
+  // Set the shape/type of the tensor that the resource points to
+  // so that the graph has correct shape/type information that we can use.
+  (*result)->UpdateShapeAndDType(partial_shape.AsProto(),
+                                 r.dtypes_and_shapes().begin()->dtype, status);
+  if (TF_GetCode(status) != TF_OK) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Error updating shape and dtype for resource tensor during "
+                 "broadcasting.");
+    return nullptr;
+  }
+  return std::move(*result);
+}
+
 bool LayoutsAreCompatible(absl::optional<Layout> first_layout,
                           absl::optional<Layout> second_layout) {
   if (!first_layout.has_value() && !second_layout.has_value()) {
@@ -159,26 +281,10 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     return nullptr;
   }
 
+  // Handle resource tensor broadcasting to the mesh.
   if (TFE_TensorHandleDataType(tensor) == TF_RESOURCE) {
-    std::string error_message =
-        "Using a non-DTensor variable with DTensor is not supported. If you "
-        "are using a scope-based API, create variables inside the DTensor "
-        "scope.\n";
-
-    // Resolve the Tensor as resource handle and try to get the stack_trace and
-    // Summaries out of it.
-    std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tf_tensor(
-        TFE_TensorHandleResolve(tensor, status), TF_DeleteTensor);
-    Tensor t;
-    Status convert_status = TF_TensorToTensor(tf_tensor.get(), &t);
-    if (convert_status.ok() && t.dtype() == DataType::DT_RESOURCE) {
-      ResourceHandle r = t.flat<ResourceHandle>()(0);
-      absl::StrAppend(
-          &error_message, "Offending variable summary: ", r.SummarizeValue(),
-          "\nStack trace: ", DefinitionLocationMsg(r.definition_stack_trace()));
-    }
-    TF_SetStatus(status, TF_INVALID_ARGUMENT, error_message.c_str());
-    return nullptr;
+    return BroadcastResourceTensor(context, tensor, mesh, dtensor_device_name,
+                                   status);
   }
 
   if (mesh.mesh_config().is_remote()) {
@@ -197,31 +303,8 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     return ret;
   }
 
-  // Broadcast tensor value to local devices.
-  const Mesh& target_mesh = mesh.mesh_config();
-  absl::Span<const std::string> local_devices = target_mesh.local_devices();
-  const int num_local_devices = local_devices.size();
-
-  std::vector<parallel_device::TensorHandlePtr> components;
-  components.reserve(num_local_devices);
-  for (int i = 0; i < num_local_devices; ++i) {
-    // Create tensor copies to each local devices specifie by `target_mesh`.
-    components.emplace_back(TFE_TensorHandleCopyToDevice(
-        tensor, context, local_devices[i].c_str(), status));
-    if (TF_GetCode(status) != TF_OK) {
-      TF_SetStatus(
-          status, TF_INTERNAL,
-          absl::StrCat(
-              "Unable to copy tensor value for broadcast. Original message: ",
-              TF_Message(status))
-              .c_str());
-      return nullptr;
-    }
-  }
-
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
-      parallel_device::ParallelTensor::FromTensorHandles(
-          mesh.parallel_device(), std::move(components), status);
+      BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   const std::vector<int64_t>* shape;
@@ -232,8 +315,8 @@ std::unique_ptr<TensorWithLayout> TensorWithLayout::Broadcast(
     return nullptr;
   }
   size_t num_dims = shape->size();
-
   const Layout layout = Layout::ReplicatedOnMesh(mesh.mesh_config(), num_dims);
+
   absl::optional<NodeDef> const_value =
       ExtractSmallTensorValue(context, tensor, layout, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -773,33 +856,27 @@ void AddDTensorFunctionAttr(FunctionDef& function_def) {
 
 StatusOr<std::vector<parallel_device::ParallelTensor*>> PrepareEmbeddingInputs(
     const std::vector<TensorWithLayout*>& inputs) {
-  absl::flat_hash_map<int64_t, int64_t> table_and_input_index;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> table_vars_input_index;
   for (int64_t i = 0; i < inputs.size(); ++i) {
     if (inputs[i]->tensor_type() != kResource) continue;
-    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inputs[i]);
-    if (resource == nullptr) {
-      return errors::Internal("Failed to cast a resource handle");
-    }
 
     const absl::optional<EmbeddingResourceAttrs>& resource_attrs =
-        resource->attrs();
+        inputs[i]->attrs();
     if (resource_attrs.has_value()) {
-      table_and_input_index.insert({resource_attrs->table_id, i});
+      table_vars_input_index[resource_attrs->table_id].push_back(i);
     }
   }
 
   // Check if there is no embedding resource input found.
-  if (table_and_input_index.empty()) {
+  if (table_vars_input_index.empty()) {
     return errors::Internal("There are no TPU embedding resource input found.");
   }
-  const size_t num_tables = table_and_input_index.size();
   std::vector<parallel_device::ParallelTensor*> parallel_inputs;
-  parallel_inputs.reserve(num_tables);
-
   // Assure parallel inputs has numeric order as table ids.
-  for (int64_t table_id = 0; table_id < num_tables; ++table_id) {
-    const int64_t input_index = table_and_input_index[table_id];
-    parallel_inputs.push_back(inputs[input_index]->tensor());
+  for (const auto& [table_id, table_vars_indices] : table_vars_input_index) {
+    for (const int64_t input_index : table_vars_indices) {
+      parallel_inputs.push_back(inputs[input_index]->tensor());
+    }
   }
   return parallel_inputs;
 }
@@ -826,29 +903,30 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
         node->attrs().Find("_tpu_embedding_table_id");
 
     if (embedding_attr == nullptr) continue;
+    EmbeddingResourceAttrs embedding_input_attrs;
 
+    // Add embedding table id.
     const int64_t table_id = embedding_attr->i();
+    embedding_input_attrs.table_id = table_id;
 
     // Add embedding slot id if there is one.
     const AttrValue* embedding_slot_attr =
         node->attrs().Find("_tpu_embedding_slot_id");
-    EmbeddingResourceAttrs embedding_attrs;
-    embedding_attrs.table_id = table_id;
-
     if (embedding_slot_attr != nullptr) {
       const int64_t slot_id = embedding_slot_attr->i();
-      embedding_attrs.slot_id = slot_id;
+      embedding_input_attrs.slot_id = slot_id;
     }
 
+    table_id_node_map[table_id].push_back(node);
+
     // Arg input offset due to device id.
-    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_attrs, s);
+    if (non_sparse_inputs[arg_id - 1]->attrs().has_value()) continue;
+    non_sparse_inputs[arg_id - 1]->UpdateAttrs(embedding_input_attrs, s);
     if (!s->status.ok()) {
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
           s->status.error_message());
     }
-
-    table_id_node_map[table_id].push_back(node);
   }
   return table_id_node_map;
 }
@@ -857,10 +935,8 @@ StatusOr<std::string> ValidateResourceMeshConsistency(
     const std::vector<TensorWithLayout*>& inputs) {
   std::string mesh_str;
   for (TensorWithLayout* inp : inputs) {
-    if (inp->tensor_type() != kResource) continue;
-
-    auto* resource = dynamic_cast<ResourceHandleWithLayout*>(inp);
-    if (!resource || !resource->attrs().has_value()) continue;
+    if ((inp->tensor_type() != kResource) || !inp->attrs().has_value())
+      continue;
     const std::string& input_mesh_str = inp->layout().mesh().ToString();
     if (mesh_str.empty()) {
       mesh_str = input_mesh_str;

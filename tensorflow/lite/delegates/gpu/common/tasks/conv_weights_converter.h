@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_WEIGHTS_CONVERTER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_WEIGHTS_CONVERTER_H_
 
+#include <string>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
@@ -32,14 +34,16 @@ class ConverterToConvWeights : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConverterToConvWeights(ConverterToConvWeights&& operation);
-  ConverterToConvWeights& operator=(ConverterToConvWeights&& operation);
+  ConverterToConvWeights(ConverterToConvWeights&& operation) = default;
+  ConverterToConvWeights& operator=(ConverterToConvWeights&& operation) =
+      default;
   ConverterToConvWeights(const ConverterToConvWeights&) = delete;
   ConverterToConvWeights& operator=(const ConverterToConvWeights&) = delete;
 
  private:
-  std::string GetConverterToConvWeightsCode(
-      const OperationDef& op_def, const WeightsDescription& weights_desc);
+  std::string GetConverterToConvWeightsCode();
+
+  OHWI GetWeightsSize() const;
 
   WeightsDescription weights_desc_;
 };

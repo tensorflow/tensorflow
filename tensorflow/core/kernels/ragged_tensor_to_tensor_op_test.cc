@@ -510,7 +510,7 @@ class RaggedTensorToTensorOpUnknownShapeTest
   std::unique_ptr<ShapeInferenceTestOp> op_;
   void SetAttributes(const gtl::ArraySlice<string> row_partition_types,
                      int num_row_partition_tensors) {
-    op_ = absl::make_unique<ShapeInferenceTestOp>("RaggedTensorToTensor");
+    op_ = std::make_unique<ShapeInferenceTestOp>("RaggedTensorToTensor");
     SetAttrValue(row_partition_types,
                  &((*op_->node_def.mutable_attr())["row_partition_types"]));
     (*op_->node_def.mutable_attr())["num_row_partition_tensors"].set_i(

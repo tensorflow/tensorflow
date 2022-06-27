@@ -58,14 +58,14 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
 
     // Lower to MHLO constant if statically shaped.
     if (resultTy.hasStaticShape()) {
-      rewriter.replaceOpWithNewOp<mhlo::ConstOp>(
+      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
           op, DenseElementsAttr::get(resultTy, op.value()));
       return success();
     }
 
     // Lower to broadcasted constant.
     auto loc = op.getLoc();
-    Value constant = rewriter.create<mhlo::ConstOp>(loc, op.value());
+    Value constant = rewriter.create<mhlo::ConstantOp>(loc, op.value());
     Value shape = rewriter.create<shape::ShapeOfOp>(loc, adaptor.operand());
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
         op, resultTy, constant, shape, rewriter.getI64TensorAttr({}));
@@ -647,7 +647,7 @@ Value materializeLogOneHalf(ConversionPatternRewriter &rewriter, Location loc,
                             Value operand) {
   auto resultTy = operand.getType().cast<ShapedType>();
 
-  Value two = rewriter.create<mhlo::ConstOp>(
+  Value two = rewriter.create<mhlo::ConstantOp>(
       loc, hlo::GetScalarOfType(getElementTypeOrSelf(operand.getType()), 2));
   Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
   Value twoWithOperandShape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(

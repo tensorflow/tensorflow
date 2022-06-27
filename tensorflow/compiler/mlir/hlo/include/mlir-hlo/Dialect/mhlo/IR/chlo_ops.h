@@ -80,7 +80,7 @@ static Value getConstantLike(OpBuilder& b, Location loc, T constant,
     // The problem with that approach for complex numbers is that constant_like
     // doesn't work for complex numbers - it carries constants via attributes,
     // and there's no built-in attribute that carries complex numbers.
-    return b.create<mhlo::ConstOp>(
+    return b.create<mhlo::ConstantOp>(
         loc,
         hlo::getSplat(&b, val.getType().cast<RankedTensorType>(), constant));
   }

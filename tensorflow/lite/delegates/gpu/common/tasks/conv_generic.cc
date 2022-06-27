@@ -1580,11 +1580,11 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
   return params;
 }
 
-ConvGeneric::ConvParams ConvGeneric::GuessBestParamsWinograd(
+ConvGeneric::ConvParams ConvGeneric::GuessBestParamsPointwise(
     const GpuInfo& gpu_info, const OperationDef& definition,
-    const Convolution2DAttributes& attr, const BHWC* dst_shape) {
-  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+    const OHWI& weights_shape, const BHWC* dst_shape) {
+  const int dst_depth = DivideRoundUp(weights_shape.o, 4);
+  const int src_depth = DivideRoundUp(weights_shape.i, 4);
   ConvGeneric::ConvParams params = GuessBestParams(
       gpu_info, definition, src_depth, dst_depth, true, true, true, dst_shape);
   params.block_size.x *= params.block_size.y;
@@ -1623,13 +1623,28 @@ ConvGeneric CreateConvGenericDynamicWeights(const GpuInfo& gpu_info,
   return result;
 }
 
+ConvGeneric CreateConvGenericBatchedMatMul(const GpuInfo& gpu_info,
+                                           const OperationDef& definition,
+                                           const OHWI& weights_shape,
+                                           const BHWC* dst_shape) {
+  ConvGeneric result(definition);
+  result.conv_params_ = result.GuessBestParamsPointwise(
+      gpu_info, definition, weights_shape, dst_shape);
+  result.GenerateCode(gpu_info);
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  biases.shape = Linear(weights_shape.o);
+  biases.data.resize(weights_shape.o, 0.0f);
+  result.UploadBias(biases);
+  return result;
+}
+
 ConvGeneric CreateConvGenericWino4x4To6x6(const GpuInfo& gpu_info,
                                           const OperationDef& definition,
                                           const Convolution2DAttributes& attr,
                                           const BHWC* dst_shape) {
   ConvGeneric result(definition);
-  result.conv_params_ =
-      result.GuessBestParamsWinograd(gpu_info, definition, attr, dst_shape);
+  result.conv_params_ = result.GuessBestParamsPointwise(
+      gpu_info, definition, attr.weights.shape, dst_shape);
   result.GenerateCode(gpu_info);
   result.UploadDataForWinograd4x4To6x6(attr.weights);
   return result;

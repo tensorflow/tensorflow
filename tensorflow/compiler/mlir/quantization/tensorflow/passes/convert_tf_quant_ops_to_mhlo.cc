@@ -145,8 +145,8 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
 
     Value lhs = this_op.lhs();
     rewriter.setInsertionPointAfterValue(this_op.rhs());
-    Value rhs = rewriter.create<mhlo::ConstOp>(rewriter.getUnknownLoc(),
-                                               rhs_type, new_opaque_attr);
+    Value rhs = rewriter.create<mhlo::ConstantOp>(rewriter.getUnknownLoc(),
+                                                  rhs_type, new_opaque_attr);
 
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, lhs, rhs,
                                              /*precision_config=*/nullptr);

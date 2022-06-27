@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
@@ -66,6 +67,7 @@ void CreateXSpace(XSpace* space) {
 
 TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
   XSpace xspace;
+  GetOrCreateTpuXPlane(&xspace, 0, "TPU V4");
   auto xplane = FindOrAddMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
   XPlaneBuilder xplaneBuilder(xplane);
   xplaneBuilder.AddStatValue(
@@ -81,6 +83,8 @@ TEST(ConvertXPlaneToProfileResponse, ExtractTpuMxuUtilizationFromXSpace) {
   OverviewPage overview_page;
   ASSERT_TRUE(overview_page.ParseFromString(response.tool_data(0).data()));
   EXPECT_EQ(overview_page.analysis().mxu_utilization_percent(), 20);
+  EXPECT_EQ(overview_page.run_environment().device_type(), "TPU V4");
+  EXPECT_EQ(overview_page.run_environment().device_core_count(), 1);
 }
 
 TEST(ConvertXPlaneToProfileResponse, TraceViewer) {

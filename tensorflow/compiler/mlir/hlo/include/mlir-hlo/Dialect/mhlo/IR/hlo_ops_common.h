@@ -29,6 +29,20 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
+// TODO(b/236017415): remove when mhlo uses prefix accessor.
+namespace accessor_dispatch {
+template <typename OpT>
+auto getReplicaGroups(OpT op, int)
+    -> decltype(op.getReplicaGroups(), DenseIntElementsAttr{}) {
+  return op.getReplicaGroups();
+}
+template <typename OpT>
+auto getReplicaGroups(OpT op, char)
+    -> decltype(op.replica_groups(), DenseIntElementsAttr{}) {
+  return op.replica_groups();
+}
+}  // namespace accessor_dispatch
+
 // Verifies replica groups attached to collective communication operations.
 // If the attribute is not empty, it must be a rank 2 tensor, and each replica
 // should appear exactly once. If `is_uniform_sized` is true, then we also check
@@ -36,7 +50,7 @@ namespace hlo {
 // `use_global_device_ids` set, then replica group cannot be empty.
 template <typename OpT>
 LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
-  DenseIntElementsAttr attr = op.replica_groups();
+  DenseIntElementsAttr attr = accessor_dispatch::getReplicaGroups(op, 0);
   auto replica_group_type = attr.getType().dyn_cast<RankedTensorType>();
   if (!replica_group_type || replica_group_type.getRank() != 2 ||
       !replica_group_type.getElementType().isInteger(/*width=*/64))

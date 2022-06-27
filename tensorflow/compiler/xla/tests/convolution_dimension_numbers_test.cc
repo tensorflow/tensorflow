@@ -91,7 +91,7 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   weight_array->FillWithMultiples(0.2);
   auto weight_data =
       client_->TransferToServer(LiteralUtil::CreateR4FromArray4D(*weight_array))
-          .ConsumeValueOrDie();
+          .value();
 
   XlaBuilder builder(TestName());
   auto input = ConstantR4FromArray4D<float>(&builder, *input_array);

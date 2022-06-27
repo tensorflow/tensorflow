@@ -25,7 +25,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(HLO_ConstOp ElementsAttr:$value),
+def : Pat<(HLO_ConstantOp ElementsAttr:$value),
           (Arith_ConstantOp $value)>;
 
 //===----------------------------------------------------------------------===//

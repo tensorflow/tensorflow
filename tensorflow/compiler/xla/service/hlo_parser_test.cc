@@ -1265,6 +1265,19 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 
 )"
 },
+{
+"AsyncOpsWithSyntaxSugarAndGroupId",
+R"(HloModule AsyncOpsWithSyntaxSugarAndGroupId, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_group_id=3, custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_group_id=3, custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_group_id=3, custom_call_target="foo"
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -2968,7 +2981,7 @@ ENTRY entry {
   )";
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex{0});
 
@@ -2995,7 +3008,7 @@ ENTRY entry {
   )";
   auto module = ParseAndReturnVerifiedModule(original);
   TF_ASSERT_OK(module.status());
-  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> parsed_module = std::move(module).value();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex({0, 0}));
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),

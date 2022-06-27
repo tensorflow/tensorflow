@@ -141,7 +141,7 @@ void GatherFusionInstructions(
 TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, logical_buffer_analysis.ConsumeValueOrDie()));
+      module, std::move(logical_buffer_analysis).value()));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
@@ -507,7 +507,6 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
 
   return OkStatus();
 }
-
 
 Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);

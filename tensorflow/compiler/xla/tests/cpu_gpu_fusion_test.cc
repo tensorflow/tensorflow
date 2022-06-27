@@ -857,26 +857,23 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   auto x = Mul(param0, param1);
   Add(x, param2);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Transfer literals to device.
   auto param0_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
   ScopedShapedBuffer buffer0 =
-      client->LiteralToShapedBuffer(param0_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param0_literal, device_ordinal).value();
 
   auto param1_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
   ScopedShapedBuffer buffer1 =
-      client->LiteralToShapedBuffer(param1_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param1_literal, device_ordinal).value();
 
   auto param2_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
   ScopedShapedBuffer buffer2 =
-      client->LiteralToShapedBuffer(param2_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param2_literal, device_ordinal).value();
 
   // Build executable.
   auto executables =
@@ -885,7 +882,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
                     {&buffer0.on_host_shape(), &buffer1.on_host_shape(),
                      &buffer2.on_host_shape()},
                     ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+          .value();
   auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);

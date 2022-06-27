@@ -85,17 +85,17 @@ DataType OperationDef::GetPrimaryDataType() const {
   return src_tensors[0].data_type;
 }
 TensorStorageType OperationDef::GetPrimaryStorageType() const {
-  return src_tensors[0].storage_type;
+  return src_tensors[0].GetStorageType();
 }
 
 bool OperationDef::IsBatchSupported() const {
   for (const auto& src : src_tensors) {
-    if (HasAxis(src.layout, Axis::BATCH)) {
+    if (src.HasAxis(Axis::BATCH)) {
       return true;
     }
   }
   for (const auto& dst : dst_tensors) {
-    if (HasAxis(dst.layout, Axis::BATCH)) {
+    if (dst.HasAxis(Axis::BATCH)) {
       return true;
     }
   }

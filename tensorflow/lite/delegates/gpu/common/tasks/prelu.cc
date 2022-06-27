@@ -55,9 +55,6 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     TensorDescriptor const_tensor_desc = definition.src_tensors[0];
     auto status =
         const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
-    if (!status.ok()) {
-      const_tensor_desc.storage_type = TensorStorageType::BUFFER;
-    }
     const_tensor_desc.UploadData(*alpha_hwc);
     result.args_.AddObject("alpha", std::make_unique<TensorDescriptor>(
                                         std::move(const_tensor_desc)));

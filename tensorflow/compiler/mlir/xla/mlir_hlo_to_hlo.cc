@@ -360,16 +360,16 @@ static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
   return xla::ConvertConvDimensionNumbers(input);
 }
 
-xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
+xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
   xla::ChannelHandle channel_handle;
-  channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
-  channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
-      ConvertAPInt(attr.type().getValue())));
+  channel_handle.set_handle(attr.getHandle());
+  channel_handle.set_type(
+      static_cast<xla::ChannelHandle::ChannelType>(attr.getType()));
   return channel_handle;
 }
 
 std::optional<xla::ChannelHandle> Convert_channel_handle(
-    llvm::Optional<mlir::mhlo::ChannelHandle> attr) {
+    llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
   if (!attr.hasValue()) return std::nullopt;
   return Convert_channel_handle(attr.getValue());
 }
@@ -723,7 +723,7 @@ LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  auto operand_shape = ctx.builder->GetShape(operand).ConsumeValueOrDie();
+  auto operand_shape = ctx.builder->GetShape(operand).value();
   value_map[op] = xla::internal::XlaBuilderFriend::BuildAddDependency(
       ctx.builder, operand, token, operand_shape);
   return success();
@@ -1010,7 +1010,7 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
 }
 
@@ -1502,8 +1502,7 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
 
   if (op.is_host_transfer()) {
     value_map[op] = xla::SendToHost(
-        operand, token,
-        operand.builder()->GetShape(operand).ConsumeValueOrDie(),
+        operand, token, operand.builder()->GetShape(operand).value(),
         Convert_channel_handle(op.channel_handle()));
     return success();
   }

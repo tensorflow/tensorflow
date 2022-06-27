@@ -30,6 +30,7 @@ load(
     "if_rocm_is_configured",
 )
 load("//tensorflow/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = [":friends"],
@@ -106,6 +107,27 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "async_op_canonicalizer",
+    srcs = ["async_op_canonicalizer.cc"],
+    hdrs = ["async_op_canonicalizer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "async_op_canonicalizer_test",
+    srcs = ["async_op_canonicalizer_test.cc"],
+    deps = [
+        ":async_op_canonicalizer",
+        ":hlo_dce",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -428,7 +450,6 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -1225,8 +1246,13 @@ cc_library(
 )
 
 alias(
-    name = "gpu_plugin",
+    name = "gpu_plugin_noncuda",
     actual = if_libtpu("gpu_plugin_stub", "gpu_plugin_impl"),
+)
+
+alias(
+    name = "gpu_plugin",
+    actual = if_cuda("gpu_plugin_impl", "gpu_plugin_noncuda"),
 )
 
 cc_library(
@@ -1509,6 +1535,7 @@ tf_cc_test(
     name = "buffer_assignment_test",
     srcs = ["buffer_assignment_test.cc"],
     deps = [
+        ":async_op_canonicalizer",
         ":buffer_assignment",
         ":buffer_value",
         ":call_graph",
@@ -1516,6 +1543,7 @@ tf_cc_test(
         ":cpu_plugin",
         ":flatten_call_graph",
         ":hlo",
+        ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_ordering",
         ":hlo_parser",
@@ -3886,10 +3914,12 @@ tf_cc_test(
     name = "hlo_dataflow_analysis_test",
     srcs = ["hlo_dataflow_analysis_test.cc"],
     deps = [
+        ":async_op_canonicalizer",
         ":flatten_call_graph",
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_dataflow_analysis",
+        ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_matchers",
         ":hlo_ordering",
@@ -3962,10 +3992,12 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5445,18 +5477,17 @@ cc_library(
     hdrs = ["while_loop_all_reduce_code_motion.h"],
     deps = [
         ":call_graph",
+        ":collective_ops_utils",
         ":hlo",
         ":hlo_pass",
         ":hlo_query",
-        ":pattern_matcher",
+        ":hlo_replication_analysis",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
@@ -6361,7 +6392,7 @@ cc_library(
     hdrs = ["compilation_environments.h"],
     deps = [
         "//tensorflow/core:lib",  # fixdeps: keep
-        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],

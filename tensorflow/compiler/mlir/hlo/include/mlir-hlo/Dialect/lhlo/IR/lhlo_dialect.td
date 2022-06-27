@@ -23,7 +23,7 @@ def LHLO_Dialect : Dialect {
   let name = "lmhlo";
   let cppNamespace = "::mlir::lmhlo";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif  // LHLO_DIALECT

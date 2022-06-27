@@ -39,7 +39,7 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   backend_options.set_platform(platform);
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
-  backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  backend_ = Backend::CreateBackend(backend_options).value();
   device_shape_representation_fn_ = [this](const Shape& shape) {
     return backend_->compiler()->DefaultDeviceShapeRepresentation(shape);
   };
@@ -487,7 +487,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
 
 Backend& HloRunner::backend() {
   if (!backend_) {
-    backend_ = Backend::CreateDefaultBackend().ConsumeValueOrDie();
+    backend_ = Backend::CreateDefaultBackend().value();
     VLOG(1) << "Executing on platform " << backend().platform()->Name();
   }
   return *backend_;

@@ -137,13 +137,12 @@ ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
     const Literal& literal) {
   return local_client_
       ->LiteralToShapedBuffer(literal, local_client_->default_device_ordinal())
-      .ConsumeValueOrDie();
+      .value();
 }
 
 Literal LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  return local_client_->ShapedBufferToLiteral(shaped_buffer)
-      .ConsumeValueOrDie();
+  return local_client_->ShapedBufferToLiteral(shaped_buffer).value();
 }
 
 ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
@@ -163,7 +162,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     absl::Span<const ShapedBuffer* const> arguments) {
   return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
                         DefaultExecutableRunOptions())
-      .ConsumeValueOrDie();
+      .value();
 }
 
 ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
@@ -172,7 +171,7 @@ ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
     const ExecutableBuildOptions& build_options,
     const ExecutableRunOptions& run_options) {
   return ExecuteLocally(computation, arguments, build_options, run_options)
-      .ConsumeValueOrDie();
+      .value();
 }
 
 StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(

@@ -29,6 +29,7 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
@@ -45,6 +46,7 @@ const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
 const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 

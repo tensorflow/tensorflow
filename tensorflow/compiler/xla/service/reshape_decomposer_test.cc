@@ -34,27 +34,17 @@ class ReshapeDecomposerTest : public HloTestBase {
   // Check that all generated reshapes are bitcasts.
   void CheckReshapeDecomposer(const char* hlo,
                               std::optional<absl::string_view> expected) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(hlo));
-
-    ReshapeDecomposer pass;
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
-    EXPECT_EQ(changed, expected.has_value());
-    if (changed) {
-      TF_ASSERT_OK_AND_ASSIGN(
-          bool filecheck_matches,
-          RunFileCheck(module->ToString(
-                           HloPrintOptions{}.set_print_operand_shape(false)),
-                       *expected));
-      EXPECT_TRUE(filecheck_matches);
-      EXPECT_TRUE(absl::c_all_of(
-          module->entry_computation()->instructions(),
-          [&](const HloInstruction* instr) {
-            return instr->opcode() != HloOpcode::kReshape ||
-                   ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
-                                               instr->shape());
-          }));
-    }
+    RunAndFilecheckHloRewrite(
+        hlo, ReshapeDecomposer{}, expected,
+        /*after_pass_checks=*/[&](HloModule* module) {
+          EXPECT_TRUE(absl::c_all_of(
+              module->entry_computation()->instructions(),
+              [&](const HloInstruction* instr) {
+                return instr->opcode() != HloOpcode::kReshape ||
+                       ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
+                                                   instr->shape());
+              }));
+        });
   }
 };
 

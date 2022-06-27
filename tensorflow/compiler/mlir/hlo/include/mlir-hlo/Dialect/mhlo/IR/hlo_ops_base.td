@@ -32,7 +32,6 @@ def HLO_Dialect : Dialect {
 
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
 
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 

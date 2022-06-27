@@ -156,7 +156,7 @@ Value elementalLowerImplForBroadcastInDimOps(OpBuilder* b, Location loc,
                                              ValueRange outputIndex,
                                              bool checkCache) {
   auto broadcastDimensions =
-      broadcastInDim.broadcast_dimensions().template getValues<int64_t>();
+      broadcastInDim.getBroadcastDimensions().template getValues<int64_t>();
   int outRank = outputIndex.size();
   Value operandMemref = broadcastInDim->getOperand(0);
   SmallVector<Value, 4> inputIndex;

@@ -135,7 +135,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     // Start indices have implicit zeros when not specified. This is because
     // Gather occurs similar to slicing where full slices are inferred. Add any
     // missing zeros as necessary.
-    auto zero = rewriter.create<ConstOp>(
+    auto zero = rewriter.create<ConstantOp>(
         gather.getLoc(), rewriter.getZeroAttr(RankedTensorType::get(
                              {}, gatherStartIndicesTy.getElementType())));
     while (sliceStartIndices.size() < sliceSizesTy.getDimSize(0)) {

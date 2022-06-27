@@ -20,6 +20,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -2749,6 +2750,104 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
 
     foo([1, 2, 3])
 
+  def test_dataset_only_dense(self):
+    ragged = DynamicRaggedShape.from_lengths([4, 5, 2, 3])
+    dataset_ops.DatasetV2.from_tensors(ragged)
+
+  def test_dataset_only_ragged(self):
+    ragged = DynamicRaggedShape.from_lengths([4, (3, 0, 4, 5), 2, 3])
+    dataset_ops.DatasetV2.from_tensors(ragged)
+
+  def test_ragged_dataset(self):
+    rt = RaggedTensor.from_row_splits(array_ops.zeros([5, 2, 3]), [0, 3, 5])
+    dataset_ops.DatasetV2.from_tensors(rt)
+
+  def test_ones_shape(self):
+    ragged = DynamicRaggedShape.from_lengths([4, (3, 0, 4, 5)])
+    ones = dynamic_ragged_shape.ones(ragged, dtype=bool)
+    sh2 = DynamicRaggedShape.from_tensor(ones)
+    self.assertAllEqual(sh2.static_lengths(), [4, (3, 0, 4, 5)])
+
+  def test_dataset_only_simple_ragged(self):
+    ragged = DynamicRaggedShape.from_lengths([4, (3, 0, 4, 5)])
+    dataset_ops.DatasetV2.from_tensors(ragged)
+
+  # ValueError: _to_batched_tensor_list doesn't support ragged_rank=0 yet
+  def test_unbatch_batch_dense(self):
+    ragged = DynamicRaggedShape.from_lengths([4, 5, 2, 3])
+    ds = dataset_ops.DatasetV2.from_tensors(ragged)
+    dsu = ds.unbatch()
+    if context.executing_eagerly():
+      values = list(dsu)
+      self.assertAllEqual(values[0].static_lengths(), [5, 2, 3])
+      self.assertAllEqual(values[2].static_lengths(), [5, 2, 3])
+
+    dsb = dsu.batch(2)
+    if context.executing_eagerly():
+      valuesb = list(dsb)
+      self.assertAllEqual(valuesb[0].static_lengths(), [2, 5, 2, 3])
+      self.assertAllEqual(valuesb[1].static_lengths(), [2, 5, 2, 3])
+
+  def test_unbatch_batch_values_shape_0(self):
+    batched = DynamicRaggedShape.from_lengths([2])
+    batch_size = 2
+    ds = dataset_ops.Dataset.from_tensors(batched)
+    ds2 = ds.unbatch()
+    if context.executing_eagerly():
+      v = list(ds2.batch(batch_size))
+      self.assertAllEqual(v[0], batched)
+
+  def test_unbatch_batch_values_shape_1(self):
+    batched = DynamicRaggedShape.from_lengths([2, 3])
+    rebatched = DynamicRaggedShape.from_lengths([2, 3], num_row_partitions=1)
+
+    batch_size = 2
+    ds = dataset_ops.Dataset.from_tensors(batched)
+    ds2 = ds.unbatch()
+    if context.executing_eagerly():
+      v = list(ds2.batch(batch_size))
+      self.assertAllEqual(v[0], rebatched)
+
+  def test_unbatch_dense_matrix(self):
+    ragged = DynamicRaggedShape.from_lengths([2, 3])
+    ds = dataset_ops.DatasetV2.from_tensors(ragged)
+    dsu = ds.unbatch()
+    if context.executing_eagerly():
+      values = list(dsu)
+      self.assertAllEqual(values[0].static_lengths(), [3])
+      self.assertAllEqual(values[1].static_lengths(), [3])
+
+  def test_unbatch_dense_vector(self):
+    ragged = DynamicRaggedShape.from_lengths([3])
+    ds = dataset_ops.DatasetV2.from_tensors(ragged)
+    dsu = ds.unbatch()
+    if context.executing_eagerly():
+      values = list(dsu)
+      self.assertAllEqual(values[0].static_lengths(), [])
+      self.assertAllEqual(values[1].static_lengths(), [])
+
+  def test_unbatch_ragged(self):
+    ragged = DynamicRaggedShape.from_lengths([4, (3, 0, 4, 5), 2, 3])
+    ds = dataset_ops.DatasetV2.from_tensors(ragged)
+    dsu = ds.unbatch()
+    if context.executing_eagerly():
+      dsu.__iter__()
+
+  def test_unbatch_batch_ragged(self):
+    ragged = DynamicRaggedShape.from_lengths([4, (3, 0, 4, 5), 2, 3])
+    ds = dataset_ops.DatasetV2.from_tensors(ragged)
+    dsu = ds.unbatch()
+    if context.executing_eagerly():
+      values = list(dsu)
+      self.assertAllEqual(values[0].static_lengths(), [3, 2, 3])
+      self.assertAllEqual(values[2].static_lengths(), [4, 2, 3])
+
+    dsb = dsu.batch(2)
+    if context.executing_eagerly():
+      valuesb = list(dsb)
+      self.assertAllEqual(valuesb[0].static_lengths(), [2, (3, 0), 2, 3])
+      self.assertAllEqual(valuesb[1].static_lengths(), [2, (4, 5), 2, 3])
+
 
 class DynamicRaggedShapeErrorTest(parameterized.TestCase):
 
@@ -3843,6 +3942,193 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
 
     self.assertDynamicRaggedShapeSpecEqual(actual, expected)
     self.assertDynamicRaggedShapeSpecEqual(actual_rev, expected)
+
+  @parameterized.parameters([
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=3,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([3]),
+              dtype=dtypes.int64),
+          batch_size=3,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=3,
+                      nvals=18,
+                      uniform_row_length=6,
+                      dtype=dtypes.int64),
+                  RowPartitionSpec(
+                      nrows=18,
+                      nvals=9,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([9]),
+              dtype=dtypes.int64)),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=3,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([3]),
+              dtype=dtypes.int64),
+          batch_size=3,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=3,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64),
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=9,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([9]),
+              dtype=dtypes.int64)),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64),
+          batch_size=3,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=3,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64),
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int64)),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int64),
+          batch_size=3,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=3,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64),
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int64)),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=6,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([6, 4]),
+              dtype=dtypes.int64),
+          batch_size=3,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=3,
+                      nvals=None,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64),
+                  RowPartitionSpec(
+                      nrows=None,
+                      nvals=18,
+                      uniform_row_length=None,
+                      dtype=dtypes.int64)
+              ],
+              static_inner_shape=tensor_shape.TensorShape([18, 4]),
+              dtype=dtypes.int64)),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int32),
+          batch_size=3,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape(None),
+              dtype=dtypes.int32)),
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([8, 9]),
+              dtype=dtypes.int32),
+          batch_size=7,
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([7, 8, 9]),
+              dtype=dtypes.int32)),
+  ])
+  def test_batch(self,
+                 spec: DynamicRaggedShape.Spec,
+                 batch_size: int,
+                 expected: DynamicRaggedShape.Spec):
+    encoder = dynamic_ragged_shape._DynamicRaggedShapeBatchEncoder()
+    actual = encoder.batch(spec, batch_size)
+    self.assertDynamicRaggedShapeSpecEqual(actual, expected)
+
+  @parameterized.parameters([
+      dict(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[
+                  RowPartitionSpec(
+                      nrows=6,
+                      nvals=3,
+                      uniform_row_length=None,
+                      dtype=dtypes.int32)],
+              static_inner_shape=tensor_shape.TensorShape([3]),
+              dtype=dtypes.int32),
+          expected=dynamic_ragged_shape.DynamicRaggedShape.Spec(
+              row_partitions=[],
+              static_inner_shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int32))
+  ])
+  def test_unbatch(self, spec: DynamicRaggedShape.Spec,
+                   expected: DynamicRaggedShape.Spec):
+    encoder = dynamic_ragged_shape._DynamicRaggedShapeBatchEncoder()
+    actual = encoder.unbatch(spec)
+    self.assertDynamicRaggedShapeSpecEqual(actual, expected)
 
   def test_repr(self):
     original = dynamic_ragged_shape.DynamicRaggedShape.Spec(

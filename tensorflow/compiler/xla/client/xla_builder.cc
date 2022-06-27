@@ -2205,6 +2205,10 @@ XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
                                          *operand_shape, new_element_type));
+    if (primitive_util::IsComplexType(operand_shape->element_type()) &&
+        !primitive_util::IsComplexType(new_element_type)) {
+      operand = Real(operand);
+    }
     return AddOpWithShape(HloOpcode::kConvert, shape, {operand});
   });
 }

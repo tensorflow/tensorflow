@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -677,7 +678,7 @@ class XlaConcatNDBaseOp : public OpKernel {
                       const std::function<StatusOr<Tensor*>()>& get_output_fn) {
     auto status_or_output = get_output_fn();
     OP_REQUIRES_OK(ctx, status_or_output.status());
-    Tensor* output = status_or_output.ConsumeValueOrDie();
+    Tensor* output = std::move(status_or_output).value();
 
     const Device& device = ctx->eigen_device<Device>();
     if (num_slices_ == 1) {
@@ -745,7 +746,7 @@ class XlaConcatNDBaseOp : public OpKernel {
 
     auto status_or_output = get_output_fn();
     OP_REQUIRES_OK(ctx, status_or_output.status());
-    Tensor* output = status_or_output.ConsumeValueOrDie();
+    Tensor* output = std::move(status_or_output).value();
 
     Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape_dsizes =
         inputs[0].shape().AsEigenDSizes<Rank>();

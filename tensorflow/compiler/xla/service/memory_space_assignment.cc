@@ -2066,8 +2066,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   }
 
   Chunk chunk_candidate = FindChunkCandidate(*prefetch_candidate);
-  if (chunk_candidate.offset != 0 ||
-      chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > available_heap_size()) {
     LOG(WARNING)
         << "Could not allocate preferred memory for cross program prefetch";
     return;

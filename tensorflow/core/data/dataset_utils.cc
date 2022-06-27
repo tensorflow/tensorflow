@@ -905,6 +905,7 @@ REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations", 0);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt, 50);
 REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
+REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

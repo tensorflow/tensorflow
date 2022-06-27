@@ -256,6 +256,17 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  // Async op propagation rules:
+  //  - Operand of async-start to parameter of async wrapped computation and at
+  //    index {0, operand_number} of async-start and async-update outputs.
+  //  - Root of async wrapped computation to index {1} of async-start and
+  //    async-update and index {} of async-done.
+  //  - The contexts in indices {2+} of async-start to the same indices of
+  //    async-update.
+  //
+  // As a result of this, the operands/outputs of async-start and async-done
+  // instructions share the same values as the parameters/roots of the async
+  // wrapped computation.
   bool UpdateAsyncStartValueSet(HloInstruction* async_start);
   bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
   bool UpdateAsyncDoneValueSet(HloInstruction* async_done);

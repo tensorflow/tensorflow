@@ -603,5 +603,52 @@ ENTRY entry {
       FindInstruction(module.get(), "ag3"), {}));
 }
 
+TEST_F(HloReplicationAnalysisTest, PartiallyReplicatedDynamicSlice) {
+  const std::string module_str = R"(
+HloModule PartiallyReplicatedDynamicSlice
+
+ENTRY entry {
+  constant = s32[8] constant({1, 3, 9, 10, 1, 3, 9, 10})
+  replica-id = u32[] replica-id()
+  ROOT dynamic-slice = s32[1] dynamic-slice(constant, replica-id), dynamic_slice_sizes={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/8,
+                                                /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloReplicationAnalysis> replica_analysis,
+      HloReplicationAnalysis::RunWithPartialReplication(
+          module.get(),
+          /*cross_partition_spmd=*/false));
+
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dynamic-slice"), {}));
+  std::vector<ReplicaGroup> replica_groups(4);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(4);
+  replica_groups[1].add_replica_ids(1);
+  replica_groups[1].add_replica_ids(5);
+  replica_groups[2].add_replica_ids(2);
+  replica_groups[2].add_replica_ids(6);
+  replica_groups[3].add_replica_ids(3);
+  replica_groups[3].add_replica_ids(7);
+  EXPECT_TRUE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dynamic-slice"), {}, replica_groups));
+
+  std::vector<ReplicaGroup> replica_groups_2(2);
+  replica_groups_2[0].add_replica_ids(0);
+  replica_groups_2[0].add_replica_ids(1);
+  replica_groups_2[0].add_replica_ids(2);
+  replica_groups_2[0].add_replica_ids(3);
+  replica_groups_2[1].add_replica_ids(4);
+  replica_groups_2[1].add_replica_ids(5);
+  replica_groups_2[1].add_replica_ids(6);
+  replica_groups_2[1].add_replica_ids(7);
+  EXPECT_FALSE(replica_analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dynamic-slice"), {}, replica_groups_2));
+}
+
 }  // namespace
 }  // namespace xla

@@ -348,6 +348,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:step_intersection",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:tpu_xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
@@ -435,6 +436,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_test_utils",
         "//tensorflow/core/profiler/utils:xplane_utils",
     ],
 )

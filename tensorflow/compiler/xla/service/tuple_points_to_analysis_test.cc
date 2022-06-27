@@ -58,8 +58,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   void RunAnalysis() {
     CHECK_NOTNULL(module_.get());
-    points_to_analysis_ =
-        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    points_to_analysis_ = TuplePointsToAnalysis::Run(module_.get()).value();
   }
 
   // Returns the LogicalBuffer defined at the given instruction and

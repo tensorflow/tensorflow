@@ -20903,7 +20903,6 @@ A pseudo-op to represent host-side computation in an XLA program.
 
     StrAttr:$send_key,
     StrAttr:$recv_key,
-    DefaultValuedAttr<I64Attr, "0">:$tpu_core,
     DefaultValuedAttr<StrAttr, "\"\"">:$host_mlir_module
   );
 

@@ -259,8 +259,7 @@ class PodTpuDriver : public TpuDriver {
     for (const auto& worker : workers) {
       TpuDriverConfig worker_config(config_);
       *(worker_config.mutable_worker()) = absl::StrCat("grpc://", worker);
-      auto tpu_driver =
-          CreateGrpcTpuDriver(worker_config, creds_).ConsumeValueOrDie();
+      auto tpu_driver = CreateGrpcTpuDriver(worker_config, creds_).value();
 
       SystemInfo driver_info;
       tpu_driver->QuerySystemInfo(&driver_info);

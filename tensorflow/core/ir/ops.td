@@ -860,7 +860,8 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
       return cast<YieldOp>(body_block().getTerminator());
     }
 
-    OperandRange $cppClass::getSuccessorEntryOperands(unsigned index) {
+    OperandRange $cppClass::getSuccessorEntryOperands(
+        Optional<unsigned> index) {
       return init();
     }
     void $cppClass::getSuccessorRegions(

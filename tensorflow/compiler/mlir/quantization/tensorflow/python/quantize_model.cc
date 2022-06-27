@@ -97,7 +97,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
 
@@ -146,7 +146,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
@@ -181,7 +181,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
 
@@ -220,7 +220,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
@@ -255,7 +255,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
 
@@ -288,7 +288,7 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
@@ -323,7 +323,7 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
                                module.status().error_message());
   }
 
-  mlir::OwningOpRef<mlir::ModuleOp> module_ref = module.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
   mlir::PassManager pm(&context);
   pm.addPass(mlir::createCanonicalizerPass());
@@ -355,7 +355,7 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
                                graph.status().error_message());
   }
 
-  return *graph.ConsumeValueOrDie();
+  return *std::move(graph).value();
 }
 
 }  // namespace internal

@@ -18,6 +18,7 @@ import random
 import re
 import signal
 import sys
+import threading
 import time
 
 from absl.testing import parameterized
@@ -34,7 +35,6 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
 from tensorflow.python.distribute.failure_handling import gce_util
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
@@ -43,6 +43,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 
 
 mock = test.mock
@@ -59,23 +60,12 @@ def _is_oss():
   return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
 
 
-def _enable_coordination_service(cluster_spec):
-
-  if context.context().coordination_service is None:
-    coordination_service = 'standalone'
-    coordinated_jobs = ['chief', 'worker']
-    context.context().configure_coordination_service(
-        service_type=coordination_service,
-        service_leader=multi_worker_util.coordination_leader(
-            cluster_spec),
-        coordinated_jobs=coordinated_jobs)
-
-
 def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
-  if multi_worker_util.is_chief(
-      cluster_spec=cluster_resolver.cluster_spec(),
-      task_type=cluster_resolver.task_type,
-      task_id=cluster_resolver.task_id):
+  if not cluster_resolver.cluster_spec().as_dict() or (
+      multi_worker_util.is_chief(
+          cluster_spec=cluster_resolver.cluster_spec(),
+          task_type=cluster_resolver.task_type,
+          task_id=cluster_resolver.task_id)):
     return checkpoint_management.CheckpointManager(
         checkpoint, directory=checkpoint_dir, max_to_keep=1)
   else:
@@ -133,7 +123,6 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
                 training_finished=None,
                 termination_config=failure_handling.TerminationConfig()):
 
-    _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
     class Model(module.Module):
@@ -172,8 +161,9 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
         @def_function.function
         def train_step():
-          if distribution_strategy_context.get_distribution_strategy(
-          ).cluster_resolver.task_id == raise_app_error_on_worker:
+          if cluster_spec and (
+              distribution_strategy_context.get_distribution_strategy(
+              ).cluster_resolver.task_id == raise_app_error_on_worker):
             raise errors_impl.ResourceExhaustedError(
                 node_def=None, op=None, message='Running out of resources')
 
@@ -235,51 +225,95 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           strategy.num_replicas_in_sync * EPOCHS_TO_RUN * STEPS_PER_EPOCH)
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],))
-  def test_preemption_checkpointing(self, input_arg):
+      combinations.combine(input_arg=['checkpoint', 'manager'],
+                           mwms_mode=['local', 'multi_worker'],))
+  def test_preemption_checkpointing(self, input_arg, mwms_mode):
     has_chief = False
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief,
-        num_workers=CLUSTER_SIZE)
-    training_started_event = multi_process_runner.manager().Event()
-    training_restarted = multi_process_runner.manager().Event()
-    training_finished = multi_process_runner.manager().Event()
-
-    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
     if _is_oss():
       rpc_layer = 'grpc'
     else:
       rpc_layer = 'grpc+loas'
 
-    mpr = multi_process_runner.MultiProcessRunner(
-        self.worker_fn,
-        cluster_spec,
-        args=(checkpoint_dir, cluster_spec, input_arg, [training_started_event],
-              None, training_restarted, training_finished),
-        rpc_layer=rpc_layer,
-        return_output=True,
-        dependence_on_chief=has_chief)
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
-    logging.info('Cluster starting.')
-    mpr.start()
-    while not training_started_event.is_set():
-      time.sleep(1)
+    if mwms_mode == 'multi_worker':
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=CLUSTER_SIZE)
+      training_started_event = multi_process_runner.manager().Event()
+      training_restarted = multi_process_runner.manager().Event()
+      training_finished = multi_process_runner.manager().Event()
 
-    logging.info('sending sigterm')
-    killed_worker = random.randrange(0, CLUSTER_SIZE)
-    os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
+      mpr = multi_process_runner.MultiProcessRunner(
+          self.worker_fn,
+          cluster_spec,
+          args=(checkpoint_dir, cluster_spec, input_arg,
+                [training_started_event
+                ], None, training_restarted, training_finished),
+          rpc_layer=rpc_layer,
+          return_output=True,
+          dependence_on_chief=has_chief)
 
-    logging.info('sigterm sent')
-    raise_if_not_all_exit(0, mpr)
+      logging.info('Cluster starting.')
+      mpr.start()
+      while not training_started_event.is_set():
+        time.sleep(1)
 
-    logging.info('restarting workers')
-    training_restarted.set()
-    for worker_id in range(CLUSTER_SIZE):
-      mpr.start_single_process('worker', worker_id, cluster_spec)
-    logging.info('workers restarted')
+      logging.info('sending sigterm')
+      killed_worker = random.randrange(0, CLUSTER_SIZE)
+      os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
 
-    mpr.join(timeout=270)
+      logging.info('sigterm sent')
+      raise_if_not_all_exit(0, mpr)
+
+      logging.info('restarting workers')
+      training_restarted.set()
+      for worker_id in range(CLUSTER_SIZE):
+        mpr.start_single_process('worker', worker_id, cluster_spec)
+      logging.info('workers restarted')
+
+      mpr.join(timeout=270)
+
+    else:
+      cluster_spec = server_lib.ClusterSpec({})
+
+      training_started_event = threading.Event()
+      training_restarted = threading.Event()
+      training_finished = threading.Event()
+
+      def sending_sigterm(training_started_event):
+        while not training_started_event.is_set():
+          time.sleep(1)
+        logging.info('sending sigterm')
+        training_started_event.set()
+        os.kill(os.getpid(), signal.SIGTERM)
+
+      preemption_sender_thread = threading.Thread(
+          target=sending_sigterm, args=(training_started_event,))
+      preemption_sender_thread.start()
+
+      caught_exit = False
+      try:
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       [training_started_event], None, training_restarted,
+                       training_finished)
+
+      except SystemExit as exit_error:
+        caught_exit = True
+        # We cannot use assertRaise instead, since termination is not always
+        # triggered.
+        self.assertEqual(exit_error.code, 42)  # pylint: disable=g-assert-in-except
+
+      preemption_sender_thread.join(10)
+      if not training_finished.is_set():
+        self.assertTrue(caught_exit)
+
+        logging.info('restarting workers')
+        training_restarted.set()
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       [training_started_event], None, training_restarted,
+                       training_finished)
 
   def test_error_propagation(self):
     error_worker = random.randint(0, CLUSTER_SIZE)
@@ -314,53 +348,102 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     mpr.join(timeout=250)
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],))
-  def test_grace_period_continue_training(self, input_arg):
-    grace_period = 5
-    has_chief = False
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief,
-        num_workers=CLUSTER_SIZE)
-    training_started_event = multi_process_runner.manager().Event()
-    training_restarted = multi_process_runner.manager().Event()
-    training_finished = multi_process_runner.manager().Event()
-    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
-
+      combinations.combine(input_arg=['checkpoint', 'manager'],
+                           mwms_mode=['local', 'multi_worker'],))
+  def test_grace_period_continue_training(self, input_arg, mwms_mode):
     if _is_oss():
       rpc_layer = 'grpc'
     else:
       rpc_layer = 'grpc+loas'
 
-    termination_config = failure_handling.TerminationConfig(
-        grace_period=grace_period)
-    mpr = multi_process_runner.MultiProcessRunner(
-        self.worker_fn,
-        cluster_spec,
-        args=(checkpoint_dir, cluster_spec, input_arg, [training_started_event],
-              None, training_restarted, training_finished, termination_config),
-        rpc_layer=rpc_layer,
-        return_output=True,
-        dependence_on_chief=has_chief)
+    checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
-    logging.info('Cluster starting.')
-    mpr.start()
-    while not training_started_event.is_set():
-      time.sleep(1)
+    if mwms_mode == 'multi_worker':
+      grace_period = 5
+      termination_config = failure_handling.TerminationConfig(
+          grace_period=grace_period)
+      has_chief = False
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=CLUSTER_SIZE)
+      training_started_event = multi_process_runner.manager().Event()
+      training_restarted = multi_process_runner.manager().Event()
+      training_finished = multi_process_runner.manager().Event()
 
-    killed_worker = random.randrange(0, CLUSTER_SIZE)
-    logging.info('sending SIGTERM')
-    os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
-    logging.info('SIGTERM sent')
+      mpr = multi_process_runner.MultiProcessRunner(
+          self.worker_fn,
+          cluster_spec,
+          args=(checkpoint_dir, cluster_spec, input_arg,
+                [training_started_event], None, training_restarted,
+                training_finished, termination_config),
+          rpc_layer=rpc_layer,
+          return_output=True,
+          dependence_on_chief=has_chief)
 
-    raise_if_not_all_exit(grace_period, mpr)
+      logging.info('Cluster starting.')
+      mpr.start()
+      while not training_started_event.is_set():
+        time.sleep(1)
 
-    logging.info('restarting workers')
-    training_restarted.set()
-    for worker_id in range(CLUSTER_SIZE):
-      mpr.start_single_process('worker', worker_id, cluster_spec)
-    logging.info('workers restarted')
+      killed_worker = random.randrange(0, CLUSTER_SIZE)
+      logging.info('sending SIGTERM')
+      os.kill(mpr.get_process_id('worker', killed_worker), signal.SIGTERM)
+      logging.info('SIGTERM sent')
 
-    mpr.join(timeout=250)
+      raise_if_not_all_exit(grace_period, mpr)
+
+      logging.info('restarting workers')
+      training_restarted.set()
+      for worker_id in range(CLUSTER_SIZE):
+        mpr.start_single_process('worker', worker_id, cluster_spec)
+      logging.info('workers restarted')
+
+      mpr.join(timeout=250)
+
+    else:
+      # This is because single worker trains super fast with regards to the size
+      # of "model" here. With a longer grace period, the training just finishes
+      # within the grace period so we can't verify the exit behavior.
+      grace_period = 1
+      termination_config = failure_handling.TerminationConfig(
+          grace_period=grace_period)
+      cluster_spec = server_lib.ClusterSpec({})
+
+      training_started_event = threading.Event()
+      training_restarted = threading.Event()
+      training_finished = threading.Event()
+      def sending_sigterm(training_started_event):
+        while not training_started_event.is_set():
+          time.sleep(1)
+        logging.info('sending sigterm')
+        training_started_event.set()
+        os.kill(os.getpid(), signal.SIGTERM)
+
+      preemption_sender_thread = threading.Thread(
+          target=sending_sigterm, args=(training_started_event,))
+      preemption_sender_thread.start()
+
+      caught_exit = False
+      try:
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       [training_started_event], None, training_restarted,
+                       training_finished, termination_config)
+
+      except SystemExit as exit_error:
+        caught_exit = True
+        # We cannot use assertRaise instead, since termination is not always
+        # triggered.
+        self.assertEqual(exit_error.code, 42)  # pylint: disable=g-assert-in-except
+
+      preemption_sender_thread.join(10)
+      if not training_finished.is_set():
+        self.assertTrue(caught_exit)
+
+        logging.info('restarting workers')
+        training_restarted.set()
+        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+                       [training_started_event], None, training_restarted,
+                       training_finished, termination_config)
 
 
 if __name__ == '__main__':

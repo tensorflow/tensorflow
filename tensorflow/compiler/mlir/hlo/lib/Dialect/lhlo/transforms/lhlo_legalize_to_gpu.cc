@@ -57,7 +57,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     auto loc = reduceOp.getLoc();
     // Only support 1d reductions for now.
     int64_t size = 0;
-    for (auto result : reduceOp.out()) {
+    for (auto result : reduceOp.getOut()) {
       auto shapedType = result.getType().dyn_cast<ShapedType>();
       if (!shapedType || shapedType.getRank() != 1) {
         return failure();
@@ -69,16 +69,16 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       size = dimSize;
     }
 
-    auto reducing_dimension = *reduceOp.dimensions().value_begin<APInt>();
+    auto reducingDimension = *reduceOp.getDimensions().value_begin<APInt>();
 
     // Require all inputs to have the same shape.
     int64_t reduceDimSize = 0;
-    for (auto input : reduceOp.inputs()) {
+    for (auto input : reduceOp.getInputs()) {
       auto shapedType = input.getType().dyn_cast<ShapedType>();
       if (!shapedType || !shapedType.hasStaticShape()) {
         return failure();
       }
-      reduceDimSize = shapedType.getDimSize(reducing_dimension.getSExtValue());
+      reduceDimSize = shapedType.getDimSize(reducingDimension.getSExtValue());
     }
 
     // Create a launch that is parallel in the result dimension.
@@ -88,15 +88,15 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     auto one = rewriter.create<mlir::arith::ConstantOp>(
         loc, rewriter.getIndexType(),
         rewriter.getIntegerAttr(rewriter.getIndexType(), 1));
-    auto launch_op = rewriter.create<mlir::gpu::LaunchOp>(loc, one, one, one,
-                                                          blockSizeX, one, one);
+    auto launchOp = rewriter.create<mlir::gpu::LaunchOp>(loc, one, one, one,
+                                                         blockSizeX, one, one);
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToEnd(&launch_op.body().front());
-      auto index = launch_op.getThreadIds().x;
+      rewriter.setInsertionPointToEnd(&launchOp.body().front());
+      auto index = launchOp.getThreadIds().x;
 
       // Load the initial value and store it to the output.
-      for (auto pair : llvm::zip(reduceOp.init_values(), reduceOp.out())) {
+      for (auto pair : llvm::zip(reduceOp.getInitValues(), reduceOp.getOut())) {
         auto initValue =
             rewriter.create<mlir::memref::LoadOp>(loc, std::get<0>(pair));
         rewriter.create<mlir::memref::StoreOp>(
@@ -120,27 +120,27 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       rewriter.setInsertionPointToStart(loop.getBody());
       // Compute memrefs for the value to reduce. This makes it easier to just
       // inline the body.
-      auto output = *reduceOp.out().begin();
+      auto output = *reduceOp.getOut().begin();
       auto resType = MemRefType::get(
           llvm::None, getElementTypeOrSelf(output.getType()),
           makeStridedLinearLayoutMap(llvm::None,
                                      MemRefType::getDynamicStrideOrOffset(),
                                      rewriter.getContext()));
-      OpFoldResult offset = launch_op.getThreadIds().x;
+      OpFoldResult offset = launchOp.getThreadIds().x;
       auto oneAttr = rewriter.getI64IntegerAttr(1);
       OpFoldResult size = oneAttr;
       OpFoldResult stride = oneAttr;
       auto accumulator = rewriter.create<memref::SubViewOp>(
           loc, resType, output, offset, size, stride);
       llvm::SmallVector<Value, 4> indexings;
-      Value inputBuffer = reduceOp.inputs().front();
+      Value inputBuffer = reduceOp.getInputs().front();
       auto inputTypeRank = inputBuffer.getType().cast<MemRefType>().getRank();
 
       Value input = *reduceOp.operand_begin();
       SmallVector<OpFoldResult> offsets = llvm::to_vector<4>(llvm::map_range(
           llvm::seq<int>(0, inputTypeRank), [&](int dim) -> OpFoldResult {
-            return dim == reducing_dimension ? loop.getInductionVar()
-                                             : launch_op.getThreadIds().x;
+            return dim == reducingDimension ? loop.getInductionVar()
+                                            : launchOp.getThreadIds().x;
           }));
       SmallVector<OpFoldResult> sizes(inputTypeRank, oneAttr);
       SmallVector<OpFoldResult> strides(inputTypeRank, oneAttr);
@@ -150,10 +150,10 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
       BlockAndValueMapping mapping;
-      mapping.map(reduceOp.body().getArgument(0), accumulator);
-      mapping.map(reduceOp.body().getArgument(1), rhs);
-      mapping.map(reduceOp.body().getArgument(2), accumulator);
-      for (auto& nested : reduceOp.body().front().without_terminator()) {
+      mapping.map(reduceOp.getBody().getArgument(0), accumulator);
+      mapping.map(reduceOp.getBody().getArgument(1), rhs);
+      mapping.map(reduceOp.getBody().getArgument(2), accumulator);
+      for (auto& nested : reduceOp.getBody().front().without_terminator()) {
         auto* clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
           mapping.map(std::get<0>(pair), std::get<1>(pair));
@@ -161,7 +161,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       }
 
       // Finally, insert the terminator for the launchOp.
-      rewriter.setInsertionPointToEnd(&launch_op.body().front());
+      rewriter.setInsertionPointToEnd(&launchOp.body().front());
       rewriter.create<mlir::gpu::TerminatorOp>(loc);
     }
 

@@ -38,7 +38,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -130,7 +130,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
   @test_util.run_v2_only
   def testFloat(self, enable_mlir):
     input_data = constant_op.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -290,7 +290,7 @@ class TFQuantizationTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.named_parameters(('DefaultMode', 'DEFAULT'),
                                   ('LegacyIntegerMode', 'LEGACY_INTEGER'))
   def testAddOp(self, tf_quantization_mode):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.add_func = def_function.function(lambda x: x + x)
     input_data = tf.reshape(tf.range(4, dtype=tf.float32), [1, 4])
     concrete_func = root.add_func.get_concrete_function(input_data)
@@ -322,7 +322,7 @@ class TFQuantizationTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.named_parameters(('DefaultMode', 'DEFAULT'),
                                   ('LegacyIntegerMode', 'LEGACY_INTEGER'))
   def testL2LossOp(self, tf_quantization_mode):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.l2_loss_func = def_function.function(lambda x: nn_ops.l2_loss(x))  # pylint: disable=unnecessary-lambda
     input_data = tf.range(4, dtype=tf.float32)
     concrete_func = root.l2_loss_func.get_concrete_function(input_data)
@@ -351,7 +351,7 @@ class TFQuantizationTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                   ('LegacyIntegerMode', 'LEGACY_INTEGER'))
   def testConvOpWithBias(self, tf_quantization_mode):
 
-    class ConvModel(tracking.AutoTrackable):
+    class ConvModel(autotrackable.AutoTrackable):
 
       @def_function.function
       def conv_func(self, in_tensor, filter_tensor):

@@ -156,6 +156,17 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   return *this;
 }
 
+void TensorDescriptor::CopyWithoutData(TensorDescriptor* desc) const {
+  desc->data_type = data_type;
+  desc->storage_type = storage_type;
+  desc->layout = layout;
+  desc->use_buffer_for_write_only_2d_texture =
+      use_buffer_for_write_only_2d_texture;
+  desc->use_buffer_for_write_only_image_buffer =
+      use_buffer_for_write_only_image_buffer;
+  desc->shape = shape;
+}
+
 GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   GPUResources resources;
   resources.ints.push_back("slice_stride");

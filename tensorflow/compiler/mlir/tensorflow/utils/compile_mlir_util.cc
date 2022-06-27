@@ -401,7 +401,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
                                     custom_legalization_passes);
 
   if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("legalize_hlo_before", module_op);
+    tensorflow::DumpMlirOpToFile("legalize_hlo_before", module_op, "", &tf2xla);
   if (VLOG_IS_ON(2)) {
     // Print the whole module after each pass which requires disabling
     // multi-threading as well.
@@ -424,7 +424,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   }
 
   if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op);
+    tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op, "", &tf2xla);
   Status status = error_handler.ConsumeStatus();
   tensorflow::OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,

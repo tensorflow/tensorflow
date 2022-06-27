@@ -44,7 +44,6 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
@@ -78,6 +77,7 @@ namespace mlir {
 #include "hlo_patterns.cc.inc"
 }  // namespace mlir
 
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.cc.inc"
 
@@ -98,22 +98,10 @@ void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
 
-// This is an arbitrary limit into how many elements can a splat attribute
-// covers before we prevent folding from happening. Without such limit we can
-// expand a single element splat to a multi-GB large tensor.
-// The limit is arbitrary set low to allow expanding small computations, like
-// shape manipulations for example.
-// TODO(b/210478841): Define a constant folding policy that generalizes this.
-constexpr int64_t kFoldExpandSplatEltLimit = 16;
-
-// Similarly to the constant above, this is an arbitrary limit into how many
-// elements can be folded by a binary operation folder.
-// This limit doesn't apply to the following special cases:
-//   1) Adding a zero.
-//   2) Multiplying by one.
-//   3) When both operands are splats.
-// TODO(b/210478841): Define a constant folding policy that generalizes this.
-constexpr int64_t kFoldBinaryOpEltLimit = 65536;
+// This is an upper limit on how many elements can be folded by an op folder.
+// This limit doesn't apply to some special cases like adding a zero,
+// multiplying by one, doing many operations with splats.
+constexpr int64_t kFoldOpEltLimit = 65536;
 
 // Clamps value to the range [lower, upper].  Requires lower <= upper.
 template <typename T>
@@ -705,10 +693,10 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 
 //===----------------------------------------------------------------------===//
-// ConstOp
+// ConstantOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
 
   // Return the held attribute value.
@@ -716,8 +704,8 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 // Builds a constant op with the specified attribute `value`.
-void ConstOp::build(OpBuilder& builder, OperationState& result,
-                    Attribute value) {
+void ConstantOp::build(OpBuilder& /*builder*/, OperationState& result,
+                       Attribute value) {
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -736,7 +724,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   result.addAttribute("value", value);
 }
 
-LogicalResult ConstOp::inferReturnTypes(
+LogicalResult ConstantOp::inferReturnTypes(
     MLIRContext*, Optional<Location>, ValueRange, DictionaryAttr attributes,
     RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   Type type = attributes.get("value").getType();
@@ -744,7 +732,7 @@ LogicalResult ConstOp::inferReturnTypes(
   return success();
 }
 
-bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+bool ConstantOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   if (l.size() != r.size() || l.size() != 1) return false;
   auto lhsTy = l.front().cast<TensorType>();
   auto rhsTy = r.front().cast<TensorType>();
@@ -758,7 +746,7 @@ bool ConstOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   return lhsTy == rhsTy;
 }
 
-ParseResult ConstOp::parse(OpAsmParser& parser, OperationState& result) {
+ParseResult ConstantOp::parse(OpAsmParser& parser, OperationState& result) {
   // Parse the generic form.
   if (succeeded(parser.parseOptionalLParen())) {
     if (parser.parseRParen()) return failure();
@@ -791,7 +779,7 @@ ParseResult ConstOp::parse(OpAsmParser& parser, OperationState& result) {
 ///
 /// When the `value` and `output` have different type, it just uses the default
 /// operator assembly format as a fallback.
-void ConstOp::print(::mlir::OpAsmPrinter& p) {
+void ConstantOp::print(::mlir::OpAsmPrinter& p) {
   // If not all types are the same, use generic form.
   if (value().getType() != getType()) {
     p.printGenericOp(getOperation(), /*printOpName=*/false);
@@ -2191,12 +2179,13 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   if (!resultTy.hasStaticShape()) return {};
 
   // If the operand is constant, we can do the conversion now.
-  if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return hlo::ConvertElementsAttr(elementsAttr,
-                                    getElementTypeOrSelf(getResult()));
-  }
+  auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>();
+  if (!elementsAttr) return {};
 
-  return {};
+  // Prevent folding if the result is too large.
+  if (elementsAttr.getNumElements() > kFoldOpEltLimit) return {};
+  return hlo::ConvertElementsAttr(elementsAttr,
+                                  getElementTypeOrSelf(getResult()));
 }
 
 namespace {
@@ -3413,10 +3402,8 @@ static Attribute foldConcatenateHelper(ConcatenateOp* op,
     topSize = topSize * shape[i];
   }
 
-  // TODO(b/210478841): Define a constant folding policy that generalizes this.
-  if (type.getNumElements() * op->getNumOperands() > UINT32_MAX) {
-    return {};
-  }
+  // Prevent folding if the result is too large.
+  if (type.getNumElements() > kFoldOpEltLimit) return {};
 
   SmallVector<T, 6> values;
   for (size_t i = 0; i < topSize; i++) {
@@ -4862,7 +4849,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
     for (auto inpAndBarg : llvm::zip(op.getOperands(), bb.getArguments())) {
       Value inp = std::get<0>(inpAndBarg);
       BlockArgument barg = std::get<1>(inpAndBarg);
-      ConstOp cst = inp.getDefiningOp<ConstOp>();
+      ConstantOp cst = inp.getDefiningOp<ConstantOp>();
       if (!cst) return failure();
 
       auto cstAttr = cst.value().dyn_cast_or_null<DenseElementsAttr>();
@@ -4881,7 +4868,7 @@ struct LowerBoolSplatConstantsIntoRegion : public OpRewritePattern<ReduceOp> {
     // Create new splat constants to replace block arguments.
     for (BlockArgument barg : bb.getArguments()) {
       int argIdx = barg.getArgNumber();
-      mhlo::ConstOp newCst = rewriter.create<mhlo::ConstOp>(
+      mhlo::ConstantOp newCst = rewriter.create<mhlo::ConstantOp>(
           bb.front().getLoc(), barg.getType(), bargCstAttrs[argIdx]);
       barg.replaceAllUsesWith(newCst);
     }
@@ -5246,6 +5233,9 @@ OpFoldResult padOpFoldHelper(DenseElementsAttr input, DenseElementsAttr padding,
                              DenseIntElementsAttr edgePaddingLow,
                              DenseIntElementsAttr edge_padding_high,
                              DenseIntElementsAttr interiorPadding) {
+  // Prevent folding if the result is too large.
+  if (returnType.getNumElements() > kFoldOpEltLimit) return {};
+
   // Fill the full result tensor with the padding value.
   llvm::SmallVector<T, 4> result(returnType.getNumElements(),
                                  padding.getValues<T>()[0]);
@@ -5611,6 +5601,9 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
   auto shapedType = getType().cast<ShapedType>();
   if (!shapedType.hasStaticShape()) return {};
 
+  // Prevent folding if the result is too large.
+  if (val.getNumElements() > kFoldOpEltLimit) return {};
+
   int bitWidth = type.getIntOrFloatBitWidth();
   llvm::SmallVector<APFloat, 4> values;
   values.reserve(val.getNumElements());
@@ -5694,6 +5687,9 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   if (!etype.isa<ElementType>()) {
     return {};
   }
+
+  // Prevent folding if the result is too large.
+  if (val.getNumElements() > kFoldOpEltLimit) return {};
 
   SmallVector<ValType, 6> values;
   values.reserve(val.getNumElements());
@@ -5862,10 +5858,8 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
                              : Attribute();
   }
 
-  // Prevent folding if lhs/rhs are too large.
-  if (lhs.getNumElements() > kFoldBinaryOpEltLimit) {
-    return {};
-  }
+  // Prevent folding if the result is too large.
+  if (lhs.getNumElements() > kFoldOpEltLimit) return {};
 
   SmallVector<ValType, 6> values;
   values.reserve(lhs.getNumElements());
@@ -6201,6 +6195,7 @@ static Attribute foldSlice(SliceOp* op, I values) {
   auto limit = llvm::to_vector<6>(op->limit_indices().getValues<int64_t>());
   auto stride = llvm::to_vector<6>(op->strides().getValues<int64_t>());
 
+  // TODO(b/235903849): This should be op->getType().case<ShapedType>().
   auto resultType = op->operand().getType().cast<ShapedType>();
   if (!resultType.hasStaticShape()) return {};
 
@@ -6219,6 +6214,9 @@ static Attribute foldSlice(SliceOp* op, I values) {
     count = count / v;
     sizes.push_back(count);
   }
+
+  // Prevent folding if the result is too large.
+  if (resultType.getNumElements() > kFoldOpEltLimit) return {};
 
   llvm::SmallVector<E, 6> outValues;
   outValues.reserve(resultType.getNumElements());
@@ -6854,6 +6852,9 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
     return {};
   }
 
+  // Prevent folding if the result is too large.
+  if (lhs.getNumElements() > kFoldOpEltLimit) return {};
+
   SmallVector<bool, 6> values;
   values.reserve(lhs.getNumElements());
   for (const auto zip :
@@ -7414,10 +7415,6 @@ LogicalResult ScatterOp::fold(
   auto update = args[2].dyn_cast_or_null<DenseElementsAttr>();
   if (!base || !update) return failure();
 
-  // Prevent splat to be expanded if too large.
-  if (base.isSplat() && base.getNumElements() > kFoldExpandSplatEltLimit)
-    return failure();
-
   // Add the virtual trailing dimension of size 1 if indexVectorDim equals to
   // indexType.rank.
   const int64_t indexVectorDim =
@@ -7441,6 +7438,9 @@ LogicalResult ScatterOp::fold(
     }
     return false;
   };
+
+  // Prevent folding if the result is too large.
+  if (base.getNumElements() > kFoldOpEltLimit) return failure();
 
   // Iterate over all elements of the update tensor, then find the corresponding
   // value in the indices tensor to determine which location we have to update
@@ -8124,6 +8124,11 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
             {dnums.getOutputFeatureDimension(), IOFeature}});
 }
 
+void printConvolutionDimensions(AsmPrinter& p, Operation*,
+                                ConvDimensionNumbersAttr dnums) {
+  printConvolutionDimensions(p, dnums);
+}
+
 // Custom printer and parser for ConvDimensionNumbersAttr.
 void ConvDimensionNumbersAttr::print(AsmPrinter& printer) const {
   printer << "<";
@@ -8645,7 +8650,7 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (auto elementsAttr = value.dyn_cast<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, elementsAttr);
+    return builder.create<mhlo::ConstantOp>(loc, type, elementsAttr);
   return nullptr;
 }
 

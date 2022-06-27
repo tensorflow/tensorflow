@@ -433,9 +433,15 @@ class CheckpointPosition(object):
           saveable = None
           del saveables_cache[self.trackable]
       if saveable is None:
-        # If there was no cached SaveableObject, we should check if the Python
-        # object has the attribute.
-        saveable_factory = saveables.get(serialized_tensor.name, None)
+        # If there was no cached SaveableObject, create one.
+        if saveables.keys() == {""}:
+          # First check if the saveable factory is generated with the
+          # compatibility function `saveable_objects_from_trackable`.
+          saveable_factory = saveables[""]
+        else:
+          # Otherwise, use the name to check if the Python object has the same
+          # attribute.
+          saveable_factory = saveables.get(serialized_tensor.name, None)
         if saveable_factory is None:
           # Purposefully does not throw an exception if attributes have been
           # added or deleted. Stores unused attributes so an exception can be

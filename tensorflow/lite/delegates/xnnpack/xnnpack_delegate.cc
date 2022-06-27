@@ -1602,13 +1602,13 @@ class Subgraph {
   static TfLiteStatus CheckAxesTensorShape(TfLiteContext* context,
                                            const TfLiteTensor& tensor,
                                            int tensor_index, int node_index) {
-    if (NumDimensions(&tensor) != 1) {
+    const int num_tensor_dims = NumDimensions(&tensor);
+    if (num_tensor_dims > 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "axes tensor #%d in node #%d: "
                                "expected a 1D tensor",
-                               NumDimensions(&tensor), tensor_index,
-                               node_index);
+                               num_tensor_dims, tensor_index, node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -1674,6 +1674,69 @@ class Subgraph {
           SizeOfDimension(&output_tensor, dimension_index), op_name,
           node_index);
       return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckTensorsInputOutputScale(
+      TfLiteContext* context, const TfLiteTensor& input_tensor,
+      const TfLiteTensor& output_tensor, float scale_min, float scale_max,
+      int node_index, const char* op_name) {
+    if (input_tensor.type != output_tensor.type) {
+      // No validation needed
+      return kTfLiteOk;
+    }
+
+    if (input_tensor.type == kTfLiteInt8 || input_tensor.type == kTfLiteUInt8) {
+      const float input_scale = static_cast<const TfLiteAffineQuantization*>(
+                                    input_tensor.quantization.params)
+                                    ->scale->data[0];
+      const float output_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     output_tensor.quantization.params)
+                                     ->scale->data[0];
+
+      const float input_output_scale = input_scale / output_scale;
+      if (input_output_scale < scale_min || input_output_scale >= scale_max) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported input-to-output scale in node #%d",
+            node_index);
+        return kTfLiteError;
+      }
+    }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckTensorsInputProductOutputScale(
+      TfLiteContext* context, const TfLiteTensor& input1_tensor,
+      const TfLiteTensor& input2_tensor, const TfLiteTensor& output_tensor,
+      float scale_min, float scale_max, int node_index, const char* op_name) {
+    if (input1_tensor.type != input2_tensor.type ||
+        input1_tensor.type != output_tensor.type) {
+      // No validation needed
+      return kTfLiteOk;
+    }
+
+    if (input1_tensor.type == kTfLiteInt8 ||
+        input1_tensor.type == kTfLiteUInt8) {
+      const float input1_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     input1_tensor.quantization.params)
+                                     ->scale->data[0];
+      const float input2_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     input2_tensor.quantization.params)
+                                     ->scale->data[0];
+      const float output_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     output_tensor.quantization.params)
+                                     ->scale->data[0];
+
+      const float product_scale = input1_scale * input2_scale;
+      const float product_output_scale = product_scale / output_scale;
+      if (product_output_scale < scale_min ||
+          product_output_scale >= scale_max) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported input-product-to-output scale in node #%d",
+            node_index);
+        return kTfLiteError;
+      }
     }
     return kTfLiteOk;
   }
@@ -2012,6 +2075,15 @@ class Subgraph {
                                        node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const float scale_min = 1.0f / 1024.0f;
+    const float scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input1_tensor, output_tensor, scale_min, scale_max,
+        node_index, "ADD"));
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input2_tensor, output_tensor, scale_min, scale_max,
+        node_index, "ADD"));
 
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
@@ -3183,32 +3255,48 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, axes_tensor, node->inputs->data[1], node_index));
 
-    if (SizeOfDimension(&axes_tensor, 0) != 2) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "unsupported MEAN reduction along %d axes in node %d",
-          SizeOfDimension(&axes_tensor, 0), node_index);
-      return kTfLiteError;
-    }
-
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
-    if (std::min(axes_data[0], axes_data[1]) != 1 ||
-        std::max(axes_data[0], axes_data[1]) != 2) {
-      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                               "unsupported MEAN reduction along non-spatial "
-                               "axes %d and %d in node %d",
-                               std::min(axes_data[0], axes_data[1]),
-                               std::max(axes_data[0], axes_data[1]),
-                               node_index);
-      return kTfLiteError;
+    const int num_reduction_axes = NumElements(&axes_tensor);
+    switch (num_reduction_axes) {
+      case 1:
+        if (axes_data[0] != 2) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported MEAN reduction along non-spatial "
+              "axis %d in node %d",
+              axes_data[0], node_index);
+          return kTfLiteError;
+        }
+        break;
+      case 2:
+        if (std::min(axes_data[0], axes_data[1]) != 1 ||
+            std::max(axes_data[0], axes_data[1]) != 2) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported MEAN reduction along non-spatial "
+              "axes %d and %d in node %d",
+              std::min(axes_data[0], axes_data[1]),
+              std::max(axes_data[0], axes_data[1]), node_index);
+          return kTfLiteError;
+        }
+        break;
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "unsupported MEAN reduction along %d axes in node %d",
+            SizeOfDimension(&axes_tensor, 0), node_index);
+        return kTfLiteError;
     }
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
-    const int expected_output_dims = reducer_params->keep_dims ? 4 : 2;
+    int expected_output_dims = 4;
+    if (!reducer_params->keep_dims) {
+      expected_output_dims -= num_reduction_axes;
+    }
     TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
                                            expected_output_dims,
                                            node->outputs->data[0]));
@@ -3216,12 +3304,29 @@ class Subgraph {
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_global_average_pooling_2d(
-          subgraph,
-          /*output_min=*/-std::numeric_limits<float>::infinity(),
-          /*output_max=*/+std::numeric_limits<float>::infinity(),
-          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
-          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      xnn_status status = xnn_status_success;
+      switch (num_reduction_axes) {
+        case 1:
+          status = xnn_define_global_average_pooling_1d(
+              subgraph,
+              /*output_min=*/-std::numeric_limits<float>::infinity(),
+              /*output_max=*/+std::numeric_limits<float>::infinity(),
+              /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+              /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+              /*flags=*/0);
+          break;
+        case 2:
+          status = xnn_define_global_average_pooling_2d(
+              subgraph,
+              /*output_min=*/-std::numeric_limits<float>::infinity(),
+              /*output_max=*/+std::numeric_limits<float>::infinity(),
+              /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+              /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+              /*flags=*/0);
+          break;
+        default:
+          break;
+      }
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MEAN node #%d",
                            node_index);
@@ -3546,6 +3651,12 @@ class Subgraph {
                                        node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const float scale_min = 1.0f / 65536.0f;
+    const float scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputProductOutputScale(
+        logging_context, input1_tensor, input2_tensor, output_tensor, scale_min,
+        scale_max, node_index, "MUL"));
 
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
@@ -4216,6 +4327,15 @@ class Subgraph {
                                        node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const float scale_min = 1.0f / 1024.0f;
+    const float scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input1_tensor, output_tensor, scale_min, scale_max,
+        node_index, "SUB"));
+    TF_LITE_ENSURE_STATUS(CheckTensorsInputOutputScale(
+        logging_context, input2_tensor, output_tensor, scale_min, scale_max,
+        node_index, "SUB"));
 
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();

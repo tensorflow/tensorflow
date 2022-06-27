@@ -36,18 +36,18 @@ struct CholeskyRewritePattern
       ConversionPatternRewriter& rewriter) const override {
     Location loc = op->getLoc();
     chain = rewriter.create<tfrt::gpu::MemCopyOp>(
-        loc, adaptor.output(), adaptor.input(), stream, chain);
+        loc, adaptor.getOutput(), adaptor.getInput(), stream, chain);
 
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     auto handle = rewriter.create<tfrt::gpu::SolverCreateOp>(loc, context);
 
-    auto fill_mode = op.is_lower() ? kBlasFillModeLower : kBlasFillModeUpper;
+    auto fill_mode = op.getIsLower() ? kBlasFillModeLower : kBlasFillModeUpper;
 
     mlir::Type element_type =
-        op.input().getType().cast<mlir::MemRefType>().getElementType();
+        op.getInput().getType().cast<mlir::MemRefType>().getElementType();
     auto data_type = MlirTypeToBlasDataType(element_type);
 
-    const xla::Shape shape = xla::gpu::GetShape(op.input());
+    const xla::Shape shape = xla::gpu::GetShape(op.getInput());
     int rank = shape.dimensions_size();
     assert(rank >= 2);
     auto n = rewriter.create<tfrt::compiler::ConstantI32Op>(
@@ -60,8 +60,8 @@ struct CholeskyRewritePattern
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
 
     chain = rewriter.create<tfrt::gpu::SolverPotrfBatchOp>(
-        loc, handle, stream, fill_mode, n, data_type, adaptor.output(), n,
-        adaptor.info(), batch, chain);
+        loc, handle, stream, fill_mode, n, data_type, adaptor.getOutput(), n,
+        adaptor.getInfo(), batch, chain);
     rewriter.eraseOp(op);
     return chain;
   }

@@ -38,7 +38,7 @@ add_mlir_library(MLIRBufferTransforms
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass
-  MLIRShape
+  MLIRShapeDialect
   MLIRTransforms
 )
 
@@ -57,6 +57,6 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass
-  MLIRShape
+  MLIRShapeDialect
   MLIRTransforms
 )
