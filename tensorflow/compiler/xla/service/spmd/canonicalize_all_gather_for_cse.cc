@@ -41,8 +41,8 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     // Also only do this for degenerate dimension sizes as the additional
     // reshaping may not be worth the potential for CSE.
     HloInstruction* real_data = ag->mutable_operand(0);
-    while (std::get<0>(
-        real_data->ReshapeMerelyInsertsOrDeletes1SizedDimensions())) {
+    while (real_data->ReshapeMerelyInsertsOrDeletes1SizedDimensions()
+               .has_value()) {
       real_data = real_data->mutable_operand(0);
     }
 

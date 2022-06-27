@@ -3479,15 +3479,12 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   // A broadcast of a reshape which merely inserts 1-sized dimensions can
   // elide its operand.
   {
-    bool merely_inserts_or_deletes_1_sized_dimensions;
-    std::vector<int64_t> inserted_indices, deleted_indices;
-    std::tie(merely_inserts_or_deletes_1_sized_dimensions, deleted_indices,
-             inserted_indices) =
+    std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_degenerate =
         operand->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
-    if (merely_inserts_or_deletes_1_sized_dimensions &&
-        deleted_indices.empty()) {
-      std::reverse(inserted_indices.begin(), inserted_indices.end());
-      for (auto inserted_index : inserted_indices) {
+    if (reshape_degenerate.has_value() &&
+        reshape_degenerate->deleted_dimensions.empty()) {
+      absl::c_reverse(reshape_degenerate->inserted_dimensions);
+      for (auto inserted_index : reshape_degenerate->inserted_dimensions) {
         dims.erase(dims.begin() + inserted_index);
       }
       return ReplaceWithNewInstruction(
@@ -4366,17 +4363,13 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // enable other optimizations, e.g., merging with broadcast, and sparse update
   // (add(x, dus(broadcast(0), y, ...)) -> dus(x, add(ds(x), y), ...)).
   if (!options_.is_layout_sensitive()) {
-    bool trivial_reshape;
-    std::vector<int64_t> deleted_dims;
-    std::vector<int64_t> inserted_dims;
-
     HloInstruction* dus;
     HloInstruction* slice;
-    std::tie(trivial_reshape, deleted_dims, inserted_dims) =
+    std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
         reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
     // 1-sized dimensions added and removed will be one sized in both the update
     // slice and the dynamic-update-slice result.
-    if (trivial_reshape &&
+    if (trivial_reshape.has_value() &&
         Match(reshape->mutable_operand(0),
               m::Op(&dus)
                   .WithOpcode(HloOpcode::kDynamicUpdateSlice)
@@ -4391,10 +4384,11 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
       auto zero = MakeScalarLike(dus->mutable_operand(2), 0);
       const Shape& old_slice_shape = dus->operand(1)->shape();
       for (int64_t i = 0; i <= old_slice_shape.rank(); ++i) {
-        if (absl::c_linear_search(deleted_dims, i)) {
+        if (absl::c_linear_search(trivial_reshape->deleted_dimensions, i)) {
           continue;
         }
-        while (absl::c_linear_search(inserted_dims, new_slice_shape.size())) {
+        while (absl::c_linear_search(trivial_reshape->inserted_dimensions,
+                                     new_slice_shape.size())) {
           new_slice_shape.push_back(1);
           new_dus_operands.push_back(zero);
         }

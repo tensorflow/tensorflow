@@ -1492,7 +1492,7 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
       return true;
     case HloOpcode::kReshape:
       return hlo.operand(0)->shape().rank() == 1 ||
-             std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
+             hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions().has_value();
     case HloOpcode::kScatter:
     case HloOpcode::kTranspose:
       return true;

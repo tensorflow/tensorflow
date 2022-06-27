@@ -571,10 +571,10 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
   Shape shape0 = ShapeUtil::MakeShape(S32, {9, 1, 4});
   Shape shape1 = ShapeUtil::MakeShape(S32, {1, 9, 4, 1});
   Shape shape2 = ShapeUtil::MakeShape(S32, {3, 1, 12});
-  EXPECT_TRUE(std::get<0>(
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1)));
-  EXPECT_FALSE(std::get<0>(
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
+  EXPECT_TRUE(
+      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1).has_value());
+  EXPECT_FALSE(
+      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2).has_value());
 }
 
 TEST(ShapeUtilTest, ForEachIndex) {

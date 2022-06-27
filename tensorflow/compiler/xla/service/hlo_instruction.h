@@ -1671,7 +1671,7 @@ class HloInstruction {
   // dimensions.
   //
   // Precondition: this op must be a reshape.
-  std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+  std::optional<ShapeUtil::ShapeEqualityDescriptor>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
   // Gets the string identifier for this instruction.

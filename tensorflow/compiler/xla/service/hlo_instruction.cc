@@ -3991,11 +3991,10 @@ bool HloInstruction::ReusesOperandElements(int64_t i) const {
   return OperandElementUse(*this, i) == UseKind::kReuse;
 }
 
-std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+std::optional<ShapeUtil::ShapeEqualityDescriptor>
 HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
   if (HloOpcode::kReshape != opcode_) {
-    return std::make_tuple(false, std::vector<int64_t>(),
-                           std::vector<int64_t>());
+    return std::nullopt;
   }
   return ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape_,
                                                       shape_);

@@ -1180,14 +1180,11 @@ Status ForEachMutableSubshapeHelper(
   return new_shape;
 }
 
-/* static */ std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+/* static */ std::optional<ShapeUtil::ShapeEqualityDescriptor>
 ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
                                              const Shape& shape_post) {
   CHECK(shape_pre.IsArray());
   CHECK(shape_post.IsArray());
-
-  auto nil =
-      std::make_tuple(false, std::vector<int64_t>(), std::vector<int64_t>());
 
   std::vector<int64_t> deleted_indices;
   std::vector<int64_t> inserted_indices;
@@ -1234,11 +1231,11 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
             ? unmodified_dims[i]
             : std::make_pair(shape_pre.rank(), shape_post.rank());
     if (!check_modified_dims(prior_unmodified_dim_pair, unmodified_dim_pair)) {
-      return nil;
+      return std::nullopt;
     }
   }
 
-  return std::make_tuple(true, deleted_indices, inserted_indices);
+  return ShapeEqualityDescriptor{deleted_indices, inserted_indices};
 }
 
 /* static */ std::vector<std::pair<int64_t, int64_t>>
