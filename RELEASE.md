@@ -53,7 +53,7 @@
         argument, for returning both dataset splits at once, as a tuple.
     *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object
         or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
-    *   Added step granualarity to `BackupAndRestore` callback for handling
+    *   Added step granularity to `BackupAndRestore` callback for handling
         distributed training failures & restarts. The training state can now be
         restored at the exact epoch and step at which it was previously saved
         before failing.
