@@ -1320,7 +1320,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     }
     const absl::InlinedVector<TensorHandle*, 4>* inputs;
     TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    auto node = absl::make_unique<AsyncExecuteNode>(
+    auto node = std::make_unique<AsyncExecuteNode>(
         &ctx, *inputs, eager_func_params, std::move(kernel), graph_collector,
         op->GetCancellationManager(),
         absl::Span<TensorHandle*>(retvals, num_outputs), op->GetStackTrace());
