@@ -65,7 +65,7 @@ commands.
 #### *Try your first TensorFlow program*
 
 ```shell
-$ python
+$ python3
 ```
 
 ```python
