@@ -441,7 +441,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
         "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
     ],
 )

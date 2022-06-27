@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
@@ -77,11 +77,30 @@ bool UseBuffersForWeights(const GpuInfo& gpu_info) {
   return !gpu_info.SupportsImages() || gpu_info.IsMali() ||
          gpu_info.IsApple() || gpu_info.IsAMD();
 }
+
+void AppendToBack(const std::string& value, const std::string& delimeter,
+                  std::string* result) {
+  if (!result->empty()) {
+    *result += delimeter;
+  }
+  *result += value;
+}
+
+void AppendToFront(const std::string& value, const std::string& delimeter,
+                   std::string* result) {
+  if (!result->empty()) {
+    *result = delimeter + *result;
+  }
+  *result = value + *result;
+}
 }  // namespace
 
-DepthwiseConv::DepthwiseConv(const OperationDef& definition)
-    : GPUOperation(definition) {
-  work_group_size_ = int3(8, 8, 1);
+DepthwiseConv::DepthwiseConv(const OperationDef& definition,
+                             const DepthwiseConvParams& params)
+    : GPUOperation(definition), params_(params) {
+  if (params.UseLocalMem()) {
+    work_group_size_ = params.work_group_size;
+  }
 }
 
 int3 DepthwiseConv::GetGridSize() const {
@@ -94,12 +113,53 @@ int3 DepthwiseConv::GetGridSize() const {
 void DepthwiseConv::GetPossibleKernelWorkGroups(
     TuningType tuning_type, const GpuInfo& gpu_info,
     const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  if (params_.UseLocalMem()) {
+    work_groups->push_back(work_group_size_);
+    return;
+  }
   GetPossibleWorkGroups(tuning_type, gpu_info, kernel_info, grid_size_,
                         work_groups);
 }
 
-std::string DepthwiseConv::GenerateCode(const GpuInfo& gpu_info,
-                                        int channel_multiplier) {
+std::string DepthwiseConv::GenerateWeightsUpload(const GpuInfo& gpu_info) {
+  const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
+  auto read_weight = [](bool weights_are_buffer, const std::string& lid,
+                        int work_group_total_size) {
+    if (weights_are_buffer) {
+      return "args.weights.Read(S * " + std::to_string(work_group_total_size) +
+             " + " + lid + ")";
+    } else {
+      return "args.weights.Read(" + lid + ", S)";
+    }
+  };
+  std::string c;
+  const int work_group_total_size = params_.GetWorkGroupTotalSize();
+  c += "  __local FLT4 weights_cache[" +
+       std::to_string(params_.GetKernelsTotalSize()) + "];\n";
+  c += "  int linear_local_id = (LOCAL_ID_2 * GROUP_SIZE_1 + LOCAL_ID_1) * "
+       "GROUP_SIZE_0 + LOCAL_ID_0;\n";
+  const int groups = params_.GetKernelsTotalSize() / work_group_total_size;
+  const int reminder = params_.GetKernelsTotalSize() % work_group_total_size;
+  for (int i = 0; i < groups; ++i) {
+    const std::string lid =
+        "linear_local_id + " + std::to_string(work_group_total_size * i);
+    c += "  weights_cache[" + lid +
+         "] = " + read_weight(weights_are_buffer, lid, work_group_total_size) +
+         ";\n";
+  }
+  if (reminder != 0) {
+    const std::string lid =
+        "linear_local_id + " + std::to_string(work_group_total_size * groups);
+    c += "  if (linear_local_id < " + std::to_string(reminder) + ") {\n";
+    c += "    weights_cache[" + lid +
+         "] = " + read_weight(weights_are_buffer, lid, work_group_total_size) +
+         ";\n";
+    c += "  }\n";
+  }
+  return c;
+}
+
+std::string DepthwiseConv::GenerateCode(const GpuInfo& gpu_info) {
   const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
   const bool dynamic_weights = definition_.src_tensors.size() == 2;
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
@@ -128,6 +188,12 @@ std::string DepthwiseConv::GenerateCode(const GpuInfo& gpu_info,
     c += "  int Y = GLOBAL_ID_1;\n";
   }
   c += "  int S = GLOBAL_ID_2;\n";
+  if (params_.use_weights_caching) {
+    c += GenerateWeightsUpload(gpu_info);
+  }
+  if (params_.UseLocalMem()) {
+    c += "  LOCAL_MEM_BARRIER;\n";
+  }
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
@@ -135,14 +201,12 @@ std::string DepthwiseConv::GenerateCode(const GpuInfo& gpu_info,
   c += "  ACCUM_FLT4 r = INIT_ACCUM_FLT4(0.0f);\n";
   c += "  int x_offseted = X * args.stride_x + args.padding_x;\n";
   c += "  int y_offseted = Y * args.stride_y + args.padding_y;\n";
-  if (!dynamic_weights) {
-    std::string weights_offset = "args.kernel_size_x * args.kernel_size_y";
-    if (definition_.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-      c += "  int z_offseted = Z * args.stride_z + args.padding_z;\n";
-      weights_offset += " * args.kernel_size_z";
-    }
+  if (definition_.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int z_offseted = Z * args.stride_z + args.padding_z;\n";
+  }
+  if (!dynamic_weights && !params_.use_weights_caching) {
     if (weights_are_buffer) {
-      c += "  int fx_c = S * " + weights_offset + ";\n";
+      c += "  int fx_c = S * args.kernels_total_size;\n";
     } else {
       c += "  int fx_c = 0;\n";
     }
@@ -154,79 +218,64 @@ std::string DepthwiseConv::GenerateCode(const GpuInfo& gpu_info,
   std::string kernel_size_z =
       dynamic_weights ? "args.weights.Depth()" : "args.kernel_size_z";
 
-  auto generate_check = [&]() {
-    std::string check;
-    const std::vector<Axis> axes{Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH};
-    const std::vector<std::string> names{"outside_x", "outside_y", "outside_z"};
-    for (int i = 0; i < axes.size(); ++i) {
-      const auto& axis = axes[i];
-      if (definition_.src_tensors[0].HasAxis(axis) &&
-          !definition_.src_tensors[0].SupportsZeroClamp(axis, gpu_info)) {
-        if (!check.empty()) {
-          check += " && ";
-        }
-        check += "!" + names[i];
-      }
-    }
-    return check;
-  };
-  auto generate_coords = [&]() {
-    std::string check;
-    const std::vector<Axis> axes{Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH};
-    const std::vector<std::string> names{"x_c", "y_c", "z_c"};
-    for (int i = 0; i < axes.size(); ++i) {
-      const auto& axis = axes[i];
-      if (definition_.src_tensors[0].HasAxis(axis)) {
-        if (!check.empty()) {
-          check += ", ";
-        }
-        check += names[i];
-      }
-    }
-    return check;
-  };
-  const std::string check = generate_check();
-  const std::string coords = generate_coords();
-
+  std::string check, coords;
   if (definition_.dst_tensors[0].HasAxis(Axis::DEPTH)) {
     c += "  for (int kz = 0; kz < " + kernel_size_z + "; ++kz) {\n";
     c += "    int z_c = z_offseted + kz * args.dilation_z;\n";
+    AppendToFront("z_c", ", ", &coords);
     if (!definition_.src_tensors[0].SupportsZeroClamp(Axis::DEPTH, gpu_info)) {
-      c += "    bool outside_z = z_c < 0 || z_c >= args.src_tensor.Depth();\n";
+      c += "    bool inside_z = z_c >= 0 && z_c < args.src_tensor.Depth();\n";
+      c += "    z_c = clamp(z_c, 0, args.src_tensor.Depth() - 1);\n";
+      AppendToBack("inside_z", " && ", &check);
     }
   }
   if (definition_.dst_tensors[0].HasAxis(Axis::HEIGHT)) {
     c += "  for (int ky = 0; ky < " + kernel_size_y + "; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * args.dilation_y;\n";
+    AppendToFront("y_c", ", ", &coords);
     if (!definition_.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
-      c += "    bool outside_y = y_c < 0 || y_c >= args.src_tensor.Height();\n";
+      c += "    bool inside_y = y_c >= 0 && y_c < args.src_tensor.Height();\n";
+      c += "    y_c = clamp(y_c, 0, args.src_tensor.Height() - 1);\n";
+      AppendToBack("inside_y", " && ", &check);
     }
   }
   if (definition_.dst_tensors[0].HasAxis(Axis::WIDTH)) {
     c += "  for (int kx = 0; kx < " + kernel_size_x + "; ++kx) {\n";
     c += "    int x_c = x_offseted + kx * args.dilation_x;\n";
+    AppendToFront("x_c", ", ", &coords);
     if (!definition_.src_tensors[0].SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
-      c += "    bool outside_x = x_c < 0 || x_c >= args.src_tensor.Width();\n";
+      c += "    bool inside_x = x_c >= 0 && x_c < args.src_tensor.Width();\n";
+      c += "    x_c = clamp(x_c, 0, args.src_tensor.Width() - 1);\n";
+      AppendToBack("inside_x", " && ", &check);
     }
   }
-  if (!check.empty()) {
-    c += "    if (" + check + ") {\n";
-  }
-  if (dynamic_weights) {
-    c += "      FLT4 f = args.weights.Read(kx, ky, S);\n";
+  std::string weight_value;
+  if (params_.use_weights_caching) {
+    std::string weight_index = "ky";
+    if (definition_.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+      weight_index =
+          "(kz * " + std::to_string(params_.y_kernel_size) + " + ky)";
+    }
+    weight_value = "weights_cache[" + weight_index + " * " +
+                   std::to_string(params_.x_kernel_size) + " + kx]";
   } else {
-    if (weights_are_buffer) {
-      c += "      FLT4 f = args.weights.Read(fx_c);\n";
+    weight_value = "f";
+    if (dynamic_weights) {
+      c += "      FLT4 f = args.weights.Read(kx, ky, S);\n";
     } else {
-      c += "      FLT4 f = args.weights.Read(fx_c, S);\n";
+      if (weights_are_buffer) {
+        c += "      FLT4 f = args.weights.Read(fx_c);\n";
+      } else {
+        c += "      FLT4 f = args.weights.Read(fx_c, S);\n";
+      }
     }
   }
-  c += GetSrcValue(channel_multiplier, coords);
-  c += "      r += TO_ACCUM_TYPE(src_final * f);\n";
+  c += GetSrcValue(params_.channel_multiplier, coords);
   if (!check.empty()) {
-    c += "    }\n";
+    c += "      src_final = src_final * INIT_FLT(" + check + ");\n";
   }
-  if (!dynamic_weights) {
+  c += "      r += TO_ACCUM_TYPE(src_final * " + weight_value + ");\n";
+  if (!dynamic_weights && !params_.use_weights_caching) {
     c += "    fx_c++;\n";
   }
   if (definition_.dst_tensors[0].HasAxis(Axis::WIDTH)) {
@@ -252,7 +301,9 @@ DepthwiseConv CreateDepthwiseConvolution2D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
-  DepthwiseConv op(definition);
+  DepthwiseConv::DepthwiseConvParams params;
+  params.channel_multiplier = attr.weights.shape.o;
+  DepthwiseConv op(definition, params);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
   op.args_.AddInt("padding_x", -attr.padding.prepended.w);
@@ -261,10 +312,12 @@ DepthwiseConv CreateDepthwiseConvolution2D(
   op.args_.AddInt("stride_y", attr.strides.h);
   op.args_.AddInt("padding_y", -attr.padding.prepended.h);
   op.args_.AddInt("dilation_y", attr.dilations.h);
+  op.args_.AddInt("kernels_total_size",
+                  attr.weights.shape.w * attr.weights.shape.h);
   if (!IsSpecializedCase(attr.weights.shape.o)) {
     op.args_.AddInt("ch_multiplier", attr.weights.shape.o);
   }
-  op.code_ = op.GenerateCode(gpu_info, attr.weights.shape.o);
+  op.code_ = op.GenerateCode(gpu_info);
   op.UploadWeightsForDWConv2D(attr.weights, weights_are_buffer);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
@@ -281,14 +334,16 @@ DepthwiseConv CreateDepthwiseConvolution2D(
 DepthwiseConv CreateDepthwiseConvolution2DDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
-  DepthwiseConv op(definition);
+  DepthwiseConv::DepthwiseConvParams params;
+  params.channel_multiplier = 1;
+  DepthwiseConv op(definition, params);
   op.args_.AddInt("stride_x", attr.strides.w);
   op.args_.AddInt("padding_x", -attr.padding.prepended.w);
   op.args_.AddInt("dilation_x", attr.dilations.w);
   op.args_.AddInt("stride_y", attr.strides.h);
   op.args_.AddInt("padding_y", -attr.padding.prepended.h);
   op.args_.AddInt("dilation_y", attr.dilations.h);
-  op.code_ = op.GenerateCode(gpu_info, /*channel_multiplier*/ 1);
+  op.code_ = op.GenerateCode(gpu_info);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 
   TensorLinearDescriptor desc;
@@ -307,7 +362,9 @@ DepthwiseConv CreateDepthwiseConvolution3D(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr) {
   const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
-  DepthwiseConv op(definition);
+  DepthwiseConv::DepthwiseConvParams params;
+  params.channel_multiplier = attr.weights.shape.o;
+  DepthwiseConv op(definition, params);
   op.args_.AddInt("kernel_size_x", attr.weights.shape.w);
   op.args_.AddInt("stride_x", attr.strides.w);
   op.args_.AddInt("padding_x", -attr.padding.prepended.w);
@@ -320,10 +377,13 @@ DepthwiseConv CreateDepthwiseConvolution3D(
   op.args_.AddInt("stride_z", attr.strides.d);
   op.args_.AddInt("padding_z", -attr.padding.prepended.d);
   op.args_.AddInt("dilation_z", attr.dilations.d);
+  op.args_.AddInt(
+      "kernels_total_size",
+      attr.weights.shape.w * attr.weights.shape.h * attr.weights.shape.d);
   if (!IsSpecializedCase(attr.weights.shape.o)) {
     op.args_.AddInt("ch_multiplier", attr.weights.shape.o);
   }
-  op.code_ = op.GenerateCode(gpu_info, attr.weights.shape.o);
+  op.code_ = op.GenerateCode(gpu_info);
   op.UploadWeightsForDWConv3D(attr.weights, weights_are_buffer);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
 

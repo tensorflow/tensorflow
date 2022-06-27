@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -63,9 +61,32 @@ class DepthwiseConv : public GPUOperation {
       const DepthwiseConvolution3DAttributes& attr);
 
  private:
-  explicit DepthwiseConv(const OperationDef& definition);
+  struct DepthwiseConvParams {
+    bool UseLocalMem() const { return use_weights_caching; }
+    int GetKernelsTotalSize() const {
+      return x_kernel_size * y_kernel_size * z_kernel_size;
+    }
+    int GetWorkGroupTotalSize() const {
+      return work_group_size.x * work_group_size.y * work_group_size.z;
+    }
+    int channel_multiplier;
+    // optional, if true, weights will be uploaded to local memory
+    bool use_weights_caching = false;
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int3 work_group_size = int3(1, 1, 1);
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int x_kernel_size = 1;
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int y_kernel_size = 1;
+    // optional, if UsesLocalMem() return true this field must be initialized
+    int z_kernel_size = 1;
+  };
 
-  std::string GenerateCode(const GpuInfo& gpu_info, int channel_multiplier);
+  explicit DepthwiseConv(const OperationDef& definition,
+                         const DepthwiseConvParams& params);
+
+  std::string GenerateWeightsUpload(const GpuInfo& gpu_info);
+  std::string GenerateCode(const GpuInfo& gpu_info);
 
   template <DataType T>
   void UploadWeightsForDWConv2D(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -74,6 +95,8 @@ class DepthwiseConv : public GPUOperation {
   template <DataType T>
   void UploadWeightsForDWConv3D(const tflite::gpu::Tensor<OHWDI, T>& weights,
                                 bool weights_are_buffer);
+
+  DepthwiseConvParams params_;
 };
 
 template <DataType S, typename T>
