@@ -89,6 +89,9 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     bool hasBufferSemantics() {
       return this->getOperation()->getNumResults() == 0;
     }
+
+    /// Return terminator of the loop body.
+    SubsetYieldOp getTerminator();
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -226,6 +229,69 @@ def GMLST_SubsetYieldOp : GMLST_Op<"subset_yield", [NoSideEffect, ReturnLike,
   let assemblyFormat = [{
     attr-dict ($srcs^ `into` $dsts `[` $subsets `]`
       `:` type($srcs) `into` type($dsts) `[` type($subsets) `]`)?
+  }];
+
+  let extraClassDeclaration = [{
+
+    unsigned getNumUpdates() { return srcs().size(); }
+
+    // Methods for `srcs` arguments.
+    OpOperand* getSrcOperand(unsigned i) {
+      return &getOperation()->getOpOperand(3 * i);
+    }
+
+    SmallVector<OpOperand*> getSrcOperands() {
+      SmallVector<OpOperand*> operands;
+      for (unsigned i = 0, e = getNumOperands(); i < e; i += 3)
+        operands.push_back(&getOperation()->getOpOperand(i));
+      return operands;
+    }
+
+    bool isSrcOperand(OpOperand& operand) {
+      return operand.getOperandNumber() % 3 == 0;
+    }
+
+    // Methods for `dst` arguments.
+    OpOperand* getDstOperand(unsigned i) {
+      return &getOperation()->getOpOperand(3 * i + 1);
+    }
+
+    SmallVector<OpOperand*> getDstOperands() {
+      SmallVector<OpOperand*> operands;
+      for (unsigned i = 1, e = getNumOperands(); i < e; i += 3)
+        operands.push_back(&getOperation()->getOpOperand(i));
+      return operands;
+    }
+
+    FailureOr<OpResult> getTiedOpResult(OpOperand &opOperand) {
+      if (!isDstOperand(opOperand)) return failure();
+
+      auto parent = getOperation()->getBlock()->getParentOp();
+      if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
+        return parent->getResult(0);
+      }
+      return failure();
+    }
+
+    bool isDstOperand(OpOperand& operand) {
+      return operand.getOperandNumber() % 3 == 1;
+    }
+
+    // Methods for `set` arguments.
+    OpOperand* getSetOperand(unsigned i) {
+      return &getOperation()->getOpOperand(3 * i + 2);
+    }
+
+    SmallVector<OpOperand*> getSetOperands() {
+      SmallVector<OpOperand*> operands;
+      for (unsigned i = 2, e = getNumOperands(); i < e; i += 3)
+        operands.push_back(&getOperation()->getOpOperand(i));
+      return operands;
+    }
+
+    bool isSetOperand(OpOperand& operand) {
+      return operand.getOperandNumber() % 3 == 2;
+    }
   }];
 }
 

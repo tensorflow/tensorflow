@@ -548,6 +548,10 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
 Region &ParallelOp::getLoopBody() { return region(); }
 
+SubsetYieldOp ParallelOp::getTerminator() {
+  return cast<SubsetYieldOp>(getBody()->getTerminator());
+}
+
 LogicalResult ParallelOp::verify() { return success(); }
 
 void ParallelOp::build(
@@ -598,6 +602,10 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 Region &ForOp::getLoopBody() { return region(); }
+
+SubsetYieldOp ForOp::getTerminator() {
+  return cast<SubsetYieldOp>(getBody()->getTerminator());
+}
 
 LogicalResult ForOp::verify() {
   // Check if types of output arguments match region args types.

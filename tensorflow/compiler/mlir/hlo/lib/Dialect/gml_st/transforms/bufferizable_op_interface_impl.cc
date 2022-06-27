@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
 
+#include <iterator>
+#include <tuple>
+
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
@@ -247,6 +250,46 @@ FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
   return result;
 }
 
+LogicalResult materializeInsertion(OpBuilder &b, Value update, Value subset,
+                                   Value memref,
+                                   const BufferizationOptions &options) {
+  auto subsets = findSubsetChain(subset);
+  if (failed(subsets)) return failure();
+
+  if (subsets->empty())
+    return options.createMemCpy(b, update.getLoc(), update, memref);
+
+  // Create subviews or store ops for the subset computation.
+  OpBuilder::InsertionGuard g(b);
+  auto *it = std::prev(subsets->end());
+  // The first element for the use-def chain is the `gml_st.space` op and it
+  // should be ignored for now.
+  for (; it != subsets->begin(); --it) {
+    Location loc = (*it)->getLoc();
+    b.setInsertionPointAfter(*it);
+
+    auto tile = dyn_cast<TileOp>(*it);
+    if (!tile) return failure();
+
+    memref = b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
+                                         tile.getMixedSizes(),
+                                         tile.getMixedOffsets());
+  }
+  Location loc = (*it)->getLoc();
+  if (auto point = dyn_cast<PointOp>(*it)) {
+    b.create<memref::StoreOp>(loc, update, memref,
+                              getPointIndicesValues(b, point));
+    return success();
+  }
+  if (auto tile = dyn_cast<TileOp>(*it)) {
+    memref = b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
+                                         tile.getMixedSizes(),
+                                         tile.getMixedOffsets());
+    return success();
+  }
+  llvm_unreachable("Unknown subset type");
+}
+
 struct MaterializeOpInterface
     : public BufferizableOpInterface::ExternalModel<MaterializeOpInterface,
                                                     MaterializeOp> {
@@ -265,19 +308,14 @@ struct MaterializeOpInterface
       const AnalysisState & /*state*/) const {
     auto result = op->getOpResult(0);
     if (result.getType().isa<RankedTensorType>() &&
-        &opOperand == &op->getOpOperand(0))
-      return {op->getOpResult(0)};
+        opOperand.getOperandNumber() == 0)
+      return {result};
     return {};
   }
 
   BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
                                 const AnalysisState & /*state*/) const {
     return BufferRelation::Equivalent;
-  }
-
-  bool isWritable(Operation * /*op*/, Value /*value*/,
-                  const AnalysisState & /*state*/) const {
-    return true;
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -298,6 +336,120 @@ struct MaterializeOpInterface
   }
 };
 
+struct ParallelOpInterface
+    : public BufferizableOpInterface::ExternalModel<ParallelOpInterface,
+                                                    ParallelOp> {
+  SmallVector<OpOperand *> getAliasingOpOperand(
+      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+    auto parallelOp = cast<ParallelOp>(op);
+    return {
+        parallelOp.getTerminator().getDstOperand(opResult.getResultNumber())};
+  }
+
+  bool isMemoryWrite(Operation *, OpResult, const AnalysisState &) const {
+    // This op is a memory write. Stop lookup here to avoid finding false
+    // conflicts involving this op and one of the ops in the region. This is
+    // similar to how scf.if ops are analyzed.
+    return true;
+  }
+
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
+    return BufferRelation::Equivalent;
+  }
+
+  bool isWritable(Operation * /*op*/, Value /*value*/,
+                  const AnalysisState & /*state*/) const {
+    return true;
+  }
+
+  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
+                          const BufferizationOptions &options) const {
+    auto loopOp = cast<ParallelOp>(op);
+
+    // Compute outputs, i.e. bufferized destinations of `subset_yield`.
+    SmallVector<Value> newResults;
+    for (OpOperand *dst : loopOp.getTerminator().getDstOperands())
+      newResults.push_back(getBuffer(rewriter, dst->get(), options));
+
+    // Create new TiledLoopOp.
+    auto newLoopOp = rewriter.create<ParallelOp>(
+        loopOp.getLoc(), TypeRange{llvm::None}, loopOp.lowerBound(),
+        loopOp.upperBound(), loopOp.step(), nullptr);
+
+    // Move old body into new loop.
+    rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(),
+                         newLoopOp.getInductionVars());
+
+    // Replace previous terminator with a new one that does not yield
+    // anything.
+    auto oldTerminator =
+        cast<gml_st::SubsetYieldOp>(newLoopOp.getBody()->getTerminator());
+    rewriter.setInsertionPointToEnd(newLoopOp.getBody());
+    auto newTerminator =
+        rewriter.create<gml_st::SubsetYieldOp>(oldTerminator->getLoc());
+
+    // Copy buffer of yielded tensor to output buffer. If everything
+    // bufferized inplace, this copy will fold away.
+    rewriter.setInsertionPoint(newTerminator);
+    for (auto it :
+         llvm::zip(oldTerminator.srcs(), oldTerminator.subsets(), newResults)) {
+      Value update, subset, output;
+      std::tie(update, subset, output) = it;
+      if (failed(
+              materializeInsertion(rewriter, update, subset, output, options)))
+        return failure();
+    }
+
+    // Erase old terminator.
+    rewriter.eraseOp(oldTerminator);
+
+    // Replace results and delete old op.
+    bufferization::replaceOpWithBufferizedValues(rewriter, op, newResults);
+
+    return success();
+  }
+};
+
+struct SubsetYieldOpInterface
+    : public BufferizableOpInterface::ExternalModel<SubsetYieldOpInterface,
+                                                    SubsetYieldOp> {
+  SmallVector<OpResult> getAliasingOpResult(
+      Operation *op, OpOperand &opOperand,
+      const AnalysisState & /*state*/) const {
+    auto yieldOp = cast<SubsetYieldOp>(op);
+    if (!yieldOp.isDstOperand(opOperand)) return {};
+
+    auto loopResult = yieldOp.getTiedOpResult(opOperand);
+    assert(loopResult.has_value() && "didn't find a corresponding loop result");
+    return {*loopResult};
+  }
+
+  LogicalResult bufferize(Operation * /*op*/, RewriterBase & /*b*/,
+                          const BufferizationOptions & /*options*/) const {
+    llvm_unreachable(
+        "bufferization of subset_yield happens via ParallelOp/ForOp");
+    return failure();
+  }
+
+  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+                              const AnalysisState & /*state*/) const {
+    return true;
+  }
+
+  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
+                               const AnalysisState & /*state*/) const {
+    return cast<SubsetYieldOp>(op).isDstOperand(opOperand);
+  }
+
+  bool isNotConflicting(Operation * /*op*/, OpOperand * /*uRead*/,
+                        OpOperand * /*uConflictingWrite*/,
+                        const AnalysisState & /*state*/) const {
+    // TODO(pifon): Implement proper analysis here similar to InsertSliceOp.
+    return true;
+  }
+};
+
 }  // namespace
 }  // namespace gml_st
 }  // namespace mlir
@@ -308,5 +460,7 @@ void mlir::gml_st::registerBufferizableOpInterfaceExternalModels(
       +[](MLIRContext *ctx, gml_st::GmlStDialect * /*dialect*/) {
         LoopOp::attachInterface<LoopOpInterface>(*ctx);
         MaterializeOp::attachInterface<MaterializeOpInterface>(*ctx);
+        ParallelOp::attachInterface<ParallelOpInterface>(*ctx);
+        SubsetYieldOp::attachInterface<SubsetYieldOpInterface>(*ctx);
       });
 }
