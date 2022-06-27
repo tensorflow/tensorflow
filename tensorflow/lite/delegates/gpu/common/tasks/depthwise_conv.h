@@ -62,7 +62,9 @@ class DepthwiseConv : public GPUOperation {
 
  private:
   struct DepthwiseConvParams {
-    bool UseLocalMem() const { return use_weights_caching; }
+    bool UseLocalMem() const {
+      return use_weights_caching || use_spatial_caching;
+    }
     int GetKernelsTotalSize() const {
       return x_kernel_size * y_kernel_size * z_kernel_size;
     }
@@ -70,21 +72,33 @@ class DepthwiseConv : public GPUOperation {
       return work_group_size.x * work_group_size.y * work_group_size.z;
     }
     int channel_multiplier;
+    // Supportd only tensors with Width & Height spatial dimensions
+    // optional, if true, spatial dims will be uploaded to local mem
+    bool use_spatial_caching = false;
     // optional, if true, weights will be uploaded to local memory
     bool use_weights_caching = false;
     // optional, if UsesLocalMem() return true this field must be initialized
     int3 work_group_size = int3(1, 1, 1);
+
     // optional, if UsesLocalMem() return true this field must be initialized
     int x_kernel_size = 1;
     // optional, if UsesLocalMem() return true this field must be initialized
     int y_kernel_size = 1;
     // optional, if UsesLocalMem() return true this field must be initialized
     int z_kernel_size = 1;
+
+    // optional, if use_spatial_caching true this field must be initialized
+    int x_dilation_size = 1;
+    // optional, if use_spatial_caching true this field must be initialized
+    int y_dilation_size = 1;
+    // optional, if use_spatial_caching true this field must be initialized
+    int z_dilation_size = 1;
   };
 
   explicit DepthwiseConv(const OperationDef& definition,
                          const DepthwiseConvParams& params);
 
+  std::string GenerateSrcUpload(const GpuInfo& gpu_info);
   std::string GenerateWeightsUpload(const GpuInfo& gpu_info);
   std::string GenerateCode(const GpuInfo& gpu_info);
 
