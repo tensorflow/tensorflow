@@ -511,7 +511,7 @@ void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
     auto intsrc = b_.CreateZExt(i16src, i32);
     source = b_.CreateShl(intsrc, shift);
     source = b_.CreateBitCast(source, half2type); 
-    
+
     llvm::Module* module = b_.GetInsertBlock()->getModule();
     std::vector<llvm::Type*> ir_input_types{half2ptr, half2type};
 
@@ -522,7 +522,7 @@ void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
     llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
         b_.GetInsertBlock()
             ->getModule()
-            ->getOrInsertFunction("llvm.amdgcn.global.atomic.fadd.v2f16.p1v2f16.v2f16", callee_type)
+            ->getOrInsertFunction("llvm.amdgcn.global.atomic.fadd.v2f16.p1.v2f16", callee_type)
             .getCallee());
 
     callee->addFnAttr(llvm::Attribute::NoUnwind);
