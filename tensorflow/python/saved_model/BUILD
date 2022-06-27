@@ -646,6 +646,7 @@ py_strict_library(
     name = "load_options",
     srcs = ["load_options.py"],
     deps = [
+        ":save_options",
         "//tensorflow/python/util:tf_export",
     ],
 )
