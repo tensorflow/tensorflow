@@ -278,9 +278,20 @@ int PjRtCApiDevice::id() const {
   args.priv = nullptr;
   args.device = device_;
   PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_Id(&args);
-  // TODO(shahrokhi): handle error better after (b/236710439) is resolved
+  // TODO(b/236710439): (shahrokhi) handle error
   CHECK(error == nullptr);
   return args.id;
+}
+
+int PjRtCApiDevice::process_index() const {
+  PJRT_Device_ProcessIndex_Args args;
+  args.struct_size = PJRT_Device_ProcessIndex_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_ProcessIndex(&args);
+  // TODO(b/236710439): (shahrokhi) handle error
+  CHECK(error == nullptr);
+  return args.process_index;
 }
 
 }  // namespace xla

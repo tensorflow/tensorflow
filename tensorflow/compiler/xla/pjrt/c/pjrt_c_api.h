@@ -152,6 +152,22 @@ const size_t PJRT_Device_Id_Args_STRUCT_SIZE =
 // hosts' devices.
 typedef PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  int process_index;  // out
+} PJRT_Device_ProcessIndex_Args;
+const size_t PJRT_Device_ProcessIndex_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_ProcessIndex_Args, process_index);
+
+// The index of the process that this device belongs to, i.e. is addressable
+// from. This is not always identical to PJRT_Client_ProcessIndex in a
+// multi-process setting, where each client can see devices from all
+// processes, but only a subset of them are addressable and have the same
+// process_index as the client.
+typedef PJRT_Error* PJRT_Device_ProcessIndex(
+    PJRT_Device_ProcessIndex_Args* args);
 // ------------------------------- Executables ---------------------------------
 
 typedef struct PJRT_Executable PJRT_Executable;
@@ -207,6 +223,7 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
 
   PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
+  PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
 
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
 
