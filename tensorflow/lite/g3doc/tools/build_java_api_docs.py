@@ -60,6 +60,7 @@ SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
 SECTION_LABELS = {
     'org.tensorflow.lite': 'Core',
     'org.tensorflow.lite.support': 'Support Library',
+    'org.tensorflow.lite.task.gms': 'Task Library (Play Services)',
     'org.tensorflow.lite.task': 'Task Library',
     # If we ever need other ODML packages, drop the `.image` here.
     'com.google.android.odml.image': 'ODML',
@@ -114,6 +115,10 @@ def main(unused_argv):
     overlay(resolve_nested_dir(SOURCE_PATH_SUPPORT, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_METADATA, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)
+
+    if gms_path := os.getenv('GMS_PATH'):
+      # Play Services code needs to be massaged into a Java directory structure.
+      overlay(gms_path, merged_temp_dir / 'org/tensorflow/lite/task/gms')
 
     gen_java.gen_java_docs(
         package=['org.tensorflow.lite', 'com.google.android.odml'],
