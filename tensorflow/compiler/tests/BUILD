@@ -2291,9 +2291,6 @@ tpu_py_test(
     disable_experimental = False,
     # TODO(b/225357174): Implement MLIR legalization properly.
     disable_mlir_bridge = True,
-    # TODO(b/225357162): Flaky segfault when transfering from device to host
-    # using TFRT.
-    disable_tfrt = True,
     tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",
