@@ -14,7 +14,7 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-from typing import Callable, Iterable, Mapping, Tuple, Union
+from typing import Iterable, Mapping, Tuple, Union
 
 from tensorflow.python.types import core
 
@@ -25,6 +25,5 @@ from tensorflow.python.types import core
 RepresentativeSample = Union[Tuple[str, Mapping[str, core.Tensor]],
                              Mapping[str, core.Tensor]]
 
-# A representative dataset should be a callable that returns an iterable
-# of representative samples.
-RepresentativeDataset = Callable[[], Iterable[RepresentativeSample]]
+# A representative dataset is an iterable of representative samples.
+RepresentativeDataset = Iterable[RepresentativeSample]
