@@ -62,11 +62,15 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   }
   params->autotune = ShouldUseAutotuning(options);
   if (params->autotune) {
-    params->autotune_algorithm =
-        options.autotune_options().optional_autotune_algorithm_case() ==
-                AutotuneOptions::kAutotuneAlgorithm
-            ? options.autotune_options().autotune_algorithm()
-            : model::AutotuneAlgorithm::DEFAULT;
+    params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
+    if (GetExperiments().contains("stage_based_autotune")) {
+      params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
+    }
+    if (options.autotune_options().optional_autotune_algorithm_case() ==
+        AutotuneOptions::kAutotuneAlgorithm) {
+      params->autotune_algorithm =
+          options.autotune_options().autotune_algorithm();
+    }
     params->autotune_cpu_budget = value_or_default(
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
     params->autotune_ram_budget =
