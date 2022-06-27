@@ -1372,7 +1372,7 @@ LogicalResult TileOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CollapseTileOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> loc, ValueRange operands,
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   // Get argument tile type.
