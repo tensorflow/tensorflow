@@ -623,7 +623,7 @@ absl::Status GPUOperationFromNodePart0(
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(
-          op_def, gpu_info, (inputs[0]->tensor.shape.c + 3) / 4);
+          op_def, gpu_info, inputs[0]->tensor.shape.c);
       *gpu_op = std::make_unique<MeanStdDevNormalization>(std::move(operation));
       return absl::OkStatus();
     }

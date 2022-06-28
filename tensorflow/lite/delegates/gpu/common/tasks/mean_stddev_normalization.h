@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
 
 #include <string>
+#include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -31,7 +31,7 @@ class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition,
                                    const GpuInfo& gpu_info,
-                                   const int tensor_slices);
+                                   const int tensor_channels);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -49,12 +49,12 @@ class MeanStdDevNormalization : public GPUOperation {
   MeanStdDevNormalization& operator=(const MeanStdDevNormalization&) = delete;
 
  private:
-  std::string GetNormalizationCode(const GpuInfo& gpu_info);
+  std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4);
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
     const OperationDef& definition, const GpuInfo& gpu_info,
-    const int tensor_slices);
+    const int tensor_channels);
 
 }  // namespace gpu
 }  // namespace tflite

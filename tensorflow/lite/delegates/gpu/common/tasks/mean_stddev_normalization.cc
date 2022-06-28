@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -105,13 +105,14 @@ float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
 
 MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
                                                  const GpuInfo& gpu_info,
-                                                 const int tensor_slices)
+                                                 const int tensor_channels)
     : GPUOperation(definition) {
   // The kernel code does not inherently need a fixed size, but in order to not
   // hardcode the __local array's size for the reductions, we would need to pass
   // that size to the kernel at runtime, and that is currently not supported.
   // For now, fix workgroup size to the biggest supported by the device, but not
   // larger than the number of tensor slices.
+  const int tensor_slices = DivideRoundUp(tensor_channels, 4);
   int desired_work_group_size =
       std::min(tensor_slices, gpu_info.GetMaxWorkGroupSizeForX());
   if (gpu_info.IsMali()) {
@@ -156,7 +157,8 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   work_group_size_.x = desired_work_group_size;
   work_group_size_.y = 1;  // Required
   work_group_size_.z = 1;  // Required
-  code_ = GetNormalizationCode(gpu_info);
+  args_.AddFloat("variance_bias", 1.0e-8f);
+  code_ = GetNormalizationCode(gpu_info, tensor_channels % 4 == 0);
   if (gpu_info.IsCL30OrHigher()) {
     compiler_options_.push_back(CompilerOptions::kCl30);
   } else if (gpu_info.IsCL20OrHigher()) {
@@ -165,7 +167,7 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
 }
 
 std::string MeanStdDevNormalization::GetNormalizationCode(
-    const GpuInfo& gpu_info) {
+    const GpuInfo& gpu_info, bool channels_x4) {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
 
@@ -175,16 +177,12 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
          "];\n";
   }
   c += GetReduceCode(gpu_info, work_group_size_.x);
-  c += GetFilterCode(gpu_info);
+  if (!channels_x4) {
+    c += GetFilterCode(gpu_info);
+  }
   if (gpu_info.IsApiOpenCl()) {
     c += "__attribute__((reqd_work_group_size(" +
          std::to_string(work_group_size_.x) + ", 1, 1)))\n";
-  }
-  if (gpu_info.IsApiMetal()) {
-    c += "#define native_rsqrt(value) rsqrt(value)\n";
-  }
-  if (gpu_info.IsGlsl()) {
-    c += "#define native_rsqrt(value) inversesqrt(value)\n";
   }
   if (gpu_info.IsGlsl()) {
     c += "#define LOCAL_REDUCE(item, shared_mem, local_id) local_reduce(item, "
@@ -199,15 +197,24 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
     c += "  __local float tmp[" + std::to_string(work_group_size_.x) + "];\n";
     c += "#endif\n";
   }
+  if (definition_.src_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int B = GLOBAL_ID_1;\n";
+    c += "  if (B >= args.src_tensor.Batch()) { return; }\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  }
   c += R"(
-  int B = GLOBAL_ID_1;
   // Calculate the total sum of the input tensor.
   // First, get a local sum of input[local_id_x + N*local_size_x] for all N.
   float4 private_sum4 = INIT_FLOAT4(0.0f);
   int local_id = LOCAL_ID_0;
   for (int S = local_id; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
-    float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    private_sum4 += filter_outside_tensor(t, args.src_tensor.Channels(), S);
+    float4 t = args.src_tensor.Read<float>(0, 0, S);)";
+  if (!channels_x4) {
+    c += "    t = filter_outside_tensor(t, args.src_tensor.Channels(), S);\n";
+  }
+  c += R"(
+    private_sum4 += t;
   }
   // Reduce the vector to a single float and do a workgroup reduce.
   float private_sum = dot(private_sum4, INIT_FLOAT4(1.0f));
@@ -217,8 +224,13 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   // Calculate the squared sum of the difference from the mean.
   float4 private_sum_diff_sq4 = INIT_FLOAT4(0.0f);
   for (int S = local_id; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
-    float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    float4 diff = filter_outside_tensor(t - mean, args.src_tensor.Channels(), S);
+    float4 t = args.src_tensor.Read<float>(0, 0, S);
+    float4 diff = t - mean;)";
+  if (!channels_x4) {
+    c += "    diff = filter_outside_tensor(diff, args.src_tensor.Channels(), "
+         "S);\n";
+  }
+  c += R"(
     private_sum_diff_sq4 += diff * diff;
   }
   // Reduce
@@ -226,12 +238,12 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   float sum_diff_sq = LOCAL_REDUCE(private_sum_diff_sq, tmp, local_id);
   // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
   float variance = sum_diff_sq / INIT_FLOAT(args.src_tensor.Channels());
-  float stddev_inv = native_rsqrt(variance + 1.0e-8f);
+  float stddev_inv = rsqrt(variance + args.variance_bias);
   // Calculate (t-mean)/stddev for each element
   for (int S = local_id; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
-    float4 t = args.src_tensor.Read<float>(0, 0, S, B);
+    float4 t = args.src_tensor.Read<float>(0, 0, S);
     FLT4 result = TO_FLT4((t - mean) * stddev_inv);
-    args.dst_tensor.Write(result, 0, 0, S, B);
+    args.dst_tensor.Write(result, 0, 0, S);
   }
 })";
   return c;
@@ -248,8 +260,8 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
     const OperationDef& definition, const GpuInfo& gpu_info,
-    const int tensor_slices) {
-  return MeanStdDevNormalization(definition, gpu_info, tensor_slices);
+    const int tensor_channels) {
+  return MeanStdDevNormalization(definition, gpu_info, tensor_channels);
 }
 
 }  // namespace gpu

@@ -43,8 +43,8 @@ absl::Status MeanStddevNormSeparateBatchesTest(float mean, float diff,
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
-      auto operation =
-          CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(), 1);
+      auto operation = CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(),
+                                                     src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor},
           std::make_unique<MeanStdDevNormalization>(std::move(operation)),
@@ -90,8 +90,8 @@ absl::Status MeanStddevNormalizationAllBatchesTest(
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
-      auto operation =
-          CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(), 1);
+      auto operation = CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(),
+                                                     src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor},
           std::make_unique<MeanStdDevNormalization>(std::move(operation)),
@@ -146,7 +146,7 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
       auto operation = CreateMeanStdDevNormalization(op_def, env->GetGpuInfo(),
-                                                     (kVectorSize + 3) / 4);
+                                                     src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor},
           std::make_unique<MeanStdDevNormalization>(std::move(operation)),
