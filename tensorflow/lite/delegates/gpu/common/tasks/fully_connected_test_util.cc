@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -49,7 +50,7 @@ absl::Status FullyConnectedTest(TestExecutionEnvironment* env) {
       FullyConnected operation =
           CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)),
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({14.5f, 37.5f}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -95,7 +96,7 @@ absl::Status FullyConnectedLargeTest(TestExecutionEnvironment* env) {
       FullyConnected operation =
           CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)),
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, 12), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({139.4f, 363.5f, 587.6f, 811.7f, 1035.8f, 1259.9f,
@@ -156,7 +157,7 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
       FullyConnected operation =
           CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)),
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, kOutputSize), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(expected, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);

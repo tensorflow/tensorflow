@@ -32,10 +32,10 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-struct FusionPattern : public OpRewritePattern<gml_st::MaterializeOp> {
-  using OpRewritePattern<gml_st::MaterializeOp>::OpRewritePattern;
+struct FusionPattern : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(gml_st::MaterializeOp op,
+  LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter& rewriter) const override {
     Operation* def = op.source().getDefiningOp();
     if (!def) return failure();

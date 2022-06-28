@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -114,9 +116,9 @@ bool IsColocatedTask(const TaskInfo& task) {
   });
 }
 
-StatusOr<DataServiceMetadata> GetDataServiceMetadata(const int64_t dataset_id,
-                                                     const tstring& address,
-                                                     const tstring& protocol) {
+StatusOr<DataServiceMetadata> GetDataServiceMetadata(
+    const std::string& dataset_id, const tstring& address,
+    const tstring& protocol) {
   DataServiceDispatcherClient client(address, protocol);
   DataServiceMetadata metadata;
   absl::Time deadline =
@@ -139,7 +141,7 @@ StatusOr<DataServiceMetadata> GetDataServiceMetadata(const int64_t dataset_id,
 }
 
 StatusOr<DataServiceMetadata::Compression> GetValidatedCompression(
-    int64_t dataset_id, const DataServiceMetadata& metadata) {
+    const std::string& dataset_id, const DataServiceMetadata& metadata) {
   if (metadata.compression() == DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
     return errors::Internal(absl::Substitute(
         "Got invalid compression $0 for dataset $1. A proper compression "
@@ -173,19 +175,19 @@ StatusOr<DataServiceConfig> GetDataServiceConfig(const tstring& address,
 // to read from (in case workers are added or removed).
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int op_version, int64_t dataset_id,
+  Dataset(OpKernelContext* ctx, int op_version, const std::string& dataset_id,
           const ProcessingModeDef& processing_mode, const std::string& address,
           const std::string& protocol,
           const std::string& data_transfer_protocol,
-          const std::string& job_name, absl::optional<int64_t> consumer_index,
-          absl::optional<int64_t> num_consumers,
+          const std::string& job_name, std::optional<int64_t> consumer_index,
+          std::optional<int64_t> num_consumers,
           int64_t max_outstanding_requests, int64_t task_refresh_interval_ms,
           const TargetWorkers target_workers,
           const DataServiceMetadata& metadata,
           IterationCounter* iteration_counter, bool owns_resource,
           ResourceHandle iteration_counter_handle,
           std::unique_ptr<CapturedFunction> captured_uncompress_func,
-          const absl::optional<CrossTrainerCacheOptions>&
+          const std::optional<CrossTrainerCacheOptions>&
               cross_trainer_cache_options,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
@@ -288,7 +290,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Inputs
     std::vector<Node*> inputs;
     Node* dataset_id;
-    TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_, &dataset_id));
+    int64_t dataset_id_int;
+    if (!absl::SimpleAtoi(dataset_id_, &dataset_id_int)) {
+      return errors::Internal("Failed to parse dataset ID: ", dataset_id_,
+                              ". Expect integers.");
+    }
+    TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_int, &dataset_id));
     inputs.push_back(dataset_id);
 
     Node* processing_mode;
@@ -806,7 +813,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           ClientHeartbeatResponse::kBlockRound) {
         TryBlockRound(resp.block_round());
       } else {
-        round_robin_round_limit_ = absl::nullopt;
+        round_robin_round_limit_ = std::nullopt;
         worker_thread_cv_.notify_all();
       }
       UpdateTasks(resp);
@@ -1065,7 +1072,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementRequest req;
       req.set_task_id(task.info.task_id());
       req.set_skipped_previous_round(task.skipped_previous_round);
-      absl::optional<int64_t> round_index;
+      std::optional<int64_t> round_index;
       if (StrictRoundRobin()) {
         round_index = task.round;
         req.set_consumer_index(dataset()->consumer_index_.value());
@@ -1262,7 +1269,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // INVARIANT: current_round_ <= round_robin_round_limit_.
     //            If current_round_ == round_robin_round_limit_,
     //            next_task_index_ must be 0.
-    absl::optional<int64_t> round_robin_round_limit_ TF_GUARDED_BY(mu_);
+    std::optional<int64_t> round_robin_round_limit_ TF_GUARDED_BY(mu_);
 
     // A status to be returned from the next call to `GetNext`. This is set by
     // asynchronous threads when they encounter errors.
@@ -1292,7 +1299,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   };
 
   const int op_version_;
-  const int64_t dataset_id_;
+  const tstring dataset_id_;
   const ProcessingModeDef processing_mode_;
   const tstring address_;
   const tstring protocol_;
@@ -1370,8 +1377,9 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
-  int64_t dataset_id;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id));
+  int64_t dataset_id_int;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id_int));
+  std::string dataset_id = absl::StrCat(dataset_id_int);
 
   tstring processing_mode_str;
   OP_REQUIRES_OK(
@@ -1415,8 +1423,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
     data_transfer_protocol_ = kLocalTransferProtocol;
   }
 
-  absl::optional<int64_t> consumer_index;
-  absl::optional<int64_t> num_consumers;
+  std::optional<int64_t> consumer_index;
+  std::optional<int64_t> num_consumers;
   if (op_version_ >= 2) {
     int64_t consumer_index_int;
     OP_REQUIRES_OK(
@@ -1500,7 +1508,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                       &captured_uncompress_func));
   }
 
-  absl::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
+  std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
   if (!seriazlied_cross_trainer_cache_options_.empty()) {
     cross_trainer_cache_options.emplace();
     cross_trainer_cache_options->ParseFromString(

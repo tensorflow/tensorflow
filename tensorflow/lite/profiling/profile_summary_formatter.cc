@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <sstream>
+#include <string>
 
 namespace tflite {
 namespace profiling {

@@ -211,7 +211,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     params.op_version = op_version_;
     bool deterministic =
         deterministic_.IsDeterministic() || deterministic_.IsDefault();
-    return absl::make_unique<ParallelInterleaveIterator>(
+    return std::make_unique<ParallelInterleaveIterator>(
         ParallelInterleaveIterator::Params{
             this,
             name_utils::IteratorPrefix(
@@ -360,7 +360,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             GetAutotuneDefaultParallelism(ctx), dataset()->cycle_length_);
       }
       ctx_ = std::make_unique<IteratorContext>(*ctx);
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
       params.interleave_depth += 1;
       params.cancellation_manager = cancellation_manager_.get();
@@ -1070,7 +1070,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         element->inputs =
-            absl::make_unique<std::vector<Tensor>>(std::move(inputs));
+            std::make_unique<std::vector<Tensor>>(std::move(inputs));
         IteratorContext::Params params(ctx_.get());
         params.interleave_depth += 1;
         IteratorContext ctx(params);

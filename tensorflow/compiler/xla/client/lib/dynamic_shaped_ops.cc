@@ -112,11 +112,9 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
                          XlaOp false_operand,
                          const XlaComputation& false_computation) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    auto true_shape =
-        true_computation.GetProgramShape().ConsumeValueOrDie().result();
+    auto true_shape = true_computation.GetProgramShape().value().result();
 
-    auto false_shape =
-        false_computation.GetProgramShape().ConsumeValueOrDie().result();
+    auto false_shape = false_computation.GetProgramShape().value().result();
 
     if (ShapeUtil::Compatible(true_shape, false_shape)) {
       return xla::Conditional(predicate, true_operand, true_computation,

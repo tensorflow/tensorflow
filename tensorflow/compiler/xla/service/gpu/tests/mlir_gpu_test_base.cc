@@ -40,6 +40,10 @@ MlirGpuTestBase::MlirGpuTestBase() {
   backend_ = xla::Backend::CreateBackend(options).value();
 }
 
+StreamPool::Ptr MlirGpuTestBase::BorrowStream() {
+  return *backend_->BorrowStream(backend_->default_device_ordinal());
+}
+
 StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
     mlir::ModuleOp module, se::Stream* stream) {
   llvm::LLVMContext llvm_context;

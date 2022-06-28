@@ -39,7 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -115,8 +115,8 @@ Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
 
 Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
                           ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(
-      loc, type, dynSizes, /*copy=*/Value(), /*escape=*/BoolAttr());
+  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
+                                                /*copy=*/Value());
 }
 
 Value getInitTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
@@ -2431,8 +2431,10 @@ struct ReduceWindowOpOnTensorsGenericConversion
       dstExprs.push_back(mlir::getAffineDimExpr(i, ctx));
     }
 
-    SmallVector<AffineMap, 4> inferredMaps =
-        AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
+    SmallVector<AffineMap, 4> inferredMaps(3, AffineMap::get(ctx));
+    if (rank > 0)
+      inferredMaps =
+          AffineMap::inferFromExprList({srcExprs, windowExprs, dstExprs});
 
     SmallVector<AffineMap, 4> indexingMaps;
 

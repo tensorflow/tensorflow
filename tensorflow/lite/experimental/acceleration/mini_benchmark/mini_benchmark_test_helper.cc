@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 
 #include <fcntl.h>
+
+#include <string>
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <signal.h>

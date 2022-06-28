@@ -40,11 +40,15 @@ class AutotuneAlgorithm(enum.Enum):
 
   MAX_PARALLELISM: Similar to HILL_CLIMB but uses a relaxed stopping condition,
   allowing the optimization to oversubscribe the CPU.
+
+  STAGE_BASED: In each optimization step, this algorithm chooses the worst
+  bottleneck parameter and increases its value by 1.
   """
   DEFAULT = 0
   HILL_CLIMB = 1
   GRADIENT_DESCENT = 2
   MAX_PARALLELISM = 3
+  STAGE_BASED = 4
 
   @classmethod
   def _to_proto(cls, obj):
@@ -56,9 +60,11 @@ class AutotuneAlgorithm(enum.Enum):
       return model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT
     if obj == cls.MAX_PARALLELISM:
       return model_pb2.AutotuneAlgorithm.MAX_PARALLELISM
+    if obj == cls.STAGE_BASED:
+      return model_pb2.AutotuneAlgorithm.STAGE_BASED
     raise ValueError(
-        f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` and "
-        f"`GRADIENT_DESCENT`. Got {obj.name}.")
+        f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` "
+        f"`GRADIENT_DESCENT`, and `STAGE_BASED`. Got {obj.name}.")
 
   @classmethod
   def _from_proto(cls, pb):
@@ -70,8 +76,11 @@ class AutotuneAlgorithm(enum.Enum):
       return cls.GRADIENT_DESCENT
     if pb == model_pb2.AutotuneAlgorithm.MAX_PARALLELISM:
       return cls.MAX_PARALLELISM
-    raise ValueError(f"Invalid `pb.` Supported values include `DEFAULT`, "
-                     f"`HILL_CLIMB` and `GRADIENT_DESCENT`. Got {pb}.")
+    if pb == model_pb2.AutotuneAlgorithm.STAGE_BASED:
+      return cls.STAGE_BASED
+    raise ValueError(
+        f"Invalid `pb.` Supported values include `DEFAULT`, `HILL_CLIMB`, "
+        f"`GRADIENT_DESCENT` and `STAGE_BASED`. Got {pb}.")
 
 
 @tf_export("data.experimental.AutoShardPolicy")

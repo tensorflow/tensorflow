@@ -26,14 +26,14 @@ class MyCustomClass(serialization.Serializable):
     self.name = name
 
   @classmethod
-  def type_proto(cls):
+  def experimental_type_proto(cls):
     return serialization_test_pb2.MyCustomRepresentation
 
   @classmethod
-  def from_proto(cls, proto):
+  def experimental_from_proto(cls, proto):
     return MyCustomClass(proto.index, proto.name)
 
-  def to_proto(self):
+  def experimental_as_proto(self):
     proto = serialization_test_pb2.MyCustomRepresentation(
         index=self.index, name=self.name)
     return proto
@@ -45,15 +45,15 @@ class MyCompositeClass(serialization.Serializable):
     self.elements = elements
 
   @classmethod
-  def type_proto(cls):
+  def experimental_type_proto(cls):
     return serialization_test_pb2.MyCompositeRepresentation
 
   @classmethod
-  def from_proto(cls, proto):
+  def experimental_from_proto(cls, proto):
     return MyCompositeClass(
         *[serialization.deserialize(element) for element in proto.elements])
 
-  def to_proto(self):
+  def experimental_as_proto(self):
     serialized_elements = [
         serialization.serialize(element) for element in self.elements
     ]
@@ -134,14 +134,14 @@ class SerializeTest(test.TestCase):
       class ClassThatReusesProto(serialization.Serializable):  # pylint: disable=unused-variable
 
         @classmethod
-        def type_proto(cls):
+        def experimental_type_proto(cls):
           return serialization_test_pb2.MyCustomRepresentation
 
         @classmethod
-        def from_proto(cls, proto):
+        def experimental_from_proto(cls, proto):
           raise NotImplementedError
 
-        def to_proto(self):
+        def experimental_as_proto(self):
           raise NotImplementedError
 
   def testWrongProto(self):
@@ -149,20 +149,20 @@ class SerializeTest(test.TestCase):
     class ClassReturningWrongProto(serialization.Serializable):
 
       @classmethod
-      def type_proto(cls):
+      def experimental_type_proto(cls):
         return serialization.SerializedTraceType
 
       @classmethod
-      def from_proto(cls, proto):
+      def experimental_from_proto(cls, proto):
         raise NotImplementedError
 
-      def to_proto(self):
+      def experimental_as_proto(self):
         return serialization_test_pb2.MyCustomRepresentation()
 
     with self.assertRaisesRegex(
         ValueError,
         ("ClassReturningWrongProto returned different type of proto than "
-         "specified by type_proto()")):
+         "specified by experimental_type_proto()")):
       serialization.serialize(ClassReturningWrongProto())
 
 

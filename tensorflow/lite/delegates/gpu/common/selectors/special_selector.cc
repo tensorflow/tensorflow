@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -102,8 +103,8 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   if (it != tensor_descriptors.end()) {
     op_def.dst_tensors.push_back(it->second);
   }
-  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, gpu_info, dw_attr,
-                                           conv_attr)) {
+  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, gpu_info, dw_attr, conv_attr,
+                                           &conv_outputs[0]->tensor.shape)) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
   std::unique_ptr<GPUOperation>* gpu_op =
@@ -111,7 +112,7 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   ReLUAttributes* relu_attr_ptr = relu_node ? &relu_attributes : nullptr;
   auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
                                                   conv_attr, relu_attr_ptr);
-  *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+  *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
   (*gpu_op)->flops_ = GetDepthwiseConvolutionFlops(dw_outputs[0]->tensor.shape,
                                                    dw_attr.weights.shape) +
                       GetConvolutionFlops(conv_outputs[0]->tensor.shape,
@@ -238,7 +239,7 @@ absl::Status TryFCFCAdd(
     }
     fc = CreateFCFCAdd(gpu_info, op_def, fc0_attr, fc1_attr);
   }
-  *gpu_op = absl::make_unique<FCFCAdd>(std::move(fc));
+  *gpu_op = std::make_unique<FCFCAdd>(std::move(fc));
   const std::string fused_nodes = std::to_string(fc0_node->id) + " " +
                                   std::to_string(fc1_node->id) + " " +
                                   std::to_string(add_node->id);

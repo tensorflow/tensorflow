@@ -711,12 +711,8 @@ cuda_py_test(
 
 tf_py_test(
     name = "prefetch_test",
-    size = "small",
+    size = "medium",
     srcs = ["prefetch_test.py"],
-    tags = [
-        "noasan",  # TODO(b/231979296): re-enable after flakiness resolved.
-        "notap",  # TODO(b/235851493): re-enable after flakiness resolved.
-    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",

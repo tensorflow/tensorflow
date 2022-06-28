@@ -2828,6 +2828,18 @@ class VariableTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_variable_input(self):
+    v = resource_variable_ops.ResourceVariable([1, 2])
+    self.evaluate(v.initializer)
+
+    def loop_fn(x):
+      return x + 1
+
+    result = pfor_control_flow_ops.vectorized_map(loop_fn, v)
+    expected_result = [2, 3]
+    self.assertAllEqual(result, expected_result)
+
 
 if __name__ == "__main__":
   test.main()

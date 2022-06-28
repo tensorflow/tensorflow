@@ -57,6 +57,9 @@
         distributed training failures & restarts. The training state can now be
         restored at the exact epoch and step at which it was previously saved
         before failing.
+    *   Added [`tf.keras.dtensor.experimental.optimizers.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/dtensor/experimental/optimizers/AdamW). This optimizer
+        is similar as the existing [`keras.optimizers.experimental.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental/AdamW), and
+        works in the DTensor training use case.
 
 *   `tf.data`:
 
@@ -73,6 +76,10 @@
         small increase in memory usage due to buffering. To enable this
         behavior, set `inject_prefetch=True` in
         `tf.data.experimental.OptimizationOptions`.
+    *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`:
+        STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it
+        runs a new algorithm that can get the same performance with lower
+        CPU/memory usage.
 
 *   `tf.distribute`:
 

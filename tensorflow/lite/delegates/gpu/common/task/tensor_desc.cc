@@ -191,14 +191,6 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
     desc.data_type = data_type;
     desc.access_type = access_type_;
     desc.element_size = 4;
-    auto it1 = state_vars_.find("ElementsX2");
-    if (it1 != state_vars_.end() && it1->second == "true") {
-      desc.element_size = 8;
-    }
-    auto it2 = state_vars_.find("ElementsX4");
-    if (it2 != state_vars_.end() && it2->second == "true") {
-      desc.element_size = 16;
-    }
     resources.buffers.push_back({"buffer", desc});
   } else if (storage_type == TensorStorageType::SINGLE_TEXTURE_2D ||
              storage_type == TensorStorageType::TEXTURE_2D) {
@@ -1143,14 +1135,6 @@ int TensorDescriptor::GetWidthSize(BHWDC shape) const {
   auto it = state_vars_.find("BatchedWidth");
   if (it != state_vars_.end() && it->second == "true") {
     width *= shape.b;
-  }
-  auto it1 = state_vars_.find("ElementsX2");
-  if (it1 != state_vars_.end() && it1->second == "true") {
-    width /= 2;
-  }
-  auto it2 = state_vars_.find("ElementsX4");
-  if (it2 != state_vars_.end() && it2->second == "true") {
-    width /= 4;
   }
   return width;
 }

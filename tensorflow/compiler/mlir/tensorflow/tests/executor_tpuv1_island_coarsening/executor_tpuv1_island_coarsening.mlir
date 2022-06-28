@@ -450,3 +450,19 @@ func.func @fuse_in_chain_TPUReplicatedOutput() {
   }
   func.return
 }
+
+// -----
+
+// Test inconsistent _replication_info
+func.func @inconsistent_replication_info(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
+  // expected-error @+1 {{Graph contains op with inconsistent cluster info}}
+  tf_executor.graph {
+    %partitioned_out, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", device = "", partition_dim = 0 : i64} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedInput"(%partitioned_out) {N = 1 : i64, T = i32, device = "", index = 0 : i64, is_mirrored_variable = false} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out1, %add_control1 = tf_executor.island wraps "tf.AddV2"(%partitioned_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster1"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %add_out2, %add_control2 = tf_executor.island wraps "tf.AddV2"(%replicated_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster2"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    tf_executor.fetch
+  }
+  func.return
+}

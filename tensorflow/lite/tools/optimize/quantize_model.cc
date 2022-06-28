@@ -109,7 +109,7 @@ TfLiteStatus DuplicateBiasesWithMultipleUses(ModelT* model,
           new_tensor->type = bias_tensor->type;
           if (bias_tensor->quantization) {
             new_tensor->quantization =
-                absl::make_unique<QuantizationParametersT>();
+                std::make_unique<QuantizationParametersT>();
             new_tensor->quantization->scale.assign(
                 bias_tensor->quantization->scale.begin(),
                 bias_tensor->quantization->scale.end());
@@ -737,7 +737,7 @@ TfLiteStatus ApplyConstraints(
         }
 
         if (IsConstantWithOneUse(model, subgraph, op->inputs[input_idx])) {
-          auto quantization = absl::make_unique<QuantizationParametersT>();
+          auto quantization = std::make_unique<QuantizationParametersT>();
           quantization->scale.push_back(output_scale);
           quantization->zero_point.push_back(output_zp);
           const std::vector<uint8_t>& buffer_data =
@@ -1018,7 +1018,7 @@ TfLiteStatus QuantizeOpInput(
         utils::MakeTensor(tensor->name + "_" + type_string, tensor->shape,
                           tensor->shape_signature, activations_type,
                           &op_output);
-        op_output->quantization = absl::make_unique<QuantizationParametersT>();
+        op_output->quantization = std::make_unique<QuantizationParametersT>();
         op_output->quantization->min.push_back(tensor->quantization->min[0]);
         op_output->quantization->max.push_back(tensor->quantization->max[0]);
         TF_LITE_ENSURE_STATUS(utils::QuantizeActivation(
@@ -1121,7 +1121,7 @@ TfLiteStatus QuantizeOpOutput(
     const int32_t input_zero_point = input_tensor->quantization->zero_point[0];
 
     // Apply to output.
-    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    output_tensor->quantization = std::make_unique<QuantizationParametersT>();
     output_tensor->quantization->scale.push_back(input_scale);
     output_tensor->quantization->zero_point.push_back(input_zero_point);
     if (!input_tensor->quantization->min.empty()) {
@@ -1139,7 +1139,7 @@ TfLiteStatus QuantizeOpOutput(
                                   : tensor_property.restricted_value_int8;
 
     // Apply to output.
-    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    output_tensor->quantization = std::make_unique<QuantizationParametersT>();
     output_tensor->quantization->scale.push_back(scale_and_zp.first);
     output_tensor->quantization->zero_point.push_back(scale_and_zp.second);
     output_tensor->type = activations_type;
@@ -1267,7 +1267,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
 
           // Asmmetric quantization to 8 bit.
           auto quantization_params =
-              absl::make_unique<QuantizationParametersT>();
+              std::make_unique<QuantizationParametersT>();
           utils::GetAsymmetricQuantizationParams(
               min_of_min, max_of_max, -128, 127, quantization_params.get());
 
@@ -1275,7 +1275,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
           const float scale = quantization_params->scale[0];
           const int32 zero_point = quantization_params->zero_point[0];
           for (TensorT* tensor : {tensor_1, tensor_2}) {
-            tensor->quantization = absl::make_unique<QuantizationParametersT>();
+            tensor->quantization = std::make_unique<QuantizationParametersT>();
             tensor->quantization->scale.push_back(scale);
             tensor->quantization->zero_point.push_back(zero_point);
             tensor->type = TensorType_INT8;
@@ -1433,7 +1433,7 @@ TfLiteStatus QuantizeResources(ModelT* model,
         }
         if (!var_tensor->quantization) {
           var_tensor->quantization =
-              absl::make_unique<QuantizationParametersT>();
+              std::make_unique<QuantizationParametersT>();
           var_tensor->quantization->min.push_back(
               resource_min_max_map[name].first);
           var_tensor->quantization->max.push_back(
@@ -1675,7 +1675,7 @@ TfLiteStatus FillQuantizationParams(
               reinterpret_cast<const float*>(buffer->data.data());
 
           if (tensor->quantization == nullptr) {
-            tensor->quantization = absl::make_unique<QuantizationParametersT>();
+            tensor->quantization = std::make_unique<QuantizationParametersT>();
           }
 
           // Fill per channel max and min with respect to channel_dim_index.

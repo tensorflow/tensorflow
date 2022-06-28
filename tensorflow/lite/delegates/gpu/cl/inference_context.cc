@@ -524,7 +524,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size,
                                             context, &shared_buffer));
       shared_buffers_parent_ =
-          absl::make_unique<Buffer>(std::move(shared_buffer));
+          std::make_unique<Buffer>(std::move(shared_buffer));
       shared_buffers_parent_ptr_ = shared_buffers_parent_.get();
     } else if (shared_buffers_parent_ptr_->GetMemorySizeInBytes() <
                offset_assignment.total_size) {
@@ -546,7 +546,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
         RETURN_IF_ERROR(
             CreateReadWriteBuffer(total_size, context, &shared_buffer));
         shared_buffers_parent_ =
-            absl::make_unique<Buffer>(std::move(shared_buffer));
+            std::make_unique<Buffer>(std::move(shared_buffer));
         shared_buffers_parent_ptr_ = shared_buffers_parent_.get();
       } else if (shared_buffers_parent_ptr_->GetMemorySizeInBytes() <
                  total_size) {

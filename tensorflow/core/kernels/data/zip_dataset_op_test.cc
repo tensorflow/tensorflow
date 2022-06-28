@@ -33,7 +33,7 @@ class ZipDatasetParams : public DatasetParams {
                       std::move(node_name)),
         num_input_datasets_(num_input_datasets) {
     for (auto& params : input_dataset_params) {
-      input_dataset_params_.push_back(absl::make_unique<T>(params));
+      input_dataset_params_.push_back(std::make_unique<T>(params));
     }
 
     iterator_prefix_ =

@@ -133,6 +133,7 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     OptionalAttr<I64Attr>:$algorithm);
@@ -146,6 +147,7 @@ def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemRead]>:$output,
     DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,

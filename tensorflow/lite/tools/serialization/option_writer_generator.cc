@@ -15,6 +15,7 @@ limitations under the License.
 #include <ctype.h>
 
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 

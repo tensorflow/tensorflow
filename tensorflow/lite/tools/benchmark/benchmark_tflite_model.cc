@@ -19,11 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <random>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -81,7 +83,7 @@ class RuyProfileListener : public BenchmarkListener {
 };
 
 void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
-  ruy_profile_.reset(new ruy::profiler::ScopeProfile);
+  ruy_profile_ = std::make_unique<ruy::profiler::ScopeProfile>();
 }
 
 void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
@@ -622,7 +624,7 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   }
   // Manually enable caching behavior in TF Lite interpreter.
   if (use_caching) {
-    external_context_.reset(new tflite::ExternalCpuBackendContext());
+    external_context_ = std::make_unique<tflite::ExternalCpuBackendContext>();
     std::unique_ptr<tflite::CpuBackendContext> cpu_backend_context(
         new tflite::CpuBackendContext());
     cpu_backend_context->SetUseCaching(true);

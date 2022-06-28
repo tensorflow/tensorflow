@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>
@@ -123,6 +124,7 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
       fbb.Reset();
       std::vector<int64_t> initialization_times{results.compilation_time_us};
       std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> metrics;
+      metrics.reserve(results.metrics.size());
       for (const auto& name_and_values : results.metrics) {
         metrics.push_back(
             CreateBenchmarkMetric(fbb, fbb.CreateString(name_and_values.first),

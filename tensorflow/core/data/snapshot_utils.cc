@@ -102,11 +102,11 @@ Status Writer::Create(Env* env, const std::string& filename,
   switch (version) {
     case 1:
       *out_writer =
-          absl::make_unique<CustomWriter>(filename, compression_type, dtypes);
+          std::make_unique<CustomWriter>(filename, compression_type, dtypes);
       break;
     case 2:
       *out_writer =
-          absl::make_unique<TFRecordWriter>(filename, compression_type);
+          std::make_unique<TFRecordWriter>(filename, compression_type);
       break;
     default:
       return errors::InvalidArgument("Snapshot writer version: ", version,
@@ -123,7 +123,7 @@ TFRecordWriter::TFRecordWriter(const std::string& filename,
 Status TFRecordWriter::Initialize(tensorflow::Env* env) {
   TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 
-  record_writer_ = absl::make_unique<io::RecordWriter>(
+  record_writer_ = std::make_unique<io::RecordWriter>(
       dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
                        /*compression_type=*/compression_type_));
   return OkStatus();
@@ -344,12 +344,12 @@ Status Reader::Create(Env* env, const std::string& filename,
     // strictly worse than V1.
     case 0:
     case 1:
-      *out_reader = absl::make_unique<CustomReader>(filename, compression_type,
-                                                    version, dtypes);
+      *out_reader = std::make_unique<CustomReader>(filename, compression_type,
+                                                   version, dtypes);
       break;
     case 2:
       *out_reader =
-          absl::make_unique<TFRecordReader>(filename, compression_type, dtypes);
+          std::make_unique<TFRecordReader>(filename, compression_type, dtypes);
       break;
     default:
       return errors::InvalidArgument("Snapshot reader version: ", version,
@@ -425,7 +425,7 @@ class Reader::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(node_name(), prefix)});
   }
 
@@ -594,7 +594,7 @@ class Reader::NestedDataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(node_name(), prefix)});
   }
 
@@ -717,7 +717,7 @@ TFRecordReader::TFRecordReader(const std::string& filename,
 Status TFRecordReader::Initialize(Env* env) {
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
 
-  record_reader_ = absl::make_unique<io::RecordReader>(
+  record_reader_ = std::make_unique<io::RecordReader>(
       file_.get(), io::RecordReaderOptions::CreateRecordReaderOptions(
                        /*compression_type=*/compression_type_));
   return OkStatus();
@@ -764,17 +764,17 @@ Status CustomReader::Initialize(Env* env) {
     io::ZlibCompressionOptions zlib_options;
     zlib_options = io::ZlibCompressionOptions::GZIP();
 
-    input_stream_ = absl::make_unique<io::ZlibInputStream>(
+    input_stream_ = std::make_unique<io::ZlibInputStream>(
         input_stream_.release(), zlib_options.input_buffer_size,
         zlib_options.output_buffer_size, zlib_options, true);
   } else if (compression_type_ == io::compression::kSnappy) {
     if (version_ == 0) {
-      input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
+      input_stream_ = std::make_unique<io::SnappyInputBuffer>(
           file_.get(), /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
           /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
     } else {
       input_stream_ =
-          absl::make_unique<io::BufferedInputStream>(file_.get(), 64 << 20);
+          std::make_unique<io::BufferedInputStream>(file_.get(), 64 << 20);
     }
   }
 #endif  // IS_SLIM_BUILD
@@ -895,7 +895,7 @@ Status CustomReader::SnappyUncompress(
       simple_tensors->push_back(std::move(simple_tensor));
     } else {
       auto tensor_proto_str =
-          absl::make_unique<char[]>(tensor_metadata.tensor_size_bytes());
+          std::make_unique<char[]>(tensor_metadata.tensor_size_bytes());
       iov[index].iov_base = tensor_proto_str.get();
       iov[index].iov_len = tensor_metadata.tensor_size_bytes();
       tensor_proto_strs->push_back(std::make_pair(

@@ -127,7 +127,7 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Gt(ConstantR0<float>(&builder, 40.0f), prev);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
   // Create a computation for the body: add the reduced value of the Infeed
   // data to the result variable.
@@ -139,14 +139,14 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
     auto addend = Reduce(infeed, ConstantR0<float>(&builder, 0.0f),
                          CreateScalarAddComputation(F32, &builder), {0});
     Add(prev, addend);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
   // Create a While node with computations for the condition and the body.
   auto init = ConstantR0<float>(&builder, 0.0f);
   While(condition, body, init);
 
   // Build and asynchronously launch the computation.
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
   std::unique_ptr<GlobalData> result;
   tensorflow::Thread* computation_thread =
       tensorflow::Env::Default()->StartThread(
@@ -168,7 +168,7 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
       client_->TransferToInfeed(LiteralUtil::CreateR1<float>({13, 14, 15})));
 
   delete computation_thread;  // Joins the thread.
-  auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
+  auto result_literal = client_->Transfer(*result).value();
 
   // Only the first 3 infeed data should be added.
   LiteralTestUtil::ExpectR0Near<float>(45.0f, result_literal, ErrorSpec{1e-7});
@@ -211,7 +211,7 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     GetTupleElement(prev, 1);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // A lambda that builds the body computation of a while loop with the given
@@ -230,7 +230,7 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
                CreateScalarAddComputation(F32, &builder), {0});
     auto result = Add(GetTupleElement(prev, 0), addend);
     Tuple(&builder, {result, GetTupleElement(infeed, 1)});
-    return builder.Build().ConsumeValueOrDie();
+    return builder.Build().value();
   };
 
   // Create the first while loop with infeed1_shape.
@@ -246,7 +246,7 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   GetTupleElement(while2, 0);
 
   // Build the computation.
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Send the first 4 Infeed data of shape Tuple(F32[2], PRED).
   ASSERT_IS_OK(client_->TransferToInfeed(
@@ -286,7 +286,7 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
 
   // Wait for the execution to be done, and transfer the result.
   delete computation_thread;  // Joins the thread.
-  auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
+  auto result_literal = client_->Transfer(*result).value();
 
   // Only the first 6 infeed data should be added.
   LiteralTestUtil::ExpectR0Near<float>(66.0f, result_literal, ErrorSpec{1e-7});

@@ -927,8 +927,7 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
   int64_t collapsed = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
     int64_t dim_partitions = operand_sharding.tile_assignment().dim(i);
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
-        absl::c_linear_search(index_map, i)) {
+    if (absl::c_linear_search(collapsed_or_inserted_dims, i)) {
       if (dim_partitions > 1) {
         return std::nullopt;
       }

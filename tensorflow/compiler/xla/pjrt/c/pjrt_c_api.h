@@ -54,7 +54,7 @@ typedef struct {
   size_t message_size;  // out
 } PJRT_Error_Message_Args;
 const size_t PJRT_Error_Message_Args_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Error_Message_Args, error);
+    PJRT_STRUCT_SIZE(PJRT_Error_Message_Args, message_size);
 
 // Gets the human-readable reason for `error`. `message` has the lifetime of
 // `error`.
@@ -80,17 +80,119 @@ typedef struct {
   void* priv;
   PJRT_Client* client;
 } PJRT_Client_Destroy_Args;
-
 const size_t PJRT_Client_Destroy_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Client_Destroy_Args, client);
 
 // Shuts down and frees `client`. `client` can be nullptr.
 typedef PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // `platform_name` has the same lifetime as `client`. It is owned by `client`.
+  const char* platform_name;  // out
+  size_t platform_name_size;  // out
+} PJRT_Client_PlatformName_Args;
+
+const size_t PJRT_Client_PlatformName_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_PlatformName_Args, platform_name_size);
+
+// Returns a string that identifies the platform (e.g. "cpu", "gpu", "tpu").
+typedef PJRT_Error* PJRT_Client_PlatformName(
+    PJRT_Client_PlatformName_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  int process_index;  // out
+} PJRT_Client_ProcessIndex_Args;
+const size_t PJRT_Client_ProcessIndex_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_ProcessIndex_Args, process_index);
+
+// Return the process index of this client. Always 0 in single-process
+// settings.
+typedef PJRT_Error* PJRT_Client_ProcessIndex(
+    PJRT_Client_ProcessIndex_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // `platform_version` has the same lifetime as `client`. It's owned by
+  // `client`.
+  const char* platform_version;  // out
+  size_t platform_version_size;  // out
+} PJRT_Client_PlatformVersion_Args;
+
+const size_t PJRT_Client_PlatformVersion_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_PlatformVersion_Args, platform_version_size);
+
+// Returns a string containing human-readable, platform-specific version info
+// (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
+typedef PJRT_Error* PJRT_Client_PlatformVersion(
+    PJRT_Client_PlatformVersion_Args* args);
+
+// --------------------------------- Devices -----------------------------------
+
+typedef struct PJRT_Device PJRT_Device;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  int id;  // out
+} PJRT_Device_Id_Args;
+const size_t PJRT_Device_Id_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Id_Args, id);
+
+// The ID of this device. IDs are unique among devices of this type
+// (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
+// hosts' devices.
+typedef PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
+
+// ------------------------------- Executables ---------------------------------
+
+typedef struct PJRT_Executable PJRT_Executable;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  // `executable_name` has the same lifetime as `executable`. It is owned by
+  // `executable`.
+  const char* executable_name;  // out
+  size_t executable_name_size;  // out
+} PJRT_Executable_Name_Args;
+
+const size_t PJRT_Executable_Name_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Name_Args, executable_name_size);
+
+// Returns a string that identifies the executable.
+typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+
+// ---------------------------------- Buffers ----------------------------------
+
+typedef struct PJRT_Buffer PJRT_Buffer;
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  bool is_on_cpu;  // out
+} PJRT_Buffer_IsOnCpu_Args;
+const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_IsOnCpu_Args, is_on_cpu);
+
+// Whether this buffer is on CPU and thus allows for certain optimizations.
+typedef PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
+
 // -------------------------------- API access ---------------------------------
 
 #define PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
+// Please modify PJRT_Api_STRUCT_SIZE if the last field of PJRT_Api is changed.
 typedef struct {
   size_t struct_size;
   void* priv;
@@ -100,10 +202,19 @@ typedef struct {
 
   PJRT_API_STRUCT_FIELD(PJRT_Client_Create);
   PJRT_API_STRUCT_FIELD(PJRT_Client_Destroy);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_ProcessIndex);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
+
+  PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
+
+  PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
+
+  PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_Destroy);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_IsOnCpu);
 
 #undef PJRT_API_STRUCT_FIELD
 

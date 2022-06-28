@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_LOGGING_CONVERSION_LOG_UTIL_H_
 
 #include <map>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"

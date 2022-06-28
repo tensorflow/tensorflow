@@ -134,6 +134,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       gemm_config.set_beta(0.0);
       *gemm_config.mutable_dot_dimension_numbers() =
           instr->dot_dimension_numbers();
+      *gemm_config.mutable_precision_config() = instr->precision_config();
 
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));

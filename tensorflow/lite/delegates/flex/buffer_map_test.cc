@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <functional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor.h"

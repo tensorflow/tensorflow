@@ -304,7 +304,10 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
-    AttrSizedOperandSegments]> {
+    AttrSizedOperandSegments,     
+    MemoryEffects<[MemAlloc<DefaultResource>]>,
+    DeclareOpInterfaceMethods<AllocationOpInterface,
+      ["buildDealloc", "buildClone"]>]> {
   let summary = "Executes a JIT-compiled function through the TF framework";
   let description = [{
     The op takes an optional TF context, so that it can be added at a later

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 
+#include <memory>
+#include <utility>
+
 #include "absl/memory/memory.h"
 
 namespace tflite {
@@ -58,7 +61,7 @@ TfLiteStatus CalibrationReader::AddCalibrationToModel(ModelT* model,
         }
       }
     }
-    auto quant_params = absl::make_unique<tflite::QuantizationParametersT>();
+    auto quant_params = std::make_unique<tflite::QuantizationParametersT>();
     quant_params->min.push_back(min);
     quant_params->max.push_back(max);
     subgraph->tensors[tensor_index]->quantization = std::move(quant_params);

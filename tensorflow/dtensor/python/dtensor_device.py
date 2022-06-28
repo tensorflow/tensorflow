@@ -367,6 +367,17 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
+  def _get_function_cache_hit_and_miss_count(self):
+    """Returns the number of cache hit and miss for function compilation.
+
+    Returns:
+      A dictionary keyed with miss and hit, corresponding to the cache hit and
+      miss count.
+    """
+    return _pywrap_dtensor_device.GetFunctionCacheHitAndMissCount(
+        context.context()._handle,  # pylint: disable=protected-access,
+        self._device_info)
+
   @contextlib.contextmanager
   def _experimental_default_mesh(self, mesh: layout_lib.Mesh):
     """Sets a default mesh for all ops in the scope.

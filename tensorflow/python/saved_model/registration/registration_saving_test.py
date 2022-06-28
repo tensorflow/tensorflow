@@ -20,6 +20,7 @@ import tempfile
 from absl.testing import parameterized
 
 from google.protobuf import wrappers_pb2
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -35,8 +36,7 @@ from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
+from tensorflow.python.trackable import autotrackable
 
 
 @registration.register_serializable()
@@ -57,7 +57,7 @@ class Part(resource_variable_ops.ResourceVariable):
 
 
 @registration.register_serializable()
-class Stack(tracking.AutoTrackable):
+class Stack(autotrackable.AutoTrackable):
 
   def __init__(self, parts=None):
     self.parts = parts
@@ -137,7 +137,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
   def test_registered_serializable(self, cycles):
 
     @registration.register_serializable(name=f"SaveAndLoad{cycles}")
-    class Module(tracking.AutoTrackable):
+    class Module(autotrackable.AutoTrackable):
 
       def __init__(self, name="module"):
         self.v = variables.Variable(1.)
@@ -167,7 +167,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
   def test_none_proto(self, cycles):
 
     @registration.register_serializable(name=f"NoneProto{cycles}")
-    class Module(tracking.AutoTrackable):
+    class Module(autotrackable.AutoTrackable):
 
       def __init__(self, name="module"):
         self.v = variables.Variable(1.)
@@ -189,7 +189,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
 
   def test_deserialization_dependencies(self, cycles):
     @registration.register_serializable(name=f"Dependency{cycles}")
-    class Module(tracking.AutoTrackable):
+    class Module(autotrackable.AutoTrackable):
 
       def __init__(self, v=None):
         self.v = v if v is not None else variables.Variable(1.)
@@ -276,7 +276,7 @@ class SingleCycleTest(test.TestCase):
       self.assertAllEqual(exported_value, sess.run(value_output.name))
 
   def test_non_strict_predicate(self):
-    class NonStrictPredicateClass(tracking.AutoTrackable):
+    class NonStrictPredicateClass(autotrackable.AutoTrackable):
       pass
     registration.register_checkpoint_saver(
         name="NonStrictPredicate",
@@ -289,12 +289,12 @@ class SingleCycleTest(test.TestCase):
     ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
     util.Checkpoint(root).write(ckpt_path)
 
-    root2 = tracking.AutoTrackable()
+    root2 = autotrackable.AutoTrackable()
     # This should run without throwing an error.
     util.Checkpoint(root2).read(ckpt_path)
 
   def test_strict_predicate(self):
-    class StrictPredicateClass(tracking.AutoTrackable):
+    class StrictPredicateClass(autotrackable.AutoTrackable):
       pass
     registration.register_checkpoint_saver(
         name="StrictPredicate",
@@ -307,7 +307,7 @@ class SingleCycleTest(test.TestCase):
     ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
     util.Checkpoint(root).write(ckpt_path)
 
-    root2 = tracking.AutoTrackable()
+    root2 = autotrackable.AutoTrackable()
     with self.assertRaisesRegex(ValueError, "saver cannot be used"):
       util.Checkpoint(root2).read(ckpt_path)
 
@@ -315,7 +315,7 @@ class SingleCycleTest(test.TestCase):
     if not context.executing_eagerly():
       self.skipTest("This test must run under eager mode.")
 
-    class RestoreClass(tracking.AutoTrackable):
+    class RestoreClass(autotrackable.AutoTrackable):
       pass
     def save_fn(trackables, file_prefix):
       del trackables  # Unused.

@@ -29,7 +29,7 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
   let arguments = (ins AnyShaped:$source, AnySubset:$subset);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{
-    $source `at` $subset attr-dict `:` type($source) `at` type($subset)
+    $source`[` $subset `]` attr-dict `:` type($source) `[` type($subset) `]`
   }];
   let hasVerifier = 0;
 }
@@ -71,28 +71,12 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
       RecursiveSideEffects,
       SingleBlockImplicitTerminator<"gml_st::SubsetYieldOp">
     ])> {
-  let arguments = (ins Variadic<Index>:$lowerBound,
-                       Variadic<Index>:$upperBound,
-                       Variadic<Index>:$step,
-                       Variadic<AnyShaped>:$outputs,
-                       Variadic<AnySubset>:$subsets);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
-
-  let builders = [
-    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
-      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
-      "ValueRange":$subsets,
-      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
-        "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
-  ];
 
   code extraBaseClassDeclaration = [{
     /// Number of loops
     unsigned getNumLoops() { return step().size(); }
-
-    /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -105,6 +89,9 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     bool hasBufferSemantics() {
       return this->getOperation()->getNumResults() == 0;
     }
+
+    /// Return terminator of the loop body.
+    SubsetYieldOp getTerminator();
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -129,24 +116,34 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
     ```mlir
     %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
-    %result = gml_st.parallel (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>) {
+    %result = gml_st.parallel (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4) {
       %tile = gml_st.tile %space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
-      %lhs_sub = gml_st.materialize %lhs_ at %tile
-        : tensor<8x16xf32> at !gml_st.tile<4x4>
-      %rhs_sub = gml_st.materialize %rhs_ at %tile
-        : tensor<8x16xf32> at !gml_st.tile<4x4>
-      %out_sub = gml_st.materialize %out_ at %tile
-        : tensor<8x16xf32> at !gml_st.tile<4x4>
+
+      %lhs_sub = gml_st.materialize %lhs_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>]
+      %rhs_sub = gml_st.materialize %rhs_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>]
+      %out_sub = gml_st.materialize %out_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>]
 
       %result_sub = linalg.generic (%lhs_sub, %rhs_sub, %out_sub) ...
 
-      gml_st.subset_yield %result_sub for %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+      gml_st.subset_yield %result_sub into %out[%tile]
+        : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     }
     ```
   }];
+  let arguments = (ins Variadic<Index>:$lowerBound,
+                       Variadic<Index>:$upperBound,
+                       Variadic<Index>:$step);
+  let builders = [
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
+      "ValueRange":$upperBounds, "ValueRange":$steps,
+      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
+      "nullptr">:$bodyBuilderFn)>,
+  ];
+
   let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
@@ -170,25 +167,41 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     %space = gml_st.space [8, 16] : !gml_st.tile<8x16>
 
     %result = gml_st.for (%i) = (%c0, %c0) to (%c8, %c16) step (%c4, %c4)
-        outs(%out_ = %output at %space: tensor<8x16xf32> at !gml_st.tile<8x16>)
+        outs(%out_ = %output: tensor<8x16xf32>) {
       %tile = gml_st.tile %in_space [%i, %j] [4, 4] [1, 1]
         : ! gml_st.tile<8x16> to !gml_st.tile<4x4>
-      %lhs_sub = gml_st.materialize %lhs_ at %tile
-        : tensor<8x16xf32> at !gml_st.tile<4x4>
-      %rhs_sub = gml_st.materialize %rhs_ at %tile
-        : tensor<8x16xf32> at !gml_st.tile<4x4>
-      %out_sub = gml_st.materialize %out_ at %tile
-        : tensor<8x16xf32> at !gml_st.tile<4x4>
+
+      %lhs_sub = gml_st.materialize %lhs_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>]
+      %rhs_sub = gml_st.materialize %rhs_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>]
+      %out_sub = gml_st.materialize %out_[%tile]
+        : tensor<8x16xf32>[!gml_st.tile<4x4>]
 
       %result_sub = linalg.generic (%lhs_sub, %rhs_sub, %out_sub) ...
 
-      gml_st.subset_yield %result_sub for %tile
-        : tensor<4x4xf32> at !gml_st.tile<4x4>
+      gml_st.subset_yield %result_sub into %out_[%tile]
+        : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     }
     ```
   }];
 
+  let arguments = (ins Variadic<Index>:$lowerBound,
+                       Variadic<Index>:$upperBound,
+                       Variadic<Index>:$step,
+                       Variadic<AnyShaped>:$outputs);
+
+  let builders = [
+    OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
+      "ValueRange":$upperBounds, "ValueRange":$steps, "ValueRange":$outputs,
+      CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange,"
+        "/*outputs=*/ValueRange)>", "nullptr">:$bodyBuilderFn)>,
+  ];
+
   let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Number of output operands
+    unsigned getNumOutputs() { return outputs().size(); }
+
     ValueRange getRegionOutputArgs() {
       return getBody()->getArguments().take_back(outputs().size());
     }
@@ -205,14 +218,81 @@ def GMLST_SubsetYieldOp : GMLST_Op<"subset_yield", [NoSideEffect, ReturnLike,
     Example:
 
     ```mlir
-    gml_st.subset_yield %result_sub for %tile
-      : tensor<4x4xf32> for !gml_st.tile<4x4>
+    gml_st.subset_yield %result_sub at %tile into %dst
+      : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
-  let arguments = (ins Variadic<AnyType>:$values,
+  let arguments = (ins Variadic<AnyType>:$srcs,
+                       Variadic<AnyType>:$dsts,
                        Variadic<AnyType>:$subsets);
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
-  let assemblyFormat = "attr-dict ($values^ `at` $subsets `:` type($values) `at` type($subsets))?";
+  let assemblyFormat = [{
+    attr-dict ($srcs^ `into` $dsts `[` $subsets `]`
+      `:` type($srcs) `into` type($dsts) `[` type($subsets) `]`)?
+  }];
+
+  let extraClassDeclaration = [{
+
+    unsigned getNumUpdates() { return srcs().size(); }
+
+    // Methods for `srcs` arguments.
+    OpOperand* getSrcOperand(unsigned i) {
+      return &getOperation()->getOpOperand(3 * i);
+    }
+
+    SmallVector<OpOperand*> getSrcOperands() {
+      SmallVector<OpOperand*> operands;
+      for (unsigned i = 0, e = getNumOperands(); i < e; i += 3)
+        operands.push_back(&getOperation()->getOpOperand(i));
+      return operands;
+    }
+
+    bool isSrcOperand(OpOperand& operand) {
+      return operand.getOperandNumber() % 3 == 0;
+    }
+
+    // Methods for `dst` arguments.
+    OpOperand* getDstOperand(unsigned i) {
+      return &getOperation()->getOpOperand(3 * i + 1);
+    }
+
+    SmallVector<OpOperand*> getDstOperands() {
+      SmallVector<OpOperand*> operands;
+      for (unsigned i = 1, e = getNumOperands(); i < e; i += 3)
+        operands.push_back(&getOperation()->getOpOperand(i));
+      return operands;
+    }
+
+    FailureOr<OpResult> getTiedOpResult(OpOperand &opOperand) {
+      if (!isDstOperand(opOperand)) return failure();
+
+      auto parent = getOperation()->getBlock()->getParentOp();
+      if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
+        return parent->getResult(0);
+      }
+      return failure();
+    }
+
+    bool isDstOperand(OpOperand& operand) {
+      return operand.getOperandNumber() % 3 == 1;
+    }
+
+    // Methods for `set` arguments.
+    OpOperand* getSetOperand(unsigned i) {
+      return &getOperation()->getOpOperand(3 * i + 2);
+    }
+
+    SmallVector<OpOperand*> getSetOperands() {
+      SmallVector<OpOperand*> operands;
+      for (unsigned i = 2, e = getNumOperands(); i < e; i += 3)
+        operands.push_back(&getOperation()->getOpOperand(i));
+      return operands;
+    }
+
+    bool isSetOperand(OpOperand& operand) {
+      return operand.getOperandNumber() % 3 == 2;
+    }
+  }];
 }
 
 #endif // GML_ST_OPS

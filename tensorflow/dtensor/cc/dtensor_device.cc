@@ -305,6 +305,9 @@ class DTensorDevice {
   bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                        TF_Status* status);
 
+  std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
+      TFE_Context* context, TF_Status* status) const;
+
  private:
   // If the `operation_name` of an op indicates a custom DTensor op (e.g.
   // CopyToMesh), then separately handle those custom ops instead of running
@@ -329,20 +332,6 @@ class DTensorDevice {
       const absl::flat_hash_set<Mesh>& input_meshes, absl::string_view op_name,
       tensorflow::Graph* graph, std::vector<const Layout*>* output_layouts,
       TF_Status* status);
-
-  const ExecutionFunctions* GetCachedFunction(tensorflow::Fprint128 cache_key) {
-    auto iter = function_cache_.find(cache_key);
-    if (iter == function_cache_.end()) {
-      return nullptr;
-    }
-    return &iter->second;
-  }
-
-  const ExecutionFunctions* AddCachedFunction(tensorflow::Fprint128 cache_key,
-                                              ExecutionFunctions function) {
-    function_cache_.emplace(cache_key, std::move(function));
-    return &function_cache_.find(cache_key)->second;
-  }
 
   // Takes the description of an operation and makes a function out of it with
   // the same signature, running DTensor MLIR passes. Registers that function
@@ -413,10 +402,10 @@ class DTensorDevice {
   };
   absl::flat_hash_map<int64_t, CachedLayout> shape_layout_cache_;
 
-  // TODO(b/169348205) Support cache eviction if the cache gets bloated.
-  absl::flat_hash_map<tensorflow::Fprint128, ExecutionFunctions,
-                      tensorflow::Fprint128Hasher>
-      function_cache_;
+  FunctionManager function_manager_;
+
+  // Records the function compilation cache hits and misses.
+  std::unordered_map<std::string, int> function_compilation_hits_and_misses_;
 
   // Coordinates cancelling ops across meshes on error. Must outlive any queued
   // async op launches, so we only reset it after seeing a failure status.
@@ -1166,35 +1155,10 @@ void DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
   }
 }
 
-// Cache key computation should consider all features of an op that affects
-// the SPMD lowering. The cache keys of two ops must be different if the
-// translated functions are different.
-// - op name and attr
-// - input shapes and layouts
-// - default layout of outputs.
-tensorflow::Fprint128 CacheKeyForGraph(
-    const DTensorOperation& doperation, const NameAttrList& attributes,
-    const std::vector<TensorWithLayout*>& inputs,
-    const std::vector<const Layout*>& output_layouts) {
-  tensorflow::Fprint128 cache_key = tensorflow::Fingerprint128(doperation.name);
-  std::string serialized;
-  SerializeToStringDeterministic(attributes, &serialized);
-  cache_key =
-      FingerprintCat128(cache_key, tensorflow::Fingerprint128(serialized));
-  for (const auto* input : inputs) {
-    cache_key = FingerprintCat128(cache_key, input->CacheKey());
-  }
-
-  for (int output_index = 0; output_index < output_layouts.size();
-       ++output_index) {
-    if (output_layouts[output_index]) {
-      cache_key = FingerprintCat128(cache_key, output_index);
-      cache_key = FingerprintCat128(
-          cache_key,
-          tensorflow::Fingerprint128(output_layouts[output_index]->ToString()));
-    }
-  }
-  return cache_key;
+std::unordered_map<std::string, int>
+DTensorDevice::GetFunctionCacheHitAndMissCount(TFE_Context* context,
+                                               TF_Status* status) const {
+  return function_compilation_hits_and_misses_;
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -1221,7 +1185,6 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
       // output retval nodes connected to the function call node.
       std::queue<Node*> nodes_to_remove;
       nodes_to_remove.push(node);
-
       while (!nodes_to_remove.empty()) {
         Node* n = nodes_to_remove.front();
         for (const Edge* out_edge : n->out_edges()) {
@@ -1370,8 +1333,8 @@ void DTensorDevice::LowerToSPMDFunction(
     // key computation, since they might depend on the current DTensorDevice
     // state.
     Status s = PrepareGraphForMlir(
-        inputs, doperation, *flib_def, eager_attributes, default_layout_,
-        graph.get(), &global_output_shapes, &output_layouts);
+        function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        default_layout_, graph.get(), &global_output_shapes, &output_layouts);
     RETURN_C_STATUS_IF_NOT_OK(s, status);
 
     // Finds all meshes the inputs are lied on.
@@ -1389,12 +1352,15 @@ void DTensorDevice::LowerToSPMDFunction(
     if (TF_GetCode(status) != TF_OK) return;
   }
 
-  const tensorflow::Fprint128 cache_key =
-      CacheKeyForGraph(doperation, eager_attributes, inputs, output_layouts);
-  *execution_functions = GetCachedFunction(cache_key);
+  std::pair<tensorflow::Fprint128, const ExecutionFunctions*>
+      cache_key_and_func = function_manager_.GetCachedFunction(
+          doperation, eager_attributes, inputs, output_layouts);
+  *execution_functions = cache_key_and_func.second;
   if (*execution_functions != nullptr) {
+    function_compilation_hits_and_misses_["hit"]++;
     return;
   } else if (function_def) {
+    function_compilation_hits_and_misses_["miss"]++;
     LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
               << ". DTensor is (re-)computing its SPMD transformation.";
   }
@@ -1419,7 +1385,8 @@ void DTensorDevice::LowerToSPMDFunction(
                                    eager_attributes, inputs, device_set,
                                    num_outputs),
           status);
-      *execution_functions = AddCachedFunction(cache_key, std::move(functions));
+      *execution_functions = function_manager_.AddCachedFunction(
+          doperation, cache_key_and_func.first, std::move(functions));
       return;
     }
     // Output layouts of a function are inferred by MLIR lowering. They are
@@ -1427,8 +1394,8 @@ void DTensorDevice::LowerToSPMDFunction(
     // cache key computation to reduce the overheads of running the same
     // function multiple times.
     Status s = PrepareGraphForMlir(
-        inputs, doperation, *flib_def, eager_attributes, default_layout_,
-        graph.get(), &global_output_shapes, &output_layouts);
+        function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        default_layout_, graph.get(), &global_output_shapes, &output_layouts);
     RETURN_C_STATUS_IF_NOT_OK(s, status);
   }
 
@@ -1439,7 +1406,8 @@ void DTensorDevice::LowerToSPMDFunction(
                                profiler::TraceMeLevel::kInfo);
     RETURN_C_STATUS_IF_NOT_OK(
         pass_runner_.RunOnGraph(device_set, doperation.is_func(), flib_def,
-                                &graph, control_ret_nodes, cache_key),
+                                &graph, control_ret_nodes,
+                                cache_key_and_func.first),
         status);
   }
   VLOG(4) << tensorflow::DumpGraphToFile("after_mlir_spmd_lowering", *graph,
@@ -1480,7 +1448,8 @@ void DTensorDevice::LowerToSPMDFunction(
     }
   }
 
-  *execution_functions = AddCachedFunction(cache_key, std::move(functions));
+  *execution_functions = function_manager_.AddCachedFunction(
+      doperation, cache_key_and_func.first, std::move(functions));
 }
 
 void DTensorDevice::ExecuteFunctionAndWait(
@@ -1919,30 +1888,13 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     if (!t->layout().mesh().IsEmpty()) {
       input_meshes.insert(t->layout().mesh());
     }
-    // Try to extract the input to a constant node for fully replicated small
-    // tensor. This is especially useful when executing in eager mode and
-    // allows certains op to work, e.g.: For reduce, the reduction_indices
-    // from BroadcastGradientArgs would be lifted as a constant that allows
-    // proper computation.
-    if (!dtensor_operation.is_func() && !t->const_value().has_value() &&
-        t->layout().IsFullyReplicated()) {
-      absl::optional<NodeDef> maybe_const =
+    // Remote mesh inputs are not able to be read and evaluated.
+    if (!is_remote_mesh(t->layout().mesh()) && !t->const_value().has_value()) {
+      std::optional<NodeDef> const_value =
           ExtractSmallTensorValue(context, input, t->layout(), status);
       if (TF_GetCode(status) != TF_OK) return;
-      if (maybe_const.has_value()) {
-        // If we extracted a constant value from the tensor, check if this
-        // value was the output from `tf.shape`. In this case, we need to
-        // forward the kShapeOpInputLayout attribute to the new node def. This
-        // is needed for layout propagation when running in op-by-op mode.
-        //
-        // TODO(b/162747667): Improve the presentation for Shape input Op
-        //                    layout.
-        if (t->shape_metadata_layout().has_value()) {
-          AddNodeAttr(kShapeOpInputLayout,
-                      {t->shape_metadata_layout()->ToString()},
-                      &(*maybe_const));
-        }
-        t->set_const_value(maybe_const.value());
+      if (const_value.has_value()) {
+        t->set_const_value(const_value.value());
       }
     }
     typed_inputs[j] = t;
@@ -1995,9 +1947,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayout::Broadcast(
         context, input, *broadcast_mesh, name_, status);
     if (TF_GetCode(status) != TF_OK) return;
-
-    if (!ShouldFoldInputArgument(dtensor_operation.is_func(),
-                                 dtensor_operation.name,
+    if (!ShouldFoldInputArgument(dtensor_operation.name,
                                  /*input_index=*/not_on_device_input_index)) {
       wrapper->reset_const_value();
     }
@@ -2201,6 +2151,12 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                      void* device_info, TF_Status* status) {
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   return device->IsSparseDTensor(context, input, status);
+}
+
+std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
+    TFE_Context* context, void* device_info, TF_Status* status) {
+  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
+  return device->GetFunctionCacheHitAndMissCount(context, status);
 }
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
@@ -34,6 +34,12 @@ bool HasQuantizedTensors(Operation* op) {
     }
   }
   return false;
+}
+
+Type CloneTypeWithNewElementType(Type old_type, Type element_type) {
+  if (!old_type.isa<ShapedType>()) return {};
+
+  return old_type.cast<ShapedType>().clone(element_type);
 }
 }  // namespace quant
 }  // namespace mlir

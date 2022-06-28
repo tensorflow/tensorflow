@@ -13,10 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Generate TensorFlow Lite Java reference docs for TensorFlow.org."""
+import os
 import pathlib
 import shutil
 import tempfile
-from typing import Iterable
+from typing import Iterable, Union
 
 from absl import app
 from absl import flags
@@ -26,12 +27,12 @@ from tensorflow_docs.api_generator import gen_java
 FLAGS = flags.FLAGS
 
 # These flags are required by infrastructure, not all of them are used.
-flags.DEFINE_string('output_dir', '/tmp/lite_api/',
-                    ("Use this branch as the root version and don't"
-                     ' create in version directory'))
+_OUT_DIR = flags.DEFINE_string('output_dir', '/tmp/lite_api/',
+                               "Use this branch as the root version and don't "
+                               'create in version directory')
 
-flags.DEFINE_string('site_path', 'lite/api_docs/java',
-                    'Path prefix in the _toc.yaml')
+_SITE_PATH = flags.DEFINE_string('site_path', 'lite/api_docs/java',
+                                 'Path prefix in the _toc.yaml')
 
 flags.DEFINE_string('code_url_prefix', None,
                     '[UNUSED] The url prefix for links to code.')
@@ -59,6 +60,7 @@ SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
 SECTION_LABELS = {
     'org.tensorflow.lite': 'Core',
     'org.tensorflow.lite.support': 'Support Library',
+    'org.tensorflow.lite.task.gms': 'Task Library (Play Services)',
     'org.tensorflow.lite.task': 'Task Library',
     # If we ever need other ODML packages, drop the `.image` here.
     'com.google.android.odml.image': 'ODML',
@@ -67,26 +69,18 @@ SECTION_LABELS = {
 EXTERNAL_APIS = {'https://developer.android.com': SOURCE_PATH_ANDROID_SDK}
 
 
-def overlay(from_root: pathlib.Path, to_root: pathlib.Path):
+def overlay(from_root: Union[str, os.PathLike[str]],
+            to_root: Union[str, os.PathLike[str]]) -> None:
   """Recursively copy from_root/* into to_root/."""
-  # When Python3.8 lands, replace with shutil.copytree(..., dirs_exist_ok=True)
-  for from_path in from_root.rglob('*'):
-    to_path = to_root / from_path.relative_to(from_root)
-    if from_path.is_file():
-      assert not to_path.exists(), f'{to_path} exists!'
-      shutil.copyfile(from_path, to_path)
-    else:
-      to_path.mkdir(exist_ok=True)
+  shutil.copytree(from_root, to_root, dirs_exist_ok=True)
 
 
 def resolve_nested_dir(path: pathlib.Path, root: pathlib.Path) -> pathlib.Path:
   """Returns the path that exists, out of foo/... and foo/foo/..., with root."""
   nested = path.parts[0] / path
-  root_path = root / path
-  root_nested_path = root / nested
-  if root_path.exists():
+  if (root_path := root / path).exists():
     return root_path
-  elif root_nested_path.exists():
+  elif (root_nested_path := root / nested).exists():
     return root_nested_path
   raise ValueError(f'Could not find {path} or {nested}')
 
@@ -109,9 +103,10 @@ def main(unused_argv):
   all_deps = [SOURCE_PATH_CORE, SOURCE_PATH_SUPPORT, SOURCE_PATH_ODML]
   # Keep searching upwards for a root that hosts the various dependencies. We
   # test `root.name` to ensure we haven't hit /.
-  while root.name and not exists_maybe_nested(all_deps, root):
+  while root.name and not (exists := exists_maybe_nested(all_deps, root)):
     root = root.parent
-  assert exists_maybe_nested(all_deps, root), 'Could not find dependencies.'
+  if not exists:
+    raise FileNotFoundError('Could not find dependencies.')
 
   with tempfile.TemporaryDirectory() as merge_tmp_dir:
     # Merge the combined API sources into a single location.
@@ -121,15 +116,18 @@ def main(unused_argv):
     overlay(resolve_nested_dir(SOURCE_PATH_METADATA, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)
 
+    if gms_path := os.getenv('GMS_PATH'):
+      # Play Services code needs to be massaged into a Java directory structure.
+      overlay(gms_path, merged_temp_dir / 'org/tensorflow/lite/task/gms')
+
     gen_java.gen_java_docs(
         package=['org.tensorflow.lite', 'com.google.android.odml'],
         source_path=merged_temp_dir,
-        output_dir=pathlib.Path(FLAGS.output_dir),
-        site_path=pathlib.Path(FLAGS.site_path),
+        output_dir=pathlib.Path(_OUT_DIR.value),
+        site_path=pathlib.Path(_SITE_PATH.value),
         section_labels=SECTION_LABELS,
         federated_docs={k: root / v for k, v in EXTERNAL_APIS.items()})
 
 
 if __name__ == '__main__':
-  flags.mark_flags_as_required(['output_dir'])
   app.run(main)

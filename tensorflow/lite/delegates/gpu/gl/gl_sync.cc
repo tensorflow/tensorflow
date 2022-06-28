@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/gl_sync.h"
 
+#include <string>
+#include <utility>
+
 #ifdef __ARM_ACLE
 #include <arm_acle.h>
 #endif  // __ARM_ACLE

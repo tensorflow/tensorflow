@@ -84,7 +84,7 @@ class NnApiDelegateMockTest : public ::testing::Test {
  protected:
   void SetUp() override {
     nnapi_ = *NnApiImplementation();
-    nnapi_mock_ = absl::make_unique<NnApiMock>(&nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(&nnapi_);
   }
 
   std::unique_ptr<NnApiMock> nnapi_mock_;

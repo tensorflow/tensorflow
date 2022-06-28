@@ -75,7 +75,13 @@ void ShardedDeviceArray::Delete() {
   if (is_deleted_) {
     return;
   }
-  for (xla::PjRtBuffer* pjrt_buffer : GetPjRtBuffers().ConsumeValueOrDie()) {
+  // We can't inline this expression into the for loop! Here, .value()
+  // returns an rvalue reference to the Span embedded in the StatusOr.
+  // Binding the reference would extend the lifetime of the Span itself,
+  // but not of the StatusOr, causing stack-use-after-scope errors. Also see
+  // https://en.cppreference.com/w/cpp/language/range-for#Temporary_range_expression
+  auto buffers = GetPjRtBuffers().value();
+  for (xla::PjRtBuffer* pjrt_buffer : buffers) {
     pjrt_buffer->Delete();
   }
   device_buffers_ = std::nullopt;

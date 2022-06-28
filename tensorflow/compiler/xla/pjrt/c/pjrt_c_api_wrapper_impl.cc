@@ -65,8 +65,63 @@ PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Client_Destroy_Args", PJRT_Client_Destroy_Args_STRUCT_SIZE,
       args->struct_size));
-
   delete args->client;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_ProcessIndex(PJRT_Client_ProcessIndex_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CLient_ProcessIndex_Args",
+      PJRT_Client_ProcessIndex_Args_STRUCT_SIZE, args->struct_size));
+  args->process_index = args->client->client->process_index();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_PlatformName_Args",
+      PJRT_Client_PlatformName_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view platform_name = args->client->client->platform_name();
+  args->platform_name = platform_name.data();
+  args->platform_name_size = platform_name.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_PlatformVersion(
+    PJRT_Client_PlatformVersion_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CLient_PlatformVersion_Args",
+      PJRT_Client_PlatformVersion_Args_STRUCT_SIZE, args->struct_size));
+  absl::string_view platform_version = args->client->client->platform_version();
+  args->platform_version = platform_version.data();
+  args->platform_version_size = platform_version.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Device_Id_Args",
+                                                PJRT_Device_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->device->device->id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Name_Args", PJRT_Executable_Name_Args_STRUCT_SIZE,
+      args->struct_size));
+  absl::string_view executable_name = args->executable->executable->name();
+  args->executable_name = executable_name.data();
+  args->executable_name_size = executable_name.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_IsOnCpu_Args", PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->is_on_cpu = args->buffer->buffer->IsOnCpu();
   return nullptr;
 }
 

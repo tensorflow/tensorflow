@@ -455,7 +455,7 @@ StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
       StallStreamOnError(local_device, tuple_table_stream);
       return event_or.status();
     }
-    definition_events.back()->SetSequencingEvent(event_or.ConsumeValueOrDie(),
+    definition_events.back()->SetSequencingEvent(std::move(event_or).value(),
                                                  tuple_table_stream);
   }
   std::shared_ptr<TrackedDeviceBuffer> dst_device_buffer =
@@ -496,7 +496,7 @@ Status AddDestinationBufferSynchronization(
     StallStreamOnError(local_device, copy_stream);
     return event_or.status();
   }
-  definition_event->SetSequencingEvent(event_or.ConsumeValueOrDie(),
+  definition_event->SetSequencingEvent(std::move(event_or).value(),
                                        copy_stream);
   // prefer_to_retain_reference=false means don't retain a memory reference
   // until the transfer is complete when using the ComputeSynchronized
@@ -1343,7 +1343,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
 
   auto usage_event = std::make_shared<BufferSequencingEvent>();
   local_device->event_pool().ThenRecordEvent(stream, event_or.ValueOrDie());
-  usage_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
+  usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
   // When using the ComputeSynchronized allocation model, retain a reference to
   // the device_buffer until the copy completes, to ensure that the buffer isn't
   // deleted or donated while it is still in use. The choice of retaining a
@@ -1470,7 +1470,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
   return std::pair<std::unique_ptr<PjRtBuffer>,
                    std::shared_ptr<BufferSequencingEvent>>(
       std::unique_ptr<PjRtStreamExecutorBuffer>(std::move(py_buffer)),
-      copy_event_or.ConsumeValueOrDie());
+      std::move(copy_event_or).value());
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
@@ -1734,7 +1734,7 @@ StatusOr<TupleHandle> MakeTupleHelper(
   }
 
   auto transfer_event = std::make_shared<BufferSequencingEvent>();
-  transfer_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
+  transfer_event->SetSequencingEvent(std::move(event_or).value(), stream);
   return TupleHandle({std::move(execution_input), std::move(transfer_event)});
 }
 
@@ -2044,7 +2044,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
                                     device_assignment)}]() {});
   }
 
-  return result_buffer_or_status.ConsumeValueOrDie().ConsumeResult();
+  return std::move(result_buffer_or_status).value().ConsumeResult();
 }
 
 std::vector<std::unique_ptr<PjRtBuffer>>
@@ -2130,8 +2130,7 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
                << " failed: " << result_buffer_or_status.status();
     return result_buffer_or_status.status();
   }
-  ScopedShapedBuffer result_buffer =
-      result_buffer_or_status.ConsumeValueOrDie();
+  ScopedShapedBuffer result_buffer = std::move(result_buffer_or_status).value();
 
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   se::Stream* stream = device_state->compute_stream();
@@ -2150,7 +2149,7 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
     return event_or.status();
   }
   auto definition_event = std::make_shared<BufferSequencingEvent>();
-  definition_event->SetSequencingEvent(event_or.ConsumeValueOrDie(), stream);
+  definition_event->SetSequencingEvent(std::move(event_or).value(), stream);
   std::vector<std::shared_ptr<TrackedDeviceBuffer>> buffers_to_release;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs = MakeOutputBuffers(
       device_ordinal, options, std::move(result_buffer), definition_event,

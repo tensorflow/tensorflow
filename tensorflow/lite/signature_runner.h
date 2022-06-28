@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"

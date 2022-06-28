@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_BUFFER_1X1_TEST_UTIL_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_BUFFER_1X1_TEST_UTIL_H_
+#include "tensorflow/lite/logger.h"
 
-#include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
-namespace gpu {
 
-absl::Status ConvBuffer1x1SimpleWeightsTest(TestExecutionEnvironment* env);
-absl::Status ConvBuffer1x1Test(TestExecutionEnvironment* env);
+LogSeverity LoggerOptions::GetMinimumLogSeverity() {
+  return tflite::logging_internal::MinimalLogger::GetMinimumLogSeverity();
+}
 
-}  // namespace gpu
+LogSeverity LoggerOptions::SetMinimumLogSeverity(LogSeverity new_severity) {
+  return tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+      new_severity);
+}
+
 }  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_BUFFER_1X1_TEST_UTIL_H_

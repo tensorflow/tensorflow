@@ -1548,7 +1548,7 @@ class TestCustomAllocation : public InterpreterTest {
  protected:
   void SetUp() override {
     // Simple model with two custom ops that add 2 float tensors each.
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     interpreter_->AddTensors(7);
     interpreter_->SetInputs({0, 1});
     interpreter_->SetOutputs({3, 4, 6});

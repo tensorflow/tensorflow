@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "flatbuffers/flexbuffers.h"
@@ -377,7 +378,7 @@ PassQuantizationAndGetConsumers(
   const TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
   TensorT* output_tensor = subgraph->tensors[output_tensor_idx].get();
   if (!output_tensor->quantization) {
-    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+    output_tensor->quantization = std::make_unique<QuantizationParametersT>();
   }
   *output_tensor->quantization = *input_tensor->quantization;
   output_tensor->type = TensorType_INT8;

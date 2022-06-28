@@ -28,8 +28,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import adam
-from tensorflow.python.training.tracking import tracking
 
 
 class CheckpointingTests(test.TestCase):
@@ -190,7 +190,7 @@ class CheckpointingTests(test.TestCase):
         self.assertAllEqual(3., self.evaluate(beta1_power))
 
 
-class _ManualScope(tracking.AutoTrackable):
+class _ManualScope(autotrackable.AutoTrackable):
 
   def __call__(self):
     with variable_scope.variable_scope("ManualScope") as vs:

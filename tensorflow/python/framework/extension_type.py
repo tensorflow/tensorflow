@@ -114,7 +114,7 @@ class ExtensionType(
   Python booleans      | `b: bool`
   Python None          | `n: None`
   Tensors              | `t: tf.Tensor`
-  Composite Tensors    | `rt: tf.RaggdTensor`
+  Composite Tensors    | `rt: tf.RaggedTensor`
   Extension Types      | `m: MyMaskedTensor`
   Tensor shapes        | `shape: tf.TensorShape`
   Tensor dtypes        | `dtype: tf.DType`

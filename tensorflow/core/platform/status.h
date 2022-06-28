@@ -39,6 +39,33 @@ namespace tensorflow {
 class TF_MUST_USE_RESULT Status;
 #endif
 
+#if ABSL_HAVE_BUILTIN(__builtin_LINE) && ABSL_HAVE_BUILTIN(__builtin_FILE)
+#define TF_INTERNAL_HAVE_BUILTIN_LINE_FILE 1
+#endif
+
+struct SourceLocation {
+  uint32_t line;
+  const char* file_name;
+
+#ifdef TF_INTERNAL_HAVE_BUILTIN_LINE_FILE
+  static SourceLocation current(uint32_t line = __builtin_LINE(),
+                                const char* file_name = __builtin_FILE()) {
+    SourceLocation loc;
+    loc.line = line;
+    loc.file_name = file_name;
+    return loc;
+  }
+#else
+  static SourceLocation current(uint32_t line = 0,
+                                const char* file_name = nullptr) {
+    SourceLocation loc;
+    loc.line = line;
+    loc.file_name = file_name;
+    return loc;
+  }
+#endif
+};
+
 namespace errors {
 
 typedef ::tensorflow::error::Code Code;
@@ -53,13 +80,14 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, absl::string_view msg);
+  Status(tensorflow::error::Code code, absl::string_view msg,
+         SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
   Status(const Status& s);
   Status& operator=(const Status& s);
 #ifndef SWIG
-  Status(Status&& s) noexcept;
+  Status(Status&& s, SourceLocation loc = SourceLocation::current()) noexcept;
   Status& operator=(Status&& s) noexcept;
 #endif  // SWIG
 
@@ -170,13 +198,18 @@ class Status {
   void SetStackTrace(std::vector<StackFrame>);
   std::vector<StackFrame> GetStackTrace() const;
 
+  absl::Span<const SourceLocation> GetSourceLocations() const;
+
  private:
+  void MaybeAddSourceLocation(SourceLocation loc);
+
   static const std::string& empty_string();
   std::vector<StackFrame> stack_trace_;
   struct State {
     tensorflow::error::Code code;
     std::string msg;
     std::unordered_map<std::string, std::string> payloads;
+    absl::InlinedVector<SourceLocation, 4> source_locations;
   };
 
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
@@ -271,7 +304,10 @@ inline Status& Status::operator=(const Status& s) {
 }
 
 #ifndef SWIG
-inline Status::Status(Status&& s) noexcept : state_(std::move(s.state_)) {}
+inline Status::Status(Status&& s, SourceLocation loc) noexcept
+    : state_(std::move(s.state_)) {
+  MaybeAddSourceLocation(loc);
+}
 
 inline Status& Status::operator=(Status&& s) noexcept {
   if (state_ != s.state_) {

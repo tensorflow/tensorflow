@@ -61,33 +61,8 @@ void HloLiveRange::NormalizeAliasedBuffers() {
     for (int64_t i = 0; i + 1 < aliased_live_ranges.size(); ++i) {
       TimeBound& live_range1 = *aliased_live_ranges[i];
       TimeBound& live_range2 = *aliased_live_ranges[i + 1];
-      if (live_range1.start == live_range2.start) {
-        // If value1 has the same start time as value2, make value1 disappear
-        // by setting the end time same as start time:
-        //
-        // Before:
-        // +----+           value1
-        // +----------+     value2
-        //
-        // After:
-        // +                value1
-        // +----------+     value2
-        //
-        // Note that only when heap simulator runs before copy insertion can
-        // this happen where one instruction defines multiple aliased buffers
-        // -- This is illegal to execute and can be fixed by copy insertion
-        // later.
-        // FIXME(cjfj): This code doesn't match the behaviour described above.
-        live_range1.end = live_range2.end;
-        continue;
-      }
-
-      if (live_range1.end < live_range2.start) {
-        continue;
-      }
-
       live_range2.end = std::max(live_range1.end, live_range2.end);
-      live_range1.end = live_range2.start - 1;
+      live_range1.end = std::min(live_range1.end, live_range2.start);
     }
   }
 }

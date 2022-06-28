@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers

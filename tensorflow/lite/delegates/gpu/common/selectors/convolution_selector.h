@@ -48,7 +48,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionBatchedMatMul(
 
 std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
     const WeightsDescription& weights_desc, const OperationDef& op_def,
-    ModelHints hints);
+    ModelHints hints, Layout input_layout);
 
 }  // namespace gpu
 }  // namespace tflite

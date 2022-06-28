@@ -40,8 +40,7 @@ class GpuHloScheduleTest : public HloTestBase {
 
   static std::unique_ptr<GpuHloSchedule> BuildGpuHloSchedule(
       HloModule* module, const StreamAssignment& streams) {
-    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8)
-        .ConsumeValueOrDie();
+    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8).value();
   }
 
   std::unique_ptr<HloModule> CreateNewVerifiedModule() {

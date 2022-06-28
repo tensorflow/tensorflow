@@ -70,6 +70,7 @@ pytype_strict_library(
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -242,6 +243,7 @@ pytype_strict_library(
     srcs = ["multi_client_util.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "@absl_py//absl/logging",
     ],

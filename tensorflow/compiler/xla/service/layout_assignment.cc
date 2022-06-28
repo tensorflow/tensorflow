@@ -965,6 +965,21 @@ Layout GetBroadcastLayoutFromOutput(const Layout& layout,
   return shape.layout();
 }
 
+Status CheckBroadcastLayout(HloInstruction* broadcast) {
+  CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
+  Shape shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) {
+        return absl::c_linear_search(broadcast->dimensions(), dim);
+      },
+      broadcast->shape());
+  if (!LayoutsInShapesEqual(shape, broadcast->operand(0)->shape())) {
+    return InternalError(
+        "broadcast instruction %s does not match the layout of its operand %s",
+        broadcast->ToString(), broadcast->operand(0)->ToString());
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
 StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
@@ -1165,6 +1180,9 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               instruction,
               FindOrDie(computation_layouts_, instruction->parent())
                   ->computation_layout()));
+          break;
+        case HloOpcode::kBroadcast:
+          TF_RETURN_IF_ERROR(CheckBroadcastLayout(instruction));
           break;
         case HloOpcode::kConstant:
           TF_RETURN_IF_ERROR(CheckConstantLayout(instruction));
@@ -1492,7 +1510,7 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
       return true;
     case HloOpcode::kReshape:
       return hlo.operand(0)->shape().rank() == 1 ||
-             std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
+             hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions().has_value();
     case HloOpcode::kScatter:
     case HloOpcode::kTranspose:
       return true;

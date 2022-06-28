@@ -521,7 +521,8 @@ py::object PyTreeDef::Walk(const py::function& f_node, py::handle f_leaf,
           tuple[i] = agenda.back();
           agenda.pop_back();
         }
-        agenda.push_back(f_node(tuple));
+        agenda.push_back(
+            f_node(tuple, node.node_data ? node.node_data : py::none()));
       }
     }
   }
@@ -714,7 +715,10 @@ void BuildPytreeSubmodule(py::module& m) {
                pybind11::iterable leaves) const>(&PyTreeDef::Unflatten))
       .def("flatten_up_to", &PyTreeDef::FlattenUpTo)
       .def("compose", &PyTreeDef::Compose)
-      .def("walk", &PyTreeDef::Walk)
+      .def("walk", &PyTreeDef::Walk,
+           "Walk pytree, calling f_node(node, node_data) at nodes, and f_leaf "
+           "at leaves",
+           py::arg("f_node"), py::arg("f_leaf"), py::arg("leaves"))
       .def("from_iterable_tree", &PyTreeDef::FromIterableTree)
       .def("children", &PyTreeDef::Children)
       .def_property_readonly("num_leaves", &PyTreeDef::num_leaves)

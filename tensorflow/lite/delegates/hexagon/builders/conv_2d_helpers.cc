@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/hexagon/builders/conv_2d_builder.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -35,6 +37,9 @@ constexpr uint8_t k8BitSignFlipConstant = 0x80;
 // 1/1024 ~ 0.0009766 is a restriction set by Hexagon's kernels.
 // TODO(b/151103818): Figure out a way to retrieve this constant reliably.
 constexpr float kHexagonMinRelativeScale = 0.0009766f;
+// Channel count to split depthwise convolution op.
+// See Conv2dOpBuilder.should_split_dwconv_ for details.
+constexpr int kDwConv5x5Filt2x2StrideChannelCount = 32;
 
 }  // namespace
 
@@ -75,6 +80,19 @@ TfLiteStatus ProcessPerChannelQuantizedWeights(
   per_channel_quant->channel_scales_node = graph_builder->AddConstNodeWithData(
       scales_shape.data(), reinterpret_cast<char*>(normalized_scales.data()),
       normalized_scales.size() * sizeof(normalized_scales[0]));
+  if (per_channel_quant->splits) {
+    // Split channel scales to 32 channel batches.
+    const std::vector<int> sliced_scales_shape = {
+        1, 1, 1, kDwConv5x5Filt2x2StrideChannelCount};
+    for (auto i = 0; i < per_channel_quant->splits; ++i) {
+      auto offset = kDwConv5x5Filt2x2StrideChannelCount * i;
+      auto* node = graph_builder->AddConstNodeWithData(
+          sliced_scales_shape.data(),
+          reinterpret_cast<char*>(normalized_scales.data() + offset),
+          kDwConv5x5Filt2x2StrideChannelCount * sizeof(normalized_scales[0]));
+      per_channel_quant->channel_scales_nodes.push_back(node);
+    }
+  }
   *weights_min = -128 * scale_max;
   *weights_max = 127 * scale_max;
   return kTfLiteOk;
@@ -84,7 +102,8 @@ TfLiteStatus ProcessPerChannelQuantizedBias(
     const TfLiteTensor& data_tensor, const TfLiteTensor& bias_tensor,
     const int bias_tensor_idx, TfLiteContext* context, float* bias_min,
     float* bias_max, GraphBuilder* graph_builder,
-    PerChannelQuantData* per_channel_quant, OpBuilder** bias_const_node) {
+    PerChannelQuantData* per_channel_quant,
+    std::vector<int>* preprocessed_bias_data, OpBuilder** bias_const_node) {
   const TfLiteAffineQuantization* input_quant_params =
       static_cast<const TfLiteAffineQuantization*>(
           data_tensor.quantization.params);
@@ -113,23 +132,93 @@ TfLiteStatus ProcessPerChannelQuantizedBias(
   *bias_max = *bias_max * 8;
   *bias_min = -1 * *bias_max;
   // Now requantize the bias values to the new min/max values.
-  std::vector<int> preprocessed_bias_data;
-  preprocessed_bias_data.reserve(per_channel_quant->num_scale_values);
+  preprocessed_bias_data->reserve(per_channel_quant->num_scale_values);
   for (int i = 0; i < bias_size; ++i) {
-    preprocessed_bias_data.push_back(static_cast<int>(
+    preprocessed_bias_data->push_back(static_cast<int>(
         std::round(std::pow(2, 31) * (dequantized_bias[i] / *bias_max))));
   }
   // Add nodes for bias.
   const std::vector<int> bias_shape = {1, 1, 1, bias_size};
   auto* bias_data_node = graph_builder->AddConstNodeWithData(
-      bias_shape.data(), reinterpret_cast<char*>(preprocessed_bias_data.data()),
-      preprocessed_bias_data.size() * sizeof(preprocessed_bias_data[0]));
+      bias_shape.data(),
+      reinterpret_cast<char*>(preprocessed_bias_data->data()),
+      preprocessed_bias_data->size() * sizeof(preprocessed_bias_data[0]));
   if (bias_const_node) {
     *bias_const_node = bias_data_node;
   }
   graph_builder->AddTensorWithID(bias_tensor_idx, bias_data_node->GetID(), 0,
                                  /*overwrite=*/true);
   return kTfLiteOk;
+}
+
+void Conv2dOpBuilder::CheckShouldSplitDwConv(TfLiteType weights_type,
+                                             int input_depth,
+                                             bool is_per_channel_quant,
+                                             int channel_multiplier) {
+  const TfLiteDepthwiseConvParams* conv_params =
+      reinterpret_cast<const TfLiteDepthwiseConvParams*>(builtin_data_);
+  int weights_height = weight_shape_[0];
+  int weights_width = weight_shape_[1];
+  // input_depth * channel_multiplier
+  int weights_depth_size = input_depth * weight_shape_[3];
+  if (op_node_.op_type == OP_DepthwiseSupernode_8x8p32to8 &&
+      weights_type == kTfLiteInt8 &&
+      // weight_shape_ is [fh,fw,din,dmul]
+      weights_height == 5 && weights_width == 5 &&
+      // Stride larger than 2x2
+      conv_params->stride_height >= 2 && conv_params->stride_width >= 2 &&
+      // Depth more than 32 and is multiples of 32 so can be splitted.
+      input_depth > kDwConv5x5Filt2x2StrideChannelCount &&
+      input_depth % kDwConv5x5Filt2x2StrideChannelCount == 0 &&
+      is_per_channel_quant && channel_multiplier == 1) {
+    should_split_dwconv_ = true;
+    // Splits the inputs to 32 channel batches.
+    per_channel_quant_.splits =
+        weights_depth_size / kDwConv5x5Filt2x2StrideChannelCount;
+    per_channel_quant_.channel_scales_nodes.reserve(per_channel_quant_.splits);
+  }
+}
+
+void Conv2dOpBuilder::SplitWeightsForDwConv(
+    const std::vector<uint8_t>& converted_data, int input_depth,
+    int channel_multiplier) {
+  int weights_height_size = weight_shape_[0];
+  int weights_width_size = weight_shape_[1];
+  // Split the weight tensor into 32 channel batches.
+  SplitParams split_params{
+      .num_split = static_cast<uint16_t>(per_channel_quant_.splits),
+      .axis = 2,
+  };
+  std::vector<RuntimeShape> split_shapes;
+  std::vector<const tflite::RuntimeShape*> split_shapes_data;
+  std::vector<std::vector<uint8_t>> splitted_weights;
+  std::vector<uint8_t*> splitted_weights_data;
+  split_shapes.reserve(per_channel_quant_.splits);
+  split_shapes_data.reserve(per_channel_quant_.splits);
+  splitted_weights.reserve(per_channel_quant_.splits);
+  splitted_weights_data.reserve(per_channel_quant_.splits);
+  for (auto s = 0; s < per_channel_quant_.splits; s++) {
+    split_shapes.push_back({weights_height_size, weights_width_size,
+                            kDwConv5x5Filt2x2StrideChannelCount,
+                            channel_multiplier});
+    split_shapes_data.push_back(&split_shapes.back());
+    splitted_weights.emplace_back(weights_height_size * weights_width_size *
+                                      channel_multiplier *
+                                      kDwConv5x5Filt2x2StrideChannelCount,
+                                  0);
+    splitted_weights_data.push_back(splitted_weights.back().data());
+  }
+  RuntimeShape weight_shape = {weights_height_size, weights_width_size,
+                               input_depth, channel_multiplier};
+  optimized_ops::Split(split_params, weight_shape, converted_data.data(),
+                       split_shapes_data.data(), splitted_weights_data.data());
+  for (auto s = 0; s < per_channel_quant_.splits; s++) {
+    auto splitted_weights_node = graph_builder_->AddConstNodeWithData(
+        split_shapes[s].DimsData(),
+        reinterpret_cast<char*>(splitted_weights_data[s]),
+        splitted_weights[s].size() * sizeof(splitted_weights_data[s][0]));
+    weights_nodes_.push_back(splitted_weights_node);
+  }
 }
 
 TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
@@ -204,6 +293,11 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
     weight_shape_ = {weights_height_size, weights_width_size, input_depth,
                      channel_multiplier};
 
+    // Check if the op hits the Depthwise conv accuracy issue.
+    // See Conv2dOpBuilder.should_split_dwconv_ for details.
+    CheckShouldSplitDwConv(weights_tensor.type, input_depth,
+                           is_per_channel_quant, channel_multiplier);
+
     if (weights_tensor.type == kTfLiteInt8) {
       // Flip bits on the weight values so that the int8 values are treated
       // as uint8.
@@ -214,6 +308,8 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
       weights_data_node = graph_builder_->AddConstNodeWithData(
           weight_shape_.data(), reinterpret_cast<char*>(converted_data.data()),
           converted_data.size() * sizeof(converted_data[0]));
+      if (should_split_dwconv_)
+        SplitWeightsForDwConv(converted_data, input_depth, channel_multiplier);
     } else {
       weights_data_node = graph_builder_->AddConstNodeWithData(
           weight_shape_.data(), weights_tensor.data.raw,
@@ -244,6 +340,21 @@ TfLiteStatus Conv2dOpBuilder::InitializeWeightsNodes(
   return kTfLiteOk;
 }
 
+void Conv2dOpBuilder::SplitBiasForDwConv(
+    std::vector<int>& preprocessed_bias_data) {
+  // Splits bias to 32 channel batches.
+  std::vector<int> bias_shape = {1, 1, 1, kDwConv5x5Filt2x2StrideChannelCount};
+  for (auto i = 0; i < per_channel_quant_.splits; i++) {
+    auto offset = kDwConv5x5Filt2x2StrideChannelCount * i;
+    auto* bias_data_node = graph_builder_->AddConstNodeWithData(
+        bias_shape.data(),
+        reinterpret_cast<char*>(preprocessed_bias_data.data() + offset),
+        kDwConv5x5Filt2x2StrideChannelCount *
+            sizeof(preprocessed_bias_data[0]));
+    bias_nodes_.push_back(bias_data_node);
+  }
+}
+
 TfLiteStatus Conv2dOpBuilder::InitializeBiasNodes(const TfLiteIntArray* inputs,
                                                   const TfLiteIntArray* outputs,
                                                   TfLiteContext* context) {
@@ -254,9 +365,12 @@ TfLiteStatus Conv2dOpBuilder::InitializeBiasNodes(const TfLiteIntArray* inputs,
   float bias_min = 0;
   float bias_max = 0;
   if (per_channel_quant_.channel_scales_node != nullptr) {
+    std::vector<int> preprocessed_bias_data;
     ProcessPerChannelQuantizedBias(
         context->tensors[inputs->data[0]], bias_tensor, inputs->data[2],
-        context, &bias_min, &bias_max, graph_builder_, &per_channel_quant_);
+        context, &bias_min, &bias_max, graph_builder_, &per_channel_quant_,
+        &preprocessed_bias_data);
+    if (should_split_dwconv_) SplitBiasForDwConv(preprocessed_bias_data);
   } else {
     auto* bias_data_node =
         graph_builder_->AddConstNodeWithData(inputs->data[2], bias_tensor);

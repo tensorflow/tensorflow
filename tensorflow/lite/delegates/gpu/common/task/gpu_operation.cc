@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -192,35 +193,35 @@ absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
 void GPUOperation::AddSrcTensor(const std::string& tensor_name,
                                 const TensorDescriptor& desc) {
   src_tensors_names_.push_back(tensor_name);
-  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  auto desc_new = std::make_unique<TensorDescriptor>(desc);
   args_.AddObjectRef(tensor_name, AccessType::READ, std::move(desc_new));
 }
 
 void GPUOperation::AddSrcBuffer(const std::string& buffer_name,
                                 const BufferDescriptor& desc) {
   src_tensors_names_.push_back(buffer_name);
-  auto desc_new = absl::make_unique<BufferDescriptor>(desc);
+  auto desc_new = std::make_unique<BufferDescriptor>(desc);
   args_.AddObjectRef(buffer_name, AccessType::READ, std::move(desc_new));
 }
 
 void GPUOperation::AddSrcTexture2D(const std::string& texture_name,
                                    const Texture2DDescriptor& desc) {
   src_tensors_names_.push_back(texture_name);
-  auto desc_new = absl::make_unique<Texture2DDescriptor>(desc);
+  auto desc_new = std::make_unique<Texture2DDescriptor>(desc);
   args_.AddObjectRef(texture_name, AccessType::READ, std::move(desc_new));
 }
 
 void GPUOperation::AddDstTensor(const std::string& tensor_name,
                                 const TensorDescriptor& desc) {
   dst_tensors_names_.push_back(tensor_name);
-  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  auto desc_new = std::make_unique<TensorDescriptor>(desc);
   args_.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
 }
 
 absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
   if (elementwise_) {
     auto src_desc =
-        absl::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
+        std::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
     if (definition_.IsBatchSupported()) {
       src_desc->SetStateVar("BatchedWidth", "true");
     }
@@ -228,7 +229,7 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     args_.AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
 
     auto dst_desc =
-        absl::make_unique<TensorDescriptor>(definition_.dst_tensors[0]);
+        std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]);
     if (definition_.IsBatchSupported()) {
       dst_desc->SetStateVar("BatchedWidth", "true");
     }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <queue>
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -34,6 +36,73 @@ constexpr int64_t Model::kOptimizationPeriodMinMs;
 constexpr int64_t Model::kOptimizationPeriodMaxMs;
 
 namespace {
+
+// A priority queue that holds stage roots where the top of the priority queue
+// is the node with the largest total time.
+class ModelTimingPriorityQueue {
+ public:
+  explicit ModelTimingPriorityQueue(ModelTiming& model_timing) {
+    std::vector<std::shared_ptr<Node>> stage_roots =
+        model_timing.GetStageRoots();
+    if (stage_roots.empty()) {
+      return;
+    }
+    for (auto& root : stage_roots) {
+      DCHECK(model_timing.GetTiming(root.get()) != nullptr);
+      stage_roots_queue_.emplace(
+          model_timing.GetTiming(root.get())->total_time_nsec, root.get());
+    }
+  }
+
+  // Pops the top item from the queue, i.e. node with the largest total time.
+  StatusOr<std::pair<double, Node*>> PopSlowestStageRoot() {
+    if (stage_roots_queue_.empty()) {
+      return errors::Internal(
+          "Model timing priority queue is empty during stage-based "
+          "optimization");
+    }
+    std::pair<double, Node*> top_item = stage_roots_queue_.top();
+    stage_roots_queue_.pop();
+    return top_item;
+  }
+
+  // Push a node together with its total time onto the queue.
+  void Push(Node* node, double total_time_nsec) {
+    stage_roots_queue_.emplace(total_time_nsec, node);
+  }
+
+ private:
+  std::priority_queue<std::pair<double, Node*>> stage_roots_queue_;
+};
+
+// A cache that looks up the `parallelism` parameters of nodes the first time
+// they are requested and saves them for subsequent requests.
+class NodeParallelismParameters {
+ public:
+  NodeParallelismParameters() {}
+
+  // Returns the `parallelism` parameter given a node.
+  Parameter* Get(const Node* node) {
+    if (node_parallelism_.contains(node)) {
+      // Look for the `parallelism` parameter of this node in the cache.
+      return node_parallelism_.at(node);
+    }
+    // Find the `parallelism` parameter of this node and cache it.
+    Node::ModelParameters parameters = node->CollectNodeTunableParameters();
+    Node::ModelParameters::iterator parameter_pair = std::find_if(
+        parameters.begin(), parameters.end(),
+        [](const std::pair<std::string, std::shared_ptr<Parameter>>&
+               parameter) { return parameter.second->name == kParallelism; });
+    if (parameter_pair == parameters.end()) {
+      return nullptr;
+    }
+    node_parallelism_[node] = parameter_pair->second.get();
+    return parameter_pair->second.get();
+  }
+
+ private:
+  absl::flat_hash_map<const Node*, Parameter*> node_parallelism_;
+};
 
 // Returns true if all parameters have reached their max values.
 bool AreAllParametersMax(const Model::ModelParameters& parameters) {
@@ -177,6 +246,10 @@ Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
 
 // Recursively produces node tree rooted in `output` from the given model proto.
 Status ModelFromProtoHelper(ModelProto model, std::shared_ptr<Node>* output) {
+  if (model.nodes().empty()) {
+    return errors::Internal(
+        "Cannot restore model from proto because it has no nodes.");
+  }
   TF_RETURN_IF_ERROR(Node::FromProto(model.nodes().at(model.output()),
                                      /*output=*/nullptr, output));
   std::list<std::shared_ptr<Node>> to_restore_inputs = {*output};
@@ -1386,6 +1459,13 @@ Node::ModelParameters Node::CollectTunableParameters() const {
   return CollectTunableParametersLocked();
 }
 
+Node::ModelParameters Node::CollectNodeTunableParameters() const {
+  tf_shared_lock l(mu_);
+  Node::ModelParameters parameters;
+  CollectTunableParametersHelper(&parameters);
+  return parameters;
+}
+
 string Node::DebugString() const {
   absl::flat_hash_map<string, string> debug_strings;
   tf_shared_lock l(mu_);
@@ -1943,6 +2023,9 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
       break;
+    case AutotuneAlgorithm::STAGE_BASED:
+      OptimizeStageBased(snapshot, optimization_params, cancellation_manager);
+      break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
                  "optimization.";
@@ -2022,7 +2105,15 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     }
 
     int64_t start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-    Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0,
+    double model_input_time = 0.0;
+    // Model input time is set to 0 for all optimization algorithms except for
+    // stage-based optimization algorithm for historical reason. In stage-based
+    // optimization algorithm, the model input time is used as a target
+    // optimization time of all stages in the pipeline.
+    if (algorithm == AutotuneAlgorithm::STAGE_BASED) {
+      model_input_time = ComputeTargetTimeNsec();
+    }
+    Optimize(algorithm, cpu_budget, ram_budget, model_input_time,
              cancellation_manager);
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
@@ -2167,6 +2258,82 @@ void Model::OptimizeHillClimbHelper(
   UpdateStateValues(&parameters);
 }
 
+double Model::ComputeTargetTimeNsec() {
+  tf_shared_lock l(gap_mu_);
+  if (gap_time_count_ == 0) {
+    return 0.0;
+  }
+  return (static_cast<double>(gap_time_sum_usec_) /
+          static_cast<double>(gap_time_count_)) *
+         1.0e6;
+}
+
+void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
+                               const OptimizationParams& optimization_params,
+                               CancellationManager* cancellation_manager) {
+  return OptimizeStageBasedParallelism(
+      snapshot, optimization_params.model_input_time(), optimization_params,
+      cancellation_manager);
+}
+
+void Model::OptimizeStageBasedParallelism(
+    std::shared_ptr<Node> snapshot, double target_time_nsec,
+    const OptimizationParams& optimization_params,
+    CancellationManager* cancellation_manager) {
+  VLOG(2) << "Starting optimization of tunable parameters with Stage-Based "
+             "optimization with a target time of "
+          << optimization_params.model_input_time() << " nanoseconds.";
+  Node::ModelParameters tunable_parameters = CollectTunableParameters(snapshot);
+  // Initialize the parallelism parameter values to minimal before tuning.
+  for (std::pair<string, std::shared_ptr<Parameter>>& pair :
+       tunable_parameters) {
+    if (pair.second->name != kParallelism) {
+      continue;
+    }
+    pair.second->value = pair.second->min;
+  }
+  ModelTiming model_timing(snapshot);
+  ModelTimingPriorityQueue priority_queue(model_timing);
+  StatusOr<std::pair<double, Node*>> critical_root_status =
+      priority_queue.PopSlowestStageRoot();
+  if (!critical_root_status.ok()) {
+    return;
+  }
+  NodeParallelismParameters node_parallelism;
+  std::pair<double, Node*> critical_root = critical_root_status.ValueOrDie();
+  while (critical_root.first > target_time_nsec) {
+    Parameter* parallelism_parameter =
+        node_parallelism.Get(critical_root.second);
+    // Stop optimization if the critical stage has no `parallelism` parameter or
+    // it has reached the max parallelism value.
+    if (parallelism_parameter == nullptr ||
+        parallelism_parameter->value >= optimization_params.cpu_budget()) {
+      break;
+    }
+    parallelism_parameter->value += 1.0;
+    if (TotalMaximumBufferedBytes(snapshot) >
+        optimization_params.ram_budget()) {
+      // Increasing the parallelism by 1 exceeded ram budget. Reduce it back and
+      // stop optimization because we cannot improve the most critical stage.
+      parallelism_parameter->value -= 1.0;
+      break;
+    }
+    // Compute the new total time and put the node back in the queue after its
+    // parallelism value has been increased by 1.
+    model_timing.ComputeNodeTotalTime(*critical_root.second);
+    priority_queue.Push(
+        critical_root.second,
+        model_timing.GetTiming(critical_root.second)->total_time_nsec);
+    // Get the next critical stage root.
+    critical_root_status = priority_queue.PopSlowestStageRoot();
+    if (!critical_root_status.ok()) {
+      break;
+    }
+    critical_root = critical_root_status.ValueOrDie();
+  }
+  UpdateStateValues(&tunable_parameters);
+}
+
 void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
                               const OptimizationParams& optimization_params,
                               CancellationManager* cancellation_manager) {
@@ -2309,9 +2476,18 @@ std::string Model::DebugString() {
   return cached_debug_string_;
 }
 
-Node::NodeVector Model::CollectNodes(
+ModelTiming::ModelTiming(std::shared_ptr<Node> root) : root_(root) {
+  DCHECK(root_.get() != nullptr);
+  auto bfs_nodes = CollectNodes(root_, TraversalOrder::BFS, IsAnyNode);
+  auto reverse_bfs_nodes = bfs_nodes;
+  std::reverse(reverse_bfs_nodes.begin(), reverse_bfs_nodes.end());
+  ComputePipelineRatios(bfs_nodes);
+  ComputeTotalTimes(reverse_bfs_nodes);
+}
+
+Node::NodeVector ModelTiming::CollectNodes(
     std::shared_ptr<Node> root, TraversalOrder order,
-    bool collect_node(const std::shared_ptr<Node>)) {
+    bool collect_node(const std::shared_ptr<Node>)) const {
   if (root == nullptr) {
     return Node::NodeVector({});
   }
@@ -2327,18 +2503,6 @@ Node::NodeVector Model::CollectNodes(
   return nodes;
 }
 
-ModelTiming::ModelTiming(std::shared_ptr<Model> model) : model_(model) {
-  ComputeTiming();
-}
-
-void ModelTiming::ComputeTiming() {
-  auto nodes =
-      model_->CollectNodes(model_->output(), TraversalOrder::BFS, IsAnyNode);
-  ComputeTimingComponents(nodes);
-  std::reverse(nodes.begin(), nodes.end());
-  ComputeTotalTimes(nodes);
-}
-
 const ModelTiming::NodeTiming* ModelTiming::GetTiming(const Node* node) const {
   if (timing_nodes_.find(node) == timing_nodes_.end()) {
     return nullptr;
@@ -2346,10 +2510,9 @@ const ModelTiming::NodeTiming* ModelTiming::GetTiming(const Node* node) const {
   return &(timing_nodes_.at(node));
 }
 
-void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
+void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
   for (const auto& node : bfs_nodes) {
     auto& node_timing = timing_nodes_[node.get()];
-    node_timing.self_time_nsec = node->ComputeSelfTime();
     if (!node->autotune()) {
       // These are inactive nodes marked by parallel interleave transformations.
       node_timing.pipeline_ratio = 0.0;
@@ -2370,31 +2533,33 @@ void ModelTiming::ComputeTimingComponents(const Node::NodeVector& bfs_nodes) {
   }
 }
 
-void ModelTiming::ComputeNodeTotalTime(std::shared_ptr<Node> node) {
-  DCHECK(timing_nodes_.contains(node.get()));
-  auto& node_timing = timing_nodes_[node.get()];
+void ModelTiming::ComputeNonAsyncInterleaveManyTotalTime(const Node& node) {
+  DCHECK(timing_nodes_.contains(&node));
+  auto& node_timing = timing_nodes_[&node];
   double input_total_time_nsec = 0.0;
-  for (auto input : node->inputs()) {
+  for (auto input : node.inputs()) {
     if (input->IsAsync()) {
       continue;
     }
     if (!input->autotune() || input->num_elements() <= 0) {
       continue;
     }
-    DCHECK(timing_nodes_.contains(input.get()));
+    DCHECK(timing_nodes_.contains(input.get()))
+        << "Input " << input->long_name() << " of node " << node.long_name()
+        << " has no timing node.";
+
     input_total_time_nsec += timing_nodes_[input.get()].total_time_nsec;
   }
   node_timing.total_time_nsec =
-      node_timing.self_time_nsec + input_total_time_nsec * node->Ratio();
+      node_timing.self_time_nsec + input_total_time_nsec * node.Ratio();
 }
 
-void ModelTiming::ComputeAsyncInterleaveManyTotalTime(
-    std::shared_ptr<Node> node) {
-  DCHECK(timing_nodes_.contains(node));
-  auto& node_timing = timing_nodes_[node.get()];
+void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
+  DCHECK(timing_nodes_.contains(&node));
+  auto& node_timing = timing_nodes_[&node];
   double max_input_total_time_nsec = 0.0;
   double sum_input_throughput = 0.0;
-  auto inputs = node->inputs();
+  auto inputs = node.inputs();
   // `ParallelInterleave` is often used to interleave processing of datasets
   // generated from the first input, e.g. reading from IO where the first input
   // has the list of all filenames. The first input is typically not the
@@ -2409,7 +2574,9 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(
     if (!(*input)->autotune() || (*input)->num_elements() <= 0) {
       continue;
     }
-    DCHECK(timing_nodes_.contains((*input).get()));
+    DCHECK(timing_nodes_.contains((*input).get()))
+        << "Input " << (*input)->long_name() << " of node " << node.long_name()
+        << " has no timing node.";
     auto input_total_time_nsec = timing_nodes_[(*input).get()].total_time_nsec;
     max_input_total_time_nsec =
         std::max(input_total_time_nsec, max_input_total_time_nsec);
@@ -2418,14 +2585,14 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(
     }
   }
   double input_total_time_nsec = 0.0;
-  auto deterministic = node->ParameterValue(kDeterministic);
+  auto deterministic = node.ParameterValue(kDeterministic);
   // After cl/445005635, there should always be `deterministic` parameter for an
   // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
   // with protos saved and restored before that CL.
   if (!deterministic.ok() || deterministic.ValueOrDie() == 1.0) {
     // If deterministic = true, then the total time is `1/worst input
     // throughput * cycle_length`, or `max input total time / cycle_length`.
-    input_total_time_nsec = max_input_total_time_nsec * node->Ratio();
+    input_total_time_nsec = max_input_total_time_nsec * node.Ratio();
   } else if (sum_input_throughput > 0.0) {
     // If deterministic = false, then the total time is
     // `1/sum_input_throughput`.
@@ -2437,26 +2604,31 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
   for (const auto& node : reverse_bfs_nodes) {
-    if (!node->autotune() || node->num_elements() <= 0) {
-      continue;
-    }
-#if !defined(IS_MOBILE_PLATFORM)
-    // This block of code is defined only for non-mobile platform because mobile
-    // platform lacks RTTI, i.e. the use of `dynamic_cast`.
-    if (dynamic_cast<const AsyncInterleaveMany*>(node.get()) != nullptr) {
-      ComputeAsyncInterleaveManyTotalTime(node);
-    } else {
-      ComputeNodeTotalTime(node);
-    }
-#else   // !IS_MOBILE_PLATFORM
-    ComputeNodeTotalTime(node);
-#endif  // !IS_MOBILE_PLATFORM
+    ComputeNodeTotalTime(*(node.get()));
   }
 }
 
+void ModelTiming::ComputeNodeTotalTime(const Node& node) {
+  NodeTiming& node_timing = timing_nodes_[&node];
+  node_timing.self_time_nsec = node.ComputeSelfTime();
+  if (!node.autotune() || node.num_elements() <= 0) {
+    return;
+  }
+#if !defined(IS_MOBILE_PLATFORM)
+  // This block of code is defined only for non-mobile platform because mobile
+  // platform lacks RTTI, i.e. the use of `dynamic_cast`.
+  if (dynamic_cast<const AsyncInterleaveMany*>(&node) != nullptr) {
+    ComputeAsyncInterleaveManyTotalTime(node);
+  } else {
+    ComputeNonAsyncInterleaveManyTotalTime(node);
+  }
+#else   // !IS_MOBILE_PLATFORM
+  ComputeNonAsyncInterleaveManyTotalTime(node);
+#endif  // !IS_MOBILE_PLATFORM
+}
+
 std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {
-  auto bfs_nodes =
-      model_->CollectNodes(model_->output(), TraversalOrder::BFS, IsAnyNode);
+  auto bfs_nodes = CollectNodes(root_, TraversalOrder::BFS, IsAnyNode);
   std::vector<std::shared_ptr<Node>> roots;
   if (!bfs_nodes.empty() && !bfs_nodes[0]->IsAsync()) {
     roots.push_back(bfs_nodes[0]);
@@ -2470,8 +2642,8 @@ std::vector<std::shared_ptr<Node>> ModelTiming::GetStageRoots() const {
 }
 
 std::vector<std::shared_ptr<Node>> ModelTiming::GetStageNodes(
-    std::shared_ptr<Node> root) const {
-  return model_->CollectNodes(root, TraversalOrder::BFS, IsSyncNode);
+    std::shared_ptr<Node> stage_root) const {
+  return CollectNodes(stage_root, TraversalOrder::BFS, IsSyncNode);
 }
 
 }  // namespace model

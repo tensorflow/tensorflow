@@ -27,11 +27,6 @@ namespace tflite {
 namespace evaluation {
 namespace image {
 
-using testing::_;
-using testing::Eq;
-using testing::FloatEq;
-using testing::FloatNear;
-
 // Find the max precision with the minimum recall.
 float MaxP(float minr, const std::vector<PR>& prs) {
   float p = 0;
