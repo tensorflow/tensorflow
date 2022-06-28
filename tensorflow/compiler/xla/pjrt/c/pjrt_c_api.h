@@ -168,6 +168,20 @@ const size_t PJRT_Device_ProcessIndex_Args_STRUCT_SIZE =
 // process_index as the client.
 typedef PJRT_Error* PJRT_Device_ProcessIndex(
     PJRT_Device_ProcessIndex_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  bool is_addressable;  // out
+} PJRT_Device_IsAddressable_Args;
+const size_t PJRT_Device_IsAddressable_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_IsAddressable_Args, is_addressable);
+
+// Whether client can issue command to this device.
+typedef PJRT_Error* PJRT_Device_IsAddressable(
+    PJRT_Device_IsAddressable_Args* args);
+
 // ------------------------------- Executables ---------------------------------
 
 typedef struct PJRT_Executable PJRT_Executable;
@@ -224,6 +238,7 @@ typedef struct {
 
   PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
+  PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
 
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
 

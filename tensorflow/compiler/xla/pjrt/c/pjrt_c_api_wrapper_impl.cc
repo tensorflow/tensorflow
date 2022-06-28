@@ -115,6 +115,14 @@ PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_IsAddressable_Args",
+      PJRT_Device_IsAddressable_Args_STRUCT_SIZE, args->struct_size));
+  args->is_addressable = args->device->device->IsAddressable();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Executable_Name_Args", PJRT_Executable_Name_Args_STRUCT_SIZE,

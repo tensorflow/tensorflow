@@ -294,4 +294,15 @@ int PjRtCApiDevice::process_index() const {
   return args.process_index;
 }
 
+bool PjRtCApiDevice::IsAddressable() const {
+  PJRT_Device_IsAddressable_Args args;
+  args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_IsAddressable(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_addressable;
+}
+
 }  // namespace xla

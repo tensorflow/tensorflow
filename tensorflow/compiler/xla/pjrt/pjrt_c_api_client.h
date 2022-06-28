@@ -45,7 +45,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   PjRtClient* client() const override;
 
-  bool IsAddressable() const override { return wrapped_->IsAddressable(); }
+  bool IsAddressable() const override;
 
   int id() const override;
 
