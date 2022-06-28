@@ -188,7 +188,6 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
   }
 };
 
-
 struct LegalizeControlFlowPass
     : public LegalizeControlFlowPassBase<LegalizeControlFlowPass> {
   // Perform the lowering to MLIR control flow.
