@@ -1,4 +1,7 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --allow-unregistered-dialect | \
+// RUN: mlir-hlo-opt --verify-diagnostics --split-input-file \
+// RUN:     --allow-unregistered-dialect | \
+// RUN: FileCheck %s
 
 // CHECK-LABEL: @types
 func.func @types() {

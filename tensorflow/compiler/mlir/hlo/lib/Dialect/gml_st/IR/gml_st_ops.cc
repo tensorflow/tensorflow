@@ -591,6 +591,11 @@ void ParallelOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict(
       getOperation()->getAttrs(),
       /*elidedAttrs=*/{ParallelOp::getOperandSegmentSizeAttr()});
+
+  if (!getResultTypes().empty()) {
+    p << " : ";
+    llvm::interleave(getResultTypes(), p, ", ");
+  }
 }
 
 ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -681,6 +686,11 @@ void ForOp::print(OpAsmPrinter &p) {
   p.printRegion(region(), /*printEntryBlockArgs=*/false);
   p.printOptionalAttrDict(getOperation()->getAttrs(),
                           /*elidedAttrs=*/{ForOp::getOperandSegmentSizeAttr()});
+
+  if (!getResultTypes().empty()) {
+    p << " : ";
+    llvm::interleave(getResultTypes(), p, ", ");
+  }
 }
 
 ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
