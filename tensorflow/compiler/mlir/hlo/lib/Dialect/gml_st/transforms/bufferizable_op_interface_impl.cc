@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Support/LogicalResult.h"
 
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
@@ -84,6 +85,14 @@ struct LoopOpInterface
     return true;
   }
 
+  FailureOr<BaseMemRefType> getBufferType(
+      Operation *op, BlockArgument bbArg,
+      const BufferizationOptions &options) const {
+    auto loopOp = cast<LoopOp>(op);
+    return bufferization::getBufferType(loopOp.getTiedOperand(bbArg).get(),
+                                        options);
+  }
+
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto loopOp = cast<LoopOp>(op);
@@ -95,7 +104,10 @@ struct LoopOpInterface
       OpOperand &operand = loopOp->getOpOperand(i);
       Value rewrittenValue = operand.get();
       if (rewrittenValue.getType().isa<TensorType>()) {
-        rewrittenValue = getBuffer(rewriter, operand.get(), options);
+        FailureOr<Value> maybeBuffer =
+            getBuffer(rewriter, operand.get(), options);
+        if (failed(maybeBuffer)) return failure();
+        rewrittenValue = *maybeBuffer;
       }
       if (i < loopOp.getNumControlOperands() + loopOp.getNumInputs()) {
         newInputs.push_back(rewrittenValue);
@@ -369,8 +381,11 @@ struct ParallelOpInterface
 
     // Compute outputs, i.e. bufferized destinations of `subset_yield`.
     SmallVector<Value> newResults;
-    for (OpOperand *dst : loopOp.getTerminator().getDstOperands())
-      newResults.push_back(getBuffer(rewriter, dst->get(), options));
+    for (OpOperand *dst : loopOp.getTerminator().getDstOperands()) {
+      FailureOr<Value> maybeBuffer = getBuffer(rewriter, dst->get(), options);
+      if (failed(maybeBuffer)) return failure();
+      newResults.push_back(*maybeBuffer);
+    }
 
     // Create new TiledLoopOp.
     auto newLoopOp = rewriter.create<ParallelOp>(
