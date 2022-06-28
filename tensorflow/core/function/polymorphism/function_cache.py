@@ -15,7 +15,7 @@
 """Cache to manage concrete functions and their signatures."""
 
 import collections
-from typing import Optional, Hashable, Sequence, Any, NamedTuple
+from typing import Optional, Sequence, Any, NamedTuple
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import type_dispatch
@@ -30,111 +30,18 @@ class FunctionContext(NamedTuple):
   context: Any
 
 
-class CaptureSnapshot(trace.TraceType):
-  """Store tf.function captures to accommodate its specific tracing logic.
-
-  Captures are stored in mapping format, but its tracing logic is different from
-  Python dict. When comparing types of two normal Python dicts in function
-  argumenst, their keys are required to be the same. When comparing types for
-  captures, keys can be different. This is because tf.function maintains a full
-  list of captures and only a subset is active for each ConcreteFunction.
-  But before dispatch, which captures are active is unknown, so all caputres are
-  evaluated for comparison. Please also check `is_subtype_of` method.
-
-  Attributes:
-    mapping: A mapping from keys to corresponding TraceTypes of the dict values.
-  """
-
-  def __init__(self, mapping: dict[Hashable, trace.TraceType]):
-    self.mapping = mapping
-
-  def _contain_all_keys_of(self, other):
-    for key in other.mapping:
-      if key not in self.mapping:
-        return False
-    return True
-
-  def is_subtype_of(self, query: "CaptureSnapshot") -> bool:
-    """This method is used to check if `self` is a subtype of query.
-
-    Typically, self represents an existing snapshot for a ConcreteFunction, and
-    the query is a snapshot from all captures with runtime values. Keys in the
-    query should be a superset of self.
-    This method differs from default_types.Dict as this CaptureSnapshot doesn't
-    require a full match of keys.
-
-      For example:
-
-      a = CaptureSnapshot({'x'=1, 'y'=2})
-      b = CaptureSnapshot({'x'=1, 'y'=2, 'z'=3})
-      assert not a.is_subtype_of(b)
-      assert b.is_subtype_of(a)
-
-    Args:
-      query: A CaptureSnapshot instance that represents the current runtime
-        values of all captures.
-
-    Returns:
-      A bool value represents the result.
-    """
-    if not isinstance(query, CaptureSnapshot):
-      return False
-
-    if not self._contain_all_keys_of(query):
-      return False
-    return all(self.mapping[key].is_subtype_of(item)
-               for key, item in query.mapping.items())
-
-  def most_specific_common_supertype(
-      self,
-      types: Sequence[trace.TraceType]) -> Optional["CaptureSnapshot"]:
-    """See base class."""
-    common_keys = set(self.mapping.keys())
-    for other in types:
-      common_keys = common_keys.intersection(other.mapping.keys())
-    new_mapping = {}
-    for key in common_keys:
-      common = self.mapping[key].most_specific_common_supertype(
-          [other.mapping[key] for other in types])
-      if common is None:
-        return None
-      else:
-        new_mapping[key] = common
-    return CaptureSnapshot(new_mapping)
-
-  def _placeholder_value(self) -> Any:
-    return {
-        key: value._placeholder_value()  # pylint: disable=protected-access
-        for key, value in self.mapping.items()
-    }
-
-  def __eq__(self, other: "CaptureSnapshot") -> bool:
-    if not isinstance(other, CaptureSnapshot):
-      return False
-
-    return self.mapping == other.mapping
-
-  def __hash__(self) -> int:
-    return hash(frozenset(self.mapping.keys()))
-
-
-# TODO(panzf): Rename `FunctionCacheKey` to `FunctionType`
 class FunctionCacheKey(trace.TraceType):
   """The unique key associated with a concrete function.
 
   Attributes:
-    args_signature: A TraceType corresponding to the function arguments.
-    captures_signature: A CaptureSnapshot corresponding to the function
-      captures.
-    call_context: The FunctionContext for when the args_signature was
+    function_signature: A TraceType corresponding to the function arguments.
+    call_context: The FunctionContext for when the function_signature was
       generated.
   """
 
-  def __init__(self, args_signature: trace.TraceType,
-               captures_signature: CaptureSnapshot,
+  def __init__(self, function_signature: trace.TraceType,
                call_context: FunctionContext):
-    self.args_signature = args_signature
-    self.captures_signature = captures_signature
+    self.function_signature = function_signature
     self.call_context = call_context
 
   def is_subtype_of(self, other: trace.TraceType) -> bool:
@@ -144,8 +51,7 @@ class FunctionCacheKey(trace.TraceType):
     if self.call_context != other.call_context:
       return False
 
-    return (self.args_signature.is_subtype_of(other.args_signature)
-            and self.captures_signature.is_subtype_of(other.captures_signature))
+    return self.function_signature.is_subtype_of(other.function_signature)
 
   def most_specific_common_supertype(
       self, others: Sequence[trace.TraceType]) -> Optional["FunctionCacheKey"]:
@@ -154,27 +60,20 @@ class FunctionCacheKey(trace.TraceType):
         self.call_context == other.call_context for other in others):
       return None
 
-    # `args` and `captures` are independent when finding common supertypes.
-    args_common = self.args_signature.most_specific_common_supertype(
-        [other.args_signature for other in others])
+    common = self.function_signature.most_specific_common_supertype(
+        [other.function_signature for other in others])
 
-    if args_common is None:
+    if common is None:
       return None
 
-    captures_common = self.captures_signature.most_specific_common_supertype(
-        [other.captures_signature for other in others])
-
-    return FunctionCacheKey(args_common, captures_common, self.call_context)
+    return FunctionCacheKey(common, self.call_context)
 
   def _placeholder_value(self) -> Any:
     """Value used for tracing a function signature with this TraceType."""
-    return {"args": self.args_signature._placeholder_value(),  # pylint: disable=protected-access
-            "captures": self.captures_signature._placeholder_value()}  # pylint: disable=protected-access
+    return self.function_signature._placeholder_value()  # pylint: disable=protected-access
 
   def __hash__(self) -> int:
-    return hash((self.call_context,
-                 self.args_signature,
-                 self.captures_signature))
+    return hash((self.call_context, self.function_signature))
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -184,13 +83,11 @@ class FunctionCacheKey(trace.TraceType):
       return False
 
     return (self.call_context == other.call_context and
-            self.args_signature == other.args_signature and
-            self.captures_signature == other.captures_signature)
+            self.function_signature == other.function_signature)
 
   def __repr__(self) -> str:
     return (
-        f"{type(self).__name__}(args_signature={repr(self.args_signature)},"
-        f"(captures_signature={repr(self.captures_signature)},"
+        f"{type(self).__name__}(function_signature={repr(self.function_signature)},"
         f" call_context={repr(self.call_context)})")
 
 

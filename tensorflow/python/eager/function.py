@@ -2477,9 +2477,7 @@ class Function(object):
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
-    # Maintein a dict of all captures: identifier -> lambda function. It's used
-    # to get runtime values for all captures during ConcreteFunction dispatch,
-    self._captures_container = func_graph_module.CapturesContainer()
+
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `Function`, used to make sure defun-decorated methods create different
@@ -2715,27 +2713,21 @@ class Function(object):
     else:
       filtered_flat_args = []
 
-    # Get runtime values of captures
-    captures = self._captures_container.get_snapshot()
-
-    # cache_key_deletion_observer is useless here. It's based on all captures.
-    # A new cache key will be built later when saving ConcreteFunction because
-    # only active captures should be saved.
     if self.input_signature is None:
-      func_cache_key, _ = function_context.make_cache_key(
-          (args, kwargs), captures)
+      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
+          (args, kwargs))
     else:
-      func_cache_key, _ = function_context.make_cache_key(
-          self.flat_input_signature, captures)
+      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
+          self.flat_input_signature)
 
     try:
-      hash(func_cache_key)
+      hash(cache_key)
     except TypeError as e:
       raise TypeError(
-          "Arguments supplied to `defun`-generated functions must be hashable."
-          ) from e
+          "Arguments supplied to `defun`-generated functions must be "
+          f"hashable.  Original error: {e}.")
 
-    graph_function = self._function_cache.lookup(func_cache_key, True)
+    graph_function = self._function_cache.lookup(cache_key, True)
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
@@ -2743,9 +2735,10 @@ class Function(object):
       with trace.Trace("tf.function-graph_building"):
         logging.vlog(1,
                      "Creating new FuncGraph for Python function %r (key: %r)",
-                     self._python_function, func_cache_key)
+                     self._python_function, cache_key)
         logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
                      args, kwargs)
+
         ag_status = (
             ag_ctx.Status.ENABLED
             if self._autograph else ag_ctx.Status.DISABLED)
@@ -2753,28 +2746,10 @@ class Function(object):
             status=ag_status, options=self._autograph_options):
 
           if (self._reduce_retracing and self.input_signature is None):
-            func_cache_key = self._function_cache.generalize(func_cache_key)
-            placeholder_dict = func_cache_key._placeholder_value()  # pylint: disable=protected-access
-            # Only get placeholders for arguments, not captures
-            args, kwargs = placeholder_dict["args"]
+            cache_key = self._function_cache.generalize(cache_key)
+            (args, kwargs) = cache_key._placeholder_value()  # pylint: disable=protected-access
+
           graph_function = self._create_graph_function(args, kwargs)
-
-          graph_capture_container = graph_function.graph._capture_func_lib  # pylint: disable=protected-access
-          # Maintain the list of all captures
-          self._captures_container.update(graph_capture_container)
-          # Get current active captures snapshot
-          captures = graph_capture_container.get_snapshot()
-
-          # Create a cache_key with args and captures
-          if self.input_signature is None:
-            cache_key, cache_key_deletion_observer = (
-                function_context.make_cache_key(
-                    (args, kwargs), captures))
-          else:
-            cache_key, cache_key_deletion_observer = (
-                function_context.make_cache_key(
-                    self.flat_input_signature, captures))
-
           self._function_cache.add(cache_key, cache_key_deletion_observer,
                                    graph_function)
 

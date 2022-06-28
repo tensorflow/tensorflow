@@ -5515,55 +5515,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       lazy_capture()
 
-  def testMaybeCreateCapturePlaceholderWithValidCapture(self):
-    @def_function.function
-    def f():
-      func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
-
-    x = {
-        'tensor': constant_op.constant(0),
-        'list': [constant_op.constant(1), 2],
-        'dict': {
-            'float': constant_op.constant(0.5)
-        }
-    }
-
-    out = f()
-    # tf.function output should have same structure/values with the side input
-    self.assertEqual(x['tensor'].numpy(), out['tensor'].numpy())
-    self.assertEqual(x['list'][0].numpy(), out['list'][0].numpy())
-    self.assertEqual(x['list'][1], out['list'][1].numpy())
-    self.assertEqual(x['dict']['float'].numpy(), out['dict']['float'].numpy())
-
-  def testMaybeCreateCapturePlaceholderWithInvalidCapture(self):
-    @def_function.function
-    def f():
-      func = lambda: x
-      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
-
-    # Set is not supported
-    x = set([1, 2])
-    with self.assertRaises(NotImplementedError):
-      f()
-
-  @parameterized.parameters(
-      (1, int, 2, int, 2),
-      (1, constant_op.constant, 2, constant_op.constant, 1))
-  def testRetraceLogicWithSideInputs(self, val_before, type_before, val_after,
-                                     type_after, expected_len):
-    @def_function.function
-    def f():
-      func = lambda: x
-      return ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
-          'lambda: x', func)
-
-    x = type_before(val_before)
-    _ = f()
-    x = type_after(val_after)
-    _ = f()
-    self.assertLen(total_function_cache(f), expected_len)
-
   def testFunctoolsLruCache(self):
     self.skipTest(
         "b/194845243: inspect.getfullargspec doesn't unwrap Python decorators.")
