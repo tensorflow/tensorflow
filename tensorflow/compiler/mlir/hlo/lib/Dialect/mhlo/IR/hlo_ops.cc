@@ -1263,7 +1263,7 @@ void getSliceSizeValues(GatherOp* gather, OpBuilder& builder, Location loc,
   }
 }
 
-void getSliceSizeValues(DynamicGatherOp* d_gather, OpBuilder& builder,
+void getSliceSizeValues(DynamicGatherOp* /*dGather*/, OpBuilder& builder,
                         Location loc, ValueRange operands,
                         SmallVectorImpl<Value>& sliceSizeValues) {
   DynamicGatherOp::Adaptor adaptor(operands);
@@ -3771,16 +3771,16 @@ LogicalResult DynamicSliceOp::verify() {
   }
 
   for (int i = 0; i < numSliceSizes; ++i) {
-    int64_t slice_size = slice_sizes().getValues<int64_t>()[i];
-    if (slice_size < 0) {
+    int64_t sliceSize = slice_sizes().getValues<int64_t>()[i];
+    if (sliceSize < 0) {
       return emitOpError() << "has negative size index to dynamic slice: "
-                           << slice_size;
+                           << sliceSize;
     }
     if (!operandType.isDynamicDim(i)) {
-      int64_t dim_size = operandType.getDimSize(i);
-      if (slice_size > dim_size) {
-        return emitOpError() << "has slice size " << slice_size
-                             << " greater than dimension size " << dim_size
+      int64_t dimSize = operandType.getDimSize(i);
+      if (sliceSize > dimSize) {
+        return emitOpError() << "has slice size " << sliceSize
+                             << " greater than dimension size " << dimSize
                              << " in dimension " << i << " of operand";
       }
     }
@@ -5237,7 +5237,7 @@ template <typename T>
 OpFoldResult padOpFoldHelper(DenseElementsAttr input, DenseElementsAttr padding,
                              RankedTensorType returnType,
                              DenseIntElementsAttr edgePaddingLow,
-                             DenseIntElementsAttr edge_padding_high,
+                             DenseIntElementsAttr /*edgePaddingHigh*/,
                              DenseIntElementsAttr interiorPadding) {
   // Prevent folding if the result is too large.
   if (returnType.getNumElements() > kFoldOpEltLimit) return {};
@@ -8720,7 +8720,7 @@ Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
 }
 
 LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
-                                                    unsigned region_index,
+                                                    unsigned /*regionIndex*/,
                                                     unsigned argIndex,
                                                     NamedAttribute attr) {
   if (auto aliasAttr = attr.getValue().dyn_cast<ArgResultAliasAttr>()) {
