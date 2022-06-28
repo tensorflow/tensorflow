@@ -40,7 +40,8 @@ def IsNotTFStyleBroadcast : Constraint<Neg<CPred<"IsTFStyleBroadcast($0, $1)">>,
 // Return intermediate shape before broadcasting, wrapped in a constant op.
 def ExpandedShape : NativeCodeCall<"ExpandedShape($_builder, $0, $1, $2)">;
 
-def : Pat<(HLO_ConstantOp $value), (TF_ConstOp $value)>;
+def : Pat<(HLO_ConstantOp:$output $value), (TF_ConstOp $value),
+          [(TF_Tensor $output)]>;
 
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
@@ -215,8 +216,8 @@ foreach pair = [[TF_GreaterEqualOp, HLO_ComparisonDirectionValue<"GE">],
 
 def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
                                                "$0.getDefiningOp())">;
-def : Pat<(HLO_DotOp:$old_value AnyStaticShapeTensor:$lhs,
-               AnyStaticShapeTensor:$rhs, $precision_config),
+def : Pat<(HLO_DotOp:$old_value StaticShapeTensorOf<[TF_ElementType]>:$lhs,
+               StaticShapeTensorOf<[TF_ElementType]>:$rhs, $precision_config),
           (ConvertDotOp $old_value)>;
 
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "

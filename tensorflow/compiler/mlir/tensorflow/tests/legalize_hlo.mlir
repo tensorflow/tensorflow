@@ -3245,3 +3245,17 @@ func.func @reduce_window_trivial_window_dims(%arg0: tensor<4x12xf32>) -> tensor<
   }) {padding = dense<0> : tensor<2x2xi64>, window_dimensions = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
   func.return %1 : tensor<4x12xf32>
 }
+
+// CHECK-LABEL:   func @const_quant
+// CHECK-NOT:       "tf.Const"
+func.func @const_quant() -> tensor<512x1x!quant.uniform<i8:f32, 0.013133913278579712>> {
+  %0 = mhlo.constant() {value = dense<0> : tensor<512x1xi8>} : () -> tensor<512x1x!quant.uniform<i8:f32, 0.013133913278579712>>
+  func.return %0 : tensor<512x1x!quant.uniform<i8:f32, 0.013133913278579712>>
+}
+
+// CHECK-LABEL:   func @convert_dot_quant_type(
+// CHECK-NOT:       "tf.BatchMatMulV2"
+func.func @convert_dot_quant_type(%arg0: tensor<1x256xf32>, %arg1: tensor<256x!quant.uniform<i8:f32, 1.0>>) -> tensor<1xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x256xf32>, tensor<256x!quant.uniform<i8:f32, 1.0>>) -> tensor<1xf32>
+  func.return %0 : tensor<1xf32>
+}
