@@ -192,3 +192,47 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
 }
+
+// -----
+
+// CHECK: #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:      @fuse_cwise_linalg_generic
+// CHECK-SAME: %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+func.func @fuse_cwise_linalg_generic(%lhs: tensor<?x?xf32>,
+    %rhs: tensor<?x?xf32>, %tile: !gml_st.tile<?x?>) -> tensor<?x?xf32> {
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[D0:.*]] = tensor.dim %[[LHS]], %[[C0]]
+  // CHECK-DAG:  %[[D1:.*]] = tensor.dim %[[LHS]], %[[C1]]
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]]]
+  // CHECK-DAG:  %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+  // CHECK-DAG:  %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
+  // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[RES:.*]] = linalg.generic
+  // CHECK-SAME:     indexing_maps = [#[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]]
+  // CHECK-SAME:     iterator_types = ["parallel", "parallel"]
+  // CHECK-SAME:     ins(%[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>, tensor<?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xf32>)
+  // CHECK:      ^bb0(%[[LHS_SCALAR:.*]]: f32, %[[RHS_SCALAR:.*]]: f32, %[[INIT_SCALAR:.*]]: f32):
+  // CHECK-DAG:    %[[RES_SCALAR:.*]] = arith.addf %[[LHS_SCALAR]], %[[RHS_SCALAR]]
+  // CHECK:        linalg.yield %[[RES_SCALAR]]
+  // CHECK:      return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
+  %1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
+  %2 = linalg.init_tensor [%0, %1] : tensor<?x?xf32>
+  %3 = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%2 : tensor<?x?xf32>) {
+  ^bb0(%arg3: f32, %arg4: f32, %arg5: f32):
+    %5 = arith.addf %arg3, %arg4 : f32
+    linalg.yield %5 : f32
+  } -> tensor<?x?xf32>
+  %4 = gml_st.materialize %3[%tile] : tensor<?x?xf32>[!gml_st.tile<?x?>]
+  return %4 : tensor<?x?xf32>
+}

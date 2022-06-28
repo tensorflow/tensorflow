@@ -104,7 +104,9 @@ struct TilingPass : public TilingPassBase<TilingPass> {
     patterns.add<LinalgGenericTilingPattern>(tileSizes, filter,
                                              patterns.getContext());
 
-    (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+      return signalPassFailure();
+    }
 
     // Ensure we drop the marker in the end.
     func.walk([](GenericOp op) {
