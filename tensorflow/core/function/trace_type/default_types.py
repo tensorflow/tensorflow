@@ -397,7 +397,8 @@ class Attrs(trace.TraceType):
 
     return Attrs(self.named_attributes.type_name,
                  self.named_attributes.attribute_names,
-                 supertyped_attributes.attributes, self._placeholder_type)
+                 supertyped_attributes.attributes.components,
+                 self._placeholder_type)
 
   @classmethod
   def experimental_type_proto(cls) -> Type[default_types_pb2.SerializedAttrs]:
