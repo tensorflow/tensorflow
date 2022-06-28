@@ -1237,7 +1237,6 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     } else {
       return false;
     }
-
     // Check if the matched constants have desired values.
     std::map<string, float> values_map = {{"square_root_two_over_pi", 0.797884},
                                           {"one", 1.0},

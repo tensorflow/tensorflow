@@ -54,7 +54,7 @@ cublasLtPointerMode_t AsCublasLtPointerMode(BlasLt::PointerMode pointer_mode) {
 }
 
 port::StatusOr<cublasLtEpilogue_t>
-cublasLtEpilogue_t AsCublasLtEpilogue(BlasLt::Epilogue epilogue) {
+AsCublasLtEpilogue(BlasLt::Epilogue epilogue) {
   switch (epilogue) {
     case BlasLt::Epilogue::kDefault:
       return CUBLASLT_EPILOGUE_DEFAULT;
@@ -172,8 +172,8 @@ port::StatusOr<BlasLt::UniqueOpDesc> CreateCublasLtOperationDesc(
                      computation_type, ") failed: ", ToString(status)));
   }
   BlasLt::UniqueOpDesc unique_desc(desc);
-  TF_ASSIGN_OR_RETURN(cublasLtEpilogue_t epilog_op,
-                      AsCublasLtEpilogue(epilogue));
+  TF_ASSIGN_OR_RETURN(
+      cublasLtEpilogue_t epilog_op, AsCublasLtEpilogue(epilogue));
   SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
                                      AsCublasLtPointerMode(pointer_mode)));
   SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
