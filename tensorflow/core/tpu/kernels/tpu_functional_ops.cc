@@ -588,6 +588,8 @@ bool FindTpuReplicatedInputAndXlaSharding(
 // Returns the name of the framework that rewrote the graph to support
 // inference on TPUs. This name is accessed later during metric collection.
 string GetProducerName(const string& function_name) {
+  if (absl::StrContains(function_name, "tpu_fn_icv2_"))
+    return "TPU_INFERENCE_CONVERTER_V2";
   if (absl::StrContains(function_name, "tpu_func_0") ||
       absl::StrContains(function_name, "_with_batch") ||
       absl::StrContains(function_name, "_optim"))
