@@ -147,4 +147,71 @@ def ExecuteOp : FallbackSync_Op<"executeop",
   let hasCustomAssemblyFormat = 1;
 }
 
+
+def ConvertDhtToFallbackTensorOp : FallbackSync_Op<"convert_dht_to_fallback_tensor",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "convert a DHT to a fallback tensor";
+
+  let description = [{
+    Convert a TFRT DHT to a fallback tensor.
+
+    dht: the input DHT.
+    fallback_tensor: The output fallback tensor
+  }];
+
+  let arguments = (ins
+    TensorType:$dht
+  );
+
+  let results = (outs
+    TFTensorType:$fallback_tensor
+  );
+
+  let assemblyFormat = "operands attr-dict `:` type($fallback_tensor)";
+}
+
+def ConvertShtToFallbackTensorOp : FallbackSync_Op<"convert_sht_to_fallback_tensor",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "convert a SHT to a fallback tensor";
+
+  let description = [{
+    Convert a TFRT SHT to a fallback tensor.
+
+    sht: the input SHT.
+    fallback_tensor: The output fallback tensor
+  }];
+
+  let arguments = (ins
+    TensorType:$sht
+  );
+
+  let results = (outs
+    TFTensorType:$fallback_tensor
+  );
+
+  let assemblyFormat = "operands attr-dict `:` type($fallback_tensor)";
+}
+
+def ConvertFallbackTensorToDhtOp : FallbackSync_Op<"convert_fallback_tensor_to_dht",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "convert fallback tensor to a DHT";
+
+  let description = [{
+    Convert a fallback tensor to a TFRT DHT.
+
+    fallback_tensor: The input fallback tensor
+    dht: the output DHT.
+  }];
+
+  let arguments = (ins
+    TFTensorType:$fallback_tensor
+  );
+
+  let results = (outs
+    TensorType:$dht
+  );
+
+  let assemblyFormat = "operands attr-dict `:` type($dht)";
+}
+
 #endif
