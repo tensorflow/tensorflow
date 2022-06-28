@@ -353,6 +353,7 @@ cc_library(
         ":kernel_fallback_compat_request_state",
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
+        ":kernel_fallback_utils",
         "@llvm-project//llvm:Support",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
@@ -418,4 +419,17 @@ cc_library(
             "//tensorflow/core/framework:tensor",
         ],
     }),
+)
+
+cc_library(
+    name = "kernel_fallback_utils",
+    srcs = ["kernel_fallback_utils.cc"],
+    hdrs = ["kernel_fallback_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_fallback_compat_request_state",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
 )

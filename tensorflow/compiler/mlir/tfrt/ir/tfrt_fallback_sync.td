@@ -125,6 +125,7 @@ def ExecuteOp : FallbackSync_Op<"executeop",
   let arguments = (ins
     Variadic<TensorType>:$operands,
     ArrayAttr:$op_attrs,
+    I64Attr:$op_key,
     StrAttr:$op_name
   );
 
@@ -142,6 +143,7 @@ def ExecuteOp : FallbackSync_Op<"executeop",
       "StringRef":$op_name)>];
 
   let hasVerifier = 1;
+
   let hasCustomAssemblyFormat = 1;
 }
 
