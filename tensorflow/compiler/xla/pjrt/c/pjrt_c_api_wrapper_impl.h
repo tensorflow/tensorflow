@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -28,10 +29,17 @@ struct PJRT_Error {
 
 struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
+  std::vector<PJRT_Device> owned_devices;
+  // `devices` contains the addresses of the contents of `owned_devices`.
+  std::vector<PJRT_Device*> devices;
+  // `addressable_devices` contains pointers to the `owned_devices` that the
+  // client can issue commands to.
+  std::vector<PJRT_Device*> addressable_devices;
 };
 
+// PJRT_Devices are owned by their corresponding PJRT_Client.
 struct PJRT_Device {
-  // The device is owned by the corresponding xla::PjRtClient
+  // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
 };
 
@@ -54,6 +62,9 @@ PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
 PJRT_Error* PJRT_Client_ProcessIndex(PJRT_Client_ProcessIndex_Args* args);
 PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
+PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
+PJRT_Error* PJRT_Client_AddressableDevices(
+    PJRT_Client_AddressableDevices_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);

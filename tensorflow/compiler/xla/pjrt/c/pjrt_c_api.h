@@ -63,6 +63,7 @@ typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 // ---------------------------------- Client -----------------------------------
 
 typedef struct PJRT_Client PJRT_Client;
+typedef struct PJRT_Device PJRT_Device;
 
 typedef struct {
   size_t struct_size;
@@ -134,9 +135,39 @@ const size_t PJRT_Client_PlatformVersion_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Client_PlatformVersion(
     PJRT_Client_PlatformVersion_Args* args);
 
-// --------------------------------- Devices -----------------------------------
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  PJRT_Device** devices;  // out
+  size_t num_devices;     // out
+} PJRT_Client_Devices_Args;
 
-typedef struct PJRT_Device PJRT_Device;
+const size_t PJRT_Client_Devices_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_Devices_Args, num_devices);
+
+// Returns a list of all devices visible to the runtime, including addressable
+// and non-addressable devices.
+typedef PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  PJRT_Device** addressable_devices;  // out
+  size_t num_addressable_devices;     // out
+} PJRT_Client_AddressableDevices_Args;
+
+const size_t PJRT_Client_AddressableDevices_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_AddressableDevices_Args, addressable_devices);
+
+// Returns a list of devices that are addressable from the client.
+// Addressable devices are those that the client can issue commands to.
+// All devices are addressable in a single-process environment.
+typedef PJRT_Error* PJRT_Client_AddressableDevices(
+    PJRT_Client_AddressableDevices_Args* args);
+
+// --------------------------------- Devices -----------------------------------
 
 typedef struct {
   size_t struct_size;
@@ -235,6 +266,8 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformName);
   PJRT_API_STRUCT_FIELD(PJRT_Client_ProcessIndex);
   PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
+  PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
 
   PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
