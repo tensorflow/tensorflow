@@ -654,7 +654,9 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "16B",
+# TODO: The causes a performance regression on ROCm
+#     : https://github.com/ROCmSoftwarePlatform/frameworks-internal/issues/1921
+#    unroll_factors = "16B", 
 )
 
 gpu_kernel_library(
