@@ -841,7 +841,7 @@ tf_py_test(
     name = "shard_test",
     size = "medium",
     srcs = ["shard_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
