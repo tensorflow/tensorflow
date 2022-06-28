@@ -61,14 +61,14 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 }
 
 def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
-  let arguments = (ins AnySubset:$subset,
+  let arguments = (ins AnySubset:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
   let results = (outs GMLST_PointType:$result);
   let assemblyFormat = [{
-    $subset
+    $superset
     custom<OperandsOrIntegersOffsetsOrStridesList>($dynamic_indices, $static_indices)
-    attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
+    attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
   let extraClassDeclaration = [{
     unsigned getRank() { return static_indices().size(); }
@@ -79,7 +79,7 @@ def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
 def GMLST_TileOp : GMLST_Op<"tile", [NoSideEffect, AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins GMLST_TileType:$subset,
+  let arguments = (ins GMLST_TileType:$superset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
                        Variadic<Index>:$strides,
@@ -88,18 +88,18 @@ def GMLST_TileOp : GMLST_Op<"tile", [NoSideEffect, AttrSizedOperandSegments,
                        I64ArrayAttr:$static_strides);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    $subset
+    $superset
     custom<OperandsOrIntegersOffsetsOrStridesList>($offsets, $static_offsets)
     custom<OperandsOrIntegersSizesList>($sizes, $static_sizes)
     custom<OperandsOrIntegersOffsetsOrStridesList>($strides, $static_strides)
-    attr-dict `:` qualified(type($subset)) `to` qualified(type($result))
+    attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
   }];
 
   let extraClassDeclaration = [{
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = subset().getType().cast<TileType>().getRank();
+      unsigned rank = superset().getType().cast<TileType>().getRank();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and
@@ -120,12 +120,12 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
     the root space.
   }];
   let arguments = (ins
-    GMLST_TileType:$arg_tile,
+    GMLST_TileType:$superset,
     I64ElementsAttr:$remaining_dims);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    $arg_tile `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
-    qualified(type($arg_tile)) `->` qualified(type($result))
+    $superset `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
+    qualified(type($superset)) `->` qualified(type($result))
   }];
   let hasVerifier = 0;
 }

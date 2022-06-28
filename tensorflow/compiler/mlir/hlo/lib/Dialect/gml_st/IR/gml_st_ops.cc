@@ -1244,15 +1244,15 @@ LogicalResult SpaceOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult PointOp::verify() {
-  auto subsetTy = subset().getType();
-  if (subsetTy.isa<PointType>()) {
+  auto supersetTy = superset().getType();
+  if (supersetTy.isa<PointType>()) {
     if (!static_indices().empty() || !dynamic_indices().empty()) {
       return emitOpError(
           "expected empty indices and static_indices for a subset of type "
           "PointType");
     }
   } else {
-    auto tileTy = subsetTy.cast<TileType>();
+    auto tileTy = supersetTy.cast<TileType>();
     auto tileShape = tileTy.getShape();
     if (failed(mlir::verifyListOfOperandsOrIntegers(
             getOperation(), "index", tileShape.size(), static_indices(),
@@ -1303,8 +1303,8 @@ LogicalResult TileOp::inferReturnTypes(
 }
 
 LogicalResult TileOp::verify() {
-  auto subsetTy = subset().getType().cast<TileType>();
-  auto rank = subsetTy.getShape().size();
+  auto supersetTy = superset().getType().cast<TileType>();
+  auto rank = supersetTy.getShape().size();
   if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "size", rank,
                                                   static_sizes(), sizes(),
                                                   ShapedType::isDynamic))) {
@@ -1320,7 +1320,7 @@ LogicalResult TileOp::verify() {
           ShapedType::isDynamicStrideOrOffset))) {
     return failure();
   }
-  for (auto it : llvm::zip(subsetTy.getShape(), static_offsets(),
+  for (auto it : llvm::zip(supersetTy.getShape(), static_offsets(),
                            static_sizes(), static_strides())) {
     auto offset =
         std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();

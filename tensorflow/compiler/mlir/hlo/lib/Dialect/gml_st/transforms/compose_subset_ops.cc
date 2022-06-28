@@ -84,14 +84,14 @@ OpFoldResult addOperandsOrIntegers(PatternRewriter& rewriter, Location loc,
       .getResult();
 }
 
-// Compose offsets with newOffset = argOffset + argStride * offset.
+// Compose offsets with newOffset = supersetOffset + supersetStride * offset.
 SmallVector<OpFoldResult> composeOffsets(
-    const llvm::SmallVectorImpl<OpFoldResult>& argOffsets,
-    const llvm::SmallVectorImpl<OpFoldResult>& argStrides,
+    const llvm::SmallVectorImpl<OpFoldResult>& supersetOffsets,
+    const llvm::SmallVectorImpl<OpFoldResult>& supersetStrides,
     const llvm::SmallVectorImpl<OpFoldResult>& offsets, Location loc,
     PatternRewriter& rewriter) {
   SmallVector<OpFoldResult> composedOffsets;
-  for (auto it : llvm::zip(argOffsets, argStrides, offsets)) {
+  for (auto it : llvm::zip(supersetOffsets, supersetStrides, offsets)) {
     composedOffsets.push_back(addOperandsOrIntegers(
         rewriter, loc, std::get<0>(it),
         multiplyOperandsOrIntegers(rewriter, loc, std::get<1>(it),
@@ -100,13 +100,13 @@ SmallVector<OpFoldResult> composeOffsets(
   return composedOffsets;
 }
 
-// Compose strides with newStride = argStride * stride.
+// Compose strides with newStride = supersetStride * stride.
 SmallVector<OpFoldResult> composeStrides(
     PatternRewriter& rewriter, Location loc,
-    const llvm::SmallVectorImpl<OpFoldResult>& argStrides,
+    const llvm::SmallVectorImpl<OpFoldResult>& supersetStrides,
     const llvm::SmallVectorImpl<OpFoldResult>& strides) {
   SmallVector<OpFoldResult> composedStrides;
-  for (auto it : llvm::zip(argStrides, strides)) {
+  for (auto it : llvm::zip(supersetStrides, strides)) {
     composedStrides.push_back(multiplyOperandsOrIntegers(
         rewriter, loc, std::get<0>(it), std::get<1>(it)));
   }
@@ -118,24 +118,26 @@ struct ComposeTilesPattern : public OpRewritePattern<TileOp> {
 
   LogicalResult matchAndRewrite(TileOp op,
                                 PatternRewriter& rewriter) const override {
-    auto argOp = llvm::dyn_cast_or_null<TileOp>(op.subset().getDefiningOp());
-    if (!argOp) return failure();
+    auto supersetOp =
+        llvm::dyn_cast_or_null<TileOp>(op.superset().getDefiningOp());
+    if (!supersetOp) return failure();
 
-    // Compose offsets with newOffset = argOffset + argStride * offset.
+    // Compose offsets with newOffset = supersetOffset + supersetStride *
+    // offset.
     auto loc = op.getLoc();
     auto composedOffsets = decomposeMixedStridesOrOffsets(
-        rewriter,
-        composeOffsets(argOp.getMixedOffsets(), argOp.getMixedStrides(),
-                       op.getMixedOffsets(), loc, rewriter));
+        rewriter, composeOffsets(supersetOp.getMixedOffsets(),
+                                 supersetOp.getMixedStrides(),
+                                 op.getMixedOffsets(), loc, rewriter));
 
-    // Compose strides with newStride = argStride * stride.
+    // Compose strides with newStride = supersetStride * stride.
     auto composedStrides = decomposeMixedStridesOrOffsets(
-        rewriter, composeStrides(rewriter, loc, argOp.getMixedStrides(),
+        rewriter, composeStrides(rewriter, loc, supersetOp.getMixedStrides(),
                                  op.getMixedStrides()));
 
     // Build the composed tile op.
     rewriter.replaceOpWithNewOp<TileOp>(
-        op, argOp.subset(), composedOffsets.second, op.sizes(),
+        op, supersetOp.superset(), composedOffsets.second, op.sizes(),
         composedStrides.second, composedOffsets.first, op.static_sizes(),
         composedStrides.first);
     return success();

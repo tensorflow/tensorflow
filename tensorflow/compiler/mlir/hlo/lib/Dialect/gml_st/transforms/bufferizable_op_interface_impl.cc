@@ -190,11 +190,11 @@ FailureOr<SmallVector<Operation *>> findSubsetChain(Value subset) {
     subsets.push_back(current);
     // TODO(pifon): It might be useful to have a subset interface.
     if (auto tile = dyn_cast<TileOp>(*current)) {
-      current = tile.subset().getDefiningOp();
+      current = tile.superset().getDefiningOp();
       continue;
     }
     if (auto point = dyn_cast<PointOp>(*current)) {
-      current = point.subset().getDefiningOp();
+      current = point.superset().getDefiningOp();
       continue;
     }
     return failure();
