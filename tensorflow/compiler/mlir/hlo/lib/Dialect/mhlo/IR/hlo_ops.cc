@@ -1915,7 +1915,7 @@ LogicalResult isSpatialDimensionsValid(ConvOp op) {
 
   const auto hasDuplicates = [](SmallVector<int64_t>& dnums) {
     std::sort(dnums.begin(), dnums.end());
-    auto last = std::unique(dnums.begin(), dnums.end());
+    auto* last = std::unique(dnums.begin(), dnums.end());
     return last != dnums.end();
   };
 
@@ -3011,7 +3011,7 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
                                 PatternRewriter& rewriter) const override {
     auto type = op.getType().dyn_cast<RankedTensorType>();
     auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-    auto outputDimOp = op.output_dimensions().getDefiningOp();
+    auto* outputDimOp = op.output_dimensions().getDefiningOp();
     if (!type || !operandType || !operandType.hasStaticShape()) {
       return rewriter.notifyMatchFailure(op, "requires operand static shape");
     }
@@ -7115,7 +7115,7 @@ LogicalResult validateScatterDimensionNumbers(
     ScatterDimensionNumbersAttr dimNumbers, Location loc) {
   const auto hasDuplicates = [](SmallVector<int64_t>& nums) {
     if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
-    auto last = std::unique(nums.begin(), nums.end());
+    auto* last = std::unique(nums.begin(), nums.end());
     return last != nums.end();
   };
 
