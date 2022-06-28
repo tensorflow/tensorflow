@@ -757,7 +757,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "reduce_test",
-    size = "small",
+    size = "medium",
     srcs = ["reduce_test.py"],
     tags = [
         "no_cuda_asan",  # times out
