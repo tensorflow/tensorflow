@@ -197,19 +197,26 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
     c += "  __local float tmp[" + std::to_string(work_group_size_.x) + "];\n";
     c += "#endif\n";
   }
-  if (definition_.src_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int B = GLOBAL_ID_1;\n";
-    c += "  if (B >= args.src_tensor.Batch()) { return; }\n";
+  if (definition_.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GROUP_ID_0;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  if (B >= args.dst_tensor.Batch()) { return; }\n";
     c += "  args.src_tensor.SetBatchRef(B);\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = GROUP_ID_0;\n";
   }
+  c += "  int Y = GROUP_ID_1;\n";
+  c += "  if (X >= args.dst_tensor.Width()) { return; }\n";
+  c += "  if (Y >= args.dst_tensor.Height()) { return; }\n";
   c += R"(
   // Calculate the total sum of the input tensor.
   // First, get a local sum of input[local_id_x + N*local_size_x] for all N.
   float4 private_sum4 = INIT_FLOAT4(0.0f);
   int local_id = LOCAL_ID_0;
   for (int S = local_id; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
-    float4 t = args.src_tensor.Read<float>(0, 0, S);)";
+    float4 t = args.src_tensor.Read<float>(X, Y, S);)";
   if (!channels_x4) {
     c += "    t = filter_outside_tensor(t, args.src_tensor.Channels(), S);\n";
   }
@@ -224,7 +231,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   // Calculate the squared sum of the difference from the mean.
   float4 private_sum_diff_sq4 = INIT_FLOAT4(0.0f);
   for (int S = local_id; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
-    float4 t = args.src_tensor.Read<float>(0, 0, S);
+    float4 t = args.src_tensor.Read<float>(X, Y, S);
     float4 diff = t - mean;)";
   if (!channels_x4) {
     c += "    diff = filter_outside_tensor(diff, args.src_tensor.Channels(), "
@@ -241,9 +248,9 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   float stddev_inv = rsqrt(variance + args.variance_bias);
   // Calculate (t-mean)/stddev for each element
   for (int S = local_id; S < args.src_tensor.Slices(); S += GROUP_SIZE_0) {
-    float4 t = args.src_tensor.Read<float>(0, 0, S);
+    float4 t = args.src_tensor.Read<float>(X, Y, S);
     FLT4 result = TO_FLT4((t - mean) * stddev_inv);
-    args.dst_tensor.Write(result, 0, 0, S);
+    args.dst_tensor.Write(result, X, Y, S);
   }
 })";
   return c;
@@ -252,8 +259,8 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
 int3 MeanStdDevNormalization::GetGridSize() const {
   // To avoid dealing with global reductions, we restrict the grid size to the
   // work group size in the first dimension.
-  const int grid_x = work_group_size_.x;
-  const int grid_y = src_[0]->Batch();
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch() * work_group_size_.x;
+  const int grid_y = dst_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
 }
