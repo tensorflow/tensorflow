@@ -132,7 +132,7 @@ tf_py_test(
 
 tf_py_test(
     name = "csv_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["csv_dataset_test.py"],
     shard_count = 8,
     deps = [
