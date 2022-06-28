@@ -146,7 +146,12 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
         VLOG(1) << "Visiting node: " << node.ToString();
         for (HloInstruction* instruction :
              node.computation()->MakeInstructionPostOrder()) {
-          if (instruction->opcode() == HloOpcode::kCall) {
+          // Don't inline async called computation since currently it's only
+          // used for parallel device computation.
+          // TODO(b/229887502): update the inliner to ignore only parallel
+          // device type async call instead of all.
+          if (instruction->opcode() == HloOpcode::kCall &&
+              !instruction->parent()->IsAsyncComputation()) {
             const auto& callees = instruction->called_computations();
             TF_RET_CHECK(callees.size() == 1);
             HloInstruction* call_root = callees[0]->root_instruction();
