@@ -6,7 +6,6 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    exclude = ["bufferization_with_subsets.mlir"],
     test_file_exts = ["mlir"],
 )
 

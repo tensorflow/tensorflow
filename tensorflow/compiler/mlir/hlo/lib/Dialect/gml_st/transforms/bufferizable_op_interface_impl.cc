@@ -442,9 +442,7 @@ struct SubsetYieldOpInterface
 
   LogicalResult bufferize(Operation * /*op*/, RewriterBase & /*b*/,
                           const BufferizationOptions & /*options*/) const {
-    llvm_unreachable(
-        "bufferization of subset_yield happens via ParallelOp/ForOp");
-    return failure();
+    return success();
   }
 
   bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
