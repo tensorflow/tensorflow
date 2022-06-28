@@ -69,18 +69,21 @@ void BaseTfLiteTensorBuffer::LogDeallocation() {
 }
 
 void* TfLiteTensorBuffer::MaybeAllocateTensorflowBuffer(
-    const TfLiteTensor* tensor) const {
-  if (ShouldReuseTensorMemory(tensor)) {
+    const TfLiteTensor* tensor, bool allow_reusing) const {
+  if (allow_reusing && ShouldReuseTensorMemory(tensor)) {
     return tensor->data.raw;
   }
   return tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES,
                                                   tensor->bytes);
 }
 
-TfLiteTensorBuffer::TfLiteTensorBuffer(const TfLiteTensor* tensor)
-    : BaseTfLiteTensorBuffer(MaybeAllocateTensorflowBuffer(tensor)) {
+TfLiteTensorBuffer::TfLiteTensorBuffer(const TfLiteTensor* tensor,
+                                       bool allow_reusing)
+    : BaseTfLiteTensorBuffer(
+          MaybeAllocateTensorflowBuffer(tensor, allow_reusing)) {
   len_ = tensor->bytes;
-  reused_buffer_from_tflite_ = ShouldReuseTensorMemory(tensor);
+
+  reused_buffer_from_tflite_ = allow_reusing && ShouldReuseTensorMemory(tensor);
 
   if (data() && !reused_buffer_from_tflite_) {
     LogAllocation();
@@ -129,7 +132,8 @@ StringTfLiteTensorBuffer::StringTfLiteTensorBuffer(const TfLiteTensor* tensor,
 }
 
 tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
-                                         tensorflow::Tensor* tf_tensor) {
+                                         tensorflow::Tensor* tf_tensor,
+                                         bool allow_reusing) {
   if (resource::IsBuiltinResource(tensor)) {
     // If this is native TF Lite resource variable, then we create a TF resource
     // tensor where the tensor handle encodes the identifier of the TF Lite
@@ -177,7 +181,7 @@ tensorflow::Status SetTfTensorFromTfLite(const TfLiteTensor* tensor,
   if (tensor->type == kTfLiteString) {
     buf = new StringTfLiteTensorBuffer(tensor);
   } else {
-    buf = new TfLiteTensorBuffer(tensor);
+    buf = new TfLiteTensorBuffer(tensor, allow_reusing);
   }
   tensorflow::Tensor t = tensorflow::TensorCApi::MakeTensor(
       GetTensorFlowDataType(tensor->type), shape, buf);

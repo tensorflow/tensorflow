@@ -270,6 +270,24 @@ TEST(BufferMapTest, TensorflowBufferReuse) {
   TfLiteTensorDataFree(&tensor);
 }
 
+TEST(BufferMapTest, ExplicitlyDisableBufferReuse) {
+  TfLiteTensor tensor;
+  tensor.allocation_type = kTfLiteDynamic;
+  tensor.data.raw = nullptr;
+  TfLiteTensorRealloc(10, &tensor);
+  CHECK(tensor.data.raw);
+  EXPECT_EQ(tensor.bytes, 10);
+
+  TfLiteTensorBuffer* tensor_buffer =
+      new TfLiteTensorBuffer(&tensor, /*=allow_reusing*/ false);
+  // Checks that the underlying buffer is not reused.
+  EXPECT_FALSE(tensor_buffer->BufferReusedFromTfLiteTensor());
+  EXPECT_NE(tensor_buffer->data(), tensor.data.raw);
+  tensor_buffer->Unref();
+
+  TfLiteTensorDataFree(&tensor);
+}
+
 }  // namespace
 }  // namespace flex
 }  // namespace tflite

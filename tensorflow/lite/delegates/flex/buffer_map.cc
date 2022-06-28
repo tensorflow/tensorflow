@@ -46,9 +46,11 @@ const tensorflow::Tensor* BufferMap::GetTensorPtr(int tensor_index) const {
   return &tensor;
 }
 
-void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
+void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor,
+                              bool allow_reusing) {
   TFLITE_CHECK(
-      SetTfTensorFromTfLite(tensor, &id_to_tensor_[tensor_index]).ok());
+      SetTfTensorFromTfLite(tensor, &id_to_tensor_[tensor_index], allow_reusing)
+          .ok());
   if (IsResourceOrVariant(tensor)) {
     owned_by_tf_.insert(tensor_index);
     return;
