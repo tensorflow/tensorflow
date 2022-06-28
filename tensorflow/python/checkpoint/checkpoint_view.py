@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import collections
+
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.framework import errors_impl
@@ -63,7 +65,13 @@ class CheckpointView(object):
   def descendants(self):
     """Returns a list of all node_ids from ObjectGraphProto."""
     all_nodes = []
-    for node in list(self._object_graph_proto.nodes):
-      for child in list(node.children):
-        all_nodes.append(child.node_id)
+    to_visit = collections.deque([0])
+    all_nodes.append(0)
+    while to_visit:
+      node_id = to_visit.popleft()
+      obj = self._object_graph_proto.nodes[node_id]
+      for child in obj.children:
+        if child.node_id not in all_nodes:
+          all_nodes.append(child.node_id)
+          to_visit.append(child.node_id)
     return all_nodes
