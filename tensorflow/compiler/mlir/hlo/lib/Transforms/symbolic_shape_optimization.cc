@@ -444,7 +444,7 @@ bool isUnpairedUnitDimension(
     ArrayRef<ShapeComponentAnalysis::SymbolicExpr>::iterator otherIt,
     ArrayRef<ShapeComponentAnalysis::SymbolicExpr>::iterator otherEnd) {
   return it != end && it->isConstant(1) &&
-         !(otherIt != otherEnd && otherIt->isConstant(1));
+         (otherIt == otherEnd || !otherIt->isConstant(1));
 }
 
 int64_t getShapedTypyDimSize(const SymbolicProduct &symProduct) {
