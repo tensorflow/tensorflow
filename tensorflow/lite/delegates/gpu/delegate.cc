@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
@@ -102,7 +103,7 @@ class Delegate {
       SerializationParams params;
       params.model_token = options_.model_token;
       params.cache_dir = options_.serialization_dir;
-      serialization_.reset(new Serialization(params));
+      serialization_ = std::make_unique<Serialization>(params);
     }
   }
 
@@ -514,7 +515,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         // Everything below should happen in prepare function call, but TFLite
         // for whatever reason forbids that.
         auto gpu_delegate_kernel =
-            absl::make_unique<DelegateKernel>(gpu_delegate);
+            std::make_unique<DelegateKernel>(gpu_delegate);
         const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
           TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Init: %s",
