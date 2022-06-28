@@ -38,10 +38,16 @@ option(FLATBUFFERS_BUILD_TESTS OFF)
 # Required for Windows, since it has macros called min & max which
 # clashes with std::min
 add_definitions(-DNOMINMAX=1)
-add_subdirectory(
-  "${flatbuffers_SOURCE_DIR}"
-  "${flatbuffers_BINARY_DIR}"
-)
+# Needed for cross-compilation: The flatbuffers package attempts to regenerate code with flatc if Python3 package is found.
+# The flatc is cross-built, hence not usable on host. To suppress the generation disable the FindPackage for Python3 for flatbuffers.
+function(tflite_flatbuffers_add_subdirectory_scopped)
+  set(CMAKE_DISABLE_FIND_PACKAGE_Python3 True)
+  add_subdirectory(
+    "${flatbuffers_SOURCE_DIR}"
+    "${flatbuffers_BINARY_DIR}"
+  )
+endfunction()
+tflite_flatbuffers_add_subdirectory_scopped()
 remove_definitions(-DNOMINMAX)
 
 # For BuildFlatBuffers.cmake
@@ -74,5 +80,6 @@ ExternalProject_Add(flatbuffers-flatc
              -DFLATBUFFERS_STATIC_FLATC=OFF
              -DFLATBUFFERS_BUILD_FLATHASH=OFF
              -DCMAKE_INSTALL_PREFIX=$CACHE{FLATC_INSTALL_PREFIX}
+             -DCMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE
   EXCLUDE_FROM_ALL ${FLATC_EXCLUDE_FROM_ALL}
 )
