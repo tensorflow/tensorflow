@@ -2190,11 +2190,14 @@ cc_library(
     srcs = ["lib/Transforms/gml_st_pipeline.cc"],
     hdrs = ["include/mlir-hlo/Transforms/gml_st_pipeline.h"],
     deps = [
+        ":bufferize_pass",
         ":gml_st_tiling",
         ":legalize_mhlo_to_gml",
         ":legalize_to_linalg",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

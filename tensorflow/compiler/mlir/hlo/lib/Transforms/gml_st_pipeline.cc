@@ -17,21 +17,38 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/Passes.h"
 
 namespace mlir {
+
 using ::mlir::func::FuncOp;
 
 void createGmlStPipeline(mlir::OpPassManager& pm,
                          const GmlStPipelineOptions& options) {
-  // First legalize from mhlo to gml_st. These patterns have precedence over the
-  // lowering to Linalg.
+  // Transforms HLO to Linalg + GmlSt.
   pm.addNestedPass<FuncOp>(gml_st::createLegalizeMHLOToGMLPass());
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
-  pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
+
+  // Perform tiling, fusion, vectorization and other transformations.
   pm.addNestedPass<FuncOp>(gml_st::createTilingPass(options.tileSizes));
+
+  if (!options.lowerToLoops) return;
+
+  // Bufferization-related passes.
+  pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
+  pm.addPass(hlo::createOneShotBufferizePass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
+
+  // Convert Linalg + GmlSt to SCF loops.
+  pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
+  pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
 }
 
 }  // namespace mlir
