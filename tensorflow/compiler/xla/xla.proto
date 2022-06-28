@@ -210,6 +210,10 @@ message DebugOptions {
   // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
   bool xla_cpu_enable_mlir_lowering = 171;
 
+  // If true, use MLIR instead of IR emitter to generate device code for
+  // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
+  bool xla_gpu_enable_mlir_lowering = 173;
+
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
 
@@ -418,7 +422,7 @@ message DebugOptions {
   // instructions.
   bool xla_gpu_normalize_layouts = 172;
 
-  // Next id: 173
+  // Next id: 174
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

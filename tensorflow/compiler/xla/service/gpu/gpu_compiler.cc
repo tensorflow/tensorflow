@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -1043,6 +1044,14 @@ static Status CompileModuleToLlvmIrImpl(
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
       entry_function, &results->allocations, &results->output_info,
       &results->output_shape, &results->entry_func_attrs));
+
+  if (hlo_module->config().debug_options().xla_gpu_enable_mlir_lowering()) {
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(mlir::createGpuFusionRewritePass());
+    if (failed(pm.run(mlir_module.get()))) {
+      return InternalError("Failed to run gpu-fusion-rewrite pass");
+    }
+  }
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
