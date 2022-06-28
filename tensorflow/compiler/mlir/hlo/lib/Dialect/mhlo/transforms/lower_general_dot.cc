@@ -205,11 +205,11 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
 
     lhs = processDotArg(op.lhs(), op.getLoc(),
                         dotNumbers.getLhsContractingDimensions(),
-                        /*outer_dims_first=*/true, rewriter);
+                        /*outerDimsFirst=*/true, rewriter);
 
     rhs = processDotArg(op.rhs(), op.getLoc(),
                         dotNumbers.getRhsContractingDimensions(),
-                        /*outer_dims_first=*/false, rewriter);
+                        /*outerDimsFirst=*/false, rewriter);
 
     // Accept only static shaped types.
     auto lhsShapeType = lhs.getType().dyn_cast_or_null<ShapedType>();
