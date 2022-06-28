@@ -1098,7 +1098,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//conditions:default": ["-lm"],
+        "//conditions:default": ["-lm", "-ldl"],
     }),
     deps = [
         ":platform",
