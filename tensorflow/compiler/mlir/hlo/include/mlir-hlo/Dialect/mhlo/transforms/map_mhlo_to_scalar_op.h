@@ -428,6 +428,129 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
   return nullptr;
 }
 
+inline Value MapReducePrecisionOpToStdScalarOp(
+    Location loc, ArrayRef<Type> arg_types, ValueRange args, OpBuilder* builder,
+    int dest_exponent_bits, int dest_mantissa_bits) {
+  using llvm::APInt;
+  mlir::ImplicitLocOpBuilder b(loc, *builder);
+
+  // Integer and float types for casting and constant generation.
+  auto float_type =
+      arg_types.front().cast<TensorType>().getElementType().cast<FloatType>();
+  int64_t nbits = float_type.getWidth();
+  auto int_type =
+      mlir::IntegerType::get(loc.getContext(), float_type.getWidth());
+
+  Value x_as_int = b.create<arith::BitcastOp>(int_type, args[0]);
+
+  // SignificandWidth includes the implicit extra bit.
+  auto src_mantissa_bits = float_type.getFPMantissaWidth() - 1;
+  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
+
+  // Clear the sign bit, it does not participate in rounding and we will restore
+  // it later.
+  APInt sign_bit_mask(nbits, 1);
+  sign_bit_mask <<= nbits - 1;
+
+  APInt exp_bits_mask(nbits, 1);
+  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                  << src_mantissa_bits;
+
+  if (dest_mantissa_bits < src_mantissa_bits) {
+    // Last remaining mantissa bit.
+    APInt last_mantissa_bit_mask(nbits, 1);
+    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
+
+    // Compute rounding bias for round-to-nearest with ties to even.  This is
+    // equal to a base value of 0111... plus one bit if the last remaining
+    // mantissa bit is 1.
+    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
+
+    Value mantissa_diff = b.create<arith::ConstantIntOp>(
+        src_mantissa_bits - dest_mantissa_bits, int_type);
+    Value highest_mantissa_mask_val = b.create<arith::ConstantIntOp>(
+        last_mantissa_bit_mask.getZExtValue(), int_type);
+    Value base_rounding_bias_val = b.create<arith::ConstantIntOp>(
+        base_rounding_bias.getZExtValue(), int_type);
+    Value x_last_mantissa_bit = b.create<arith::ShRUIOp>(
+        b.create<arith::AndIOp>(x_as_int, highest_mantissa_mask_val),
+        mantissa_diff);
+    Value x_rounding_bias =
+        b.create<arith::AddIOp>(x_last_mantissa_bit, base_rounding_bias_val);
+
+    // Add rounding bias, and mask out truncated bits.  Note that the case
+    // where adding the rounding bias overflows into the exponent bits is
+    // correct; the non-masked mantissa bits will all be zero, and the
+    // exponent will be incremented by one.
+    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
+    Value x_rounded = b.create<arith::AddIOp>(x_as_int, x_rounding_bias);
+    x_rounded = b.create<arith::AndIOp>(
+        x_rounded,
+        b.create<arith::ConstantIntOp>(truncation_mask.getZExtValue(), int_type)
+            .getResult());
+    x_as_int = x_rounded;
+  }
+
+  if (dest_exponent_bits < src_exponent_bits) {
+    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
+    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
+    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
+    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
+    // exponent (corresponding to 0.0f).
+    //
+    // Thus, the f32 exponent corresponding to the highest non-infinite
+    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+    // exponent corresponding to the lowest exponent for a bit size of n is
+    // (2^7-1) - 2^(n-1)-1.
+    //
+    // Note that we have already checked that exponents_bits >= 1.
+    APInt exponent_bias(nbits, 1);
+    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
+
+    APInt reduced_exponent_bias(nbits, 1);
+    reduced_exponent_bias =
+        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
+
+    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
+
+    // Do we overflow or underflow?
+    Value x_exponent = b.create<arith::AndIOp>(
+        x_as_int,
+        b.create<arith::ConstantIntOp>(exp_bits_mask.getZExtValue(), int_type)
+            .getResult());
+    Value x_overflows = b.create<arith::CmpIOp>(
+        arith::CmpIPredicate::ugt, x_exponent,
+        b.create<arith::ConstantIntOp>(
+             (reduced_max_exponent << src_mantissa_bits).getZExtValue(),
+             int_type)
+            .getResult());
+    Value x_underflows = b.create<arith::CmpIOp>(
+        arith::CmpIPredicate::ule, x_exponent,
+        b.create<arith::ConstantIntOp>(
+             (reduced_min_exponent << src_mantissa_bits).getZExtValue(),
+             int_type)
+            .getResult());
+
+    // Compute appropriately-signed values of zero and infinity.
+    Value x_signed_zero = b.create<arith::AndIOp>(
+        x_as_int,
+        b.create<arith::ConstantIntOp>(sign_bit_mask.getZExtValue(), int_type)
+            .getResult());
+    Value x_signed_inf = b.create<arith::OrIOp>(
+        x_signed_zero,
+        b.create<arith::ConstantIntOp>(exp_bits_mask.getZExtValue(), int_type)
+            .getResult());
+
+    // Force to zero or infinity if overflow or underflow.  (Note that this
+    // truncates all denormal values to zero, rather than rounding them.)
+    x_as_int = b.create<arith::SelectOp>(x_overflows, x_signed_inf, x_as_int);
+    x_as_int = b.create<arith::SelectOp>(x_underflows, x_signed_zero, x_as_int);
+  }
+
+  return b.create<arith::BitcastOp>(float_type, x_as_int);
+}
+
 template <>
 inline Value MapMhloOpToStdScalarOp<mhlo::CopyOp>(
     Location /*loc*/, ArrayRef<Type> /*result_types*/,
@@ -1026,6 +1149,15 @@ struct MhloOpToStdScalarOp {
                                  OpBuilder* b) {
     static_assert(!std::is_same<MhloOpTy, mhlo::ConvertOp>::value);
     return mapOpOfType<MhloOpTy>(op.getLoc(), result_types, arg_types, args, b);
+  }
+  // Overload for mhlo::ReducePrecisionOp.
+  static Value mapOpWithArgTypes(mhlo::ReducePrecisionOp op,
+                                 ArrayRef<Type> result_types,
+                                 ArrayRef<Type> arg_types, ValueRange args,
+                                 OpBuilder* b) {
+    return impl::MapReducePrecisionOpToStdScalarOp(op.getLoc(), arg_types, args,
+                                                   b, op.exponent_bits(),
+                                                   op.mantissa_bits());
   }
   // Overload for mhlo::CompareOp.
   static Value mapOpWithArgTypes(mhlo::CompareOp op,
