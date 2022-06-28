@@ -215,10 +215,6 @@ def _add_attributes_to_object_graph_for_saveable_objects(
     for factory_data in factory_data_list:
       name = factory_data.name
       key = factory_data.checkpoint_key
-      object_proto.attributes.add(
-          name=name,
-          checkpoint_key=key,
-          full_name=_get_full_name(object_to_save))
       saveable_factory = factory_data.factory
 
       # See if we can skip saving this checkpoint key.
@@ -271,6 +267,25 @@ def _add_attributes_to_object_graph_for_saveable_objects(
                     "is already feeding a value.")
             feed_additions.update(saveable_feed_dict)
         named_saveable_objects.append(saveable)
+
+      # Update the object proto.
+      # For updated Trackables that override serialize_to_tensors, add an
+      # attribute for each tensor that is serialized.
+      # For Trackables that have SaveableObjects or a legacy saveable name,
+      # add a single attribute to the proto.
+      if (isinstance(saveables[0], saveable_object_util.TrackableSaveable) and
+          saveable_compat.get_saveable_name(object_to_save) is None):
+        for local_name, local_key in (
+            saveables[0].get_proto_names_and_checkpoint_keys()):
+          object_proto.attributes.add(
+              name=local_name,
+              checkpoint_key=local_key,
+              full_name=_get_full_name(object_to_save))
+      else:
+        object_proto.attributes.add(
+            name=name,
+            checkpoint_key=key,
+            full_name=_get_full_name(object_to_save))
 
   return named_saveable_objects, feed_additions
 

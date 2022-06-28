@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
@@ -387,8 +388,54 @@ class CheckpointPosition(object):
     from tensorflow.python.training.saving import saveable_object_util
     # pylint:enable=g-import-not-at-top
 
-    saveables = saveable_object_util.saveable_objects_from_trackable(
+    if not self.object_proto.attributes:
+      return [], {}, []
+
+    saveable_factories = saveable_object_util.saveable_objects_from_trackable(
         self.trackable)
+    if saveable_factories.keys() == {trackable_utils.SERIALIZE_TO_TENSORS_NAME}:
+      return self._create_serialize_to_tensor_saveable(saveable_factories)
+    return self._create_saveables_by_attribute_name(saveable_factories)
+
+  def _create_serialize_to_tensor_saveable(self, saveable_factories):
+    """Creates a saveable using the _serialize_to_tensor method."""
+    # Extract the saveable name from the checkpoint key. This will be used as
+    # the cache key or the name to pass to the saveable factory.
+    saveable_name = checkpoint_util.extract_saveable_name(
+        self.trackable, self.object_proto.attributes[0].checkpoint_key)
+    # Try to find the cached saveable (only in graph mode).
+    if not context.executing_eagerly():
+      existing_op = self._checkpoint.restore_ops_by_name.get(saveable_name,
+                                                             None)
+      if existing_op is not None:
+        return existing_op, {}, []
+
+      saveables_cache = self._checkpoint.saveables_cache.setdefault(
+          self.trackable, {})
+      if saveable_name in saveables_cache:
+        return [], {saveable_name: saveables_cache[saveable_name]}, []
+
+    saveable = saveable_factories[trackable_utils.SERIALIZE_TO_TENSORS_NAME](
+        name=saveable_name)
+    if not context.executing_eagerly():
+      saveables_cache[saveable_name] = saveable
+    return [], {saveable_name: saveable}, []
+
+  def _create_saveables_by_attribute_name(self, saveable_factories):
+    """Creates or caches SaveableObjects by matching the attribute names.
+
+    The attribute name keys in the `saveable_factories` is used to find the
+    corresponding attribute in the object proto. Attributes contain checkpoint
+    keys which are passed to the factory function to generate the
+    SaveableObject.
+
+    Args:
+      saveable_factories: a dict mapping attribute name to a callable factory
+        function that produces a SaveableObject.
+
+    Returns:
+      A tuple of (existing_restore_ops, named_saveables, python_saveables)
+    """
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
     python_saveables = []
@@ -434,14 +481,9 @@ class CheckpointPosition(object):
           del saveables_cache[self.trackable]
       if saveable is None:
         # If there was no cached SaveableObject, create one.
-        if saveables.keys() == {""}:
-          # First check if the saveable factory is generated with the
-          # compatibility function `saveable_objects_from_trackable`.
-          saveable_factory = saveables[""]
-        else:
-          # Otherwise, use the name to check if the Python object has the same
-          # attribute.
-          saveable_factory = saveables.get(serialized_tensor.name, None)
+        # Use the name to check if the Python object has the same attribute.
+        saveable_factory = saveable_factories.get(serialized_tensor.name,
+                                                  None)
         if saveable_factory is None:
           # Purposefully does not throw an exception if attributes have been
           # added or deleted. Stores unused attributes so an exception can be

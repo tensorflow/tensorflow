@@ -38,6 +38,7 @@ py_library(
     srcs = ["base.py"],
     srcs_version = "PY3",
     deps = [
+        ":trackable_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",

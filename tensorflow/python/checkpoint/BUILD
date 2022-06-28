@@ -152,6 +152,20 @@ py_library(
     name = "checkpoint_util",
     srcs = ["checkpoint_util.py"],
     srcs_version = "PY3",
+    deps = [
+        ":saveable_compat",
+        "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+py_test(
+    name = "checkpoint_util_test",
+    srcs = ["checkpoint_util_test.py"],
+    deps = [
+        ":checkpoint_util",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+    ],
 )
 
 py_library(
