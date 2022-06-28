@@ -704,6 +704,13 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `LEAKY_RELU`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* The ratio of input scale to output scale must be within [1/256, 128].
+* The product of negative slope by the ratio of input scale to output scale
+  must be within either [-127.99609375, -1/256] range or [1/256, 128] range.
+
 #### `LOGISTIC`
 
 * Inputs and outputs must be in 8-bit quantized format.
