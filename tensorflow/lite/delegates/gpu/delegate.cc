@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <thread>  // NOLINT(build/c++11)
@@ -324,8 +325,10 @@ class DelegateKernel {
     }
     const std::vector<Value*> outputs = graph->outputs();
     output_refs->clear();
-    output_refs->reserve(delegate_params->output_tensors->size);
-    for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
+    const int output_size = std::min(static_cast<int>(graph->outputs().size()),
+                                     delegate_params->output_tensors->size);
+    output_refs->reserve(output_size);
+    for (int i = 0; i < output_size; ++i) {
       output_refs->push_back(outputs[i]->tensor.ref);
     }
 
