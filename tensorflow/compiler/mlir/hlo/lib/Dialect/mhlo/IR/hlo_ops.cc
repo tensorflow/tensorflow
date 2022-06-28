@@ -1083,7 +1083,7 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 LogicalResult FftOp::verify() {
   // P1.
   auto fftRank = fft_length().size();
-  if (!(fftRank <= 3 && fftRank >= 1)) {
+  if (fftRank > 3 || fftRank < 1) {
     return emitOpError() << "rank must be between 1 and 3, but got " << fftRank
                          << ".";
   }
