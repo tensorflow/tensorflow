@@ -28,9 +28,12 @@ namespace decode_jpeg_kernel {
 // TODO(b/172544567): Support greyscale images.
 // Expects single 1D input of the shape {num_images} and type string.
 // Single output containing the decoded images with shape {num_images, height,
-// width, channels}. All decoded images are required to be of same dimensions
-// with 3 channels. This op will eventually be included in mainline Tflite as a
-// built-in/custom op once it supports both Android and iOS.
+// width, channels}. All input images are required to have 3 channels. The
+// decoded images can have 3 or 4 channels depending on the shape of the
+// target model input. This op will add an alpha channel value of 255 (fully
+// opaque) if the target model accepts input images with 4 channels. This op
+// will eventually be included in mainline Tflite as a built-in/custom op once
+// it supports both Android and iOS.
 TfLiteRegistration* Register_DECODE_JPEG();
 
 struct OpData {
@@ -41,6 +44,8 @@ struct OpData {
   int32_t height;
   // Width of images after decoding.
   int32_t width;
+  // Number of channels to be decoded. Accepted values are 3 (RGB) and 4 (RGBA).
+  int32_t channels;
 };
 
 }  // namespace decode_jpeg_kernel
