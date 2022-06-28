@@ -791,7 +791,6 @@ cc_library(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
         "//tensorflow/stream_executor/gpu:gpu_stream",
-        "//tensorflow/stream_executor:matmul_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -807,8 +806,8 @@ cc_library(
         ":precompiled_kernels",
         ":triangular_solve_thunk",
     ]) + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cuda_stream",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
@@ -1031,16 +1030,18 @@ cc_library(
     name = "gemm_thunk",
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
+    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":matmul_utils",
         ":thunk",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
+    ]),
 )
 
 cc_library(
@@ -1054,6 +1055,7 @@ cc_library(
         ":gpu_asm_opts_util",
         ":gpu_conv_runner",
         ":ir_emission_utils",
+        ":matmul_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -1064,20 +1066,24 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:blas",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
-    ]) + [":matmul_utils"],
+    ]),
 )
 
 cc_library(
     name = "matmul_utils",
     srcs = ["matmul_utils.cc"],
     hdrs = ["matmul_utils.h"],
+    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla:shape_util",
@@ -1086,14 +1092,13 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/stream_executor:matmul_util",
-        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/stream_executor:stream_header",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/stream_executor:host_or_device_scalar",
+        "//tensorflow/stream_executor:scratch_allocator",
+    ]),
 )
 
 tf_cc_test(
