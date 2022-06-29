@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
@@ -223,12 +224,27 @@ void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
     op->setAttr(kWrittenOperandsAttrName, rewriter.getBoolArrayAttr(vec));
 }
 
+// Returns whether 'type' is can be lowered by the FusionRewritePattern.
+static bool isRewritableType(TensorType type) {
+  // Complex types are not yet supported.
+  if (type.getElementType().isa<ComplexType>()) return false;
+  // Zero ranked shapes are not yet supported.
+  if (type.getRank() == 0) return false;
+  return true;
+}
+
 ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
   ConversionTarget target(*ctx);
   // Mark expected auxiliary ops as legal.
   target.addLegalOp<lmhlo::TerminatorOp>();
-  target.addLegalOp<bufferization::ToTensorOp>();
-  target.addLegalOp<memref::TensorStoreOp>();
+  target.addDynamicallyLegalOp<bufferization::ToTensorOp>(
+      [&](bufferization::ToTensorOp op) {
+        return isRewritableType(op.getType());
+      });
+  target.addDynamicallyLegalOp<memref::TensorStoreOp>(
+      [&](memref::TensorStoreOp op) {
+        return isRewritableType(op.tensor().getType().cast<TensorType>());
+      });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
   target.addLegalOp<mhlo::LogOp>();
