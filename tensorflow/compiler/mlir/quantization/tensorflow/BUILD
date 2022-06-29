@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -7,6 +8,7 @@ package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/lite/...",
     ] + internal_visibility_allowlist(),
 )
 
@@ -36,6 +38,7 @@ genrule(
         "passes/quantized_function_library.h",
     ],
     cmd = "$(location gen_quantized_function_library) --output_file $(RULEDIR)/passes/quantized_function_library.h --src '$(SRCS)'",
+    compatible_with = get_compatible_with_cloud(),
     exec_tools = ["gen_quantized_function_library"],
 )
 
@@ -47,6 +50,7 @@ cc_library(
     hdrs = [
         "passes/utils.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -68,6 +72,7 @@ td_library(
         "passes/tf_quant_ops.td",
         "passes/utils.td",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils_td_files",
@@ -79,6 +84,7 @@ td_library(
 
 gentbl_cc_library(
     name = "prepare_lifting_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -92,6 +98,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -105,6 +112,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "lift_quantizable_spots_as_functions_drq_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -118,6 +126,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "prepare_quantize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -131,6 +140,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "quantize_composite_functions_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -144,6 +154,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_quant_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -169,6 +180,7 @@ cc_library(
         "passes/tf_quant_ops.h.inc",
     ],
     hdrs = ["passes/tf_quant_ops.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
@@ -218,6 +230,7 @@ cc_library(
     hdrs = [
         "passes/passes.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":pass_utils",
         ":tf_quant_ops",
