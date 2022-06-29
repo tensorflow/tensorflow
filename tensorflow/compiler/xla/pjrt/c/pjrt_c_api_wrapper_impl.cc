@@ -227,6 +227,22 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Delete_Args", PJRT_Executable_Delete_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->executable->executable->Delete();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_IsDeleted_Args",
+      PJRT_Executable_IsDeleted_Args_STRUCT_SIZE, args->struct_size));
+  args->is_deleted = args->executable->executable->IsDeleted();
+  return nullptr;
+}
+
 // ---------------------------------- Buffers ----------------------------------
 
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args) {

@@ -82,6 +82,8 @@ PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
 PJRT_Error* PJRT_Executable_AddressableDevices(
     PJRT_Executable_AddressableDevices_Args* args);
+PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
+PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
 
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);

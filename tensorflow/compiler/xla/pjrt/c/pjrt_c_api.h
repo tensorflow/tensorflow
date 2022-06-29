@@ -259,6 +259,34 @@ const size_t PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Executable_AddressableDevices(
     PJRT_Executable_AddressableDevices_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+} PJRT_Executable_Delete_Args;
+const size_t PJRT_Executable_Delete_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Delete_Args, executable);
+
+// Drops `executable`'s reference to the internal runtime object and
+// associated resources, without freeing the `executable` object itself.
+// `executable` can only be used with PJRT_Executable_IsDeleted and
+// PJRT_Executable_Destroy after calling this method. The internal runtime
+// executable will be freed after the last execution completes.
+typedef PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  bool is_deleted;  // out
+} PJRT_Executable_IsDeleted_Args;
+const size_t PJRT_Executable_IsDeleted_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_IsDeleted_Args, is_deleted);
+
+// True if and only if PJRT_Executable_Delete has previously been called.
+typedef PJRT_Error* PJRT_Executable_IsDeleted(
+    PJRT_Executable_IsDeleted_Args* args);
+
 // ---------------------------------- Buffers ----------------------------------
 
 typedef struct PJRT_Buffer PJRT_Buffer;
@@ -329,6 +357,8 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
   PJRT_API_STRUCT_FIELD(PJRT_Executable_AddressableDevices);
+  PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
+  PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
 
   PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);

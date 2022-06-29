@@ -167,9 +167,7 @@ class PjRtCApiClient : public PjRtClient {
       const PjRtExecutable& executable) const override;
 
   StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-  }
+      absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override {
@@ -428,8 +426,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  void Delete() override { return wrapped()->Delete(); }
-  bool IsDeleted() override { return wrapped()->IsDeleted(); }
+  void Delete() override;
+  bool IsDeleted() override;
 
   PjRtExecutable* wrapped() const;
 

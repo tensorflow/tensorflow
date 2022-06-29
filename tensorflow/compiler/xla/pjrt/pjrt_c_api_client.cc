@@ -107,6 +107,11 @@ StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
 
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::DeserializeExecutable(
+    absl::string_view serialized, CompileOptions options) {
+  return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
+}
+
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
   return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
@@ -275,6 +280,29 @@ absl::string_view PjRtCApiExecutable::name() const {
   absl::string_view executable_name(args.executable_name,
                                     args.executable_name_size);
   return executable_name;
+}
+
+void PjRtCApiExecutable::Delete() {
+  PJRT_Executable_Delete_Args args;
+  args.struct_size = PJRT_Executable_Delete_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Executable_Delete(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+}
+
+bool PjRtCApiExecutable::IsDeleted() {
+  PJRT_Executable_IsDeleted_Args args;
+  args.struct_size = PJRT_Executable_IsDeleted_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Executable_IsDeleted(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_deleted;
 }
 
 // ---------------------------------- Buffers ----------------------------------
