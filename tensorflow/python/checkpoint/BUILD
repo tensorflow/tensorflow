@@ -158,7 +158,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "checkpoint_util_test",
     srcs = ["checkpoint_util_test.py"],
     deps = [
