@@ -257,6 +257,8 @@ class PjRtCApiClient : public PjRtClient {
 
   const PJRT_Api* pjrt_c_api() const;
 
+  PJRT_Client* pjrt_c_client() { return c_client_.get(); }
+
  private:
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;

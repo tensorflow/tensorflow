@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
 #include <string>
+#include <vector>
 
 namespace pjrt {
 
@@ -34,6 +35,8 @@ std::string StructSizeErrorMsg(absl::string_view struct_name,
                       expected_size, ", got ", actual_size,
                       ". Check installed software versions.");
 }
+
+// ---------------------------------- Errors -----------------------------------
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
   xla::Status struct_size_check = CheckMatchingStructSizes(
@@ -60,6 +63,8 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
     args->message_size = status->error_message().size();
   }
 }
+
+// ---------------------------------- Client -----------------------------------
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
@@ -117,6 +122,8 @@ PJRT_Error* PJRT_Client_AddressableDevices(
   return nullptr;
 }
 
+// --------------------------------- Devices -----------------------------------
+
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Device_Id_Args",
                                                 PJRT_Device_Id_Args_STRUCT_SIZE,
@@ -142,6 +149,16 @@ PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
   return nullptr;
 }
 
+// ------------------------------- Executables ---------------------------------
+
+PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Destroy_Args", PJRT_Executable_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+  delete args->executable;
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Executable_Name_Args", PJRT_Executable_Name_Args_STRUCT_SIZE,
@@ -151,6 +168,66 @@ PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   args->executable_name_size = executable_name.size();
   return nullptr;
 }
+
+// Searches `device_list` for a PJRT_Device* that wraps a provided
+// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
+// returned. Otherwise, returns nullptr.
+static PJRT_Device* FindDeviceWrapper(
+    xla::PjRtDevice* cpp_device, absl::Span<PJRT_Device* const> device_list) {
+  for (PJRT_Device* device : device_list) {
+    if (device->device == cpp_device) {
+      return device;
+    }
+  }
+  return nullptr;
+}
+
+static void PopulatePjrtExecutableAddressableDevices(
+    PJRT_Executable* executable) {
+  CHECK(executable->client != nullptr) << ": client was null";
+  absl::Span<xla::PjRtDevice* const> cpp_devices =
+      executable->executable->addressable_devices();
+  const size_t num_addressable_devices = cpp_devices.size();
+  std::vector<PJRT_Device*>& exec_devices = executable->addressable_devices;
+  exec_devices.reserve(num_addressable_devices);
+
+  const std::vector<PJRT_Device*>& client_devices =
+      executable->client->addressable_devices;
+
+  CHECK(client_devices.size() >= num_addressable_devices)
+      << ": client->addressable_devices is not bigger than "
+         "executable->addressable_devices()";
+
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    xla::PjRtDevice* cpp_device = cpp_devices[i];
+    PJRT_Device* device = FindDeviceWrapper(cpp_device, client_devices);
+    CHECK(device != nullptr)
+        << ": No PJRT_Device* found in client->addressable_devices"
+        << " that wraps executable->addressable_devices()[" << i << "] ("
+        << cpp_devices[i] << ")";
+    exec_devices.push_back(device);
+  }
+}
+
+PJRT_Error* PJRT_Executable_AddressableDevices(
+    PJRT_Executable_AddressableDevices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_AddressableDevices_Args",
+      PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE, args->struct_size));
+
+  // TODO(b/237545405): Implement creation methods for PJRT_Executable that can
+  // populate addressable_devices on instantiation,  and use this logic there
+  if (!args->executable->populated) {
+    PopulatePjrtExecutableAddressableDevices(args->executable);
+    args->executable->populated = true;
+  }
+
+  args->num_addressable_devices = args->executable->addressable_devices.size();
+  args->addressable_devices = args->executable->addressable_devices.data();
+  return nullptr;
+}
+
+// ---------------------------------- Buffers ----------------------------------
 
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(

@@ -168,13 +168,20 @@ bool PjRtCApiBuffer::IsOnCpu() const {
 }
 
 PjRtCApiExecutable::~PjRtCApiExecutable() {
-  // TODO(silverstone): use a C API "Destroy method"
-  delete executable_;
+  PJRT_Executable_Destroy_Args args;
+  args.struct_size = PJRT_Executable_Destroy_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Executable_Destroy(&args);
+  // TODO(b/236710439): handle error
+  CHECK_EQ(error, nullptr);
 }
 
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
                                        std::unique_ptr<PjRtExecutable> wrapped)
-    : client_(client), executable_{new PJRT_Executable{std::move(wrapped)}} {
+    : client_(client),
+      executable_(
+          new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
   addressable_devices_.reserve(this->wrapped()->addressable_devices().size());
   for (PjRtDevice* device : this->wrapped()->addressable_devices()) {
     addressable_devices_.push_back(client_->GetCApiDevice(device));

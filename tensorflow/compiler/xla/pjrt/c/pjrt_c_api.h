@@ -142,7 +142,6 @@ typedef struct {
   PJRT_Device** devices;  // out
   size_t num_devices;     // out
 } PJRT_Client_Devices_Args;
-
 const size_t PJRT_Client_Devices_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Client_Devices_Args, num_devices);
 
@@ -157,7 +156,6 @@ typedef struct {
   PJRT_Device** addressable_devices;  // out
   size_t num_addressable_devices;     // out
 } PJRT_Client_AddressableDevices_Args;
-
 const size_t PJRT_Client_AddressableDevices_Args_STRUCT_SIZE =
     PJRT_STRUCT_SIZE(PJRT_Client_AddressableDevices_Args, addressable_devices);
 
@@ -221,6 +219,18 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Executable* executable;
+} PJRT_Executable_Destroy_Args;
+const size_t PJRT_Executable_Destroy_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Destroy_Args, executable);
+
+// Frees `executable` and deletes the underlying runtime object as if
+// `PJRT_Executable_Delete` were called. `executable` can be nullptr.
+typedef PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
   // `executable_name` has the same lifetime as `executable`. It is owned by
   // `executable`.
   const char* executable_name;  // out
@@ -232,6 +242,22 @@ const size_t PJRT_Executable_Name_Args_STRUCT_SIZE =
 
 // Returns a string that identifies the executable.
 typedef PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  PJRT_Device** addressable_devices;  // out
+  size_t num_addressable_devices;     // out
+} PJRT_Executable_AddressableDevices_Args;
+
+const size_t PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_AddressableDevices_Args,
+                     num_addressable_devices);
+
+// Returns a list of devices this executable will run on.
+typedef PJRT_Error* PJRT_Executable_AddressableDevices(
+    PJRT_Executable_AddressableDevices_Args* args);
 
 // ---------------------------------- Buffers ----------------------------------
 
@@ -300,7 +326,9 @@ typedef struct {
   PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
   PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
 
+  PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
+  PJRT_API_STRUCT_FIELD(PJRT_Executable_AddressableDevices);
 
   PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);

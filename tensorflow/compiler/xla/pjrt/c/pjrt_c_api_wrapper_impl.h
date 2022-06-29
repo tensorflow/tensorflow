@@ -45,6 +45,14 @@ struct PJRT_Device {
 
 struct PJRT_Executable {
   std::unique_ptr<xla::PjRtExecutable> executable;
+  PJRT_Client* client;
+  // These pointers are a subset of `client`'s `addressable_devices`, i.e. those
+  // addressed by the compiled executable program. `client` owns the objects
+  // these point to.
+  std::vector<PJRT_Device*> addressable_devices;
+  // TODO(b/237545405): Remove `populated` once we implement creation methods
+  // for PJRT_Executable that can populate addressable_devices on instantiation.
+  bool populated = false;
 };
 
 struct PJRT_Buffer {
@@ -70,7 +78,10 @@ PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
 PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
 
+PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+PJRT_Error* PJRT_Executable_AddressableDevices(
+    PJRT_Executable_AddressableDevices_Args* args);
 
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
