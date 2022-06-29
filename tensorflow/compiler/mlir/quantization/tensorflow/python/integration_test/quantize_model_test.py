@@ -149,7 +149,7 @@ def _create_simple_tf1_conv_model(
 def _create_data_generator(
     input_key: str,
     shape: Sequence[int],
-    num_examples=128) -> repr_dataset.RepresentativeDataset:
+    num_examples=8) -> repr_dataset.RepresentativeDataset:
   """Creates a data generator to be used as representative dataset.
 
   Supports generating random value input tensors mapped by the `input_key`.
@@ -362,7 +362,7 @@ class QuantizationMethodTest(test.TestCase):
       Representative samples, which is basically a mapping of: input key ->
       input value.
     """
-    for _ in range(255):
+    for _ in range(8):
       yield {
           'input_tensor':
               ops.convert_to_tensor(
@@ -570,7 +570,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         Representative samples, which is basically a mapping of: input key ->
         input value.
       """
-      for _ in range(255):
+      for _ in range(8):
         yield {
             'input':
                 random_ops.random_uniform(
@@ -662,7 +662,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     saved_model_save.save(model, input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(255):
+      for _ in range(8):
         yield {
             'input_tensor':
                 ops.convert_to_tensor(
@@ -750,7 +750,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     saved_model_save.save(model, input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(255):
+      for _ in range(8):
         yield {
             'input_tensor':
                 ops.convert_to_tensor(
@@ -796,7 +796,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     saved_model_save.save(model, input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(255):
+      for _ in range(8):
         yield {
             'input_tensor':
                 ops.convert_to_tensor(
@@ -838,7 +838,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     representative_dataset: repr_dataset.RepresentativeDataset = [{
         'input_tensor': random_ops.random_uniform(shape=(1, 4)),
-    } for _ in range(128)]
+    } for _ in range(8)]
 
     converted_model = quantize_model.quantize(
         input_savedmodel_dir, ['serving_default'],
@@ -931,7 +931,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
     representative_samples = [{
         'input_tensor': random_ops.random_uniform(shape=(1, 4)),
-    } for _ in range(128)]
+    } for _ in range(8)]
 
     # Construct a tf.data.Dataset from the representative samples.
     representative_dataset = dataset_ops.DatasetV2.from_generator(
@@ -1034,7 +1034,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     saved_model_save.save(model, input_saved_model_path)
 
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(10):
+      for _ in range(8):
         yield {
             'x':
                 ops.convert_to_tensor(
@@ -1107,7 +1107,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       Yields:
         Tuple-style representative samples for signatures 'sig1' and 'sig2'.
       """
-      for _ in range(16):
+      for _ in range(8):
         # Input for signature: 'sig1'.
         yield ('sig1', {
             'matmul_input': random_ops.random_uniform(shape=(1, 4)),
@@ -1161,7 +1161,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     # because for a model multiple signatures one must use tuple-style samples.
     invalid_dataset: repr_dataset.RepresentativeDataset = [{
         'matmul_input': random_ops.random_uniform(shape=(1, 4))
-    } for _ in range(16)]
+    } for _ in range(8)]
 
     with self.assertRaisesRegex(
         ValueError,
@@ -1293,7 +1293,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
       Yields:
         Tuple-style representative samples for signatures 'sig1' and 'sig2'.
       """
-      for _ in range(16):
+      for _ in range(8):
         # Input for signature: 'sig1'.
         yield ('sig1', {
             'x1': random_ops.random_uniform(shape=in_placeholder_1.shape),
