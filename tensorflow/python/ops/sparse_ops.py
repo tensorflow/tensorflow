@@ -2674,21 +2674,15 @@ def sparse_softmax(sp_input, name=None):
 
   Example:
 
-  ```python
-  
   >>> shape = [2, 2, 2]  # 3-D SparseTensor
   >>> values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
   >>> indices = np.vstack(np.where(values)).astype(np.int64).T
-  
-  <... output:
-  tf.Tensor(
-[[[0.  1. ]
-  [1.  0. ]]
-
- [[1.  0. ]
-  [0.5 0.5]]], shape=(2, 2, 2), dtype=float64) ...>
-  ```
-
+  <tf.Tensor(
+   [[[0.  1. ]
+   [1.  0. ]]
+   [[1.  0. ]
+   [0.5 0.5]]], shape=(2, 2, 2), dtype=float64)>
+   
   Args:
     sp_input: N-D `SparseTensor`, where `N >= 2`.
     name: optional name of the operation.
