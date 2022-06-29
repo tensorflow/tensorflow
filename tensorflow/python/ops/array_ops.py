@@ -4622,12 +4622,36 @@ def squeeze_v2(input, axis=None, name=None):
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
-
+  
   Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
   deprecated `squeeze_dims` argument.
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
+  
+  Note: If squeeze is performed on dimensions of unknown sizes, then the returned
+  Tensor will be of unknown shape. In Keras the first (batch) dimension is often
+  of size `None`, causing `tf.squeeze` to return `<unknown>` shape which may be
+  a surprise. Specify the `axis=` argument to get a more expected result, as
+  illustrated in the following example:
+  
+  ```python
+  @tf.function
+  def func(x):
+    print('x.shape:', x.shape)
+    known_axes = [i for i, size in enumerate(x.shape) if size == 1]
+    y = tf.squeeze(x, axis=known_axes)
+    print('shape of tf.squeeze(x, axis=known_axes):', y.shape)
+    y = tf.squeeze(x)
+    print('shape of tf.squeeze(x):', y.shape)
+    return 0
+ 
+  _ = func.get_concrete_function(tf.TensorSpec([None, 1, 2], dtype=tf.int32))
+  # Output is.
+  # x.shape: (None, 1, 2)
+  # shape of tf.squeeze(x, axis=known_axes): (None, 2)
+  # shape of tf.squeeze(x): <unknown>
+  ```
 
   Args:
     input: A `Tensor`. The `input` to squeeze.
