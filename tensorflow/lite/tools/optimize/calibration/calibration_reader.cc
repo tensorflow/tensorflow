@@ -47,7 +47,8 @@ TfLiteStatus CalibrationReader::AddCalibrationToModel(ModelT* model,
     const auto& subgraph = model->subgraphs[subgraph_index];
     auto minmax = tensorid_stat.second;
     float min, max;
-    TF_LITE_ENSURE_STATUS(minmax.Get(&min, &max));
+    TfLiteStatus status = minmax.Get(&min, &max);
+    if (status != kTfLiteOk) continue;
     if (update) {
       auto tensor = subgraph->tensors[tensor_index].get();
       if (tensor->quantization) {
