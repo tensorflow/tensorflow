@@ -389,13 +389,35 @@ class CheckpointPosition(object):
     # pylint:enable=g-import-not-at-top
 
     if not self.object_proto.attributes:
-      return [], {}, []
+      return [], {}, [], {}
 
     saveable_factories = saveable_object_util.saveable_objects_from_trackable(
         self.trackable)
     if saveable_factories.keys() == {trackable_utils.SERIALIZE_TO_TENSORS_NAME}:
       return self._create_serialize_to_tensor_saveable(saveable_factories)
-    return self._create_saveables_by_attribute_name(saveable_factories)
+    elif saveable_factories:
+      return self._create_saveables_by_attribute_name(saveable_factories)
+    elif self.object_proto.attributes:
+      # The checkpoint may have a serialized tensor recorded, but the
+      # Trackable appears to have no tensors to serialize/restore. When this
+      # happens, it means that the Trackable has migrated to the registered
+      # checkpoint functionality (TPUEmbedding is an example of this).
+      saver_name = registration.get_registered_saver_name(self.trackable)
+      if saver_name:
+        registered_savers = {}
+        registered_savers[saver_name] = {
+            # For now, set the Trackable's object name to the first checkpoint
+            # key that is stored in checkpoint. If there is a use case that
+            # requires the other keys, then we can take another look at this.
+            self.object_proto.attributes[0].checkpoint_key: self.trackable}
+        return {}, [], [], registered_savers
+
+      # If no registered savers were found, then it means that one or more
+      # serialized tensors were never used.
+      for serialized_tensor in self.object_proto.attributes:
+        self._checkpoint.unused_attributes.setdefault(
+            self._proto_id, []).append(serialized_tensor.name)
+    return {}, [], [], {}
 
   def _create_serialize_to_tensor_saveable(self, saveable_factories):
     """Creates a saveable using the _serialize_to_tensor method."""
@@ -408,18 +430,18 @@ class CheckpointPosition(object):
       existing_op = self._checkpoint.restore_ops_by_name.get(saveable_name,
                                                              None)
       if existing_op is not None:
-        return existing_op, {}, []
+        return existing_op, {}, [], {}
 
       saveables_cache = self._checkpoint.saveables_cache.setdefault(
           self.trackable, {})
       if saveable_name in saveables_cache:
-        return [], {saveable_name: saveables_cache[saveable_name]}, []
+        return [], {saveable_name: saveables_cache[saveable_name]}, [], {}
 
     saveable = saveable_factories[trackable_utils.SERIALIZE_TO_TENSORS_NAME](
         name=saveable_name)
     if not context.executing_eagerly():
       saveables_cache[saveable_name] = saveable
-    return [], {saveable_name: saveable}, []
+    return [], {saveable_name: saveable}, [], {}
 
   def _create_saveables_by_attribute_name(self, saveable_factories):
     """Creates or caches SaveableObjects by matching the attribute names.
@@ -434,7 +456,11 @@ class CheckpointPosition(object):
         function that produces a SaveableObject.
 
     Returns:
-      A tuple of (existing_restore_ops, named_saveables, python_saveables)
+      A tuple of (
+          existing_restore_ops: list,
+          named_saveables: dict,
+          python_saveables: list,
+          registered_savers: dict)
     """
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
@@ -503,7 +529,8 @@ class CheckpointPosition(object):
         python_saveables.append(saveable)
       else:
         named_saveables[serialized_tensor.checkpoint_key] = saveable
-    return existing_restore_ops, named_saveables, python_saveables
+
+    return existing_restore_ops, named_saveables, python_saveables, {}
 
   def restore_ops(self):
     """Create or fetch restore ops for this object's attributes.
@@ -519,7 +546,7 @@ class CheckpointPosition(object):
       raise ValueError("Unable to run individual checkpoint restore for objects"
                        " with registered savers.")
     (restore_ops, tensor_saveables,
-     python_saveables) = self.gather_ops_or_named_saveables()
+     python_saveables, _) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
         self._checkpoint.restore_saveables(tensor_saveables, python_saveables))
     return restore_ops
@@ -1103,12 +1130,15 @@ class Trackable(object):
           registered_savers[registered_saver][object_name] = trackable
         trackable._self_update_uid = current_position.checkpoint.restore_uid  # pylint: disable=protected-access
       else:
-        new_restore_ops, new_tensor_saveables, new_python_saveables = (
-            trackable._single_restoration_from_checkpoint_position(  # pylint: disable=protected-access
-                current_position))
+        (new_restore_ops, new_tensor_saveables, new_python_saveables,
+         new_registered_savers) = (
+             trackable._single_restoration_from_checkpoint_position(  # pylint: disable=protected-access
+                 current_position))
         restore_ops.extend(new_restore_ops)
         tensor_saveables.update(new_tensor_saveables)
         python_saveables.extend(new_python_saveables)
+        for saver_name, trackable_map in new_registered_savers.items():
+          registered_savers[saver_name].update(trackable_map)
 
       _queue_children_for_restoration(current_position, visit_queue)
       checkpoint_util.queue_slot_variables(current_position, visit_queue)
@@ -1127,14 +1157,15 @@ class Trackable(object):
     # need to actually restore the object. However, we should pass the
     # restoration on to our dependencies.
     if checkpoint.restore_uid > self._self_update_uid:
-      restore_ops, tensor_saveables, python_saveables = (
+      restore_ops, tensor_saveables, python_saveables, registered_savers = (
           checkpoint_position.gather_ops_or_named_saveables())
       self._self_update_uid = checkpoint.restore_uid
     else:
       restore_ops = ()
       tensor_saveables = {}
       python_saveables = ()
-    return restore_ops, tensor_saveables, python_saveables
+      registered_savers = {}
+    return restore_ops, tensor_saveables, python_saveables, registered_savers
 
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.
