@@ -249,6 +249,20 @@ py_library(
 )
 
 tf_py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    deps = [
+        ":graph_view",
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:autotrackable",
+    ],
+)
+
+tf_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     deps = [

@@ -114,7 +114,7 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
       Dictionary mapping registered saver name -> {object name -> trackable})
   """
   checkpoint_factory_map = object_identity.ObjectIdentityDictionary()
-  registered_savers = collections.defaultdict(dict)
+  unmapped_registered_savers = collections.defaultdict(dict)
   for trackable, object_name in object_names.items():
     # object_to_save is only used to retrieve the saving functionality. For keys
     # and other data, use the original `trackable`.
@@ -122,7 +122,9 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
 
     saver_name = registration.get_registered_saver_name(object_to_save)
     if saver_name:
-      registered_savers[saver_name][object_name] = trackable
+      # Add the original trackable instead of `object_to_save` to the returned
+      # dict because the original is needed for writing the object proto.
+      unmapped_registered_savers[saver_name][object_name] = trackable
     else:
       checkpoint_factory_map[trackable] = []
       for name, saveable_factory in (
@@ -136,17 +138,22 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
             factory=saveable_factory,
             name=name,
             checkpoint_key=checkpoint_key))
-  return checkpoint_factory_map, registered_savers
+  return checkpoint_factory_map, unmapped_registered_savers
 
 
 def _add_attributes_to_object_graph_for_registered_savers(
-    registered_savers, object_graph_proto, node_ids):
+    unmapped_registered_savers, object_graph_proto, node_ids, object_map):
   """Fills the object graph proto with data about the registered savers."""
-  for saver_name, trackables in registered_savers.items():
+  registered_savers = collections.defaultdict(dict)
+  for saver_name, trackables in unmapped_registered_savers.items():
     for object_name, trackable in trackables.items():
       object_proto = object_graph_proto.nodes[node_ids[trackable]]
       object_proto.registered_saver.name = saver_name
       object_proto.registered_saver.object_name = object_name
+
+      object_to_save = _get_mapped_trackable(trackable, object_map)
+      registered_savers[saver_name][object_name] = object_to_save
+  return registered_savers
 
 
 def _get_full_name(var):
@@ -175,14 +182,13 @@ def _add_attributes_to_object_graph(trackable_objects, object_graph_proto,
       zip(trackable_objects, object_graph_proto.nodes)):
     assert node_ids[trackable] == checkpoint_id
 
-  checkpoint_factory_map, registered_savers = (
+  checkpoint_factory_map, unmapped_registered_savers = (
       get_checkpoint_factories_and_keys(object_names, object_map))
 
   # Add attributes, which describe what values are saved in checkpoint for
   # this trackable.
-  _add_attributes_to_object_graph_for_registered_savers(registered_savers,
-                                                        object_graph_proto,
-                                                        node_ids)
+  registered_savers = _add_attributes_to_object_graph_for_registered_savers(
+      unmapped_registered_savers, object_graph_proto, node_ids, object_map)
   named_saveable_objects, feed_additions = (
       _add_attributes_to_object_graph_for_saveable_objects(
           checkpoint_factory_map, object_graph_proto, node_ids, object_map,
