@@ -102,17 +102,16 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     ranks.reserve(k);
 
     // Determine the maximum rank of the operands.
-    Value max_rank;
+    Value maxRank;
     for (size_t i = 0; i < k; ++i) {
       Value rank = lb.create<memref::DimOp>(loc, shapes[i], zero);
       ranks.push_back(rank);
       if (i) {
         Value rankIsGreater = lb.create<arith::CmpIOp>(
-            arith::CmpIPredicate::ugt, ranks[i], max_rank);
-        max_rank =
-            lb.create<arith::SelectOp>(rankIsGreater, ranks[i], max_rank);
+            arith::CmpIPredicate::ugt, ranks[i], maxRank);
+        maxRank = lb.create<arith::SelectOp>(rankIsGreater, ranks[i], maxRank);
       } else {
-        max_rank = ranks[0];
+        maxRank = ranks[0];
       }
     }
 
@@ -143,7 +142,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     // dimensions of each shape (the least significant ones) are matched
     // together.
     Value two = lb.create<arith::ConstantIndexOp>(2);
-    Value maxRankPlusTwo = lb.create<arith::AddIOp>(loc, max_rank, two);
+    Value maxRankPlusTwo = lb.create<arith::AddIOp>(loc, maxRank, two);
     Value constantFalse =
         lb.create<arith::ConstantOp>(lb.getI1Type(), lb.getBoolAttr(false));
     SmallVector<Value> initValues;
@@ -251,13 +250,13 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                 l, differentBroadcastingSet, broadcastingIsDifferent);
           }
           Value running_product = vr[k];
-          Value current_dimension_offset = vr[k + 1];
+          Value currentDimensionOffset = vr[k + 1];
 
           // We need to stop combining dimensions if the set of shapes which
           // need broadcasting at the current dimension changes compared to the
           // set of shapes needing broadcasting at the previous dimension.
-          Value isLastIteration = b.create<arith::CmpIOp>(
-              l, arith::CmpIPredicate::sgt, v, max_rank);
+          Value isLastIteration =
+              b.create<arith::CmpIOp>(l, arith::CmpIPredicate::sgt, v, maxRank);
           Value stopCombiningDimensions = b.create<arith::OrIOp>(
               l, isLastIteration, differentBroadcastingSet);
           auto ifStopCombiningDimensions = b.create<scf::IfOp>(
@@ -275,7 +274,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                          l, TypeRange{b.getIndexType()}, runningProductNotOne,
                          [&](OpBuilder &b, Location l) {
                            Value new_dimension_offset = b.create<arith::AddIOp>(
-                               l, current_dimension_offset, one);
+                               l, currentDimensionOffset, one);
                            Value minusOne =
                                lb.create<arith::ConstantIndexOp>(-1);
                            for (size_t i = 0; i < k; ++i) {
@@ -306,7 +305,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                            b.create<scf::YieldOp>(l, new_dimension_offset);
                          },
                          [&](OpBuilder &b, Location l) {
-                           b.create<scf::YieldOp>(l, current_dimension_offset);
+                           b.create<scf::YieldOp>(l, currentDimensionOffset);
                          })
                         .getResult(0);
                 b.create<scf::YieldOp>(
@@ -316,7 +315,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                 Value newRunningProduct =
                     b.create<arith::MulIOp>(l, running_product, same_size);
                 b.create<scf::YieldOp>(
-                    l, ValueRange{newRunningProduct, current_dimension_offset});
+                    l, ValueRange{newRunningProduct, currentDimensionOffset});
               });
           // Add the remaining results.
           noBroadcasting.push_back(ifStopCombiningDimensions.getResult(0));
