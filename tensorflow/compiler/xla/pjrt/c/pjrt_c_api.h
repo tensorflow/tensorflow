@@ -241,6 +241,33 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Buffer* buffer;
+} PJRT_Buffer_Delete_Args;
+const size_t PJRT_Buffer_Delete_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_Delete_Args, buffer);
+
+// Drop the buffer's reference to its associated device memory, without freeing
+// the `buffer` object itself. `buffer` can only be used with
+// PJRT_Buffer_IsDeleted and PJRT_Buffer_Destroy after calling this method. The
+// device memory will be freed when all async operations using the buffer have
+// completed, according to the allocation semantics of the underlying platform.
+typedef PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  bool is_deleted;  // out
+} PJRT_Buffer_IsDeleted_Args;
+const size_t PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_IsDeleted_Args, is_deleted);
+
+// True if and only if PJRT_Buffer_Delete has previously been called.
+typedef PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
   bool is_on_cpu;  // out
 } PJRT_Buffer_IsOnCpu_Args;
 const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
@@ -275,6 +302,8 @@ typedef struct {
 
   PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
 
+  PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
+  PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
   PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
 } PJRT_Api;
 

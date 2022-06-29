@@ -152,6 +152,22 @@ PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_Delete_Args", PJRT_Buffer_Delete_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->buffer->buffer->Delete();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_IsDeleted_Args", PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->is_deleted = args->buffer->buffer->IsDeleted();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Buffer_IsOnCpu_Args", PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE,

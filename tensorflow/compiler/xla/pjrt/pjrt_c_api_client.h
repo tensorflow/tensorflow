@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/platform/casts.h"
 
 namespace xla {
 
@@ -311,7 +310,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->CopyRawToHost(dst, offset, transfer_size);
   }
 
-  void Delete() override { wrapped_->Delete(); }
+  void Delete() override;
 
   StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override {
@@ -319,7 +318,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
         wait_for_operations_to_complete);
   }
 
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override {

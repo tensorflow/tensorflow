@@ -132,6 +132,29 @@ PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
 
 PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
 
+void PjRtCApiBuffer::Delete() {
+  PJRT_Buffer_Delete_Args args;
+  args.struct_size = PJRT_Buffer_Delete_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_Delete(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+}
+
+bool PjRtCApiBuffer::IsDeleted() {
+  PJRT_Buffer_IsDeleted_Args args;
+  args.struct_size = PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_IsDeleted(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_deleted;
+}
+
 bool PjRtCApiBuffer::IsOnCpu() const {
   PJRT_Buffer_IsOnCpu_Args args;
   args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;

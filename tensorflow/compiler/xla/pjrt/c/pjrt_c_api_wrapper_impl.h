@@ -72,6 +72,8 @@ PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
 
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
 
+PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
+PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 
 // Helper macros and functions
