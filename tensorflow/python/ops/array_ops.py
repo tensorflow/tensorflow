@@ -4629,11 +4629,11 @@ def squeeze_v2(input, axis=None, name=None):
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
   
-  Note: If squeeze is performed on dimensions of unknown sizes, then the returned
-  Tensor will be of unknown shape. In Keras the first (batch) dimension is often
-  of size `None`, causing `tf.squeeze` to return `<unknown>` shape which may be
-  a surprise. Specify the `axis=` argument to get a more expected result, as
-  illustrated in the following example:
+  Note: If squeeze is performed on dimensions of unknown sizes, then the
+  returned   Tensor will be of unknown shape. In Keras the first (batch)
+  dimension is often  of size `None`, causing `tf.squeeze` to return 
+  `<unknown>` shape which may be a surprise. Specify the `axis=` argument
+  to get a more expected result, as illustrated in the following example:
   
   ```python
   @tf.function
