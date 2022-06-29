@@ -445,5 +445,69 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, Pad) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1,3,5,7]{0,2,1,3} parameter(0)
+  z = f32[] constant(0)
+  b = f32[1,13,15,7]{0,2,1,3} pad(a, z), padding=0_0x5_5x5_5x0_0
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[pad_0:%[^ ]+]] = f32[7,13,15]{2,1,0} pad([[bitcast_1:%[^ ]+]], [[bitcast_3_2:%[^ ]+]]), padding=0_0x5_5x5_5
+// CHECK: [[abs_3:%[^ ]+]] = f32[7,13,15]{2,1,0} abs([[pad_0]])
+// CHECK: ROOT [[bitcast_5_4:%[^ ]+]] = f32[1,13,15,7]{0,2,1,3} bitcast([[abs_3]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, PadDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1,3,5]{0,2,1} parameter(0)
+  z = f32[] constant(0)
+  b = f32[11,13,15]{0,2,1} pad(a, z), padding=5_5x5_5x5_5
+  ROOT out = abs(b)
+}
+
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[bitcast_2_0:%[^ ]+]] = f32[] bitcast([[z_1:%[^ ]+]])
+// CHECK: [[bitcast_3_2:%[^ ]+]] = f32[] bitcast([[bitcast_2_0]])
+// CHECK: [[pad_3:%[^ ]+]] = f32[13,15,11]{2,1,0} pad([[bitcast_4_4:%[^ ]+]], [[bitcast_3_2]]), padding=5_5x5_5x5_5
+// CHECK: [[abs_5:%[^ ]+]] = f32[13,15,11]{2,1,0} abs([[pad_3]])
+// CHECK: ROOT [[bitcast_6_6:%[^ ]+]] = f32[11,13,15]{0,2,1} bitcast([[abs_5]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, PadOtherDimDegenerate) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1,3,5,1]{0,2,1,3} parameter(0)
+  z = f32[] constant(0)
+  b = f32[11,13,7,1]{0,2,1,3} pad(a, z), padding=5_5x5_5x1_1x0_0
+  ROOT out = abs(b)
+}
+
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[bitcast_0:%[^ ]+]] = f32[3,5]{1,0} bitcast([[a_1:%[^ ]+]])
+// CHECK: [[bitcast_4_2:%[^ ]+]] = f32[3,5,1]{2,1,0} bitcast([[bitcast_0]])
+// CHECK: [[z_3:%[^ ]+]] = f32[] constant(0)
+// CHECK: [[bitcast_2_4:%[^ ]+]] = f32[] bitcast([[z_3]])
+// CHECK: [[bitcast_3_5:%[^ ]+]] = f32[] bitcast([[bitcast_2_4]])
+// CHECK: [[pad_6:%[^ ]+]] = f32[13,7,11]{2,1,0} pad([[bitcast_4_2]], [[bitcast_3_5]]), padding=5_5x1_1x5_5
+// CHECK: [[abs_7:%[^ ]+]] = f32[13,7,11]{2,1,0} abs([[pad_6]])
+// CHECK: ROOT [[bitcast_6_8:%[^ ]+]] = f32[11,13,7,1]{0,2,1,3} bitcast([[abs_7]])
+)");
+}
+
 }  // namespace
 }  // namespace xla

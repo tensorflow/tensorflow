@@ -375,7 +375,66 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Padding is layout-preserving, so we only have to permute values inside the
+  // padding config.
+  //
+  // Like in broadcast, we have to be mindful that we can't remove degenerate
+  // dimensions if they are padded.
+  Status HandlePad(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    const auto& operand_s = operand->shape();
+    auto padded_by = hlo->mutable_operand(1);
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto padded_config = hlo->padding_config();
+
+    auto operand_s_filtered = ShapeUtil::FilterDimensions(
+        [&](int dim) {
+          return operand_s.dimensions(dim) != 1 ||
+                 !IsZeroPadding(hlo->padding_config().dimensions(dim));
+        },
+        operand->shape());
+    auto operand_s_normalized =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_s_filtered);
+    auto new_operand = operand_s_normalized == a0->shape()
+                           ? a0
+                           : MakeBitcastHlo(a0, operand_s_normalized);
+
+    auto s_normalized = Normalize(s);
+    auto l = ToTransposeDimensions(s.layout());
+
+    auto normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+
+    PaddingConfig new_padding;
+    new_padding.mutable_dimensions()->Reserve(s_normalized.dimensions_size());
+    for (int dim = 0; dim < s_normalized.dimensions_size(); dim++) {
+      new_padding.add_dimensions();
+    }
+
+    for (int dim = 0; dim < s.dimensions_size(); dim++) {
+      if (s.dimensions(dim) == 1) {
+        continue;
+      }
+      int tr_dim = static_cast<int>(FindIndex(l, dim));
+      int out_dim = tr_dim - DegenDimsUpTo(normalized_w_degen, tr_dim);
+      *new_padding.mutable_dimensions(out_dim) = padded_config.dimensions(dim);
+    }
+
+    auto padded_normalized = hlo->AddInstruction(HloInstruction::CreatePad(
+        s_normalized, new_operand, padded_by, new_padding));
+    auto bc_to_orig = MakeBitcastHlo(padded_normalized, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
+  bool IsZeroPadding(const PaddingConfig::PaddingConfigDimension& c) {
+    return c.edge_padding_high() == 0 && c.edge_padding_low() == 0 &&
+           c.interior_padding() == 0;
+  }
+
   // Returns a list of dimensions associated with `hlo` after layout
   // normalization.
   std::vector<int64_t> TransformDimensionsForLayoutPreservingHlo(
