@@ -465,7 +465,7 @@ PyArray_Descr CustomFloatTypeDescriptor<T>::npy_descr = {
     /*kind=*/TypeDescriptor<T>::kNpyDescrKind,
     /*type=*/TypeDescriptor<T>::kNpyDescrType,
     /*byteorder=*/TypeDescriptor<T>::kNpyDescrByteorder,
-    /*flags=*/NPY_NEEDS_PYAPI | NPY_USE_SETITEM,
+    /*flags=*/NPY_NEEDS_PYAPI | NPY_USE_GETITEM | NPY_USE_SETITEM,
     /*type_num=*/0,
     /*elsize=*/sizeof(T),
     /*alignment=*/alignof(T),
@@ -484,7 +484,7 @@ template <typename T>
 PyObject* NPyCustomFloat_GetItem(void* data, void* arr) {
   T x;
   memcpy(&x, data, sizeof(T));
-  return PyFloat_FromDouble(static_cast<float>(x));
+  return PyCustomFloat_FromT<T>(x).release();
 }
 
 template <typename T>
