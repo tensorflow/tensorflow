@@ -1526,7 +1526,7 @@ class TrtGraphConverterV2(object):
       reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
           self._converted_func.graph.structured_outputs,
           reset_converted_func.graph.structured_outputs)
-      reset_converted_func.graph.strucutred_input_signature = (
+      reset_converted_func.graph.structured_input_signature = (
           self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 
