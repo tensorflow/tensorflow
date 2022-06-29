@@ -745,9 +745,13 @@ Below is the list of currently supported quantized operators:
 
 #### `QUANTIZE`
 
-* Input tensor must be in 32-bit floating-point format.
+* Input tensor must be in 32-bit floating-point format or in 8-bit quantized
+  format.
 * Output tensor must be in 8-bit quantized format without per-channel
   quantization.
+* If inputs are in 8-bit quantized format, they must have the same signedness
+  as the outputs, and the ratio of input scale to output scale must be in the
+  [2**-8, 2**7] range.
 
 #### `RESIZE_BILINEAR`
 

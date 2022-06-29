@@ -55,6 +55,101 @@ void SafeCopyCustomData(const TfLiteNode& node, T* target) {
   std::memcpy(target, node.custom_initial_data, safe_size);
 }
 
+xnn_datatype GetXNNPackDatatype(const TfLiteTensor& tensor) {
+  switch (tensor.type) {
+    case kTfLiteFloat32:
+      return xnn_datatype_fp32;
+    case kTfLiteFloat16:
+      return xnn_datatype_fp16;
+    case kTfLiteUInt8:
+      if (tensor.quantization.type == kTfLiteAffineQuantization) {
+        const auto quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (quantization_params->scale == nullptr ||
+            quantization_params->zero_point == nullptr ||
+            quantization_params->scale->size != 1 ||
+            quantization_params->zero_point->size != 1) {
+          return xnn_datatype_invalid;
+        }
+
+        const float scale = quantization_params->scale->data[0];
+        if (!std::isnormal(scale) || scale <= 0.0f) {
+          return xnn_datatype_invalid;
+        }
+
+        const int zero_point = quantization_params->zero_point->data[0];
+        if (zero_point < std::numeric_limits<uint8_t>::min() ||
+            zero_point > std::numeric_limits<uint8_t>::max()) {
+          return xnn_datatype_invalid;
+        }
+
+        return xnn_datatype_quint8;
+      }
+      break;
+    case kTfLiteInt8:
+      if (tensor.quantization.type == kTfLiteAffineQuantization) {
+        const auto quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (quantization_params->scale == nullptr ||
+            quantization_params->zero_point == nullptr ||
+            quantization_params->scale->size <= 0 ||
+            quantization_params->zero_point->size != 1) {
+          return xnn_datatype_invalid;
+        }
+
+        const int zero_point = quantization_params->zero_point->data[0];
+        if (zero_point < std::numeric_limits<int8_t>::min() ||
+            zero_point > std::numeric_limits<int8_t>::max()) {
+          return xnn_datatype_invalid;
+        }
+
+        for (int i = 0; i < quantization_params->scale->size; i++) {
+          const float scale = quantization_params->scale->data[i];
+          if (!std::isnormal(scale) || scale <= 0.0f) {
+            return xnn_datatype_invalid;
+          }
+        }
+
+        return quantization_params->scale->size == 1 ? xnn_datatype_qint8
+                                                     : xnn_datatype_qcint8;
+      }
+      break;
+    case kTfLiteInt32:
+      if (tensor.quantization.type == kTfLiteAffineQuantization) {
+        const auto quantization_params =
+            static_cast<const TfLiteAffineQuantization*>(
+                tensor.quantization.params);
+        if (quantization_params->scale == nullptr ||
+            quantization_params->zero_point == nullptr ||
+            quantization_params->scale->size <= 0 ||
+            quantization_params->zero_point->size != 1) {
+          return xnn_datatype_invalid;
+        }
+
+        const int zero_point = quantization_params->zero_point->data[0];
+        if (zero_point == 0) {
+          return xnn_datatype_invalid;
+        }
+
+        for (int i = 0; i < quantization_params->scale->size; i++) {
+          const float scale = quantization_params->scale->data[i];
+          if (!std::isnormal(scale) || scale <= 0.0f) {
+            return xnn_datatype_invalid;
+          }
+        }
+
+        return quantization_params->scale->size == 1 ? xnn_datatype_qint32
+                                                     : xnn_datatype_qcint32;
+      }
+      break;
+    default:
+      break;
+  }
+  return xnn_datatype_invalid;
+}
+
 // Forward declaration.
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate);
 
@@ -3929,8 +4024,9 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
 
@@ -3940,6 +4036,45 @@ class Subgraph {
                                      node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    const xnn_datatype input_datatype = GetXNNPackDatatype(input_tensor);
+    const xnn_datatype output_datatype = GetXNNPackDatatype(output_tensor);
+    bool supported_combination = false;
+    switch (input_datatype) {
+      case xnn_datatype_fp32:
+        supported_combination = true;
+        break;
+      case xnn_datatype_qint8:
+      case xnn_datatype_quint8:
+        if (input_datatype == output_datatype) {
+          const float input_scale =
+              GetTensorScaleOrDefault(input_tensor, std::nanf(""));
+          const float output_scale =
+              GetTensorScaleOrDefault(output_tensor, std::nanf(""));
+          const float input_output_scale = input_scale / output_scale;
+          if (input_output_scale < 1.0f / 256.0f ||
+              input_output_scale > 128.0f) {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "unsupported input-to-output scale in QUANTIZE node #%d",
+                node_index);
+            return kTfLiteError;
+          }
+          supported_combination = true;
+        }
+        break;
+      default:
+        break;
+    }
+    if (!supported_combination) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "unsupported combination of input type (%s) and "
+                               "output type (%s) in QUANTIZE node #%d",
+                               TfLiteTypeGetName(input_tensor.type),
+                               TfLiteTypeGetName(output_tensor.type),
+                               node_index);
+      return kTfLiteError;
+    }
 
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_convert(
