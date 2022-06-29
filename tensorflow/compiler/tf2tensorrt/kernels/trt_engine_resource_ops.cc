@@ -115,7 +115,7 @@ class InitializeTRTResource : public OpKernel {
     // Parse the serialized engines and add them to the cache.
     std::unique_ptr<RandomAccessFile> file;
     OP_REQUIRES_OK(ctx, ctx->env()->NewRandomAccessFile(filename, &file));
-    auto reader = absl::make_unique<io::RecordReader>(file.get());
+    auto reader = std::make_unique<io::RecordReader>(file.get());
 
     uint64 offset = 0;
     int num_loaded_engine = 0;
@@ -156,7 +156,7 @@ class InitializeTRTResource : public OpKernel {
         ctx_vec.push_back(ExecutionContext::Create(raw_engine));
       }
       resource->cache_.emplace(engine_input_shapes,
-                               absl::make_unique<EngineContext>(
+                               std::make_unique<EngineContext>(
                                    std::move(engine), std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
@@ -207,7 +207,7 @@ class SerializeTRTResource : public OpKernel {
     // Serialize the engines and write them to file.
     std::unique_ptr<WritableFile> file;
     OP_REQUIRES_OK(ctx, ctx->env()->NewWritableFile(filename, &file));
-    auto writer = absl::make_unique<io::RecordWriter>(file.get());
+    auto writer = std::make_unique<io::RecordWriter>(file.get());
 
     int num_serialized_engines = 0;
     if (save_gpu_specific_engines_) {

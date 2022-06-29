@@ -1599,22 +1599,22 @@ class VariableOpConverterTest : public OpConverterTest {
         DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
     Device* device_ptr = device_.get();
 
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device_));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(device_));
 
-    managed_allocator_ = absl::make_unique<GpuManagedAllocator>();
+    managed_allocator_ = std::make_unique<GpuManagedAllocator>();
     Allocator* allocator = managed_allocator_.get();
     step_container_ =
-        absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+        std::make_unique<ScopedStepContainer>(0, [](const string&) {});
     slice_reader_cache_wrapper_ =
-        absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
+        std::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
 
-    flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+    flib_def_ = std::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), FunctionDefLibrary{});
 
     thread_pool_ =
-        absl::make_unique<thread::ThreadPool>(Env::Default(), "default",
-                                              /*num_threads=*/1);
-    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+        std::make_unique<thread::ThreadPool>(Env::Default(), "default",
+                                             /*num_threads=*/1);
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
         thread_pool_.get());
@@ -1646,7 +1646,7 @@ class VariableOpConverterTest : public OpConverterTest {
     params_.slice_reader_cache = slice_reader_cache_wrapper_.get();
     params_.op_device_context = device_context;
 
-    context_ = absl::make_unique<OpKernelContext>(&params_);
+    context_ = std::make_unique<OpKernelContext>(&params_);
 
     // Outputs.
     *kernel = op_kernel_.get();
