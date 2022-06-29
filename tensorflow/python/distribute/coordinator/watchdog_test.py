@@ -14,15 +14,19 @@
 # ==============================================================================
 """Tests for watchdog.py."""
 
+import os
 import time
+
+from absl.testing import parameterized
 
 from tensorflow.python.distribute.coordinator import watchdog
 from tensorflow.python.eager import test
 
 
-class WatchDogTest(test.TestCase):
+class WatchDogTest(test.TestCase, parameterized.TestCase):
 
-  def testWatchDogTimeout(self):
+  @parameterized.parameters(True, False)
+  def testWatchDogTimeout(self, use_env_var):
     tmp_file = self.create_tempfile()
     f = open(tmp_file, "w+")
 
@@ -31,8 +35,13 @@ class WatchDogTest(test.TestCase):
     def on_triggered_fn():
       triggerred_count[0] += 1
 
-    wd = watchdog.WatchDog(
-        timeout=3, traceback_file=f, on_triggered=on_triggered_fn)
+    timeout = 3
+    if use_env_var:
+      os.environ["TF_CLUSTER_COORDINATOR_WATCH_DOG_TIMEOUT"] = str(timeout)
+      wd = watchdog.WatchDog(traceback_file=f, on_triggered=on_triggered_fn)
+    else:
+      wd = watchdog.WatchDog(
+          timeout=timeout, traceback_file=f, on_triggered=on_triggered_fn)
     time.sleep(6)
 
     self.assertGreaterEqual(triggerred_count[0], 1)
