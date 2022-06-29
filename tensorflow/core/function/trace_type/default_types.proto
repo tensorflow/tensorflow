@@ -6,11 +6,14 @@ import "tensorflow/core/function/trace_type/serialization.proto";
 
 // Represents a serialized Literal type.
 message SerializedLiteral {
+  message NoneValue {}
+
   oneof value {
     bool bool_value = 1;
     int64 int_value = 2;
     double float_value = 3;  // Python "float" is double precision.
     string str_value = 4;
+    NoneValue none_value = 5;
   }
 }
 

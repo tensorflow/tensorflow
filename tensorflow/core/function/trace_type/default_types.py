@@ -57,6 +57,9 @@ class Literal(trace.TraceType, serialization.Serializable):
     if proto.HasField("str_value"):
       return Literal(proto.str_value)
 
+    if proto.HasField("none_value"):
+      return Literal(None)
+
     raise ValueError("Malformed Literal proto can not be deserialized")
 
   def experimental_as_proto(self) -> default_types_pb2.SerializedLiteral:
@@ -71,6 +74,10 @@ class Literal(trace.TraceType, serialization.Serializable):
 
     if isinstance(self.value, str):
       return default_types_pb2.SerializedLiteral(str_value=self.value)
+
+    if self.value is None:
+      return default_types_pb2.SerializedLiteral(
+          none_value=default_types_pb2.SerializedLiteral.NoneValue())
 
     raise ValueError("Can not serialize Literal of type " +
                      type(self.value).__name__)

@@ -98,6 +98,7 @@ class DefaultTypesTest(test.TestCase):
     literal_int = default_types.Literal(1)
     literal_float = default_types.Literal(1.2)
     literal_str = default_types.Literal('a')
+    literal_none = default_types.Literal(None)
 
     self.assertEqual(
         serialization.deserialize(serialization.serialize(literal_bool)),
@@ -111,6 +112,9 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(
         serialization.deserialize(serialization.serialize(literal_str)),
         literal_str)
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(literal_none)),
+        literal_none)
 
   def testListSupertype(self):
     list_a = default_types.List(
