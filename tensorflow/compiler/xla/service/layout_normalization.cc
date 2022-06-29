@@ -21,22 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace {
@@ -359,7 +352,61 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // The reverse HLO has a list of dimensions it reverses, which again becomes
+  // pretty interesting in the presence of degenerate dimensions: we need to
+  // drop those from the list.
+  //
+  // Luckily, reverse is layout-preserving.
+  Status HandleReverse(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto s_normalized = Normalize(s);
+    auto normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+
+    std::vector<int64_t> new_dimensions =
+        TransformDimensionsForLayoutPreservingHlo(hlo, normalized_w_degen,
+                                                  s_normalized);
+    auto normalized_reverse = hlo->AddInstruction(
+        HloInstruction::CreateReverse(a0->shape(), a0, new_dimensions));
+    auto bc_to_orig = MakeBitcastHlo(normalized_reverse, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
+  // Returns a list of dimensions associated with `hlo` after layout
+  // normalization.
+  std::vector<int64_t> TransformDimensionsForLayoutPreservingHlo(
+      HloInstruction* hlo, const Shape& normalized_shape_w_degen,
+      const Shape& normalized_out_shape) {
+    bool skip_degen_dims = normalized_shape_w_degen != normalized_out_shape;
+    std::vector<int64_t> new_dimensions;
+    const auto& s = hlo->shape();
+    auto l = ToTransposeDimensions(s.layout());
+
+    for (int64_t dim : hlo->dimensions()) {
+      if (s.dimensions(dim) == 1 && skip_degen_dims) {
+        continue;
+      }
+
+      auto tr_dim = FindIndex(l, dim);
+      auto degen_delta =
+          skip_degen_dims ? DegenDimsUpTo(normalized_shape_w_degen, tr_dim) : 0;
+      new_dimensions.push_back(tr_dim - degen_delta);
+    }
+    absl::c_sort(new_dimensions);
+    return new_dimensions;
+  }
+
+  // Returns number of degenerate dimensions in `shape` up to (exclusive) a
+  // `dim`.
+  int DegenDimsUpTo(const Shape& shape, int dim) {
+    return absl::c_count_if(shape.dimensions().subspan(0, dim),
+                            [&](int d) { return d == 1; });
+  }
+
   // Drops items from `dimensions` corresponding to degenerate dimensions in
   // `input_shape`.
   std::vector<int64_t> NoDegenerateDims(absl::Span<int64_t const> dimensions,

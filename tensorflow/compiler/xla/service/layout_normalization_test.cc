@@ -18,11 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/llvm_irgen_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -410,6 +406,42 @@ ENTRY main {
 // CHECK: [[concatenate_4:%[^ ]+]] = f32[10]{0} concatenate([[bitcast_1]], [[bitcast_2_3]]), dimensions={0}
 // CHECK: [[abs_5:%[^ ]+]] = f32[10]{0} abs([[concatenate_4]])
 // CHECK: ROOT [[bitcast_5_6:%[^ ]+]] = f32[1,10]{0,1} bitcast([[abs_5]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, Reverse) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,3,5]{0,2,1} parameter(0)
+  b = f32[2,3,5]{0,2,1} reverse(a), dimensions={0,1}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[a_0:%[^ ]+]] = f32[2,3,5]{0,2,1} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[3,5,2]{2,1,0} bitcast([[a_0]])
+// CHECK: [[reverse_2:%[^ ]+]] = f32[3,5,2]{2,1,0} reverse([[bitcast_1]]), dimensions={0,2}
+// CHECK: [[abs_3:%[^ ]+]] = f32[3,5,2]{2,1,0} abs([[reverse_2]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ReverseDegenerateDimensions) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[1,3,5]{0,2,1} parameter(0)
+  b = f32[1,3,5]{1,2,0} reverse(a), dimensions={0,1}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[reverse_0:%[^ ]+]] = f32[3,5]{1,0} reverse([[bitcast_1:%[^ ]+]]), dimensions={1}
+// CHECK: [[abs_2:%[^ ]+]] = f32[3,5]{1,0} abs([[reverse_0]])
 )");
 }
 
