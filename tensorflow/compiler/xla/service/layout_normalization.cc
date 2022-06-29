@@ -81,6 +81,67 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Converts concatenation to normalized layout.
+  //
+  // With respect to layouts, concatenations are simple, as they are
+  // layout-preserving. However, there are some complications with respect to
+  // degenerate dimensions: since our normalized form drops degenerate
+  // dimensions, that might make the concatenation impossible, as the
+  // corresponding concatenated dimension might not exist in the normalized
+  // form.
+  //
+  // So we drop all degenerate dimensions EXCEPT for the one being concatenated.
+  Status HandleConcatenate(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto orig_concat_dim = hlo->dimensions(0);
+
+    std::vector<HloInstruction*> normalized_inputs;
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
+      auto normalized_input_s = normalized_input->shape();
+      auto operand_s = operand->shape();
+
+      // Drop all degenerate dimensions, unless it is being concatenated.
+      auto operand_s_filtered = ShapeUtil::FilterDimensions(
+          [&](int dim) {
+            return operand_s.dimensions(dim) != 1 || dim == orig_concat_dim;
+          },
+          operand_s);
+
+      auto operand_s_normalized =
+          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+              operand_s_filtered);
+      auto new_operand =
+          operand_s_normalized == normalized_input_s
+              ? normalized_input
+              : MakeBitcastHlo(normalized_input, operand_s_normalized);
+      normalized_inputs.push_back(new_operand);
+    }
+
+    auto out_shape_degen_dropped = ShapeUtil::FilterDimensions(
+        [&](int dim) {
+          return s.dimensions(dim) != 1 || dim == orig_concat_dim;
+        },
+        s);
+    auto normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+    auto normalized_shape =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            out_shape_degen_dropped);
+
+    auto l = ToTransposeDimensions(s.layout());
+    int64_t normalized_concat_dim = FindIndex(l, orig_concat_dim);
+    auto degen_delta = absl::c_count_if(
+        normalized_w_degen.dimensions().subspan(0, normalized_concat_dim),
+        [&](int dim) { return dim == 1; });
+    auto normalized_concat = hlo->AddInstruction(
+        HloInstruction::CreateConcatenate(normalized_shape, normalized_inputs,
+                                          normalized_concat_dim - degen_delta));
+    auto bc_to_orig = MakeBitcastHlo(normalized_concat, hlo->shape());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
   // Converts broadcast input and output to normalized layout.
   //
   // Converts:
