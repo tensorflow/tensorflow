@@ -625,6 +625,10 @@ LogicalResult ForOp::verify() {
              << " to match region arg " << index + getNumLoops()
              << " type = " << outputRegionArg.getType();
     }
+    if (getTerminator().getDstOperand(index)->get() != outputRegionArg) {
+      return getTerminator().emitOpError("expected output block argument ")
+             << index << " to match subset_yield destination";
+    }
   }
   return success();
 }
