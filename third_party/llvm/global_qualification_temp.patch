@@ -1,0 +1,13 @@
+diff --git a/mlir/lib/IR/BuiltinAttributes.cpp b/mlir/lib/IR/BuiltinAttributes.cpp
+index bf72d46397549..35926522e0805 100644
+--- a/mlir/lib/IR/BuiltinAttributes.cpp
++++ b/mlir/lib/IR/BuiltinAttributes.cpp
+@@ -671,7 +671,7 @@ DenseElementsAttr::ComplexIntElementIterator::operator*() const {
+
+ /// Custom storage to ensure proper memory alignment for the allocation of
+ /// DenseArray of any element type.
+-struct ::mlir::detail::DenseArrayBaseAttrStorage : public AttributeStorage {
++struct mlir::detail::DenseArrayBaseAttrStorage : public AttributeStorage {
+   using KeyTy = std::tuple<ShapedType, DenseArrayBaseAttr::EltType,
+                            ::llvm::ArrayRef<char>>;
+   DenseArrayBaseAttrStorage(ShapedType type,
