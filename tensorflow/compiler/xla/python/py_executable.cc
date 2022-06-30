@@ -130,6 +130,31 @@ PyExecutable::ExecuteShardedOnLocalDevices(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   int num_computations = executable_->addressable_devices().size();
   {
+    auto options = options_;
+    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    std::shared_ptr<HostCallbackStates> host_callback_states;
+    if (!host_callbacks_.empty()) {
+      returned_futures.emplace();
+
+      host_callback_states = std::make_shared<HostCallbackStates>();
+
+      for (int i = 0; i < num_computations; ++i) {
+        auto& contexts = host_callback_states->contexts.emplace_back();
+        auto& send_callbacks =
+            host_callback_states->send_callbacks.emplace_back();
+        auto& recv_callbacks =
+            host_callback_states->recv_callbacks.emplace_back();
+
+        for (const py::capsule& host_callback : host_callbacks_) {
+          contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
+              host_callback.get_pointer<HostCallback>(),
+              client()->pjrt_client(), send_callbacks, recv_callbacks));
+        }
+      }
+      options.send_callbacks = host_callback_states->send_callbacks;
+      options.recv_callbacks = host_callback_states->recv_callbacks;
+    }
+
     py::gil_scoped_release gil_release;
     for (const auto& arg : args) {
       if (arg.size() != num_computations) {
@@ -153,8 +178,18 @@ PyExecutable::ExecuteShardedOnLocalDevices(
                           return arg[computation].buf()->buffer();
                         });
     }
-    TF_ASSIGN_OR_RETURN(output_buffers,
-                        executable_->Execute(arg_buffers, options_));
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        executable_->Execute(arg_buffers, options, returned_futures));
+
+    if (!host_callbacks_.empty()) {
+      for (int i = 0; i < num_computations; ++i) {
+        returned_futures.value().at(i).OnReady(
+            [host_callback_states](Status) mutable {
+              host_callback_states.reset();
+            });
+      }
+    }
   }
   auto traceback = Traceback::Get();
   int num_output_buffers = output_buffers[0].size();
