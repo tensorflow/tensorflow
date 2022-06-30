@@ -702,6 +702,7 @@ pybind_extension(
         "//third_party/py/numpy",
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
+    visibility = ["//visibility:public"],
     deps = [
                ":dlpack",
                ":jax_jit",
