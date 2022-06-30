@@ -511,6 +511,37 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              kernel_name.c_str(), module_);
 
+  // Add dereferenceable and alignment information to each of the kernel's
+  // parameters.
+  auto arg_it = kernel->arg_begin();
+  for (size_t arg_no = 0; arg_no < args.size(); ++arg_no) {
+    const BufferAllocation* alloc = args[arg_no];
+    llvm::Argument& fn_arg = *arg_it;
+    ++arg_it;
+
+    kernel->addDereferenceableParamAttr(arg_no, alloc->size());
+
+    const int64_t alignment = [&] {
+      if (alloc->is_entry_computation_parameter()) {
+        return kEntryParameterAlignBytes;
+      } else if (alloc->is_constant()) {
+        return kConstantBufferAlignBytes;
+      } else {
+        return kXlaAllocatedBufferAlignBytes;
+      }
+    }();
+
+    kernel->addParamAttr(
+        arg_no,
+        llvm::Attribute::get(context, llvm::Attribute::Alignment, alignment));
+
+    if (alloc->IsPreallocatedTempBuffer()) {
+      fn_arg.setName("temp_buf");
+    } else {
+      fn_arg.setName(StrCat("alloc", alloc->index()));
+    }
+  }
+
   AnnotateFunctionAsGpuKernel(module_, kernel, &b_);
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
@@ -1653,10 +1684,6 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
     return InternalError("kernel '%s' not found",
                          launch_func.getKernelName().str());
   }
-  // Rename kernel function.
-  std::string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeFunctionName(GetIrNameFromLoc(launch_func.getLoc())));
-  kernel_func.setName(kernel_name);
 
   mlir::DialectRegistry registry;
   mlir::registerLLVMDialectTranslation(registry);
@@ -1709,13 +1736,32 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
     slices.push_back(std::move(slice));
   }
 
-  // Add kernel thunk to sequence.
-  // Note: BuildKernelThunkImpl annotates the module_'s kernel function.
+  // Add kernel prototype to module_, kernel thunk to thunk_sequence_.
+  std::string kernel_name = GetIrNameFromLoc(launch_func.getLoc());
+  std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Thunk> kernel_thunk,
-      BuildKernelThunkImpl(kernel_name, GetThunkInfo(op), slices,
-                           /*ir_arrays=*/nullptr, launch_dimensions));
+      BuildKernelThunkImpl(kernel_name, GetThunkInfo(op), slices, &ir_arrays,
+                           launch_dimensions));
   thunk_sequence_.emplace_back(std::move(kernel_thunk));
+
+  // Move function body into kernel prototype.
+  llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
+  llvm::Function* implementation_func =
+      module_->getFunction(kernel_func.getName());
+  prototype_func->getBasicBlockList().splice(
+      prototype_func->end(), implementation_func->getBasicBlockList());
+  for (const auto& [arg, ir_array] :
+       llvm::zip_first(implementation_func->args(), ir_arrays)) {
+    arg.replaceAllUsesWith(ir_array.GetBasePointer());
+  }
+  implementation_func->eraseFromParent();
+
+  // Replace pre-existing return with unconditional branch to next block.
+  llvm::Instruction* terminator =
+      prototype_func->getEntryBlock().getTerminator();
+  llvm::BranchInst::Create(&*std::next(prototype_func->begin()), terminator);
+  terminator->eraseFromParent();
 
   return Status::OK();
 }
@@ -3214,9 +3260,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
       }
     }
   }
-  // Add temp_buffers to arguments if ir_arrays is non-null. Otherwise don't,
-  // because the launch op does not expect an additional argument.
-  if (temp_buffer.has_value() && ir_arrays) {
+  if (temp_buffer.has_value()) {
     buffers_needed.insert(*temp_buffer);
   }
 
@@ -3233,42 +3277,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
                  return a->index() < b->index();
                });
 
-  // If ir_arrays is null, retrieve the pre-existing kernel function in module_.
-  // Otherwise, build a kernel prototype function.
-  llvm::Function* kernel =
-      ir_arrays ? BuildKernelPrototype(name, non_constant_buffers)
-                : module_->getFunction(name);
-
-  // Add dereferenceable and alignment information to each of the kernel's
-  // parameters.
-  auto arg_it = kernel->arg_begin();
-  for (size_t arg_no = 0; arg_no < non_constant_buffers.size(); ++arg_no) {
-    const BufferAllocation* alloc = non_constant_buffers[arg_no];
-    llvm::Argument* fn_arg = &*arg_it;
-    ++arg_it;
-
-    kernel->addDereferenceableParamAttr(arg_no, alloc->size());
-
-    const int64_t alignment = [&] {
-      if (alloc->is_entry_computation_parameter()) {
-        return kEntryParameterAlignBytes;
-      } else if (alloc->is_constant()) {
-        return kConstantBufferAlignBytes;
-      } else {
-        return kXlaAllocatedBufferAlignBytes;
-      }
-    }();
-
-    kernel->addParamAttr(
-        arg_no, llvm::Attribute::get(module_->getContext(),
-                                     llvm::Attribute::Alignment, alignment));
-
-    if (alloc->IsPreallocatedTempBuffer()) {
-      fn_arg->setName("temp_buf");
-    } else {
-      fn_arg->setName(StrCat("alloc", alloc->index()));
-    }
-  }
+  llvm::Function* kernel = BuildKernelPrototype(name, non_constant_buffers);
 
   // Build a map from a BufferAllocation to the corresponding argument in our
   // kernel.
@@ -3307,35 +3316,33 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
     }
   }
 
-  if (ir_arrays) {
-    ir_arrays->clear();
+  ir_arrays->clear();
 
-    // For each buffer our kernel might want to touch, bind it to a value
-    // derived from our kernel args.
-    for (const BufferSlice& slice : slices) {
-      const BufferAllocation::Slice& buffer_slice = slice.buffer_slice;
+  // For each buffer our kernel might want to touch, bind it to a value derived
+  // from our kernel args.
+  for (const BufferSlice& slice : slices) {
+    const BufferAllocation::Slice& buffer_slice = slice.buffer_slice;
 
-      llvm::Value* loc;
-      if (!slice.constant_name.empty()) {
-        loc = module_->getGlobalVariable(slice.constant_name);
-        CHECK_NE(loc, nullptr)
-            << "Could not find variable '" << slice.constant_name << "'";
-      } else {
-        CHECK(!buffer_slice.allocation()->is_constant());
-        loc = InBoundsGEP(b_.getInt8Ty(),
-                          kernel_args.at(buffer_slice.allocation()),
-                          {b_.getInt64(buffer_slice.offset())});
-      }
-
-      llvm::Type* ir_type = llvm_ir::ShapeToIrType(slice.shape, module_);
-      llvm_ir::IrArray ir_array(CastToTypedValue(slice.shape, loc, &b_),
-                                ir_type, slice.shape);
-      if (!buffers_written.contains(slice.buffer_slice)) {
-        ir_array.MarkInvariantOverWholeProgram(&loc->getContext());
-      }
-
-      ir_arrays->push_back(ir_array);
+    llvm::Value* loc;
+    if (!slice.constant_name.empty()) {
+      loc = module_->getGlobalVariable(slice.constant_name);
+      CHECK_NE(loc, nullptr)
+          << "Could not find variable '" << slice.constant_name << "'";
+    } else {
+      CHECK(!buffer_slice.allocation()->is_constant());
+      loc =
+          InBoundsGEP(b_.getInt8Ty(), kernel_args.at(buffer_slice.allocation()),
+                      {b_.getInt64(buffer_slice.offset())});
     }
+
+    llvm::Type* ir_type = llvm_ir::ShapeToIrType(slice.shape, module_);
+    llvm_ir::IrArray ir_array(CastToTypedValue(slice.shape, loc, &b_), ir_type,
+                              slice.shape);
+    if (!buffers_written.contains(slice.buffer_slice)) {
+      ir_array.MarkInvariantOverWholeProgram(&loc->getContext());
+    }
+
+    ir_arrays->push_back(ir_array);
   }
 
   AnnotateThunkLaunchDimensions(launch_dimensions,
