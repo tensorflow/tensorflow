@@ -513,6 +513,9 @@ absl::flat_hash_set<string> GetExperiments(
     }
   }
 
+  if (opt_outs_raw == "all_except_opt_in") {
+    return experiments;
+  }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& pair : live_experiments) {
     auto& experiment = pair.first;
