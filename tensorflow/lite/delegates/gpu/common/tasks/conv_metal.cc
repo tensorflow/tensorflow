@@ -175,15 +175,6 @@ std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
       params.y_kernel_is_1 && !params.groups_support &&
       !params.different_weights_for_height;
 
-  const auto src_storage_type = definition.src_tensors[0].GetStorageType();
-  const auto dst_storage_type = definition.dst_tensors[0].GetStorageType();
-  const bool src_is_linear =
-      src_storage_type == TensorStorageType::BUFFER ||
-      src_storage_type == TensorStorageType::IMAGE_BUFFER;
-  const bool dst_is_linear =
-      dst_storage_type == TensorStorageType::BUFFER ||
-      dst_storage_type == TensorStorageType::IMAGE_BUFFER;
-
   std::string channels[4] = {"x", "y", "z", "w"};
   std::string c;
   c.reserve(16 * 1024);  // Reserve large enough buffer.
@@ -290,7 +281,7 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       c += "  int c_y" + s_y + " = y * args.dilation_y + y" + s_y + ";\n";
-      if (src_is_linear) {
+      if (definition.src_tensors[0].IsLinear()) {
         c += "  bool y" + s_y + "_out = c_y" + s_y + " < 0 || c_y" + s_y +
              " >= args.src_tensor.Height();\n";
         c += "  c_y" + s_y + " = clamp(c_y" + s_y +
@@ -310,7 +301,7 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       c += "  int c_x" + s_x + " = x * args.dilation_x + x" + s_x + ";\n";
-      if (src_is_linear) {
+      if (definition.src_tensors[0].IsLinear()) {
         c += "  bool x" + s_x + "_out = c_x" + s_x + " < 0 || c_x" + s_x +
              " >= args.src_tensor.Width();\n";
         c += "  c_x" + s_x + " = clamp(c_x" + s_x +
@@ -324,7 +315,7 @@ kernel void ComputeFunction(
            ", 0, args.src_tensor.Width() - 1);\n";
     }
   }
-  if (src_is_linear) {
+  if (definition.src_tensors[0].IsLinear()) {
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       for (int x = 0; x < params.block_size.x; ++x) {
@@ -345,7 +336,8 @@ kernel void ComputeFunction(
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_x = std::to_string(x);
         const std::string s_yx = s_y + s_x;
-        if (src_storage_type == TensorStorageType::BUFFER) {
+        if (definition.src_tensors[0].GetStorageType() ==
+            TensorStorageType::BUFFER) {
           if (params.groups_support) {
             c += "  args.src_tensor.GetAddress(base_addr_" + s_yx + ", c_x" +
                  s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
@@ -357,7 +349,8 @@ kernel void ComputeFunction(
                  "args.src_tensor.GetWHOffset(c_x" +
                  s_x + ", c_y" + s_y + ");\n";
           }
-        } else if (src_storage_type == TensorStorageType::IMAGE_BUFFER) {
+        } else if (definition.src_tensors[0].GetStorageType() ==
+                   TensorStorageType::IMAGE_BUFFER) {
           if (params.groups_support) {
             c += "  args.src_tensor.GetAddress(src_loc_" + s_yx + ", c_x" +
                  s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
@@ -396,15 +389,17 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
-        if (src_is_linear) {
-          if (src_storage_type == TensorStorageType::BUFFER) {
+        if (definition.src_tensors[0].IsLinear()) {
+          if (definition.src_tensors[0].GetStorageType() ==
+              TensorStorageType::BUFFER) {
             if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
               c += "    src" + s_yx + " = *src_loc_" + s_yx + " * m" + s_yx +
                    ";\n";
             } else {
               c += "    src" + s_yx + " = *src_loc_" + s_yx + ";\n";
             }
-          } else if (src_storage_type == TensorStorageType::IMAGE_BUFFER) {
+          } else if (definition.src_tensors[0].GetStorageType() ==
+                     TensorStorageType::IMAGE_BUFFER) {
             if (!params.y_kernel_is_1 || !params.x_kernel_is_1) {
               c += "    src" + s_yx + " = args.src_tensor.Read(src_loc_" +
                    s_yx + ") * m" + s_yx + ";\n";
@@ -419,7 +414,7 @@ kernel void ComputeFunction(
         }
       }
     }
-    if (src_is_linear) {
+    if (definition.src_tensors[0].IsLinear()) {
       for (int y = 0; y < params.block_size.y; ++y) {
         for (int x = 0; x < params.block_size.x; ++x) {
           const std::string s_yx = std::to_string(y) + std::to_string(x);
@@ -490,7 +485,7 @@ kernel void ComputeFunction(
          "return;\n";
   }
 
-  if (dst_is_linear) {
+  if (definition.dst_tensors[0].IsLinear()) {
     for_every_yx([](const std::string& s_yx, const std::string& s_x,
                     const std::string& s_y, int x, int y) {
       return "  args.dst_tensor.GetAddress(offset_" + s_yx + ", X + " + s_x +
@@ -538,12 +533,12 @@ kernel void ComputeFunction(
           c += "    {\n";
         }
         c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
-        if (dst_is_linear) {
+        if (definition.dst_tensors[0].IsLinear()) {
           c += "      int linear_index = offset_" + s_yx +
                " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
-          c += "      args.dst_tensor.Linking(value, X + " + s_x + ", Y + " +
-               s_y + ", Z + " + s_z + ");\n";
-          c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
+          c += "      args.dst_tensor.Write<LinearIndex::linear_index>(value, "
+               "X + " +
+               s_x + ", Y + " + s_y + ", Z + " + s_z + ");\n";
         } else {
           c += "      args.dst_tensor.Write(value, X + " + s_x + ", Y + " +
                s_y + ", Z + " + s_z + ");\n";
