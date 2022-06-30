@@ -43,10 +43,6 @@ load(
     "if_mkldnn_openmp",
 )
 load(
-    "//third_party/compute_library:build_defs.bzl",
-    "if_enable_acl",
-)
-load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
@@ -423,14 +419,6 @@ def tf_copts(
             "//conditions:default": ["-pthread"],
         })
     )
-
-def tf_xla_acl_opts_defines():
-    return [
-        "-DXLA_CPU_USE_ACL=1",
-    ]
-
-def tf_xla_acl_copts():
-    return if_enable_acl(tf_xla_acl_opts_defines())
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows

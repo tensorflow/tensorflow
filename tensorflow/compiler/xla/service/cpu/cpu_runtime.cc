@@ -83,20 +83,12 @@ extern const char* const kEigenMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenMatMulC128";
 extern const char* const kEigenMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenMatMulS32";
-extern const char* const kEigenBatchMatMulF32SymbolName =
-    "__xla_cpu_runtime_EigenBatchMatMulF32";
 extern const char* const kMKLConv2DF32SymbolName =
     "__xla_cpu_runtime_MKLConv2DF32";
-extern const char* const kACLConv2DF32SymbolName =
-    "__xla_cpu_runtime_ACLConv2DF32";
 extern const char* const kMKLMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLMatMulF32";
 extern const char* const kMKLMatMulF64SymbolName =
     "__xla_cpu_runtime_MKLMatMulF64";
-extern const char* const kACLMatMulF32SymbolName =
-    "__xla_cpu_runtime_ACLMatMulF32";
-extern const char* const kACLBatchMatMulF32SymbolName =
-    "__xla_cpu_runtime_ACLBatchMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLSingleThreadedMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName =
