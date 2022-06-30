@@ -377,9 +377,9 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createConvertSCFToCFPass());
 #if TENSORFLOW_USE_ROCM
-  kernelPm.addPass(mlir::CreateGpuKernelToRocdlPass());
+  kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA
-  kernelPm.addPass(mlir::CreateGpuKernelToNvvmPass());
+  kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
   kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.

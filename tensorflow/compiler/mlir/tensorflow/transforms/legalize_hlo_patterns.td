@@ -23,7 +23,7 @@ include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.t
 
 // Check if broadcasting is compatible with TF ops.
 def IsLegalNumpyRankedBroadcast :
-    Constraint<CPred<"hlo::IsLegalNumpyRankedBroadcast($0, $1, $2)">,
+    Constraint<CPred<"hlo::isLegalNumpyRankedBroadcast($0, $1, $2)">,
     "broadcasting should be compatible with TF ops">;
 
 // Return a constant op that carries the shape of the given value.

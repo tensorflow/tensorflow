@@ -55,11 +55,10 @@ struct LinalgGenericTilingPattern : public OpRewritePattern<GenericOp> {
     if (failed(tilingResult)) return failure();
 
     // Add filter to the `tiled_op` to prevent recursive tiling.
-    if (tilingResult->tiled_op)
-      filter.replaceLinalgTransformationFilter(rewriter,
-                                               tilingResult->tiled_op);
+    if (tilingResult->tiledOp)
+      filter.replaceLinalgTransformationFilter(rewriter, tilingResult->tiledOp);
 
-    rewriter.replaceOp(linalgOp, (*tilingResult).outer_loop->getResults());
+    rewriter.replaceOp(linalgOp, (*tilingResult).outerLoop->getResults());
     return success();
   }
 

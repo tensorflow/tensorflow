@@ -613,7 +613,7 @@ unsigned potentiallyComplexBitwidth(Type type) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterOp::verify() {
-  if (failed(mlir::hlo::VerifyReplicaGroups(*this, /*is_uniform_sized=*/true)))
+  if (failed(mlir::hlo::verifyReplicaGroups(*this, /*is_uniform_sized=*/true)))
     return failure();
   auto operandType = operand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
@@ -626,7 +626,7 @@ LogicalResult ReduceScatterOp::verify() {
           /*allInputsUnranked=*/!operandTypeRanked, accumulatorSubshapes)))
     return failure();
 
-  return mlir::hlo::VerifyReduceScatter(
+  return mlir::hlo::verifyReduceScatter(
       *this,
       /*operand_types=*/{operand().getType()},
       /*result_types=*/{getType()},
@@ -1849,7 +1849,7 @@ LogicalResult AbsOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult CollectivePermuteOp::verify() {
-  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
       *this, source_target_pairs());
 }
 
@@ -2185,7 +2185,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // Prevent folding if the result is too large.
   if (elementsAttr.getNumElements() > kFoldOpEltLimit) return {};
-  return hlo::ConvertElementsAttr(elementsAttr,
+  return hlo::convertElementsAttr(elementsAttr,
                                   getElementTypeOrSelf(getResult()));
 }
 
@@ -8665,7 +8665,7 @@ static void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
   builder->create<mhlo::ReturnOp>(loc, compare);
 }
 
-SortOp CreateSortOp(PatternRewriter* rewriter, const Location& loc,
+SortOp createSortOp(PatternRewriter* rewriter, const Location& loc,
                     const llvm::ArrayRef<Value>& operands,
                     const llvm::ArrayRef<Type>& elementTypes, int64_t dimension,
                     bool isStable, ComparisonDirection direction) {

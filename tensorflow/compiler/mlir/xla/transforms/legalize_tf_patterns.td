@@ -57,7 +57,7 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
   "&$_builder)">;
 
 def CastElementsToI64Elements : NativeCodeCall<
-  "hlo::ConvertElementsAttr("
+  "hlo::convertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
 //===----------------------------------------------------------------------===//

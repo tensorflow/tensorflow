@@ -212,7 +212,7 @@ tensorflow::TensorShape ToTensorShape(
 static ConstantOp GetScalarLimitConstOfType(Type ty, Location loc,
                                             hlo::ScalarLimit limit,
                                             OpBuilder *builder) {
-  return builder->create<ConstantOp>(loc, hlo::GetScalarLimitOfType(ty, limit));
+  return builder->create<ConstantOp>(loc, hlo::getScalarLimitOfType(ty, limit));
 }
 
 // Creates an mhlo::SliceOp where the major dimensions have full size, and
@@ -896,7 +896,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
     Builder *builder) {
   DenseIntElementsAttr constant_start_indices;
   if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    return hlo::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
+    return hlo::convertElementsAttr(slice_sizes, builder->getIntegerType(64))
         .cast<DenseIntElementsAttr>();
   }
 
@@ -5885,7 +5885,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         auto keys =
             CreateRngUniform32(op.getLoc(), num_elements, /*lower_limit=*/0,
                                /*upper_limit=*/u32_max, &rewriter);
-        auto sorted = CreateSortOp(
+        auto sorted = createSortOp(
             &rewriter, op.getLoc(), {keys, current},
             {rewriter.getIntegerType(32), input_type.getElementType()},
             /*dimension=*/-1, /*is_stable=*/false,
@@ -6095,7 +6095,7 @@ class ConvertXlaReduceScatterOp
     if (!matchPattern(op.group_assignment(), m_Constant(&group_assignment)))
       return failure();
     auto replica_groups =
-        hlo::ConvertElementsAttr(group_assignment, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(group_assignment, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>();
     if (replica_groups.getType().getRank() != 2) return failure();
 
@@ -6173,15 +6173,15 @@ class ConvertXlaReduceWindowOp
     // Create the mhlo.SelectAndScatter op.
     auto reduce_window_op = rewriter.create<mhlo::ReduceWindowOp>(
         loc, result_types, op.input(), op.init_value(),
-        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_strides, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(base_dilations, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(base_dilations, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(window_dilations, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_dilations, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(padding, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>());
     // Insert a call to the reducer in the region of the mhlo op.
     mlir::SymbolRefAttr func = op.computation();
@@ -7009,11 +7009,11 @@ class ConvertXlaSelectAndScatterOp
     // Create the mhlo.SelectAndScatter op.
     auto select_and_scatter_op = rewriter.create<mhlo::SelectAndScatterOp>(
         loc, result_types, op.operand(), op.source(), op.init_value(),
-        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_strides, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(padding, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>());
 
     auto insert_call_to = [&](const mlir::SymbolRefAttr &func, Region *region) {
@@ -7045,7 +7045,7 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
     // Create the sort op.
     Type element_type = getElementTypeOrSelf(op.input().getType());
     auto sort_op =
-        CreateSortOp(&rewriter, op.getLoc(), {op.input()}, {element_type},
+        createSortOp(&rewriter, op.getLoc(), {op.input()}, {element_type},
                      /*dimension=*/-1, /*is_stable=*/false,
                      /*direction=*/ComparisonDirection::LT);
     rewriter.replaceOp(op, sort_op.getResult(0));

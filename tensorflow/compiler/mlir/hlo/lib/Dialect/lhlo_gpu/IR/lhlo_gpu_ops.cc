@@ -106,7 +106,7 @@ using mlir::hlo::printWindowAttributes;
 
 mlir::LogicalResult AllReduceStartOp::verify() {
   AllReduceStartOp op = *this;
-  return lmhlo::VerifyAllReduce(op);
+  return lmhlo::verifyAllReduce(op);
 }
 
 }  // namespace lmhlo_gpu

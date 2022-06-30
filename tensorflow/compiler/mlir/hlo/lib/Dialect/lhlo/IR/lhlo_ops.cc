@@ -123,13 +123,13 @@ LogicalResult AbsOp::verify() {
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllGatherOp::verify() {
   AllGatherOp op = *this;
-  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {
   AllToAllOp op = *this;
-  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -138,7 +138,7 @@ LogicalResult AllToAllOp::verify() {
 
 LogicalResult AllReduceOp::verify() {
   AllReduceOp op = *this;
-  return VerifyAllReduce(op);
+  return verifyAllReduce(op);
 }
 
 //===----------------------------------------------------------------------===//
@@ -147,9 +147,9 @@ LogicalResult AllReduceOp::verify() {
 
 LogicalResult ReduceScatterOp::verify() {
   ReduceScatterOp op = *this;
-  if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+  if (failed(mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
-  if (failed(mlir::hlo::VerifyReduceScatter(
+  if (failed(mlir::hlo::verifyReduceScatter(
           op, /*operand_types=*/op.getInputs().getTypes(),
           /*result_types=*/op.getOutputs().getTypes(),
           /*scatter_dimension=*/op.getScatterDimension())))
@@ -180,7 +180,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
 
 LogicalResult CollectivePermuteOp::verify() {
   CollectivePermuteOp op = *this;
-  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
       op, op.getSourceTargetPairs());
 }
 
