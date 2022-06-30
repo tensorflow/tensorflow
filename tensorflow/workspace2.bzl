@@ -482,10 +482,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "93fb2cd4b880656b4e8589c912a9fd092750166d555166370247f09d18f5d0c0",
-        strip_prefix = "curl-7.83.1",
+        sha256 = "3c6893d38d054d4e378267166858698899e9d87258e8ff1419d020c395384535",
+        strip_prefix = "curl-7.84.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.83.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.84.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
