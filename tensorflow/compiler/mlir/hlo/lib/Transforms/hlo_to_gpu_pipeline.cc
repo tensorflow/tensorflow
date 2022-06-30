@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -60,6 +61,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   constexpr llvm::StringRef kGpuDataLayoutSpec =
       "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
   pm.addPass(createGpuKernelOutliningPass(kGpuDataLayoutSpec));
+  pm.addNestedPass<GPUModuleOp>(createForLoopSpecializationPass());
   pm.addNestedPass<GPUModuleOp>(createLowerAffinePass());
   pm.addNestedPass<GPUModuleOp>(createCanonicalizerPass());
   pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());

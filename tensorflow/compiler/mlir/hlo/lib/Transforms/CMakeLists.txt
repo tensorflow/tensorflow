@@ -59,6 +59,7 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRIR
   MLIRPass
   MLIRShapeDialect
+  MLIRSCFTransforms
   MLIRTransforms
 )
 
