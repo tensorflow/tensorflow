@@ -1130,7 +1130,8 @@ func ApproxTopKAggregateToTopk(value bool) ApproxTopKAttr {
 
 // Returns min/max k values and their indices of the input operand in an approximate manner.
 //
-// Returns min/max k values and their indices of the input operand in an approximate manner.
+// See https://arxiv.org/abs/2206.14286 for the algorithm details.
+// This op is only optimized on TPU currently.
 //
 // Arguments:
 //
