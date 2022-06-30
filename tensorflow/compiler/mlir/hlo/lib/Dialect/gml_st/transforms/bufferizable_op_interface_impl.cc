@@ -426,6 +426,105 @@ struct ParallelOpInterface
   }
 };
 
+struct ForOpInterface
+    : public BufferizableOpInterface::ExternalModel<ForOpInterface, ForOp> {
+  SmallVector<OpOperand *> getAliasingOpOperand(
+      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+    auto forOp = cast<gml_st::ForOp>(op);
+    return {&forOp.getOpOperandForResult(opResult)};
+  }
+
+  bool isWritable(Operation * /*op*/, Value /*value*/,
+                  const AnalysisState & /*state*/) const {
+    // Interestingly, ForOp's bbArg can **always** be viewed
+    // inplace from the perspective of ops nested under:
+    //   1. Either the matching iter operand is not bufferized inplace and an
+    //      alloc + optional copy makes the bbArg itself inplaceable.
+    //   2. Or the matching iter operand is bufferized inplace and bbArg just
+    //      bufferizes to that too.
+    return true;
+  }
+
+  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
+                              const AnalysisState &state) const {
+    auto forOp = cast<gml_st::ForOp>(op);
+    return state.isValueRead(forOp.getRegionOutputArgForOpOperand(opOperand));
+  }
+
+  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
+                               const AnalysisState & /*state*/) const {
+    return true;
+  }
+
+  SmallVector<OpResult> getAliasingOpResult(
+      Operation *op, OpOperand &opOperand,
+      const AnalysisState & /*state*/) const {
+    auto forOp = cast<gml_st::ForOp>(op);
+    return {forOp.getResultForOpOperand(opOperand)};
+  }
+
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
+    return BufferRelation::Equivalent;
+  }
+
+  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
+                          const BufferizationOptions &options) const {
+    auto forOp = cast<ForOp>(op);
+
+    // Get the bufferized output arguments.
+    SmallVector<Value> bufferizedOutputs;
+    bufferizedOutputs.reserve(forOp.getNumOutputs());
+    for (Value output : forOp.outputs()) {
+      FailureOr<Value> maybeBuffer = getBuffer(rewriter, output, options);
+      if (failed(maybeBuffer)) return failure();
+      bufferizedOutputs.push_back(*maybeBuffer);
+    }
+
+    // Create new ForOp.
+    auto newForOp = rewriter.create<ForOp>(
+        forOp.getLoc(), TypeRange{}, forOp.lowerBound(), forOp.upperBound(),
+        forOp.step(), ValueRange{}, nullptr);
+    Block *loopBody = newForOp.getBody();
+
+    // Add conversions to tensor so that we can reuse the old loop body.
+    rewriter.setInsertionPointToStart(loopBody);
+    SmallVector<Value> blockArgs = newForOp.getInductionVars();
+    blockArgs.append(bufferizedOutputs);
+
+    // Move old body into new for loop.
+    rewriter.mergeBlocks(forOp.getBody(), loopBody, blockArgs);
+
+    // Replace previous terminator with a new one that yields the bufferized
+    // results.
+    auto oldTerminator =
+        cast<gml_st::SubsetYieldOp>(newForOp.getBody()->getTerminator());
+    rewriter.setInsertionPointToEnd(newForOp.getBody());
+    auto newTerminator =
+        rewriter.create<gml_st::SubsetYieldOp>(oldTerminator->getLoc());
+
+    // Copy buffer of yielded tensor to output buffer. If everything
+    // bufferized inplace, this copy will fold away.
+    rewriter.setInsertionPoint(newTerminator);
+    for (auto it : llvm::zip(oldTerminator.srcs(), oldTerminator.dsts(),
+                             oldTerminator.subsets())) {
+      Value src, dst, set;
+      std::tie(src, dst, set) = it;
+      if (failed(materializeInsertion(rewriter, src, set, dst, options)))
+        return failure();
+    }
+
+    // Erase old terminator.
+    rewriter.eraseOp(oldTerminator);
+
+    // Replace results and delete old op.
+    bufferization::replaceOpWithBufferizedValues(rewriter, op,
+                                                 bufferizedOutputs);
+
+    return success();
+  }
+};
+
 struct SubsetYieldOpInterface
     : public BufferizableOpInterface::ExternalModel<SubsetYieldOpInterface,
                                                     SubsetYieldOp> {
@@ -471,6 +570,7 @@ void mlir::gml_st::registerBufferizableOpInterfaceExternalModels(
     DialectRegistry &registry) {
   registry.addExtension(
       +[](MLIRContext *ctx, gml_st::GmlStDialect * /*dialect*/) {
+        ForOp::attachInterface<ForOpInterface>(*ctx);
         LoopOp::attachInterface<LoopOpInterface>(*ctx);
         MaterializeOp::attachInterface<MaterializeOpInterface>(*ctx);
         ParallelOp::attachInterface<ParallelOpInterface>(*ctx);

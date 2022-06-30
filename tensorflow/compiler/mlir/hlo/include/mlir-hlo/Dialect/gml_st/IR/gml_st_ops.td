@@ -202,8 +202,47 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     /// Number of output operands
     unsigned getNumOutputs() { return outputs().size(); }
 
+    /// Get the region output args.
     ValueRange getRegionOutputArgs() {
       return getBody()->getArguments().take_back(outputs().size());
+    }
+
+    /// Get the region output arg that corresponds to an OpOperand.
+    BlockArgument getRegionOutputArgForOpOperand(OpOperand &opOperand) {
+      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
+             "expected an output args operand");
+      assert(opOperand.getOwner() == getOperation() &&
+             "opOperand does not belong to this gml_st::ForOp operation");
+      return getBody()->getArgument(opOperand.getOperandNumber() -
+                                    getNumControlOperands() + getNumLoops());
+    }
+
+    /// Get the OpOperand& that corresponds to a region output arg.
+    OpOperand &getOpOperandForRegionOutputArg(BlockArgument bbArg) {
+      assert(bbArg.getArgNumber() >= getNumLoops() &&
+             "expected a bbArg that is not an induction variable");
+      assert(bbArg.getOwner()->getParentOp() == getOperation() &&
+             "bbArg does not belong to the gml_st::ForOp body");
+      return getOperation()->getOpOperand(
+        getNumControlOperands() + bbArg.getArgNumber() - getNumLoops());
+    }
+
+    /// Get the OpResult that corresponds to an OpOperand.
+    OpResult getResultForOpOperand(OpOperand &opOperand) {
+      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
+             "expected an output args operand");
+      assert(opOperand.getOwner() == getOperation() &&
+             "opOperand does not belong to this gml_st::ForOp operation");
+      return getOperation()->getResult(
+        opOperand.getOperandNumber() - getNumControlOperands());
+    }
+
+    /// Get the OpOperand& that corresponds to an OpResultOpOperand.
+    OpOperand &getOpOperandForResult(OpResult opResult) {
+      assert(opResult.getDefiningOp() == getOperation() &&
+             "opResult does not belong to the gml_st::ForOp operation");
+      return getOperation()->getOpOperand(
+        getNumControlOperands() + opResult.getResultNumber());
     }
   }];
 }
