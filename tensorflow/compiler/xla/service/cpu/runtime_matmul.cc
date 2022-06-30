@@ -70,6 +70,49 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64_t m,
   C.device(*run_options->intra_op_thread_pool()) = A.contract(B, dims);
 }
 
+template <typename T, Eigen::AlignmentType Alignment>
+void MatMul_Batch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
+                  int64_t m, int64_t n, int64_t k, int64_t batch_size,
+                  int32_t transpose_lhs, int32_t transpose_rhs) {
+  const xla::ExecutableRunOptions* run_options =
+      static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+
+  int64_t lhs_rows = m;
+  int64_t lhs_cols = k;
+  if (transpose_lhs) {
+    std::swap(lhs_rows, lhs_cols);
+  }
+
+  int64_t rhs_rows = k;
+  int64_t rhs_cols = n;
+  if (transpose_rhs) {
+    std::swap(rhs_rows, rhs_cols);
+  }
+
+  const Eigen::TensorMap<Eigen::Tensor<const T, 3>, Alignment> A(
+      lhs, lhs_rows, lhs_cols, batch_size);
+  const Eigen::TensorMap<Eigen::Tensor<const T, 3>, Alignment> B(
+      rhs, rhs_rows, rhs_cols, batch_size);
+  Eigen::TensorMap<Eigen::Tensor<T, 3>, Alignment> C(out, m, n, batch_size);
+
+  typedef typename Eigen::Tensor<T, 2>::DimensionPair DimPair;
+  int lhs_contract_dim = transpose_lhs ? 0 : 1;
+  int rhs_contract_dim = transpose_rhs ? 1 : 0;
+
+  const Eigen::array<DimPair, 1> dims(
+      {DimPair(lhs_contract_dim, rhs_contract_dim)});
+
+  // Matrix multiply is a special case of the "contract" operation where
+  // the contraction is performed along dimension 1 of the lhs and dimension
+  // 0 of the rhs.
+  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
+
+  for (int64_t i = 0; i < batch_size; ++i) {
+    C.chip(i, 2).device(*run_options->intra_op_thread_pool()) =
+        A.chip(i, 2).contract(B.chip(i, 2), dims);
+  }
+}
+
 template <typename T>
 void MatMulDispatch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
                     int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
@@ -85,6 +128,22 @@ void MatMulDispatch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
 
   MatMul<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
                               transpose_lhs, transpose_rhs);
+}
+
+template <typename T>
+void BatchMatMulDispatch(const void* run_options_ptr, T* out, T* lhs, T* rhs,
+                         int64_t m, int64_t n, int64_t k, int64_t batch_size,
+                         int32_t transpose_lhs, int32_t transpose_rhs) {
+  bool all_buffers_16b_aligned =
+      Is16BytesAligned(out) && Is16BytesAligned(lhs) && Is16BytesAligned(rhs);
+
+  if (!all_buffers_16b_aligned) {
+    MatMul_Batch<T, Eigen::Unaligned>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                      batch_size, transpose_lhs, transpose_rhs);
+    return;
+  }
+  MatMul_Batch<T, Eigen::Aligned16>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                    batch_size, transpose_lhs, transpose_rhs);
 }
 
 }  // namespace
@@ -134,4 +193,12 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulS32(
     int32_t transpose_rhs) {
   MatMulDispatch<int32_t>(run_options_ptr, out, lhs, rhs, m, n, k,
                           transpose_lhs, transpose_rhs);
+}
+
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenBatchMatMulF32(
+    const void* run_options_ptr, float* out, float* lhs, float* rhs, int64_t m,
+    int64_t n, int64_t k, int64_t batch_size, int32_t transpose_lhs,
+    int32_t transpose_rhs) {
+  BatchMatMulDispatch<float>(run_options_ptr, out, lhs, rhs, m, n, k,
+                             batch_size, transpose_lhs, transpose_rhs);
 }
