@@ -563,7 +563,11 @@ StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
     for (int i = 0; i < shapes.size(); ++i) {
       HostCallbackArgInfo host_callback_arg_info;
       host_callback_arg_info.channel_id = channel_ids[i];
-      host_callback_arg_info.shape = shapes[i];
+      const auto& shape = shapes[i];
+      Shape layout =
+          (shape.has_layout() ? shape
+                              : LayoutUtil::GetWithDefaultLayout(shape));
+      host_callback_arg_info.shape = layout;
       arg_infos.push_back(std::move(host_callback_arg_info));
     }
   };
