@@ -462,6 +462,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
     case xla::F64:
     case xla::C128:
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
+    case xla::PRED:
+      // Using S8 for PRED initialization, as vector<bool> has different
+      // semantics and cannot be used as a buffer.
     case xla::S8:
       return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
     case xla::S32:

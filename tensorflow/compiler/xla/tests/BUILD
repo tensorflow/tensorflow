@@ -1136,12 +1136,14 @@ CONVOLUTION_TEST_DEPS = [
     "//tensorflow/compiler/xla/client:local_client",
     "//tensorflow/compiler/xla/client:padding",
     "//tensorflow/compiler/xla/client:xla_builder",
+    "//tensorflow/compiler/xla/service/gpu:gpu_executable",
     "//tensorflow/compiler/xla/tests:client_library_test_base",
     "//tensorflow/compiler/xla/tests:hlo_test_base",
     "//tensorflow/compiler/xla/tests:literal_test_util",
     "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     "//tensorflow/core:lib",
     "//tensorflow/core:test",
+    "//tensorflow/stream_executor/cuda:cuda_platform_id",
 ]
 
 xla_test(
