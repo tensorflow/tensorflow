@@ -151,7 +151,10 @@ tf_py_test(
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
     shard_count = 10,  # Parallelize the test to avoid timeouts.
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # TODO(b/237510702)
+        "no_pip",
+    ],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
@@ -169,7 +172,10 @@ tf_py_test(
     name = "concurrency_test",
     size = "medium",
     srcs = ["integration_test/concurrency_test.py"],
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",  # TODO(b/237510702)
+        "no_pip",
+    ],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
