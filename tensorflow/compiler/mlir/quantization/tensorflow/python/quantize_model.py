@@ -14,7 +14,7 @@
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 import tempfile
 from typing import Optional
 import uuid
@@ -154,31 +154,54 @@ def _fix_tensor_names(signatures, exported_graph):
   return signatures
 
 
-def _validate_representative_sample(
-    sample: repr_dataset.RepresentativeSample
-) -> repr_dataset.RepresentativeSample:
-  """Validates a single instance of representative sample.
-
-  This provides a simple check for `sample` that this is a mapping of
-  {input_key: input_value}.
+def _create_sample_validator(
+    expected_input_keys: Collection[str],
+) -> Callable[[repr_dataset.RepresentativeSample],
+              repr_dataset.RepresentativeSample]:
+  """Creates a validator function for a representative sample.
 
   Args:
-    sample: A `RepresentativeSample` to validate.
+    expected_input_keys: Input keys (keyword argument names) that the function
+      the sample will be used for is expecting to receive.
 
   Returns:
-    `sample` iff it is valid.
-
-  Raises:
-    ValueError iff the sample isn't an instance of `Mapping`.
+    A callable that validates a `RepresentativeSample`.
   """
-  # TODO(b/237244237): Check the sample's input keys against the function's
-  # input keys.
-  if not isinstance(sample, Mapping):
-    raise ValueError('Invalid representative sample type. Provide a mapping '
-                     '(usually a dict) of {input_key: input_value}. '
-                     f'Got type: {type(sample)} instead.')
 
-  return sample
+  def validator(
+      sample: repr_dataset.RepresentativeSample
+  ) -> repr_dataset.RepresentativeSample:
+    """Validates a single instance of representative sample.
+
+    This provides a simple check for `sample` that this is a mapping of
+    {input_key: input_value}.
+
+    Args:
+      sample: A `RepresentativeSample` to validate.
+
+    Returns:
+      `sample` iff it is valid.
+
+    Raises:
+      ValueError: iff the sample isn't an instance of `Mapping`.
+      KeyError: iff the sample does not have the set of input keys that match
+        the input keys of the function.
+    """
+    if not isinstance(sample, Mapping):
+      raise ValueError('Invalid representative sample type. Provide a mapping '
+                       '(usually a dict) of {input_key: input_value}. '
+                       f'Got type: {type(sample)} instead.')
+
+    if set(sample.keys()) != expected_input_keys:
+      raise KeyError(
+          'Invalid input keys for representative sample. The function expects '
+          f'input keys of: {set(expected_input_keys)}. '
+          f'Got: {set(sample.keys())}. Please provide correct input keys for '
+          'representative samples.')
+
+    return sample
+
+  return validator
 
 
 def _validate_representative_dataset(
@@ -267,10 +290,6 @@ def _create_feed_dict_from_input_data(
     signature_def: A SignatureDef representing the function that `input_data` is
       an input to.
 
-  Raises:
-    KeyError: When the input key provided from `input_data` does not exist as
-      one of `signature_def`'s input keys.
-
   Returns:
     Feed dict, which is intended to be used as input for `sess.run`. It is
     essentially a mapping: input tensor name -> input value. Note that the input
@@ -278,10 +297,6 @@ def _create_feed_dict_from_input_data(
   """
   feed_dict = {}
   for input_key, input_value in input_data.items():
-    if input_key not in signature_def.inputs:
-      raise KeyError(f"Invalid input key '{input_key}'. Available input keys"
-                     f' are: {list(signature_def.inputs.keys())}.')
-
     input_tensor_name = signature_def.inputs[input_key].name
 
     value = input_value
@@ -310,12 +325,14 @@ def _run_function_for_calibration_graph_mode(
     representative_dataset: The representative dataset to run through the
       function.
   """
-  for sample in map(_validate_representative_sample, representative_dataset):
-    output_tensor_names = [
-        output_tensor_info.name
-        for output_tensor_info in signature_def.outputs.values()
-    ]
+  output_tensor_names = [
+      output_tensor_info.name
+      for output_tensor_info in signature_def.outputs.values()
+  ]
 
+  sample_validator = _create_sample_validator(
+      expected_input_keys=signature_def.inputs.keys())
+  for sample in map(sample_validator, representative_dataset):
     # Create a mapping from input tensor name to the input tensor value.
     # ex) "Placeholder:0" -> [0, 1, 2]
     feed_dict = _create_feed_dict_from_input_data(sample, signature_def)
@@ -341,7 +358,7 @@ def _run_graph_for_calibration_graph_mode(
       corresponding representative datasets.
 
   Raises:
-    ValueError: When the samples in representative dataset is invalid.
+    ValueError: When running the function with the representative dataset fails.
   """
   with session.Session() as sess:
     meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
@@ -353,9 +370,10 @@ def _run_graph_for_calibration_graph_mode(
       try:
         _run_function_for_calibration_graph_mode(
             sess, signature_def=sig_def, representative_dataset=repr_ds)
-      except KeyError as key_error:
-        raise ValueError(f'Invalid input data for signature: {signature_key}.'
-                        ) from key_error
+      except Exception as ex:
+        raise ValueError(
+            'Failed to run representative dataset through the '
+            f'function with the signature key: {signature_key}.') from ex
 
 
 def _run_function_for_calibration_eager_mode(
@@ -371,7 +389,11 @@ def _run_function_for_calibration_eager_mode(
       input keys and input values of the representative samples should match the
       keyword arguments of `func`.
   """
-  for sample in map(_validate_representative_sample, representative_dataset):
+  _, keyword_args = func.structured_input_signature
+  sample_validator = _create_sample_validator(
+      expected_input_keys=keyword_args.keys())
+
+  for sample in map(sample_validator, representative_dataset):
     # Convert any non-Tensor values from the sample to Tensors.
     # This conversion is required because the model saved in `model_dir` is
     # saved using TF1 SavedModelBuilder, which doesn't save the
@@ -401,7 +423,7 @@ def _run_graph_for_calibration_eager_mode(
       corresponding representative datasets.
 
   Raises:
-    ValueError: When the samples in representative dataset is invalid.
+    ValueError: When running the function with the representative dataset fails.
   """
   root: autotrackable.AutoTrackable = saved_model_load(model_dir, tags)
   for signature_key, repr_ds in representative_dataset_map.items():
@@ -410,8 +432,8 @@ def _run_graph_for_calibration_eager_mode(
           func=root.signatures[signature_key], representative_dataset=repr_ds)
     except Exception as ex:
       raise ValueError(
-          f'Failed to run the function with signature key: {signature_key}'
-      ) from ex
+          'Failed to run representative dataset through the '
+          f'function with the signature key: {signature_key}.') from ex
 
 
 def _run_graph_for_calibration(
