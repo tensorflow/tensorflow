@@ -2684,6 +2684,7 @@ cuda_py_test(
     size = "small",
     srcs = ["ops/bincount_ops_test.py"],
     python_version = "PY3",
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":bincount_ops",
         ":platform_test",
