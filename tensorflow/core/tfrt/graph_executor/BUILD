@@ -8,6 +8,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
     ],
