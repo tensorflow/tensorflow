@@ -85,7 +85,7 @@ inline float Int16SampleToFloat(int16_t data) {
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, int increment, size_t max_size,
+Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
                        int* new_offset) {
   if (old_offset < 0) {
     return errors::InvalidArgument("Negative offsets are not allowed: ",
