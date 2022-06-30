@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
 
+#include <functional>
 #include <initializer_list>
 
 #include "tensorflow/lite/model.h"
@@ -107,8 +108,11 @@ struct OperatorProperty {
   // Intermediate indexes -> intermediate tensor property.
   std::vector<std::pair<int, TensorProperty>> intermediates = {};
 
-  // Force output to reuse the same scale and zero point of input.
-  bool restrict_same_input_output_scale = false;
+  // Force output to reuse the same scale and zero point of input when the
+  // certain type support must require the same scale and zero point
+  // requirement.
+  std::function<bool(TensorType)> restrict_same_input_output_scale =
+      [](TensorType) { return false; };
 
   // Use same min of min and max of max for each group.
   // Incompatible with restrict_same_input_output_scale and restricted_value.

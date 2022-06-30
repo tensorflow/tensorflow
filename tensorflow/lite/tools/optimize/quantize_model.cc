@@ -705,13 +705,13 @@ TfLiteStatus ApplyConstraints(
           !IsRealValueOp(real_value_op_set, operator_name)) {
         continue;
       }
+      TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (!property.arbitrary_inputs ||
-          !property.restrict_same_input_output_scale) {
+          !property.restrict_same_input_output_scale(output_tensor->type)) {
         continue;
       }
       // If ApplyConstraints and requant is needed, use the min of min and max
       // of max, which means using the scale and zero point of output.
-      TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (!utils::QuantizationParametersExist(output_tensor)) {
         TF_LITE_REPORT_ERROR(
             error_reporter,
@@ -851,11 +851,11 @@ std::vector<std::pair<int, operator_property::TensorProperty>> GetOutputs(
 }
 
 bool ShouldRestrictSameInputOutputScale(
-    operator_property::OperatorProperty property) {
+    operator_property::OperatorProperty property, TensorType tensor_type) {
   // Ops with multiple inputs (i.e. concat, max and min) gets restricted in
   // ApplyConstraints.
   return (!property.arbitrary_inputs &&
-          property.restrict_same_input_output_scale);
+          property.restrict_same_input_output_scale(tensor_type));
 }
 
 bool IsSubgraphInput(SubGraphT* subgraph, int32_t index) {
@@ -903,7 +903,7 @@ TfLiteStatus QuantizeOpInput(
       // per-channel and one per-layer.
       bool quantize_const_input = false;
       if (activations_type == TensorType_INT16 &&
-          (property.restrict_same_input_output_scale ||
+          (property.restrict_same_input_output_scale(tensor->type) ||
            property.quantize_input_as_activations)) {
         quantize_const_input = true;
       }
@@ -1092,7 +1092,7 @@ TfLiteStatus QuantizeOpOutput(
     // Skip output if it has been quantized.
     return kTfLiteOk;
   }
-  if (ShouldRestrictSameInputOutputScale(property)) {
+  if (ShouldRestrictSameInputOutputScale(property, output_tensor->type)) {
     // Copy quantization parameter. For average pool, max pool, etc
     // min/max can be different but we want them to be the same.
     // Get scale and zero point of input.
