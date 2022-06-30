@@ -18,7 +18,7 @@ RUN yum -y check-update || true && \
 COPY install/install_bazel.sh /install/
 RUN /install/install_bazel.sh
 
-ARG py_major_minor_version
+ARG py_major_minor_version='3.10'
 
 ENV TF_PYTHON_VERSION=python${py_major_minor_version}
 ENV PYTHON_BIN_PATH=/usr/local/bin/${TF_PYTHON_VERSION}
