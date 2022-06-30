@@ -27,18 +27,36 @@ namespace gpu {
 namespace {
 
 std::string GetReduceCode(const std::string& src_value,
-                          const std::string& dst_value, int reduction_size) {
-  // In the reduction step add upper half of the still-to-be-summed vector to
-  // the lower half, while taking care of odd sizes and rounding. E.g.:
-  // Number of items still to be summed before: 5
-  // Local memory before: [a, b, c, d, e];
-  // Local memory after: [a+d, b+e, c, d, e];
-  // Threads doing work: id < 2 = floor(5/2)
-  // Offset to the added items: 3 = ceil(5/2)
-  // Number of items still to be summed after: 3 = ceil(5/2)
-  return absl::Substitute(R"(
+                          const std::string& dst_value, int3 work_group_size) {
+  int reduction_size = work_group_size.z;
+  std::string mem_name = work_group_size.x * work_group_size.y != 1
+                             ? "shared_mem[LOCAL_ID_1][LOCAL_ID_0]"
+                             : "shared_mem";
+  if (reduction_size <= 8) {
+    std::string result;
+    result += "  {  // reduction\n";
+    result += "    " + mem_name + "[local_id] = " + src_value + ";\n";
+    result += "    LOCAL_MEM_BARRIER;\n";
+    result += "    " + dst_value + " = " + mem_name + "[0];\n";
+    for (int i = 1; i < reduction_size; ++i) {
+      result += "    " + dst_value + " += " + mem_name + "[" +
+                std::to_string(i) + "];\n";
+    }
+    result += "    LOCAL_MEM_BARRIER;\n";
+    result += "  }\n";
+    return result;
+  } else {
+    // In the reduction step add upper half of the still-to-be-summed vector to
+    // the lower half, while taking care of odd sizes and rounding. E.g.:
+    // Number of items still to be summed before: 5
+    // Local memory before: [a, b, c, d, e];
+    // Local memory after: [a+d, b+e, c, d, e];
+    // Threads doing work: id < 2 = floor(5/2)
+    // Offset to the added items: 3 = ceil(5/2)
+    // Number of items still to be summed after: 3 = ceil(5/2)
+    return absl::Substitute(R"(
   {  // reduction, all threads inside workgroup must execute this code
-    shared_mem[local_id] = $1;
+    $3[local_id] = $1;
     LOCAL_MEM_BARRIER;
     // The number of items still need to be summed
     int reduction_size = $0;
@@ -46,16 +64,17 @@ std::string GetReduceCode(const std::string& src_value,
       int active_thread_limit = reduction_size / 2;
       int offset = (reduction_size + 1) / 2;
       if (local_id < active_thread_limit) {
-        $1 += shared_mem[local_id + offset];
-        shared_mem[local_id] = $1;
+        $1 += $3[local_id + offset];
+        $3[local_id] = $1;
       }
       LOCAL_MEM_BARRIER;
       reduction_size = offset;
     }
-    $2 = shared_mem[0];
+    $2 = $3[0];
   }
 )",
-                          reduction_size, src_value, dst_value);
+                            reduction_size, src_value, dst_value, mem_name);
+  }
 }
 
 std::string ZeroClampVec4Code(const std::string& slice_name,
@@ -76,14 +95,8 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
                                                  const BHWC& shape,
                                                  float variance_bias)
     : GPUOperation(definition) {
-  // The kernel code does not inherently need a fixed size, but in order to not
-  // hardcode the __local array's size for the reductions, we would need to pass
-  // that size to the kernel at runtime, and that is currently not supported.
-  // For now, fix workgroup size to the biggest supported by the device, but not
-  // larger than the number of tensor slices.
   const int tensor_slices = DivideRoundUp(shape.c, 4);
-  int desired_work_group_size =
-      std::min(tensor_slices, gpu_info.GetMaxWorkGroupSizeForZ());
+  int desired_work_group_size = gpu_info.GetMaxWorkGroupSizeForZ();
   if (gpu_info.IsMali()) {
     // Don't use more than 64 work items per work group on ARM Mali. They
     // implement local memory using the global memory, larger workgroups have
@@ -92,6 +105,7 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   }
   if (gpu_info.IsAdreno()) {
     AdrenoInfo info = gpu_info.adreno_info;
+    desired_work_group_size = 256;
     if (info.IsAdreno3xx()) {
       if (info.adreno_gpu == AdrenoGpu::kAdreno320 ||
           info.adreno_gpu == AdrenoGpu::kAdreno330) {
@@ -120,12 +134,40 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
   if (gpu_info.IsApple()) {
     desired_work_group_size = 64;
   }
-  while (desired_work_group_size >= tensor_slices * 2) {
-    desired_work_group_size /= 2;
+  if (gpu_info.IsAMD()) {
+    desired_work_group_size = 512;
   }
-  work_group_size_.x = 1;  // Required
-  work_group_size_.y = 1;  // Required
-  work_group_size_.z = desired_work_group_size;
+  if (shape.w * shape.h == 1) {
+    desired_work_group_size =
+        std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupSizeForZ());
+    while (desired_work_group_size >= tensor_slices * 2) {
+      desired_work_group_size /= 2;
+    }
+    work_group_size_.x = 1;
+    work_group_size_.y = 1;
+    work_group_size_.z = desired_work_group_size;
+  } else {
+    if (tensor_slices >= 16) {
+      work_group_size_.z = 8;
+    } else if (tensor_slices >= 10) {
+      work_group_size_.z = 4;
+    } else {
+      std::map<int, int> slices_to_group_size = {
+          {1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 3},
+          {6, 3}, {7, 4}, {8, 4}, {9, 3},
+      };
+      work_group_size_.z = slices_to_group_size[tensor_slices];
+    }
+    desired_work_group_size =
+        std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupTotalSize());
+    work_group_size_.x = 1;
+    work_group_size_.y =
+        desired_work_group_size / AlignByN(work_group_size_.z, 4);
+    while (work_group_size_.y > work_group_size_.x) {
+      work_group_size_.y /= 2;
+      work_group_size_.x *= 2;
+    }
+  }
   args_.AddFloat("variance_bias", variance_bias);
   code_ = GetNormalizationCode(gpu_info, shape.c % 4 == 0);
 }
@@ -143,8 +185,14 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
          std::to_string(work_group_size_.z) + ")))\n";
   }
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  __local float shared_mem[" + std::to_string(work_group_size_.z) +
-       "];\n";
+  if (work_group_size_.x * work_group_size_.y == 1) {
+    c += "__local float shared_mem[" + std::to_string(work_group_size_.z) +
+         "];\n";
+  } else {
+    c += "__local float shared_mem[" + std::to_string(work_group_size_.x) +
+         "][" + std::to_string(work_group_size_.y) + "][" +
+         std::to_string(work_group_size_.z) + "];\n";
+  }
   if (definition_.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
@@ -175,7 +223,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   float private_sum = dot(private_sum4, INIT_FLOAT4(1.0f));
   float sum;
 )";
-  c += GetReduceCode("private_sum", "sum", work_group_size_.z);
+  c += GetReduceCode("private_sum", "sum", work_group_size_);
   c += R"(
   // Calculate the mean
   float mean = sum / INIT_FLOAT(args.src_tensor.Channels());
@@ -196,7 +244,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   float private_sum_diff_sq = dot(private_sum_diff_sq4, INIT_FLOAT4(1.0f));
   float sum_diff_sq;
 )";
-  c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size_.z);
+  c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size_);
   c += R"(
   // no more shared memory usage, 'useless' threads can exit now
   if (X >= args.dst_tensor.Width()) { return; }
