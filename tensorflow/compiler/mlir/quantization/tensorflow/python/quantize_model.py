@@ -14,8 +14,9 @@
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
+from collections.abc import Collection, Mapping, Sequence
 import tempfile
-from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
+from typing import Optional
 import uuid
 import warnings
 
@@ -31,6 +32,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -152,60 +154,105 @@ def _fix_tensor_names(signatures, exported_graph):
   return signatures
 
 
-def _get_signature_key_and_input(
-    representative_sample: repr_dataset.RepresentativeSample,
-    signature_keys: List[str],
-) -> Tuple[str, Mapping[str, core.TensorLike]]:
-  """Gets the signature key and input data from `representative_sample`.
+def _validate_representative_sample(
+    sample: repr_dataset.RepresentativeSample
+) -> repr_dataset.RepresentativeSample:
+  """Validates a single instance of representative sample.
 
-  The `representative_sample` can be in two formats:
-
-  1. A tuple of: (signature_key, {input_key -> input_value})
-  2. A dict: {input_key -> input_value}.
-
-  (2) assumes the signature_key to be the default signature key (first item in
-  `signature_keys`).
-
-  Input values are any `TensorLike` values that can be converted to a `Tensor`.
+  This provides a simple check for `sample` that this is a mapping of
+  {input_key: input_value}.
 
   Args:
-    representative_sample: A single sample from the representative dataset, used
-      for calibration.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with. When the `representative_sample` is provided as a
-      `dict`, it should have a single item.
+    sample: A `RepresentativeSample` to validate.
 
   Returns:
-    signature_key: Signature key that indicates the function to be used for the
-      returned input data.
-    input data: A input_key -> input_value mapping (dict).
+    `sample` iff it is valid.
 
   Raises:
-    ValueError: When the format of `representative_sample` is invalid, or when
-    the length of `signature_keys` not 1 when `representative_sample` is `dict`.
+    ValueError iff the sample isn't an instance of `Mapping`.
   """
-  if isinstance(representative_sample, tuple):
-    if (not isinstance(representative_sample[1], dict) or
-        len(representative_sample) != 2):
-      raise ValueError('You need to provide a dictionary with input '
-                       'names and values in the second argument in the '
-                       'tuple')
-    return representative_sample
-  elif isinstance(representative_sample, dict):
-    if len(signature_keys) > 1:
-      raise ValueError('When the model has multiple signatures, you need '
-                       'to provide a tuple with signature key and a '
-                       'dictionary with input names and values')
-    return signature_keys[0], representative_sample
+  # TODO(b/237244237): Check the sample's input keys against the function's
+  # input keys.
+  if not isinstance(sample, Mapping):
+    raise ValueError('Invalid representative sample type. Provide a mapping '
+                     '(usually a dict) of {input_key: input_value}. '
+                     f'Got type: {type(sample)} instead.')
+
+  return sample
+
+
+def _validate_representative_dataset(
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    signature_keys: Collection[str]) -> None:
+  """Validates the representative dataset, based on the signature keys.
+
+  Representative dataset can be provided in two different forms: a single
+  instance of `RepresentativeDataset` or a map of signature key to the
+  corresponding `RepresentativeDataset`. These have a relationship with
+  `signature_keys`.
+
+  This function validates the following conditions:
+  * If `len(signature_keys) > 1`, then `representative_dataset` should be a
+    mapping where the keys exactly match the elements in `signature_keys`.
+  * If `len(signature_keys) == 1`, then both a mapping and a single instance of
+    `RepresentativeDataset` are allowed.
+  * This function also assumes `len(signature_keys) > 0`.
+
+  Args:
+    representative_dataset: A `RepresentativeDataset` or a map of string to
+      `RepresentativeDataset` to be validated.
+    signature_keys: A collection of strings that contains the signature keys,
+      each identifying a `SignatureDef`.
+
+  Raises:
+    ValueError: Iff `representative_dataset` does not satisfy the conditions
+      above.
+  """
+  if isinstance(representative_dataset, Mapping):
+    if set(signature_keys) != set(representative_dataset.keys()):
+      raise ValueError(
+          'The signature keys and the keys of representative dataset map '
+          f'do not match. Signature keys: {set(signature_keys)}, '
+          f'representative dataset map: {set(representative_dataset.keys())}.')
   else:
-    raise ValueError('You need to provide either a dictionary with input '
-                     'names and values or a tuple with signature key and a '
-                     'dictionary with input names and values')
+    if len(signature_keys) > 1:
+      raise ValueError('Representative dataset is not a mapping '
+                       f'(got: {type(representative_dataset)}), '
+                       'but there is more than one signature key provided. '
+                       'Please provide a map of {signature_key -> dataset} '
+                       'with more than one signature key.')
+
+
+def _convert_values_to_tf_tensors(
+    sample: repr_dataset.RepresentativeSample) -> Mapping[str, core.Tensor]:
+  """Converts TensorLike values of `sample` to Tensors.
+
+  Creates a copy of `sample`, where each value is converted to Tensors
+  unless it is already a Tensor.
+  The values are not converted in-place (i.e. `sample` is not mutated).
+
+  Args:
+    sample: A representative sample, which is a map of {name -> tensorlike
+      value}.
+
+  Returns:
+    Converted map of {name -> tensor}.
+  """
+  tensor_mapping = {}
+  for name, tensorlike_value in sample.items():
+    if isinstance(tensorlike_value, core.Tensor):
+      tensor_value = tensorlike_value
+    else:
+      tensor_value = ops.convert_to_tensor_v2_with_dispatch(tensorlike_value)
+
+    tensor_mapping[name] = tensor_value
+
+  return tensor_mapping
 
 
 def _create_feed_dict_from_input_data(
-    input_data: Mapping[str, core.TensorLike],
-    signature_def: meta_graph_pb2.SignatureDef) -> Dict[str, np.ndarray]:
+    input_data: repr_dataset.RepresentativeSample,
+    signature_def: meta_graph_pb2.SignatureDef) -> dict[str, np.ndarray]:
   """Constructs a feed_dict from input data.
 
   Note: This function should only be used in graph mode.
@@ -247,9 +294,39 @@ def _create_feed_dict_from_input_data(
   return feed_dict
 
 
-def _run_graph_for_calibration_graph_mode(
-    model_dir: str, signature_keys: List[str], tags: Set[str],
+def _run_function_for_calibration_graph_mode(
+    sess: session.Session, signature_def: meta_graph_pb2.SignatureDef,
     representative_dataset: repr_dataset.RepresentativeDataset) -> None:
+  """Runs the representative dataset through a function for calibration.
+
+  NOTE: This is intended to be run in graph mode (TF1).
+
+  The function is identified by the SignatureDef.
+
+  Args:
+    sess: The Session object to run the function in.
+    signature_def: A SignatureDef that identifies a function by specifying the
+      inputs and outputs.
+    representative_dataset: The representative dataset to run through the
+      function.
+  """
+  for sample in map(_validate_representative_sample, representative_dataset):
+    output_tensor_names = [
+        output_tensor_info.name
+        for output_tensor_info in signature_def.outputs.values()
+    ]
+
+    # Create a mapping from input tensor name to the input tensor value.
+    # ex) "Placeholder:0" -> [0, 1, 2]
+    feed_dict = _create_feed_dict_from_input_data(sample, signature_def)
+    sess.run(output_tensor_names, feed_dict=feed_dict)
+
+
+def _run_graph_for_calibration_graph_mode(
+    model_dir: str,
+    tags: Collection[str],
+    representative_dataset_map: repr_dataset.RepresentativeDatasetMapping,
+) -> None:
   """Runs the graph for calibration in graph mode.
 
   This function assumes _graph mode_ (used when legacy TF1 is used or when eager
@@ -259,10 +336,9 @@ def _run_graph_for_calibration_graph_mode(
 
   Args:
     model_dir: Path to SavedModel directory.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel.
-    representative_dataset: Representative dataset used for calibration.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel.
+    representative_dataset_map: A map where signature keys are mapped to
+      corresponding representative datasets.
 
   Raises:
     ValueError: When the samples in representative dataset is invalid.
@@ -271,56 +347,46 @@ def _run_graph_for_calibration_graph_mode(
     meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
         sess, tags, export_dir=model_dir)
 
-    for sample in representative_dataset:
-      signature_key, input_data = _get_signature_key_and_input(
-          sample, signature_keys)
-
+    for signature_key, repr_ds in representative_dataset_map.items():
       sig_def = meta_graph.signature_def[signature_key]
-      output_tensor_names = [
-          output_tensor_info.name
-          for output_tensor_info in sig_def.outputs.values()
-      ]
 
-      # Create a mapping from input tensor name to the input tensor value.
-      # ex) "Placeholder:0" -> [0, 1, 2]
       try:
-        feed_dict = _create_feed_dict_from_input_data(input_data, sig_def)
+        _run_function_for_calibration_graph_mode(
+            sess, signature_def=sig_def, representative_dataset=repr_ds)
       except KeyError as key_error:
         raise ValueError(f'Invalid input data for signature: {signature_key}.'
                         ) from key_error
 
-      sess.run(output_tensor_names, feed_dict=feed_dict)
 
+def _run_function_for_calibration_eager_mode(
+    func: wrap_function.WrappedFunction,
+    representative_dataset: repr_dataset.RepresentativeDataset) -> None:
+  """Runs the representative dataset through a function for calibration.
 
-def _convert_values_to_tf_tensors(
-    tensorlike_map: Mapping[str, core.TensorLike]) -> Mapping[str, core.Tensor]:
-  """Converts TensorLike values of `tensorlike_map` to Tensors.
-
-  Creates a copy of `tensorlike_map`, where each value is converted to Tensors
-  unless it is already a Tensor.
-  The values are not converted in-place (i.e. `tensorlike_map` is not mutated).
+  NOTE: This is intended to be run in eager mode (TF2).
 
   Args:
-    tensorlike_map: A map of {name -> tensorlike value}.
-
-  Returns:
-    Converted map of {name -> tensor value}.
+    func: The function to run the representative samples through.
+    representative_dataset: Representative dataset used for calibration. The
+      input keys and input values of the representative samples should match the
+      keyword arguments of `func`.
   """
-  tensor_mapping = {}
-  for name, tensorlike_value in tensorlike_map.items():
-    if isinstance(tensorlike_value, core.Tensor):
-      tensor_value = tensorlike_value
-    else:
-      tensor_value = ops.convert_to_tensor_v2_with_dispatch(tensorlike_value)
-
-    tensor_mapping[name] = tensor_value
-
-  return tensor_mapping
+  for sample in map(_validate_representative_sample, representative_dataset):
+    # Convert any non-Tensor values from the sample to Tensors.
+    # This conversion is required because the model saved in `model_dir` is
+    # saved using TF1 SavedModelBuilder, which doesn't save the
+    # SavedObjectGraph.
+    # TODO(b/236795224): Remove the need for this conversion by keeping the
+    # FunctionSpec (object graph) in the SavedModel. Related: b/213406917.
+    func_kwargs = _convert_values_to_tf_tensors(sample)
+    func(**func_kwargs)
 
 
 def _run_graph_for_calibration_eager_mode(
-    model_dir: str, signature_keys: List[str], tags: Set[str],
-    representative_dataset: repr_dataset.RepresentativeDataset) -> None:
+    model_dir: str,
+    tags: Collection[str],
+    representative_dataset_map: repr_dataset.RepresentativeDatasetMapping,
+) -> None:
   """Runs the graph for calibration in eager mode.
 
   This function assumes _eager mode_ (enabled in TF2 by default) when running
@@ -330,52 +396,92 @@ def _run_graph_for_calibration_eager_mode(
 
   Args:
     model_dir: Path to SavedModel directory.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel.
-    representative_dataset: Representative dataset used for calibration.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel.
+    representative_dataset_map: A map where signature keys are mapped to
+      corresponding representative datasets.
 
   Raises:
     ValueError: When the samples in representative dataset is invalid.
   """
   root: autotrackable.AutoTrackable = saved_model_load(model_dir, tags)
-  for sample in representative_dataset:
-    signature_key, input_data = _get_signature_key_and_input(
-        sample, signature_keys)
-
-    # Convert any non-Tensor values from the sample to Tensors.
-    # This conversion is required because the model saved in `model_dir` is
-    # saved using TF1 SavedModelBuilder, which doesn't save the
-    # SavedObjectGraph.
-    # TODO(b/236795224): Remove the need for this conversion by keeping the
-    # FunctionSpec (object graph) in the SavedModel. Related: b/213406917.
-    func_kwargs = _convert_values_to_tf_tensors(input_data)
-
-    func = root.signatures[signature_key]
+  for signature_key, repr_ds in representative_dataset_map.items():
     try:
-      func(**func_kwargs)
+      _run_function_for_calibration_eager_mode(
+          func=root.signatures[signature_key], representative_dataset=repr_ds)
     except Exception as ex:
       raise ValueError(
           f'Failed to run the function with signature key: {signature_key}'
       ) from ex
 
 
+def _run_graph_for_calibration(
+    float_model_dir: str,
+    signature_keys: Sequence[str],
+    tags: Collection[str],
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+) -> None:
+  """Runs the graph for calibration using representative datasets.
+
+  Args:
+    float_model_dir: Path to the model to calibrate.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
+      to analyze.
+    representative_dataset: An iterator that returns a dictionary of {input_key:
+      input_value} or a mapping from signature keys to such iterators. When
+      `signature_keys` contains more than one signature key,
+      `representative_datsaet` should be a mapping that maps each signature keys
+      to the corresponding representative dataset.
+
+  Raises:
+    ValueError iff:
+      * The representative dataset format is invalid.
+      * It fails to run the functions using the representative datasets.
+  """
+  try:
+    _validate_representative_dataset(representative_dataset, signature_keys)
+  except Exception as ex:
+    raise ValueError('Invalid representative dataset.') from ex
+
+  # If `representative_dataset` is not a mapping, convert to a mapping for the
+  # following functions to handle representative datasets more conveniently.
+  representative_dataset_map = representative_dataset
+  if not isinstance(representative_dataset, Mapping):
+    # `signature_keys` is guaranteed to have only one element after the
+    # validation.
+    representative_dataset_map = {signature_keys[0]: representative_dataset}
+
+  try:
+    if context.executing_eagerly():
+      _run_graph_for_calibration_eager_mode(float_model_dir, tags,
+                                            representative_dataset_map)
+    else:
+      _run_graph_for_calibration_graph_mode(float_model_dir, tags,
+                                            representative_dataset_map)
+  except Exception as ex:
+    raise ValueError(
+        'Failed to run graph for post-training quantization calibration.'
+    ) from ex
+
+
 def _static_range_quantize(
     saved_model_path: str,
-    signature_keys: List[str],
-    tags: Set[str],
+    signature_keys: Sequence[str],
+    tags: Collection[str],
     output_directory: str,
-    representative_dataset: Optional[repr_dataset.RepresentativeDataset] = None
+    representative_dataset: Optional[
+        repr_dataset.RepresentativeDatasetOrMapping] = None
 ) ->...:
   """Quantizes the given SavedModel via static range quantization.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
-    signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
+      to analyze.
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
     representative_dataset: a generator that returns a dictionary in {input_key:
@@ -443,17 +549,8 @@ def _static_range_quantize(
     # Handles the graph mode execution separately in case TF2 is disabled or
     # eager execution is disabled. The min & max values are stored separately
     # in a global CalibratorSingleton instance.
-    try:
-      if context.executing_eagerly():
-        _run_graph_for_calibration_eager_mode(float_model_dir, signature_keys,
-                                              tags, representative_dataset)
-      else:
-        _run_graph_for_calibration_graph_mode(float_model_dir, signature_keys,
-                                              tags, representative_dataset)
-    except Exception as ex:
-      raise ValueError(
-          'Failed to run graph for post-training quantization calibration.'
-      ) from ex
+    _run_graph_for_calibration(float_model_dir, signature_keys, tags,
+                               representative_dataset)
 
     for function_def in graph_def.library.function:
       for node_def in function_def.node_def:
@@ -517,17 +614,17 @@ def _static_range_quantize(
 
 
 def _dynamic_range_quantize(saved_model_path: str,
-                            signature_keys: List[str],
-                            tags: Set[str],
+                            signature_keys: Sequence[str],
+                            tags: Collection[str],
                             output_directory: str = ''):
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
   Args:
     saved_model_path: Path to the saved model.
-    signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
+      to analyze.
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
 
@@ -577,21 +674,22 @@ def _dynamic_range_quantize(saved_model_path: str,
 
 def quantize(
     saved_model_path: str,
-    signature_keys: Optional[List[str]] = None,
-    tags: Optional[Iterable[str]] = None,
+    signature_keys: Optional[Sequence[str]] = None,
+    tags: Optional[Collection[str]] = None,
     output_directory: Optional[str] = None,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
-    representative_dataset: Optional[repr_dataset.RepresentativeDataset] = None,
+    representative_dataset: Optional[
+        repr_dataset.RepresentativeDatasetOrMapping] = None,
 ) ->...:
   """Quantizes the given SavedModel.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
-    signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs. If None, ["serving_default"] is used.
-    tags: (TF1 SavedModel only) Set of tags identifying the MetaGraphDef within
-      the SavedModel to analyze. If None, {"serve"} is used.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs. If None, ["serving_default"] is used.
+    tags: (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
+      within the SavedModel to analyze. If None, {"serve"} is used.
     output_directory: The path to save the output SavedModel (must be an empty
       directory).
     quantization_options: A set of options for quantization.

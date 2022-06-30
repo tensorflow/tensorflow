@@ -60,7 +60,7 @@ def _is_quantized_function(func: function_pb2.FunctionDef) -> bool:
     func: A FunctionDef object.
 
   Returns:
-    True if `func` is quantized.
+    True iff `func` is quantized.
   """
   return func.signature.name.startswith('quantized_')
 
@@ -74,7 +74,7 @@ def _contains_op_with_name(nodes: Iterable[node_def_pb2.NodeDef],
     op_name: Name of the op to match.
 
   Returns:
-    True if there is a node that matches `op_name`.
+    True iff there exists a node whose name matches `op_name`.
   """
   return any(node.op == op_name for node in nodes)
 
@@ -1098,24 +1098,29 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    def data_gen() -> repr_dataset.RepresentativeDataset:
-      """Generates tuple-style samples.
+    def data_gen_sig1() -> repr_dataset.RepresentativeDataset:
+      """Generates tuple-style samples for signature 'sig1'.
 
       The first element of the tuple identifies the signature key the input data
       is for.
 
       Yields:
-        Tuple-style representative samples for signatures 'sig1' and 'sig2'.
+        Representative sample for 'sig1'.
       """
-      for _ in range(8):
-        # Input for signature: 'sig1'.
-        yield ('sig1', {
-            'matmul_input': random_ops.random_uniform(shape=(1, 4)),
-        })
-        # Input for signature: 'sig2'.
-        yield ('sig2', {
-            'conv_input': random_ops.random_uniform(shape=(1, 3, 4, 3)),
-        })
+      for _ in range(4):
+        yield {'matmul_input': random_ops.random_uniform(shape=(1, 4))}
+
+    def data_gen_sig2() -> repr_dataset.RepresentativeDataset:
+      """Generates tuple-style samples for signature 'sig2'.
+
+      The first element of the tuple identifies the signature key the input data
+      is for.
+
+      Yields:
+        Representative sample for 'sig2'.
+      """
+      for _ in range(4):
+        yield {'conv_input': random_ops.random_uniform(shape=(1, 3, 4, 3))}
 
     tags = {tag_constants.SERVING}
     converted_model = quantize_model.quantize(
@@ -1124,8 +1129,10 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tags=tags,
         output_directory=output_directory,
         quantization_options=quantization_options,
-        representative_dataset=data_gen())
-
+        representative_dataset={
+            'sig1': data_gen_sig1(),
+            'sig2': data_gen_sig2(),
+        })
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
                           {'sig1', 'sig2'})
@@ -1163,9 +1170,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         'matmul_input': random_ops.random_uniform(shape=(1, 4))
     } for _ in range(8)]
 
-    with self.assertRaisesRegex(
-        ValueError,
-        'Failed to run graph for post-training quantization calibration'):
+    with self.assertRaisesRegex(ValueError, 'Invalid representative dataset.'):
       quantize_model.quantize(
           input_saved_model_path,
           signature_keys=['sig1', 'sig2'],
@@ -1284,24 +1289,29 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    def data_gen() -> repr_dataset.RepresentativeDataset:
+    def data_gen_sig1() -> repr_dataset.RepresentativeDataset:
       """Generates tuple-style samples.
 
       The first element of the tuple identifies the signature key the input data
       is for.
 
       Yields:
-        Tuple-style representative samples for signatures 'sig1' and 'sig2'.
+        Representative samples for signature 'sig1'.
       """
-      for _ in range(8):
-        # Input for signature: 'sig1'.
-        yield ('sig1', {
-            'x1': random_ops.random_uniform(shape=in_placeholder_1.shape),
-        })
-        # Input for signature: 'sig2'.
-        yield ('sig2', {
-            'x2': random_ops.random_uniform(shape=in_placeholder_2.shape),
-        })
+      for _ in range(4):
+        yield {'x1': random_ops.random_uniform(shape=in_placeholder_1.shape)}
+
+    def data_gen_sig2() -> repr_dataset.RepresentativeDataset:
+      """Generates tuple-style samples.
+
+      The first element of the tuple identifies the signature key the input data
+      is for.
+
+      Yields:
+        Representative samples for signature 'sig2'.
+      """
+      for _ in range(4):
+        yield {'x2': random_ops.random_uniform(shape=in_placeholder_2.shape)}
 
     converted_model = quantize_model.quantize(
         input_saved_model_path,
@@ -1309,7 +1319,10 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         tags=tags,
         output_directory=output_directory,
         quantization_options=quantization_options,
-        representative_dataset=data_gen())
+        representative_dataset={
+            'sig1': data_gen_sig1(),
+            'sig2': data_gen_sig2(),
+        })
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),

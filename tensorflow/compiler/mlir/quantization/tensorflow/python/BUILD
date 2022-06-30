@@ -133,6 +133,7 @@ pytype_strict_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:load",

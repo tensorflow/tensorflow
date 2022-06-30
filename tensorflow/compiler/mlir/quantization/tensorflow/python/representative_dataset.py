@@ -14,15 +14,25 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-from typing import Iterable, Mapping, Tuple, Union
+from collections.abc import Iterable, Mapping
+from typing import Union
 
 from tensorflow.python.types import core
 
-# A representative sample should be either:
-# 1. (signature_key, {input_key -> input_value}) tuple, or
-# 2. {input_key -> input_value} mappings.
-RepresentativeSample = Union[Tuple[str, Mapping[str, core.TensorLike]],
-                             Mapping[str, core.TensorLike]]
+# A representative sample is a map of: input_key -> input_value.
+# Ex.: {'dense_input': tf.constant([1, 2, 3])}
+# Ex.: {'x1': np.ndarray([4, 5, 6]}
+RepresentativeSample = Mapping[str, core.TensorLike]
 
 # A representative dataset is an iterable of representative samples.
 RepresentativeDataset = Iterable[RepresentativeSample]
+
+# A type representing a map from: signature key -> representative dataset.
+# Ex.: {'serving_default': [tf.constant([1, 2, 3]), tf.constant([4, 5, 6])],
+#       'other_signature_key': [tf.constant([[2, 2], [9, 9]])]}
+RepresentativeDatasetMapping = Mapping[str, RepresentativeDataset]
+
+# A type alias expressing that it can be either a RepresentativeDataset or
+# a mapping of signature key to RepresentativeDataset.
+RepresentativeDatasetOrMapping = Union[RepresentativeDataset,
+                                       RepresentativeDatasetMapping]
