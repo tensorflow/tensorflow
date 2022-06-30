@@ -1555,7 +1555,35 @@ tf_kernel_library(
 tf_cc_test(
     name = "ragged_tensor_to_variant_op_test",
     size = "small",
-    srcs = ["ragged_tensor_to_variant_op_test.cc"],
+    srcs = [
+        "ragged_tensor_to_variant_op_test.cc",
+        "ragged_tensor_to_variant_op_test.h",
+    ],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_to_variant_op",
+        ":ragged_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_variant_op_large_data_test",
+    timeout = "moderate",  # Set timeout to 300 sec.
+    srcs = [
+        "ragged_tensor_to_variant_op_large_data_test.cc",
+        "ragged_tensor_to_variant_op_test.h",
+    ],
+    tags = [
+        "local",
+        "manual",
+        "notap",
+    ],
     deps = [
         ":ops_testutil",
         ":ragged_tensor_to_variant_op",
