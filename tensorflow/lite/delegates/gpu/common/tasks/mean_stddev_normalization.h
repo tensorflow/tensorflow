@@ -30,8 +30,8 @@ namespace gpu {
 class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition,
-                                   const GpuInfo& gpu_info,
-                                   const int tensor_channels);
+                                   const GpuInfo& gpu_info, const BHWC& shape,
+                                   float variance_bias);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -53,8 +53,8 @@ class MeanStdDevNormalization : public GPUOperation {
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const int tensor_channels);
+    const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
+    float variance_bias = 1.0e-8f);
 
 }  // namespace gpu
 }  // namespace tflite
