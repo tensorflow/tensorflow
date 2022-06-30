@@ -20,7 +20,6 @@ def repo(name):
             "//third_party/llvm:infer_type.patch",  # TODO(b/231285230): remove once resolved
             "//third_party/llvm:build.patch",
             "//third_party/llvm:macos_build_fix.patch",
-            "//third_party/llvm:global_qualification_temp.patch",  # Remove on next LLVM integrate
         ],
         link_files = {"//third_party/llvm:run_lit.sh": "mlir/run_lit.sh"},
     )
