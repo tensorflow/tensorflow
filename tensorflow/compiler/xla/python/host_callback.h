@@ -76,11 +76,13 @@ struct HostCallback {
 class HostCallbackContext {
  public:
   HostCallbackContext(const HostCallback* host_callback, PjRtClient* client)
-      : host_callback_(ABSL_DIE_IF_NULL(host_callback)),
-        client_(ABSL_DIE_IF_NULL(client)),
+      : host_callback_(host_callback),
+        client_(client),
         args_(host_callback->operands.size()),
         result_channels_(host_callback->results.size()),
         ready_count_(args_.size()) {
+    CHECK(host_callback_);
+    CHECK(client_);
     for (auto& channel : result_channels_) {
       channel = std::make_unique<ThreadSafePjRtChunkQueue>();
     }
