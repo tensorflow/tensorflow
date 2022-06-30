@@ -224,23 +224,37 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
            py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions())
+           py::arg("compile_options") = CompileOptions(),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("compile", &PyClient::CompileMlir, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions())
+           py::arg("compile_options") = CompileOptions(),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("serialize_executable", &PyClient::SerializeExecutable)
       .def("deserialize_executable",
-           py::overload_cast<const std::string&, CompileOptions>(
-               &PyClient::DeserializeExecutable))
+           py::overload_cast<const std::string&, CompileOptions,
+                             std::vector<py::capsule>>(
+               &PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("compile_options"),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       // TODO(skyewm): remove when jax stop providing hlo_module
       .def("deserialize_executable",
            py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
-                             CompileOptions>(&PyClient::DeserializeExecutable))
+                             CompileOptions, std::vector<py::capsule>>(
+               &PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("hlo_module"),
+           py::arg("compile_options"),
+           py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("heap_profile", &PyClient::HeapProfile)
       // TODO(zhangqiaorjc): Experimental.
       .def("defragment", &PyClient::Defragment)
       .def("get_emit_python_callback_descriptor",
            &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
            py::arg("operand_shapes"), py::arg("result_shapes") = std::nullopt)
+      .def("make_python_callback_from_host_send_and_recv",
+           &PyClient::MakePythonCallbackUsingHostSendAndRecv,
+           py::arg("callable"), py::arg("operand_shapes"),
+           py::arg("result_shapes"), py::arg("send_channel_ids"),
+           py::arg("recv_channel_ids"))
       // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback", &PyClient::EmitPythonCallback,
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
