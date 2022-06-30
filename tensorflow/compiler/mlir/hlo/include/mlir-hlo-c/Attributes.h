@@ -304,6 +304,24 @@ MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsARngAlgorithmAttr(
 MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr);
 
+//
+// ChannelHandle
+//
+// Creates a new ChannelHandle attribute with the given 'handle' int64_t
+// parameter and the given 'type' int64_t parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloChannelHandleGet(MlirContext ctx,
+                                                          int64_t handle,
+                                                          int64_t type);
+
+// Returns true if the given attribute is a ChannelHandle attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsChannelHandle(MlirAttribute attr);
+
+// Returns the handle integer associated with the ChannelHandle attribute.
+MLIR_CAPI_EXPORTED int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr);
+
+// Returns the type integer associated with the ChannelHandle attribute.
+MLIR_CAPI_EXPORTED int64_t mlirMhloChannelHandleGetType(MlirAttribute attr);
+
 #ifdef __cplusplus
 }
 #endif
