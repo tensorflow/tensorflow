@@ -90,7 +90,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 79
+// Next ID: 80
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -332,6 +332,11 @@ message HloInstructionProto {
   // async start, async done, and zero or more async update operations.
   // Negative async_group_id is equivalent to no async group id.
   int64 async_group_id = 78;
+
+  // Represents a unique thread name for one or more async groups. Typically
+  // one HLO module contains a main thread as well as one or more parallel
+  // threads. Empty async_thread_name is equivalent to main thread.
+  string async_thread_name = 79;
 }
 
 // Serialization of HloComputation.

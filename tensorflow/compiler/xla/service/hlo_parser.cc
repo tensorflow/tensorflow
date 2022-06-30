@@ -1609,6 +1609,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<int64_t> async_group_id;
       attrs["async_group_id"] = {/*required=*/false, AttrTy::kInt64,
                                  &async_group_id};
+      optional<std::string> async_thread_name;
+      attrs["async_thread_name"] = {/*required=*/false, AttrTy::kString,
+                                    &async_thread_name};
       if (async_wrapped_opcode) {
         std::vector<HloInstruction*> async_wrapped_operands;
         std::vector<Shape> async_wrapped_operand_shapes;
@@ -1669,7 +1672,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncStart) {
         return builder->AddInstruction(HloInstruction::CreateAsyncStart(
-            *shape, operands, *async_computation, async_group_id));
+            *shape, operands, *async_computation, async_group_id,
+            async_thread_name));
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(

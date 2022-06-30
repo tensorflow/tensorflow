@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -216,8 +217,11 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id)
-    : HloInstruction(opcode, shape), async_group_id_(async_group_id) {
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    std::optional<std::string> async_thread_name)
+    : HloInstruction(opcode, shape),
+      async_group_id_(async_group_id),
+      async_thread_name_(async_thread_name) {
   CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -228,11 +232,13 @@ HloAsyncInstruction::HloAsyncInstruction(
   async_computation->AddAsyncInstruction(this);
 }
 
-HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                                         HloInstruction* operand,
-                                         HloComputation* async_computation,
-                                         std::optional<int64_t> async_group_id)
-    : HloInstruction(opcode, shape), async_group_id_(async_group_id) {
+HloAsyncInstruction::HloAsyncInstruction(
+    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    std::optional<std::string> async_thread_name)
+    : HloInstruction(opcode, shape),
+      async_group_id_(async_group_id),
+      async_thread_name_(async_thread_name) {
   AppendOperand(operand);
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
@@ -274,6 +280,9 @@ std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
   if (async_group_id_.has_value()) {
     result.push_back(StrCat("async_group_id=", *async_group_id_));
   }
+  if (async_thread_name_.has_value()) {
+    result.push_back(StrCat("async_thread_name=\"", *async_thread_name_, "\""));
+  }
   if (options.syntax_sugar_async_ops()) {
     std::vector<std::string> wrapped_extra_attributes =
         async_wrapped_instruction()->ExtraAttributesToString(options);
@@ -304,8 +313,9 @@ std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
     new_wrapped_computation = module->AddEmbeddedComputation(
         async_wrapped_computation()->Clone("clone", context));
   }
-  return std::make_unique<HloAsyncInstruction>(opcode(), shape, new_operands,
-                                               new_wrapped_computation);
+  return std::make_unique<HloAsyncInstruction>(
+      opcode(), shape, new_operands, new_wrapped_computation, async_group_id_,
+      async_thread_name_);
 }
 
 void HloAsyncInstruction::set_async_group_id(
@@ -313,9 +323,16 @@ void HloAsyncInstruction::set_async_group_id(
   async_group_id_ = async_group_id;
 }
 
+void HloAsyncInstruction::set_async_thread_name(
+    const std::optional<std::string>& async_thread_name) {
+  async_thread_name_ = async_thread_name;
+}
+
 HloInstructionProto HloAsyncInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_async_group_id(async_group_id_.has_value() ? *async_group_id_ : -1);
+  proto.set_async_thread_name(
+      async_thread_name_.has_value() ? *async_thread_name_ : "");
   return proto;
 }
 

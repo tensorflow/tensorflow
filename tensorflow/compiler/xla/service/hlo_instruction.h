@@ -25,6 +25,8 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -624,7 +626,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAsyncStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt);
+      std::optional<int64_t> async_group_id = std::nullopt,
+      std::optional<std::string> async_thread_name = std::nullopt);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
@@ -2126,6 +2129,13 @@ class HloInstruction {
 
   // Delegates to HloAsyncInstruction::set_async_group_id().
   void set_async_group_id(std::optional<int64_t> async_group_id);
+
+  // Delegates to HloAsyncInstruction::async_thread_name().
+  std::optional<absl::string_view> async_thread_name() const;
+
+  // Delegates to HloAsyncInstruction::set_async_thread_name().
+  void set_async_thread_name(
+      const std::optional<std::string>& async_thread_name);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;

@@ -193,11 +193,15 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
              "sees "
           << proto.called_computation_ids_size();
       std::optional<int64_t> async_group_id;
+      std::optional<std::string> async_thread_name;
       if (proto.async_group_id() >= 0) {
         async_group_id = proto.async_group_id();
       }
+      if (!proto.async_thread_name().empty()) {
+        async_thread_name = proto.async_thread_name();
+      }
       instruction = CreateAsyncStart(shape, all_operands(), computations(0),
-                                     async_group_id);
+                                     async_group_id, async_thread_name);
       break;
     }
     case HloOpcode::kAsyncUpdate: {
@@ -1172,10 +1176,11 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id) {
-  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
-                                               operands, async_computation,
-                                               async_group_id);
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    std::optional<std::string> async_thread_name) {
+  return std::make_unique<HloAsyncInstruction>(
+      HloOpcode::kAsyncStart, shape, operands, async_computation,
+      async_group_id, async_thread_name);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
@@ -4843,6 +4848,15 @@ std::optional<int64_t> HloInstruction::async_group_id() const {
 
 void HloInstruction::set_async_group_id(std::optional<int64_t> async_group_id) {
   Cast<HloAsyncInstruction>(this)->set_async_group_id(async_group_id);
+}
+
+std::optional<absl::string_view> HloInstruction::async_thread_name() const {
+  return Cast<HloAsyncInstruction>(this)->async_thread_name();
+}
+
+void HloInstruction::set_async_thread_name(
+    const std::optional<std::string>& async_thread_name) {
+  Cast<HloAsyncInstruction>(this)->set_async_thread_name(async_thread_name);
 }
 
 bool HloInstruction::is_cross_program_prefetch() const {
