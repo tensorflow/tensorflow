@@ -243,11 +243,8 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
           }
         }  // while
         DCHECK(clone_changed) << "We should have changed the fusion!";
-        std::function<int64_t(const Shape&)> shape_size_func =
-            [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
-        auto shape_verifier = std::make_unique<ShapeVerifier>(
-            /*layout_sensitive=*/true,
-            /*allow_mixed_precision=*/false, shape_size_func);
+        auto opts = HloVerifierOpts{}.MakeLayoutSensitive();
+        auto shape_verifier = std::make_unique<ShapeVerifier>(opts);
         if (clone_changed) {
           Status status =
               cloned_fusion->fused_instructions_computation()->Accept(
