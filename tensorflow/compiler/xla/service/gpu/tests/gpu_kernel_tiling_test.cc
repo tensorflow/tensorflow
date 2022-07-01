@@ -164,43 +164,6 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
 }
 
-TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeOpTiled) {
-  const char *const kHloString = R"(
-  HloModule unnested_transpose_1
-
-fused_computation {
-  param_0.1 = f16[320,3,640]{2,1,0} parameter(0)
-  transpose.1 = f16[640,320,3]{2,1,0} transpose(param_0.1), dimensions={2,0,1}
-  ROOT transpose.2 = f16[320,3,640]{1,0,2} transpose(transpose.1), dimensions={1,2,0}
-}
-
-ENTRY unnested_transpose_1 {
-  para0 = f16[320,3,640]{2,1,0} parameter(0)
-  ROOT fusion = f16[320,3,640]{1,0,2} fusion(para0), kind=kLoop, calls=fused_computation
-}
-  )";
-
-  // Check that a call to llvm.nvvm.barrier0 is generated.
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .ValueOrDie();
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define amdgpu_kernel void @fusion
-; CHECK: call void @llvm.amdgcn.s.barrier()
-; CHECK: }
-)"
-                                         : R"(
-; CHECK-LABEL: define void @fusion
-; CHECK: call void @llvm.nvvm.barrier0()
-; CHECK: }
-)";
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/true);
-
-  // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
-}
-
 TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
   const char *const kHloString = R"(
     HloModule multiple_output_fusion_1
@@ -318,12 +281,12 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserBitcastNotTiled) {
 
     fused_computation {
       param_0 = f32[20,20]{1,0} parameter(0)
-      ROOT bitcast = f32[20,5,4]{0,1,2} bitcast(param_0)
+      ROOT bitcast = f32[20,20]{0,1} bitcast(param_0)
     }
 
     ENTRY kernel_entry {
       parameter.0 = f32[20,20]{1,0} parameter(0)
-      ROOT fusion = f32[20,5,4]{0,1,2} fusion(parameter.0),
+      ROOT fusion = f32[20,20]{0,1} fusion(parameter.0),
         kind=kLoop, calls=fused_computation
     })";
 
