@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_CLIENT_COMMON_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_CLIENT_COMMON_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +34,13 @@ struct DataServiceParams final {
   std::string address;
   std::string protocol;
   std::string data_transfer_protocol;
+  std::string job_name;
+  int64_t repetition = 0;
+  std::optional<int64_t> num_consumers;
+  std::optional<int64_t> consumer_index;
+  TargetWorkers target_workers;
+  DataServiceMetadata metadata;
+  std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
 };
 
 // Container to hold the result of a `GetNext` call.
