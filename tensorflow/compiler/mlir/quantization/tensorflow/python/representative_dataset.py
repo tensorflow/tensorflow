@@ -14,8 +14,7 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-from collections.abc import Iterable, Mapping
-from typing import Union
+from typing import Iterable, Mapping, Union
 
 from tensorflow.python.types import core
 

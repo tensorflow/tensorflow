@@ -14,9 +14,9 @@
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
-from collections.abc import Callable, Collection, Mapping, Sequence
+import collections.abc
 import tempfile
-from typing import Optional
+from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
 import warnings
 
@@ -187,7 +187,7 @@ def _create_sample_validator(
       KeyError: iff the sample does not have the set of input keys that match
         the input keys of the function.
     """
-    if not isinstance(sample, Mapping):
+    if not isinstance(sample, collections.abc.Mapping):
       raise ValueError('Invalid representative sample type. Provide a mapping '
                        '(usually a dict) of {input_key: input_value}. '
                        f'Got type: {type(sample)} instead.')
@@ -231,7 +231,7 @@ def _validate_representative_dataset(
     ValueError: Iff `representative_dataset` does not satisfy the conditions
       above.
   """
-  if isinstance(representative_dataset, Mapping):
+  if isinstance(representative_dataset, collections.abc.Mapping):
     if set(signature_keys) != set(representative_dataset.keys()):
       raise ValueError(
           'The signature keys and the keys of representative dataset map '
@@ -275,7 +275,7 @@ def _convert_values_to_tf_tensors(
 
 def _create_feed_dict_from_input_data(
     input_data: repr_dataset.RepresentativeSample,
-    signature_def: meta_graph_pb2.SignatureDef) -> dict[str, np.ndarray]:
+    signature_def: meta_graph_pb2.SignatureDef) -> Dict[str, np.ndarray]:
   """Constructs a feed_dict from input data.
 
   Note: This function should only be used in graph mode.
@@ -469,7 +469,7 @@ def _run_graph_for_calibration(
   # If `representative_dataset` is not a mapping, convert to a mapping for the
   # following functions to handle representative datasets more conveniently.
   representative_dataset_map = representative_dataset
-  if not isinstance(representative_dataset, Mapping):
+  if not isinstance(representative_dataset, collections.abc.Mapping):
     # `signature_keys` is guaranteed to have only one element after the
     # validation.
     representative_dataset_map = {signature_keys[0]: representative_dataset}
