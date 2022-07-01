@@ -199,9 +199,11 @@ def build_docs(output_dir, code_url_prefix, search_hints):
   site_path = pathlib.Path("/", FLAGS.site_path)
 
   if distutils.version.LooseVersion(tf.__version__) >= "2.9":
-    doc_controls.set_deprecated(tf.keras.preprocessing)
+    doc_controls.set_deprecated(tf.compat.v1)
+    doc_controls.set_deprecated(tf.compat.v2)
     doc_controls.set_deprecated(tf.estimator)
     doc_controls.set_deprecated(tf.feature_column)
+    doc_controls.set_deprecated(tf.keras.preprocessing)
 
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_builder_cls(tf.raw_ops, RawOpsPageInfo)
