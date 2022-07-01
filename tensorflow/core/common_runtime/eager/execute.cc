@@ -415,6 +415,14 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
     return OkStatus();
   }
 
+  if (op->eager_func_params().has_value() &&
+      op->eager_func_params().value().step_id.has_value()) {
+    // If the op is a component of a multi-device function, don't compile it
+    // with XLA.
+    *compile_with_xla = false;
+    return OkStatus();
+  }
+
   Status status = GetFuncAttr(op, ctx, kXlaMustCompileAttr, compile_with_xla);
   if (status.ok()) {
     return OkStatus();
