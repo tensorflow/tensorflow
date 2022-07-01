@@ -80,6 +80,38 @@ b'Hello, TensorFlow!'
 For more examples, see the
 [TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
 
+## Uninstall
+
+Depending on how TensorFlow was installed, the following options can be used to uninstall TensorFlow. This list does not cover all methods. 
+
+#### *Pip*
+Find the pip used to install TensorFlow. Once you have that path, execute this code where *[path to Python environment]* is where the user navigates to that location. 
+
+```shell
+$ [path to Python environment] -m pip uninstall tensorflow
+```
+To verify that TensorFlow is uninstalled, you can use the following.
+
+```shell
+$ pip show tensorflow
+```
+
+#### *Conda*
+This method allows you to reuse your Conda environment.
+
+```
+conda remove tensorflow
+```
+
+#### *Source*
+Navigate to source directory and execute this code.
+
+```
+python setup.py develop -- uninstall
+```
+
+TensorFlow installs several packages when it is installed. These are listed [here](https://github.com/tensorflow/tensorflow/blob/c0dbdfb718de6481b00d7ff17a0ff763cf7a7544/tensorflow/tools/pip_package/setup.py) if you want to uninstall them as well.
+
 ## Contribution guidelines
 
 **If you want to contribute to TensorFlow, be sure to review the
