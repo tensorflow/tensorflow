@@ -910,6 +910,7 @@ REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch", 0);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune", 0);
+REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

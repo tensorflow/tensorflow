@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_MODEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_MODEL_H_
 
+#include <algorithm>
 #include <list>
 #include <memory>
 #include <string>
@@ -168,6 +169,8 @@ class Node {
         autotune_(true),
         buffered_bytes_(0),
         buffered_elements_(0),
+        buffered_elements_low_(std::numeric_limits<int64_t>::max()),
+        buffered_elements_high_(std::numeric_limits<int64_t>::min()),
         bytes_consumed_(0),
         bytes_produced_(0),
         num_elements_(0),
@@ -224,6 +227,20 @@ class Node {
   // Returns the number of elements stored in this node's buffer.
   int64_t buffered_elements() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_elements_;
+  }
+
+  // Returns the low watermark of the number of elements stored in this node's
+  // buffer. The watermarks are reset at the beginning of the execution time and
+  // each time the buffer is upsized or downsized.
+  int64_t buffered_elements_low() const TF_LOCKS_EXCLUDED(mu_) {
+    return buffered_elements_low_;
+  }
+
+  // Returns the high watermark of the number of elements stored in this node's
+  // buffer. The watermarks are reset at the beginning of the execution time and
+  // each time the buffer is upsized or downsized.
+  int64_t buffered_elements_high() const TF_LOCKS_EXCLUDED(mu_) {
+    return buffered_elements_high_;
   }
 
   // Returns the number of bytes consumed by the node.
@@ -291,6 +308,12 @@ class Node {
   void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
     buffered_elements_ += elements_delta;
+    int64_t low_watermark =
+        std::min(buffered_elements_low_, buffered_elements_);
+    buffered_elements_low_ = low_watermark;
+    int64_t high_watermark =
+        std::max(buffered_elements_high_, buffered_elements_);
+    buffered_elements_high_ = high_watermark;
   }
 
   // Records that the node produced an element.
@@ -326,6 +349,13 @@ class Node {
   // Sets the value that determines whether autotuning is enabled for this node.
   void set_autotune(bool autotune) TF_LOCKS_EXCLUDED(mu_) {
     autotune_.store(autotune);
+  }
+
+  // Resets buffer watermarks to the current buffer size.
+  void ResetBufferWatermarks() {
+    int64_t current_buffer_size = buffered_elements_;
+    buffered_elements_low_ = current_buffer_size;
+    buffered_elements_high_ = current_buffer_size;
   }
 
   // Returns true for asynchronous nodes; false otherwise.
@@ -432,6 +462,13 @@ class Node {
   NodeVector CollectNodes(TraversalOrder order,
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_LOCKS_EXCLUDED(mu_);
+
+  // Downsizes buffer parameters of this node.
+  void TryDownsizeBuffer();
+
+  // Collects buffer parameters of this node that should be upsized.
+  void CollectBufferParametersToUpsize(
+      absl::flat_hash_map<Node*, Parameter*>& node_parameters);
 
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
@@ -554,7 +591,8 @@ class Node {
   ModelParameters CollectTunableParametersLocked() const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Collect tunable parameters on the nodes which have recorded elements.
+  // Collect tunable parameters on the nodes which have recorded
+  // elements.
   void CollectTunableParametersHelper(ModelParameters* parameters) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
@@ -607,6 +645,8 @@ class Node {
   std::atomic<bool> autotune_;
   std::atomic<int64_t> buffered_bytes_;
   std::atomic<int64_t> buffered_elements_;
+  std::atomic<int64_t> buffered_elements_low_;
+  std::atomic<int64_t> buffered_elements_high_;
   std::atomic<int64_t> bytes_consumed_;
   std::atomic<int64_t> bytes_produced_;
   std::atomic<int64_t> num_elements_;
@@ -681,6 +721,10 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 // class directly. Boiler plate code for creating the abstract representation of
 // the input pipeline and collecting runtime information has been added to the
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
+//
+// The order of locks acquired is SharedState lock, Model lock, Node lock.
+// SharedState lock is acquired first because it shares the same lock as the
+// dataset iterator that contains it.
 class Model {
  public:
   using OptimizationParams = ModelProto::OptimizationParams;
@@ -696,6 +740,9 @@ class Model {
     mutex_lock l(mu_);
     return output_;
   }
+
+  // Set the experiment that this job is part of.
+  void SetExperiment(const string& experiment) { experiment_ = experiment; }
 
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
@@ -721,6 +768,11 @@ class Model {
   void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
                 int64_t ram_budget, double model_input_time,
                 CancellationManager* cancellation_manager);
+
+  // Optimizes buffers in the pipeline rooted at `snapshot`. It downsizes
+  // buffers that are too large and upsizes buffers that are too small while
+  // respecting the ram budget.
+  void OptimizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
@@ -748,7 +800,7 @@ class Model {
   static Status Load(const string& fname, std::unique_ptr<Model>* model,
                      OptimizationParams* optimization_params);
 
-  // Record gap time between consecutive `GetNext()` calls.
+  // Records gap time between consecutive `GetNext()` calls.
   void RecordIteratorGapTime(uint64_t duration_usec) {
     mutex_lock l(gap_mu_);
     gap_time_sum_usec_ += duration_usec;
@@ -768,6 +820,18 @@ class Model {
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
+
+  // Downsizes buffers that are too large for all nodes rooted at `snapshot.
+  void DownsizeBuffers(std::shared_ptr<Node> snapshot);
+
+  // Upsizes buffers that are too small for all nodes rooted at `snapshot` while
+  // respecting the ram budget.
+  void UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
+
+  // Collects buffer parameters of all nodes in the model that should be
+  // upsized.
+  absl::flat_hash_map<Node*, Parameter*> CollectBufferParametersToUpsize(
+      std::shared_ptr<Node> snapshot);
 
   // Flushes metrics recorded by the model.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
@@ -879,6 +943,8 @@ class Model {
   // Gap time between consecutive `GetNext()` for a model.
   uint64_t gap_time_sum_usec_ TF_GUARDED_BY(gap_mu_) = 0;
   uint64_t gap_time_count_ TF_GUARDED_BY(gap_mu_) = 0;
+  // The experiment that this job is part of.
+  std::string experiment_ = "";
 };
 
 // Class to compute timing information for a model.

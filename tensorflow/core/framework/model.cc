@@ -146,6 +146,11 @@ inline bool IsSyncNode(const std::shared_ptr<Node> node) {
   return !node->IsAsync();
 }
 
+// Helper function for node traversal that returns only asynchronous nodes.
+inline bool IsAsyncNode(const std::shared_ptr<Node> node) {
+  return node->IsAsync();
+}
+
 // Wrapper for the square function to reduce verbosity.
 inline double Square(double x) { return x * x; }
 
@@ -1699,6 +1704,68 @@ Node::NodeVector Node::CollectNodes(
   return CollectNodesLocked(order, collect_node);
 }
 
+void Node::TryDownsizeBuffer() {
+  Node::ModelParameters buffer_size_parameters;
+  {
+    tf_shared_lock l(mu_);
+    if (buffered_elements_low_ > buffered_elements_high_) {
+      // No element is stored in the buffer yet. Do nothing.
+      return;
+    }
+    CollectTunableParametersHelper(&buffer_size_parameters);
+  }
+  // Sync buffer state values to parameter values
+  for (auto& [node_name, parameter] : buffer_size_parameters) {
+    if (parameter->name != kBufferSize) {
+      continue;
+    }
+    tf_shared_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
+  {
+    // Downsize buffers
+    tf_shared_lock l(mu_);
+    for (auto& [node_name, parameter] : buffer_size_parameters) {
+      if (parameter->name != kBufferSize) {
+        continue;
+      }
+      if (buffered_elements_low_ > 0 &&
+          buffered_elements_high_ <= parameter->value) {
+        double old_value = parameter->value;
+        parameter->value = buffered_elements_high_ - buffered_elements_low_ + 1;
+        VLOG(2) << "Downsize buffer " << long_name() << "::" << parameter->name
+                << " from " << old_value << " to " << parameter->value;
+        ResetBufferWatermarks();
+      }
+    }
+  }
+  // Since SharedState locks are the same as the Ops iterator locks, locking of
+  // the SharedState locks should be minimized in the optimization thread.
+  UpdateStateValues(&buffer_size_parameters);
+}
+
+void Node::CollectBufferParametersToUpsize(
+    absl::flat_hash_map<Node*, Parameter*>& node_parameters) {
+  {
+    tf_shared_lock l(mu_);
+    for (auto& [node_name, parameter] : parameters_) {
+      if ((parameter->name != kBufferSize) ||
+          (parameter->state == nullptr || !parameter->state->tunable)) {
+        continue;
+      }
+      if (buffered_elements_low_ <= 0 &&
+          buffered_elements_high_ >= parameter->value) {
+        parameter->value = parameter->state->value;
+        node_parameters[this] = parameter.get();
+      }
+    }
+  }
+  for (auto& [node, parameter] : node_parameters) {
+    tf_shared_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
+}
+
 Node::NodeVector Node::CollectNodesLocked(
     TraversalOrder order, bool collect_node(const std::shared_ptr<Node>)) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -1876,6 +1943,13 @@ Status Node::FromProtoHelper(ModelProto::Node node_proto,
   node->autotune_.store(node_proto.autotune());
   node->buffered_bytes_.store(node_proto.buffered_bytes());
   node->buffered_elements_.store(node_proto.buffered_elements());
+  if (node_proto.buffered_elements() == 0) {
+    node->buffered_elements_low_.store(std::numeric_limits<int64_t>::max());
+    node->buffered_elements_high_.store(std::numeric_limits<int64_t>::min());
+  } else {
+    node->buffered_elements_low_.store(node_proto.buffered_elements());
+    node->buffered_elements_high_.store(node_proto.buffered_elements());
+  }
   node->bytes_consumed_.store(node_proto.bytes_consumed());
   node->bytes_produced_.store(node_proto.bytes_produced());
   node->num_elements_.store(node_proto.num_elements());
@@ -2031,6 +2105,9 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
                  "optimization.";
       return;
   }
+  if (experiment_ == "autotune_buffer_optimization") {
+    OptimizeBuffers(snapshot, optimization_params.ram_budget());
+  }
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
@@ -2048,6 +2125,31 @@ Model::ModelParameters Model::CollectTunableParameters(
   return node->CollectTunableParameters();
 }
 
+void Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
+  Node::NodeVector nodes =
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+  if (snapshot->IsAsync()) {
+    snapshot->TryDownsizeBuffer();
+  }
+  for (auto& node : nodes) {
+    node->TryDownsizeBuffer();
+  }
+}
+
+absl::flat_hash_map<Node*, Parameter*> Model::CollectBufferParametersToUpsize(
+    std::shared_ptr<Node> snapshot) {
+  Node::NodeVector nodes =
+      snapshot->CollectNodes(TraversalOrder::BFS, IsAsyncNode);
+  absl::flat_hash_map<Node*, Parameter*> node_parameters;
+  if (snapshot->IsAsync()) {
+    snapshot->CollectBufferParametersToUpsize(node_parameters);
+  }
+  for (auto& node : nodes) {
+    node->CollectBufferParametersToUpsize(node_parameters);
+  }
+  return node_parameters;
+}
+
 bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
                        const Model::ModelParameters& parameters,
                        const Model::ModelParameters& parallelism_parameters,
@@ -2055,9 +2157,8 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
                        std::shared_ptr<Node> snapshot,
                        bool* cpu_budget_reached) {
   if (!(*cpu_budget_reached)) {
-    // If those essential transformations' parallelism reaches the CPU
-    // budget, we will only tune the buffer size parameters in future
-    // iterations.
+    // If those essential transformations' parallelism reaches the CPU budget,
+    // we will only tune the buffer size parameters in future iterations.
     int64_t model_parallelism = 0;
     for (auto& pair : parallelism_parameters) {
       model_parallelism += std::round(pair.second->value);
@@ -2215,8 +2316,20 @@ void Model::OptimizeHillClimbHelper(
   // improvement is greater than this constant.
   constexpr double kBufferSizeMinDelta = 1.0L;
 
+  // Skip buffer size optimization if we are running the new buffering
+  // algorithm.
+  bool skip_buffer_sizes = (experiment_ == "autotune_buffer_optimization");
+  if (skip_buffer_sizes) {
+    constexpr float TEN_MINUTES = 60.0 * 10.0;
+    LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
+        << "Skipping buffer_size parameters in HillClimb (message logged every "
+           "10 minutes).";
+  }
   // Initialize the parameter values to minimal before tuning.
   for (auto& pair : parameters) {
+    if (skip_buffer_sizes && (pair.second->name == kBufferSize)) {
+      continue;
+    }
     pair.second->value = pair.second->min;
   }
   while (!cancellation_manager->IsCancelled()) {
@@ -2231,7 +2344,8 @@ void Model::OptimizeHillClimbHelper(
     double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
     for (auto& pair : parameters) {
-      if (pair.second->value >= pair.second->max) {
+      if (pair.second->value >= pair.second->max ||
+          (skip_buffer_sizes && (pair.second->name == kBufferSize))) {
         continue;
       }
       pair.second->value++;
@@ -2332,6 +2446,66 @@ void Model::OptimizeStageBasedParallelism(
     critical_root = critical_root_status.ValueOrDie();
   }
   UpdateStateValues(&tunable_parameters);
+}
+
+void Model::OptimizeBuffers(std::shared_ptr<Node> snapshot,
+                            int64_t ram_budget) {
+  VLOG(2) << "Starting optimization of buffer_size parameters.";
+  constexpr float TEN_MINUTES = 60.0 * 10.0;
+  LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
+      << "Starting optimization of buffer_size parameters (message logged "
+         "every 10 minutes).";
+  DownsizeBuffers(snapshot);
+  UpsizeBuffers(snapshot, ram_budget);
+}
+
+void Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
+  // Find buffers that should be up-sized.
+  absl::flat_hash_map<Node*, Parameter*> node_parameters =
+      CollectBufferParametersToUpsize(snapshot);
+
+  // Compute available memory.
+  double available_ram_bytes =
+      static_cast<double>(ram_budget) - TotalMaximumBufferedBytes(snapshot);
+
+  // Compute memory used by all buffers that should be upsized.
+  double max_buffered_bytes = 0;
+  for (auto& [node, parameter] : node_parameters) {
+    if (node->buffered_elements() == 0) {
+      continue;
+    }
+    max_buffered_bytes += static_cast<double>(node->buffered_bytes()) /
+                          static_cast<double>(node->buffered_elements()) *
+                          parameter->value;
+  }
+
+  // Compute a uniform scaling factor for all buffers. Cap the factor at 2.
+  double scaling_factor = 2.0;
+  if (max_buffered_bytes > 0) {
+    scaling_factor =
+        1.0 + std::min(1.0, available_ram_bytes / max_buffered_bytes);
+  }
+
+  // Up-size all buffers by the scaling factor.
+  for (auto& [node, parameter] : node_parameters) {
+    double old_value = parameter->value;
+    // Scale the new buffer_size value. Use 1 if it is less than 1.
+    double new_value = std::max(1.0, static_cast<double>(static_cast<int64_t>(
+                                         parameter->value * scaling_factor)));
+    // Cap the new buffer_size value at its max value.
+    parameter->value = std::min(parameter->max, new_value);
+    VLOG(2) << "Upsize buffer " << node->long_name() << "::" << parameter->name
+            << " from " << old_value << " to " << parameter->value;
+    if (parameter->value != parameter->state->value) {
+      {
+        mutex_lock l(*parameter->state->mu);
+        parameter->state->value = parameter->value;
+        parameter->state->cond_var->notify_all();
+      }
+      // Reset node buffer watermarks
+      node->ResetBufferWatermarks();
+    }
+  }
 }
 
 void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
