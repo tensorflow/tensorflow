@@ -782,6 +782,11 @@ int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
+int64_t GetDnnWorkspaceLimitOrDefault() {
+  return GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                              1LL << 33);  // 8GB by default
+}
+
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -1089,10 +1094,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       AsDeviceMemory(transformed_output.template flat<T>().data(),
                      transformed_output.template flat<T>().size());
 
-  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
-      // default value is in bytes despite the name of the environment variable
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-  );
+  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();

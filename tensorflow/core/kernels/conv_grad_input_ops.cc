@@ -345,15 +345,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       AsDeviceMemory(pre_transformed_in_backprop.template flat<T>().data(),
                      pre_transformed_in_backprop.template flat<T>().size());
 
-  int64_t workspace_bytes = 1LL << 32;  // 4GB by default.
-  // CuDNN frontend will expose more engines some of which might use too much
-  // workspace. This would increase the overall demand of memory when training
-  // models.
-  if (CudnnUseFrontend()) {
-    workspace_bytes = 1LL << 30;  // 1GB by default.
-  }
   static int64_t ConvolveBackwardDataScratchSize =
-      GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB", workspace_bytes);
+      GetDnnWorkspaceLimitOrDefault();
+
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
   ConvParameters conv_parameters = {

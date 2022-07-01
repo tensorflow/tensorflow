@@ -1494,7 +1494,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                        pre_transformed_in_backprop.template flat<T>().size());
 
     static int64_t ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 33);  // 8GB by default
 
     const int device_id = stream->parent()->device_ordinal();
     // To make sure the Conv3DBackpropInputV2 get the correct dtype, we infer
@@ -1894,8 +1894,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AsDeviceMemory(transformed_input.template flat<T>().data(),
                        transformed_input.template flat<T>().size());
 
-    static int64_t ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+    static int64_t ConvolveBackwardFilterScratchSize =
+        GetDnnWorkspaceLimitOrDefault();
 
     const int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
