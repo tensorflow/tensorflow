@@ -51,16 +51,6 @@ Downloading, extraction, and placing the models into the assets folder is
 managed automatically by the `download.gradle` file, which is run at build time.
 You don't need to manually download TFLite models into the project.
 
-## Prerequisites and requirements
-
-This object detection tutorial requires the following:
-
-*   The **[Android Studio](https://developer.android.com/studio/index.html)**
-    IDE. This sample has been tested on Android Studio Bumblebee.
-
-*   A physical Android device with a minimum OS version of SDK 24 (Android 7.0 -
-    Nougat) with developer mode enabled.
-
 ## Setup and run example
 
 To setup the object detection app, download the sample from
@@ -69,10 +59,13 @@ and run it using [Android Studio](https://developer.android.com/studio/). The
 following sections of this tutorial explore the relevant sections of the code
 example, so you can apply them to your own Android apps.
 
-You need the following versions of these tools installed:
+### System requirements
 
-*   Android Studio 4.2.2 or higher
+*   **[Android Studio](https://developer.android.com/studio/index.html)**
+    version 2021.1.1 (Bumblebee) or higher.
 *   Android SDK version 31 or higher
+*   Android device with a minimum OS version of SDK 24 (Android 7.0 -
+    Nougat) with developer mode enabled.
 
 Note: This example uses a camera, so run it on a physical Android device.
 
@@ -105,7 +98,7 @@ To import and build the example code project:
 1.  Start [Android Studio](https://developer.android.com/studio).
 1.  From the Android Studio, select **File > New > Import Project**.
 1.  Navigate to the example code directory containing the build.gradle file
-    (`...examples/lite/examples/object_detection/android/app/build.gradle`) and
+    (`.../examples/lite/examples/object_detection/android/build.gradle`) and
     select that directory.
 1.  If Android Studio requests a Gradle Sync, choose OK.
 1.  Ensure that your Android device is connected to your computer and developer
