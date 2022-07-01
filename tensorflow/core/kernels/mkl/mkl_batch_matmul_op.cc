@@ -72,10 +72,10 @@ class BatchMatMulMkl : public OpKernel {
           errors::InvalidArgument("lhs and rhs ndims must be >= 2: ", ndims));
       for (int i = 0; i < ndims - 2; ++i) {
         OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
-                    errors::InvalidArgument(
-                        "lhs.dim(", i, ") and rhs.dim(", i,
-                        ") must be the same: ", lhs.shape().DebugString(),
-                        " vs ", rhs.shape().DebugString()));
+                    errors::InvalidArgument("lhs.dim(", i, ") and rhs.dim(", i,
+                                            ") must be the same: ",
+                                            lhs.shape().DebugString(), " vs ",
+                                            rhs.shape().DebugString()));
       }
     } else {
       OP_REQUIRES(
@@ -135,8 +135,9 @@ class BatchMatMulMkl : public OpKernel {
 
     // Compute parameters for DNNL matmul primitive.
     MklBatchMatMulHelper bmm;
-    auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
-                                         adj_x_, adj_y_);
+    string prefix = "batchmatmul";
+    auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
+                                         out_shape, adj_x_, adj_y_);
 
 #ifdef DNNL_AARCH64_USE_ACL
     // ACL does not support reuse of primitives with different data.
