@@ -69,6 +69,12 @@ limitations under the License.
 //       }
 //     }
 //   }
+// For string-valued features, note that the Append... and Set... functions
+// support absl::string_view containers. This allows you to copy existing
+// buffers into a Feature with only one copy:
+//   std::vector<absl::string_view> image;
+//   image.push_back(image_buffer);               // No copy.
+//   SetFeatureValues(image, "image", &example);  // Copy.
 //
 // Functions exposed by this library:
 //   HasFeature<[FeatureType]>(key, proto) -> bool
@@ -116,16 +122,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <string>
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -342,13 +347,18 @@ auto ReserveIfSizeAvailable(const ContainerType& container,
 
 template <typename ContainerType>
 void AppendFeatureValues(const ContainerType& container, Feature* feature) {
+  using ContentsType = typename ContainerType::value_type;
   using IteratorType = typename ContainerType::const_iterator;
   using FeatureType = typename internal::FeatureTrait<
       typename std::iterator_traits<IteratorType>::value_type>::Type;
   auto* values = GetFeatureValues<FeatureType>(feature);
   internal::ReserveIfSizeAvailable(container, *values);
-  std::copy(container.begin(), container.end(),
-            protobuf::RepeatedFieldBackInserter(values));
+  // This is less convenient but equivalent to std::copy into `values` with a
+  // RepeatedFieldBackInserter, the difference is RFBI isn't compatible with
+  // types that convert (absl::string_view -> std::string).
+  for (const ContentsType& elt : container) {
+    *values->Add() = elt;
+  }
 }
 
 // Copies elements from the range, defined by [first, last) into the feature

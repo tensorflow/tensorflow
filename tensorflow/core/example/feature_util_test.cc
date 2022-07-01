@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/example/feature_util.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -321,6 +322,21 @@ TEST(SetFeatureValuesTest, FloatValuesUsingInitializerList) {
   EXPECT_NEAR(10.1, tag_ro.Get(0), kTolerance);
   EXPECT_NEAR(20.2, tag_ro.Get(1), kTolerance);
   EXPECT_NEAR(30.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(SetFeatureValuesTest, ContainerOfStringView) {
+  Example example;
+
+  std::vector<std::string> values = {"hello", "world"};
+  std::vector<absl::string_view> values_string_view(values.begin(),
+                                                    values.end());
+
+  SetFeatureValues(values_string_view, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<std::string>("tag", example);
+  ASSERT_EQ(tag_ro.size(), 2);
+  EXPECT_EQ(tag_ro.Get(0), "hello");
+  EXPECT_EQ(tag_ro.Get(1), "world");
 }
 
 TEST(AppendFeatureValuesTest, Int64ValuesUsingInitializerList) {
