@@ -38,7 +38,7 @@ func.func @subset_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
 }
 // CHECK-LABEL: func.func @subset_tile(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
-// CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [0, 1]
+// CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [1, 1]
 // CHECK-NEXT:  %[[ALLOC:.*]] = memref.alloc() : memref<2x4xf32>
 // CHECK-NEXT:  memref.copy %[[VIEW]], %[[ALLOC]]
 // CHECK-NEXT:  return %[[ALLOC]] : memref<2x4xf32>
@@ -66,7 +66,7 @@ func.func @subset_point(%input: tensor<?x?xf32>) -> f32 {
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [0, 1]
+// CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [1, 1]
 // CHECK-NEXT:  %[[ELEM:.*]] = memref.load %[[VIEW]][%[[C0]], %[[C1]]]
 // CHECK-NEXT:  return %[[ELEM]] : f32
 
@@ -154,7 +154,7 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
   } : tensor<?x?xf32>
   return %result : tensor<?x?xf32>
 }
-// CHECK-DAG: #[[$MAP0:.+]] = affine_map<(d0, d1)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2)>
+// CHECK-DAG: #[[$MAP0:.+]] = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>
 // CHECK-DAG: #[[$MAP1:.+]] = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: func.func @parallel_with_tiles(

@@ -249,7 +249,7 @@ FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
     if (auto tile = dyn_cast<TileOp>(*subset)) {
       result = b.create<memref::SubViewOp>(loc, result, tile.getMixedOffsets(),
                                            tile.getMixedSizes(),
-                                           tile.getMixedOffsets());
+                                           tile.getMixedStrides());
       continue;
     }
     if (auto point = dyn_cast<PointOp>(*subset)) {
@@ -285,7 +285,7 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value subset,
 
     memref = b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
                                          tile.getMixedSizes(),
-                                         tile.getMixedOffsets());
+                                         tile.getMixedStrides());
   }
   Location loc = (*it)->getLoc();
   if (auto point = dyn_cast<PointOp>(*it)) {
