@@ -17,6 +17,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform",

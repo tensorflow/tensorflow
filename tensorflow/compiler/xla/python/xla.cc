@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
@@ -401,6 +402,22 @@ PYBIND11_MODULE(xla_extension, m) {
   jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
+
+  py::class_<tensorflow::PreemptionSyncManager,
+             std::unique_ptr<tensorflow::PreemptionSyncManager>>
+      preemption_sync_manager(m, "PreemptionSyncManager");
+  preemption_sync_manager
+      .def(
+          "initialize",
+          [](tensorflow::PreemptionSyncManager& manager,
+             DistributedRuntimeClient* client) { manager.Initialize(client); },
+          py::arg("distributed_client"))
+      .def("reached_sync_point",
+           [](tensorflow::PreemptionSyncManager& manager, int step_counter) {
+             return manager.ReachedSyncPoint(step_counter);
+           });
+  m.def("create_preemption_sync_manager",
+        []() { return tensorflow::CreatePreemptionSyncManager(); });
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>

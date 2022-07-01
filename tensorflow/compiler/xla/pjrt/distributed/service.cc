@@ -487,6 +487,8 @@ void CoordinationServiceImpl::StartRpcThread() {
       [service = coord_rpc_service_.get()] { service->HandleRPCsLoop(); }));
 }
 
+void CoordinationServiceImpl::Shutdown() { coord_service_ = nullptr; }
+
 xla::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 DistributedRuntimeService::Get(
     const std::string& address,
