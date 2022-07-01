@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_event.h"
@@ -368,9 +368,9 @@ TpuExecutor::CreateDeviceDescription() const {
   StatusHelper status;
   SE_DeviceDescription* description =
       tpu::ExecutorApiFn()->TpuDeviceDescription_NewFn();
-  auto cleanup = tensorflow::gtl::MakeCleanup([description]() {
+  absl::Cleanup cleanup = [description]() {
     tpu::ExecutorApiFn()->TpuDeviceDescription_FreeFn(description);
-  });
+  };
   tpu::ExecutorApiFn()->TpuExecutor_CreateDeviceDescriptionFn(
       executor_, description, status.c_status);
   if (status.status().ok()) {
