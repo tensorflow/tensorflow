@@ -70,6 +70,11 @@ tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 # duplicate all the module skeleton files.
 tf.compat.v2 = tf
 
+tf.losses = tf.keras.losses
+tf.metrics = tf.keras.metrics
+tf.optimizers = tf.keras.optimizers
+tf.initializers = tf.keras.initializers
+
 MIN_NUM_FILES_EXPECTED = 2000
 FLAGS = flags.FLAGS
 
