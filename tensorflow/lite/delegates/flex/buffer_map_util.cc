@@ -32,9 +32,6 @@ namespace {
 // Returns a boolean to indicate whether we should reuse memory from the
 // TfLiteTensor.
 inline bool ShouldReuseTensorMemory(const TfLiteTensor* tensor) {
-  // TODO(b/237806268): Temporarily disable tensor memory reusing since it
-  // causes tsan error in Brella client.
-  return false;
   // TODO(b/205153246): Currently arena-alloated memory could not be reused
   // since it might be invalid after the original arena grow in size and copied
   // over to a new memory block.
