@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-compose-subset-ops | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-compose-set-ops | \
 // RUN: FileCheck %s
 
 // CHECK-LABEL: @tile_of_tile

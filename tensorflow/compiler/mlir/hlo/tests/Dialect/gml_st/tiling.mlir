@@ -43,9 +43,9 @@ func.func @elemenwise(%lhs : tensor<?x?xf32>,
 // POINT-SAME:        : tensor<?x?xf32>[!gml_st.point]
 // POINT:         %[[RHS_PT:.*]] = gml_st.materialize %[[RHS]][%[[PT]]]
 // POINT-SAME:        : tensor<?x?xf32>[!gml_st.point]
-   
+
 // POINT:         %[[ADD:.*]] = arith.addf %[[LHS_PT]], %[[RHS_PT]] : f32
-// POINT:         gml_st.subset_yield %[[ADD]] into %{{.*}}[%[[PT]]]
+// POINT:         gml_st.set_yield %[[ADD]] into %{{.*}}[%[[PT]]]
 // POINT-SAME:        f32 into tensor<?x?xf32>[!gml_st.point]
 
 // TILE-LABEL: @elemenwise
@@ -79,5 +79,5 @@ func.func @elemenwise(%lhs : tensor<?x?xf32>,
 // TILE-SAME:        outs(%[[OUT_SUB]] : tensor<?x1xf32>)
 // TILE:           %[[ADDF:.*]] = arith.addf
 // TILE:           linalg.yield %[[ADDF]] : f32
-// TILE:         gml_st.subset_yield %[[LINALG_OP]] into %[[INIT]][%[[TILE]]]
+// TILE:         gml_st.set_yield %[[LINALG_OP]] into %[[INIT]][%[[TILE]]]
 // TILE-SAME:        : tensor<?x1xf32> into tensor<?x?xf32>[!gml_st.tile<?x1>]

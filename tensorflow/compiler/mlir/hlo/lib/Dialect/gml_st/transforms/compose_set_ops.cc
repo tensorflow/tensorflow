@@ -144,8 +144,7 @@ struct ComposeTilesPattern : public OpRewritePattern<TileOp> {
   }
 };
 
-class ComposeSubsetOpsPass
-    : public ComposeSubsetOpsPassBase<ComposeSubsetOpsPass> {
+class ComposeSetOpsPass : public ComposeSetOpsPassBase<ComposeSetOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
     registry.insert<arith::ArithmeticDialect, GmlStDialect>();
   }
@@ -163,8 +162,8 @@ class ComposeSubsetOpsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createComposeSubsetOpsPass() {
-  return std::make_unique<ComposeSubsetOpsPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass() {
+  return std::make_unique<ComposeSetOpsPass>();
 }
 
 }  // namespace gml_st

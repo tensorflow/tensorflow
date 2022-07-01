@@ -113,9 +113,9 @@ LogicalResult MaterializeOp::inferReturnTypes(
   MaterializeOp::Adaptor adaptor(operands, attributes);
 
   ShapedType sourceType = adaptor.source().getType().cast<ShapedType>();
-  Type subsetType = adaptor.subset().getType();
+  Type setType = adaptor.set().getType();
 
-  if (auto tileType = subsetType.dyn_cast<TileType>()) {
+  if (auto tileType = setType.dyn_cast<TileType>()) {
     if (auto memrefType = sourceType.dyn_cast<MemRefType>()) {
       inferredReturnTypes.push_back(
           MemRefType::get(tileType.getShape(), sourceType.getElementType()));
@@ -125,7 +125,7 @@ LogicalResult MaterializeOp::inferReturnTypes(
     } else {
       return failure();
     }
-  } else if (subsetType.isa<PointType>()) {
+  } else if (setType.isa<PointType>()) {
     inferredReturnTypes.push_back(sourceType.getElementType());
   } else {
     return failure();
@@ -548,8 +548,8 @@ ParseResult parseLoopLikeOp(OpAsmParser &parser, OperationState &result) {
 
 Region &ParallelOp::getLoopBody() { return region(); }
 
-SubsetYieldOp ParallelOp::getTerminator() {
-  return cast<SubsetYieldOp>(getBody()->getTerminator());
+SetYieldOp ParallelOp::getTerminator() {
+  return cast<SetYieldOp>(getBody()->getTerminator());
 }
 
 LogicalResult ParallelOp::verify() { return success(); }
@@ -608,8 +608,8 @@ ParseResult ParallelOp::parse(OpAsmParser &parser, OperationState &result) {
 
 Region &ForOp::getLoopBody() { return region(); }
 
-SubsetYieldOp ForOp::getTerminator() {
-  return cast<SubsetYieldOp>(getBody()->getTerminator());
+SetYieldOp ForOp::getTerminator() {
+  return cast<SetYieldOp>(getBody()->getTerminator());
 }
 
 LogicalResult ForOp::verify() {
@@ -627,7 +627,7 @@ LogicalResult ForOp::verify() {
     }
     if (getTerminator().getDstOperand(index)->get() != outputRegionArg) {
       return getTerminator().emitOpError("expected output block argument ")
-             << index << " to match subset_yield destination";
+             << index << " to match set_yield destination";
     }
   }
   return success();
@@ -1262,7 +1262,7 @@ LogicalResult PointOp::verify() {
   if (supersetTy.isa<PointType>()) {
     if (!static_indices().empty() || !dynamic_indices().empty()) {
       return emitOpError(
-          "expected empty indices and static_indices for a subset of type "
+          "expected empty indices and static_indices for a set of type "
           "PointType");
     }
   } else {
@@ -1407,21 +1407,21 @@ LogicalResult CollapseTileOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// SubsetYieldOp
+// SetYieldOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult SubsetYieldOp::verify() { return success(); }
+LogicalResult SetYieldOp::verify() { return success(); }
 
 //===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
-Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
+Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
                                     OpBuilder &builder) {
-  // Supports tile subsets.
-  Type subsetTy = subset.getType();
-  if (!subsetTy.isa<TileType>()) return {};
-  Value tile = subset;
+  // Supports tile sets.
+  Type setTy = set.getType();
+  if (!setTy.isa<TileType>()) return {};
+  Value tile = set;
 
   // Create the needed constants only once.
   DenseMap<uint64_t, Value> localIndexConstants;
@@ -1492,7 +1492,7 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
       loc, operandTileTy, operandSpace, argTileOffsets, argTileSizes,
       ValueRange{}, staticOffsets, staticSizes, staticStrides);
 
-  // Materialize operands' subsets.
+  // Materialize operands' sets.
   Value tiledInit = builder.create<MaterializeOp>(loc, init(), tile);
   Value tiledOperand =
       builder.create<MaterializeOp>(loc, operand(), operandTile);

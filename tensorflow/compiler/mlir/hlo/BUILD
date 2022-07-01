@@ -1557,7 +1557,7 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
-        ":gml_st_compose_subset_ops",
+        ":gml_st_compose_set_ops",
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_tiling",
@@ -2396,7 +2396,7 @@ gentbl_cc_library(
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td",
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
-        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td",
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td",
     ],
     deps = [":gml_st_ops_td_files"],
 )
@@ -2574,10 +2574,10 @@ cc_library(
 )
 
 cc_library(
-    name = "gml_st_compose_subset_ops",
+    name = "gml_st_compose_set_ops",
     srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/compose_subset_ops.cc",
+        "lib/Dialect/gml_st/transforms/compose_set_ops.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",

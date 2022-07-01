@@ -160,7 +160,7 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
   // CHECK:       ^bb0(%[[TANH_SCALAR:.*]]: f32, %[[COS_SCALAR:.*]]: f32, %{{.*}}: f32):
   // CHECK-DAG:     %[[RES_SCALAR:.*]] = arith.addf %[[TANH_SCALAR]], %[[COS_SCALAR]] : f32
   // CHECK:         linalg.yield %[[RES_SCALAR]]
-  // CHECK:       gml_st.subset_yield %[[RES_SUB]] into %[[OUT]][%[[TILE]]
+  // CHECK:       gml_st.set_yield %[[RES_SUB]] into %[[OUT]][%[[TILE]]
   // CHECK-SAME:    : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   // CHECK:     return %[[RES]]
 
@@ -188,7 +188,7 @@ func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
         linalg.yield %s : f32
     } -> tensor<4xf32>
 
-    gml_st.subset_yield %result_sub into %out[%tile] : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
+    gml_st.set_yield %result_sub into %out[%tile] : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
 }

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
@@ -38,7 +39,7 @@ struct FusionPattern : public OpRewritePattern<MaterializeOp> {
     auto iface = llvm::dyn_cast<FusionIterface>(def);
     if (!iface) return failure();
 
-    Value fused = iface.fuse(op.getLoc(), op.subset(), rewriter);
+    Value fused = iface.fuse(op.getLoc(), op.set(), rewriter);
     if (!fused) return failure();
 
     rewriter.replaceOp(op, fused);

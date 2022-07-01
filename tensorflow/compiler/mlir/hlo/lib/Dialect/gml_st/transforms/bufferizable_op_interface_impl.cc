@@ -191,16 +191,16 @@ struct LoopOpInterface
   }
 };
 
-// Returns the subset chain in reverse order, i.e. from subset to space.
+// Returns the set chain in reverse order, i.e. from set to space.
 // The space operation itself is not included.
-FailureOr<SmallVector<Operation *>> findSubsetChain(Value subset) {
-  SmallVector<Operation *> subsets;
-  Operation *current = subset.getDefiningOp();
+FailureOr<SmallVector<Operation *>> findSetChain(Value set) {
+  SmallVector<Operation *> sets;
+  Operation *current = set.getDefiningOp();
   while (current) {
     if (auto space = dyn_cast<SpaceOp>(*current)) break;
 
-    subsets.push_back(current);
-    // TODO(pifon): It might be useful to have a subset interface.
+    sets.push_back(current);
+    // TODO(pifon): It might be useful to have a set interface.
     if (auto tile = dyn_cast<TileOp>(*current)) {
       current = tile.superset().getDefiningOp();
       continue;
@@ -211,7 +211,7 @@ FailureOr<SmallVector<Operation *>> findSubsetChain(Value subset) {
     }
     return failure();
   }
-  return subsets;
+  return sets;
 }
 
 // TODO(pifon): Clean this up, for example, by using ViewLikeInterface.
@@ -234,25 +234,24 @@ SmallVector<Value> getPointIndicesValues(OpBuilder &b, PointOp pointOp) {
 
 // Returns a scalar or a memref type result of `gml_st.materialize` op after
 // bufferization.
-FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
-                                       Value subset) {
-  auto subsetsOr = findSubsetChain(subset);
-  if (failed(subsetsOr)) return failure();
+FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref, Value set) {
+  auto setsOr = findSetChain(set);
+  if (failed(setsOr)) return failure();
 
-  // Find subset use-def chain from space to the subset.
-  // Create subview or load ops for the subset computation.
+  // Find set use-def chain from space to the set.
+  // Create subview or load ops for the set computation.
   OpBuilder::InsertionGuard g(b);
   Value result = memref;
-  for (auto *subset : llvm::reverse(*subsetsOr)) {
-    Location loc = subset->getLoc();
-    b.setInsertionPointAfter(subset);
-    if (auto tile = dyn_cast<TileOp>(*subset)) {
+  for (auto *set : llvm::reverse(*setsOr)) {
+    Location loc = set->getLoc();
+    b.setInsertionPointAfter(set);
+    if (auto tile = dyn_cast<TileOp>(*set)) {
       result = b.create<memref::SubViewOp>(loc, result, tile.getMixedOffsets(),
                                            tile.getMixedSizes(),
                                            tile.getMixedStrides());
       continue;
     }
-    if (auto point = dyn_cast<PointOp>(*subset)) {
+    if (auto point = dyn_cast<PointOp>(*set)) {
       result = b.create<memref::LoadOp>(loc, result,
                                         getPointIndicesValues(b, point));
       continue;
@@ -262,21 +261,21 @@ FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
   return result;
 }
 
-LogicalResult materializeInsertion(OpBuilder &b, Value update, Value subset,
+LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                    Value memref,
                                    const BufferizationOptions &options) {
-  auto subsets = findSubsetChain(subset);
-  if (failed(subsets)) return failure();
+  auto sets = findSetChain(set);
+  if (failed(sets)) return failure();
 
-  if (subsets->empty())
+  if (sets->empty())
     return options.createMemCpy(b, update.getLoc(), update, memref);
 
-  // Create subviews or store ops for the subset computation.
+  // Create subviews or store ops for the set computation.
   OpBuilder::InsertionGuard g(b);
-  auto *it = std::prev(subsets->end());
+  auto *it = std::prev(sets->end());
   // The first element for the use-def chain is the `gml_st.space` op and it
   // should be ignored for now.
-  for (; it != subsets->begin(); --it) {
+  for (; it != sets->begin(); --it) {
     Location loc = (*it)->getLoc();
     b.setInsertionPointAfter(*it);
 
@@ -299,7 +298,7 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value subset,
                                          tile.getMixedOffsets());
     return success();
   }
-  llvm_unreachable("Unknown subset type");
+  llvm_unreachable("Unknown set type");
 }
 
 struct MaterializeOpInterface
@@ -339,7 +338,7 @@ struct MaterializeOpInterface
     if (failed(bufferOr)) return failure();
 
     FailureOr<Value> resultOr =
-        materializeExtraction(rewriter, *bufferOr, materializeOp.subset());
+        materializeExtraction(rewriter, *bufferOr, materializeOp.set());
 
     if (failed(resultOr)) return failure();
 
@@ -476,13 +475,13 @@ struct ForOpInterface
   }
 };
 
-struct SubsetYieldOpInterface
-    : public BufferizableOpInterface::ExternalModel<SubsetYieldOpInterface,
-                                                    SubsetYieldOp> {
+struct SetYieldOpInterface
+    : public BufferizableOpInterface::ExternalModel<SetYieldOpInterface,
+                                                    SetYieldOp> {
   SmallVector<OpResult> getAliasingOpResult(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
-    auto yieldOp = cast<SubsetYieldOp>(op);
+    auto yieldOp = cast<SetYieldOp>(op);
     if (!yieldOp.isDstOperand(opOperand)) return {};
 
     auto loopResult = yieldOp.getTiedOpResult(opOperand);
@@ -492,14 +491,14 @@ struct SubsetYieldOpInterface
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
-    auto yieldOp = cast<SubsetYieldOp>(op);
+    auto yieldOp = cast<SetYieldOp>(op);
     Operation *loop = yieldOp->getParentOp();
     if (!isa<ForOp, ParallelOp>(loop))
-      return yieldOp->emitError("unsupported gml_st::SubsetYieldOp parent");
+      return yieldOp->emitError("unsupported gml_st::SetYieldOp parent");
 
     for (const auto &it :
          llvm::enumerate(llvm::zip(yieldOp.srcs(), yieldOp.dsts(),
-                                   yieldOp.subsets(), loop->getResults()))) {
+                                   yieldOp.sets(), loop->getResults()))) {
       Value src, dst, set, loopResult;
       std::tie(src, dst, set, loopResult) = it.value();
 
@@ -532,7 +531,7 @@ struct SubsetYieldOpInterface
         }
       }
     }
-    rewriter.replaceOpWithNewOp<SubsetYieldOp>(op);
+    rewriter.replaceOpWithNewOp<SetYieldOp>(op);
     return success();
   }
 
@@ -543,7 +542,7 @@ struct SubsetYieldOpInterface
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
                                const AnalysisState & /*state*/) const {
-    return cast<SubsetYieldOp>(op).isDstOperand(opOperand);
+    return cast<SetYieldOp>(op).isDstOperand(opOperand);
   }
 
   bool isNotConflicting(Operation * /*op*/, OpOperand * /*uRead*/,
@@ -566,6 +565,6 @@ void mlir::gml_st::registerBufferizableOpInterfaceExternalModels(
         LoopOp::attachInterface<LoopOpInterface>(*ctx);
         MaterializeOp::attachInterface<MaterializeOpInterface>(*ctx);
         ParallelOp::attachInterface<ParallelOpInterface>(*ctx);
-        SubsetYieldOp::attachInterface<SubsetYieldOpInterface>(*ctx);
+        SetYieldOp::attachInterface<SetYieldOpInterface>(*ctx);
       });
 }

@@ -34,8 +34,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
     ArrayRef<int64_t> tileSizes = {});
 
-/// Pass to compose subset operations.
-std::unique_ptr<OperationPass<func::FuncOp>> createComposeSubsetOpsPass();
+/// Pass to compose set operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.

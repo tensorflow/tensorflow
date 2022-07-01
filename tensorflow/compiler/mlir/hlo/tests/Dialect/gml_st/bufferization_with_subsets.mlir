@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt %s -test-gml-st-bufferization -canonicalize -cse \
 // RUN:   -split-input-file | FileCheck %s --dump-input=always
 
-func.func @subset_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @set_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
 
@@ -14,13 +14,13 @@ func.func @subset_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
   return %identity : tensor<?x?xf32>
 }
-// CHECK-LABEL: func.func @subset_space(
+// CHECK-LABEL: func.func @set_space(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-NEXT:  return %[[ARG]] : memref<?x?xf32>
 
 // -----
 
-func.func @subset_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
+func.func @set_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
 
@@ -36,7 +36,7 @@ func.func @subset_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
 
   return %slice : tensor<2x4xf32>
 }
-// CHECK-LABEL: func.func @subset_tile(
+// CHECK-LABEL: func.func @set_tile(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-NEXT:  %[[VIEW:.*]] = memref.subview %[[ARG]][0, 1] [2, 4] [1, 1]
 // CHECK-NEXT:  %[[ALLOC:.*]] = memref.alloc() : memref<2x4xf32>
@@ -45,7 +45,7 @@ func.func @subset_tile(%input: tensor<?x?xf32>) -> tensor<2x4xf32> {
 
 // -----
 
-func.func @subset_point(%input: tensor<?x?xf32>) -> f32 {
+func.func @set_point(%input: tensor<?x?xf32>) -> f32 {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
 
@@ -62,7 +62,7 @@ func.func @subset_point(%input: tensor<?x?xf32>) -> f32 {
 
   return %element : f32
 }
-// CHECK-LABEL: func.func @subset_point(
+// CHECK-LABEL: func.func @set_point(
 // CHECK-SAME:    %[[ARG:.*]]: memref<?x?xf32>)
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
@@ -89,7 +89,7 @@ func.func @parallel_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 
     %add_elem = arith.addf %lhs_elem, %rhs_elem : f32
 
-    gml_st.subset_yield %add_elem into %init[%pt]
+    gml_st.set_yield %add_elem into %init[%pt]
       : f32 into tensor<?x?xf32>[!gml_st.point]
   } : tensor<?x?xf32>
   return %result : tensor<?x?xf32>
@@ -109,7 +109,7 @@ func.func @parallel_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK-DAG:   %[[LHS_EL:.*]] = memref.load %[[LHS]][%[[I]], %[[J]]]
 // CHECK:       %[[ADD_EL:.*]] = arith.addf %[[LHS_EL]], %[[RHS_EL]] : f32
 // CHECK:       memref.store %[[ADD_EL]], %[[OUT]][%[[I]], %[[J]]]
-// CHECK:       gml_st.subset_yield
+// CHECK:       gml_st.set_yield
 // CHECK:     }
 // CHECK:     return %[[OUT]] : memref<?x?xf32>
 
@@ -149,7 +149,7 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
         %add = arith.addf %l, %r : f32
         linalg.yield %add : f32
       } -> tensor<?x1xf32>
-    gml_st.subset_yield %sum into %init[%tile]
+    gml_st.set_yield %sum into %init[%tile]
       : tensor<?x1xf32> into tensor<?x?xf32>[!gml_st.tile<?x1>]
   } : tensor<?x?xf32>
   return %result : tensor<?x?xf32>
@@ -180,7 +180,7 @@ func.func @parallel_with_tiles(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK-SAME:    indexing_maps = [#[[$MAP1]], #[[$MAP1]], #[[$MAP1]]]
 // CHECK-SAME:    ins(%[[LHS_SUB]], %[[RHS_SUB]] : memref<?x1xf32, #[[$MAP0]]>
 // CHECK-SAME:    outs(%[[OUT_SUB]] : memref<?x1xf32, #[[$MAP0]]>)
-// CHECK:       gml_st.subset_yield
+// CHECK:       gml_st.set_yield
 // CHECK:     }
 // CHECK: return %[[OUT]] : memref<?x?xf32>
 
@@ -204,7 +204,7 @@ func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 
     %add_elem = arith.addf %lhs_elem, %rhs_elem : f32
 
-    gml_st.subset_yield %add_elem into %out_[%pt]
+    gml_st.set_yield %add_elem into %out_[%pt]
       : f32 into tensor<?x?xf32>[!gml_st.point]
   } : tensor<?x?xf32>
   func.return %result: tensor<?x?xf32>
@@ -225,5 +225,5 @@ func.func @for_with_points(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>,
 // CHECK-DAG:       %[[LHS_EL:.*]] = memref.load %[[LHS]][%[[I]], %[[J]]]
 // CHECK:           %[[ADD_EL:.*]] = arith.addf %[[LHS_EL]], %[[RHS_EL]] : f32
 // CHECK:           memref.store %[[ADD_EL]], %[[OUT]][%[[I]], %[[J]]]
-// CHECK:           gml_st.subset_yield
+// CHECK:           gml_st.set_yield
 // CHECK:         return %[[OUT]] : memref<?x?xf32>

@@ -15,8 +15,8 @@ limitations under the License.
 
 // This is the operation definition file for ST ops.
 
-#ifndef GML_ST_SUBSET_OPS
-#define GML_ST_SUBSET_OPS
+#ifndef GML_ST_SET_OPS
+#define GML_ST_SET_OPS
 
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
@@ -25,9 +25,9 @@ include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 
 // Base class of all subset types.
-class GMLST_Subset<string name> : TypeDef<GmlSt_Dialect, name> { }
+class GMLST_Set<string name> : TypeDef<GmlSt_Dialect, name> { }
 
-def GMLST_TileType : GMLST_Subset<"Tile"> {
+def GMLST_TileType : GMLST_Set<"Tile"> {
   let mnemonic = "tile";
   let summary = "Type that represents a tile of an index space.";
   let parameters = (ins ArrayRefParameter<"int64_t">:$shape);
@@ -37,16 +37,16 @@ def GMLST_TileType : GMLST_Subset<"Tile"> {
   }];
 }
 
-def GMLST_PointType : GMLST_Subset<"Point"> {
+def GMLST_PointType : GMLST_Set<"Point"> {
   let mnemonic = "point";
   let summary = "Type that represents a point of an index space.";
   let assemblyFormat = "";
 }
 
 // Whether a type is a subset type.
-def IsSubsetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>;
+def IsSetTypePred : Or<[GMLST_TileType.predicate, GMLST_PointType.predicate]>;
 
-def AnySubset : Type<IsSubsetTypePred, "subset type">;
+def AnySet : Type<IsSetTypePred, "subset type">;
 
 def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
@@ -61,7 +61,7 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 }
 
 def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
-  let arguments = (ins AnySubset:$superset,
+  let arguments = (ins AnySet:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
   let results = (outs GMLST_PointType:$result);
@@ -130,4 +130,4 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
   let hasVerifier = 0;
 }
 
-#endif // GML_ST_SUBSET_OPS
+#endif // GML_ST_SET_OPS

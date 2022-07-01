@@ -105,7 +105,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
 // -----
 
 func.func @space_op_different_rank() -> !gml_st.tile<32x32> {
-  // expected-error@+1 {{expected 2 size values}} 
+  // expected-error@+1 {{expected 2 size values}}
   %0 = gml_st.space [64] : !gml_st.tile<32x32>
   func.return %0 : !gml_st.tile<32x32>
 }
@@ -140,7 +140,7 @@ func.func @point_op_different_rank() -> !gml_st.point {
 func.func @point_op_of_point_op_expected_empty_static_indices() -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.point %0 [0, 0] : !gml_st.tile<64x32> to !gml_st.point
-  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a subset of type PointType}}
+  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a set of type PointType}}
   %2 = gml_st.point %1 [0, 0] : !gml_st.point to !gml_st.point
   func.return %2 : !gml_st.point
 }
@@ -150,7 +150,7 @@ func.func @point_op_of_point_op_expected_empty_static_indices() -> !gml_st.point
 func.func @point_op_of_point_op_expected_empty_dynamic_indices(%i: index) -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.point %0 [%i, %i] : !gml_st.tile<64x32> to !gml_st.point
-  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a subset of type PointType}}
+  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a set of type PointType}}
   %2 = gml_st.point %1 [%i, %i] : !gml_st.point to !gml_st.point
   func.return %2 : !gml_st.point
 }
@@ -286,8 +286,8 @@ func.func @for_loop_wrong_yield_target(
         ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
         outs(%out_sub : tensor<f32>) -> tensor<f32>
 
-    // expected-error@+1 {{'gml_st.subset_yield' op expected output block argument 0 to match subset_yield destination}}
-    gml_st.subset_yield %result_sub into %output[%space_0]
+    // expected-error@+1 {{'gml_st.set_yield' op expected output block argument 0 to match set_yield destination}}
+    gml_st.set_yield %result_sub into %output[%space_0]
       : tensor<f32> into tensor<f32>[!gml_st.tile<>]
   } : tensor<f32>
   func.return %sum : tensor<f32>

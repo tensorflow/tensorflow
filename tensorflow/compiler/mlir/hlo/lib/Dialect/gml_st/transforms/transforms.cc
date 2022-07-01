@@ -402,7 +402,7 @@ FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp linalgOp,
         // 'tiledOperands'.
         result = linalgOp.clone(b, loc, tiledResultTy, tiledOperands);
         SmallVector<Value> tiledResults = result->getResults();
-        b.create<SubsetYieldOp>(
+        b.create<SetYieldOp>(
             nestedLoc, tiledResults, SmallVector<Value>{output},
             SmallVector<Value>(tiledResults.size(), operandTile));
       });
@@ -456,9 +456,9 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
         SmallVector<Value> yieldedValues;
         for (Value val : block.getTerminator()->getOperands())
           yieldedValues.push_back(bvm.lookup(val));
-        b.create<SubsetYieldOp>(
-            nestedLoc, yieldedValues, SmallVector<Value>{output},
-            SmallVector<Value>(yieldedValues.size(), point));
+        b.create<SetYieldOp>(nestedLoc, yieldedValues,
+                             SmallVector<Value>{output},
+                             SmallVector<Value>(yieldedValues.size(), point));
       });
 
   return TilingResult{loop.getOperation(), nullptr};
