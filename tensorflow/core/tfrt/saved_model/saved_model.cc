@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -642,37 +645,36 @@ tensorflow::Status SavedModelImpl::Run(
   TF_RET_CHECK(outputs) << "outputs must be provided";
   outputs->clear();
 
-  auto sig_iter = signatures_.find(name);
-  TF_RET_CHECK(sig_iter != signatures_.end())
-      << "failed to find signature " << name << " in the graph";
-  if (run_options.validate_input_specs) {
-    TF_RETURN_IF_ERROR(IsInputSpecsCorrect(name, sig_iter->second, inputs));
-  }
-  std::vector<tensorflow::Tensor> captures;
-  for (const auto& capture : sig_iter->second.captures) {
-    captures.push_back(capture);
+  if (!options_.enable_lazy_loading) {
+    auto sig_iter = signatures_.find(name);
+    TF_RET_CHECK(sig_iter != signatures_.end())
+        << "failed to find signature " << name << " in the graph";
+    if (run_options.validate_input_specs) {
+      TF_RETURN_IF_ERROR(IsInputSpecsCorrect(name, sig_iter->second, inputs));
+    }
+    std::vector<tensorflow::Tensor> captures;
+    for (const auto& capture : sig_iter->second.captures) {
+      captures.push_back(capture);
+    }
+    const tfrt::Function* func =
+        bef_file_->GetFunction({name.data(), name.size()});
+    DCHECK(func);
+    return GraphExecutionRunOnFunction(
+        options_.graph_execution_options, run_options, name, *func, inputs,
+        captures, outputs, resource_context_.get(), runtime(), *fallback_state_,
+        req_deadline_tracker_);
   }
 
-  const tfrt::Function* func;
-  tfrt::ResourceContext* resource_context;
-  if (options_.enable_lazy_loading) {
-    // If lazy loading is enabled, no signature is loaded into `bef_file_`, so
-    // we need to find the BEF from the cache or create one.
-    TF_ASSIGN_OR_RETURN(const LoadingResult& loading_result,
-                        GetOrCreateLoadingResult({std::string(name)}));
-    func = loading_result.bef_file->GetFunction(
-        tensorflow::kImportModelDefaultGraphFuncName);
-    resource_context = loading_result.resource_context.get();
-  } else {
-    func = bef_file_->GetFunction({name.data(), name.size()});
-    resource_context = resource_context_.get();
-  }
-  DCHECK(func);
-
-  return GraphExecutionRunOnFunction(options_.graph_execution_options,
-                                     run_options, name, *func, inputs, captures,
-                                     outputs, resource_context, runtime(),
-                                     *fallback_state_, req_deadline_tracker_);
+  // If lazy loading is enabled, no signature is loaded into `bef_file_`,
+  // invoke `RunMultipleSignatures()` and delegate to `graph_executor_` with
+  // lazy loading work and execution work.
+  std::vector<tensorflow::Tensor> inputs_vector(inputs.begin(), inputs.end());
+  std::vector<std::vector<tensorflow::Tensor>> multi_outputs;
+  TF_RETURN_IF_ERROR(RunMultipleSignatures(run_options, {std::string(name)},
+                                           {inputs_vector}, &multi_outputs));
+  DCHECK_EQ(multi_outputs.size(), 1);
+  *outputs = std::move(multi_outputs[0]);
+  return OkStatus();
 }
 
 struct SavedModelImpl::JoinedSignature {
@@ -836,141 +838,6 @@ tensorflow::Status SavedModelImpl::RunByTensorNames(
 
   return graph_executor_->Run(run_options, inputs, output_tensor_names,
                               target_node_names, outputs);
-}
-
-namespace {
-
-using JoinedSignature = SavedModelImpl::JoinedSignature;
-
-// Returns a joined signature with the signatures in `names`. For inputs, as
-// their corresponding nodes may overlap, we deduplicate them by the nodes so
-// the order of inputs for the joined signature would be different from the
-// original order. For outputs, overlapping is fine so we only flatten it in the
-// original order.
-StatusOr<JoinedSignature> JoinSignatures(
-    absl::Span<const std::string> names, const SignatureMap& signature_map,
-    const tensorflow::protobuf::Map<std::string, tensorflow::SignatureDef>&
-        signature_def_map) {
-  // Join all the names, all the inputs, and all the outputs.
-  JoinedSignature joined_signature;
-  joined_signature.name = absl::StrJoin(names, kSignatureJoiningDelimiter);
-
-  // Keep the feed tensor names visited.
-  absl::flat_hash_set<std::string> visited_feed_tensor_names;
-
-  for (const auto& name : names) {
-    const auto& signature_def = signature_def_map.at(name);
-
-    // For inputs, we deduplicate possible overlapping feed nodes and create the
-    // new input array.
-    for (const auto& iter : signature_def.inputs()) {
-      const auto& tensor_info = iter.second;
-
-      // Skip if this feed node is already visited.
-      if (visited_feed_tensor_names.contains(tensor_info.name())) continue;
-
-      // Otherwise, we parse its tensor info and collect it for later
-      // compilation.
-      visited_feed_tensor_names.insert(tensor_info.name());
-
-      // TODO(b/184675681): Support other encoding cases.
-      //
-      // TODO(b/184679394): Add unit test for this check.
-      TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
-          << "Only dense tensor is supported, but got encoding case "
-          << tensor_info.encoding_case();
-
-      VLOG(1) << "Importing Signature Input: input_key = " << iter.first
-              << ", tensor_info = " << tensor_info.DebugString();
-
-      tensorflow::ArrayInfo array_info;
-      array_info.imported_dtype = tensor_info.dtype();
-
-      if (tensor_info.has_tensor_shape()) {
-        array_info.shape = tensor_info.tensor_shape();
-      } else {
-        // If there is no tensor shape in the tensor info, conservatively set
-        // unknown_rank to true.
-        array_info.shape.set_unknown_rank(true);
-      }
-
-      joined_signature.input_nodes.insert(
-          std::pair<std::string, tensorflow::ArrayInfo>(tensor_info.name(),
-                                                        std::move(array_info)));
-    }
-
-    // For outputs, we simply flatten them in the original order, as it is fine
-    // to have duplicated fetch nodes.
-    const internal::Signature& signature = signature_map.at(name);
-    for (const auto& output_key : signature.output_names) {
-      const auto& tensor_info = signature_def.outputs().at(output_key);
-
-      VLOG(1) << "Importing Signature Output: output_key = " << output_key
-              << ", tensor_info = " << tensor_info.DebugString();
-
-      TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
-          << "Only dense tensor is supported, but got encoding case "
-          << tensor_info.encoding_case();
-
-      joined_signature.output_nodes.push_back(tensor_info.name());
-    }
-  }
-
-  return joined_signature;
-}
-
-}  // namespace
-
-// TODO(b/216379787): Reuse `GraphExecutor::LoadClientGraph()`.
-StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
-  // Step 1: Import the combined subgraph from proto to an MLIR module.
-  mlir::MLIRContext context;
-  ASSIGN_OR_RETURN_IN_IMPORT(
-      auto module, ImportSubgraph(&context, joined_signature.input_nodes,
-                                  joined_signature.output_nodes,
-                                  joined_signature.target_nodes));
-
-  // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
-  auto loading_result = std::make_unique<LoadingResult>();
-  loading_result->name = joined_signature.name;
-  loading_result->resource_context = CreateResourceContext(
-      runtime(), tpu_model_resource_.get(),
-      options_.graph_execution_options.compile_options.tpu_target);
-
-  RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-      options_.graph_execution_options.compile_options, module.get(),
-      &loading_result->bef));
-
-  // Step 3: Initialize runtime states using special BEF functions.
-  ASSIGN_OR_RETURN_IN_INIT(
-      loading_result->bef_file,
-      tfrt::CreateBefFileFromBefBuffer(
-          *options_.graph_execution_options.runtime, loading_result->bef));
-  RETURN_IF_ERROR_IN_INIT(RunInitializers(
-      /*initializers_and_signatures=*/{},
-      options_.graph_execution_options.model_metadata,
-      loading_result->bef_file.get(), *options_.graph_execution_options.runtime,
-      loading_result->resource_context.get(), *fallback_state_));
-
-  // Store loading_result in cache.
-  const auto* loading_result_ptr = loading_result.get();
-  loading_result_cache_[joined_signature.name] = std::move(loading_result);
-  return {*loading_result_ptr};
-}
-
-StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-SavedModelImpl::GetOrCreateLoadingResult(absl::Span<const std::string> names) {
-  const auto joined_name = absl::StrJoin(names, kSignatureJoiningDelimiter);
-  tensorflow::mutex_lock l(loading_result_cache_mu_);
-  const auto iter = loading_result_cache_.find(joined_name);
-  if (iter != loading_result_cache_.end()) return {*iter->second};
-
-  TF_ASSIGN_OR_RETURN(
-      const auto joined_signature,
-      JoinSignatures(names, signatures_, meta_graph_def_.signature_def()));
-
-  return LoadJoinedSignature(joined_signature);
 }
 
 }  // namespace tfrt_stub
