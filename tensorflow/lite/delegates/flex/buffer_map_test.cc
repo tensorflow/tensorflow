@@ -253,7 +253,8 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
               ElementsAre(0, 0, 0, 0.123f, 0, 0));
 }
 
-TEST(BufferMapTest, TensorflowBufferReuse) {
+// TODO(b/237806268): Re-enable this test.
+TEST(BufferMapTest, DISABLED_TensorflowBufferReuse) {
   TfLiteTensor tensor;
   tensor.allocation_type = kTfLiteDynamic;
   tensor.data.raw = nullptr;
