@@ -106,6 +106,7 @@ cuda_py_test(
     size = "small",
     srcs = ["bincount_op_test.py"],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:bincount_ops",
         "//tensorflow/python:client_testlib",
