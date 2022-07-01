@@ -4683,6 +4683,7 @@ bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
       return true;
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kMap:
+    case HloOpcode::kTranspose:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
       for (mlir::Value v : op->getResults()) {
