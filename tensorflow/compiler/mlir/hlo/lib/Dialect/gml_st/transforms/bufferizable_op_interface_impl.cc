@@ -376,52 +376,20 @@ struct ParallelOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
+                          const BufferizationOptions & /*options*/) const {
     auto loopOp = cast<ParallelOp>(op);
-
-    // Compute outputs, i.e. bufferized destinations of `subset_yield`.
-    SmallVector<Value> newResults;
-    for (OpOperand *dst : loopOp.getTerminator().getDstOperands()) {
-      FailureOr<Value> maybeBuffer = getBuffer(rewriter, dst->get(), options);
-      if (failed(maybeBuffer)) return failure();
-      newResults.push_back(*maybeBuffer);
-    }
 
     // Create new TiledLoopOp.
     auto newLoopOp = rewriter.create<ParallelOp>(
         loopOp.getLoc(), TypeRange{llvm::None}, loopOp.lowerBound(),
         loopOp.upperBound(), loopOp.step(), nullptr);
 
-    // Move old body into new loop.
+    // Move the old body into the new loop.
     rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(),
                          newLoopOp.getInductionVars());
 
-    // Replace previous terminator with a new one that does not yield
-    // anything.
-    auto oldTerminator =
-        cast<gml_st::SubsetYieldOp>(newLoopOp.getBody()->getTerminator());
-    rewriter.setInsertionPointToEnd(newLoopOp.getBody());
-    auto newTerminator =
-        rewriter.create<gml_st::SubsetYieldOp>(oldTerminator->getLoc());
-
-    // Copy buffer of yielded tensor to output buffer. If everything
-    // bufferized inplace, this copy will fold away.
-    rewriter.setInsertionPoint(newTerminator);
-    for (auto it :
-         llvm::zip(oldTerminator.srcs(), oldTerminator.subsets(), newResults)) {
-      Value update, subset, output;
-      std::tie(update, subset, output) = it;
-      if (failed(
-              materializeInsertion(rewriter, update, subset, output, options)))
-        return failure();
-    }
-
-    // Erase old terminator.
-    rewriter.eraseOp(oldTerminator);
-
-    // Replace results and delete old op.
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, newResults);
-
+    // Remove the old op.
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -471,6 +439,7 @@ struct ForOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto forOp = cast<ForOp>(op);
+    Location loc = forOp.getLoc();
 
     // Get the bufferized output arguments.
     SmallVector<Value> bufferizedOutputs;
@@ -482,45 +451,27 @@ struct ForOpInterface
     }
 
     // Create new ForOp.
-    auto newForOp = rewriter.create<ForOp>(
-        forOp.getLoc(), TypeRange{}, forOp.lowerBound(), forOp.upperBound(),
-        forOp.step(), ValueRange{}, nullptr);
+    auto newForOp = rewriter.create<ForOp>(loc, TypeRange{}, forOp.lowerBound(),
+                                           forOp.upperBound(), forOp.step(),
+                                           ValueRange{}, nullptr);
     Block *loopBody = newForOp.getBody();
 
     // Add conversions to tensor so that we can reuse the old loop body.
     rewriter.setInsertionPointToStart(loopBody);
+    SmallVector<Value> outputsToTensors;
+    for (auto buf : bufferizedOutputs) {
+      Value tensor = rewriter.create<bufferization::ToTensorOp>(loc, buf);
+      outputsToTensors.push_back(tensor);
+    }
     SmallVector<Value> blockArgs = newForOp.getInductionVars();
-    blockArgs.append(bufferizedOutputs);
+    blockArgs.append(outputsToTensors);
 
     // Move old body into new for loop.
     rewriter.mergeBlocks(forOp.getBody(), loopBody, blockArgs);
 
-    // Replace previous terminator with a new one that yields the bufferized
-    // results.
-    auto oldTerminator =
-        cast<gml_st::SubsetYieldOp>(newForOp.getBody()->getTerminator());
-    rewriter.setInsertionPointToEnd(newForOp.getBody());
-    auto newTerminator =
-        rewriter.create<gml_st::SubsetYieldOp>(oldTerminator->getLoc());
-
-    // Copy buffer of yielded tensor to output buffer. If everything
-    // bufferized inplace, this copy will fold away.
-    rewriter.setInsertionPoint(newTerminator);
-    for (auto it : llvm::zip(oldTerminator.srcs(), oldTerminator.dsts(),
-                             oldTerminator.subsets())) {
-      Value src, dst, set;
-      std::tie(src, dst, set) = it;
-      if (failed(materializeInsertion(rewriter, src, set, dst, options)))
-        return failure();
-    }
-
-    // Erase old terminator.
-    rewriter.eraseOp(oldTerminator);
-
     // Replace results and delete old op.
     bufferization::replaceOpWithBufferizedValues(rewriter, op,
                                                  bufferizedOutputs);
-
     return success();
   }
 };
@@ -539,8 +490,49 @@ struct SubsetYieldOpInterface
     return {*loopResult};
   }
 
-  LogicalResult bufferize(Operation * /*op*/, RewriterBase & /*b*/,
-                          const BufferizationOptions & /*options*/) const {
+  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
+                          const BufferizationOptions &options) const {
+    auto yieldOp = cast<SubsetYieldOp>(op);
+    Operation *loop = yieldOp->getParentOp();
+    if (!isa<ForOp, ParallelOp>(loop))
+      return yieldOp->emitError("unsupported gml_st::SubsetYieldOp parent");
+
+    for (const auto &it :
+         llvm::enumerate(llvm::zip(yieldOp.srcs(), yieldOp.dsts(),
+                                   yieldOp.subsets(), loop->getResults()))) {
+      Value src, dst, set, loopResult;
+      std::tie(src, dst, set, loopResult) = it.value();
+
+      // `src` can be a scalar, that's `getBuffer()` should be called only for
+      // tensor types.
+      if (src.getType().isa<RankedTensorType>()) {
+        FailureOr<Value> srcBufferOr = getBuffer(rewriter, src, options);
+        if (failed(srcBufferOr)) return failure();
+
+        src = *srcBufferOr;
+      }
+
+      FailureOr<Value> dstBufferOr = getBuffer(rewriter, dst, options);
+      if (failed(dstBufferOr)) return failure();
+      Value dstBuffer = *dstBufferOr;
+
+      if (failed(materializeInsertion(rewriter, src, set, dstBuffer, options)))
+        return failure();
+      if (auto parallelOp =
+              dyn_cast<gml_st::ParallelOp>(yieldOp->getParentOp())) {
+        // Replace results of the enclosing loop with `to_tensor(dst)`.
+        OpBuilder::InsertionGuard g(rewriter);
+        rewriter.setInsertionPointAfter(loop);
+
+        Value resultToTensor =
+            rewriter.create<ToTensorOp>(loop->getLoc(), dstBuffer);
+        for (OpOperand &use : loopResult.getUses()) {
+          rewriter.updateRootInPlace(use.getOwner(),
+                                     [&]() { use.set(resultToTensor); });
+        }
+      }
+    }
+    rewriter.replaceOpWithNewOp<SubsetYieldOp>(op);
     return success();
   }
 

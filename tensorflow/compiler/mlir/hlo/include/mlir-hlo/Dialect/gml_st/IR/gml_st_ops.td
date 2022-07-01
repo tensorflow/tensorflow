@@ -203,8 +203,8 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     unsigned getNumOutputs() { return outputs().size(); }
 
     /// Get the region output args.
-    ValueRange getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(outputs().size());
+    Block::BlockArgListType getRegionOutputArgs() {
+      return getBody()->getArguments().take_back(getNumOutputs());
     }
 
     /// Get the region output arg that corresponds to an OpOperand.
