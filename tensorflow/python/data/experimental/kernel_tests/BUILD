@@ -442,9 +442,9 @@ tf_py_test(
 
 tf_py_test(
     name = "parallel_interleave_test",
-    size = "small",
+    size = "medium",
     srcs = ["parallel_interleave_test.py"],
-    shard_count = 16,
+    shard_count = 8,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
