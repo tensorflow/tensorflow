@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:cholesky_expander",
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:compiler",
