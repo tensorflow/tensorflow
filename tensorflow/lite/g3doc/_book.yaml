@@ -99,8 +99,7 @@ upper_tabs:
 
       - heading: "Images & video"
       - title: "Object detection"
-        path: https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android
-        status: external
+        path: /lite/android/tutorials/object_detection
       - title: "Image classification"
         path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
         status: external
