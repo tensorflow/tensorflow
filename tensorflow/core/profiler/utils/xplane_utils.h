@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -173,6 +175,31 @@ void SortPlanesById(XPlanePointerIterator begin, XPlanePointerIterator end) {
     return a->id() < b->id();  // ascending order of device xplane id.
   });
 }
+
+// When certain event context only exists from event from other line, which
+// "encloses" current event in timeline, we need to find out quickly which
+// enclosing event is (or if there is one).
+// To Avoid O(N) search overhead, assume the event are processed in the order
+// of "XLine default sorting order".
+class XEventContextTracker {
+ public:
+  // The events on line need to be sorted and disjointed.
+  XEventContextTracker(const XPlaneVisitor* plane, const XLine* line)
+      : plane_(plane), line_(line) {}
+
+  // Returns the event that encloses/contains the specified input event.
+  // Expects called with events with start timestamps sorted incrementingly.
+  std::optional<XEventVisitor> GetContainingEvent(const Timespan& event);
+
+  // Returns the event that overlaps the specified input event.
+  // Expects called with events with start timestamps sorted incrementingly.
+  std::optional<XEventVisitor> GetOverlappingEvent(const Timespan& event);
+
+ private:
+  const XPlaneVisitor* plane_;
+  const XLine* line_;
+  int64_t current_index_ = -1;
+};
 
 }  // namespace profiler
 }  // namespace tensorflow

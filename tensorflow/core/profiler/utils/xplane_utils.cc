@@ -412,5 +412,49 @@ uint64_t GetDevicePlaneFingerprint(const XPlane& plane) {
   return output;
 }
 
+std::optional<XEventVisitor> XEventContextTracker::GetContainingEvent(
+    const Timespan& event) {
+  if (!line_) return std::nullopt;
+  if (current_index_ != -1) {
+    XEventVisitor current_event(plane_, line_, &line_->events(current_index_));
+    if (current_event.GetTimespan().Includes(event)) {
+      return current_event;
+    }
+  }
+  for (int i = current_index_ + 1; i < line_->events_size(); ++i) {
+    XEventVisitor current_event(plane_, line_, &line_->events(i));
+    if (current_event.TimestampPs() > event.end_ps()) break;
+    if (current_event.EndTimestampPs() < event.begin_ps()) continue;
+    current_index_ = i;
+    if (current_event.GetTimespan().Includes(event)) {
+      return current_event;
+    }
+    break;  // overlapping
+  }
+  return std::nullopt;
+}
+
+std::optional<XEventVisitor> XEventContextTracker::GetOverlappingEvent(
+    const Timespan& event) {
+  if (!line_) return std::nullopt;
+  if (current_index_ != -1) {
+    XEventVisitor current_event(plane_, line_, &line_->events(current_index_));
+    if (current_event.GetTimespan().Overlaps(event)) {
+      return current_event;
+    }
+  }
+  for (int i = current_index_ + 1; i < line_->events_size(); ++i) {
+    XEventVisitor current_event(plane_, line_, &line_->events(i));
+    if (current_event.TimestampPs() > event.end_ps()) break;
+    if (current_event.EndTimestampPs() < event.begin_ps()) continue;
+    current_index_ = i;
+    if (current_event.GetTimespan().Overlaps(event)) {
+      return current_event;
+    }
+    break;  // overlapping
+  }
+  return std::nullopt;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
