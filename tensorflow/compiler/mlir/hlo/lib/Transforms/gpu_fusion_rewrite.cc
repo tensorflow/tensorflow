@@ -100,13 +100,15 @@ static constexpr llvm::StringLiteral kWrittenOperandsAttrName =
 
 void GpuFusionRewritePass::getDependentDialects(
     DialectRegistry& registry) const {
-  OpPassManager pm;
-  createHloToGpuPipeline(pm, /*tileSizes=*/{}, /*unrollFactors=*/{});
-  pm.getDependentDialects(registry);
+  OpPassManager passManager;
+  createHloToGpuPipeline(passManager, /*tileSizes=*/{}, /*unrollFactors=*/{});
+  passManager.getDependentDialects(registry);
 }
 
 void GpuFusionRewritePass::runOnOperation() {
   SymbolTable symbolTable(getOperation());
+  // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
+  // pipelines. Printing needs to be enabled on the parent pass manager.
   PassManager passManager(&getContext(), getOperation().getOperationName());
   // TODO(csigg): don't hardcode block size and elements per thread.
   createHloToGpuPipeline(passManager, /*tileSizes=*/256, /*unrollFactors=*/{4});
