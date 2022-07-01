@@ -250,6 +250,7 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
   target.addLegalOp<mhlo::LogOp>();
+  target.addLegalOp<mhlo::AbsOp>();
   return target;
 }
 
