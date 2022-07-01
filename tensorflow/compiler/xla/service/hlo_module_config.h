@@ -273,11 +273,12 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
-  const std::vector<std::vector<int64_t>>& dot_config() const {
+  const absl::flat_hash_map<std::string, std::vector<int64_t>>& dot_config()
+      const {
     return dot_config_;
   }
 
-  std::vector<std::vector<int64_t>>* mutable_dot_config() {
+  absl::flat_hash_map<std::string, std::vector<int64_t>>* mutable_dot_config() {
     return &dot_config_;
   }
 
@@ -409,9 +410,8 @@ class HloModuleConfig {
   std::vector<std::vector<bool>> fusion_config_;
 
   // Custom dot canonicalization configuration, where dot_config_[v] control
-  // how to convert dot operation v (sorted topologically and by computation) to
-  // convolution.
-  std::vector<std::vector<int64_t>> dot_config_;
+  // how to convert dot operation named 'v' to convolution.
+  absl::flat_hash_map<std::string, std::vector<int64_t>> dot_config_;
 
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
