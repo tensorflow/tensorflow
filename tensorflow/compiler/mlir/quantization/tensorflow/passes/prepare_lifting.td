@@ -19,6 +19,13 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
+include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+
+// Converts arith.constant ops from freezing passes back to tf.Const ops.
+def ConvertArithConstToTfConst : Pat<
+  (Arith_ConstantOp:$res NonOpaqueElementsAttr:$value),
+  (TF_ConstOp $value),
+  [(AnyStaticShapeTensor $res)]>;
 
 // Converts tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:

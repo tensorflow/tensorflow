@@ -46,6 +46,7 @@ from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils_impl
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
 # Type aliases for quantization method protobuf enums.
@@ -146,9 +147,37 @@ def _create_simple_tf1_conv_model(
   return in_placeholder, output_tensor
 
 
+def _create_simple_tf1_gather_model(
+    use_variable_for_filter=False) -> Tuple[core.Tensor, core.Tensor]:
+  """Creates a basic gather model.
+
+  This is intended to be used for TF1 (graph mode) tests.
+
+  Args:
+    use_variable_for_filter: Setting this to `True` makes the filter for the
+      gather operation a `tf.Variable`.
+
+  Returns:
+    in_placeholder: Input tensor placeholder.
+    output_tensor: The resulting tensor of the gather operation.
+  """
+  in_placeholder = array_ops.placeholder(dtypes.int64, shape=(6))
+
+  filters = random_ops.random_uniform(shape=(64, 512), minval=-1., maxval=1.)
+  if use_variable_for_filter:
+    filters = variables.Variable(filters)
+
+  output_tensor = array_ops.gather_v2(filters, in_placeholder)
+
+  return in_placeholder, output_tensor
+
+
 def _create_data_generator(
     input_key: str,
     shape: Sequence[int],
+    minval=-1.,
+    maxval=1.,
+    dtype=dtypes.float32,
     num_examples=8) -> repr_dataset.RepresentativeDataset:
   """Creates a data generator to be used as representative dataset.
 
@@ -157,6 +186,10 @@ def _create_data_generator(
   Args:
     input_key: The string key that identifies the created tensor as an input.
     shape: Shape of the tensor data.
+    minval: The lower bound of the generated input
+    maxval: The upper bound of the generated input
+    dtype: The type of the generated input - usually dtypes.float32 for float
+      and dtypes.int64 for int
     num_examples: Number of examples in the representative dataset.
 
   Yields:
@@ -164,7 +197,7 @@ def _create_data_generator(
       values.
   """
   for _ in range(num_examples):
-    yield {input_key: random_ops.random_uniform(shape, minval=-1., maxval=1.)}
+    yield {input_key: random_ops.random_uniform(shape, minval, maxval, dtype)}
 
 
 def _save_tf1_model(sess: session.Session, saved_model_path: str,
@@ -189,6 +222,77 @@ def _save_tf1_model(sess: session.Session, saved_model_path: str,
   v1_builder.add_meta_graph_and_variables(
       sess, tags, signature_def_map={signature_key: sig_def})
   v1_builder.save()
+
+
+def _create_and_save_tf1_gather_model(saved_model_path: str,
+                                      signature_key: str,
+                                      tags: Set[str],
+                                      input_key: str,
+                                      output_key: str,
+                                      use_variable=False) -> core.Tensor:
+  """Creates and saves a simple gather model.
+
+  This is intended to be used for TF1 (graph mode) tests.
+
+  Args:
+    saved_model_path: Directory to save the model.
+    signature_key: The key to the SignatureDef that inputs & outputs correspond
+      to.
+    tags: Set of tags associated with the model.
+    input_key: The key to the input tensor.
+    output_key: The key to the output tensor.
+    use_variable: Setting this to `True` makes the filter for the gather
+      operation a `tf.Variable`.
+
+  Returns:
+    in_placeholder: The placeholder tensor used as an input to the model.
+  """
+  with ops.Graph().as_default(), session.Session() as sess:
+    in_placeholder, output_tensor = _create_simple_tf1_gather_model(
+        use_variable_for_filter=use_variable)
+
+    if use_variable:
+      sess.run(variables.global_variables_initializer())
+
+    _save_tf1_model(
+        sess,
+        saved_model_path,
+        signature_key,
+        tags,
+        inputs={input_key: in_placeholder},
+        outputs={output_key: output_tensor})
+
+    return in_placeholder
+
+
+def _create_gather_model(use_variable):
+
+  class GatherModel(autotrackable.AutoTrackable):
+    """A simple model with a single gather."""
+
+    def __init__(self, use_variable):
+      """Initializes a GatherModel.
+
+      Args:
+        use_variable: If True, creates a variable for weight.
+      """
+      super(GatherModel, self).__init__()
+      w_val = np.random.randint(low=0, high=100, size=(64, 512), dtype=np.int64)
+      if use_variable:
+        self.w = variables.Variable(w_val)
+      else:
+        self.w = w_val
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(
+            shape=[6], dtype=dtypes.int64, name='input_tensor')
+    ])
+    def __call__(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+      """Performs a gather operation."""
+      out = array_ops.gather_v2(self.w, input_tensor)
+      return {'output': out}
+
+  return GatherModel(use_variable)
 
 
 def _create_and_save_tf1_conv_model(saved_model_path: str,
@@ -824,6 +928,46 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
+  @parameterized.named_parameters(
+      ('use_constant', False),
+      ('use_variable', True),
+  )
+  @test_util.run_v2_only
+  def test_gather_model(self, use_variable):
+
+    model = _create_gather_model(use_variable)
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    data_gen = _create_data_generator(
+        input_key='input_tensor',
+        shape=[6],
+        minval=0,
+        maxval=10,
+        dtype=dtypes.int64)
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options, data_gen)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Currently gather is not supported.
+    self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
+
   @test_util.run_in_graph_and_eager_modes
   def test_model_ptq_use_representative_samples_list(self):
     model = MatmulModel()
@@ -1180,7 +1324,7 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           representative_dataset=invalid_dataset)
 
   @test_util.run_in_graph_and_eager_modes
-  def test_ptq_model_with_tf1_saved_model_with_variable(self):
+  def test_ptq_model_with_tf1_saved_model_with_variable_for_conv2d(self):
     input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
@@ -1218,6 +1362,56 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @parameterized.named_parameters(
+      ('use_constant', False),
+      ('use_variable', True),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_ptq_model_with_tf1_saved_model_with_variable_for_gather(
+      self, use_variable):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+
+    input_placeholder = _create_and_save_tf1_gather_model(
+        input_saved_model_path,
+        signature_key,
+        tags,
+        input_key='x',
+        output_key='output',
+        use_variable=use_variable)
+
+    signature_keys = [signature_key]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    data_gen = _create_data_generator(
+        input_key='x',
+        shape=input_placeholder.shape,
+        minval=0,
+        maxval=10,
+        dtype=dtypes.int64)
+
+    converted_model = quantize_model.quantize(
+        input_saved_model_path,
+        signature_keys,
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=data_gen)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Quantization is not currently supported for gather.
+    self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
 
   @test_util.run_in_graph_and_eager_modes
   def test_ptq_model_with_tf1_saved_model(self):
@@ -1447,7 +1641,6 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           representative_dataset=data_gen)
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
   """Test cases for dynamic range quantization.
 
@@ -1455,6 +1648,7 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
   (default in TF2) to ensure support for when TF2 is disabled.
   """
 
+  @test_util.run_in_graph_and_eager_modes
   def test_matmul_model(self):
 
     class SimpleMatmulModel(module.Module):
@@ -1499,6 +1693,7 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_conv_model(self):
 
     class ConvModel(module.Module):
@@ -1554,6 +1749,39 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     # Currently conv is not supported.
     self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
 
+  @parameterized.named_parameters(
+      ('use_constant', False),
+      ('use_variable', True),
+  )
+  @test_util.run_v2_only
+  def test_gather_model(self, use_variable):
+
+    model = _create_gather_model(use_variable)
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              ['serving_default'], tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Currently gather is not supported.
+    self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
   def test_conv_model_with_wrong_tags_raises_error(self):
     input_saved_model_path = self.create_tempdir('input').full_path
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -1587,6 +1815,45 @@ class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
           output_directory,
           quantization_options,
           representative_dataset=data_gen)
+
+  @parameterized.named_parameters(
+      ('use_constant', False),
+      ('use_variable', True),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_gather_model_tf1(self, use_variable):
+    input_saved_model_path = self.create_tempdir('input').full_path
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = {tag_constants.SERVING}
+
+    _ = _create_and_save_tf1_gather_model(
+        input_saved_model_path,
+        signature_key,
+        tags,
+        input_key='x',
+        output_key='output',
+        use_variable=use_variable)
+
+    signature_keys = [signature_key]
+    output_directory = self.create_tempdir().full_path
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    converted_model = quantize_model.quantize(input_saved_model_path,
+                                              signature_keys, tags,
+                                              output_directory,
+                                              quantization_options)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          signature_keys)
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    # Quantization is not currently supported for gather.
+    self.assertFalse(_contains_quantized_function_call(output_meta_graphdef))
 
 
 if __name__ == '__main__':
