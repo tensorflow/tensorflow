@@ -663,7 +663,6 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }, {
       "dtype": np.int64,
   }])
-  @test_util.disable_xla("XLA does not support SparseTensor")
   def test_sparse_input_all_count(self, dtype):
     np.random.seed(42)
     num_rows = 128
@@ -709,7 +708,6 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }, {
       "dtype": np.int64,
   }])
-  @test_util.disable_xla("XLA does not support SparseTensor")
   def test_sparse_input_all_binary(self, dtype):
     np.random.seed(42)
     num_rows = 128

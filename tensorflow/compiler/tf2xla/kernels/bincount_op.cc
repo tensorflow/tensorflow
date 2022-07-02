@@ -74,16 +74,11 @@ class DenseBincountOp : public XlaOpKernel {
 
     auto weights_shape = weights_shape_or.ValueOrDie();
     auto weights_size = weights_shape.dimensions(0);
-    xla::PrimitiveType dtype;
-    bool has_weights;
+    xla::PrimitiveType dtype = ctx->InputXlaType("weights");;
+    bool has_weights = false;
     if (weights_size) {
       has_weights = true;
-      dtype = ctx->InputXlaType("weights");
-    } else {
-      has_weights = false;
-      dtype = input_xla_type;
-    }
-
+    } 
     xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
     xla::ScatterDimensionNumbers scatter_dnums;
     scatter_dnums.set_index_vector_dim(1);
@@ -140,7 +135,6 @@ class DenseBincountOp : public XlaOpKernel {
     }();
     output = xla::Scatter(output, idx, updates, assn_computation, scatter_dnums,
                           false, false);
-
     ctx->SetOutput(0, output);
   }
 };
