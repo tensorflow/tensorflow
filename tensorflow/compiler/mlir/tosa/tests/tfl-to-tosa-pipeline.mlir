@@ -1198,6 +1198,18 @@ func.func @test_split_axis_0(%arg0: tensor<21x13x3xf32>) -> (tensor<7x13x3xf32>,
 
 // -----
 
+// CHECK-LABEL: test_split_v_neg_axis
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [2, 3, 3, 3], start = [0, 0, 0, 0]}
+// CHECK: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [2, 3, 3, 5], start = [0, 0, 0, 3]}
+func.func @test_split_v_neg_axis(%arg0: tensor<2x3x3x8xf32>) -> (tensor<2x3x3x3xf32>, tensor<2x3x3x5xf32>) {
+  %split_size = arith.constant dense<[3, 5]> : tensor<2xi32>
+  %axis = arith.constant dense<-1> : tensor<i32>
+  %0, %1 = "tfl.split_v"(%arg0, %split_size, %axis)  {num_splits = 2 : i32}  : (tensor<2x3x3x8xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<2x3x3x3xf32>, tensor<2x3x3x5xf32>)
+  func.return %0, %1 : tensor<2x3x3x3xf32>, tensor<2x3x3x5xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_tile
 // CHECK: tosa.tile
 func.func @test_tile(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
