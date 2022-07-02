@@ -18,7 +18,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
