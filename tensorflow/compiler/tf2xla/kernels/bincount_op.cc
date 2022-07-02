@@ -36,39 +36,60 @@ class DenseBincountOp : public XlaOpKernel {
  private:
   bool binary_output_ = false;
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp input = ctx->Input(0);
-    xla::XlaOp weights = ctx->Input(2);
-    StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
-    OP_REQUIRES_OK(ctx, weights_shape_or.status());
-    auto weights_shape = weights_shape_or.ValueOrDie();
-    auto weights_size = weights_shape.dimensions(0);
-    auto input_xla_type = ctx->input_xla_type(0);
-    xla::PrimitiveType dtype;
-    bool has_weights;
-    if (weights_size) {
-      has_weights = true;
-      dtype = ctx->input_xla_type(2);
-    } else {
-      has_weights = false;
-      dtype = input_xla_type;
-    }
     int64_t output_size;
+    xla::XlaOp output_size_param = ctx->Input("size");
+    StatusOr<xla::Shape> output_shape_or = ctx->builder()->GetShape(output_size_param);
+    OP_REQUIRES_OK(ctx, output_shape_or.status());
+    auto output_shape_param = output_shape_or.ValueOrDie();
+    auto output_rank = output_shape_param.rank();
+    OP_REQUIRES(
+      ctx, output_rank == 0,
+      xla::InvalidArgument("Shape must be rank 0 but is rank 1", output_rank));
+
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("size", &output_size));
+    xla::XlaOp idx, updates, output;
+    xla::XlaOp input = ctx->Input(0);
+    auto input_xla_type = ctx->input_xla_type(0);
+    auto zero = xla::Zero(ctx->builder(), input_xla_type);
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.ValueOrDie();
     auto size = input_shape.dimensions(0);
+    if (! size) {
+      output = xla::Broadcast(zero, {output_size});
+      ctx->SetOutput(0, output);
+      return;
+    }
     auto rank = input_shape.rank();
 
+    OP_REQUIRES(
+      ctx, rank <= 2,
+      xla::InvalidArgument("Shape must be at most rank 2 but is rank ", rank));
+
+    xla::XlaOp weights = ctx->Input(2);
+    StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
+    OP_REQUIRES_OK(ctx, weights_shape_or.status());
+
+    auto weights_shape = weights_shape_or.ValueOrDie();
+    auto weights_size = weights_shape.dimensions(0);
+    xla::PrimitiveType dtype;
+    bool has_weights;
+    if (weights_size) {
+      has_weights = true;
+      dtype = ctx->InputXlaType("weights");
+    } else {
+      has_weights = false;
+      dtype = input_xla_type;
+    }
+
     xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
-    xla::XlaOp idx, updates, output;
     xla::ScatterDimensionNumbers scatter_dnums;
     scatter_dnums.set_index_vector_dim(1);
     scatter_dnums.add_inserted_window_dims(0);
     scatter_dnums.add_scatter_dims_to_operand_dims(0);
-    auto one = xla::One(ctx->builder(), input_xla_type);
-    auto zero = xla::Zero(ctx->builder(), input_xla_type);
-
+    zero = xla::Zero(ctx->builder(), dtype);
+    auto one = xla::One(ctx->builder(), dtype);
+  
     if (rank == 2) {
       output_shape = xla::ShapeUtil::MakeShape(dtype, {size, output_size});
       scatter_dnums.add_inserted_window_dims(1);
@@ -86,23 +107,23 @@ class DenseBincountOp : public XlaOpKernel {
       idx = xla::ConcatInDim(ctx->builder(), iotas_to_concat, 1);
       updates = xla::Broadcast(
           one, {input_shape.dimensions(0) * input_shape.dimensions(1)});
-      if (has_weights) {
+      output = xla::Broadcast(zero, {output_shape.dimensions(0), output_shape.dimensions(1)});
+      if (has_weights and !binary_output_) {
         weights = xla::Reshape(
             weights, {input_shape.dimensions(0) * input_shape.dimensions(1)});
-        zero = xla::Zero(ctx->builder(), dtype);
         updates = weights;
       }
     } else {
       input = xla::Reshape(input, {size, 1});
       idx = xla::Reshape(input, {size, 1});
       updates = xla::Broadcast(one, {size});
-      if (has_weights) {
+      output = xla::Broadcast(zero, {output_size});
+      if (has_weights and !binary_output_) {
         updates = weights;
-        zero = xla::Zero(ctx->builder(), dtype);
       }
     }
 
-    output = xla::Broadcast(zero, {output_shape.dimensions()});
+    
 
     xla::XlaComputation assn_computation = [&] {
       std::unique_ptr<xla::XlaBuilder> subb =
