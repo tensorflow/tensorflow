@@ -38,7 +38,7 @@ struct DataServiceParams final {
   int64_t repetition = 0;
   std::optional<int64_t> num_consumers;
   std::optional<int64_t> consumer_index;
-  TargetWorkers target_workers;
+  TargetWorkers target_workers = TargetWorkers::TARGET_WORKERS_UNSPECIFIED;
   DataServiceMetadata metadata;
   std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
 };
@@ -50,7 +50,7 @@ struct GetNextResult final {
   GetNextResult& operator=(const GetNextResult&) = delete;
 
   std::vector<Tensor> tensors;
-  bool end_of_sequence;
+  bool end_of_sequence = false;
 };
 
 }  // namespace data

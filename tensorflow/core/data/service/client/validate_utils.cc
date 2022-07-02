@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// Validates local worker relateed parameters.
+// Validates local worker related parameters.
 Status ValidateLocalWorkers(const DataServiceParams& data_service_params) {
   if (data_service_params.target_workers != TARGET_WORKERS_LOCAL) {
     return OkStatus();
