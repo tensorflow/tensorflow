@@ -66,8 +66,7 @@ class DenseBincountOp : public XlaOpKernel {
 
     OP_REQUIRES(
       ctx, rank <= 2,
-      errors::InvalidArgument("Shape must be at most rank 2 
-                               but is rank ", rank));
+      errors::InvalidArgument("Shape must be at most rank 2 but is rank ", rank));
 
     xla::XlaOp weights = ctx->Input(2);
     StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
