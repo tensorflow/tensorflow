@@ -230,6 +230,7 @@ HloAsyncInstruction::HloAsyncInstruction(
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(this);
+  set_async_thread_name(async_thread_name);
 }
 
 HloAsyncInstruction::HloAsyncInstruction(
@@ -244,6 +245,7 @@ HloAsyncInstruction::HloAsyncInstruction(
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(this);
+  set_async_thread_name(async_thread_name);
 }
 
 HloAsyncInstruction::~HloAsyncInstruction() {
@@ -326,6 +328,21 @@ void HloAsyncInstruction::set_async_group_id(
 void HloAsyncInstruction::set_async_thread_name(
     const std::optional<std::string>& async_thread_name) {
   async_thread_name_ = async_thread_name;
+  // Recursively sets all called computation to have same thread name.
+  std::function<void(HloComputation*, std::optional<std::string>)>
+      set_computation_thread_name =
+          [&](HloComputation* called_computation,
+              std::optional<std::string> async_thread_name) {
+            called_computation->SetThreadName(async_thread_name);
+            for (HloInstruction* instr : called_computation->instructions()) {
+              for (HloComputation* nested_called_computation :
+                   instr->called_computations()) {
+                set_computation_thread_name(nested_called_computation,
+                                            async_thread_name);
+              }
+            }
+          };
+  set_computation_thread_name(async_wrapped_computation(), async_thread_name);
 }
 
 HloInstructionProto HloAsyncInstruction::ToProto() const {

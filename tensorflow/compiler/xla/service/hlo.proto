@@ -364,6 +364,9 @@ message HloComputationProto {
   // to determine whether they are a fusion in CreateFromProto since the
   // parent fusion_instruction_ may get removed and be nullptr.
   bool is_fusion_computation = 7;
+
+  // The name of thread this computation belongs to.
+  string thread_name = 8;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of

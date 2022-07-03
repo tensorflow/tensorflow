@@ -1009,7 +1009,8 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
   return true;
 }
 
-// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
+// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list(,
+// 'thread_name='thread_name)?
 bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
@@ -1042,7 +1043,13 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
             computation->root_instruction()->name(), ", ",
             ShapeUtil::HumanString(computation->root_instruction()->shape())));
   }
-
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  std::optional<std::string> thread_name;
+  attrs["thread_name"] = {/*required=*/false, AttrTy::kString, &thread_name};
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+  computation->SetThreadName(thread_name);
   if (is_entry_computation) {
     if (*entry_computation != nullptr) {
       return Error(maybe_entry_loc, "expects only one ENTRY");
@@ -1677,10 +1684,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
-            *shape, operands[0], *async_computation, async_group_id));
+            *shape, operands[0], *async_computation, async_group_id,
+            async_thread_name));
       }
       return builder->AddInstruction(HloInstruction::CreateAsyncDone(
-          *shape, operands[0], *async_computation, async_group_id));
+          *shape, operands[0], *async_computation, async_group_id,
+          async_thread_name));
     }
     case HloOpcode::kCopyStart: {
       // If the is_cross_program_prefetch attribute is not present then default

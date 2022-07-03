@@ -631,11 +631,13 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt);
+      std::optional<int64_t> async_group_id = std::nullopt,
+      std::optional<std::string> async_thread_name = std::nullopt);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
-      std::optional<int64_t> async_group_id = std::nullopt);
+      std::optional<int64_t> async_group_id = std::nullopt,
+      std::optional<std::string> async_thread_name = std::nullopt);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.

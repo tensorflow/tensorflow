@@ -1328,10 +1328,18 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
       *operand->async_wrapped_computation()) {
     return InternalError(
         "The %s expects its wrapped async computation to be identical to its "
-        "operand's wrapped async computation (%s vs %s).",
+        "operand's wrapped async computation (%s vs %s), thread name (%s vs "
+        "%s).",
         HloOpcodeString(async_op->opcode()),
         async_op->async_wrapped_instruction()->ToString(),
-        operand->async_wrapped_instruction()->ToString());
+        operand->async_wrapped_instruction()->ToString(),
+        async_op->async_wrapped_computation()->thread_name()
+            ? absl::StrCat(
+                  *async_op->async_wrapped_computation()->thread_name())
+            : "none",
+        operand->async_wrapped_computation()->thread_name()
+            ? absl::StrCat(*operand->async_wrapped_computation()->thread_name())
+            : "none");
   }
   if (async_op->async_group_id() != operand->async_group_id()) {
     return InternalError(
