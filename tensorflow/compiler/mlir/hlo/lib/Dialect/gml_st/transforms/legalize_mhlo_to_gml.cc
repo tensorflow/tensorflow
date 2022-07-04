@@ -56,7 +56,7 @@ struct DynamicBroadcastInDimOpPattern
         loc, dynamicDims, staticShapeInfo, resultTy.getElementType());
 
     rewriter.replaceOpWithNewOp<gml_st::DynamicBroadcastInDimOp>(
-        op, resultTy, initTensor, op.operand(), op.broadcast_dimensions(),
+        op, resultTy, op.operand(), initTensor, op.broadcast_dimensions(),
         op.known_expanding_dimensionsAttr(),
         op.known_nonexpanding_dimensionsAttr());
     return success();

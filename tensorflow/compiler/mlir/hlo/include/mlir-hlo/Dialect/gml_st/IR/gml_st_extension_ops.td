@@ -20,20 +20,23 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 
-def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim", [
-    NoSideEffect, DeclareOpInterfaceMethods<FusionInterface>]> {
+def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim",
+    [NoSideEffect,
+     TypesMatchWith<"result and init types match", "init", "result", "$_self">,
+     DeclareOpInterfaceMethods<FusionInterface>]> {
   let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
   let arguments = (ins
-    AnyTensor:$init,
     AnyTensor:$operand,
+    AnyTensor:$init,
     I64ElementsAttr:$broadcast_dimensions,
     OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
     OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions
   );
   let results = (outs AnyTensor:$result);
   let assemblyFormat = [{
-    $init `,` $operand `,` custom<I64ElementsAttr>($broadcast_dimensions)
-    attr-dict `:` type($init) `,` type($operand) `->` type($result)
+    `ins` `(` $operand `:` type($operand) `)`
+    `outs` `(` $init `:` type($init) `)`
+    attr-dict
   }];
   let hasVerifier = 0;
 }

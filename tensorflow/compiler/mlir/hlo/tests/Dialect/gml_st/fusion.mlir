@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-fusion | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --gml-fusion | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
@@ -48,7 +48,10 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // Check tiled broadcast.
   // CHECK-DAG: %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[RES_TILE]]] : tensor<?x?x?xf32>[!gml_st.tile<3x4x5>]
   // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]] : tensor<?x?xf32>[!gml_st.tile<?x?>]
-  // CHECK-DAG: %[[RES:.*]] = gml_st.dynamic_broadcast_in_dim %[[INIT_SUB]], %[[ARG_SUB]], [0, 2] : tensor<3x4x5xf32>, tensor<?x?xf32> -> tensor<3x4x5xf32>
+  // CHECK-NEXT: %[[RES:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK-SAME ins(%[[ARG_SUB]] : tensor<?x?xf32>)
+  // CHECK-SAME outs(%[[INIT_SUB]] : tensor<3x4x5xf32>)
+  // CHECK-SAME {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}
   // CHECK: return %[[RES]] : tensor<3x4x5xf32>
 
   %c0 = arith.constant 0 : index
@@ -60,8 +63,8 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
-  %bcast = gml_st.dynamic_broadcast_in_dim %dst, %arg, [0, 2]
-      : tensor<?x?x?xf32>, tensor<?x?xf32> -> tensor<?x?x?xf32>
+  %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>) 
+      outs(%dst: tensor<?x?x?xf32>) { broadcast_dimensions = dense<[0, 2]> : tensor<2xi64> }
 
   // Materialze a tile.
   %space = gml_st.space [%d0, %d1, %d2] : !gml_st.tile<?x?x?>

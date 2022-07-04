@@ -1501,7 +1501,7 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
   auto tiledResultTy =
       RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
   return builder.create<DynamicBroadcastInDimOp>(
-      loc, tiledResultTy, tiledInit, tiledOperand, broadcast_dimensions(),
+      loc, tiledResultTy, tiledOperand, tiledInit, broadcast_dimensions(),
       known_expanding_dimensionsAttr(), known_nonexpanding_dimensionsAttr());
 }
 

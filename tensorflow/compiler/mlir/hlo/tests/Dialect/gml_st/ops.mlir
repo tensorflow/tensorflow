@@ -309,3 +309,14 @@ func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   func.return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @for_loop
+
+func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
+                                    %dst: tensor<?x?x?xf32>) {
+  %bcast = gml_st.dynamic_broadcast_in_dim
+      ins(%arg: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?x?xf32>) {
+        broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>
+      }
+  func.return
+}
+// CHECK-LABEL: func @dynamic_broadcast_in_dim

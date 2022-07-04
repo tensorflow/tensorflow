@@ -10,7 +10,10 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>, %shape : tensor<3xin
   // CHECK-DAG: %[[SHAPE_D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
   // CHECK-DAG: %[[SHAPE_D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
   // CHECK-DAG: %[[INIT:.*]] = linalg.init_tensor [%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]]] : tensor<?x?x?xf32>
-  // CHECK-DAG: %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim %[[INIT]], %[[ARG]], [0, 2] : tensor<?x?x?xf32>, tensor<?x?xf32> -> tensor<?x?x?xf32>
+  // CHECK-NEXT: %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK-SAME: ins(%[[ARG]] : tensor<?x?xf32>)
+  // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)
+  // CHECK-SAME: {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}
   // CHECK:     return %[[BCAST]]
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape) 
       { broadcast_dimensions = dense<[0, 2]> : tensor<2xi64> } 
