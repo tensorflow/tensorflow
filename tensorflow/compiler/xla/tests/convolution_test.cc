@@ -1781,6 +1781,8 @@ ENTRY TestComputation {
 XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
   const bool isCudaPlatform =
       GetTestPlatform()->id() == stream_executor::cuda::kCudaPlatformId;
+  const bool isROCmPlatform =
+      GetTestPlatform()->id() == stream_executor::rocm::kROCmPlatformId;
   const bool isAutotuneDisabled =
       GetDebugOptionsForTest().xla_gpu_autotune_level() == 0;
 
@@ -1804,6 +1806,8 @@ ENTRY TestComputation {
                       isAutotuneDisabled ? "Unimplemented convolution"
                                          : "Unsupported convolution datatype"));
     }
+  } else if (isROCmPlatform) {
+    EXPECT_FALSE(result);
   } else {
     EXPECT_TRUE(result);
   }
