@@ -1684,7 +1684,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
   # Converting a Jax model to a TensorFlow Lite model.
   converter = tf.lite.TFLiteConverter.experimental_from_jax([func], [[
-      ('input1', input1), ('input2', input2)])
+      ('input1', input1), ('input2', input2)]])
   tflite_model = converter.convert()
   ```
   """
