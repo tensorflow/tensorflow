@@ -2308,6 +2308,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
         << " != " << broadcast->operand(0)->shape().rank();
+    if (opts_.verify_broadcast_dimensions_order) {
+      TF_RET_CHECK(absl::c_is_sorted(broadcast->dimensions()))
+          << "Broadcast dimensions should be ordered, got: "
+          << broadcast->ToString();
+    }
     return OkStatus();
   }
 
@@ -2383,6 +2388,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       TF_RET_CHECK(crs->channel_id().value() > 0)
           << "All reduce channel id must be greater than 0 for "
           << crs->ToShortString();
+    }
+    return OkStatus();
+  }
+
+  Status HandleReshape(HloInstruction* hlo) override {
+    if (opts_.verify_reshape_is_bitcast) {
+      TF_RET_CHECK(
+          ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()))
+          << "Reshape should be a physical bitcast, got: " << hlo->ToString();
     }
     return OkStatus();
   }

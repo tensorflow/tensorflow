@@ -2212,6 +2212,79 @@ TEST_F(HloVerifierTest, ReduceScatterNonUniformGroups) {
               HasSubstr("Replica groups expected to be of uniform size"));
 }
 
+TEST_F(HloVerifierTest, VerifyBroadcastDimensionsOrder) {
+  const char* const hlo = R"(
+HloModule module
+
+ENTRY computation {
+  mul = f32[32,32,32]{2,1,0} parameter(0)
+  ROOT broadcast = f32[32,32,32,32]{3,2,1,0} broadcast(mul), dimensions={3,2,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = HloVerifier{HloVerifierOpts{}.VerifyBroadcastDimensionsOrder()}
+                    .Run(module.get())
+                    .status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Broadcast dimensions should be ordered"));
+}
+
+TEST_F(HloVerifierTest, VerifyBroadcastDimensionsOrderOK) {
+  const char* const hlo = R"(
+HloModule module
+
+ENTRY computation {
+  mul = f32[4,5] parameter(0)
+  ROOT broadcast = f32[4,3,2,5] broadcast(mul), dimensions={0,3}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyBroadcastDimensionsOrder()}
+                   .Run(module.get())
+                   .status());
+}
+
+TEST_F(HloVerifierTest, ReshapeIsNotBitcast) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[8,3]{1,0} parameter(0)
+  ROOT r = f32[4,2,3]{0,1,2} reshape(p)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status =
+      HloVerifier{
+          HloVerifierOpts{}.MakeLayoutSensitive().VerifyReshapeIsBitcast()}
+          .Run(module.get())
+          .status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Reshape should be a physical bitcast"));
+}
+
+TEST_F(HloVerifierTest, ReshapeIsBitcast) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[8]{0} parameter(0)
+  ROOT r = f32[4,2]{1,0} reshape(p)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  TF_ASSERT_OK(HloVerifier{
+      HloVerifierOpts{}.MakeLayoutSensitive().VerifyReshapeIsBitcast()}
+                   .Run(module.get())
+                   .status());
+}
+
 TEST_F(HloVerifierTestLayoutFusion, DynamicUpdateSliceWithMemorySpace) {
   const char* const hlo_string = R"(
 HloModule fusion, is_scheduled=true
