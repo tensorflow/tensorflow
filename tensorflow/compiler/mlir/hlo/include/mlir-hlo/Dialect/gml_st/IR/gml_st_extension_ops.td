@@ -21,7 +21,7 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 
 def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim", [
-    NoSideEffect, DeclareOpInterfaceMethods<FusionIterface>]> {
+    NoSideEffect, DeclareOpInterfaceMethods<FusionInterface>]> {
   let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
   let arguments = (ins
     AnyTensor:$init,

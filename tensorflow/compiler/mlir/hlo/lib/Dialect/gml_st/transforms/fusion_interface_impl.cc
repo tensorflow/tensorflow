@@ -44,8 +44,8 @@ bool isElementwise(linalg::GenericOp genericOp) {
 }
 
 struct LingalgGenericFusionInterface
-    : public FusionIterface::ExternalModel<LingalgGenericFusionInterface,
-                                           linalg::GenericOp> {
+    : public FusionInterface::ExternalModel<LingalgGenericFusionInterface,
+                                            linalg::GenericOp> {
   Value fuse(Operation* op, Location loc, Value subset,
              OpBuilder& builder) const {
     auto genericOp = llvm::cast<linalg::GenericOp>(op);
@@ -76,8 +76,8 @@ struct LingalgGenericFusionInterface
 
 template <typename OpTy>
 struct ElementwiseFusionInterface
-    : public FusionIterface::ExternalModel<ElementwiseFusionInterface<OpTy>,
-                                           OpTy> {
+    : public FusionInterface::ExternalModel<ElementwiseFusionInterface<OpTy>,
+                                            OpTy> {
   Value fuse(Operation* op, Location loc, Value subset,
              OpBuilder& builder) const {
     // Supports tile and point subsets.
