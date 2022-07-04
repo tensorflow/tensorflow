@@ -39,7 +39,8 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
                std::shared_ptr<Traceback> traceback,
-               std::optional<std::string> fingerprint);
+               std::optional<std::string> fingerprint,
+               std::vector<pybind11::capsule> host_callbacks);
   ~PyExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
@@ -99,6 +100,9 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   std::optional<std::string> fingerprint_;
+
+  // The python callbacks implemented using send/recv support.
+  std::vector<pybind11::capsule> host_callbacks_;
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;

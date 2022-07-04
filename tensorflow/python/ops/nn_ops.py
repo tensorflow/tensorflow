@@ -5793,7 +5793,8 @@ def approx_max_k(operand,
                  name=None):
   """Returns max `k` values and their indices of the input `operand` in an approximate manner.
 
-  This op is only optimized on TPU currently.
+  See https://arxiv.org/abs/2206.14286 for the algorithm details. This op is
+  only optimized on TPU currently.
 
   Args:
     operand : Array to search for max-k. Must be a floating number type.
@@ -5855,7 +5856,8 @@ def approx_min_k(operand,
                  name=None):
   """Returns min `k` values and their indices of the input `operand` in an approximate manner.
 
-  This op is only optimized on TPU currently.
+  See https://arxiv.org/abs/2206.14286 for the algorithm details. This op is
+  only optimized on TPU currently.
 
   Args:
     operand : Array to search for min-k. Must be a floating number type.

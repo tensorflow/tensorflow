@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/blas.h"
+#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
@@ -47,44 +48,6 @@ namespace gpu {
 using tensorflow::AutotuneResult;
 
 namespace {
-
-StatusOr<tensorflow::DataType> EncodePrimitiveTypeAsDataType(
-    PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return tensorflow::DT_BOOL;
-    case BF16:
-      return tensorflow::DT_BFLOAT16;
-    case F16:
-      return tensorflow::DT_HALF;
-    case F32:
-      return tensorflow::DT_FLOAT;
-    case F64:
-      return tensorflow::DT_DOUBLE;
-    case C64:
-      return tensorflow::DT_COMPLEX64;
-    case C128:
-      return tensorflow::DT_COMPLEX128;
-    case S8:
-      return tensorflow::DT_INT8;
-    case S16:
-      return tensorflow::DT_INT16;
-    case S32:
-      return tensorflow::DT_INT32;
-    case S64:
-      return tensorflow::DT_INT64;
-    case U8:
-      return tensorflow::DT_UINT8;
-    case U16:
-      return tensorflow::DT_UINT16;
-    case U32:
-      return tensorflow::DT_UINT32;
-    case U64:
-      return tensorflow::DT_UINT64;
-    default:
-      return InternalError("Unsupported type in EncodePrimitiveAsDataType.");
-  }
-}
 
 struct AutotuneConfig {
   bool should_init_buffers() const { return autotune_level >= 2; }
@@ -248,6 +211,9 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
 Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
                            se::DeviceMemoryAllocator* allocator,
                            const GemmBackendConfig& gemm_config) {
+  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  TF_RET_CHECK(blas_lt != nullptr);
+
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
 
   const DebugOptions& debug_options =
@@ -268,63 +234,46 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
       se::DeviceMemoryBase output_buffer,
       CreateBuffer(buffer_allocator, *gemm, autotune_config, rng_state));
 
-  int64_t m = config.output_layout.num_rows;
-  int64_t n = config.output_layout.num_cols;
-  int64_t k = config.lhs_layout.num_cols;
-  se::blas::MatrixDescriptor lhs = GetMatrixDesc(config.lhs_layout, lhs_buffer);
-  se::blas::MatrixDescriptor rhs = GetMatrixDesc(config.rhs_layout, rhs_buffer);
-  se::blas::MatrixDescriptor output =
-      GetMatrixDesc(config.output_layout, output_buffer);
-  int64_t batch_size = config.output_layout.batch_size;
-
-  // TODO(cjfj): Support transposed output when using cuBLASLt.
-  MakeBlasGemmCompatible(m, n, lhs, rhs, output);
-
-  TF_ASSIGN_OR_RETURN(
-      tensorflow::DataType dtype,
-      EncodePrimitiveTypeAsDataType(config.output_layout.dtype));
-
-  int device_id = stream->parent()->device_ordinal();
-  bool trans_x = lhs.transpose == se::blas::Transpose::kTranspose;
-  bool trans_y = rhs.transpose == se::blas::Transpose::kTranspose;
-  bool broadcast_lhs = lhs.batch_stride == 0;
-  bool broadcast_rhs = rhs.batch_stride == 0;
-
-  se::BatchMatmulParameters matmul_parameters(
-      trans_x, trans_y, false, false, m, n, k, batch_size, broadcast_lhs,
-      broadcast_rhs, dtype, dtype, device_id);
+  TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
+                      GetBlasLtMatmulPlanParams(config));
 
   BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
-  if (cache.Find(matmul_parameters)) {
+  if (cache.Find(matmul_plan_params.params)) {
     return OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(
-      const se::blas::PlanAndAlgorithms* plan_and_algorithms,
-      se::GetPlanAndAlgorithms(stream, matmul_parameters, batch_size, m, n, k,
-                               dtype, lhs, rhs, output));
+  se::cuda::BlasLt::MatmulPlan matmul_plan;
+  TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
 
-  const std::vector<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>&
-      algorithms = plan_and_algorithms->algorithms;
+  if (matmul_plan_params.must_swap_operands) {
+    std::swap(lhs_buffer, rhs_buffer);
+  }
+
+  constexpr int kMaxAlgorithmCount = 100;
+  TF_ASSIGN_OR_RETURN(
+      std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+      blas_lt->GetMatmulAlgorithms(matmul_plan, kBlasLtMaxWorkspaceSize,
+                                   kMaxAlgorithmCount));
 
   TF_ASSIGN_OR_RETURN(
       std::optional<size_t> best_algorithm_idx,
-      GetBestAlgorithm<std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>>(
+      GetBestAlgorithm<se::cuda::BlasLt::MatmulAlgorithm>(
           stream, buffer_allocator, *gemm, autotune_config, lhs_buffer,
           rhs_buffer, output_buffer, algorithms,
-          [&](const std::unique_ptr<se::blas::IBlasLtMatmulAlgorithm>&
-                  algorithm) -> StatusOr<se::blas::ProfileResult> {
+          [&](const se::cuda::BlasLt::MatmulAlgorithm& algorithm)
+              -> StatusOr<se::blas::ProfileResult> {
             se::OwningScratchAllocator<> scratch_allocator(
                 stream->parent()->device_ordinal(), allocator);
             se::blas::ProfileResult profile_result;
             TF_RETURN_IF_ERROR(RunBlasLtMatmul(
-                config, lhs_buffer, rhs_buffer, output_buffer, stream,
-                scratch_allocator, algorithm.get(), &profile_result));
+                matmul_plan, config.alpha, lhs_buffer, rhs_buffer, config.beta,
+                output_buffer, stream, scratch_allocator, &algorithm,
+                &profile_result));
             return std::move(profile_result);
           }));
 
   if (best_algorithm_idx) {
-    cache.Insert(std::move(matmul_parameters),
+    cache.Insert(std::move(matmul_plan_params.params),
                  se::blas::AlgorithmConfig(*best_algorithm_idx));
   }
   return OkStatus();
@@ -341,7 +290,7 @@ static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  if (config.use_cublaslt && stream->parent()->SupportsBlasPlans()) {
+  if (config.use_cublaslt) {
     TF_RETURN_IF_ERROR(
         DoBlasPlansAutotune(stream, gemm, allocator, gemm_config));
     return {se::blas::kNoAlgorithm};

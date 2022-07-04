@@ -256,8 +256,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   static port::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  bool SupportsBlasPlans() const override;
-
   bool SupportsBlas() const override;
 
   blas::BlasSupport* CreateBlas() override;

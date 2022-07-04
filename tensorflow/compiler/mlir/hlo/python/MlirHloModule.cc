@@ -440,4 +440,21 @@ PYBIND11_MODULE(_mlirHlo, m) {
         auto algorithm = mlirMhloRngAlgorithmAttrGetRngAlgorithm(self);
         return py::str(algorithm.data, algorithm.length);
       });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "ChannelHandle", mlirMhloAttributeIsChannelHandle)
+      .def_classmethod(
+          "get",
+          [](py::object cls, int64_t handle, int64_t type, MlirContext ctx) {
+            return cls(mlirMhloChannelHandleGet(ctx, handle, type));
+          },
+          py::arg("cls"), py::arg("handle"), py::arg("type"),
+          py::arg("context") = py::none(), "Creates a ChannelHandle attribute.")
+      .def_property_readonly("handle",
+                             [](MlirAttribute self) {
+                               return mlirMhloChannelHandleGetHandle(self);
+                             })
+      .def_property_readonly("channel_type", [](MlirAttribute self) {
+        return mlirMhloChannelHandleGetType(self);
+      });
 }

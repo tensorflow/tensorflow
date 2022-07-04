@@ -1,7 +1,7 @@
 # DTensor Python API and libraries.
 
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
@@ -111,6 +111,8 @@ pytype_strict_library(
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
         "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
+        "//tensorflow/python/checkpoint:functional_saver",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -118,8 +120,6 @@ pytype_strict_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/python/training:py_checkpoint_reader",
-        "//tensorflow/python/training/saving:checkpoint_options",
-        "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/util:tf_export",
@@ -246,15 +246,5 @@ pytype_strict_library(
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "@absl_py//absl/logging",
-    ],
-)
-
-tf_py_test(
-    name = "dtensor_tf_api_test",
-    size = "small",
-    srcs = ["dtensor_tf_api_test.py"],
-    deps = [
-        "//tensorflow/dtensor/python:core",
-        "//tensorflow/python/platform:test",
     ],
 )

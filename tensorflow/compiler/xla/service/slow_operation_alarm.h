@@ -84,7 +84,7 @@ class SlowOperationAlarm {
 // This is throttled to once-every-power-of-two occurrences, globally.
 //
 // `context` is an additional message prepended to the alarm.
-ABSL_MUST_USE_RESULT std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
+[[nodiscard]] std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
     absl::string_view context);
 
 }  // namespace xla

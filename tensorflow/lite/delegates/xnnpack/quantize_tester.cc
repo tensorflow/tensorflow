@@ -36,8 +36,26 @@ namespace tflite {
 namespace xnnpack {
 
 template <class T>
-void QuantizeTester::Test(Interpreter* delegate_interpreter,
-                          Interpreter* default_interpreter) const {
+void QuantizeTester::PopulateInput(Interpreter* delegate_interpreter,
+                                   Interpreter* default_interpreter) const {
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  std::uniform_int_distribution<int> input_distribution(
+      std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
+  auto input_rng = std::bind(input_distribution, std::ref(rng));
+
+  T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
+  std::generate(default_input_data, default_input_data + ComputeSize(Shape()),
+                std::ref(input_rng));
+
+  T* xnnpack_input_data = delegate_interpreter->typed_input_tensor<T>(0);
+  std::copy(default_input_data, default_input_data + ComputeSize(Shape()),
+            xnnpack_input_data);
+}
+
+template <>
+void QuantizeTester::PopulateInput<float>(
+    Interpreter* delegate_interpreter, Interpreter* default_interpreter) const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   std::uniform_real_distribution<float> input_distribution(-1.0f, 1.0f);
@@ -51,7 +69,11 @@ void QuantizeTester::Test(Interpreter* delegate_interpreter,
       delegate_interpreter->typed_input_tensor<float>(0);
   std::copy(default_input_data, default_input_data + ComputeSize(Shape()),
             xnnpack_input_data);
+}
 
+template <class T>
+void QuantizeTester::InvokeAndCheckOutput(
+    Interpreter* delegate_interpreter, Interpreter* default_interpreter) const {
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
 
@@ -59,16 +81,18 @@ void QuantizeTester::Test(Interpreter* delegate_interpreter,
   T* delegate_output_data = delegate_interpreter->typed_output_tensor<T>(0);
 
   for (size_t i = 0; i < ComputeSize(Shape()); i++) {
-    ASSERT_EQ(static_cast<int32_t>(default_output_data[i]),
-              static_cast<int32_t>(delegate_output_data[i]))
+    ASSERT_LE(std::abs(static_cast<int32_t>(default_output_data[i]) -
+                       static_cast<int32_t>(delegate_output_data[i])),
+              1)
         << "default " << static_cast<int32_t>(default_output_data[i])
         << ", delegate " << static_cast<int32_t>(delegate_output_data[i])
         << " at index " << i << " / " << ComputeSize(Shape());
   }
 }
 
-void QuantizeTester::Test(TfLiteDelegate* delegate) const {
-  std::vector<char> buffer = CreateTfLiteModel();
+void QuantizeTester::Test(TensorType input_type, TensorType output_type,
+                          TfLiteDelegate* delegate) const {
+  std::vector<char> buffer = CreateTfLiteModel(input_type, output_type);
   const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
@@ -100,14 +124,41 @@ void QuantizeTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  if (Unsigned()) {
-    Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
-  } else {
-    Test<int8_t>(delegate_interpreter.get(), default_interpreter.get());
+  switch (input_type) {
+    case TensorType_FLOAT32:
+      PopulateInput<float>(delegate_interpreter.get(),
+                           default_interpreter.get());
+      break;
+    case TensorType_INT8:
+      PopulateInput<int8_t>(delegate_interpreter.get(),
+                            default_interpreter.get());
+      break;
+    case TensorType_UINT8:
+      PopulateInput<uint8_t>(delegate_interpreter.get(),
+                             default_interpreter.get());
+      break;
+    default:
+      GTEST_FAIL() << "unsupported input type "
+                   << EnumNameTensorType(input_type);
+  }
+
+  switch (output_type) {
+    case TensorType_INT8:
+      InvokeAndCheckOutput<int8_t>(delegate_interpreter.get(),
+                                   default_interpreter.get());
+      break;
+    case TensorType_UINT8:
+      InvokeAndCheckOutput<uint8_t>(delegate_interpreter.get(),
+                                    default_interpreter.get());
+      break;
+    default:
+      GTEST_FAIL() << "unsupported output type "
+                   << EnumNameTensorType(output_type);
   }
 }
 
-std::vector<char> QuantizeTester::CreateTfLiteModel() const {
+std::vector<char> QuantizeTester::CreateTfLiteModel(
+    TensorType input_type, TensorType output_type) const {
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<OperatorCode> operator_code =
       CreateOperatorCode(builder, BuiltinOperator_QUANTIZE);
@@ -116,15 +167,24 @@ std::vector<char> QuantizeTester::CreateTfLiteModel() const {
       CreateBuffer(builder, builder.CreateVector({})),
   }};
 
+  flatbuffers::Offset<QuantizationParameters> input_quantization = 0;
+  if (input_type != TensorType_FLOAT32) {
+    input_quantization = CreateQuantizationParameters(
+        builder, /*min=*/0, /*max=*/0,
+        builder.CreateVector<float>({InputScale()}),
+        builder.CreateVector<int64_t>({InputZeroPoint()}));
+  }
+
   const std::array<flatbuffers::Offset<Tensor>, 2> tensors{{
       CreateTensor(
           builder,
           builder.CreateVector<int32_t>(Shape().data(), Shape().size()),
-          TensorType_FLOAT32),
+          input_type,
+          /*buffer=*/0, /*name=*/0, input_quantization),
       CreateTensor(
           builder,
           builder.CreateVector<int32_t>(Shape().data(), Shape().size()),
-          Unsigned() ? TensorType_UINT8 : TensorType_INT8,
+          output_type,
           /*buffer=*/0, /*name=*/0,
           CreateQuantizationParameters(
               builder, /*min=*/0, /*max=*/0,

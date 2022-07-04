@@ -15,6 +15,11 @@
 #include "mlir/Dialect/Tosa/IR/TosaOps.td"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
+// Nullary ops.
+Pattern =>
+  replace op<mhlo.constant> {value = input: Attr<_: Tosa_Tensor>}
+     with op<tosa.const> {value = input};
+
 // Unary ops.
 Pattern =>
   replace op<mhlo.abs>(input : Value<_: Tosa_Tensor>)
@@ -47,6 +52,10 @@ Pattern =>
   replace op<mhlo.maximum>(input0 : Value<_: Tosa_Tensor>,
                            input1 : Value<_: Tosa_Tensor>)
      with op<tosa.maximum>(input0, input1);
+Pattern =>
+  replace op<mhlo.multiply>(input0 : Value<_: Tosa_Tensor>,
+                            input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i32">};
 Pattern =>
   replace op<mhlo.subtract>(input0 : Value<_: Tosa_Tensor>,
                             input1 : Value<_: Tosa_Tensor>)

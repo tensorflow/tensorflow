@@ -1599,22 +1599,22 @@ class VariableOpConverterTest : public OpConverterTest {
         DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
     Device* device_ptr = device_.get();
 
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device_));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(device_));
 
-    managed_allocator_ = absl::make_unique<GpuManagedAllocator>();
+    managed_allocator_ = std::make_unique<GpuManagedAllocator>();
     Allocator* allocator = managed_allocator_.get();
     step_container_ =
-        absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+        std::make_unique<ScopedStepContainer>(0, [](const string&) {});
     slice_reader_cache_wrapper_ =
-        absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
+        std::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
 
-    flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+    flib_def_ = std::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), FunctionDefLibrary{});
 
     thread_pool_ =
-        absl::make_unique<thread::ThreadPool>(Env::Default(), "default",
-                                              /*num_threads=*/1);
-    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+        std::make_unique<thread::ThreadPool>(Env::Default(), "default",
+                                             /*num_threads=*/1);
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
         thread_pool_.get());
@@ -1646,7 +1646,7 @@ class VariableOpConverterTest : public OpConverterTest {
     params_.slice_reader_cache = slice_reader_cache_wrapper_.get();
     params_.op_device_context = device_context;
 
-    context_ = absl::make_unique<OpKernelContext>(&params_);
+    context_ = std::make_unique<OpKernelContext>(&params_);
 
     // Outputs.
     *kernel = op_kernel_.get();
@@ -2604,6 +2604,171 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
     }
     TestOpConverter("my_transpose", node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray(expected_values));
+  }
+}
+
+TEST_P(OpConverter_FP32_Test, ConvertTile) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto tile = ops::Tile(s.WithOpName("my_tile"), input, weights);
+  const NodeDef& node_def = tile.operation.node()->def();
+
+  struct TileParam {
+    std::vector<int> input_dims;
+    std::vector<int> multiplier;
+    std::vector<float> tensor;
+    // Concrete (static) output dimensions, including batch size as first dim.
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_results;
+    int test_ID;
+    // Expected status of conversion (with concrete error message).
+    Status status;
+    // Expected status of BuildAndRun.
+    Status runtime_status;
+  };
+
+  std::vector<TileParam> test_params = {
+      // Tests to be rejected by ConvertTile::Validate() for any trt_mode_.
+      TileParam{{1, 2, 3},   // input_dims
+                {1, -2, 1},  // multiplier
+                {},          // tensor
+                {},          // expected_output_dims
+                {},          // expected_results
+                1,           // test_ID
+                Status(error::INVALID_ARGUMENT,
+                       "All replications of the Tile operation in "
+                       "'my_tile' should be positive, got (1, -2, 1).")},
+      TileParam{{1, 2, 3},           // input_dims
+                {1, 2, 1, 3},        // multiplier
+                {0, 1, 2, 3, 4, 5},  // tensor
+                {},                  // expected_output_dims
+                {},                  // expected_results
+                2,                   // test_ID
+                Status(error::INVALID_ARGUMENT,
+                       "The length of the replication vector (4) of the "
+                       "Tile operation in 'my_tile' is expected to be equal "
+                       "to the rank of the input vector (3).")},
+      // Tests passed ConvertTile::Validate() for at least some trt_mode_.
+      TileParam{{1, 2},                                 // input_dims
+                {1, 3},                                 // multiplier
+                {2, 3},                                 // tensor
+                {1, 6},                                 // expected_output_dims
+                {2, 3, 2, 3, 2, 3}},                    // out values
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 2, 1},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 4, 3},                              // output dims
+                {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}},  // expected_results
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 1, 2},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 2, 6},                              // expected_output_dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}},  // expected_results
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 2, 2},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 4, 6},                              // expected_output_dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5,
+                 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}},  // expected_results
+      // Tests with non trivial batch size multiplier.
+      TileParam{{1, 2},                                 // input_dims
+                {2, 3},                                 // multiplier
+                {2, 3},                                 // tensor
+                {2, 6},                                 // expected_output_dims
+                {2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3}},  // out values
+      TileParam{{1, 2, 3},                              // input_dims
+                {2, 2, 1},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {2, 4, 3},                              // output dims
+                {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,
+                 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}},  // expected_results
+  };
+
+  for (bool multiplier_is_tensor : {true, false}) {
+    for (bool input_is_tensor : {true, false}) {
+      for (auto p : test_params) {
+        std::vector<int> num_mults = {static_cast<int>(p.multiplier.size())};
+        std::vector<std::vector<int>> partial_input_dims_options = {{}};
+        if (multiplier_is_tensor) {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+            p.status =
+                Status(error::INVALID_ARGUMENT,
+                       "Conversion for Tile is not implemented for multipliers "
+                       "passed as a tensor in implicit batch mode");
+            num_mults = {1, static_cast<int>(p.multiplier.size())};
+          } else {
+            if (p.test_ID == 1) {
+              // Replacement of statuses, since when multiplier is a tensor AND
+              // trt_mode_ != TrtTestMode::kImplicitBatch we cannot define these
+              // statuses in ConvertTile::Validate() for the first two tests
+              // from test_params.
+              p.status = Status::OK();
+              p.runtime_status =
+                  Status(error::INTERNAL,
+                         "Incorrect number of profile config parameters");
+            }
+
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              if (p.test_ID == 1)
+                partial_input_dims_options = {num_mults};
+              else
+                partial_input_dims_options = {{}, num_mults};
+            }
+          }
+        }
+
+        for (auto partial_input_dims : partial_input_dims_options) {
+          if (multiplier_is_tensor &&
+              trt_mode_ != TrtTestMode::kImplicitBatch) {
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              if (p.test_ID != 1) {
+                p.runtime_status =
+                    partial_input_dims.empty()
+                        ? Status(error::INTERNAL,
+                                 "Failed to build TensorRT engine")
+                        : Status::OK();
+                p.status = Status::OK();
+              }
+            }
+
+            if (p.test_ID == 2 && (trt_mode_ == TrtTestMode::kExplicitBatch ||
+                                   !partial_input_dims.empty())) {
+              p.status = Status(error::INVALID_ARGUMENT,
+                                "When replications are defined as a tensor, "
+                                "the number of its elements (4) must be equal "
+                                "to the rank of the input tensor (3).");
+            }
+          }
+
+          if (!multiplier_is_tensor &&
+              trt_mode_ == TrtTestMode::kImplicitBatch && p.multiplier[0] > 1) {
+            p.status =
+                Status(error::UNIMPLEMENTED,
+                       "The Tile operation along "
+                       "the batch dimension in 'my_tile' is not implemented.");
+          }
+
+          Reset();
+          if (input_is_tensor) {
+            AddTestTensor("input", p.input_dims, p.tensor);
+          } else {
+            AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
+          }
+
+          if (multiplier_is_tensor) {
+            AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
+                               partial_input_dims);
+          } else {
+            AddTestWeights<int32>("weights", num_mults, p.multiplier);
+          }
+
+          TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+                          p.runtime_status,
+                          ElementsAreArray(p.expected_results));
+        }
+      }
+    }
   }
 }
 

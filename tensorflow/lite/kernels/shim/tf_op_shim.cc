@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/tf_op_shim.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

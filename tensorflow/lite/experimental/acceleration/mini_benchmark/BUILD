@@ -366,12 +366,12 @@ cc_library(
     srcs = ["embedder.cc"],
     hdrs = ["embedder.h"],
     deps = [
-        ":decode_jpeg_status",
         ":grafter",
         ":jpeg_common",
         ":jpeg_header_parser",
         ":libjpeg_decoder",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",

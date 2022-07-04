@@ -81,6 +81,28 @@ class GraphExecutor {
   using Options = GraphExecutionOptions;
   using RunOptions = GraphExecutionRunOptions;
 
+  // The loading result of a `ClientGraph`.
+  struct LoadedClientGraph {
+    std::string name;
+    tfrt::BefBuffer bef;
+    tfrt::RCReference<tfrt::BEFFile> bef_file;
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
+  };
+
+  // A subgraph constructed by specifying input/output tensors.
+  struct ClientGraph {
+    // A unique name by joining all the input/output/target names.
+    std::string name;
+    // The feed nodes for the corresponding inputs, but they might not be in the
+    // original order and if there are more than one original inputs mapped to
+    // the same feed node, only one is picked here.
+    tensorflow::GraphImportConfig::InputArrays input_nodes;
+    // The fetch nodes for the outputs, which should be in the original order.
+    std::vector<std::string> output_nodes;
+    // The target nodes that should be run but not returned as outputs.
+    std::vector<std::string> target_nodes;
+  };
+
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
       Options options, const FallbackState& fallback_state,
@@ -115,29 +137,17 @@ class GraphExecutor {
     return *graph_execution_state_;
   }
 
+  // Compiles and returns a graph that is specified by `client_graph`.
+  StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+  ImportAndCompileClientGraph(const GraphExecutor::ClientGraph& client_graph);
+
+  // Returns the underlying runtime.
+  const tensorflow::tfrt_stub::Runtime& runtime() const {
+    DCHECK(options_.runtime);
+    return *options_.runtime;
+  }
+
  private:
-  // The loading result of a `ClientGraph`.
-  struct LoadedClientGraph {
-    std::string name;
-    tfrt::BefBuffer bef;
-    tfrt::RCReference<tfrt::BEFFile> bef_file;
-    std::unique_ptr<tfrt::ResourceContext> resource_context;
-  };
-
-  // A subgraph constructed by specifying input/output tensors.
-  struct ClientGraph {
-    // A unique name by joining all the input/output/target names.
-    std::string name;
-    // The feed nodes for the corresponding inputs, but they might not be in the
-    // original order and if there are more than one original inputs mapped to
-    // the same feed node, only one is picked here.
-    tensorflow::GraphImportConfig::InputArrays input_nodes;
-    // The fetch nodes for the outputs, which should be in the original order.
-    std::vector<std::string> output_nodes;
-    // The target nodes that should be run but not returned as outputs.
-    std::vector<std::string> target_nodes;
-  };
-
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
       const GraphExecutor::ClientGraph& client_graph);
@@ -157,11 +167,6 @@ class GraphExecutor {
       absl::Span<const std::string> output_tensor_names,
       absl::Span<const std::string> target_tensor_names)
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
-
-  const tensorflow::tfrt_stub::Runtime& runtime() const {
-    DCHECK(options_.runtime);
-    return *options_.runtime;
-  }
 
   Options options_;
   std::reference_wrapper<const FallbackState> fallback_state_;

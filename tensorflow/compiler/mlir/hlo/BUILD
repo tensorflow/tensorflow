@@ -1557,7 +1557,7 @@ cc_library(
         ":copy_removal",
         ":expand_hlo_tuples",
         ":generic_host_to_llvm",
-        ":gml_st_compose_subset_ops",
+        ":gml_st_compose_set_ops",
         ":gml_st_fusion",
         ":gml_st_passes_inc_gen",
         ":gml_st_tiling",
@@ -2149,6 +2149,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SCFToGPU",
+        "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:Transforms",
     ],
@@ -2190,11 +2191,14 @@ cc_library(
     srcs = ["lib/Transforms/gml_st_pipeline.cc"],
     hdrs = ["include/mlir-hlo/Transforms/gml_st_pipeline.h"],
     deps = [
+        ":bufferize_pass",
         ":gml_st_tiling",
         ":legalize_mhlo_to_gml",
         ":legalize_to_linalg",
+        "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -2392,7 +2396,7 @@ gentbl_cc_library(
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td",
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
-        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td",
+        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td",
     ],
     deps = [":gml_st_ops_td_files"],
 )
@@ -2475,6 +2479,8 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -2533,15 +2539,9 @@ cc_library(
         ":fusion_interface_impl",
         ":gml_st",
         ":gml_st_passes_inc_gen",
-        ":hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -2574,10 +2574,10 @@ cc_library(
 )
 
 cc_library(
-    name = "gml_st_compose_subset_ops",
+    name = "gml_st_compose_set_ops",
     srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
-        "lib/Dialect/gml_st/transforms/compose_subset_ops.cc",
+        "lib/Dialect/gml_st/transforms/compose_set_ops.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",

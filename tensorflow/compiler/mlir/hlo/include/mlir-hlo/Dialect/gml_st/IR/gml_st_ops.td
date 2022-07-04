@@ -20,16 +20,16 @@ limitations under the License.
 
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
-include "mlir-hlo/Dialect/gml_st/IR/gml_st_subset_ops.td"
+include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize",
     [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins AnyShaped:$source, AnySubset:$subset);
+  let arguments = (ins AnyShaped:$source, AnySet:$set);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{
-    $source`[` $subset `]` attr-dict `:` type($source) `[` type($subset) `]`
+    $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
   }];
   let hasVerifier = 0;
 }
@@ -69,7 +69,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
       AttrSizedOperandSegments,
       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
       RecursiveSideEffects,
-      SingleBlockImplicitTerminator<"gml_st::SubsetYieldOp">
+      SingleBlockImplicitTerminator<"gml_st::SetYieldOp">
     ])> {
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
@@ -91,7 +91,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     }
 
     /// Return terminator of the loop body.
-    SubsetYieldOp getTerminator();
+    SetYieldOp getTerminator();
   }];
 
   let hasCustomAssemblyFormat = 1;
@@ -105,11 +105,11 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
 
     Tensor-based version:
 
-    The body region of the loop contains subset operations applied to
+    The body region of the loop contains set operations applied to
     every output tensor argument of LoopOp.
 
     The body region must contain exactly one block that terminates with
-    `gml_st.subset_yield` which yields a tensor into a subset of outs.
+    `gml_st.set_yield` which yields a tensor into a subset of outs.
 
     Example:
 
@@ -129,7 +129,7 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
 
       %result_sub = linalg.generic (%lhs_sub, %rhs_sub, %out_sub) ...
 
-      gml_st.subset_yield %result_sub into %out[%tile]
+      gml_st.set_yield %result_sub into %out[%tile]
         : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     }
     ```
@@ -155,11 +155,11 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
     Tensor-based version:
 
-    The body region of the loop contains subset operations applied to
+    The body region of the loop contains set operations applied to
     every output tensor argument of LoopOp.
 
     The body region must contain exactly one block that terminates with
-    `gml_st.subset_yield` which yields a tensor into a subset of outs.
+    `gml_st.set_yield` which yields a tensor into a subset of outs.
 
     Example:
 
@@ -180,7 +180,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
       %result_sub = linalg.generic (%lhs_sub, %rhs_sub, %out_sub) ...
 
-      gml_st.subset_yield %result_sub into %out_[%tile]
+      gml_st.set_yield %result_sub into %out_[%tile]
         : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     }
     ```
@@ -202,33 +202,72 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
     /// Number of output operands
     unsigned getNumOutputs() { return outputs().size(); }
 
-    ValueRange getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(outputs().size());
+    /// Get the region output args.
+    Block::BlockArgListType getRegionOutputArgs() {
+      return getBody()->getArguments().take_back(getNumOutputs());
+    }
+
+    /// Get the region output arg that corresponds to an OpOperand.
+    BlockArgument getRegionOutputArgForOpOperand(OpOperand &opOperand) {
+      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
+             "expected an output args operand");
+      assert(opOperand.getOwner() == getOperation() &&
+             "opOperand does not belong to this gml_st::ForOp operation");
+      return getBody()->getArgument(opOperand.getOperandNumber() -
+                                    getNumControlOperands() + getNumLoops());
+    }
+
+    /// Get the OpOperand& that corresponds to a region output arg.
+    OpOperand &getOpOperandForRegionOutputArg(BlockArgument bbArg) {
+      assert(bbArg.getArgNumber() >= getNumLoops() &&
+             "expected a bbArg that is not an induction variable");
+      assert(bbArg.getOwner()->getParentOp() == getOperation() &&
+             "bbArg does not belong to the gml_st::ForOp body");
+      return getOperation()->getOpOperand(
+        getNumControlOperands() + bbArg.getArgNumber() - getNumLoops());
+    }
+
+    /// Get the OpResult that corresponds to an OpOperand.
+    OpResult getResultForOpOperand(OpOperand &opOperand) {
+      assert(opOperand.getOperandNumber() >= getNumControlOperands() &&
+             "expected an output args operand");
+      assert(opOperand.getOwner() == getOperation() &&
+             "opOperand does not belong to this gml_st::ForOp operation");
+      return getOperation()->getResult(
+        opOperand.getOperandNumber() - getNumControlOperands());
+    }
+
+    /// Get the OpOperand& that corresponds to an OpResultOpOperand.
+    OpOperand &getOpOperandForResult(OpResult opResult) {
+      assert(opResult.getDefiningOp() == getOperation() &&
+             "opResult does not belong to the gml_st::ForOp operation");
+      return getOperation()->getOpOperand(
+        getNumControlOperands() + opResult.getResultNumber());
     }
   }];
 }
 
-def GMLST_SubsetYieldOp : GMLST_Op<"subset_yield", [NoSideEffect, ReturnLike,
+def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       Terminator, SameVariadicOperandSize]> {
-  let summary = "Subset Yield operation";
+  let summary = "Set yield operation";
   let description = [{
-    `gml_st.subset_yield` is a special terminator operation for
+    `gml_st.set_yield` is a special terminator operation for
     `gml_st.parallel` or `gml_st.for` body.
 
     Example:
 
     ```mlir
-    gml_st.subset_yield %result_sub at %tile into %dst
+    gml_st.set_yield %result_sub at %tile into %dst
       : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
   let arguments = (ins Variadic<AnyType>:$srcs,
                        Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$subsets);
+                       Variadic<AnyType>:$sets);
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
   let assemblyFormat = [{
-    attr-dict ($srcs^ `into` $dsts `[` $subsets `]`
-      `:` type($srcs) `into` type($dsts) `[` type($subsets) `]`)?
+    attr-dict ($srcs^ `into` $dsts `[` $sets `]`
+      `:` type($srcs) `into` type($dsts) `[` type($sets) `]`)?
   }];
 
   let extraClassDeclaration = [{

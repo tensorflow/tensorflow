@@ -61,9 +61,9 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
 
 struct TilingResult {
   // The outermost loop resulted from tiling.
-  Operation *outer_loop;
+  Operation *outerLoop;
   // The operation inside the loop that corresponds to the op before tiling.
-  Operation *tiled_op;
+  Operation *tiledOp;
 };
 
 /// Perform tiling that creates gml_st.parallel and gml_st.for operations with

@@ -45,8 +45,11 @@ def TFL_DimensionType : I32EnumAttr<
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::TFL";
 }
+
 def TFL_DimensionTypeAttr : EnumAttr<TFL_Dialect, TFL_DimensionType,
-    "dimension_type_attr">;
+    "dimension_type_attr"> {
+  let convertFromStorage = "$_self";
+}
 
 // Allowed activation function cases
 // These should match the ActivationFunctionType enum in TFLite schema.

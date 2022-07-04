@@ -202,13 +202,13 @@ cc_library(
         ":tpu_stream_interface",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -241,6 +241,7 @@ cc_library(
         ":noncopyable_buffer",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla/service:transfer_manager",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 

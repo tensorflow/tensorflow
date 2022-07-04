@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(UnsignedQuantize, 4D) {
+TEST(QuantizeInt8ToInt8, 4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -40,14 +40,15 @@ TEST(UnsignedQuantize, 4D) {
   const auto channels = shape_rng();
 
   QuantizeTester()
-      .Unsigned(true)
       .Shape({batch, height, width, channels})
-      .OutputZeroPoint(50)
-      .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .InputZeroPoint(7)
+      .InputScale(0.75f)
+      .OutputZeroPoint(-5)
+      .OutputScale(1.25f)
+      .Test(TensorType_INT8, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantize, 3D) {
+TEST(QuantizeInt8ToInt8, 3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -61,14 +62,15 @@ TEST(UnsignedQuantize, 3D) {
   const auto channels = shape_rng();
 
   QuantizeTester()
-      .Unsigned(true)
       .Shape({batch, width, channels})
-      .OutputZeroPoint(50)
-      .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .InputZeroPoint(7)
+      .InputScale(0.75f)
+      .OutputZeroPoint(-5)
+      .OutputScale(1.25f)
+      .Test(TensorType_INT8, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantize, 2D) {
+TEST(QuantizeInt8ToInt8, 2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -81,14 +83,15 @@ TEST(UnsignedQuantize, 2D) {
   const auto channels = shape_rng();
 
   QuantizeTester()
-      .Unsigned(true)
       .Shape({batch, channels})
-      .OutputZeroPoint(50)
-      .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .InputZeroPoint(7)
+      .InputScale(0.75f)
+      .OutputZeroPoint(-5)
+      .OutputScale(1.25f)
+      .Test(TensorType_INT8, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantize, 1D) {
+TEST(QuantizeInt8ToInt8, 1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -100,14 +103,15 @@ TEST(UnsignedQuantize, 1D) {
   const auto batch = shape_rng();
 
   QuantizeTester()
-      .Unsigned(true)
       .Shape({batch})
-      .OutputZeroPoint(50)
-      .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .InputZeroPoint(7)
+      .InputScale(0.75f)
+      .OutputZeroPoint(-5)
+      .OutputScale(1.25f)
+      .Test(TensorType_INT8, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(UnsignedQuantize, MultiThreading) {
+TEST(QuantizeInt8ToInt8, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -125,11 +129,12 @@ TEST(UnsignedQuantize, MultiThreading) {
   const auto channels = shape_rng();
 
   QuantizeTester()
-      .Unsigned(true)
       .Shape({batch, height, width, channels})
-      .OutputZeroPoint(50)
-      .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .InputZeroPoint(7)
+      .InputScale(0.75f)
+      .OutputZeroPoint(-5)
+      .OutputScale(1.25f)
+      .Test(TensorType_INT8, TensorType_INT8, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

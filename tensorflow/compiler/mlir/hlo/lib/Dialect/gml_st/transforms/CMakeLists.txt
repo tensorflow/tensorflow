@@ -54,7 +54,7 @@ add_mlir_library(GmlStBufferizableOpInterface
 
 add_mlir_library(GmlStPasses
   bufferize_tiled_loop.cc
-  compose_subset_ops.cc
+  compose_set_ops.cc
   fusion.cc
   gml_st_to_scf.cc
   legalize_mhlo_to_gml.cc

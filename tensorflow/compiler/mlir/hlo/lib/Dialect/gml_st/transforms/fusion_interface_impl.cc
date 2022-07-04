@@ -16,16 +16,63 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 
 namespace mlir {
 namespace gml_st {
 
 namespace {
+
+bool isElementwise(linalg::GenericOp genericOp) {
+  if (!genericOp.hasTensorSemantics()) return false;
+  if (genericOp.outputs().size() != 1) return false;
+  if (!llvm::all_of(genericOp.iterator_types(), [](Attribute attr) {
+        return mlir::isParallelIterator(attr);
+      })) {
+    return false;
+  }
+  if (!llvm::all_of(genericOp.indexing_maps(), [](Attribute attr) {
+        return attr.cast<AffineMapAttr>().isIdentity();
+      })) {
+    return false;
+  }
+  return true;
+}
+
+struct LingalgGenericFusionInterface
+    : public FusionIterface::ExternalModel<LingalgGenericFusionInterface,
+                                           linalg::GenericOp> {
+  Value fuse(Operation* op, Location loc, Value subset,
+             OpBuilder& builder) const {
+    auto genericOp = llvm::cast<linalg::GenericOp>(op);
+
+    // Supports only tile subsets.
+    auto tileTy = subset.getType().dyn_cast<TileType>();
+    if (!tileTy.isa<TileType>()) return {};
+
+    // Supports only element-wise `linalg.generic` ops.
+    if (!isElementwise(genericOp)) return {};
+
+    // Create tiled op.
+    Value output = genericOp.outputs().front();
+    auto outputTy = output.getType().cast<RankedTensorType>();
+    auto subResultTy =
+        RankedTensorType::get(tileTy.getShape(), outputTy.getElementType());
+    SmallVector<Value> subOperands;
+    subOperands.reserve(genericOp.getNumInputs());
+    for (auto input : genericOp.inputs()) {
+      subOperands.push_back(builder.create<MaterializeOp>(loc, input, subset));
+    }
+    subOperands.push_back(builder.create<MaterializeOp>(loc, output, subset));
+    linalg::LinalgOp linalgOp = genericOp;
+    Operation* tiledOp = linalgOp.clone(builder, loc, subResultTy, subOperands);
+    return tiledOp->getResults().front();
+  }
+};
 
 template <typename OpTy>
 struct ElementwiseFusionInterface
@@ -64,6 +111,13 @@ struct ElementwiseFusionInterface
 }  // namespace
 
 void registerFusionInterfaceExternalModels(DialectRegistry& registry) {
+  registry.insert<linalg::LinalgDialect>();
+  registry.addExtension(+[](MLIRContext* ctx, linalg::LinalgDialect*) {
+    linalg::GenericOp::attachInterface<LingalgGenericFusionInterface>(*ctx);
+  });
+
+  // TODO(frgossen): Update tests and remove these in favor of
+  // `linalg.generic`-based fusions.
   registry.insert<mhlo::MhloDialect>();
   registry.addExtension(+[](MLIRContext* ctx, mhlo::MhloDialect*) {
     mhlo::AddOp::attachInterface<ElementwiseFusionInterface<mhlo::AddOp>>(*ctx);

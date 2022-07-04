@@ -540,3 +540,24 @@ MlirStringRef mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyRngAlgorithm(
       unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue()));
 }
+
+//
+// ChannelHandle
+//
+
+MlirAttribute mlirMhloChannelHandleGet(MlirContext ctx, int64_t handle,
+                                       int64_t type) {
+  return wrap(mlir::mhlo::ChannelHandleAttr::get(unwrap(ctx), handle, type));
+}
+
+bool mlirMhloAttributeIsChannelHandle(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::ChannelHandleAttr>();
+}
+
+int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getHandle();
+}
+
+int64_t mlirMhloChannelHandleGetType(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getType();
+}

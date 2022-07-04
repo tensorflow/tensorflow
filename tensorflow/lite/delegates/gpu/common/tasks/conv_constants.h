@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -109,6 +107,7 @@ void RearrangeWeightsForConvConstantsDot(
 
 template <DataType T>
 void UploadWeightsForConvConstants(const tflite::gpu::Tensor<OHWI, T>& weights,
+                                   const GpuInfo& gpu_info,
                                    CalculationsPrecision precision,
                                    bool use_dot_conv, GPUOperation* op) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
@@ -125,7 +124,11 @@ void UploadWeightsForConvConstants(const tflite::gpu::Tensor<OHWI, T>& weights,
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
-  desc.memory_type = MemoryType::CONSTANT;
+  if (gpu_info.IsApiOpenCl() || gpu_info.IsApiMetal()) {
+    desc.memory_type = MemoryType::CONSTANT;
+  } else {
+    desc.memory_type = MemoryType::GLOBAL;
+  }
   desc.size = float_size * float_count;
   desc.data.resize(desc.size);
 

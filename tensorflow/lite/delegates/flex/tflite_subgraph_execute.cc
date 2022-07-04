@@ -212,9 +212,14 @@ class TfLiteSubgraphExecute : public OpKernel {
       TfLiteTensor* subgraph_output =
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
 
+      // Forcing a memcpy for each tensor output from the called dataset
+      // subgraph. This is because the callee subgraph might be invoked
+      // repeatedly for each item in the dataset, and the result TfLiteTensor's
+      // data should be immediately copied into tensorflow::Tensor.
       Tensor tensor;
       OP_REQUIRES_OK(
-          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor));
+          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor,
+                                                   /*allow_reusing=*/false));
       ctx->set_output(i, std::move(tensor));
     }
   }

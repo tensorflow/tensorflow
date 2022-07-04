@@ -57,8 +57,8 @@ class MhloDialect : public Dialect {
 
   // Registered hook to verify region arg attributes on operations.
   LogicalResult verifyRegionArgAttribute(mlir::Operation *op,
-                                         unsigned region_index,
-                                         unsigned arg_index,
+                                         unsigned regionIndex,
+                                         unsigned argIndex,
                                          mlir::NamedAttribute attr) override;
 
   // Registered hook to verify an attribute from this dialect on operations.
@@ -103,7 +103,7 @@ LogicalResult deriveShapeFromOperand(
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 // Type derivation function that returns a tensor type with a new element type.
-TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
+TensorType getSameShapeTensorType(TensorType tensorType, Type elementType);
 
 void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);
 void printConvolutionDimensions(AsmPrinter &p, Operation *,
@@ -120,11 +120,10 @@ ParseResult parseConvolutionDimensions(AsmParser &parser,
 namespace mlir {
 namespace mhlo {
 
-SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
+SortOp createSortOp(PatternRewriter *rewriter, const Location &loc,
                     const llvm::ArrayRef<Value> &operands,
-                    const llvm::ArrayRef<Type> &element_types,
-                    int64_t dimension, bool is_stable,
-                    ComparisonDirection direction);
+                    const llvm::ArrayRef<Type> &elementTypes, int64_t dimension,
+                    bool isStable, ComparisonDirection direction);
 
 }  // end namespace mhlo
 }  // end namespace mlir

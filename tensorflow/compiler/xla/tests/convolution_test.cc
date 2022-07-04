@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 namespace xla {
 namespace {
@@ -1774,6 +1776,37 @@ ENTRY TestComputation {
   ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
+  const bool isCudaPlatform =
+      GetTestPlatform()->id() == stream_executor::cuda::kCudaPlatformId;
+  const bool isAutotuneDisabled =
+      GetDebugOptionsForTest().xla_gpu_autotune_level() == 0;
+
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  constant.1 = pred[] constant(true)
+  broadcast.2 = pred[3,3,3]{2,1,0} broadcast(constant.1), dimensions={}
+  convolution.3 = pred[3,3,3]{2,1,0} convolution(broadcast.2, broadcast.2), window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
+  ROOT tuple.4 = (pred[3,3,3]{2,1,0}) tuple(convolution.3)
+})";
+  auto result = RunAndCompare(kHlo, ErrorSpec{0.01, 0.01});
+  if (isCudaPlatform) {
+    // TODO(b/235531081): add support for boolean convolutions on GPU
+    EXPECT_FALSE(result);
+    // TODO(b/237663051): fix error message propagation for JitRt
+    if (!gpu::IsJitRtExecutableEnabled(GetModuleConfigForTest())) {
+      EXPECT_THAT(result.message(),
+                  ::testing::HasSubstr(
+                      isAutotuneDisabled ? "Unimplemented convolution"
+                                         : "Unsupported convolution datatype"));
+    }
+  } else {
+    EXPECT_TRUE(result);
+  }
 }
 
 }  // namespace

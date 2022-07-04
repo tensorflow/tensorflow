@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -28,15 +29,30 @@ struct PJRT_Error {
 
 struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
+  std::vector<PJRT_Device> owned_devices;
+  // `devices` contains the addresses of the contents of `owned_devices`.
+  std::vector<PJRT_Device*> devices;
+  // `addressable_devices` contains pointers to the `owned_devices` that the
+  // client can issue commands to.
+  std::vector<PJRT_Device*> addressable_devices;
 };
 
+// PJRT_Devices are owned by their corresponding PJRT_Client.
 struct PJRT_Device {
-  // The device is owned by the corresponding xla::PjRtClient
+  // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
 };
 
 struct PJRT_Executable {
   std::unique_ptr<xla::PjRtExecutable> executable;
+  PJRT_Client* client;
+  // These pointers are a subset of `client`'s `addressable_devices`, i.e. those
+  // addressed by the compiled executable program. `client` owns the objects
+  // these point to.
+  std::vector<PJRT_Device*> addressable_devices;
+  // TODO(b/237545405): Remove `populated` once we implement creation methods
+  // for PJRT_Executable that can populate addressable_devices on instantiation.
+  bool populated = false;
 };
 
 struct PJRT_Buffer {
@@ -54,11 +70,23 @@ PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
 PJRT_Error* PJRT_Client_ProcessIndex(PJRT_Client_ProcessIndex_Args* args);
 PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
+PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
+PJRT_Error* PJRT_Client_AddressableDevices(
+    PJRT_Client_AddressableDevices_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
+PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
+PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
 
+PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
+PJRT_Error* PJRT_Executable_AddressableDevices(
+    PJRT_Executable_AddressableDevices_Args* args);
+PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
+PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
 
+PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
+PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 
 // Helper macros and functions

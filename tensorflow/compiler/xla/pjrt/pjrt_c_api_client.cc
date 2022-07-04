@@ -28,29 +28,76 @@ limitations under the License.
 
 namespace xla {
 
-PjRtCApiClient::PjRtCApiClient(
-    const PJRT_Api* c_api, PJRT_Client* c_client,
-    std::vector<std::unique_ptr<PjRtCApiDevice>> devices)
+// ---------------------------------- Client -----------------------------------
+
+PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
     : c_api_(c_api),
       c_client_(std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter>(
-          c_client, ::pjrt::MakeClientDeleter(c_api))),
-      owned_devices_(std::move(devices)) {
+          c_client, ::pjrt::MakeClientDeleter(c_api))) {
   wrapped_ = c_client_->client.get();
 
-  for (int i = 0; i < owned_devices_.size(); ++i) {
-    const std::unique_ptr<PjRtCApiDevice>& device = owned_devices_[i];
-    wrapped_device_map_[wrapped_->devices()[i]] = device.get();
-    device->SetClient(this);
-    devices_.push_back(device.get());
-    if (device->IsAddressable()) {
-      int idx = device->local_hardware_id();
-      if (idx >= addressable_devices_.size()) {
-        addressable_devices_.resize(idx + 1);
-      }
-      CHECK(addressable_devices_[idx] == nullptr) << idx;
-      addressable_devices_[idx] = device.get();
-    }
+  InitDevices();
+}
+
+void PjRtCApiClient::InitDevices() {
+  PJRT_Client_Devices_Args devices_args;
+  devices_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
+  devices_args.priv = nullptr;
+  devices_args.client = c_client_.get();
+
+  PJRT_Error* error = c_api_->PJRT_Client_Devices(&devices_args);
+  // TODO(b/236710439)
+  CHECK(error == nullptr);
+
+  const size_t n = devices_args.num_devices;
+  wrapped_device_map_.reserve(n);
+  c_to_cpp_device_map_.reserve(n);
+  owned_devices_.reserve(n);
+  devices_.reserve(n);
+
+  for (size_t i = 0; i < n; ++i) {
+    PJRT_Device* device = devices_args.devices[i];
+    std::unique_ptr<PjRtCApiDevice>& cpp_device =
+        owned_devices_.emplace_back(std::make_unique<PjRtCApiDevice>(device));
+    cpp_device->SetClient(this);
+    devices_.push_back(cpp_device.get());
+    c_to_cpp_device_map_[device] = cpp_device.get();
+    // Map the wrapped PjRtDevice* to the PjRtCApiDevice* that wraps it.
+    // TODO(b/237017893): remove `wrapped_device_map_` and replace it with
+    // `c_api_device_map_`
+    wrapped_device_map_[device->device] = cpp_device.get();
   }
+
+  PJRT_Client_AddressableDevices_Args address_args;
+  address_args.struct_size = PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
+  address_args.priv = nullptr;
+  address_args.client = c_client_.get();
+
+  error = c_api_->PJRT_Client_AddressableDevices(&address_args);
+  // TODO(b/236710439)
+  CHECK(error == nullptr);
+
+  const size_t m = address_args.num_addressable_devices;
+  addressable_devices_.reserve(m);
+
+  for (size_t i = 0; i < m; ++i) {
+    PJRT_Device* c_device = address_args.addressable_devices[i];
+    addressable_devices_.push_back(GetCppDevice(c_device));
+  }
+}
+
+int PjRtCApiClient::device_count() const { return devices_.size(); }
+
+int PjRtCApiClient::addressable_device_count() const {
+  return addressable_devices_.size();
+}
+
+absl::Span<PjRtDevice* const> PjRtCApiClient::devices() const {
+  return devices_;
+}
+
+absl::Span<PjRtDevice* const> PjRtCApiClient::addressable_devices() const {
+  return addressable_devices_;
 }
 
 absl::string_view PjRtCApiClient::platform_name() const {
@@ -105,6 +152,11 @@ StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
 
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::DeserializeExecutable(
+    absl::string_view serialized, CompileOptions options) {
+  return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
+}
+
 StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
     PjRtBuffer* buffer) {
   return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
@@ -127,35 +179,87 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::WrapBuffer(
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
-PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
-    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {}
+// --------------------------------- Devices -----------------------------------
 
-PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
+PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device) : device_(device) {
+  wrapped_ = device_->device;
+}
 
-bool PjRtCApiBuffer::IsOnCpu() const {
-  PJRT_Buffer_IsOnCpu_Args args;
-  args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;
+PjRtClient* PjRtCApiDevice::client() const { return client_; }
+
+int PjRtCApiDevice::id() const {
+  PJRT_Device_Id_Args args;
+  args.struct_size = PJRT_Device_Id_Args_STRUCT_SIZE;
   args.priv = nullptr;
-  args.buffer = buffer_;
+  args.device = device_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_Id(&args);
+  // TODO(b/236710439): (shahrokhi) handle error
+  CHECK(error == nullptr);
+  return args.id;
+}
 
-  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_IsOnCpu(&args);
+int PjRtCApiDevice::process_index() const {
+  PJRT_Device_ProcessIndex_Args args;
+  args.struct_size = PJRT_Device_ProcessIndex_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_ProcessIndex(&args);
+  // TODO(b/236710439): (shahrokhi) handle error
+  CHECK(error == nullptr);
+  return args.process_index;
+}
+
+bool PjRtCApiDevice::IsAddressable() const {
+  PJRT_Device_IsAddressable_Args args;
+  args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_IsAddressable(&args);
   // TODO(b/236710439): handle error
   CHECK(error == nullptr);
-  return args.is_on_cpu;
+  return args.is_addressable;
 }
 
-PjRtCApiExecutable::~PjRtCApiExecutable() {
-  // TODO(silverstone): use a C API "Destroy method"
-  delete executable_;
-}
+// ------------------------------- Executables ---------------------------------
 
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
                                        std::unique_ptr<PjRtExecutable> wrapped)
-    : client_(client), executable_{new PJRT_Executable{std::move(wrapped)}} {
-  addressable_devices_.reserve(this->wrapped()->addressable_devices().size());
-  for (PjRtDevice* device : this->wrapped()->addressable_devices()) {
-    addressable_devices_.push_back(client_->GetCApiDevice(device));
+    : client_(client),
+      executable_(
+          new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
+  InitDevices();
+}
+
+void PjRtCApiExecutable::InitDevices() {
+  PJRT_Executable_AddressableDevices_Args args;
+  args.struct_size = PJRT_Executable_AddressableDevices_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+  args.addressable_devices = nullptr;
+  args.num_addressable_devices = 0;
+
+  PJRT_Error* error = pjrt_c_api()->PJRT_Executable_AddressableDevices(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+
+  const size_t num_addressable_devices = args.num_addressable_devices;
+  addressable_devices_.reserve(num_addressable_devices);
+
+  for (size_t i = 0; i < num_addressable_devices; ++i) {
+    PJRT_Device* device = args.addressable_devices[i];
+    PjRtCApiDevice* c_api_device = client_->GetCppDevice(device);
+    addressable_devices_.push_back(c_api_device);
   }
+}
+
+PjRtCApiExecutable::~PjRtCApiExecutable() {
+  PJRT_Executable_Destroy_Args args;
+  args.struct_size = PJRT_Executable_Destroy_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Executable_Destroy(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
@@ -240,6 +344,73 @@ absl::string_view PjRtCApiExecutable::name() const {
   return executable_name;
 }
 
+void PjRtCApiExecutable::Delete() {
+  PJRT_Executable_Delete_Args args;
+  args.struct_size = PJRT_Executable_Delete_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Executable_Delete(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+}
+
+bool PjRtCApiExecutable::IsDeleted() {
+  PJRT_Executable_IsDeleted_Args args;
+  args.struct_size = PJRT_Executable_IsDeleted_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Executable_IsDeleted(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_deleted;
+}
+
+// ---------------------------------- Buffers ----------------------------------
+
+PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
+    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {}
+
+PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
+
+void PjRtCApiBuffer::Delete() {
+  PJRT_Buffer_Delete_Args args;
+  args.struct_size = PJRT_Buffer_Delete_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_Delete(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+}
+
+bool PjRtCApiBuffer::IsDeleted() {
+  PJRT_Buffer_IsDeleted_Args args;
+  args.struct_size = PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_IsDeleted(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_deleted;
+}
+
+bool PjRtCApiBuffer::IsOnCpu() const {
+  PJRT_Buffer_IsOnCpu_Args args;
+  args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Buffer_IsOnCpu(&args);
+  // TODO(b/236710439): handle error
+  CHECK(error == nullptr);
+  return args.is_on_cpu;
+}
+
+// -------------------------------- API access ---------------------------------
+
 StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
   const PJRT_Api* c_api = tensorflow::tpu::PjrtApi();
   // TODO(skyewm): make status
@@ -252,35 +423,9 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
   // TODO(skyewm): handle error
   CHECK(error == nullptr);
   PJRT_Client* c_client = init_args.client;
-  PjRtClient* wrapped = c_client->client.get();
 
-  std::vector<std::unique_ptr<PjRtCApiDevice>> devices;
-  devices.reserve(wrapped->devices().size());
-  for (PjRtDevice* device : wrapped->devices()) {
-    devices.emplace_back(
-        std::make_unique<PjRtCApiDevice>(new PJRT_Device{device}));
-  }
   return std::unique_ptr<PjRtClient>(
-      std::make_unique<PjRtCApiClient>(c_api, c_client, std::move(devices)));
-}
-
-PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device) : device_(device) {
-  wrapped_ = device_->device;
-}
-
-PjRtCApiDevice::~PjRtCApiDevice() { delete device_; }
-
-PjRtClient* PjRtCApiDevice::client() const { return client_; }
-
-int PjRtCApiDevice::id() const {
-  PJRT_Device_Id_Args args;
-  args.struct_size = PJRT_Device_Id_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_Id(&args);
-  // TODO(shahrokhi): handle error better after (b/236710439) is resolved
-  CHECK(error == nullptr);
-  return args.id;
+      std::make_unique<PjRtCApiClient>(c_api, c_client));
 }
 
 }  // namespace xla

@@ -54,6 +54,9 @@ tf_py_test(
     size = "medium",
     srcs = ["coordinated_read_test.py"],
     shard_count = 16,
+    tags = [
+        "nomsan",  # TODO(b/236869501): Failing.
+    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",

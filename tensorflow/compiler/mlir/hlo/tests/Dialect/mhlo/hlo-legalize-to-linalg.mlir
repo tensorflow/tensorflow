@@ -5220,3 +5220,36 @@ func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<3x4x2x4xi32>, tensor<3x4x3x2xi32>)
 // CHECK-SAME: outs({{.*}} : tensor<3x4x4x3xi32>)
 // CHECK-SAME: {someattr}
+
+// -----
+
+// CHECK-LABEL: func @reduce_precision(
+// CHECK: linalg.generic
+// CHECK: %[[X_AS_INT:.*]] = arith.bitcast %{{.*}} : f32 to i32
+// CHECK-DAG: %[[C2:.*]] = arith.constant 1048576 : i32
+// CHECK-DAG: %[[C_21:.*]] = arith.constant 20 : i32
+// CHECK-DAG: %[[C3:.*]] = arith.constant 524287 : i32
+// CHECK: %[[MASKED:.*]] = arith.andi %[[X_AS_INT]], %[[C2]] : i32
+// CHECK: %[[V0:.*]] = arith.shrui %[[MASKED]], %[[C_21]] : i32
+// CHECK: %[[V1:.*]] = arith.addi %[[V0]], %[[C3]] : i32
+// CHECK: %[[V2:.*]] = arith.addi %[[X_AS_INT]], %[[V1]] : i32
+// CHECK: %[[C4:.*]] = arith.constant -1048576 : i32
+// CHECK: %[[V3:.*]] = arith.andi %[[V2]], %[[C4]] : i32
+// CHECK: %[[C5:.*]] = arith.constant 2139095040 : i32
+// CHECK: %[[V4:.*]] = arith.andi %[[V3]], %[[C5]] : i32
+// CHECK: %[[C6:.*]] = arith.constant 1090519040 : i32
+// CHECK: %[[V5:.*]] = arith.cmpi ugt, %[[V4]], %[[C6]] : i32
+// CHECK: %[[C7:.*]] = arith.constant 1040187392 : i32
+// CHECK: %[[V6:.*]] = arith.cmpi ule, %[[V4]], %[[C7]] : i32
+// CHECK: %[[C8:.*]] = arith.constant -2147483648 : i32
+// CHECK: %[[V7:.*]] = arith.andi %[[V3]], %[[C8]] : i32
+// CHECK: %[[C9:.*]] = arith.constant 2139095040 : i32
+// CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C9]] : i32
+// CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
+// CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
+// CHECK: arith.bitcast %[[V10]] : i32 to f32
+func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
+                            -> tensor<1x2x3x4xf32> {
+  %0 = "mhlo.reduce_precision"(%arg0) {exponent_bits=3:i32, mantissa_bits=3:i32} : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  return %0 : tensor<1x2x3x4xf32>
+}

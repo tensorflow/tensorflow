@@ -25,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(SignedQuantize, 4D) {
+TEST(QuantizeFloat32ToInt8, 4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -43,10 +43,10 @@ TEST(SignedQuantize, 4D) {
       .Shape({batch, height, width, channels})
       .OutputZeroPoint(-5)
       .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantize, 3D) {
+TEST(QuantizeFloat32ToInt8, 3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -63,10 +63,10 @@ TEST(SignedQuantize, 3D) {
       .Shape({batch, width, channels})
       .OutputZeroPoint(-5)
       .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantize, 2D) {
+TEST(QuantizeFloat32ToInt8, 2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -82,10 +82,10 @@ TEST(SignedQuantize, 2D) {
       .Shape({batch, channels})
       .OutputZeroPoint(-5)
       .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantize, 1D) {
+TEST(QuantizeFloat32ToInt8, 1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -100,10 +100,10 @@ TEST(SignedQuantize, 1D) {
       .Shape({batch})
       .OutputZeroPoint(-5)
       .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, TensorType_INT8, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantize, MultiThreading) {
+TEST(QuantizeFloat32ToInt8, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -124,7 +124,7 @@ TEST(SignedQuantize, MultiThreading) {
       .Shape({batch, height, width, channels})
       .OutputZeroPoint(-5)
       .OutputScale(1.0f / 256.0f)
-      .Test(xnnpack_delegate.get());
+      .Test(TensorType_FLOAT32, TensorType_INT8, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

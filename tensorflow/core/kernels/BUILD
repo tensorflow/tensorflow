@@ -60,6 +60,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -1555,7 +1556,35 @@ tf_kernel_library(
 tf_cc_test(
     name = "ragged_tensor_to_variant_op_test",
     size = "small",
-    srcs = ["ragged_tensor_to_variant_op_test.cc"],
+    srcs = [
+        "ragged_tensor_to_variant_op_test.cc",
+        "ragged_tensor_to_variant_op_test.h",
+    ],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_to_variant_op",
+        ":ragged_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_variant_op_large_data_test",
+    timeout = "moderate",  # Set timeout to 300 sec.
+    srcs = [
+        "ragged_tensor_to_variant_op_large_data_test.cc",
+        "ragged_tensor_to_variant_op_test.h",
+    ],
+    tags = [
+        "local",
+        "manual",
+        "notap",
+    ],
     deps = [
         ":ops_testutil",
         ":ragged_tensor_to_variant_op",
@@ -3559,11 +3588,26 @@ tf_kernel_library(
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        ":matmul_util",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
-        "//tensorflow/stream_executor:matmul_util",
     ]),
+)
+
+cc_library(
+    name = "matmul_util",
+    srcs = if_cuda(["matmul_util.cc"]),
+    hdrs = if_cuda(["matmul_util.h"]),
+    deps = if_cuda([
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/core/util:env_var",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
+    ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -6933,6 +6977,8 @@ filegroup(
             "nextafter_op.cc",
             "initializable_lookup_table.*",
             "lookup_util.*",
+            # Requires CUDA.
+            "matmul_util.*",
         ] + ANDROID_TEXTUAL_HDRS,
     ) + [
         # Referenced by stateful_random_ops.cc but excluded with the *gpu*

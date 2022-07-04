@@ -44,17 +44,16 @@ class LiteralTestUtil {
  public:
   // Asserts that the given shapes have the same rank, dimension sizes, and
   // primitive types.
-  static ::testing::AssertionResult EqualShapes(
-      const Shape& expected, const Shape& actual) ABSL_MUST_USE_RESULT;
+  [[nodiscard]] static ::testing::AssertionResult EqualShapes(
+      const Shape& expected, const Shape& actual);
 
   // Asserts that the provided shapes are equal as defined in AssertEqualShapes
   // and that they have the same layout.
-  static ::testing::AssertionResult EqualShapesAndLayouts(
-      const Shape& expected, const Shape& actual) ABSL_MUST_USE_RESULT;
+  [[nodiscard]] static ::testing::AssertionResult EqualShapesAndLayouts(
+      const Shape& expected, const Shape& actual);
 
-  static ::testing::AssertionResult Equal(const LiteralSlice& expected,
-                                          const LiteralSlice& actual)
-      ABSL_MUST_USE_RESULT;
+  [[nodiscard]] static ::testing::AssertionResult Equal(
+      const LiteralSlice& expected, const LiteralSlice& actual);
 
   // Asserts the given literal are (bitwise) equal to given expected values.
   template <typename NativeT>
@@ -89,10 +88,10 @@ class LiteralTestUtil {
   // Decorates literal_comparison::Near() with an AssertionResult return type.
   //
   // See comment on literal_comparison::Near().
-  static ::testing::AssertionResult Near(
+  [[nodiscard]] static ::testing::AssertionResult Near(
       const LiteralSlice& expected, const LiteralSlice& actual,
       const ErrorSpec& error_spec,
-      std::optional<bool> detailed_message = std::nullopt) ABSL_MUST_USE_RESULT;
+      std::optional<bool> detailed_message = std::nullopt);
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.
@@ -143,9 +142,9 @@ class LiteralTestUtil {
   // If the error spec is given, returns whether the expected and the actual are
   // within the error bound; otherwise, returns whether they are equal. Tuples
   // will be compared recursively.
-  static ::testing::AssertionResult NearOrEqual(
+  [[nodiscard]] static ::testing::AssertionResult NearOrEqual(
       const LiteralSlice& expected, const LiteralSlice& actual,
-      const std::optional<ErrorSpec>& error) ABSL_MUST_USE_RESULT;
+      const std::optional<ErrorSpec>& error);
 
  private:
   LiteralTestUtil(const LiteralTestUtil&) = delete;

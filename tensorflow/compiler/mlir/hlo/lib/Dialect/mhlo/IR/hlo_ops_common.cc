@@ -24,7 +24,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 // Verifies the source target pairs attached to collective permute.
-LogicalResult VerifyCollectivePermuteSourceTargetPairs(
+LogicalResult verifyCollectivePermuteSourceTargetPairs(
     Operation *op, DenseIntElementsAttr attr) {
   auto type = attr.getType().dyn_cast<RankedTensorType>();
   if (type.getRank() != 2)
@@ -51,7 +51,7 @@ LogicalResult VerifyCollectivePermuteSourceTargetPairs(
   return success();
 }
 
-LogicalResult VerifyReduceScatter(Operation *op, TypeRange operandTypes,
+LogicalResult verifyReduceScatter(Operation *op, TypeRange operandTypes,
                                   TypeRange resultTypes,
                                   uint64_t scatterDimension) {
   // If operand and result are both ranked, then the size of the scatter

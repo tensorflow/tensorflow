@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
@@ -387,8 +388,80 @@ class CheckpointPosition(object):
     from tensorflow.python.training.saving import saveable_object_util
     # pylint:enable=g-import-not-at-top
 
-    saveables = saveable_object_util.saveable_objects_from_trackable(
+    if not self.object_proto.attributes:
+      return [], {}, [], {}
+
+    saveable_factories = saveable_object_util.saveable_objects_from_trackable(
         self.trackable)
+    if saveable_factories.keys() == {trackable_utils.SERIALIZE_TO_TENSORS_NAME}:
+      return self._create_serialize_to_tensor_saveable(saveable_factories)
+    elif saveable_factories:
+      return self._create_saveables_by_attribute_name(saveable_factories)
+    elif self.object_proto.attributes:
+      # The checkpoint may have a serialized tensor recorded, but the
+      # Trackable appears to have no tensors to serialize/restore. When this
+      # happens, it means that the Trackable has migrated to the registered
+      # checkpoint functionality (TPUEmbedding is an example of this).
+      saver_name = registration.get_registered_saver_name(self.trackable)
+      if saver_name:
+        registered_savers = {}
+        registered_savers[saver_name] = {
+            # For now, set the Trackable's object name to the first checkpoint
+            # key that is stored in checkpoint. If there is a use case that
+            # requires the other keys, then we can take another look at this.
+            self.object_proto.attributes[0].checkpoint_key: self.trackable}
+        return {}, [], [], registered_savers
+
+      # If no registered savers were found, then it means that one or more
+      # serialized tensors were never used.
+      for serialized_tensor in self.object_proto.attributes:
+        self._checkpoint.unused_attributes.setdefault(
+            self._proto_id, []).append(serialized_tensor.name)
+    return {}, [], [], {}
+
+  def _create_serialize_to_tensor_saveable(self, saveable_factories):
+    """Creates a saveable using the _serialize_to_tensor method."""
+    # Extract the saveable name from the checkpoint key. This will be used as
+    # the cache key or the name to pass to the saveable factory.
+    saveable_name = checkpoint_util.extract_saveable_name(
+        self.trackable, self.object_proto.attributes[0].checkpoint_key)
+    # Try to find the cached saveable (only in graph mode).
+    if not context.executing_eagerly():
+      existing_op = self._checkpoint.restore_ops_by_name.get(saveable_name,
+                                                             None)
+      if existing_op is not None:
+        return existing_op, {}, [], {}
+
+      saveables_cache = self._checkpoint.saveables_cache.setdefault(
+          self.trackable, {})
+      if saveable_name in saveables_cache:
+        return [], {saveable_name: saveables_cache[saveable_name]}, [], {}
+
+    saveable = saveable_factories[trackable_utils.SERIALIZE_TO_TENSORS_NAME](
+        name=saveable_name)
+    if not context.executing_eagerly():
+      saveables_cache[saveable_name] = saveable
+    return [], {saveable_name: saveable}, [], {}
+
+  def _create_saveables_by_attribute_name(self, saveable_factories):
+    """Creates or caches SaveableObjects by matching the attribute names.
+
+    The attribute name keys in the `saveable_factories` is used to find the
+    corresponding attribute in the object proto. Attributes contain checkpoint
+    keys which are passed to the factory function to generate the
+    SaveableObject.
+
+    Args:
+      saveable_factories: a dict mapping attribute name to a callable factory
+        function that produces a SaveableObject.
+
+    Returns:
+      A tuple of (
+          existing_restore_ops: list,
+          named_saveables: dict,
+          python_saveables: list,
+          registered_savers: dict)
+    """
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
     python_saveables = []
@@ -434,14 +507,9 @@ class CheckpointPosition(object):
           del saveables_cache[self.trackable]
       if saveable is None:
         # If there was no cached SaveableObject, create one.
-        if saveables.keys() == {""}:
-          # First check if the saveable factory is generated with the
-          # compatibility function `saveable_objects_from_trackable`.
-          saveable_factory = saveables[""]
-        else:
-          # Otherwise, use the name to check if the Python object has the same
-          # attribute.
-          saveable_factory = saveables.get(serialized_tensor.name, None)
+        # Use the name to check if the Python object has the same attribute.
+        saveable_factory = saveable_factories.get(serialized_tensor.name,
+                                                  None)
         if saveable_factory is None:
           # Purposefully does not throw an exception if attributes have been
           # added or deleted. Stores unused attributes so an exception can be
@@ -461,7 +529,8 @@ class CheckpointPosition(object):
         python_saveables.append(saveable)
       else:
         named_saveables[serialized_tensor.checkpoint_key] = saveable
-    return existing_restore_ops, named_saveables, python_saveables
+
+    return existing_restore_ops, named_saveables, python_saveables, {}
 
   def restore_ops(self):
     """Create or fetch restore ops for this object's attributes.
@@ -477,7 +546,7 @@ class CheckpointPosition(object):
       raise ValueError("Unable to run individual checkpoint restore for objects"
                        " with registered savers.")
     (restore_ops, tensor_saveables,
-     python_saveables) = self.gather_ops_or_named_saveables()
+     python_saveables, _) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
         self._checkpoint.restore_saveables(tensor_saveables, python_saveables))
     return restore_ops
@@ -1061,12 +1130,15 @@ class Trackable(object):
           registered_savers[registered_saver][object_name] = trackable
         trackable._self_update_uid = current_position.checkpoint.restore_uid  # pylint: disable=protected-access
       else:
-        new_restore_ops, new_tensor_saveables, new_python_saveables = (
-            trackable._single_restoration_from_checkpoint_position(  # pylint: disable=protected-access
-                current_position))
+        (new_restore_ops, new_tensor_saveables, new_python_saveables,
+         new_registered_savers) = (
+             trackable._single_restoration_from_checkpoint_position(  # pylint: disable=protected-access
+                 current_position))
         restore_ops.extend(new_restore_ops)
         tensor_saveables.update(new_tensor_saveables)
         python_saveables.extend(new_python_saveables)
+        for saver_name, trackable_map in new_registered_savers.items():
+          registered_savers[saver_name].update(trackable_map)
 
       _queue_children_for_restoration(current_position, visit_queue)
       checkpoint_util.queue_slot_variables(current_position, visit_queue)
@@ -1085,14 +1157,15 @@ class Trackable(object):
     # need to actually restore the object. However, we should pass the
     # restoration on to our dependencies.
     if checkpoint.restore_uid > self._self_update_uid:
-      restore_ops, tensor_saveables, python_saveables = (
+      restore_ops, tensor_saveables, python_saveables, registered_savers = (
           checkpoint_position.gather_ops_or_named_saveables())
       self._self_update_uid = checkpoint.restore_uid
     else:
       restore_ops = ()
       tensor_saveables = {}
       python_saveables = ()
-    return restore_ops, tensor_saveables, python_saveables
+      registered_savers = {}
+    return restore_ops, tensor_saveables, python_saveables, registered_savers
 
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.
@@ -1143,6 +1216,47 @@ class Trackable(object):
   def _serialize_to_tensors(self):
     """Gathers tensors to save to the checkpoint.
 
+    You should only override `_serialize_to_tensors` and `_restore_from_tensors`
+    if you are defining a custom resource or variable with custom ops.
+
+    Otherwise, please store the state of your trackable in `tf.Variable` objects
+    and add them to Trackable object hierarchy using `setattr` (for subclasses
+    of `AutoTrackable`) or overriding the `_trackable_children` method.
+
+    For an example of a valid implementation of these two methods, please see
+    `DenseHashTable`.
+
+    **Invalid implementation**
+
+    ````
+    class NamedTrackable(Trackable):
+      def __init__(self, name: str):
+        self.name = name
+      def _serialize_to_tensors(self):
+        return {"name": self.name}
+      def _restore_from_tensors(self, restored_tensors):
+        self.name = restored_tensors["name"]
+    ```
+
+    In this example, `NamedTrackable` can be saved and restored from
+    checkpoints, but is incompatible with SavedModel, which tries to convert
+    the serialize/restore functions into tf.functions. This fails because
+    attribute assignment (`self.attr = new_value`) is not graph-friendly.
+
+    **Suggested fix**
+
+    ```
+    class NamedTrackable(Trackable):
+      def __init__(self, name: str):
+        self.name = tf.Variable(name)
+
+      def _trackable_children(self):
+        return {"name": self.name}
+    ```
+
+    If the `name` attribute should be saved to the checkpoint, then convert it
+    a `tf.Variable`.
+
     Returns:
       A dictionary mapping names to tensors.
     """
@@ -1150,6 +1264,8 @@ class Trackable(object):
 
   def _restore_from_tensors(self, restored_tensors):
     """Restores checkpointed values to this `Trackable`.
+
+    Please see the documentation for `Trackable._serialize_to_tensors`.
 
     Args:
       restored_tensors: A dictionary mapping names to tensors. The keys to this

@@ -152,6 +152,20 @@ py_library(
     name = "checkpoint_util",
     srcs = ["checkpoint_util.py"],
     srcs_version = "PY3",
+    deps = [
+        ":saveable_compat",
+        "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+tf_py_test(
+    name = "checkpoint_util_test",
+    srcs = ["checkpoint_util_test.py"],
+    deps = [
+        ":checkpoint_util",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+    ],
 )
 
 py_library(
@@ -231,6 +245,20 @@ py_library(
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+    ],
+)
+
+tf_py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    deps = [
+        ":graph_view",
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:autotrackable",
     ],
 )
 

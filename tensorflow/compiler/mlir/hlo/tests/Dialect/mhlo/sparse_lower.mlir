@@ -262,3 +262,20 @@ func.func @sparse_conv_eltwise(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, 
   return %0 : tensor<2x3xi32, #DCSR>
 }
 
+// CHECK-LABEL: func @sparse_expand(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<100xf64, #{{.*}}>) -> tensor<10x10xf64, #{{.*}}> {
+// CHECK:         %[[OUT:.*]] = tensor.expand_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<100xf64, #{{.*}}> into tensor<10x10xf64, #{{.*}}>
+// CHECK:         return %[[OUT]] : tensor<10x10xf64, #{{.*}}>
+func.func @sparse_expand(%arg0: tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR>
+  return %0 : tensor<10x10xf64, #CSR>
+}
+
+// CHECK-LABEL: func @sparse_collapse(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #{{.*}}>) -> tensor<100xf64, #{{.*}}> {
+// CHECK:         %[[OUT:.*]] = tensor.collapse_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<10x10xf64, #{{.*}}> into tensor<100xf64, #{{.*}}>
+// CHECK:         return %[[OUT]] : tensor<100xf64, #{{.*}}>
+func.func @sparse_collapse(%arg0: tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV>
+  return %0 : tensor<100xf64, #SV>
+}

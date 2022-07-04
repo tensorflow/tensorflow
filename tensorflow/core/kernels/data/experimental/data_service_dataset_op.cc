@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/service/client/common.h"
+#include "tensorflow/core/data/service/client/validate_utils.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -232,7 +234,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
-        iteration_counter_->GetAndIncrement());
+        DataServiceParams{dataset_id_, processing_mode_, address_, protocol_,
+                          data_transfer_protocol_, job_name_,
+                          /*repetition=*/iteration_counter_->GetAndIncrement(),
+                          num_consumers_, consumer_index_, target_workers_,
+                          metadata_, cross_trainer_cache_options_});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -391,9 +397,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:
-    explicit Iterator(const Params& params, int64_t repetition)
+    explicit Iterator(const Params& params,
+                      const DataServiceParams& data_service_params)
         : DatasetIterator<Dataset>(params),
-          repetition_(repetition),
+          data_service_params_(data_service_params),
           max_outstanding_requests_(params.dataset->max_outstanding_requests_) {
     }
 
@@ -418,7 +425,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
-      TF_RETURN_IF_ERROR(ValidateDataset());
+      TF_RETURN_IF_ERROR(ValidateDataServiceParams(data_service_params_));
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -445,8 +452,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           deadline_micros));
       TF_RETURN_IF_ERROR(grpc_util::Retry(
           [&]() {
-            return dispatcher_->GetOrCreateIteration(job_id_, repetition_,
-                                                     iteration_client_id_);
+            return dispatcher_->GetOrCreateIteration(
+                job_id_, data_service_params_.repetition, iteration_client_id_);
           },
           /*description=*/
           strings::StrCat("get or create iteration with dispatcher at ",
@@ -576,66 +583,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       bool end_of_sequence TF_GUARDED_BY(&Iterator::mu_) = false;
       bool skip TF_GUARDED_BY(&Iterator::mu_) = false;
     };
-
-    Status ValidateDataset() const {
-      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
-          LocalWorkers::Empty()) {
-        if (IsStaticShard(dataset()->processing_mode_)) {
-          return errors::InvalidArgument(
-              "Static sharding policy <",
-              ProcessingModeDef::ShardingPolicy_Name(
-                  dataset()->processing_mode_.sharding_policy()),
-              "> requires local tf.data workers, but no local worker is found. "
-              "You need to run local tf.data service workers in your training "
-              "workers. Static sharding also requires a fixed worker pool and "
-              "a list of worker addresses in the DispatcherConfig. See the "
-              "\"Processing Modes\" section in the module doc for details.");
-        }
-        return errors::InvalidArgument(
-            "Local reads require local tf.data workers, but no local worker "
-            "is found. You need to run local tf.data service workers in your "
-            "training workers.");
-      }
-      if (dataset()->target_workers_ == TARGET_WORKERS_LOCAL &&
-          StrictRoundRobin()) {
-        return errors::InvalidArgument(
-            "Coordinated reads require non-local workers, but `target_workers` "
-            "is \"LOCAL\".");
-      }
-      if (dataset()->cross_trainer_cache_options_.has_value()) {
-        TF_RETURN_IF_ERROR(ValidateCrossTrainerCache());
-      }
-      return OkStatus();
-    }
-
-    Status ValidateCrossTrainerCache() const {
-      if (!dataset()->cross_trainer_cache_options_.has_value()) {
-        return OkStatus();
-      }
-      if (dataset()->job_name_.empty()) {
-        return errors::InvalidArgument(
-            "Cross-trainer caching requires named jobs. Got empty `job_name`.");
-      }
-      if (dataset()->metadata_.cardinality() != kInfiniteCardinality) {
-        return errors::InvalidArgument(
-            "Cross-trainer caching requires the input dataset to be infinite. "
-            "Got input with cardinality ",
-            dataset()->metadata_.cardinality());
-      }
-      if (repetition_ > 1) {
-        return errors::InvalidArgument(
-            "Cross-trainer caching requires infinite datasets and disallows "
-            "multiple repetitions of the same dataset. Got repetition ",
-            repetition_);
-      }
-      if (StrictRoundRobin() && dataset()->num_consumers_.has_value()) {
-        return errors::InvalidArgument(
-            "Cross-trainer caching does not support coordinated reads. "
-            "Got number of coordinated consumers: ",
-            dataset()->num_consumers_.value());
-      }
-      return OkStatus();
-    }
 
     // Returns whether the iterator has finished and should return.
     bool Finished() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1231,7 +1178,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           num_running_worker_threads_);
     }
 
-    const int64_t repetition_;
+    const DataServiceParams data_service_params_;
 
     mutable mutex mu_;
     condition_variable get_next_cv_ TF_GUARDED_BY(mu_);

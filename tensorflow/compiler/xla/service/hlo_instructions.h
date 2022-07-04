@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -165,14 +166,17 @@ class HloFftInstruction : public HloInstruction {
 
 class HloAsyncInstruction : public HloInstruction {
  public:
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      absl::Span<HloInstruction* const> operands,
-                      HloComputation* async_computation,
-                      std::optional<int64_t> async_group_id = std::nullopt);
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand,
-                      HloComputation* async_computation,
-                      std::optional<int64_t> async_group_id = std::nullopt);
+  HloAsyncInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      std::optional<std::string> async_thread_name = std::nullopt);
+  HloAsyncInstruction(
+      HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      std::optional<std::string> async_thread_name = std::nullopt);
 
   ~HloAsyncInstruction() override;
   // When an async instruction is being destructed, remove it from the vector of
@@ -187,7 +191,16 @@ class HloAsyncInstruction : public HloInstruction {
   // operations. The async group participates in a single async operation. The
   // async operation canonicalizer pass assigns async group ids.
   std::optional<int64_t> async_group_id() const { return async_group_id_; }
+
+  // Async thread name is a unique thread name for one or more async groups.
+  // Typically one HLO module contains a main thread as well as one or more
+  // parallel threads. Empty async_thread_name is equivalent to main thread.
+  std::optional<absl::string_view> async_thread_name() const {
+    return async_thread_name_;
+  }
   void set_async_group_id(std::optional<int64_t> async_group_id);
+  void set_async_thread_name(
+      const std::optional<std::string>& async_thread_name);
   HloInstructionProto ToProto() const override;
 
  private:
@@ -201,6 +214,7 @@ class HloAsyncInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
   std::optional<int64_t> async_group_id_;
+  std::optional<std::string> async_thread_name_;
 };
 
 class HloCopyStartInstruction : public HloInstruction {

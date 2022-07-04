@@ -13,19 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
-#include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Math/IR/Math.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -43,7 +39,7 @@ struct FusionPattern : public OpRewritePattern<MaterializeOp> {
     auto iface = llvm::dyn_cast<FusionIterface>(def);
     if (!iface) return failure();
 
-    Value fused = iface.fuse(op.getLoc(), op.subset(), rewriter);
+    Value fused = iface.fuse(op.getLoc(), op.set(), rewriter);
     if (!fused) return failure();
 
     rewriter.replaceOp(op, fused);
@@ -53,18 +49,13 @@ struct FusionPattern : public OpRewritePattern<MaterializeOp> {
 
 class FusionPass : public FusionPassBase<FusionPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry
-        .insert<GmlStDialect, math::MathDialect, arith::ArithmeticDialect>();
     registerFusionInterfaceExternalModels(registry);
   }
 
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
-
-    // List of patterns.
     patterns.insert<FusionPattern>(ctx);
-
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();

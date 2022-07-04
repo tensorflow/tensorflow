@@ -1040,7 +1040,7 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     // Store an empty engine in the cache for these input shapes so we don't try
     // to build the same failing engine again.
     cache_resource->cache_.emplace(input_concrete_shapes,
-                                   absl::make_unique<EngineContext>());
+                                   std::make_unique<EngineContext>());
     return status;
   }
   return engine;
@@ -1101,8 +1101,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
           static_engine.get(), &exec_contexts));
       cache.emplace(input_concrete_shapes,
-                    absl::make_unique<EngineContext>(std::move(static_engine),
-                                                     std::move(exec_contexts)));
+                    std::make_unique<EngineContext>(std::move(static_engine),
+                                                    std::move(exec_contexts)));
       VLOG(1) << "Added new engine to cache of " << name()
               << ". Cache size: " << cache.size();
       // Query which profile of the new engine matches the actual input.
@@ -1118,8 +1118,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       if (!allow_build_at_runtime_) {
         // Store an empty engine in the cache so we don't try to load the same
         // failing engine again.
-        cache.emplace(input_concrete_shapes,
-                      absl::make_unique<EngineContext>());
+        cache.emplace(input_concrete_shapes, std::make_unique<EngineContext>());
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
       if (segment_graph_def_.node().empty()) {
@@ -1151,8 +1150,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
     cache.emplace(engine_input_shapes,
-                  absl::make_unique<EngineContext>(std::move(static_engine),
-                                                   std::move(context)));
+                  std::make_unique<EngineContext>(std::move(static_engine),
+                                                  std::move(context)));
     // Runtime is safe to delete after engine creation
     VLOG(1) << "Size of serialized TRT engine: "
             << serialized_segment_.capacity();
@@ -1193,7 +1192,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
           << "The native segment will be used instead.";
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
-      cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
+      cache.emplace(input_concrete_shapes, std::make_unique<EngineContext>());
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
 
@@ -1211,8 +1210,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), &exec_contexts));
     cache.emplace(input_concrete_shapes,
-                  absl::make_unique<EngineContext>(std::move(engine),
-                                                   std::move(exec_contexts)));
+                  std::make_unique<EngineContext>(std::move(engine),
+                                                  std::move(exec_contexts)));
     VLOG(1) << "Added new engine to cache of " << name()
             << ". Cache size: " << cache.size();
     engine_contexts = cache.at(input_concrete_shapes).get();
@@ -1227,7 +1226,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 // possible.
 Status TRTEngineOp::AllocateCalibrationResources(
     OpKernelContext* ctx, TRTEngineCacheResource* cache_res) {
-  cache_res->calib_ctx_ = absl::make_unique<CalibrationContext>();
+  cache_res->calib_ctx_ = std::make_unique<CalibrationContext>();
   auto* cres = cache_res->calib_ctx_.get();
 
   // Get the input shapes.
@@ -1326,14 +1325,14 @@ Status TRTEngineOp::AllocateCalibrationResources(
         auto calib_result = cache_res->profiles_.CreateExecutionContexts(
             cres->engine_.get(), &exec_contexts);
         cache_res->cache_.emplace(
-            shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
-                                                     std::move(exec_contexts)));
+            shapes, std::make_unique<EngineContext>(std::move(cres->engine_),
+                                                    std::move(exec_contexts)));
       } else {
         ExecutionContext context =
             ExecutionContext::Create(cres->engine_.get());
         cache_res->cache_.emplace(
-            shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
-                                                     std::move(context)));
+            shapes, std::make_unique<EngineContext>(std::move(cres->engine_),
+                                                    std::move(context)));
       }
     }
 

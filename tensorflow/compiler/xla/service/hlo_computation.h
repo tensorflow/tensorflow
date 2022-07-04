@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -338,9 +339,12 @@ class HloComputation {
   // inside an asynchronous computation. The context shapes are appended to the
   // output tuple of the asynchronous start which is backend specific. Returns
   // the async done instruction. The new async start instruction is the operand
-  // of the async done instruction so that can be accessed using that.
+  // of the async done instruction so that can be accessed using that. If
+  // present, `async_thread_name` will be attached to the async-start
+  // instruction as well as wrapped computations.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
-      HloInstruction* instruction, absl::Span<const Shape> context_shapes);
+      HloInstruction* instruction, absl::Span<const Shape> context_shapes,
+      std::optional<std::string> async_thread_name = std::nullopt);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
@@ -372,7 +376,8 @@ class HloComputation {
   // Return whether `*this` and `other` are functionally equivalent.
   bool Equal(const HloComputation& other, bool is_layout_sensitive) const {
     return EqualInternal(other, is_layout_sensitive,
-                         /*ignore_channel_id_values=*/false);
+                         /*ignore_channel_id_values=*/false,
+                         /*ignore_thread=*/false);
   }
 
   // Same as Equal() but ignores channel ID value mismatches on instructions, as
@@ -381,7 +386,15 @@ class HloComputation {
   bool EqualIgnoringChannelIdValues(const HloComputation& other,
                                     bool is_layout_sensitive) const {
     return EqualInternal(other, is_layout_sensitive,
-                         /*ignore_channel_id_values=*/true);
+                         /*ignore_channel_id_values=*/true,
+                         /*ignore_thread=*/false);
+  }
+
+  bool EqualIgnoringThread(const HloComputation& other,
+                           bool is_layout_sensitive,
+                           bool ignore_channel_id_values) const {
+    return EqualInternal(other, is_layout_sensitive, ignore_channel_id_values,
+                         /*ignore_thread=*/true);
   }
 
   // Return whether `*this` and `other` are functionally equivalent.
@@ -618,6 +631,12 @@ class HloComputation {
 
   int64_t unique_id() const { return unique_id_; }
 
+  void SetThreadName(std::optional<std::string> thread_name) {
+    thread_name_ = thread_name;
+  }
+
+  std::optional<std::string> thread_name() const { return thread_name_; }
+
   // Deallocate instructions that are marked by "RemoveInstruction". The two
   // stage clean up process is designed such that HloPass can have stable
   // internal pointers to HloInstructions while we create and remove
@@ -639,7 +658,7 @@ class HloComputation {
 
   // Internal helper for comparison with different options.
   bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
-                     bool ignore_channel_id_values) const;
+                     bool ignore_channel_id_values, bool ignore_thread) const;
 
   // Appends (fuses) HLOs in instructions_to_append into the called computation
   // of the caller.
@@ -698,6 +717,9 @@ class HloComputation {
   // corresponding async instructions (if live) that call this computation.
   // Otherwise, this is empty.
   std::vector<HloInstruction*> async_instructions_;
+
+  // Thread name of this computation. Empty means main thread.
+  std::optional<std::string> thread_name_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

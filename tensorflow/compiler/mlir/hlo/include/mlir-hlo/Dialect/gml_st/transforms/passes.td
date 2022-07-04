@@ -34,10 +34,9 @@ def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
   ];
 }
 
-def ComposeSubsetOpsPass : Pass<"gml-compose-subset-ops",
-    "mlir::func::FuncOp"> {
-  let summary = "Compose subset operations.";
-  let constructor = "::mlir::gml_st::createComposeSubsetOpsPass()";
+def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
+  let summary = "Compose set operations.";
+  let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {

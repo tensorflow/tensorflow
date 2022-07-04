@@ -513,6 +513,9 @@ absl::flat_hash_set<string> GetExperiments(
     }
   }
 
+  if (opt_outs_raw == "all_except_opt_in") {
+    return experiments;
+  }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& pair : live_experiments) {
     auto& experiment = pair.first;
@@ -907,6 +910,7 @@ REGISTER_DATASET_EXPERIMENT("inject_prefetch", 100);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch", 0);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune", 0);
+REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization", 0);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

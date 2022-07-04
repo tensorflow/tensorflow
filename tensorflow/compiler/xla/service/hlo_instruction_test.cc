@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -787,14 +788,21 @@ TEST_F(HloInstructionTest, AsyncOp) {
       r0f32_, HloOpcode::kAdd, constant1, constant2));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto* async_done,
-                          computation->CreateAsyncInstructions(
-                              add, {ShapeUtil::MakeScalarShape(U32)}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, "parallel_thread"));
   auto* async_start = async_done->operand(0);
 
   EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(async_start->async_thread_name(), "parallel_thread");
+  EXPECT_EQ(async_done->async_thread_name(), "parallel_thread");
   EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
                                ShapeUtil::MakeScalarShape(U32)));
+  EXPECT_EQ(async_start->async_wrapped_computation()->thread_name(),
+            "parallel_thread");
+  EXPECT_EQ(async_done->async_wrapped_computation()->thread_name(),
+            "parallel_thread");
   EXPECT_THAT(async_start->operands(), ElementsAre(constant1, constant2));
   EXPECT_THAT(constant1->users(), ElementsAre(async_start));
   EXPECT_THAT(constant2->users(), ElementsAre(async_start));
@@ -1713,12 +1721,18 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
       HloInstruction::CreateParameter(0, s1, "p0"));
   HloInstruction* async_start =
       entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
-          s_tuple, {entry_param}, async_computation.get()));
+          s_tuple, {entry_param}, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_thread_name=*/"parallel_thread"));
   HloInstruction* async_update =
       entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
-          s_tuple, async_start, async_computation.get()));
-  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
-      s2, async_update, async_computation.get()));
+          s_tuple, async_start, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_thread_name=*/"parallel_thread"));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(s2, async_update, async_computation.get(),
+                                      /*async_group_id=*/std::nullopt,
+                                      /*async_thread_name=*/"parallel_thread"));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(entry_builder.Build());
@@ -1729,9 +1743,9 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_thread_name="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_thread_name="parallel_thread", custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_thread_name="parallel_thread", custom_call_target="foo"
 }
 
 )";
@@ -1742,13 +1756,13 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 %AsyncOp (p0.1: f32[10]) -> f32[20] {
   %p0.1 = f32[10]{0} parameter(0)
   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1), custom_call_target="foo"
-}
+}, thread_name="parallel_thread"
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
-  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_thread_name="parallel_thread", calls=%AsyncOp
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_thread_name="parallel_thread", calls=%AsyncOp
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_thread_name="parallel_thread", calls=%AsyncOp
 }
 
 )";

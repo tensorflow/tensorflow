@@ -16,6 +16,7 @@
 
 import collections as py_collections
 import traceback
+from typing import Any, Hashable, Callable, Mapping
 import weakref
 
 import numpy as np
@@ -41,6 +42,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
@@ -132,6 +134,38 @@ def convert_structure_to_signature(structure, arg_names=None):
   return nest.pack_sequence_as(structure, mapped)
 
 
+class CapturesContainer(object):
+  """A container class to store captures with a dict."""
+
+  def __init__(self):
+    # A dict that maps capture identifier -> function
+    self._captures = py_collections.OrderedDict()
+
+  def add_capture(self, identifier: Hashable,
+                  func: Callable[[], Any]):
+    self._captures[identifier] = func
+
+  def update(self, container: "CapturesContainer"):
+    # Add captures to self from other Container if not exist
+    assert isinstance(container, CapturesContainer)
+    for key, func in container.captures.items():
+      if key not in self._captures:
+        self._captures[key] = func
+
+  def get_snapshot(self) -> Mapping[Hashable, Any]:
+    snapshot = {}
+    for key, func in self.captures.items():
+      snapshot[key] = func()
+    return snapshot
+
+  @property
+  def captures(self) -> Mapping[Hashable, Any]:
+    return self._captures
+
+  def __len__(self):
+    return len(self._captures)
+
+
 @tf_export("__internal__.FuncGraph", v1=[])
 class FuncGraph(ops.Graph):
   """Graph representing a function body.
@@ -213,6 +247,13 @@ class FuncGraph(ops.Graph):
     # active when the FuncGraph was traced. This will not be a FuncGraph.
     self._fallback_outer_graph = outer_graph
     self._captures = py_collections.OrderedDict()
+    # Maps capture identifier -> lambda function that returns capture values
+    # Used to get runtime value to determine if retracing is needed.
+    self._capture_func_lib = CapturesContainer()
+    # Maps capture identifier -> a container with the same structure as
+    # the original side input, except tensors are replaced with placeholders.
+    # Used to fetch existing placeholders and prevent repeated creatation.
+    self._capture_placeholder_lib = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to
     # preserve the output names in the signature of a serialized+deserialized
     # function. Private at the moment mostly because it's often out of date.
@@ -779,6 +820,71 @@ class FuncGraph(ops.Graph):
         backward_function=lambda x: [x],
         forward_function=lambda x: [x])
     return placeholder
+
+  def _experimental_capture_side_input_by_ref(self, identifier: Hashable,
+                                              func: Callable[[], Any]) ->...:
+    """Implement capturing side input by reference for tf.function.
+
+    Args:
+      identifier: A hashable object as the key for the capture.
+      func: A Python function that takes no arguments and returns the value of
+        side input. The function is evaluated at function call time.
+
+    Returns:
+      A nested structure with the same structure as the side input. Tensors
+        are replaced with placehoders, and non-tensors remain the same.
+
+    """
+    # prevent repeated captures
+    if identifier in self._capture_placeholder_lib:
+      return self._capture_placeholder_lib[identifier]
+
+    nested_placeholder = self._maybe_create_capture_placeholder(func)
+    self._capture_func_lib.add_capture(identifier, func)
+    self._capture_placeholder_lib[identifier] = nested_placeholder
+    return nested_placeholder
+
+  def _maybe_create_capture_placeholder(self, func: Callable[[], Any]) -> ...:
+    """Create placeholder if the input is tensor."""
+    values_nest = func()
+
+    if context.executing_eagerly():
+      return values_nest
+
+    values_flat = nest.flatten(values_nest)
+    # Return values in flat format. It consists of placeholders and non-tensor
+    # values.
+    return_flat = []
+    tensor_spec_flat = []
+    # Create return_flat and replace tensors with None. Later, each None is
+    # replaced again by corresponding placeholders
+    for value in values_flat:
+      if isinstance(value, core.Tensor):
+        return_flat.append(None)
+        tensor_spec_flat.append(type_spec.type_spec_from_value(value))
+      elif isinstance(value, set) or isinstance(value, frozenset):
+        raise NotImplementedError(
+            (f"Side input returned by '{tf_inspect.getsource(func).strip()}' "
+             f"has element of {type(value)} type, which is currently not "
+             "supported by tf.function."))
+      else:
+        return_flat.append(value)
+    if tensor_spec_flat:
+
+      def tensor_func():
+        values = nest.flatten(func())
+        return [value for value in values if isinstance(value, core.Tensor)]
+
+      placeholder_flat = self.capture_call_time_value(
+          tensor_func, tensor_spec_flat)
+      # replace None that represents tensors with placehoders
+      flat_ptr = 0
+      for idx, item in enumerate(return_flat):
+        if item is None:
+          return_flat[idx] = placeholder_flat[flat_ptr]
+          flat_ptr += 1
+    return_nest = nest.pack_sequence_as(values_nest, return_flat)
+    return return_nest
 
   @property
   def captures(self):

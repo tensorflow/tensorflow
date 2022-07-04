@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace spmd {
@@ -478,6 +479,13 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
   // If not replicated yet, first replicate and then reshard to use one of the
   // two implementations below.
   if (!sharding().IsReplicated()) {
+    LOG(ERROR) << "[spmd] Involuntary full rematerialization. The compiled was "
+                  "not able to go from sharding "
+               << sharding().ToString(/*include_metadata=*/true) << " to "
+               << target.ToString(/*include_metadata=*/true)
+               << " without doing a full rematerialization of the tensor. You "
+                  "probably want to enrich the sharding annotations to prevent "
+                  "this from happening.";
     return Replicate().Reshard(target);
   }
 

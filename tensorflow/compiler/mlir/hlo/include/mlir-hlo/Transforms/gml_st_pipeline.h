@@ -18,14 +18,17 @@ limitations under the License.
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
-#include "mlir/Pass/PassRegistry.h"
 
 namespace mlir {
 struct GmlStPipelineOptions
     : public mlir::PassPipelineOptions<GmlStPipelineOptions> {
   ListOption<int64_t> tileSizes{
-      *this, "tile-sizes",
-      llvm::cl::desc("tile-sizes option for the tiling pass")};
+      *this, "tile-sizes", llvm::cl::desc("Tiling sizes for the tiling pass")};
+  Option<bool> lowerToLoops{
+      *this, "lower-to-loops",
+      llvm::cl::desc("Enable bufferization and lowering to SCF dialect for "
+                     "GmlSt and Linalg ops."),
+      llvm::cl::init(false)};
 };
 
 void createGmlStPipeline(mlir::OpPassManager& pm,

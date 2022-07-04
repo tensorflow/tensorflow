@@ -648,7 +648,7 @@ Value materializeLogOneHalf(ConversionPatternRewriter &rewriter, Location loc,
   auto resultTy = operand.getType().cast<ShapedType>();
 
   Value two = rewriter.create<mhlo::ConstantOp>(
-      loc, hlo::GetScalarOfType(getElementTypeOrSelf(operand.getType()), 2));
+      loc, hlo::getScalarOfType(getElementTypeOrSelf(operand.getType()), 2));
   Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
   Value twoWithOperandShape = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
       loc, resultTy, two, shape, rewriter.getI64TensorAttr({}));
@@ -1275,7 +1275,7 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     // other for the indices. Use TOTALORDER comparison type instead of the
     // default comparison if the element type is of type float.
     Type elementType = operandType.getElementType();
-    auto sortOp = CreateSortOp(&rewriter, op.getLoc(), {op.operand(), iotaOp},
+    auto sortOp = createSortOp(&rewriter, op.getLoc(), {op.operand(), iotaOp},
                                {elementType, i32Type}, lastDimIndex,
                                /*is_stable=*/true,
                                /*direction=*/mhlo::ComparisonDirection::GT);
@@ -1471,7 +1471,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // Check for "numpy"-style rank broadcast.
     auto broadcastDimensions = op.broadcast_dimensions();
     if (broadcastDimensions &&
-        !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions)) {
+        !hlo::isLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions)) {
       // Note: It is unclear whether the general specification of explicit
       // broadcast_dimensions on binary ops is a feature we want to carry
       // forward. While it can technically be implemented for ranked-dynamic,
@@ -1501,7 +1501,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     int64_t resultRank = std::max(lhsType.getRank(), rhsType.getRank());
     Value resultExtents =
-        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
+        hlo::computeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
                                                                rewriter);
 
     // Note that we unconditionally emit DynamicBroadcastInDim ops and let

@@ -110,7 +110,7 @@ bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
     ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    ArrayAttr dilations, PatternRewriter& rewriter, ArrayAttr& explicit_pad);
+    PatternRewriter& rewriter, ArrayAttr& explicit_pad);
 
 // Templated function to create a constant op for given type and shape.
 // T: storage C type.

@@ -622,6 +622,9 @@ PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kBufferSizeMin)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kBufferSizeMin, &buffer_size_min_));
   }
+  if (GetExperiments().contains("autotune_buffer_optimization")) {
+    legacy_autotune_ = false;
+  }
 }
 
 void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
