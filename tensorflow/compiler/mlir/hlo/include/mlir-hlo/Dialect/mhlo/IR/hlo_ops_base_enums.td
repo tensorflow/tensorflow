@@ -38,6 +38,22 @@ def HLO_Precision : I32EnumAttr<"Precision",
 def HLO_PrecisionAttr : EnumAttr<HLO_Dialect, HLO_Precision, "precision">;
 
 //===----------------------------------------------------------------------===//
+// Domain Metadata Kind  enum definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA FftType proto enum.
+def HLO_DOMAIN_KIND_SHARDING : I32EnumAttrCase<"sharding", 0>;
+
+def HLO_DomainKind : I32EnumAttr<"DomainKind",
+    "Kind of domain metatdata attached to an HLO domain.",
+    [HLO_DOMAIN_KIND_SHARDING]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def HLO_DomainKindAttr : EnumAttr<HLO_Dialect, HLO_DomainKind, "kind">;
+
+//===----------------------------------------------------------------------===//
 // Fast Fourier Transform Type enum definitions.
 //===----------------------------------------------------------------------===//
 

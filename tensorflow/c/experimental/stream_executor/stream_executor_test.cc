@@ -723,7 +723,7 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
   Stream stream(executor);
   stream.Init();
   std::function<port::Status()> callback = []() -> port::Status {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_TRUE(stream.ok());

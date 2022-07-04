@@ -73,7 +73,7 @@ Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
 
   const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
   *shape = shaped_buffer.on_device_shape();
-  return Status::OK();
+  return OkStatus();
 }
 
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
@@ -122,7 +122,7 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      absl::make_unique<XlaDeviceAllocator>(
+      std::make_unique<XlaDeviceAllocator>(
           backend->stream_executors()[device_ordinal]);
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
@@ -179,7 +179,7 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
         "placed on the wrong device.");
   }
   *metadata = &(xla_device->xla_metadata_);
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
@@ -295,7 +295,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
             << (*stream)->DebugStreamPointers();
     *stream_was_changed = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
@@ -316,7 +316,7 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
     } else {
       // Directly create the stream here instead of borrowing from the stream
       // pool to avoid potential lifetime issues.
-      stream_ = absl::make_unique<se::Stream>(
+      stream_ = std::make_unique<se::Stream>(
           backend->stream_executors()[device_ordinal_]);
       stream_->Init();
       TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
@@ -384,7 +384,7 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   // the moment is that this race doesn't seem to occur in practice.
   if (use_accelerator_device_info_) {
     auto accelerator_device_info =
-        absl::make_unique<DeviceBase::AcceleratorDeviceInfo>();
+        std::make_unique<DeviceBase::AcceleratorDeviceInfo>();
     accelerator_device_info->stream = stream_.get();
     accelerator_device_info->default_context = device_contexts_.at(0);
     set_tensorflow_accelerator_device_info(accelerator_device_info.get());
@@ -416,7 +416,7 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   TF_ASSIGN_OR_RETURN(auto device_context, GetDeviceContextDefault());
   device_context->Ref();
   *out_context = device_context;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Warn about XLA_CPU/XLA_GPU exactly once.
@@ -458,7 +458,7 @@ Status XlaDevice::Sync() {
     mutex_lock lock(mu_);
     stream = stream_;
   }
-  if (!stream) return Status::OK();
+  if (!stream) return OkStatus();
 
   Status status = stream->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(status);
@@ -466,7 +466,7 @@ Status XlaDevice::Sync() {
     return errors::Internal("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(b/112409994): This is no longer necessary. Consolidate it with the
@@ -479,7 +479,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
     stream = stream_;
   }
   if (!stream) {
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 
@@ -496,7 +496,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   stream->ThenEnqueueOnBackgroundThread([stream, done](se::StreamExecutor*) {
     profiler::TraceMe activity("XlaDevice::Sync::Callback",
                                profiler::TraceMeLevel::kInfo);
-    done(stream->ok() ? Status::OK()
+    done(stream->ok() ? OkStatus()
                       : errors::Internal("XlaDevice::Sync() failed."));
   });
 }
@@ -562,7 +562,7 @@ Status XlaDevice::HandleDeviceError() {
   if (local_device_error_callback != nullptr) {
     return local_device_error_callback();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaDevice::RefreshStatus() {
@@ -572,7 +572,7 @@ Status XlaDevice::RefreshStatus() {
     stream = stream_;
   }
   if (!stream) {
-    return Status::OK();
+    return OkStatus();
   }
   Status status = stream->RefreshStatus();
   if (!status.ok()) {

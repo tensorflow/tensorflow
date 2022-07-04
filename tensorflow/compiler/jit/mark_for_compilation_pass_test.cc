@@ -366,7 +366,7 @@ static Status GradForUnaryCwise(FunctionDef* g,
       {},
       // Nodes
       nodes);
-  return Status::OK();
+  return OkStatus();
 }
 
 // A gradient containing only supported operators
@@ -998,7 +998,7 @@ TEST(XlaCompilationTest, RandomShapeWithFunc) {
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
-  auto fld = absl::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+  auto fld = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
                                                           flib_def);
   TF_ASSERT_OK(
       MarkForCompilationPassTestHelper::MarkForCompilation(&graph, fld.get()));
@@ -1792,7 +1792,7 @@ TEST(XlaCompilationTest, DeterministicClusterNames) {
           " rhs: ", rhs_cluster_name);
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   testing::ResetClusterSequenceNumber();

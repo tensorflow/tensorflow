@@ -19,6 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
@@ -34,12 +35,10 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
-// clang-format off
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-// clang-format on
+// Include order below matters.
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc"
 
 namespace mlir {
 class OpBuilder;
@@ -58,8 +57,8 @@ class MhloDialect : public Dialect {
 
   // Registered hook to verify region arg attributes on operations.
   LogicalResult verifyRegionArgAttribute(mlir::Operation *op,
-                                         unsigned region_index,
-                                         unsigned arg_index,
+                                         unsigned regionIndex,
+                                         unsigned argIndex,
                                          mlir::NamedAttribute attr) override;
 
   // Registered hook to verify an attribute from this dialect on operations.
@@ -104,7 +103,13 @@ LogicalResult deriveShapeFromOperand(
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 // Type derivation function that returns a tensor type with a new element type.
-TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
+TensorType getSameShapeTensorType(TensorType tensorType, Type elementType);
+
+void printConvolutionDimensions(AsmPrinter &p, ConvDimensionNumbersAttr dnums);
+void printConvolutionDimensions(AsmPrinter &p, Operation *,
+                                ConvDimensionNumbersAttr dnums);
+ParseResult parseConvolutionDimensions(AsmParser &parser,
+                                       ConvDimensionNumbersAttr &dnums);
 
 }  // end namespace mhlo
 }  // end namespace mlir
@@ -115,11 +120,10 @@ TensorType getSameShapeTensorType(TensorType tensor_type, Type element_type);
 namespace mlir {
 namespace mhlo {
 
-SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
+SortOp createSortOp(PatternRewriter *rewriter, const Location &loc,
                     const llvm::ArrayRef<Value> &operands,
-                    const llvm::ArrayRef<Type> &element_types,
-                    int64_t dimension, bool is_stable,
-                    ComparisonDirection direction);
+                    const llvm::ArrayRef<Type> &elementTypes, int64_t dimension,
+                    bool isStable, ComparisonDirection direction);
 
 }  // end namespace mhlo
 }  // end namespace mlir

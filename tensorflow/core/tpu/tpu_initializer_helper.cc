@@ -140,7 +140,7 @@ Status TryAcquireTpuLock() {
   }
 
   if (load_library_override == "1") {
-    return Status::OK();
+    return OkStatus();
   } else if (load_library_override == "0") {
     return errors::FailedPrecondition("TPU_LOAD_LIBRARY=0, not loading libtpu");
   }
@@ -181,13 +181,13 @@ Status TryAcquireTpuLock() {
             "libtpu.so in this process.");
       }
     } else {
-      return Status::OK();
+      return OkStatus();
     }
   } else {
     VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
                "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                "therefore allowing multiple libtpu.so loads.";
-    return Status::OK();
+    return OkStatus();
   }
 }
 #if !defined(PLATFORM_GOOGLE)

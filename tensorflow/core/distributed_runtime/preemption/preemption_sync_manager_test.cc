@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -48,8 +49,9 @@ constexpr char kJobName[] = "test_worker";
 // Send fake preemption notices at any time for testing.
 class FakePreemptionNotifier : public PreemptionNotifier {
  public:
+  FakePreemptionNotifier() : PreemptionNotifier(/*env=*/nullptr) {}
+
   ~FakePreemptionNotifier() override {
-    mutex_lock l(mu_);
     NotifyRegisteredListeners(
         errors::Cancelled("~FakePreemptionNotifier() was called."));
   }
@@ -57,14 +59,8 @@ class FakePreemptionNotifier : public PreemptionNotifier {
   void AnnounceDeath(absl::Time death_time) {
     LOG(WARNING) << "Received preemption notice with death time: "
                  << death_time;
-    {
-      mutex_lock l(mu_);
-      death_time_ = death_time;
-      NotifyRegisteredListeners(death_time_);
-    }
+    NotifyRegisteredListeners(death_time);
   }
-
-  void Reset() override {}
 };
 
 class PreemptionSyncManagerTest : public ::testing::Test {
@@ -77,14 +73,24 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     // Create preempt sync manager for task 1.
     auto preempt_notifier = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier_ = preempt_notifier.get();
-    TF_CHECK_OK(preempt_sync_mgr_->Initialize(
-        Env::Default(), coord_agent_.get(), std::move(preempt_notifier)));
+    TF_CHECK_OK(preempt_sync_mgr_->Initialize(coord_agent_.get(),
+                                              std::move(preempt_notifier)));
 
     // Create preempt sync manager for task 2.
     auto preempt_notifier2 = std::make_unique<FakePreemptionNotifier>();
     preempt_notifier2_ = preempt_notifier2.get();
-    TF_CHECK_OK(preempt_sync_mgr2_->Initialize(
-        Env::Default(), coord_agent2_.get(), std::move(preempt_notifier2)));
+    TF_CHECK_OK(preempt_sync_mgr2_->Initialize(coord_agent2_.get(),
+                                               std::move(preempt_notifier2)));
+  }
+  ~PreemptionSyncManagerTest() override {
+    // Tear down coordination service objects in order.
+    preempt_sync_mgr_ = nullptr;
+    preempt_sync_mgr2_ = nullptr;
+    coord_agent_ = nullptr;
+    coord_agent2_ = nullptr;
+    coord_service_ = nullptr;
+    grpc_server_->Shutdown();
+    coord_rpc_service_->Shutdown();
   }
 
   // `to_task1` toggles which of the two tasks receives preemption notice.
@@ -98,7 +104,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     // Block main thread for a short while to allow preemption sync manager to
     // process the notice.
     Env::Default()->SleepForMicroseconds(
-        absl::ToInt64Microseconds(absl::Milliseconds(1)));
+        absl::ToInt64Microseconds(absl::Seconds(1)));
   }
 
   // Report to coordiation service that task two is unhealthy.
@@ -116,7 +122,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   std::unique_ptr<PreemptionSyncManager> preempt_sync_mgr2_ =
       CreatePreemptionSyncManager();
 
- private:
+ protected:
   // Utility methods to set up coordination service and agents.
   void StartCoordinationService() {
     ::grpc::ServerBuilder builder;
@@ -157,21 +163,21 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     auto error_fn = [](const Status& status) {
       LOG(ERROR) << "Coordination service agent in error status: " << status;
     };
-    TF_CHECK_OK(
-        coord_agent_->Initialize(Env::Default(), kJobName, /*task_id=*/1,
-                                 CoordinationServiceConfig::default_instance(),
-                                 std::move(coord_client), error_fn));
-    TF_CHECK_OK(
-        coord_agent2_->Initialize(Env::Default(), kJobName, /*task_id=*/2,
-                                  CoordinationServiceConfig::default_instance(),
-                                  std::move(coord_client2), error_fn));
+    CoordinationServiceConfig coord_config;
+    coord_config.set_service_leader("test_leader");
+    TF_CHECK_OK(coord_agent_->Initialize(Env::Default(), kJobName,
+                                         /*task_id=*/1, coord_config,
+                                         std::move(coord_client), error_fn));
+    TF_CHECK_OK(coord_agent2_->Initialize(Env::Default(), kJobName,
+                                          /*task_id=*/2, coord_config,
+                                          std::move(coord_client2), error_fn));
     TF_CHECK_OK(coord_agent_->Connect());
     TF_CHECK_OK(coord_agent2_->Connect());
   }
 
   // Coordination service.
-  std::unique_ptr<::grpc::Server> grpc_server_;
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<::grpc::Server> grpc_server_;
   std::unique_ptr<thread::ThreadPool> coord_compute_pool_;
   std::unique_ptr<AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<Thread> coord_rpc_thread_;
@@ -186,89 +192,105 @@ class PreemptionSyncManagerTest : public ::testing::Test {
 };
 
 /* Single task tests */
-// TODO(b/230630494): Enable tests once the library is implemented.
-TEST_F(PreemptionSyncManagerTest, DISABLED_NoPreemption_NoSyncPoint) {
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+TEST_F(PreemptionSyncManagerTest, NoPreemption_NoSyncPoint) {
+  int step_counter = 0;
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
-// TODO(b/230630494): Enable tests once the library is implemented.
-TEST_F(PreemptionSyncManagerTest, DISABLED_Preemption_SingleSyncPoint) {
+TEST_F(PreemptionSyncManagerTest, Preemption_SingleSyncPoint) {
   // Simulate task doing work and making progress.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  int step_counter = 0;
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
   SendPreemptionNotice();
 
   // Since this is the only task, sync point must be reached.
-  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 
   // Now, we moved past the sync point.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
-// TODO(b/230630494): Enable tests once the library is implemented.
-TEST_F(PreemptionSyncManagerTest, DISABLED_DelayedPreemption_NoSyncPointYet) {
+TEST_F(PreemptionSyncManagerTest, DelayedPreemption_NoSyncPointYet) {
+  int step_counter = 0;
   // Simulate task doing work and making progress.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
   // Send notice about scheduled preemption in an hour.
   SendPreemptionNotice(absl::Now() + absl::Hours(1));
 
   // Protocol didn't trigger yet, so there should be no sync point.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
-// TODO(b/230630494): Enable tests once the library is implemented.
-TEST_F(PreemptionSyncManagerTest, DISABLED_UnhealthyTask_NoSyncPoint) {
+
+TEST_F(PreemptionSyncManagerTest, UnhealthyTask_NoSyncPoint) {
+  int step_counter = 0;
   // Simulate task doing work and making progress.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
   SimulateUnhealthyTaskTwo();
   SendPreemptionNotice();
 
   // No sync point is created since one of the tasks is unhealthy.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+}
+
+TEST_F(PreemptionSyncManagerTest, ShutdownTasksWithoutPreemption) {
+  int step_counter = 0;
+  // Simulate task doing work and making progress.
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
+
+  // Shutdown coordination service agents.
+  TF_CHECK_OK(coord_agent_->Shutdown());
+  TF_CHECK_OK(coord_agent2_->Shutdown());
+  // Protocol is not triggerred, so there should be no sync point.
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter++));
 }
 
 /* Two task tests */
-// TODO(b/230630494): Enable tests once the library is implemented.
-TEST_F(PreemptionSyncManagerTest, DISABLED_PreemptSlowTask) {
+TEST_F(PreemptionSyncManagerTest, PreemptSlowTask) {
+  int step_counter0 = 0;
+  int step_counter2 = 0;
   // Simulate slow task 1 that is only at call #1.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
   // Simulate fast task 3 that is already at call #3.
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
   SendPreemptionNotice();
 
   // Sync point should be set at call #4.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
 
   // Task 2 was already at call #3, so the next call should be the sync point.
-  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
 }
 
 // Same as PreemptSlowTask, but we send the preemption notice to the faster
 // task 2.
-// TODO(b/230630494): Enable tests once the library is implemented.
-TEST_F(PreemptionSyncManagerTest, DISABLED_PreemptFastTask) {
+TEST_F(PreemptionSyncManagerTest, PreemptFastTask) {
+  int step_counter0 = 0;
+  int step_counter2 = 0;
   // Simulate slow task 1 that is only at call #1.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
   // Simulate fast task 3 that is already at call #3.
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
+  EXPECT_FALSE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
   SendPreemptionNotice(absl::Now(), /*=to_task1=*/false);
 
   // Sync point should be set at call #4.
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint());
-  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint());
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_FALSE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
+  EXPECT_TRUE(preempt_sync_mgr_->ReachedSyncPoint(step_counter0++));
 
   // Task 2 was already at call #3, so the next call should be the sync point.
-  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint());
+  EXPECT_TRUE(preempt_sync_mgr2_->ReachedSyncPoint(step_counter2++));
 }
 
 }  // namespace

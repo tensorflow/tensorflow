@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
@@ -208,7 +209,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
   EXPECT_THAT(hoisted_all_reduces, SizeIs(3));
   ASSERT_THAT(
       hoisted_all_reduces,
-      Each(Pointee(Property(&HloInstruction::channel_id, Ne(absl::nullopt)))));
+      Each(Pointee(Property(&HloInstruction::channel_id, Ne(std::nullopt)))));
   // Check if added all-reduces have distinct channel IDs.
   absl::flat_hash_set<int> unique_channel_ids = {
       hoisted_all_reduces[0]->channel_id().value(),
@@ -742,6 +743,170 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MixMovableAllReduceWithNotMovable) {
   EXPECT_EQ(absl::c_count_if(module->entry_computation()->instructions(),
                              Matches(op::AllReduce())),
             1);
+}
+
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       DynamicSliceAllReduceDynamicUpdateSliceAccumulate) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.1, %gte.0), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[2, 1024, 1024] get-tuple-element(%param), index=3
+      %offset-table = s32[8] constant({0, 0, 0, 0, 1, 1, 1, 1})
+      %partition-id = u32[] partition-id()
+      %offset-array = s32[1] dynamic-slice(%offset-table, %partition-id), dynamic_slice_sizes={1}
+      %offset = s32[] reshape(%offset-array)
+      %convert.0 = bf16[1024, 1024] convert(f32[1024, 1024] %gte.2)
+      %all-reduce = bf16[1024, 1024] all-reduce(bf16[1024, 1024] %convert.0), channel_id=1, replica_groups={{0,1,2,3},{4,5,6,7}}, use_global_device_ids=true, to_apply=%reduction
+      %convert.1 = f32[1024, 1024] convert(bf16[1024, 1024] %all-reduce)
+      %reshape = f32[1,1024, 1024] reshape(f32[1024, 1024] %convert.1)
+      %constant.2 = s32[] constant(0)
+      %dynamic-slice = f32[1,1024,1024] dynamic-slice(f32[2, 1024, 1024] %gte.3, s32[] %offset, s32[] %constant.2, s32[] %constant.2), dynamic_slice_sizes={1, 1024, 1024}
+      %accumulation = f32[1,1024,1024] add(f32[1, 1024, 1024] %reshape, f32[1, 1024, 1024] %dynamic-slice)
+      %dynamic-update-slice = f32[2,1024,1024] dynamic-update-slice(f32[2, 1024, 1024] %gte.3, f32[1, 1024, 1024]  %accumulation, s32[] %offset, s32[] %constant.2, s32[] %constant.2)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.1, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) tuple(s32[] %gte.0, s32[] %increment_iteration, f32[1024, 1024] %gte.2, f32[2, 1024, 1024] %dynamic-update-slice)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.0 = f32[1024, 1024] parameter(0)
+      %constant.0 = s32[] constant(8)
+      %constant.1 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[2, 1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) tuple(s32[] %constant.0, s32[] %constant.1, f32[1024, 1024] %param.0, f32[2, 1024, 1024] %accumulation_buffer)
+      ROOT %while = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
+                                   /*num_partitions=*/8));
+  module->config().set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  ASSERT_TRUE(simplified_loop);
+  TF_ASSERT_OK(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
+          .Run(module.get())
+          .status());
+  HloInstruction* transformed_while =
+      *(std::find_if(module->entry_computation()->instructions().begin(),
+                     module->entry_computation()->instructions().end(),
+                     [](HloInstruction* instruction) -> bool {
+                       return Value(instruction, op::While());
+                     }));
+
+  ASSERT_THAT(transformed_while, NotNull());
+  EXPECT_THAT(transformed_while->while_body()->instructions(),
+              Each(Not(op::AllReduce())));
+  HloInstruction* accumulation_buffer =
+      transformed_while->mutable_operand(0)->mutable_operand(3);
+  EXPECT_THAT(accumulation_buffer, op::Constant());
+  HloAllReduceInstruction* moved_all_reduce = DynCast<HloAllReduceInstruction>(
+      *(std::find_if(module->entry_computation()->instructions().begin(),
+                     module->entry_computation()->instructions().end(),
+                     [](HloInstruction* instruction) {
+                       return Value(instruction, op::AllReduce());
+                     })));
+  EXPECT_TRUE(ShapeUtil::Equal(moved_all_reduce->shape(),
+                               ShapeUtil::MakeShape(BF16, {2, 1024, 1024})));
+
+  HloInstruction* add_delta_to_old_buffer =
+      *(std::find_if(module->entry_computation()->instructions().begin(),
+                     module->entry_computation()->instructions().end(),
+                     [](HloInstruction* instruction) -> bool {
+                       return Value(instruction, op::Add());
+                     }));
+  ASSERT_THAT(add_delta_to_old_buffer, NotNull());
+  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->shape(),
+                               ShapeUtil::MakeShape(F32, {2, 1024, 1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(0)->shape(),
+                               ShapeUtil::MakeShape(F32, {2, 1024, 1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(add_delta_to_old_buffer->operand(1)->shape(),
+                               ShapeUtil::MakeShape(F32, {2, 1024, 1024})));
+}
+
+// This test is almost the same as the one above but we change the all-reduce
+// replica groups to make the dynamic-slice indices not replicated within each
+// replica group
+TEST_F(WhileLoopAllReduceCodeMotionTest,
+       DynamicSliceAllReduceDynamicUpdateSliceAccumulateNotMoved) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %reduction {
+      %x = bf16[] parameter(0)
+      %y = bf16[] parameter(1)
+      ROOT %add = bf16[] add(bf16[] %x, bf16[] %y)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.1, %gte.0), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[2, 1024, 1024] get-tuple-element(%param), index=3
+      %offset-table = s32[8] constant({0, 0, 0, 0, 1, 1, 1, 1})
+      %partition-id = u32[] partition-id()
+      %offset-array = s32[1] dynamic-slice(%offset-table, %partition-id), dynamic_slice_sizes={1}
+      %offset = s32[] reshape(%offset-array)
+      %convert.0 = bf16[1024, 1024] convert(f32[1024, 1024] %gte.2)
+      %all-reduce = bf16[1024, 1024] all-reduce(bf16[1024, 1024] %convert.0), channel_id=1, replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%reduction
+      %convert.1 = f32[1024, 1024] convert(bf16[1024, 1024] %all-reduce)
+      %reshape = f32[1,1024, 1024] reshape(f32[1024, 1024] %convert.1)
+      %constant.2 = s32[] constant(0)
+      %dynamic-slice = f32[1,1024,1024] dynamic-slice(f32[2, 1024, 1024] %gte.3, s32[] %offset, s32[] %constant.2, s32[] %constant.2), dynamic_slice_sizes={1, 1024, 1024}
+      %accumulation = f32[1,1024,1024] add(f32[1, 1024, 1024] %reshape, f32[1, 1024, 1024] %dynamic-slice)
+      %dynamic-update-slice = f32[2,1024,1024] dynamic-update-slice(f32[2, 1024, 1024] %gte.3, f32[1, 1024, 1024]  %accumulation, s32[] %offset, s32[] %constant.2, s32[] %constant.2)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.1, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) tuple(s32[] %gte.0, s32[] %increment_iteration, f32[1024, 1024] %gte.2, f32[2, 1024, 1024] %dynamic-update-slice)
+    }
+
+    ENTRY accumulated_all_reduce {
+      %param.0 = f32[1024, 1024] parameter(0)
+      %constant.0 = s32[] constant(8)
+      %constant.1 = s32[] constant(1)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[2, 1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) tuple(s32[] %constant.0, s32[] %constant.1, f32[1024, 1024] %param.0, f32[2, 1024, 1024] %accumulation_buffer)
+      ROOT %while = (s32[], s32[], f32[1024, 1024], f32[2, 1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
+                                   /*num_partitions=*/8));
+  module->config().set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopAllReduceCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(simplified_loop);
 }
 
 }  // namespace

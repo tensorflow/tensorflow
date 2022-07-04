@@ -41,7 +41,7 @@ Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
   if (!autotune_) {
     VLOG(1) << "The optimization disable_prefetch_legacy_autotune is not "
                "applied if autotune is off.";
-    return Status::OK();
+    return OkStatus();
   }
 
   MutableGraphView graph(output);
@@ -58,7 +58,7 @@ Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(DisablePrefetchLegacyAutotune,

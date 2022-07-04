@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/transforms/pass_registration.h"
@@ -37,8 +36,6 @@ void DefaultGrapplerPipeline(PassManager& manager) {
   // inference for almost all operations.
   manager.addPass(CreateShapeInferencePass());
   // Contruct the shape attrs back from types.
-  // TODO(chiahungduan): This will be the required pass before exporting, remove
-  // this instance when the exporter has handled it.
   manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
@@ -47,8 +44,6 @@ void DefaultGrapplerPipeline(PassManager& manager) {
 // functional control-flow and prepare the attributes for export.
 void DefaultModuleGrapplerPipeline(PassManager& manager,
                                    const tensorflow::RewriterConfig& config) {
-  // TODO(chiahungduan): This will be the default pass for TFG pipeline, remove
-  // this when the default pipeline has added it.
   manager.addPass(CreateConsolidateAttributesPass());
   manager.addPass(CreateFunctionalToRegionPass());
   if (config.experimental_conditional_code_motion() !=
@@ -56,18 +51,18 @@ void DefaultModuleGrapplerPipeline(PassManager& manager,
     manager.addNestedPass<GraphFuncOp>(CreateControlFlowSinkPass());
   manager.addPass(CreateRegionToFunctionalPass(/*force_control_capture=*/true));
   manager.addPass(CreateLiftLegacyCallPass());
-  // Graph will be lifted as a function, don't mark it as private.
-  manager.addPass(createSymbolPrivatizePass(
-      {TFGraphDialect::getLiftedGraphFuncNameKey().str()}));
+  manager.addPass(createSymbolPrivatizePass());
   manager.addPass(createSymbolDCEPass());
-  // TODO(chiahungduan): This will be the required pass before exporting, remove
-  // this instance when the exporter has handled it.
   manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
 void RemapperPassBuilder(PassManager& manager) {
+  manager.addPass(CreateConsolidateAttributesPass());
+  manager.addPass(CreateTopoSortPass());
+  manager.addPass(CreateShapeInferencePass());
   manager.addPass(
       CreateRemapperPass(/*enable_mkl_patterns=*/tensorflow::IsMKLEnabled()));
+  manager.addPass(CreatePrepareAttributesForExportPass());
 }
 
 }  // namespace tfg

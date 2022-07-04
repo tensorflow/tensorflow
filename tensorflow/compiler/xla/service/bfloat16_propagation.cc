@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -364,19 +364,19 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   // output shape of a fusion or while before propagating inside its
   // computations.
   bool postpone_processing_called_computations = false;
-  auto cleaner = tensorflow::gtl::MakeCleanup(
-      [this, hlo, &postpone_processing_called_computations] {
-        if (!postpone_processing_called_computations) {
-          if (hlo->opcode() == HloOpcode::kFusion) {
-            DetermineFusionComputationPrecision(hlo);
-          } else if (hlo->opcode() == HloOpcode::kWhile) {
-            DetermineWhileComputationsPrecision(hlo);
-          } else if (hlo->opcode() == HloOpcode::kConditional) {
-            DetermineConditionalComputationsPrecision(hlo);
-          }
-        }
-        instructions_visited_in_backward_pass_.insert(hlo);
-      });
+  absl::Cleanup cleaner = [this, hlo,
+                           &postpone_processing_called_computations] {
+    if (!postpone_processing_called_computations) {
+      if (hlo->opcode() == HloOpcode::kFusion) {
+        DetermineFusionComputationPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kWhile) {
+        DetermineWhileComputationsPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kConditional) {
+        DetermineConditionalComputationsPrecision(hlo);
+      }
+    }
+    instructions_visited_in_backward_pass_.insert(hlo);
+  };
 
   if (hlo->opcode() == HloOpcode::kWhile &&
       (caller_counts_[hlo->while_condition()] > 1 ||
@@ -764,7 +764,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
@@ -794,7 +794,7 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
@@ -814,7 +814,7 @@ Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -955,7 +955,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
-    return Status::OK();
+    return OkStatus();
   };
 
   if (!changed_) {

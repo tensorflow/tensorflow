@@ -319,7 +319,7 @@ Status SparseTensorDenseMatMulImpl(
     }
 #undef LOOP_NNZ
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -351,7 +351,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
           SparseTensorDenseMatMulImpl<T, Tsum, Tindices, ADJ_A, ADJ_B>(
               out_workaround, a_indices, a_values, b));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

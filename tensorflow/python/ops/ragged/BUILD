@@ -589,6 +589,20 @@ py_test(
 )
 
 py_test(
+    name = "ragged_math_ops_test",
+    size = "medium",
+    srcs = ["ragged_math_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":ragged",  # fixdeps: keep
+        ":ragged_factory_ops",
+        ":ragged_math_ops",
+        "//tensorflow/python:framework_test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "ragged_getitem_test",
     size = "medium",
     timeout = "long",

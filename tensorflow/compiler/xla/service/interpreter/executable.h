@@ -43,7 +43,7 @@ class InterpreterExecutable : public InterpreterExecutableBase {
   InterpreterExecutable(
       std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloEvaluator> evaluator,
-      absl::optional<DynamicDimensionInference> dynamic_dymension_inference);
+      std::optional<DynamicDimensionInference> dynamic_dymension_inference);
 
   static int64_t ShapeSizeBytes(const Shape& shape);
 
@@ -58,7 +58,7 @@ class InterpreterExecutable : public InterpreterExecutableBase {
   mutable absl::Mutex evaluator_lock_;
 
  private:
-  absl::optional<DynamicDimensionInference> dynamic_dimension_inference_;
+  std::optional<DynamicDimensionInference> dynamic_dimension_inference_;
   InterpreterExecutable(const InterpreterExecutable&) = delete;
   InterpreterExecutable& operator=(const InterpreterExecutable&) = delete;
 };

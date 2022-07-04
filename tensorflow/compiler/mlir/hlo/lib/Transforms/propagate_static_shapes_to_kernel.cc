@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -55,31 +55,31 @@ namespace {
 class PropagateStaticShapesPattern : public OpRewritePattern<LLVM::LLVMFuncOp> {
  public:
   explicit PropagateStaticShapesPattern(MLIRContext* ctx,
-                                        SymbolTable& symbol_table,
-                                        Type pointer_type)
+                                        SymbolTable& symbolTable,
+                                        Type pointerType)
       : OpRewritePattern<LLVM::LLVMFuncOp>(ctx),
-        symbol_table_(symbol_table),
-        pointer_type_(pointer_type) {}
+        symbolTable(symbolTable),
+        pointerType(pointerType) {}
 
  private:
-  LogicalResult matchAndRewrite(LLVM::LLVMFuncOp func_op,
+  LogicalResult matchAndRewrite(LLVM::LLVMFuncOp funcOp,
                                 PatternRewriter& rewriter) const final;
 
-  SymbolTable& symbol_table_;
-  Type pointer_type_;
+  SymbolTable& symbolTable;
+  Type pointerType;
 };
 
 class PropagateStaticShapesToKernelPass
     : public PropagateStaticShapesToKernelPassBase<
           PropagateStaticShapesToKernelPass> {
  public:
-  explicit PropagateStaticShapesToKernelPass(Type pointer_type)
-      : pointer_type_(pointer_type) {}
+  explicit PropagateStaticShapesToKernelPass(Type pointerType)
+      : pointerType(pointerType) {}
 
  private:
   void runOnOperation() override;
 
-  Type pointer_type_;
+  Type pointerType;
 };
 
 }  // namespace
@@ -88,15 +88,15 @@ class PropagateStaticShapesToKernelPass
 // 'strides[rank]') corresponding to statically shaped 'memref' with the base
 // pointer and constants. The base pointer is changed to 'pointer_type' if
 // provided.
-static void ReplaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
-                                         MemRefType memref, Type pointer_type,
+static void replaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
+                                         MemRefType memref, Type pointerType,
                                          PatternRewriter& rewriter) {
   assert(arguments.size() >= 3 && "expected at least 3 arguments");
   Value base = arguments[0];
-  if (pointer_type) {
+  if (pointerType) {
     // Change base to given type, replace with bitcast back to original type.
     Type type = base.getType();
-    base.setType(pointer_type);
+    base.setType(pointerType);
     auto cast = rewriter.create<LLVM::BitcastOp>(base.getLoc(), type, base);
     base.replaceAllUsesExcept(/*newValue=*/cast, /*exceptedUser=*/cast);
     base = cast.getResult();
@@ -110,12 +110,11 @@ static void ReplaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
       rewriter.getIntegerAttr(arguments[2].getType(), 0)));
   auto replace = [&](ArrayRef<int64_t> values,
                      ArrayRef<BlockArgument> arguments) {
-    for (auto val_and_arg : llvm::zip_first(values, arguments)) {
-      auto argument = std::get<1>(val_and_arg);
+    for (auto valAndArg : llvm::zip_first(values, arguments)) {
+      auto argument = std::get<1>(valAndArg);
       argument.replaceAllUsesWith(rewriter.create<LLVM::ConstantOp>(
           argument.getLoc(), argument.getType(),
-          rewriter.getIntegerAttr(argument.getType(),
-                                  std::get<0>(val_and_arg))));
+          rewriter.getIntegerAttr(argument.getType(), std::get<0>(valAndArg))));
     }
   };
   // Replace 'sizes' and 'strides' with constants.
@@ -129,41 +128,41 @@ static void ReplaceStaticMemRefArguments(ArrayRef<BlockArgument> arguments,
 }
 
 LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
-    LLVM::LLVMFuncOp func_op, PatternRewriter& rewriter) const {
-  if (func_op.isExternal())
-    return rewriter.notifyMatchFailure(func_op, "external");
-  if (!func_op->getAttrOfType<UnitAttr>(
+    LLVM::LLVMFuncOp funcOp, PatternRewriter& rewriter) const {
+  if (funcOp.isExternal())
+    return rewriter.notifyMatchFailure(funcOp, "external");
+  if (!funcOp->getAttrOfType<UnitAttr>(
           gpu::GPUDialect::getKernelFuncAttrName())) {
-    return rewriter.notifyMatchFailure(func_op, "missing gpu.kernel");
+    return rewriter.notifyMatchFailure(funcOp, "missing gpu.kernel");
   }
 
   // Collect gpu.launch_func ops which launch the func_op kernel.
-  Optional<SymbolTable::UseRange> sym_uses =
-      symbol_table_.getSymbolUses(func_op, symbol_table_.getOp());
-  if (!sym_uses)
-    return rewriter.notifyMatchFailure(func_op, "failed to find symbol uses");
-  auto mapper = [](SymbolTable::SymbolUse sym_use) {
-    return dyn_cast<gpu::LaunchFuncOp>(sym_use.getUser());
+  Optional<SymbolTable::UseRange> symUses =
+      symbolTable.getSymbolUses(funcOp, symbolTable.getOp());
+  if (!symUses)
+    return rewriter.notifyMatchFailure(funcOp, "failed to find symbol uses");
+  auto mapper = [](SymbolTable::SymbolUse symUse) {
+    return dyn_cast<gpu::LaunchFuncOp>(symUse.getUser());
   };
   auto filter = [](gpu::LaunchFuncOp op) -> bool { return op; };
-  auto launch_ops = llvm::to_vector(
-      llvm::make_filter_range(llvm::map_range(*sym_uses, mapper), filter));
-  if (launch_ops.empty())
-    return rewriter.notifyMatchFailure(func_op, "no gpu.launch_func uses");
-  OperandRange operands = launch_ops.begin()->operands();
-  if (llvm::any_of(launch_ops, [&](gpu::LaunchFuncOp op) {
+  auto launchOps = llvm::to_vector(
+      llvm::make_filter_range(llvm::map_range(*symUses, mapper), filter));
+  if (launchOps.empty())
+    return rewriter.notifyMatchFailure(funcOp, "no gpu.launch_func uses");
+  OperandRange operands = launchOps.begin()->operands();
+  if (llvm::any_of(launchOps, [&](gpu::LaunchFuncOp op) {
         return op.operands().getTypes() != operands.getTypes();
       })) {
-    return rewriter.notifyMatchFailure(func_op, "operand types mismatch");
+    return rewriter.notifyMatchFailure(funcOp, "operand types mismatch");
   }
 
-  rewriter.setInsertionPointToStart(&func_op.front());
-  BitVector args_to_drop(func_op.getNumArguments());
+  rewriter.setInsertionPointToStart(&funcOp.front());
+  BitVector argsToDrop(funcOp.getNumArguments());
   // Loop over the launch_op's 'operands' containing scalars and memrefs and the
   // func_ops's 'arguments' containing scalars and flattened memrefs. When an
   // operand is a staticlly shaped memref, replace the range of arguments
   // corresponding to the flattened memref with just the 'base' pointer.
-  for (auto arguments = func_op.getArguments(); !arguments.empty();
+  for (auto arguments = funcOp.getArguments(); !arguments.empty();
        operands = operands.drop_front()) {
     auto memref = operands.getTypes().front().dyn_cast<MemRefType>();
     if (!memref) {
@@ -173,64 +172,63 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
     }
     if (!memref.hasRank()) break;  // Bail out if unranked.
     // memref is flattened to base, align, offset, strides and sizes.
-    int64_t num_args = 3 + memref.getRank() * 2;
-    ArrayRef<BlockArgument> memref_args = arguments.take_front(num_args);
-    auto is_ptr = [](BlockArgument arg) {
+    int64_t numArgs = 3 + memref.getRank() * 2;
+    auto isPtr = [](BlockArgument arg) {
       return arg.getType().isa<LLVM::LLVMPointerType>();
     };
-    auto is_int = [](BlockArgument arg) {
+    auto isInt = [](BlockArgument arg) {
       return arg.getType().isa<IntegerType>();
     };
     // Bail out if the next num_args are not the expected type.
-    if (arguments.size() < num_args) break;
-    if (!llvm::all_of(arguments.take_front(2), is_ptr)) break;
-    if (!llvm::all_of(arguments.drop_front(2), is_int)) break;
+    if (arguments.size() < numArgs) break;
+    ArrayRef<BlockArgument> memrefArgs = arguments.take_front(numArgs);
+    if (!llvm::all_of(memrefArgs.take_front(2), isPtr)) break;
+    if (!llvm::all_of(memrefArgs.drop_front(2), isInt)) break;
     // Replace memref_args with just memref_args[0] if memref has static shape.
     if (memref.hasStaticShape() && memref.getLayout().isIdentity()) {
-      ReplaceStaticMemRefArguments(memref_args, memref, pointer_type_,
-                                   rewriter);
-      unsigned arg_number = arguments.front().getArgNumber();
+      replaceStaticMemRefArguments(memrefArgs, memref, pointerType, rewriter);
+      unsigned argNumber = arguments.front().getArgNumber();
       // Drop all but 'base' from the flattened memref arguments.
-      args_to_drop.set(arg_number + 1, arg_number + num_args);
+      argsToDrop.set(argNumber + 1, argNumber + numArgs);
     }
-    arguments = arguments.drop_front(num_args);
+    arguments = arguments.drop_front(numArgs);
   }
-  if (args_to_drop.none()) {
-    return rewriter.notifyMatchFailure(func_op, "no static shapes");
+  if (argsToDrop.none()) {
+    return rewriter.notifyMatchFailure(funcOp, "no static shapes");
   }
-  rewriter.updateRootInPlace(func_op, [&] {
-    func_op.eraseArguments(args_to_drop);
-    auto arg_types = llvm::to_vector(TypeRange(func_op.getArguments()));
-    func_op.setType(LLVM::LLVMFunctionType::get(
-        func_op.getFunctionType().getReturnType(), arg_types));
+  rewriter.updateRootInPlace(funcOp, [&] {
+    funcOp.eraseArguments(argsToDrop);
+    auto argTypes = llvm::to_vector(TypeRange(funcOp.getArguments()));
+    funcOp.setType(LLVM::LLVMFunctionType::get(
+        funcOp.getFunctionType().getReturnType(), argTypes));
   });
   return success();
 }
 
 void PropagateStaticShapesToKernelPass::runOnOperation() {
   MLIRContext* ctx = getOperation().getContext();
-  auto pointer_type = [&]() -> FailureOr<Type> {
-    if (ptr_type_opt.empty()) return pointer_type_;
+  auto pointerType = [&]() -> FailureOr<Type> {
+    if (ptr_type_opt.empty()) return this->pointerType;
     Type type = parseType(ptr_type_opt, ctx);
     if (!type)
       return emitError(UnknownLoc::get(ctx), "invalid convert_pointer_args");
     return type;
   }();
-  if (failed(pointer_type)) return signalPassFailure();
-  SymbolTable symbol_table(getOperation());
+  if (failed(pointerType)) return signalPassFailure();
+  SymbolTable symbolTable(getOperation());
   RewritePatternSet patterns(ctx);
-  patterns.add<PropagateStaticShapesPattern>(ctx, symbol_table, *pointer_type);
+  patterns.add<PropagateStaticShapesPattern>(ctx, symbolTable, *pointerType);
   FrozenRewritePatternSet frozen(std::move(patterns));
-  auto callback = [&](gpu::GPUModuleOp gpu_module) -> WalkResult {
-    return applyPatternsAndFoldGreedily(gpu_module, frozen);
+  auto callback = [&](gpu::GPUModuleOp gpuModule) -> WalkResult {
+    return applyPatternsAndFoldGreedily(gpuModule, frozen);
   };
   if (getOperation()->walk(callback).wasInterrupted())
     return signalPassFailure();
 }
 
 std::unique_ptr<OperationPass<ModuleOp>>
-CreatePropagateStaticShapesToKernelPass(Type pointer_type) {
-  return std::make_unique<PropagateStaticShapesToKernelPass>(pointer_type);
+createPropagateStaticShapesToKernelPass(Type pointerType) {
+  return std::make_unique<PropagateStaticShapesToKernelPass>(pointerType);
 }
 
 }  // namespace mlir

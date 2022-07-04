@@ -418,7 +418,7 @@ Status AdaptiveSharedBatchScheduler<TaskType>::Create(
         options.batches_to_average_over);
   }
   scheduler->reset(new AdaptiveSharedBatchScheduler<TaskType>(options));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -466,7 +466,7 @@ Status AdaptiveSharedBatchScheduler<TaskType>::AddQueue(
                    this->shared_from_this(), options));
   mutex_lock l(mu_);
   queues_and_callbacks_[asbs_queue_raw] = process_batch_callback;
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -813,7 +813,7 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   if (closed_batch) {
     scheduler_->MaybeScheduleClosedBatches();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>

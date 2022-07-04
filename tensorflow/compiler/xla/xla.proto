@@ -207,6 +207,13 @@ message DebugOptions {
 
   ShapeChecks xla_gpu_shape_checks = 170;
 
+  // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
+  bool xla_cpu_enable_mlir_lowering = 171;
+
+  // If true, use MLIR instead of IR emitter to generate device code for
+  // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
+  bool xla_gpu_enable_mlir_lowering = 173;
+
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
 
@@ -409,7 +416,16 @@ message DebugOptions {
   // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
   bool xla_gpu_simplify_all_fp_conversions = 168;
 
-  // Next id: 171
+  // An experimental option to force all layouts present in the
+  // after-optimizations HLO to be descending, e.g.
+  // ShapeUtil::MakeShapeWithDescendingLayout is an identity on all
+  // instructions.
+  bool xla_gpu_normalize_layouts = 172;
+
+  // Generate calls to Arm Compute Library in the CPU backend.
+  bool xla_cpu_use_acl = 174;
+
+  // Next id: 175
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

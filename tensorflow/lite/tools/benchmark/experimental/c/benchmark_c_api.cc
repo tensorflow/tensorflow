@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/experimental/c/benchmark_c_api.h"
 
+#include <utility>
+
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 

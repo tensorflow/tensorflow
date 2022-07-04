@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TOCO_CONVERT_H_
 #define TENSORFLOW_LITE_TOCO_TOCO_CONVERT_H_
 
+#include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/toco/args.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"

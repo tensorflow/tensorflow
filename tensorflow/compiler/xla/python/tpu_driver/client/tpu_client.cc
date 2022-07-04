@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -83,7 +82,7 @@ StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
     return client_status.status();
   }
 
-  auto client = client_status.ConsumeValueOrDie();
+  auto client = std::move(client_status).value();
 
   tpu_driver::SystemInfo system_info;
   client->QuerySystemInfo(&system_info);
@@ -168,7 +167,7 @@ Status PyTpuClient::CheckDeviceId(int device_id,
     return InvalidArgument("%s got bad device_id: %d (num_devices=%d).",
                            caller_name, device_id, device_count());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static Status CheckDataType(xla::PrimitiveType dtype) {
@@ -178,7 +177,7 @@ static Status CheckDataType(xla::PrimitiveType dtype) {
         "64-bit data types are not yet supported on the TPU driver API. "
         "Convert inputs to float32/int32_t before using.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -269,7 +268,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::MakeTuple(
   auto tuple_device_buffer = std::make_shared<TpuSharedBuffer>(
       client->driver(), std::move(tuple_handle), std::move(child_events),
       std::move(device));
-  return absl::make_unique<PyTpuBuffer>(
+  return std::make_unique<PyTpuBuffer>(
       tuple_shape, std::move(tuple_device_buffer),
       std::move(child_device_buffers), std::move(client));
 }
@@ -303,7 +302,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
 
     if (host_value_) {
       // The host value has already been requested or is available.
-      return Status::OK();
+      return OkStatus();
     }
 
     host_value->value = std::make_shared<Literal>(on_host_shape_);
@@ -350,7 +349,7 @@ Status PyTpuBuffer::CopyToHostAsync() {
       }
     });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::shared_ptr<Literal>> PyTpuBuffer::ToLiteral() {
@@ -392,7 +391,7 @@ PyTpuBuffer::DestructureTuple() {
   std::vector<std::unique_ptr<PyTpuBuffer>> results;
   results.reserve(num_children);
   for (int i = 0; i < num_children; ++i) {
-    results.push_back(absl::make_unique<PyTpuBuffer>(
+    results.push_back(std::make_unique<PyTpuBuffer>(
         on_host_shape_.tuple_shapes(i), child_buffers_.at(i),
         std::vector<std::shared_ptr<TpuSharedBuffer>>(), client_));
   }
@@ -408,7 +407,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CopyToDevice(
 
   std::shared_ptr<TpuSharedBuffer> src_device_buffer = DeviceBuffer();
   if (dst_device->id() == device_->id()) {
-    return absl::make_unique<PyTpuBuffer>(
+    return std::make_unique<PyTpuBuffer>(
         on_host_shape_, src_device_buffer,
         std::vector<std::shared_ptr<TpuSharedBuffer>>(), client_);
   }
@@ -456,7 +455,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::AllocateBuffer(
           << " device: " << device->DebugString();
 
   if (!shape.IsTuple()) {
-    return CreateBuffer(shape, absl::nullopt, std::move(client),
+    return CreateBuffer(shape, std::nullopt, std::move(client),
                         std::move(device));
   }
 
@@ -481,7 +480,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::AllocateBuffer(
 
 /*static*/
 StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CreateBuffer(
-    const Shape& non_tuple_shape, absl::optional<BufferInitializer> initializer,
+    const Shape& non_tuple_shape, std::optional<BufferInitializer> initializer,
     std::shared_ptr<PyTpuClient> client, std::shared_ptr<PjRtDevice> device) {
   tensorflow::profiler::TraceMe traceme("PyTpuBuffer::CreateBuffer");
   VLOG(1) << "PyTpuBuffer::CreateBuffer: shape: "
@@ -505,7 +504,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CreateBuffer(
       client->driver(), std::move(handle), std::move(wait_for_use),
       std::move(device));
 
-  return absl::make_unique<PyTpuBuffer>(
+  return std::make_unique<PyTpuBuffer>(
       non_tuple_shape, std::move(device_buffer),
       std::vector<std::shared_ptr<TpuSharedBuffer>>(), client);
 }
@@ -608,7 +607,7 @@ static const absl::Duration kWarnExecutionDelay = absl::Seconds(10);
 static const absl::Duration kMaxExecutionDelay = absl::Minutes(60);
 
 Status WaitForExecuteEvent(tpu_driver::Event* event) {
-  absl::optional<Status> opt_status;
+  std::optional<Status> opt_status;
   auto start_time = absl::Now();
 
   while (!opt_status.has_value() &&
@@ -804,7 +803,7 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
 
 /*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>> PyTpuExecutable::Compile(
     const XlaComputation& computation,
-    absl::optional<std::vector<Shape>> argument_layouts,
+    std::optional<std::vector<Shape>> argument_layouts,
     const ExecutableBuildOptions* build_options,
     std::shared_ptr<PyTpuClient> client, bool tuple_arguments) {
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Compile");
@@ -818,7 +817,7 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
   if (build_options != nullptr) {
     options = *build_options;
   }
-  absl::optional<xla::DeviceAssignment> device_assignment;
+  std::optional<xla::DeviceAssignment> device_assignment;
 
   // For POD use case, the device_assignment.num_replicas() may be greater than
   // the number of available local devices, where applicable the non-local
@@ -870,16 +869,17 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
   }
   VLOG(1) << "Got result shape: " << result_layout.DebugString();
 
-  return absl::make_unique<PyTpuExecutable>(
+  return std::make_unique<PyTpuExecutable>(
       std::move(compiled_program), std::move(*device_assignment),
       std::move(client), std::move(result_layout), tuple_arguments);
 }
 
 /*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>>
-PyTpuExecutable::CompileMlir(
-    mlir::ModuleOp module, absl::optional<std::vector<Shape>> argument_layouts,
-    const ExecutableBuildOptions* build_options,
-    std::shared_ptr<PyTpuClient> client, bool tuple_arguments) {
+PyTpuExecutable::CompileMlir(mlir::ModuleOp module,
+                             std::optional<std::vector<Shape>> argument_layouts,
+                             const ExecutableBuildOptions* build_options,
+                             std::shared_ptr<PyTpuClient> client,
+                             bool tuple_arguments) {
   XlaComputation xla_computation;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(module, xla_computation,
                                           /*use_tuple_args=*/tuple_arguments,

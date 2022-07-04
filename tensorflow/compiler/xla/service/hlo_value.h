@@ -281,6 +281,11 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   // this value set changed.
   bool AssignUnionOf(absl::Span<const InstructionValueSet* const> inputs);
 
+  // Sets this value set to the input value set at the given index. Returns
+  // whether this value set changed.
+  bool AssignUnionOf(const InstructionValueSet& input,
+                     ShapeIndexView input_index);
+
   // Returns true if any value sets for any subshape element is not a
   // singleton.
   bool IsAmbiguous() const;

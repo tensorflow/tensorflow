@@ -1361,7 +1361,7 @@ port::Status ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                                   const void *alpha, const DeviceMemoryBase &a,
                                   int lda, const DeviceMemoryBase &b, int ldb,
                                   const void *beta, DeviceMemoryBase *c,
-                                  int ldc) {
+                                  int ldc, blas::ComputePrecision precision) {
   blas_log("DoBlasGemm");
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS GEMM: at=%d bt=%d m=%u n=%u "
@@ -2408,32 +2408,6 @@ port::Status ROCMBlas::DoBlasGemmStridedBatched(
 
 port::Status ROCMBlas::GetVersion(string *version) {
   return port::UnimplementedError("");
-}
-
-port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
-ROCMBlas::CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams &p) {
-  return port::Status(
-      port::error::UNIMPLEMENTED,
-      "CreateBlasLtMatmulPlan is not supported with this version of ROCM");
-}
-
-port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
-ROCMBlas::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan *plan,
-                                    size_t max_workspace_size,
-                                    int max_algorithm_count) {
-  return port::Status(
-      port::error::UNIMPLEMENTED,
-      "GetBlasLtMatmulAlgorithms is not supported with this version of ROCM");
-}
-
-bool ROCMBlas::DoBlasLtMatmul(
-    Stream *stream, const blas::IBlasLtMatmulPlan *plan,
-    const HostOrDeviceScalar<void> &alpha, DeviceMemoryBase a,
-    DeviceMemoryBase b, const HostOrDeviceScalar<void> &beta,
-    DeviceMemoryBase c, ScratchAllocator *scratch_allocator,
-    const blas::IBlasLtMatmulAlgorithm *algorithm, DeviceMemoryBase bias,
-    blas::ProfileResult *output_profile_result) {
-  return false;
 }
 
 }  // namespace gpu

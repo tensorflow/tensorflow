@@ -152,6 +152,29 @@ TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_CopyProducer) {
   EXPECT_FALSE(LayoutsAreReduceInputFusionFriendly(*copy, *reduce));
 }
 
+TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_PhysicalTranspose) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_reduce {
+      p0.1 = f32[1024,128,32,32]{3,2,1,0} parameter(0)
+      c0.1 = f32[] constant(0)
+      ROOT reduce = f32[1024]{0} reduce(p0.1, c0.1), dimensions={1,2,3}, to_apply=scalar_add
+    }
+    ENTRY entry {
+      p0 = f16[128,1024,32,32]{3,2,1,0} parameter(0)
+      copy = f32[1024,128,32,32]{3,2,1,0} transpose(p0), dimensions={1,0,2,3}
+      ROOT reduce_fusion = f32[1024]{0} fusion(copy), kind=kInput, calls=fused_reduce
+    })"))
+                    .ValueOrDie();
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(reduce->fused_expression_root()->opcode(), HloOpcode::kReduce);
+  const HloInstruction* transpose =
+      module->entry_computation()->root_instruction()->operand(0);
+  ASSERT_EQ(transpose->opcode(), HloOpcode::kTranspose);
+  EXPECT_FALSE(LayoutsAreReduceInputFusionFriendly(*transpose, *reduce));
+}
+
 TEST_F(GpuFusibleTest,
        LayoutsAreReduceInputFusionFriendly_LayoutChangingFusionProducer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(

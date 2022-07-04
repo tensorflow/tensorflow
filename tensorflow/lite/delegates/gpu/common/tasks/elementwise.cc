@@ -30,13 +30,20 @@ std::string GetOneInputCode(const GpuInfo& gpu_info,
                             const OperationType& op_type,
                             CalculationsPrecision precision,
                             const std::string& input0) {
+  const bool use_native_opencl_functions =
+      gpu_info.IsApiOpenCl() && precision != CalculationsPrecision::F32 &&
+      gpu_info.IsAdreno();
   std::string result;
   switch (op_type) {
     case OperationType::ABS:
       result = "$0 = fabs($0);\n";
       break;
     case OperationType::COS:
-      result = "$0 = cos($0);\n";
+      if (use_native_opencl_functions) {
+        result = "$0 = native_cos($0);\n";
+      } else {
+        result = "$0 = cos($0);\n";
+      }
       break;
     case OperationType::COPY:
       // No op as inout_value will be copied to dest automatically.
@@ -58,7 +65,11 @@ $0.w = $0.w < INIT_FLT(0.0f) ? exp($0.w) - INIT_FLT(1.0f) : $0.w;)";
       }
       break;
     case OperationType::EXP:
-      result = "$0 = exp($0);\n";
+      if (use_native_opencl_functions) {
+        result = "$0 = native_exp($0);\n";
+      } else {
+        result = "$0 = exp($0);\n";
+      }
       break;
     case OperationType::FLOOR:
       result = "$0 = floor($0);\n";
@@ -70,16 +81,24 @@ $0.w = $0.w < INIT_FLT(0.0f) ? exp($0.w) - INIT_FLT(1.0f) : $0.w;)";
           "INIT_FLT4(1.0f));\n";
       break;
     case OperationType::LOG:
-      result = "$0 = log($0);\n";
+      if (use_native_opencl_functions) {
+        result = "$0 = native_log($0);\n";
+      } else {
+        result = "$0 = log($0);\n";
+      }
       break;
     case OperationType::NEG:
       result = "$0 = -($0);\n";
       break;
     case OperationType::RSQRT:
-      result = "$0 = rsqrt($0);\n";
+      if (use_native_opencl_functions) {
+        result = "$0 = native_rsqrt($0);\n";
+      } else {
+        result = "$0 = rsqrt($0);\n";
+      }
       break;
     case OperationType::SIGMOID:
-      if (gpu_info.IsApiOpenCl() && precision != CalculationsPrecision::F32) {
+      if (use_native_opencl_functions) {
         result =
             "$0 = convert_half4(native_recip(1.0f + "
             "native_exp(convert_float4(-$0))));\n";
@@ -88,16 +107,31 @@ $0.w = $0.w < INIT_FLT(0.0f) ? exp($0.w) - INIT_FLT(1.0f) : $0.w;)";
       }
       break;
     case OperationType::SIN:
-      result = "$0 = sin($0);\n";
+      if (use_native_opencl_functions) {
+        result = "$0 = native_sin($0);\n";
+      } else {
+        result = "$0 = sin($0);\n";
+      }
       break;
     case OperationType::SQRT:
-      result = "$0 = sqrt($0);\n";
+      if (use_native_opencl_functions) {
+        result = "$0 = native_sqrt($0);\n";
+      } else {
+        result = "$0 = sqrt($0);\n";
+      }
       break;
     case OperationType::SQUARE:
       result = "$0 *= $0;\n";
       break;
     case OperationType::TANH:
-      result = "$0 = tanh($0);\n";
+      if (use_native_opencl_functions) {
+        result = "  FLT4 exp_val = native_exp(INIT_FLT4(2.0f) * $0);\n";
+        result +=
+            "$0 = ((exp_val - INIT_FLT4(1.0f)) / (exp_val + "
+            "INIT_FLT4(1.0f)));\n";
+      } else {
+        result = "$0 = tanh($0);\n";
+      }
       break;
     default:
       return "Unknown operation type;\n";
@@ -215,20 +249,14 @@ GPUOperation CreateElementwiseTwoInput(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& constant_tensor,
     bool swap_inputs) {
   const BHWC shape = BHWC(1, 1, 1, constant_tensor.shape.v);
-  TensorStorageType storage_type;
-  auto status = SelectBestStorageType(
-      gpu_info, shape, definition.GetPrimaryStorageType(),
-      definition.GetDataType(), Layout::HWC, &storage_type);
-  if (!status.ok()) {
-    storage_type = TensorStorageType::BUFFER;
-  }
-  TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-  desc.UploadData(constant_tensor);
+  TensorDescriptor const_tensor_desc = definition.src_tensors[0];
+  auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
+  const_tensor_desc.UploadData(constant_tensor);
 
   GPUOperation result(definition);
   result.elementwise_ = true;
-  result.args_.AddObject("second_tensor",
-                         absl::make_unique<TensorDescriptor>(std::move(desc)));
+  result.args_.AddObject("second_tensor", std::make_unique<TensorDescriptor>(
+                                              std::move(const_tensor_desc)));
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
   result.code_ = absl::StrCat(
       "args.second_tensor::type second_val = args.second_tensor.Read(0, 0, ",
@@ -252,20 +280,14 @@ GPUOperation CreateElementwiseTwoInput(
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorStorageType storage_type;
-  auto status = SelectBestStorageType(
-      gpu_info, shape, definition.GetPrimaryStorageType(),
-      definition.GetDataType(), Layout::HWC, &storage_type);
-  if (!status.ok()) {
-    storage_type = TensorStorageType::BUFFER;
-  }
-  TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-  desc.UploadData(constant_tensor);
+  TensorDescriptor const_tensor_desc = definition.src_tensors[0];
+  auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
+  const_tensor_desc.UploadData(constant_tensor);
 
   GPUOperation result(definition);
   result.elementwise_ = true;
-  result.args_.AddObject("second_tensor",
-                         absl::make_unique<TensorDescriptor>(std::move(desc)));
+  result.args_.AddObject("second_tensor", std::make_unique<TensorDescriptor>(
+                                              std::move(const_tensor_desc)));
   const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
   const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";

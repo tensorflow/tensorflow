@@ -111,7 +111,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Literal input_literal =
         LiteralUtil::CreateR1(absl::MakeConstSpan(input_data));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).value();
 
     float expected = absl::c_accumulate(input_data, 0.0f);
     ComputeAndCompareR0<float>(&builder, expected, {input_global_data.get()},
@@ -139,7 +139,7 @@ class ReduceTest : public ClientLibraryTestBase {
 
     Literal input_literal = LiteralUtil::CreateR1(input_data);
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).value();
 
     bool expected = and_reduce;
     for (bool item : input_data) {
@@ -182,7 +182,7 @@ class ReduceTest : public ClientLibraryTestBase {
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).value();
 
     std::array<bool, cols> expected;
     for (int64_t colno = 0; colno < cols; ++colno) {
@@ -216,7 +216,7 @@ class ReduceTest : public ClientLibraryTestBase {
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).value();
 
     float expected = 0.0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -244,7 +244,7 @@ class ReduceTest : public ClientLibraryTestBase {
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).value();
 
     std::vector<float> expected;
     expected.reserve(cols);
@@ -302,7 +302,7 @@ class ReduceTest : public ClientLibraryTestBase {
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+        client_->TransferToServer(input_literal).value();
 
     // NativeT can be bool, and std::vector<bool> does not convert to
     // Span.
@@ -455,7 +455,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
   input_literal = input_literal.Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
 
   std::vector<float> expected;
   expected.reserve(cols);
@@ -487,7 +487,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
   input_literal = input_literal.Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
 
   std::vector<float> expected;
   expected.reserve(cols);
@@ -534,7 +534,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   input_data.FillRandom(3.14f, 0.04);
   Literal input_literal = LiteralUtil::CreateR3FromArray3D(input_data);
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
 
   std::vector<float> expected;
   expected.reserve(cols);
@@ -827,7 +827,7 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   input_literal =
       input_literal.Relayout(LayoutUtil::MakeLayout(GetParam().layout));
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
 
   auto input_activations =
       Parameter(&builder, 0, input_literal.shape(), "input");
@@ -876,7 +876,7 @@ XLA_TEST_F(ReduceTest, OperationOnConstantAsInitValue) {
 
   Literal b_literal = LiteralUtil::CreateR1<float>({1.0f, 4.0f});
   std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(b_literal).ConsumeValueOrDie();
+      client_->TransferToServer(b_literal).value();
   auto b = Parameter(&builder, 0, b_literal.shape(), "b");
   Reduce(b, a2, max_f32, {0});
 
@@ -903,8 +903,7 @@ class ReduceInitializerTest : public ReduceTest {
     auto init = ConstantR0<T>(&builder, initializer);
     std::vector<T> input_arr(num_elems, std::numeric_limits<T>::lowest());
     auto input_literal = LiteralUtil::CreateR1<T>(input_arr);
-    auto input_data =
-        client_->TransferToServer(input_literal).ConsumeValueOrDie();
+    auto input_data = client_->TransferToServer(input_literal).value();
     Reduce(Parameter(&builder, 0, input_literal.shape(), "input"), init, max_fn,
            {0});
 
@@ -954,10 +953,10 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
   float expected = 42.0f;
   Literal input_literal = LiteralUtil::CreateR1<float>(operand);
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
   Literal input_literal2 = LiteralUtil::CreateR0<float>(init);
   std::unique_ptr<GlobalData> input_global_data2 =
-      client_->TransferToServer(input_literal2).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal2).value();
   ComputeAndCompareR0<float>(
       &builder, expected, {input_global_data.get(), input_global_data2.get()},
       ErrorSpec(0.0001));
@@ -1005,7 +1004,7 @@ XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
   input_data.FillRandom(3.0f);
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
   std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
 
   float expected = absl::c_accumulate(input_data, 0.0f);
   ComputeAndCompareR1<float>(&builder, {expected}, {input_global_data.get()},

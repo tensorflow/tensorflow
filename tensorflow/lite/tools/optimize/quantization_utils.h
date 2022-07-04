@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_UTILS_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/core/api/error_reporter.h"

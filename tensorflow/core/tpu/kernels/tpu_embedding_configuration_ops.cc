@@ -34,16 +34,15 @@ namespace {
 namespace se_tpu = ::stream_executor::tpu;
 }
 
-// The ExecuteTPUEmbeddingPartitioner Op is used to run the TPUEmbedding
+// The ExecuteTpuEmbeddingPartitioner Op is used to run the TPUEmbedding
 // partitioner as well as calculate the HBM size (in bytes) required for
 // TPUEmbedding operation. It takes as input a TPUEmbeddingConfiguration proto
 // which describes all the embedding tables and metadata. It should be run on
-// the TPU_SYSTEM device on only one task (by convention, task 0).
+// the CPU device of host:0.
 // Note that the _ConfigureDistributedTPU Op must have run before this Op so
-// that the TpuTopology is added to the TpuMeshCommonState. Subsequent
-// TPUEmbedding host configuration Ops (one per task) will use the output of
-// this Op.
-
+// that the TpuTopology is added to the TPUConfigResourceMgr. Subsequent
+// TPUEmbedding memory and host configuration Ops (one per host) will use the
+// output of this Op.
 class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
  public:
   explicit ExecuteTPUEmbeddingPartitionerOp(OpKernelConstruction* ctx)
@@ -56,18 +55,11 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "ExecuteTPUEmbeddingPartitioner::Compute";
+    VLOG(1) << "ExecuteTPUEmbeddingPartitionerOp::Compute";
+
     TpuEmbeddingEngine_ExecutePartitioner_Params params;
     params.tpu_embedding_config.bytes = config_string_.c_str();
     params.tpu_embedding_config.size = config_string_.size();
-    ResourceMgr* rm = GetTPUConfigResourceMgr();
-    tensorflow::tpu::TpuMeshStateInterface* mesh_state;
-    OP_REQUIRES_OK(
-        ctx, rm->Lookup(rm->default_container(),
-                        tensorflow::tpu::kTpuMeshStateInterfaceResourceName,
-                        &mesh_state));
-    core::ScopedUnref mesh_state_unref(mesh_state);
-    params.tpu_mesh_state = mesh_state->data();
 
     char* common_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&common_config_output]() {
@@ -83,17 +75,19 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
 
     tpu::OpsApiFn()->TpuEmbeddingEngine_ExecutePartitionerFn(&params);
     if (!status.ok()) {
-      VLOG(0) << "ExecuteTPUEmbeddingPartitioner::Compute failed"
-              << status.status().ToString();
+      LOG(WARNING) << "ExecuteTPUEmbeddingPartitioner::Compute failed"
+                   << status.status().ToString();
       return;
     }
-    std::string common_config_string =
+
+    const std::string common_config_string =
         std::string(common_config_output, common_config_output_size);
     Tensor* output;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output("common_config", TensorShape({}), &output));
     output->flat<tstring>()(0) = common_config_string;
-    VLOG(1) << "ExecuteTPUEmbeddingPartitioner::Compute done";
+
+    VLOG(1) << "ExecuteTPUEmbeddingPartitionerOp::Compute done";
   }
 
  private:
@@ -103,58 +97,46 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ExecuteTPUEmbeddingPartitionerOp);
 };
 
-// Initialize the HBM memory addresses and segments on each host.
-// The ConfigureTPUEmbeddingMemoryOp allocates HBM memory used by TPUEmbedding.
-// It takes as input a TPUEmbeddingConfiguration proto, which describes all
-// the embedding tables, and the output of the
-// _ExecuteTPUEmbeddingPartitioner Op. It should be run on one TPU device
-// on each task, by convention TPU:0.
+// Initializes the HBM memory addresses and segments on each host.
+// The Op takes as input the output of the _ExecuteTPUEmbeddingPartitioner Op.
+// It should be run on the CPU device of each host.
 class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
  public:
   explicit ConfigureTPUEmbeddingMemoryOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
-    OP_REQUIRES(
-        ctx, TPUEmbeddingConfiguration().ParseFromString(config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
-  }
+      : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "ConfigureTPUEmbeddingMemoryOp::Compute";
+
     std::string common_config_string = ctx->input(0).flat<tstring>()(0);
-    std::string host_config;
 
     TpuEmbeddingEngine_ConfigureMemory_Params params;
-    params.common_config_string = common_config_string.c_str();
-    params.common_config_string_size = common_config_string.size();
+    params.common_config = common_config_string.c_str();
+    params.common_config_size = common_config_string.size();
 
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
+    char* memory_config_output = nullptr;
+    auto cleanup = absl::MakeCleanup([&memory_config_output]() {
+      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+          memory_config_output);
+    });
+    size_t memory_config_output_size;
+    params.memory_config_size = &memory_config_output_size;
+    params.memory_config = &memory_config_output;
+    params.num_inputs = ctx->num_inputs();
 
     StatusHelper status;
     params.status = status.c_status;
 
-    char* task_host_config_output = nullptr;
-    auto task_host_config_cleanup =
-        absl::MakeCleanup([&task_host_config_output]() {
-          tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
-              task_host_config_output);
-        });
-    size_t task_host_config_output_size;
-    params.task_host_config_size = &task_host_config_output_size;
-    params.task_host_config = &task_host_config_output;
-    params.num_inputs = ctx->num_inputs();
-
     tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureMemoryFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
-    std::string task_host_config =
-        std::string(task_host_config_output, task_host_config_output_size);
+
+    const std::string memory_config_string =
+        std::string(memory_config_output, memory_config_output_size);
 
     Tensor* output;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output("task_host_config",
-                                             TensorShape({}), &output));
-    output->flat<tstring>()(0) = task_host_config;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output("memory_config", TensorShape({}), &output));
+    output->flat<tstring>()(0) = memory_config_string;
 
     VLOG(1) << "ConfigureTPUEmbeddingMemoryOp::Compute done";
   }
@@ -162,17 +144,74 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
   ~ConfigureTPUEmbeddingMemoryOp() override {}
 
  private:
-  // The embedding layer configuration for the TPUEmbedding host software.
-  std::string config_string_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(ConfigureTPUEmbeddingMemoryOp);
 };
 
-// The ConfigureTPUEmbeddingHost Op is used to set up the TPUEmbedding
+// Merges the memory configurations of all hosts into one
+// tpu_embedding::HbmBuffersConfig object. The memory configuration consists of
+// the HBM addresses and sizes for the segments used by TPUEmbedding. The Op
+// takes as input the memory configurations, i.e., the outputs of the
+// _ConfigureTPUEmbeddingMemory Ops on all hosts and produces an output after
+// merging them. This Op should be run on the CPU device of host:0.
+class CollateTPUEmbeddingMemoryOp : public OpKernel {
+ public:
+  explicit CollateTPUEmbeddingMemoryOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "CollateTPUEmbeddingMemoryOp::Compute";
+
+    std::vector<std::string> memory_config_strings(ctx->num_inputs());
+    std::vector<se_tpu::SerializedProto> memory_configs(ctx->num_inputs());
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      memory_config_strings[i] = ctx->input(i).flat<tstring>()(0);
+      memory_configs[i].bytes = memory_config_strings[i].c_str();
+      memory_configs[i].size = memory_config_strings[i].size();
+    }
+
+    TpuEmbeddingEngine_CollateMemory_Params params;
+
+    params.memory_configs = memory_configs.data();
+    params.memory_configs_size = memory_configs.size();
+
+    char* merged_memory_config_output = nullptr;
+    auto cleanup = absl::MakeCleanup([&merged_memory_config_output]() {
+      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+          merged_memory_config_output);
+    });
+
+    size_t merged_memory_config_output_size;
+    params.merged_memory_config_size = &merged_memory_config_output_size;
+    params.merged_memory_config = &merged_memory_config_output;
+
+    StatusHelper status;
+    params.status = status.c_status;
+
+    tpu::OpsApiFn()->TpuEmbeddingEngine_CollateMemoryFn(&params);
+    OP_REQUIRES_OK(ctx, status.status());
+
+    const std::string merged_memory_config_string = std::string(
+        merged_memory_config_output, merged_memory_config_output_size);
+
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("merged_memory_config",
+                                             TensorShape({}), &output));
+    output->flat<tstring>()(0) = merged_memory_config_string;
+
+    VLOG(1) << "CollateTPUEmbeddingMemoryOp::Compute done";
+  }
+
+  ~CollateTPUEmbeddingMemoryOp() override {}
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(CollateTPUEmbeddingMemoryOp);
+};
+
+// The ConfigureTpuEmbeddingHost op is used to set up the TPUEmbedding host
 // software on a given host. It takes as input a TPUEmbeddingConfiguration
-// proto which describes all the embedding tables as well as the output of
-// the _ExecuteTPUEmbeddingPartitioner Op. It should be run on one TPU device
-// on each task, by convention TPU:0.
+// proto which describes all the embedding tables as well as the outputs of
+// the _ExecuteTPUEmbeddingPartitioner and _CollateTPUEmbeddingMemory ops. It
+// should be run on the CPU device of each task.
 class ConfigureTPUEmbeddingHostOp : public OpKernel {
  public:
   explicit ConfigureTPUEmbeddingHostOp(OpKernelConstruction* ctx)
@@ -190,55 +229,46 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "ConfigureTPUEmbeddingHostOp::Compute";
-    std::string common_config_string = ctx->input(0).flat<tstring>()(0);
 
-    // Retrieve per-task config received from each
-    // ConfigureTPUEmbeddingMemoryOp node.
-    OpInputList task_host_config;
-    OP_REQUIRES_OK(ctx, ctx->input_list("task_host_config", &task_host_config));
-
-    std::vector<std::string> task_host_config_string(task_host_config.size());
-    std::vector<se_tpu::SerializedProto> task_hosts_config(
-        task_host_config.size());
-    for (int i = 0; i < task_host_config.size(); ++i) {
-      task_host_config_string[i] = task_host_config[i].flat<tstring>()(0);
-      task_hosts_config[i].bytes = task_host_config_string[i].c_str();
-      task_hosts_config[i].size = task_host_config_string[i].size();
-    }
+    const std::string common_config_string = ctx->input(0).flat<tstring>()(0);
+    const std::string memory_config_string = ctx->input(1).flat<tstring>()(0);
 
     TpuEmbeddingEngine_ConfigureHost_Params params;
-    params.common_config_string = common_config_string.c_str();
-    params.common_config_string_size = common_config_string.size();
+    params.num_inputs = ctx->num_inputs();
+
+    params.common_config = common_config_string.c_str();
+    params.common_config_size = common_config_string.size();
+
+    params.memory_config = memory_config_string.c_str();
+    params.memory_config_size = memory_config_string.size();
 
     params.tpu_embedding_config.bytes = config_string_.c_str();
     params.tpu_embedding_config.size = config_string_.size();
 
-    char* host_config_output = nullptr;
-    auto cleanup = absl::MakeCleanup([&host_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(host_config_output);
+    char* network_config_output = nullptr;
+    auto cleanup = absl::MakeCleanup([&network_config_output]() {
+      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+          network_config_output);
     });
 
-    size_t host_config_output_size;
-    params.host_config_size = &host_config_output_size;
-    params.host_config = &host_config_output;
-    params.num_inputs = ctx->num_inputs();
-
-    params.task_host_config = task_hosts_config.data();
-    params.task_host_config_size = task_hosts_config.size();
+    size_t network_config_output_size;
+    params.network_config_size = &network_config_output_size;
+    params.network_config = &network_config_output;
 
     StatusHelper status;
     params.status = status.c_status;
 
     tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureHostFn(&params);
-
     OP_REQUIRES_OK(ctx, status.status());
-    std::string host_config =
-        std::string(host_config_output, host_config_output_size);
+
+    const std::string network_config_string =
+        std::string(network_config_output, network_config_output_size);
 
     Tensor* output;
     OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("host_config", TensorShape({}), &output));
-    output->flat<tstring>()(0) = host_config;
+        ctx, ctx->allocate_output("network_config", TensorShape({}), &output));
+    output->flat<tstring>()(0) = network_config_string;
+
     VLOG(1) << "ConfigureTPUEmbeddingHostOp::Compute done";
   }
 
@@ -251,84 +281,79 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ConfigureTPUEmbeddingHostOp);
 };
 
-// The ConnectInterTPUEmbeddingCommunication op is used to set up gRPC
-// connections between instances of the TPUEmbedding host software on different
-// hosts; it must be run after ConfigureTPUEmbeddingHostOp has been called on
-// each host. It takes as input a string from each host which describes metadata
-// about the TPUEmbedding configuration on that host. It should be run on one
-// TPU device in the host, by convention TPU:0.
-class ConnectInterTPUEmbeddingCommunicationOp : public OpKernel {
+// The ConnectTpuEmbeddingHosts op is used to set up gRPC connections
+// between instances of the TPUEmbedding host software on different hosts; it
+// must be run after ConfigureTpuEmbeddingHost op has been called on each host.
+// It takes as input a string from each host which describes metadata about the
+// TPUEmbedding configuration on that host. It should be run on the CPU device
+// of each host.
+class ConnectTPUEmbeddingHostsOp : public OpKernel {
  public:
-  explicit ConnectInterTPUEmbeddingCommunicationOp(OpKernelConstruction* ctx)
+  explicit ConnectTPUEmbeddingHostsOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES(
-        ctx, ctx->num_inputs() > 0,
-        errors::InvalidArgument("ConnectInterTPUEmbeddingCommunication must "
-                                "have at least one input"));
+    OP_REQUIRES(ctx, ctx->num_inputs() > 0,
+                errors::InvalidArgument("ConnectTPUEmbeddingHostsOp must "
+                                        "have at least one input"));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "ConnectInterTPUEmbeddingCommunication::Compute";
+    VLOG(1) << "ConnectTPUEmbeddingHostsOp::Compute";
 
-    std::vector<std::string> hosts_config_string(ctx->num_inputs());
-    std::vector<se_tpu::SerializedProto> hosts_config(ctx->num_inputs());
+    std::vector<std::string> network_config_strings(ctx->num_inputs());
+    std::vector<se_tpu::SerializedProto> network_configs(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      hosts_config_string[i] = ctx->input(i).flat<tstring>()(0);
-      hosts_config[i].bytes = hosts_config_string[i].c_str();
-      hosts_config[i].size = hosts_config_string[i].size();
+      network_config_strings[i] = ctx->input(i).flat<tstring>()(0);
+      network_configs[i].bytes = network_config_strings[i].c_str();
+      network_configs[i].size = network_config_strings[i].size();
     }
 
-    TpuEmbeddingEngine_ConfigureCommunication_Params params;
+    TpuEmbeddingEngine_ConnectHosts_Params params;
+    params.network_configs = network_configs.data();
+    params.network_configs_size = network_configs.size();
+
     StatusHelper status;
     params.status = status.c_status;
 
-    params.host_config = hosts_config.data();
-    params.host_config_size = hosts_config.size();
-
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureCommunicationFn(&params);
+    tpu::OpsApiFn()->TpuEmbeddingEngine_ConnectHostsFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
 
-    VLOG(1) << "ConnectInterTPUEmbeddingCommunication::Compute done";
+    VLOG(1) << "ConnectTPUEmbeddingHostsOp::Compute done";
   }
 
-  ~ConnectInterTPUEmbeddingCommunicationOp() override {}
+  ~ConnectTPUEmbeddingHostsOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConnectInterTPUEmbeddingCommunicationOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(ConnectTPUEmbeddingHostsOp);
 };
 
-// The FinalizeTPUEmbeddingSystemConfiguration op is used to configure the
-// system once ConfigureTPUEmbeddingHostOp has been called on each host. It
-// takes as input a string from each host which describes metadata about the
-// TPUEmbedding configuration on that host. It must be run on the TPU system
-// device to which the TPUEmbedding hosts are attached.
-class FinalizeTPUEmbeddingSystemConfigurationOp : public OpKernel {
+// The FinalizeTpuEmbeddingOp op is used to update TpuMeshCommonState and
+// TpuSystemConfiguration objects with the results of the TPU embedding
+// initialization. These objects are used during XLA compilation. This op should
+// be run on the CPU device of each host:0.
+class FinalizeTPUEmbeddingOp : public OpKernel {
  public:
-  explicit FinalizeTPUEmbeddingSystemConfigurationOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
-    OP_REQUIRES(
-        ctx, ctx->num_inputs() > 0,
-        errors::InvalidArgument("FinalizeTPUEmbeddingSystemConfiguration must "
-                                "have at least one input"));
+  explicit FinalizeTPUEmbeddingOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES(ctx, ctx->num_inputs() == 2,
+                errors::InvalidArgument("FinalizeTPUEmbeddingOp must "
+                                        "have exactly two inputs."));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "FinalizeTPUEmbeddingSystemConfiguration::Compute";
+    VLOG(1) << "FinalizeTPUEmbeddingOp::Compute";
 
-    std::vector<std::string> hosts_config_string(ctx->num_inputs());
-    std::vector<se_tpu::SerializedProto> hosts_config(ctx->num_inputs());
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      hosts_config_string[i] = ctx->input(i).flat<tstring>()(0);
-      hosts_config[i].bytes = hosts_config_string[i].c_str();
-      hosts_config[i].size = hosts_config_string[i].size();
-    }
+    const std::string common_config_string = ctx->input(0).flat<tstring>()(0);
+    const std::string memory_config_string = ctx->input(1).flat<tstring>()(0);
 
-    TpuEmbeddingEngine_FinalizeConfiguration_Params params;
+    TpuEmbeddingEngine_Finalize_Params params;
+
+    params.common_config = common_config_string.c_str();
+    params.common_config_size = common_config_string.size();
+
+    params.memory_config = memory_config_string.c_str();
+    params.memory_config_size = memory_config_string.size();
+
     StatusHelper status;
     params.status = status.c_status;
-
-    params.host_config = hosts_config.data();
-    params.host_config_size = hosts_config.size();
 
     ResourceMgr* rm = GetTPUConfigResourceMgr();
     tensorflow::tpu::TpuMeshStateInterface* mesh_state;
@@ -339,14 +364,15 @@ class FinalizeTPUEmbeddingSystemConfigurationOp : public OpKernel {
     core::ScopedUnref mesh_state_unref(mesh_state);
     params.tpu_mesh_state = mesh_state->data();
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_FinalizeConfigurationFn(&params);
+    tpu::OpsApiFn()->TpuEmbeddingEngine_FinalizeFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
+    VLOG(1) << "FinalizeTPUEmbeddingOp::Compute done";
   }
 
-  ~FinalizeTPUEmbeddingSystemConfigurationOp() override {}
+  ~FinalizeTPUEmbeddingOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FinalizeTPUEmbeddingSystemConfigurationOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(FinalizeTPUEmbeddingOp);
 };
 
 // The IsTPUEmbeddingInitializedOp is used to check whether the TPU
@@ -389,8 +415,7 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(IsTPUEmbeddingInitializedOp);
 };
 
-// These ops execute on the TPU device, so that they can access
-// the JF node interfaces stored in the JF device's resource manager.
+// These ops execute on the CPU devices of TPU worker tasks.
 REGISTER_KERNEL_BUILDER(Name("_ExecuteTPUEmbeddingPartitioner")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config"),
@@ -398,22 +423,28 @@ REGISTER_KERNEL_BUILDER(Name("_ExecuteTPUEmbeddingPartitioner")
 REGISTER_KERNEL_BUILDER(Name("_ConfigureTPUEmbeddingMemory")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
-                            .HostMemory("task_host_config"),
+                            .HostMemory("memory_config"),
                         ConfigureTPUEmbeddingMemoryOp);
+REGISTER_KERNEL_BUILDER(Name("_CollateTPUEmbeddingMemory")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("memory_configs")
+                            .HostMemory("merged_memory_config"),
+                        CollateTPUEmbeddingMemoryOp);
 REGISTER_KERNEL_BUILDER(Name("_ConfigureTPUEmbeddingHost")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
-                            .HostMemory("task_host_config")
-                            .HostMemory("host_config"),
+                            .HostMemory("memory_config")
+                            .HostMemory("network_config"),
                         ConfigureTPUEmbeddingHostOp);
-REGISTER_KERNEL_BUILDER(Name("_ConnectInterTPUEmbeddingCommunication")
+REGISTER_KERNEL_BUILDER(Name("_ConnectTPUEmbeddingHosts")
                             .Device(DEVICE_CPU)
-                            .HostMemory("host_config"),
-                        ConnectInterTPUEmbeddingCommunicationOp);
-REGISTER_KERNEL_BUILDER(Name("_FinalizeTPUEmbeddingSystemConfiguration")
+                            .HostMemory("network_configs"),
+                        ConnectTPUEmbeddingHostsOp);
+REGISTER_KERNEL_BUILDER(Name("_FinalizeTPUEmbedding")
                             .Device(DEVICE_CPU)
-                            .HostMemory("host_config"),
-                        FinalizeTPUEmbeddingSystemConfigurationOp);
+                            .HostMemory("common_config")
+                            .HostMemory("memory_config"),
+                        FinalizeTPUEmbeddingOp);
 REGISTER_KERNEL_BUILDER(Name("IsTPUEmbeddingInitialized").Device(DEVICE_CPU),
                         IsTPUEmbeddingInitializedOp);
 

@@ -418,7 +418,7 @@ class ScopedAllocatorDevice : public DeviceBase {
                               StatusCallback done) override {
     CHECK(input_tensor->NumElements() == output_tensor->NumElements());
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(Status::OK());
+    done(OkStatus());
   }
 
   // Return the count of calls to GetAllocator or GetScopedAllocator, depending

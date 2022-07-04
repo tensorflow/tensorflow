@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -61,6 +63,7 @@ class FakeDevice : public Device {
 
 TEST(DeviceUtilTest, AddDeviceToOp) {
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_type::TFTypeDialect>();
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
@@ -83,21 +86,19 @@ TEST(DeviceUtilTest, AddDeviceToOp) {
   ASSERT_EQ(devices_attr.size(), 3);
 
   // CPU device added with an empty metadata.
-  auto device_meta_0 = devices_attr.get(cpu0).dyn_cast<mlir::DictionaryAttr>();
+  auto device_meta_0 = devices_attr.get(cpu0).dyn_cast<mlir::UnitAttr>();
   ASSERT_NE(device_meta_0, nullptr);
-  ASSERT_EQ(device_meta_0.size(), 0);
 
   // GPU device successfully parsed compute capability from description.
   auto device_meta_1 =
       devices_attr.get(gpu0).dyn_cast<mlir::TF::GpuDeviceMetadata>();
   ASSERT_NE(device_meta_1, nullptr);
-  ASSERT_EQ(device_meta_1.cc_major().getInt(), 7);
-  ASSERT_EQ(device_meta_1.cc_minor().getInt(), 0);
+  ASSERT_EQ(device_meta_1.getCcMajor(), 7);
+  ASSERT_EQ(device_meta_1.getCcMinor(), 0);
 
   // If description is empty GPU devices added with an empty metadata.
-  auto device_meta_2 = devices_attr.get(gpu1).dyn_cast<mlir::DictionaryAttr>();
+  auto device_meta_2 = devices_attr.get(gpu1).dyn_cast<mlir::UnitAttr>();
   ASSERT_NE(device_meta_2, nullptr);
-  ASSERT_EQ(device_meta_2.size(), 0);
 }
 
 TEST(DeviceUtilTest, AddDeviceToOpNullDeviceSet) {
@@ -176,6 +177,7 @@ TEST(DeviceUtilTest, GetDevicesFromOpValidDeviceInDevicesAttribute) {
 
 TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
   mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_type::TFTypeDialect>();
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
@@ -186,9 +188,7 @@ TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
 
   llvm::SmallVector<mlir::NamedAttribute, 2> metadata;
   metadata.push_back(builder.getNamedAttr(
-      gpu0, mlir::TF::GpuDeviceMetadata::get(builder.getI32IntegerAttr(1),
-                                             builder.getI32IntegerAttr(2),
-                                             module_ref->getContext())));
+      gpu0, mlir::TF::GpuDeviceMetadata::get(module_ref->getContext(), 1, 2)));
 
   (*module_ref)->setAttr("tf.devices", builder.getDictionaryAttr(metadata));
 
@@ -199,8 +199,8 @@ TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
   DeviceNameUtils::ParseFullName(gpu0, &parsed_name);
   auto meta_0 = devices.GetGpuDeviceMetadata(parsed_name);
   ASSERT_TRUE(meta_0.hasValue());
-  ASSERT_EQ(meta_0->cc_major().getInt(), 1);
-  ASSERT_EQ(meta_0->cc_minor().getInt(), 2);
+  ASSERT_EQ(meta_0->getCcMajor(), 1);
+  ASSERT_EQ(meta_0->getCcMinor(), 2);
 
   DeviceNameUtils::ParseFullName(gpu1, &parsed_name);
   auto meta_1 = devices.GetGpuDeviceMetadata(parsed_name);

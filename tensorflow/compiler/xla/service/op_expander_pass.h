@@ -27,13 +27,11 @@ namespace xla {
 // does not support into other HLO instructions.
 class OpExpanderPass : public HloModulePass {
  public:
-  using PatternExtraFilter = std::function<bool(const HloInstruction*)>;
-
   StatusOr<bool> Run(HloModule* module) override;
 
   // extra_filter: Optional extra filtering criteria for matching instructions,
   // used in conjunction with InstructionMatchesPattern.
-  explicit OpExpanderPass(PatternExtraFilter extra_filter = nullptr)
+  explicit OpExpanderPass(HloPredicate extra_filter = nullptr)
       : extra_filter_(std::move(extra_filter)) {}
 
  protected:
@@ -46,7 +44,7 @@ class OpExpanderPass : public HloModulePass {
   virtual StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) = 0;
 
-  PatternExtraFilter extra_filter_;
+  HloPredicate extra_filter_;
 };
 
 }  // namespace xla

@@ -47,7 +47,7 @@ Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
   TF_RETURN_WITH_CONTEXT(ExtractConstVectorFromValue(slice_op.size(), &sizes),
                          "expected constant argument for SliceOp::size()");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Layout> VerifySliceLayout(
@@ -250,7 +250,7 @@ Status GetInputOrientedData(T strided_slice,
   if (input_index != input_rank)
     return errors::Internal("strided slice input not totally processed");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return an intermediate layout for StridedSlice(Grad), where we can lower the

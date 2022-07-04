@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 
+#include <optional>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -35,8 +36,8 @@ limitations under the License.
 namespace xla {
 
 namespace m = match;
-using absl::optional;
 using hlo_query::ContainsInstrWithOpcode;
+using std::optional;
 
 // A helper function that copy the frontend attributes from the old while op to
 // the new one.
@@ -134,9 +135,10 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   };
 
   // Create the new while condition, body, and init value.
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      while_cond_replacements = make_while_computation_replacements(while_cond);
   std::unique_ptr<HloComputation> new_while_cond =
-      while_cond->CloneWithReplacements(
-          make_while_computation_replacements(while_cond));
+      while_cond->CloneWithReplacements(&while_cond_replacements);
 
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
@@ -149,7 +151,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   while_body_replacements.emplace(
       while_body_root, HloInstruction::CreateTuple(new_while_body_root_elems));
   std::unique_ptr<HloComputation> new_while_body =
-      while_body->CloneWithReplacements(std::move(while_body_replacements));
+      while_body->CloneWithReplacements(&while_body_replacements);
 
   // Add a new while_init instruction that repackages the old while_init
   // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to
@@ -1142,7 +1144,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   Shape while_shape = while_init->shape();
 
   // The tuple index of the trip counter, if one is present.
-  absl::optional<int64_t> trip_counter;
+  std::optional<int64_t> trip_counter;
   // Maps the tuple index of each induction variable to its constant increment.
   absl::flat_hash_map<int64_t, const HloConstantInstruction*> induction_vars;
   for (int64_t i = 0; i < while_body_root->operand_count(); ++i) {

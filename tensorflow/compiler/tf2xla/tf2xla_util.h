@@ -180,7 +180,7 @@ StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def);
 // Helper function that builds an Identity node.
 StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
                                   DataType dtype, const Node* input,
-                                  absl::optional<string> requested_device);
+                                  std::optional<string> requested_device);
 
 // For "If"/"While" nodes, if some of their inputs are Const nodes, rewrite
 // body functions to use the Const nodes instead of original _Arg nodes.

@@ -34,6 +34,9 @@ tf_py_test(
     size = "medium",
     srcs = ["coordinated_read_ft_test.py"],
     shard_count = 16,
+    tags = [
+        "nomsan",  # TODO(b/235140931): Test timing out.
+    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -51,6 +54,9 @@ tf_py_test(
     size = "medium",
     srcs = ["coordinated_read_test.py"],
     shard_count = 16,
+    tags = [
+        "nomsan",  # TODO(b/236869501): Failing.
+    ],
     deps = [
         ":test_base",
         "//tensorflow:tensorflow_py",
@@ -109,7 +115,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",

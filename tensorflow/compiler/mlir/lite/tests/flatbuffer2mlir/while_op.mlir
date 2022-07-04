@@ -3,11 +3,11 @@
 // Check to see if nested regions in while loops are preserved
 // CHECK:     %{{.*}}:2 = "tfl.while"(%{{.*}}, %{{.*}}) ({
 // CHECK:     ^bb0(%{{.*}}: tensor<*xi32>, %{{.*}}: tensor<*xf32>):
-// CHECK:       "tfl.yield"(%{{.*}}) : (tensor<i1>) -> ()
+// CHECK:       "tfl.yield"(%{{.*}}) : (tensor<*xi1>) -> ()
 // CHECK:     },  {
 // CHECK:     ^bb0(%{{.*}}: tensor<*xi32>, %{{.*}}: tensor<*xf32>):
 // CHECK:       "tfl.yield"(%{{.*}}, %{{.*}}) : (tensor<*xi32>, tensor<*xf32>) -> ()
-// CHECK:     }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)
+// CHECK:     }) : (tensor<i32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<1xf32>)
 
 func.func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // While %arg0 is greater than zero, element wise add %arg1 with itself.

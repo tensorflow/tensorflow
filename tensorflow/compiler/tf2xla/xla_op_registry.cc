@@ -50,7 +50,7 @@ static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
                                    &kernel_class_name));
   VLOG(1) << "LaunchOpHasKernelForDevice"
           << " kernel_class_name: " << kernel_class_name;
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaOpRegistry::XlaOpRegistry() = default;
@@ -407,7 +407,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
     compile_time_constant_inputs =
         CompileTimeConstantInputArgNames(node_def.op());
     if (compile_time_constant_inputs->empty()) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -440,7 +440,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
   }
 
   absl::c_sort(*result);
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {

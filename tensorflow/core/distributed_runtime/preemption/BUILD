@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
 
 package(
@@ -14,10 +14,22 @@ cc_library(
     hdrs = ["preemption_sync_manager.h"],
     deps = [
         ":preemption_notifier",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
-    ],
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+    ] + if_google(
+        ["//learning/brain/runtime/preemption:borg_preemption_notifier"],
+        [],
+    ),
 )
 
 cc_library(
@@ -29,6 +41,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
@@ -36,13 +49,13 @@ cc_library(
 
 tf_cc_test(
     name = "preemption_sync_manager_test",
+    size = "small",
     srcs = ["preemption_sync_manager_test.cc"],
     deps = [
         ":preemption_notifier",
         ":preemption_sync_manager",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/coordination:coordination_client",
@@ -54,6 +67,8 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -62,6 +77,9 @@ tf_cc_test(
     name = "preemption_notifier_test",
     size = "small",
     srcs = ["preemption_notifier_test.cc"],
+    tags = [
+        "no_windows",  # TODO(b/236272855): Fails on Windows RBE (C++)
+    ],
     deps = [
         ":preemption_notifier",
         "//tensorflow/core:test",

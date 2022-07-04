@@ -280,7 +280,7 @@ TEST(DataServiceTest, DispatcherStateExport) {
               SizeIs(1));
   EXPECT_EQ(
       server_state_export.dispatcher_state_export().iterations(0).dataset_id(),
-      1000);
+      "1000");
   EXPECT_THAT(server_state_export.dispatcher_state_export()
                   .iterations(0)
                   .iteration_key()

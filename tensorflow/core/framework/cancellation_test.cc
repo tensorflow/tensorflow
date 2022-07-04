@@ -78,7 +78,7 @@ TEST(Cancellation, StartCancelWithStatusTriggersAllCallbacks) {
   auto token_2 = manager->get_cancellation_token();
   EXPECT_TRUE(manager->RegisterCallback(
       token_2, [&is_cancelled_2]() { is_cancelled_2 = true; }));
-  manager->StartCancelWithStatus(Status::OK());
+  manager->StartCancelWithStatus(OkStatus());
   EXPECT_TRUE(is_cancelled_1);
   EXPECT_TRUE(is_cancelled_2);
 }

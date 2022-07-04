@@ -44,7 +44,7 @@ class BundleV2Test : public ::testing::Test {
                                          attr.checkpoint_key());
             }
           }
-          return Status::OK();
+          return OkStatus();
         }));
 
     // Should be one of each var name restored.

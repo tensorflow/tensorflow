@@ -44,7 +44,7 @@ Status ConvertFilesFromMultiline(const string& input_dir,
     TF_RETURN_IF_ERROR(
         tensorflow::WriteStringToFile(env, output_path, contents));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 }  // namespace tensorflow

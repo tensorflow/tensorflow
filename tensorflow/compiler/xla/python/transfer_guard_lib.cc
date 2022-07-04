@@ -19,10 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/base/attributes.h"
-#include "absl/types/optional.h"
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
@@ -113,7 +113,7 @@ xla::Status ApplyTransferGuardToHostToDevice(
       return xla::InvalidArgument("Disallowed host-to-device transfer: %s",
                                   formatter());
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::Status ApplyTransferGuardToDeviceToDevice(
@@ -128,7 +128,7 @@ xla::Status ApplyTransferGuardToDeviceToDevice(
       return xla::InvalidArgument("Disallowed device-to-device transfer: %s",
                                   formatter());
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 xla::Status ApplyTransferGuardToDeviceToHost(
@@ -143,7 +143,7 @@ xla::Status ApplyTransferGuardToDeviceToHost(
       return xla::InvalidArgument("Disallowed device-to-host transfer: %s",
                                   formatter());
   }
-  return xla::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void BuildTransferGuardSubmodule(py::module& m) {

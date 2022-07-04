@@ -37,13 +37,13 @@ struct TriangularSolveRewritePattern
       return layout_attr.getValues<int64_t>()[0] == n - 2 &&
              layout_attr.getValues<int64_t>()[1] == n - 1;
     };
-    if (!has_fortran_layout(op.layout_a()) ||
-        !has_fortran_layout(op.layout_b()) ||
-        !has_fortran_layout(op.layout_output()))
+    if (!has_fortran_layout(op.getLayoutA()) ||
+        !has_fortran_layout(op.getLayoutB()) ||
+        !has_fortran_layout(op.getLayoutOutput()))
       return rewriter.notifyMatchFailure(op, "expected fortran layout");
 
-    auto transpose_or =
-        xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(op.transpose_a()));
+    auto transpose_or = xla::ConvertTranspose(
+        mlir::mhlo::stringifyTranspose(op.getTransposeA()));
     if (!transpose_or.ok()) {
       return rewriter.notifyMatchFailure(op,
                                          transpose_or.status().error_message());
@@ -64,24 +64,24 @@ struct TriangularSolveRewritePattern
     }();
 
     Location loc = op->getLoc();
-    chain = rewriter.create<tfrt::gpu::MemCopyOp>(loc, adaptor.output(),
-                                                  adaptor.b(), stream, chain);
+    chain = rewriter.create<tfrt::gpu::MemCopyOp>(
+        loc, adaptor.getOutput(), adaptor.getB(), stream, chain);
 
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
-    auto side_mode = op.left_side() ? kBlasSideLeft : kBlasSideRight;
-    auto fill_mode = op.lower() ? kBlasFillModeLower : kBlasFillModeUpper;
-    auto diag_type = op.unit_diagonal() ? kBlasDiagUnit : kBlasDiagNonUnit;
+    auto side_mode = op.getLeftSide() ? kBlasSideLeft : kBlasSideRight;
+    auto fill_mode = op.getLower() ? kBlasFillModeLower : kBlasFillModeUpper;
+    auto diag_type = op.getUnitDiagonal() ? kBlasDiagUnit : kBlasDiagNonUnit;
 
-    const xla::Shape b_shape = xla::gpu::GetShape(op.b());
+    const xla::Shape b_shape = xla::gpu::GetShape(op.getB());
     int64_t m_value = b_shape.dimensions(b_shape.rank() - 2);
     int64_t n_value = b_shape.dimensions(b_shape.rank() - 1);
     auto m = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, m_value);
     auto n = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, n_value);
 
     mlir::Type element_type =
-        op.output().getType().cast<mlir::MemRefType>().getElementType();
+        op.getOutput().getType().cast<mlir::MemRefType>().getElementType();
     auto data_type = MlirTypeToBlasDataType(element_type);
 
     auto alpha = MakeScalingFactorConstant(
@@ -104,8 +104,8 @@ struct TriangularSolveRewritePattern
 
     chain = rewriter.create<tfrt::gpu::BlasTrsmBatchOp>(
         loc, handle, stream, side_mode, fill_mode, trans, diag_type, m, n,
-        data_type, alpha, adaptor.a(), height_a, adaptor.output(), height_b,
-        batch, chain);
+        data_type, alpha, adaptor.getA(), height_a, adaptor.getOutput(),
+        height_b, batch, chain);
     rewriter.eraseOp(op);
     return chain;
   }

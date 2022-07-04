@@ -206,9 +206,7 @@ class CoordinationServiceAgent {
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
   //
-  // `barrier_id` should be unique across barriers. Once the barrier has passed
-  // or failed, subsequent calls will not block, and immediately respond with
-  // the previous response.
+  // `barrier_id` should be unique across barriers.
   //
   // The first WaitAtBarrier() call received by the service for a particular
   // barrier_id is special in that it determines the barrier deadline based on
@@ -235,7 +233,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
+  //       same barrier_id was already used previously.
   virtual Status WaitAtBarrier(const std::string& barrier_id,
                                absl::Duration timeout,
                                const std::vector<CoordinatedTask>& tasks) = 0;
@@ -253,6 +252,9 @@ class CoordinationServiceAgent {
   virtual Status CancelBarrier(const std::string& barrier_id) = 0;
   virtual void CancelBarrierAsync(const std::string& barrier_id,
                                   StatusCallback done) = 0;
+
+  // Get unowned Env* that the agent was initialized with.
+  virtual StatusOr<Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

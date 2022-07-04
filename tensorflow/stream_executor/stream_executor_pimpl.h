@@ -24,8 +24,6 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -200,7 +198,7 @@ class StreamExecutor {
   //
   // Note: this will only be populated if --check_device_leaks flag is
   // activated.
-  void GetMemAllocs(absl::node_hash_map<void*, AllocRecord>* records_out);
+  void GetMemAllocs(std::map<void*, AllocRecord>* records_out);
 
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -349,10 +347,6 @@ class StreamExecutor {
   // Note: on OpenCL we implicitly select platform zero at the moment.
   int PlatformDeviceCount() const;
 
-  // Returns whether the StreamExecutor supports BLAS plans as implemented
-  // for instance in the cuBLASLt API
-  bool SupportsBlasPlans() const;
-
   // Returns whether the StreamExecutor supports BLAS routines for the platform
   // that underlies this interface.
   bool SupportsBlas() const;
@@ -419,21 +413,6 @@ class StreamExecutor {
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(Stream* stream,
                              std::vector<blas::AlgorithmType>* out_algorithms);
-
-  // Creates a backend-specific plan object for a blaslt matmul operation, which
-  // can then be passed to DoBlasLtMatmul(). When possible, plans should be
-  // created once and reused for multiple calls to DoBlasLtMatmul().
-  // Returns a null pointer on failure.
-  port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
-  CreateBlasLtMatmulPlan(const blas::BlasLtMatmulPlanParams& params);
-
-  // Gets a list of supported algorithms for DoBlasLtMatmul. The algorithms are
-  // returned in the order of increasing estimated compute time according to an
-  // internal heuristic. The first returned algorithm can be used as the default
-  // algorithm if no autotuning is to be performed.
-  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
-  GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan* plan,
-                            size_t max_workspace_size, int max_algorithm_count);
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
@@ -547,7 +526,7 @@ class StreamExecutor {
   bool UnregisterTraceListener(TraceListener* listener);
 
   // Return allocator statistics.
-  absl::optional<AllocatorStats> GetAllocatorStats();
+  std::optional<AllocatorStats> GetAllocatorStats();
 
   // Clears the internal stats except for the `in_use` fields
   // and sets the `peak_bytes_in_use` to be equal to the `bytes_in_use`.
@@ -716,7 +695,7 @@ class StreamExecutor {
   // A mapping of pointer (to device memory) to string representation of the
   // stack (of the allocating thread) at the time at which the pointer was
   // allocated.
-  absl::node_hash_map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
+  std::map<void*, AllocRecord> mem_allocs_ ABSL_GUARDED_BY(mu_);
 
   // Memoized BLAS support object -- we only want to create this once when asked
   // for a BLAS interface.
@@ -775,7 +754,7 @@ class StreamExecutor {
   bool tracing_enabled_;
 
   // The set of TraceListeners registered for this StreamExecutor.
-  absl::flat_hash_set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
+  std::set<TraceListener*> listeners_ ABSL_GUARDED_BY(mu_);
 
   // Allocated memory in bytes.
   int64_t mem_alloc_bytes_;

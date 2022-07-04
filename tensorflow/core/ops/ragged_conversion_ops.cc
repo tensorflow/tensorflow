@@ -84,7 +84,7 @@ tensorflow::Status ValidateRowPartitionTypesAndShapes(
       }
     }
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -183,7 +183,7 @@ Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   c->set_output(1, c->Vector(num_values));              // values
   c->set_output(2, c->Vector(dense_dims));              // dense_shape
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
@@ -205,7 +205,7 @@ Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
   } else {
     c->set_output(0, c->Scalar());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c) {
@@ -213,7 +213,7 @@ Status RaggedTensorToVariantGradientShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(2, &shape));
   c->set_output(0, shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
@@ -233,7 +233,7 @@ Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
     c->set_output(i, c->UnknownShapeOfRank(1));
   }
   c->set_output(output_ragged_rank, c->UnknownShape());
-  return Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status RaggedTensorToTensorShapeFn(InferenceContext* c) {
@@ -276,7 +276,7 @@ tensorflow::Status RaggedTensorToTensorShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->MakeShapeFromShapeProto(output_shape, &output_shape_handle));
   c->set_output(0, output_shape_handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

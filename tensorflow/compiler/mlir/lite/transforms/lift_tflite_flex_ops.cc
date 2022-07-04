@@ -58,7 +58,6 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-using ::tensorflow::AttrValue;
 using ::tensorflow::StatusOr;
 
 constexpr StringRef kFlexOpNamePrefix = "Flex";

@@ -117,8 +117,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
                      dilation_width_factor, dilation_height_factor)
                      .Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
+                                                   registration);
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
                      num_threads, /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/true);

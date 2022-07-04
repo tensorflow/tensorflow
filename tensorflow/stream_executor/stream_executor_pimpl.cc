@@ -224,8 +224,7 @@ void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   mem->Reset(nullptr, 0);
 }
 
-void StreamExecutor::GetMemAllocs(
-    absl::node_hash_map<void*, AllocRecord>* records_out) {
+void StreamExecutor::GetMemAllocs(std::map<void*, AllocRecord>* records_out) {
   absl::ReaderMutexLock lock(&mu_);
   *records_out = mem_allocs_;
 }
@@ -254,10 +253,6 @@ int64_t StreamExecutor::GetDeviceLoad() const {
 
 int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
-}
-
-bool StreamExecutor::SupportsBlasPlans() const {
-  return implementation_->SupportsBlasPlans();
 }
 
 bool StreamExecutor::SupportsBlas() const {
@@ -373,30 +368,6 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
     return false;
   }
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
-}
-
-port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
-StreamExecutor::CreateBlasLtMatmulPlan(
-    const blas::BlasLtMatmulPlanParams& params) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the blas implementation.");
-  }
-  return blas_support->CreateBlasLtMatmulPlan(params);
-}
-
-port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
-StreamExecutor::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan* plan,
-                                          size_t max_workspace_size,
-                                          int max_algorithm_count) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the blas implementation.");
-  }
-  return blas_support->GetBlasLtMatmulAlgorithms(plan, max_workspace_size,
-                                                 max_algorithm_count);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
@@ -900,7 +871,7 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener* listener) {
   return true;
 }
 
-absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 
@@ -965,7 +936,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                   mem.opaque(), device_ordinal);
     executor->Deallocate(&mem);
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<StreamExecutor*>

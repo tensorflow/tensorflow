@@ -18,11 +18,11 @@ import itertools
 import json
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
-from absl import logging
 import numpy as np
 
 from tensorflow.python.compiler.tensorrt.model_tests import model_handler
 import tensorflow.python.compiler.tensorrt.trt_convert as trt
+from tensorflow.python.platform import tf_logging as logging
 
 
 # pylint: disable=bad-whitespace

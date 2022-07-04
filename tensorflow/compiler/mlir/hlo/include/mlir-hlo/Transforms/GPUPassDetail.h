@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef MLIR_HLO_TRANSFORMS_GPUPASSDETAIL_H
 #define MLIR_HLO_TRANSFORMS_GPUPASSDETAIL_H
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {

@@ -68,7 +68,7 @@ CleanupAllRequest MakeProto(int size) {
 
 TEST(PayloadSerialization, PayloadsAreTransmitted) {
   ::tensorflow::Status status = errors::InvalidArgument("invalid arg message");
-  status.SetPayload("a", absl::Cord("\\xFF\\x02\\x03"));
+  status.SetPayload("a", "\\xFF\\x02\\x03");
   ::tensorflow::Status status_recovered = FromGrpcStatus(ToGrpcStatus(status));
 
   ASSERT_TRUE(status_recovered.GetPayload("a").has_value());

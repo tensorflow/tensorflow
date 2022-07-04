@@ -18,11 +18,10 @@ limitations under the License.
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -48,7 +47,7 @@ namespace {
 // For example, if input is {0, 1, 2, 3, 4, 5} and num_partitions = 2,
 // after padding, it becomes {0, 1, 2, 3} in partition 0 and {4, 5, 0, 0} in
 // partition 1.
-absl::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
+std::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
     HloInstruction* hlo, int64_t num_partitions, const HloSharding& sharding,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b) {
@@ -83,7 +82,7 @@ absl::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
   if (halo_exchange_result.has_value()) {
     concat = halo_exchange_result.value();
   } else {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // 4. Slice the valid result.
@@ -428,7 +427,7 @@ Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   auto partitioned_fft =
       PartitionedHlo(result, hlo->shape(), partitioned_input.state());
   SetPartitionedHlo(hlo, partitioned_fft);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace spmd

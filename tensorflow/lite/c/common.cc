@@ -119,10 +119,12 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 void TfLiteTensorDataFree(TfLiteTensor* t) {
   if (t->allocation_type == kTfLiteDynamic ||
       t->allocation_type == kTfLitePersistentRo) {
+    if (t->data.raw) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
-    tflite::OnTfLiteTensorDealloc(t);
+      tflite::OnTfLiteTensorDealloc(t);
 #endif
-    free(t->data.raw);
+      free(t->data.raw);
+    }
   }
   t->data.raw = nullptr;
 }

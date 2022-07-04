@@ -55,9 +55,9 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
     }
 
     rewriter.setInsertionPointAfter(map);
-    BlockAndValueMapping block_and_value_map;
+    BlockAndValueMapping blockAndValueMap;
     for (mlir::BlockArgument barg : map.computation().front().getArguments()) {
-      block_and_value_map.map(barg, map->getOperand(barg.getArgNumber()));
+      blockAndValueMap.map(barg, map->getOperand(barg.getArgNumber()));
     }
     auto shape = map.getType().getShape();
     for (Operation &op : map.computation().front().without_terminator()) {
@@ -65,17 +65,17 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
       // Remaps the operands.
       operands.reserve(op.getNumOperands());
       for (auto value : op.getOperands())
-        operands.push_back(block_and_value_map.lookup(value));
-      auto new_op = rewriter.create(
+        operands.push_back(blockAndValueMap.lookup(value));
+      auto *newOp = rewriter.create(
           op.getLoc(), op.getName().getIdentifier(), operands,
           op.getResultTypes()[0].cast<TensorType>().clone(shape));
       // Maps the result.
-      block_and_value_map.map(op.getResult(0), new_op->getResult(0));
+      blockAndValueMap.map(op.getResult(0), newOp->getResult(0));
     }
 
-    auto ret_op = cast<ReturnOp>(map.computation().front().back());
+    auto retOp = cast<ReturnOp>(map.computation().front().back());
     map->getResult(0).replaceAllUsesWith(
-        block_and_value_map.lookup(ret_op->getOperand(0)));
+        blockAndValueMap.lookup(retOp->getOperand(0)));
     return success();
   }
 };

@@ -715,7 +715,6 @@ cc_library(
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -973,11 +972,11 @@ tf_cc_test(
     srcs = ["retrying_utils_test.cc"],
     deps = [
         ":retrying_utils",
+        ":str_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -1358,7 +1357,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
-        "@com_google_absl//absl/strings:cord",
     ],
 )
 

@@ -85,7 +85,7 @@ class XRTMemoryManager : public ResourceBase {
 
   Status Lookup(int64_t handle, RefPtr<XRTTupleAllocation>* tuple) {
     TF_ASSIGN_OR_RETURN(*tuple, Lookup(handle));
-    return Status::OK();
+    return OkStatus();
   }
 
   // Releases an handle by dropping the references count held on the

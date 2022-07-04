@@ -517,7 +517,7 @@ XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
   auto q = ConcatInDim(&builder, {p, p}, 0);
   ConcatInDim(&builder, {q, q}, 0);
   std::vector<float> expected(131072, 256.0);
-  auto a_data = client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a_data = client_->TransferToServer(a_literal).value();
   ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
 }
 
@@ -757,8 +757,8 @@ ENTRY jit_broken.874 {
   multiply = f32[] multiply(add.77, constant.719)
   ROOT tuple.873 = (f32[]) tuple(multiply)
 })")
-                    .ConsumeValueOrDie();
-  auto input_array = absl::make_unique<Array2D<float>>(4, 2);
+                    .value();
+  auto input_array = std::make_unique<Array2D<float>>(4, 2);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
@@ -808,8 +808,8 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR0<float>(2.f);
   auto y_literal = LiteralUtil::CreateR0<float>(3.f);
-  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
+  auto x_data = client_->TransferToServer(x_literal).value();
+  auto y_data = client_->TransferToServer(y_literal).value();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, f32_scalar, "x");
@@ -831,9 +831,9 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
-  auto z_data = client_->TransferToServer(z_literal).ConsumeValueOrDie();
+  auto x_data = client_->TransferToServer(x_literal).value();
+  auto y_data = client_->TransferToServer(y_literal).value();
+  auto z_data = client_->TransferToServer(z_literal).value();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");
@@ -859,9 +859,9 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
-  auto z_data = client_->TransferToServer(z_literal).ConsumeValueOrDie();
+  auto x_data = client_->TransferToServer(x_literal).value();
+  auto y_data = client_->TransferToServer(y_literal).value();
+  auto z_data = client_->TransferToServer(z_literal).value();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");

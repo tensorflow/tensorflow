@@ -63,7 +63,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::MatchingFiles")});
     }
 
@@ -84,10 +84,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
-      return Status::OK();
+      return OkStatus();
     }
 
-    Status CheckExternalState() const override { return Status::OK(); }
+    Status CheckExternalState() const override { return OkStatus(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -96,7 +96,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       Node* patterns_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(patterns_, &patterns_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {patterns_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -139,7 +139,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               out_tensors->emplace_back(std::move(filepath_tensor));
               *end_of_sequence = false;
               hasMatch_ = true;
-              return Status::OK();
+              return OkStatus();
             }
 
             // In this case, current_path is a directory. Then continue the
@@ -185,7 +185,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
         *end_of_sequence = true;
         if (hasMatch_) {
-          return Status::OK();
+          return OkStatus();
         } else {
           return errors::NotFound("Don't find any matched files");
         }
@@ -226,7 +226,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           }
         }
 
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -268,7 +268,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           }
         }
 
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -289,7 +289,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           // All the files in the heap are matched with the pattern, so finish
           // the search if current_path is a file.
           if (!current_path.second) {
-            return Status::OK();
+            return OkStatus();
           }
 
           filepath_queue_.pop();

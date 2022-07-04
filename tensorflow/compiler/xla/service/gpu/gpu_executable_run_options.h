@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -65,8 +65,8 @@ class GpuExecutableRunOptions {
   // elements of `device_assignment` are interpreted as global device IDs, not
   // local device ordinals.
   GpuExecutableRunOptions& set_gpu_global_device_ids(
-      absl::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids);
-  const absl::optional<std::vector<GlobalDeviceId>>& gpu_global_device_ids()
+      std::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids);
+  const std::optional<std::vector<GlobalDeviceId>>& gpu_global_device_ids()
       const;
 
   // Callback that returns a ncclUniqueId encoded as a string for a group of
@@ -76,7 +76,7 @@ class GpuExecutableRunOptions {
   const NcclUniqueIdCallback& nccl_unique_id_callback() const;
 
  private:
-  absl::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids_;
+  std::optional<std::vector<GlobalDeviceId>> gpu_global_device_ids_;
   NcclUniqueIdCallback nccl_unique_id_callback_;
 };
 

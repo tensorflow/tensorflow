@@ -575,7 +575,7 @@ cuda_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -657,6 +657,7 @@ cuda_py_test(
     tags = [
         "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
         "noasan",  # TODO(b/231484532): Remove after flakiness resolved.
+        "nomac",  # TODO(b/235277289) Flaky on OSX
         "notsan",  # TODO(b/200548634): Remove.
     ],
     xla_enable_strict_auto_jit = False,

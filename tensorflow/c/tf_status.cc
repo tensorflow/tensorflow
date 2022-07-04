@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status.h"
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -30,14 +29,14 @@ void TF_DeleteStatus(TF_Status* s) { delete s; }
 
 void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
   if (code == TF_OK) {
-    s->status = Status::OK();
+    s->status = ::tensorflow::OkStatus();
     return;
   }
   s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
 }
 
 void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
-  s->status.SetPayload(key, absl::Cord(absl::string_view(value)));
+  s->status.SetPayload(key, value);
 }
 
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,

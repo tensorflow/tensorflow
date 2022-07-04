@@ -1057,7 +1057,7 @@ class GradientTape(object):
     if target is None:
       raise TypeError("Argument `target` should be a list or nested structure"
                       " of Tensors, Variables or CompositeTensors to be "
-                      "differentiated, but recieved None.")
+                      "differentiated, but received None.")
 
     flat_targets = []
     for t in nest.flatten(target):

@@ -31,21 +31,21 @@ class FinalizeDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         has_captured_ref_(false) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
   }
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->emplace_back(FinalizeDatasetOp::kInputDataset);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{FinalizeDatasetOp::kHasCapturedRef, has_captured_ref_},
                     {FinalizeDatasetOp::kOutputTypes, output_dtypes_},
                     {FinalizeDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return "Finalize"; }

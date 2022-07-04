@@ -14,6 +14,7 @@
 # ==============================================================================
 """DTensor variable and saveable."""
 
+import contextlib
 import functools
 
 from tensorflow.dtensor.python import api
@@ -25,8 +26,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -169,8 +170,6 @@ class DVariable(resource_variable_ops.ResourceVariable):
     #     # translate that into a placement for the eager VarHandleOp.
     #     variable_device = _dtensor_device().name
     with ops.device(variable_device):
-      super(DVariable, self).__init__(
-          initial_value, *args, dtype=dtype, **kwargs)
       # If initial tensor assigned to DVariable is DTensor, record the layout of
       # the resource so that this can be queried.
       self.layout = None
@@ -183,6 +182,10 @@ class DVariable(resource_variable_ops.ResourceVariable):
           # is called within DTensor device scope or not.
           self.layout = None
           pass
+      mesh = self.layout.mesh if self.layout else None
+      with api.run_on(mesh) if mesh else contextlib.nullcontext():
+        super(DVariable, self).__init__(
+            initial_value, *args, dtype=dtype, **kwargs)
 
   @property
   def save_as_bf16(self):

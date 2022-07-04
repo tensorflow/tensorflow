@@ -30,7 +30,7 @@ from tensorflow.python.ops import gen_tpu_partition_ops as tpu_partition_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 
 
 def _on_device_update(update_fn, var, value, **kwargs):

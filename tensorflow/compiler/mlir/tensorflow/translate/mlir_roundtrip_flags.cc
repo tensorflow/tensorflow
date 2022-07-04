@@ -69,7 +69,7 @@ std::string GraphImportConfig::str() const {
 Status ParseOutputArrayInfo(absl::string_view array_names,
                             std::vector<string>* outputs) {
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, *outputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseOutputArrayInfo(const std::vector<string>& output_names,
@@ -78,7 +78,7 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
     if (output_name.empty()) continue;
     outputs->push_back(output_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseInputArrayInfo(absl::string_view array_names,
@@ -137,7 +137,7 @@ static Status HandleSubtype(absl::string_view subtype,
     subtype_tensor_shape.add_dim()->set_size(dim);
   }
   *result = {subtype_dtype, subtype_tensor_shape};
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseInputArrayInfo(
@@ -213,7 +213,7 @@ Status ParseInputArrayInfo(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseNodeShapes(
@@ -231,13 +231,13 @@ Status ParseNodeShapes(
       shapes_vector.push_back(std::move(shape));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseNodeNames(absl::string_view names_str,
                       std::vector<std::string>& names_vector) {
   names_vector = absl::StrSplit(names_str, ',', absl::SkipEmpty());
-  return Status::OK();
+  return OkStatus();
 }
 
 static StatusOr<std::vector<std::string>> ParseDTypesHelper(
@@ -266,7 +266,8 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
     }
     if (inside_subtype) continue;
     if (c == ',') {
-      dtypes.push_back(std::string(data_types_str.substr(cur_pos, i)));
+      dtypes.push_back(
+          std::string(data_types_str.substr(cur_pos, i - cur_pos)));
       cur_pos = i + 1;
     }
   }
@@ -276,8 +277,8 @@ static StatusOr<std::vector<std::string>> ParseDTypesHelper(
                      data_types_str, "'"));
   }
   if (!data_types_str.empty()) {
-    dtypes.push_back(
-        std::string(data_types_str.substr(cur_pos, data_types_str.size())));
+    dtypes.push_back(std::string(
+        data_types_str.substr(cur_pos, data_types_str.size() - cur_pos)));
   }
   return dtypes;
 }
@@ -288,7 +289,7 @@ Status ParseNodeDataTypes(absl::string_view data_types_str,
   if (!data_types_str.empty()) {
     TF_ASSIGN_OR_RETURN(data_type_vector, ParseDTypesHelper(data_types_str));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

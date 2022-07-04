@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/fft.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -1176,11 +1175,23 @@ class Stream {
                             uint64_t m, uint64 n, uint64 k,
                             const DeviceMemory<InputType> &a, int lda,
                             const DeviceMemory<InputType> &b, int ldb,
-                            DeviceMemory<InputType> *c, int ldc) {
+                            DeviceMemory<InputType> *c, int ldc,
+                            blas::ComputePrecision precision) {
     InputType alpha{1.0};
     InputType beta{0.0};
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
-                        ldc);
+                        ldc, precision);
+  }
+
+  // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
+  template <typename InputType>
+  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                            uint64_t m, uint64 n, uint64 k,
+                            const DeviceMemory<InputType> &a, int lda,
+                            const DeviceMemory<InputType> &b, int ldb,
+                            DeviceMemory<InputType> *c, int ldc) {
+    return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
+                        blas::kDefaultComputePrecision);
   }
 
   template <typename InputType, typename ConstantType>
@@ -1189,7 +1200,7 @@ class Stream {
                             const DeviceMemory<InputType> &a, int lda,
                             const DeviceMemory<InputType> &b, int ldb,
                             ConstantType beta, DeviceMemory<InputType> *c,
-                            int ldc) {
+                            int ldc, blas::ComputePrecision precision) {
     static_assert(!std::is_same<InputType, Eigen::half>::value ||
                       std::is_same<ConstantType, float>::value ||
                       std::is_same<ConstantType, Eigen::half>::value,
@@ -1223,7 +1234,19 @@ class Stream {
 
     return blas->DoBlasGemm(this, transa, transb, m, n, k,
                             blas::ToDataType<InputType>::value, alpha_ptr, a,
-                            lda, b, ldb, beta_ptr, c, ldc);
+                            lda, b, ldb, beta_ptr, c, ldc, precision);
+  }
+
+  // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
+  template <typename InputType, typename ConstantType>
+  port::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
+                            const DeviceMemory<InputType> &a, int lda,
+                            const DeviceMemory<InputType> &b, int ldb,
+                            ConstantType beta, DeviceMemory<InputType> *c,
+                            int ldc) {
+    return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
+                        ldc, blas::kDefaultComputePrecision);
   }
 
   Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
@@ -1312,7 +1335,7 @@ class Stream {
         output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     return st;
   }
@@ -1349,7 +1372,7 @@ class Stream {
         computation_type, algorithm, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
-      return port::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     return st;
   }
@@ -1637,25 +1660,6 @@ class Stream {
                               const DeviceMemory<std::complex<double> *> &as,
                               int lda, DeviceMemory<std::complex<double> *> *bs,
                               int ldb, int batch_count);
-
-  // See BlasSupport::DoBlatLtMatmul.
-  // Note that we prevent alpha and beta from being used to deduce CType so that
-  // they can be constructed implicitly from values of type CType. Without this,
-  // type deduction would fail when this function is called with a value of type
-  // CType for alpha or beta.
-  template <typename ABType, typename CType>
-  Stream &ThenBlasLtMatmul(
-      const blas::IBlasLtMatmulPlan *plan,
-      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &alpha,
-      const DeviceMemory<ABType> &a, const DeviceMemory<ABType> &b,
-      const detail::NonDeducedType<HostOrDeviceScalar<CType>> &beta,
-      DeviceMemory<CType> *c, ScratchAllocator *scratch_allocator,
-      const blas::IBlasLtMatmulAlgorithm *algorithm,
-      const DeviceMemory<CType> &bias = {},
-      blas::ProfileResult *output_profile_result = nullptr) {
-    return ThenBlasLtMatmulImpl(plan, alpha, a, b, beta, c, scratch_allocator,
-                                algorithm, bias, output_profile_result);
-  }
 
   // See FftSupport::DoFft.
   Stream &ThenFft(fft::Plan *plan,
@@ -2067,7 +2071,7 @@ class Stream {
           " for computation type, expected: ",
           blas::ComputationTypeString(expected_computation_type)));
     }
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
@@ -2129,19 +2133,6 @@ class Stream {
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
       ABSL_GUARDED_BY(mu_);
 
-  // Implementation of ThenBlasLtMatmul that is shared by all types.
-  template <typename ABType, typename CType>
-  Stream &ThenBlasLtMatmulImpl(const blas::IBlasLtMatmulPlan *plan,
-                               const HostOrDeviceScalar<CType> &alpha,
-                               const DeviceMemory<ABType> &a,
-                               const DeviceMemory<ABType> &b,
-                               const HostOrDeviceScalar<CType> &beta,
-                               DeviceMemory<CType> *c,
-                               ScratchAllocator *scratch_allocator,
-                               const blas::IBlasLtMatmulAlgorithm *algorithm,
-                               const DeviceMemory<CType> &bias,
-                               blas::ProfileResult *output_profile_result);
-
   // Non-extended BLAS interface requires alpha/beta to be floats when input
   // type is Eigen::half. However, for consistency purposes it is convenient
   // for the interface to accept Eigen::half.
@@ -2188,7 +2179,7 @@ inline port::Status Stream::ThenLaunch(ThreadDim thread_dims,
   kernel.PackParams(&kernel_args, args...);
   TF_RETURN_IF_ERROR(
       parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 template <typename T>

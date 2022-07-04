@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/bufferizable_op_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"
 #include "mlir/Dialect/Bufferization/Transforms/OneShotModuleBufferize.h"
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
@@ -41,8 +42,8 @@ static constexpr char kPartialIterationLabel[] = "__partial_iteration__";
 /// `idx`-th loop contains only "full" iterations and a second loop for the
 /// remaining partial iteration (if any).
 struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
-  TiledLoopPeelingPattern(MLIRContext *ctx, int64_t idx, bool skip_partial)
-      : OpRewritePattern<LoopOp>(ctx), idx(idx), skip_partial(skip_partial) {}
+  TiledLoopPeelingPattern(MLIRContext *ctx, int64_t idx, bool skipPartial)
+      : OpRewritePattern<LoopOp>(ctx), idx(idx), skipPartial(skipPartial) {}
 
   LogicalResult matchAndRewrite(LoopOp loopOp,
                                 PatternRewriter &rewriter) const override {
@@ -56,7 +57,7 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
       // Check if the loop was already peeled.
       if (llvm::find(peeledLoops, idx) != peeledLoops.end()) return failure();
     }
-    if (skip_partial && loopOp->hasAttr(kPartialIterationLabel))
+    if (skipPartial && loopOp->hasAttr(kPartialIterationLabel))
       // No peeling of loop nests with a partial iteration.
       return failure();
 
@@ -83,7 +84,7 @@ struct TiledLoopPeelingPattern : public OpRewritePattern<LoopOp> {
   int64_t idx;
 
   /// If set to true, do not peel LoopOps with a partial iteration.
-  bool skip_partial;
+  bool skipPartial;
 };
 
 class TestGmlStLoopPeelingPass
@@ -172,6 +173,8 @@ struct TestGmlStLoopTilingPass
 struct TestGmlStBufferizationPass
     : public TestGmlStBufferizationBase<TestGmlStBufferizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
+    registry
+        .insert<bufferization::BufferizationDialect, memref::MemRefDialect>();
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     gml_st::registerBufferizableOpInterfaceExternalModels(registry);
   }
@@ -179,6 +182,8 @@ struct TestGmlStBufferizationPass
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
     opts.bufferizeFunctionBoundaries = true;
+    opts.functionBoundaryTypeConversion =
+        bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;
 
     ModuleOp module = getOperation();
     if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {

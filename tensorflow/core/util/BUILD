@@ -807,6 +807,7 @@ tf_cc_tests(
         "saved_tensor_slice_util_test.cc",
         "semver_test.cc",
         "stat_summarizer_test.cc",
+        "strided_slice_op_test.cc",
         "tensor_format_test.cc",
         "tensor_slice_reader_test.cc",
         "tensor_slice_set_test.cc",

@@ -17,10 +17,6 @@ set(LLVM_TARGET_DEFINITIONS lhlo_gpu_ops.td)
 mlir_tablegen(lhlo_gpu_ops.h.inc -gen-op-decls)
 mlir_tablegen(lhlo_gpu_ops.cc.inc -gen-op-defs)
 
-set(LLVM_TARGET_DEFINITIONS lhlo_gpu_ops_structs.td)
-mlir_tablegen(lhlo_gpu_ops_structs.h.inc -gen-struct-attr-decls)
-mlir_tablegen(lhlo_gpu_ops_structs.cc.inc -gen-struct-attr-defs)
-
 set(LLVM_TARGET_DEFINITIONS lhlo_gpu_ops_enums.td)
 mlir_tablegen(lhlo_gpu_ops_enums.h.inc -gen-enum-decls)
 mlir_tablegen(lhlo_gpu_ops_enums.cc.inc -gen-enum-defs)

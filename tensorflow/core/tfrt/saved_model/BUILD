@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "if_google")
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],
@@ -10,6 +12,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/serving/...",
+        # copybara:uncomment "//learning/tfx/pipeline/infra_validation/...",
         # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
@@ -31,6 +34,11 @@ cc_library(
     hdrs = ["saved_model.h"],
     tags = ["no_oss"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
@@ -69,16 +77,14 @@ cc_library(
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:metrics",
         "@tf_runtime//:support",
-    ],
+    ] + if_google([
+        "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
+    ]),
 )
 
 cc_library(

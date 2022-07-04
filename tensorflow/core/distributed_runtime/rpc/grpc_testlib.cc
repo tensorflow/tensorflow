@@ -83,7 +83,7 @@ Status TestCluster::MakeTestCluster(const string& binary_path,
   TF_RETURN_IF_ERROR(session->ListDevices(&ret->devices_));
 
   *out_cluster = std::move(ret);
-  return Status::OK();
+  return OkStatus();
 }
 
 TestCluster::~TestCluster() {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
@@ -86,20 +87,20 @@ Status DispatcherState::Apply(const Update& update) {
       return errors::Internal("Update type not set.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
-  int64_t id = register_dataset.dataset_id();
+  std::string dataset_id = register_dataset.dataset_id();
   int64_t fingerprint = register_dataset.fingerprint();
-  auto dataset =
-      std::make_shared<Dataset>(id, fingerprint, register_dataset.metadata());
-  DCHECK(!datasets_by_id_.contains(id));
-  datasets_by_id_[id] = dataset;
+  auto dataset = std::make_shared<Dataset>(dataset_id, fingerprint,
+                                           register_dataset.metadata());
+  DCHECK(!datasets_by_id_.contains(dataset_id));
+  datasets_by_id_[dataset_id] = dataset;
   DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
   datasets_by_fingerprint_[fingerprint] = dataset;
-  next_available_dataset_id_ = std::max(next_available_dataset_id_, id + 1);
+  UpdateNextAvailableDatasetId();
 }
 
 void DispatcherState::RegisterWorker(
@@ -309,18 +310,24 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   iterations_[task->iteration->iteration_id]->finished = all_finished;
 }
 
-int64_t DispatcherState::NextAvailableDatasetId() const {
-  return next_available_dataset_id_;
+std::string DispatcherState::NextAvailableDatasetId() const {
+  return absl::StrCat(next_available_dataset_id_);
+}
+
+void DispatcherState::UpdateNextAvailableDatasetId() {
+  while (datasets_by_id_.contains(absl::StrCat(next_available_dataset_id_))) {
+    ++next_available_dataset_id_;
+  }
 }
 
 Status DispatcherState::DatasetFromId(
-    int64_t id, std::shared_ptr<const Dataset>& dataset) const {
+    const std::string& id, std::shared_ptr<const Dataset>& dataset) const {
   auto it = datasets_by_id_.find(id);
   if (it == datasets_by_id_.end()) {
     return errors::NotFound("Dataset id ", id, " not found");
   }
   dataset = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::DatasetFromFingerprint(
@@ -330,7 +337,7 @@ Status DispatcherState::DatasetFromFingerprint(
     return errors::NotFound("Dataset fingerprint ", fingerprint, " not found");
   }
   dataset = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::WorkerFromAddress(
@@ -340,7 +347,7 @@ Status DispatcherState::WorkerFromAddress(
     return errors::NotFound("Worker with address ", address, " not found.");
   }
   worker = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<std::shared_ptr<const DispatcherState::Worker>>
@@ -370,7 +377,7 @@ Status DispatcherState::IterationFromId(
     return errors::NotFound("Iteration id ", id, " not found");
   }
   iteration = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::IterationByKey(
@@ -382,7 +389,7 @@ Status DispatcherState::IterationByKey(
                             " not found");
   }
   iteration = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t DispatcherState::NextAvailableJobId() const {
@@ -400,7 +407,7 @@ Status DispatcherState::IterationForIterationClientId(
     return errors::NotFound("Iteration client id not found: ",
                             iteration_client_id);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<int64_t> DispatcherState::ListActiveClientIds() {
@@ -424,7 +431,7 @@ Status DispatcherState::TaskFromId(int64_t id,
     return errors::NotFound("Task ", id, " not found");
   }
   task = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::TasksForIteration(
@@ -439,7 +446,7 @@ Status DispatcherState::TasksForIteration(
   for (const auto& task : it->second) {
     tasks.push_back(task);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DispatcherState::TasksForWorker(
@@ -456,7 +463,7 @@ Status DispatcherState::TasksForWorker(
   for (const auto& task : worker_tasks) {
     tasks.push_back(task.second);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t DispatcherState::NextAvailableTaskId() const {

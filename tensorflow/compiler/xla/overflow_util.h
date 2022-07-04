@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_OVERFLOW_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_OVERFLOW_UTIL_H_
 
+#include <optional>
 #include <type_traits>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -51,7 +51,7 @@ inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
 //
 // x and y must be signed integers.
 template <typename T>
-inline absl::optional<T> OverflowSafeAdd(T x, T y) {
+inline std::optional<T> OverflowSafeAdd(T x, T y) {
   static_assert(std::is_signed<T>::value,
                 "Only implemented for signed numbers T.");
   static_assert(std::is_integral<T>::value, "Only implemented for integers T.");
@@ -64,7 +64,7 @@ inline absl::optional<T> OverflowSafeAdd(T x, T y) {
   const U usum = ux + uy;
   const T sum = usum;
   if (x >= 0 == y >= 0 && sum >= 0 != x >= 0) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return sum;
 }

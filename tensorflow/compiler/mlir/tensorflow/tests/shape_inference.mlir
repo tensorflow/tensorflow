@@ -1707,7 +1707,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %read : tensor<1xi8>
   }
 
-  // CHECK_LABEL: testXlaConvOpInvalidFeatureGroupCount
+  // CHECK-LABEL: testXlaConvOpInvalidFeatureGroupCount
   func.func @testXlaConvOpInvalidFeatureGroupCount(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1719,7 +1719,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
 
-  // CHECK_LABEL: testXlaConvOpInvalidInputTensorShapeDim
+  // CHECK-LABEL: testXlaConvOpInvalidInputTensorShapeDim
   func.func @testXlaConvOpInvalidInputTensorShapeDim(%lhs: tensor<8x4xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1731,7 +1731,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
 
-  // CHECK_LABEL: testXlaConvOpInvalidKernelTensorShapeDim
+  // CHECK-LABEL: testXlaConvOpInvalidKernelTensorShapeDim
   func.func @testXlaConvOpInvalidKernelTensorShapeDim(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1743,7 +1743,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
 
-  // CHECK_LABEL: testXlaConvOpInconsistentInputAndKernelTensorShapeDim
+  // CHECK-LABEL: testXlaConvOpInconsistentInputAndKernelTensorShapeDim
   func.func @testXlaConvOpInconsistentInputAndKernelTensorShapeDim(%lhs: tensor<8x4x16x16xf32>, %rhs: tensor<3x4x4x16x16xf32>) -> (tensor<?x?x?x?x?xf32>) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1755,7 +1755,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
 
-  // CHECK_LABEL: testXlaConvOpInvalidRelationForLhsInputfeaturesAndRhsInputFeatures
+  // CHECK-LABEL: testXlaConvOpInvalidRelationForLhsInputfeaturesAndRhsInputFeatures
   func.func @testXlaConvOpInvalidRelationForLhsInputfeaturesAndRhsInputFeatures(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<3x4x4x16x16xf32>) -> (tensor<?x?x?x?x?xf32>) {
     %feature_group_count = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1767,7 +1767,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
 }
 
-  // CHECK_LABEL: func @testXlaConvOpInvalidRhsOutputfeaturesAndFeatureGroupCounts
+  // CHECK-LABEL: func @testXlaConvOpInvalidRhsOutputfeaturesAndFeatureGroupCounts
   func.func @testXlaConvOpInvalidRhsOutputfeaturesAndFeatureGroupCounts(%lhs: tensor<8x4x16x16x32xf32>, %rhs: tensor<3x4x4x16x9xf32>) -> (tensor<?x?x?x?x?xf32>) {
     %feature_group_count = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1779,7 +1779,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
 
-  // CHECK_LABEL: testXlaConvDynamicInputShape
+  // CHECK-LABEL: testXlaConvDynamicInputShape
   func.func @testXlaConvDynamicInputShape(%lhs: tensor<8x?x?x?x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1791,7 +1791,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<8x4x14x14x16xf32>
   }
 
-  // CHECK_LABEL: XlaConvDynamicKernelShape
+  // CHECK-LABEL: XlaConvDynamicKernelShape
   func.func @testXlaConvDynamicKernelShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<?x?x?x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1803,7 +1803,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<8x4x14x14x16xf32>
   }
 
-  // CHECK_LABEL: testXlaConvUnrankedInputAndOutput
+  // CHECK-LABEL: testXlaConvUnrankedInputAndOutput
   func.func @testXlaConvUnrankedInputAndOutput(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2,_arg3,_arg4,_arg5,_arg6", outputs = "_retval0"}} {
     %cst = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
     %cst_0 = "tf.Const"() {value = dense<[[2, 1]]> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
@@ -1817,7 +1817,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<*xf32>
   }
 
-  // CHECK_LABEL: testXlaConvStaticOutputShape
+  // CHECK-LABEL: testXlaConvStaticOutputShape
   func.func @testXlaConvStaticOutputShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1829,7 +1829,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<8x4x14x14x16xf32>
   }
 
-  // CHECK_LABEL: testXlaConvDynamicOutputShape
+  // CHECK-LABEL: testXlaConvDynamicOutputShape
   func.func @testXlaConvDynamicOutputShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1841,7 +1841,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
 
-  // CHECK_LABEL: testXlaConvDynamicOutputShapeInt64Strides
+  // CHECK-LABEL: testXlaConvDynamicOutputShapeInt64Strides
   func.func @testXlaConvDynamicOutputShapeInt64Strides(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>

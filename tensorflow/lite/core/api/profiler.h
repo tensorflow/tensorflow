@@ -81,7 +81,7 @@ class Profiler {
   // In cases were ProfileSummarizer and tensorflow::StatsCalculator are used
   // they assume the value is in "usec", if in any case subclasses
   // didn't put usec, then the values are not meaningful.
-  // TODO karimnosseir: Revisit and make the function more clear.
+  // TODO(karimnosseir): karimnosseir: Revisit and make the function more clear.
   void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
                 int64_t event_metadata) {
     AddEvent(tag, event_type, elapsed_time, event_metadata,

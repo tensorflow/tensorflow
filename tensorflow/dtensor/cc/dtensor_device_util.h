@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
@@ -239,7 +240,18 @@ class TensorWithLayout {
   }
 
   // Small constant value optimization for non-resource-handle tensors.
-  virtual void set_const_value(const NodeDef& const_node) {
+  virtual void set_const_value(NodeDef& const_node) {
+    // If we extracted a constant value from the tensor, check if this
+    // value was the output from `tf.shape`. In this case, we need to
+    // forward the kShapeOpInputLayout attribute to the new node def. This
+    // is needed for layout propagation when running in op-by-op mode.
+    //
+    // TODO(b/162747667): Improve the presentation for Shape input Op
+    //                    layout.
+    if (shape_metadata_layout().has_value()) {
+      AddNodeAttr(kShapeOpInputLayout, {shape_metadata_layout()->ToString()},
+                  &(const_node));
+    }
     const_value_.emplace(const_node);
   }
 
@@ -310,6 +322,8 @@ class TensorWithLayout {
 
   const absl::optional<NodeDef> const_value() const { return const_value_; }
 
+  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
+
  protected:
   TensorWithLayout(std::unique_ptr<parallel_device::ParallelTensor> tensor,
                    const MeshWithParallelDevice& mesh, const Layout& layout,
@@ -346,6 +360,9 @@ class TensorWithLayout {
   std::vector<int64_t> local_shape_;
 
   absl::optional<TF_DataType> dtype_;
+
+  // Resource input attributes for embedding inputs.
+  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // Extension of TensorWithLayout which holds resource handle with layout.
@@ -365,7 +382,7 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
   TensorType tensor_type() const override { return TensorType::kResource; }
 
-  void set_const_value(const NodeDef& const_node) override {
+  void set_const_value(NodeDef& const_node) override {
     // Just a no-op for resource handle. Maybe we should error out.
   }
 
@@ -383,8 +400,6 @@ class ResourceHandleWithLayout : public TensorWithLayout {
 
   void UpdateAttrs(const EmbeddingResourceAttrs& attrs,
                    TF_Status* status) override;
-
-  const absl::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
 
   void UpdateDirtyness(bool is_dirty, TF_Status* status) {
     if (!attrs_.has_value()) {
@@ -422,7 +437,6 @@ class ResourceHandleWithLayout : public TensorWithLayout {
   // The shape and dtype of the tensor pointed to by this resource tensor.
   absl::optional<TensorShapeProto> dereferenced_shape_;
   absl::optional<DataType> dereferenced_dtype_;
-  absl::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // TensorWithLayout for SparseTensors.
@@ -450,7 +464,7 @@ class SparseTensorWithLayout : public TensorWithLayout {
         layout, local_shape));
   }
 
-  void set_const_value(const NodeDef& const_node) override {
+  void set_const_value(NodeDef& const_node) override {
     // No-op for SparseTensors, consider erroring out.
   }
 
@@ -511,6 +525,69 @@ std::string ShapeToDebugString(const std::vector<T> shape_vector) {
     return shape.DebugString();
   }
 }
+// Class that holds information about DTensor Functions ran, including cached
+// lowered functions and constant folding input information per function.
+//
+//
+// The caching policy for constant folded inputs is the following:
+//   In the first call to a function, we assume that all the inputs that
+//   are constant foldable are constant folded and save these values. In the
+//   next call to the same function call, we compare the values of constant
+//   folded inputs to the previous constant folded inputs. We disable constant
+//   folding for the changed values, and save these new inputs.
+// TODO(b/169348205) Support cache eviction if the cache gets bloated.
+class FunctionManager {
+ public:
+  FunctionManager() = default;
+
+  // Caches the graph with the lowered 'function'.
+  const ExecutionFunctions* AddCachedFunction(const DTensorOperation& op,
+                                              tensorflow::Fprint128 cache_key,
+                                              ExecutionFunctions function);
+
+  // Returns the cache key and the cached lowered graph for the function.
+  // Returns a nullptr for the lowered graph if there is a cache miss.
+  // Upon a cache miss, this will save some metadata about the function
+  // and the small inputs to keep track of information for constant folding.
+  std::pair<tensorflow::Fprint128, const ExecutionFunctions*> GetCachedFunction(
+      const DTensorOperation& doperation, const NameAttrList& attributes,
+      const std::vector<TensorWithLayout*>& inputs,
+      const std::vector<const Layout*>& output_layouts);
+
+  // Returns whether the input at `input_index` is known to be constant
+  // foldable for function `doperation`. An input is not constant foldable if we
+  // have ran this function at least twice and the small input value changed
+  // across separate runs.
+  bool IsConstantFoldable(const DTensorOperation& doperation,
+                          const int input_index) const;
+
+ private:
+  // Cache key for dtensor operation name, which includes the op name
+  // and the input shapes. This is needed as a higher level cache for constant
+  // folding.
+  const tensorflow::Fprint128 CacheKeyForDTensorOperation(
+      const DTensorOperation& doperation) const;
+
+  // Generates a cache key for the graph, including its attributes,
+  // inputs, and outputs.
+  tensorflow::Fprint128 CacheKeyForGraph(
+      const DTensorOperation& doperation, const NameAttrList& attributes,
+      const std::vector<TensorWithLayout*>& inputs,
+      const std::vector<const Layout*>& output_layouts);
+
+  // Maps the hash of a graph with the lowered graph.
+  absl::flat_hash_map<tensorflow::Fprint128, ExecutionFunctions,
+                      tensorflow::Fprint128Hasher>
+      function_cache_;
+
+  // Maps the hash of dtensor_operation and its input shapes to a map
+  // representing the small constant indices and values to the function. The
+  // small constant indices are saved to make faster comparisons for constant
+  // folding validation.
+  absl::flat_hash_map<tensorflow::Fprint128, absl::flat_hash_map<int, NodeDef>,
+                      tensorflow::Fprint128Hasher>
+      dtensor_op_and_small_inputs_;
+};
 
 // Returns the shape of a given tensor.
 std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
@@ -519,6 +596,7 @@ std::vector<int64_t> TensorShapeAsVector(TFE_TensorHandle* tensor,
 // Creates a Graph with _Arg and _Retval nodes surrounding an
 // `operation_name`-type node.
 Status PrepareGraphForMlir(
+    const FunctionManager& function_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
     const tensorflow::FunctionLibraryDefinition& flib_def,

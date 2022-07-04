@@ -62,6 +62,26 @@ PyObject* QuantizeQATModel(absl::string_view saved_model_path,
                                                  ret_str.size());
 }
 
+PyObject* QuantizePTQDynamicRange(absl::string_view saved_model_path,
+                                  absl::string_view exported_names_str,
+                                  absl::string_view tags) {
+  absl::StatusOr<tensorflow::GraphDef> graph_def =
+      internal::QuantizePTQDynamicRange(saved_model_path, exported_names_str,
+                                        tags);
+  if (!graph_def.ok()) {
+    PyErr_Format(PyExc_ValueError,
+                 "failed to apply post-training dynamic range quantization to "
+                 "the model: %s",
+                 std::string(graph_def.status().message()).c_str());
+    return nullptr;
+  }
+
+  std::string ret_str = graph_def.value().SerializeAsString();
+
+  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
+                                                 ret_str.size());
+}
+
 PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
                                          absl::string_view exported_names_str,
                                          absl::string_view tags) {
@@ -110,7 +130,7 @@ void ClearDataFromCalibrator(absl::string_view id) {
 }
 
 float GetMinFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
     PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
@@ -122,7 +142,7 @@ float GetMinFromCalibrator(absl::string_view id) {
 }
 
 float GetMaxFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
     PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",

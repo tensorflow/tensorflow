@@ -155,12 +155,12 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK-LABEL: HloModule main
 
 // CHECK: [[BODY:%.+]] ([[TUPLE:.+]]: (s32[], s32[], s32[])) -> (s32[], s32[], s32[]) {
-// CHECK_NEXT: %[[TUPLE:.*]] = (s32[], s32[], s32[]) parameter(0)
-// CHECK_NEXT: %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TU{LE]]), index=0
-// CHECK_NEXT: %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TU{LE]]), index=1
-// CHECK_NEXT: %[[ADD:.*]] = s32[] add(s32[] %[[GTE_0]], s32[] %[[GTE_1]])
-// CHECK_NEXT: %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=2
-// CHECK_NEXT: ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], s32[]) tuple(s32[] %[[ADD]], s32[] %[[GTE_1]], s32[] %[[GTE_2]])
+// CHECK-NEXT: %[[TUPLE:.*]] = (s32[], s32[], s32[]) parameter(0)
+// CHECK-NEXT: %[[GTE_0:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=0
+// CHECK-NEXT: %[[GTE_1:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=1
+// CHECK-NEXT: %[[ADD:.*]] = s32[] add(s32[] %[[GTE_0]], s32[] %[[GTE_1]])
+// CHECK-NEXT: %[[GTE_2:.*]] = s32[] get-tuple-element((s32[], s32[], s32[]) %[[TUPLE]]), index=2
+// CHECK-NEXT: ROOT %[[TUPLE_RES:.*]] = (s32[], s32[], s32[]) tuple(s32[] %[[ADD]], s32[] %[[GTE_1]], s32[] %[[GTE_2]])
 // CHECK: }
 
 // CHECK: [[COND:%.+]] ([[TUPLE:.+]]: (s32[], s32[], s32[])) -> pred[] {

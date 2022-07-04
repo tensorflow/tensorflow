@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_REWRITERS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_REWRITERS_H_
+#ifndef MLIR_HLO_TRANSFORMS_REWRITERS_H
+#define MLIR_HLO_TRANSFORMS_REWRITERS_H
 
 #include "mlir/IR/MLIRContext.h"
 
 namespace mlir {
 namespace bufferization {
 class BufferizeTypeConverter;
-}
+}  // namespace bufferization
 class MLIRContext;
 class RewritePatternSet;
 
@@ -38,4 +38,4 @@ void populateTiledLoopBufferizePattern(
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_REWRITERS_H_
+#endif  // MLIR_HLO_TRANSFORMS_REWRITERS_H

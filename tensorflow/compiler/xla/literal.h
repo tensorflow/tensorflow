@@ -22,15 +22,14 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -136,7 +135,7 @@ class LiteralBase {
   NativeT GetFirstElement() const;
 
   // As above but returns any integer type casted to an int64_t.
-  absl::optional<int64_t> GetFirstInteger() const;
+  std::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
@@ -171,19 +170,19 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value into
   // int64_t.  This literal must be an array.
-  absl::optional<int64_t> GetIntegralAsS64(
+  std::optional<int64_t> GetIntegralAsS64(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // double. This literal must be an array.
-  absl::optional<double> GetAsDouble(
+  std::optional<double> GetAsDouble(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // complex128. All floating point types can be converted into complex128.
   //
   // This literal must be an array.
-  absl::optional<complex128> GetAsComplex128(
+  std::optional<complex128> GetAsComplex128(
       absl::Span<const int64_t> multi_index) const;
 
   // Invokes the "per cell" callback for each element in the provided
@@ -251,7 +250,7 @@ class LiteralBase {
   bool IsR1Iota() const;
 
   // Returns the stride if the literal is a strided iota.
-  absl::optional<int64_t> IsR1StridedIota() const;
+  std::optional<int64_t> IsR1StridedIota() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
@@ -400,7 +399,7 @@ class LiteralBase {
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
   // initialization, then reinitialization. Consider if a call to
-  // absl::make_unique<Literal>(shape), followed by the call to
+  // std::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
 
@@ -456,21 +455,21 @@ class LiteralBase {
     void AllocateBuffers();
     void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
-    const char* buffer() const { return absl::visit(BufferVisitor{}, rep_); }
+    const char* buffer() const { return std::visit(BufferVisitor{}, rep_); }
     char* buffer() {
       return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
     }
     void set_buffer(char* buffer) {
       CHECK(subshape_->IsArray());
-      auto* array_rep = absl::holds_alternative<Uninitialized>(rep_)
+      auto* array_rep = std::holds_alternative<Uninitialized>(rep_)
                             ? &rep_.emplace<ArrayRep>()
                             : GetArrayRep();
       DCHECK(array_rep);
       array_rep->data = buffer;
     }
     void MoveDataFrom(Piece& from) {
-      DCHECK(!absl::holds_alternative<ArrayRep>(rep_));
-      DCHECK(!absl::holds_alternative<TupleRep>(rep_));
+      DCHECK(!std::holds_alternative<ArrayRep>(rep_));
+      DCHECK(!std::holds_alternative<TupleRep>(rep_));
       if (auto* array_rep = from.GetArrayRep()) {
         rep_.emplace<ArrayRep>().data = array_rep->data;
       } else if (auto* inlined_rep = from.GetInlinedRep()) {
@@ -498,7 +497,7 @@ class LiteralBase {
     const Shape& subshape() const { return *subshape_; }
     void set_subshape(const Shape* subshape) {
       subshape_ = subshape;
-      if (absl::holds_alternative<Uninitialized>(rep_)) {
+      if (std::holds_alternative<Uninitialized>(rep_)) {
         if (subshape_->IsTuple()) {
           rep_.emplace<TupleRep>();
         }
@@ -554,7 +553,7 @@ class LiteralBase {
       return ForEachHelper(
                  [&func](const ShapeIndex& index, const Piece& piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return OkStatus();
                  },
                  *this, &index)
           .IgnoreError();
@@ -583,7 +582,7 @@ class LiteralBase {
       return ForEachMutableHelper(
                  [&func](const ShapeIndex& index, Piece* piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return OkStatus();
                  },
                  const_cast<xla::LiteralBase::Piece*>(this), &index)
           .IgnoreError();
@@ -645,12 +644,10 @@ class LiteralBase {
       std::vector<Piece> children = {};
     };
 
-    // TODO(b/157309856): Turn this into a inlined constexpr when we switch to
-    // c++17 or later.
-    enum {
-      // Use just so many bytes that we don't increase the sizeof(Piece).
-      kMaxInlinedBytes = std::max(sizeof(ArrayRep), sizeof(TupleRep)),
-    };
+    // Use just so many bytes that we don't increase the sizeof(Piece).
+    static inline constexpr size_t kMaxInlinedBytes =
+        std::max(sizeof(ArrayRep), sizeof(TupleRep));
+
     // Inlined array storage.
     struct InlinedRep {
       char data[kMaxInlinedBytes];
@@ -669,19 +666,15 @@ class LiteralBase {
     };
 
     const InlinedRep* GetInlinedRep() const {
-      return absl::get_if<InlinedRep>(&rep_);
+      return std::get_if<InlinedRep>(&rep_);
     }
-    InlinedRep* GetInlinedRep() { return absl::get_if<InlinedRep>(&rep_); }
+    InlinedRep* GetInlinedRep() { return std::get_if<InlinedRep>(&rep_); }
 
-    const ArrayRep* GetArrayRep() const {
-      return absl::get_if<ArrayRep>(&rep_);
-    }
-    ArrayRep* GetArrayRep() { return absl::get_if<ArrayRep>(&rep_); }
+    const ArrayRep* GetArrayRep() const { return std::get_if<ArrayRep>(&rep_); }
+    ArrayRep* GetArrayRep() { return std::get_if<ArrayRep>(&rep_); }
 
-    const TupleRep* GetTupelRep() const {
-      return absl::get_if<TupleRep>(&rep_);
-    }
-    TupleRep* GetTupelRep() { return absl::get_if<TupleRep>(&rep_); }
+    const TupleRep* GetTupelRep() const { return std::get_if<TupleRep>(&rep_); }
+    TupleRep* GetTupelRep() { return std::get_if<TupleRep>(&rep_); }
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -698,7 +691,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
     template <typename Fn>
     bool ForEachHelperBool(const Fn& func, const Piece& piece,
@@ -729,7 +722,7 @@ class LiteralBase {
           index->pop_back();
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Recursive helper for EqualElements.
@@ -742,7 +735,7 @@ class LiteralBase {
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
     // Storage representation of this piece.
-    absl::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
+    std::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
@@ -1425,7 +1418,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     // For scalars.
     literal_data.at(0) = generator({}, /*thread_id=*/-1);
   }
-  return Status::OK();
+  return OkStatus();
 }
 template <typename NativeT, typename FnType>
 Status MutableLiteralBase::Populate(const FnType& generator) {

@@ -66,83 +66,80 @@ struct ShapeReificationThroughAssumingOpsPattern
   LogicalResult matchAndRewrite(shape::AssumingOp aop,
                                 PatternRewriter &rewriter) const override {
     // Analyze in which results' values and shapes we are interested.
-    size_t num_results = aop->getNumResults();
-    SmallVector<SmallVector<shape::ShapeOfOp>> shape_users_per_result;
-    shape_users_per_result.reserve(num_results);
-    SmallVector<bool> has_non_shape_users_per_result;
-    has_non_shape_users_per_result.reserve(num_results);
+    size_t numResults = aop->getNumResults();
+    SmallVector<SmallVector<shape::ShapeOfOp>> shapeUsersPerResult;
+    shapeUsersPerResult.reserve(numResults);
+    SmallVector<bool> hasNonShapeUsersPerResult;
+    hasNonShapeUsersPerResult.reserve(numResults);
     for (Value result : aop.getResults()) {
-      auto &shape_users = shape_users_per_result.emplace_back();
-      auto &has_non_shape_users =
-          has_non_shape_users_per_result.emplace_back(false);
+      auto &shapeUsers = shapeUsersPerResult.emplace_back();
+      auto &hasNonShapeUsers = hasNonShapeUsersPerResult.emplace_back(false);
       for (Operation *user : result.getUsers()) {
         if (auto sop = llvm::dyn_cast<shape::ShapeOfOp>(user)) {
-          shape_users.push_back(sop);
+          shapeUsers.push_back(sop);
         } else {
-          has_non_shape_users = true;
+          hasNonShapeUsers = true;
         }
       }
     }
 
     // Fail, if there is nothing to make progress on.
-    if (llvm::all_of(shape_users_per_result,
-                     [](auto it) { return it.empty(); }) &&
-        llvm::all_of(has_non_shape_users_per_result,
-                     [](auto it) { return it; })) {
+    if (llvm::all_of(shapeUsersPerResult, [](auto it) { return it.empty(); }) &&
+        llvm::all_of(hasNonShapeUsersPerResult, [](auto it) { return it; })) {
       return failure();
     }
 
     // Create a new assuming op.
-    auto new_aop = rewriter.create<shape::AssumingOp>(
+    auto newAop = rewriter.create<shape::AssumingOp>(
         aop.getLoc(), aop.getWitness(), [&](OpBuilder &b, Location loc) {
           // From the old assuming op, move all ops over to this new one, except
           // the yield terminator.
-          Block *aop_body = aop.getBody();
+          Block *aopBody = aop.getBody();
           auto yop =
-              llvm::cast<shape::AssumingYieldOp>(aop_body->getTerminator());
-          Block *new_aop_body = b.getInsertionBlock();
-          auto &dst_ops = new_aop_body->getOperations();
-          auto &src_ops = aop_body->getOperations();
-          dst_ops.splice(dst_ops.begin(), src_ops, src_ops.begin(),
-                         yop->getIterator());
+              llvm::cast<shape::AssumingYieldOp>(aopBody->getTerminator());
+          Block *newAopBody = b.getInsertionBlock();
+          auto &dstOps = newAopBody->getOperations();
+          auto &srcOps = aopBody->getOperations();
+          dstOps.splice(dstOps.begin(), srcOps, srcOps.begin(),
+                        yop->getIterator());
 
           // Collect all the values that have non-shape uses to yield them from
           // the body. Also, create the needed `shape_of` ops at the end of the
           // body and yield these results.
-          b.setInsertionPointToEnd(new_aop_body);
+          b.setInsertionPointToEnd(newAopBody);
           SmallVector<Value> results;
-          SmallVector<Value> shape_results;
+          SmallVector<Value> shapeResults;
           for (const auto &it : llvm::enumerate(yop.getOperands())) {
-            if (has_non_shape_users_per_result[it.index()]) {
+            if (hasNonShapeUsersPerResult[it.index()]) {
               results.push_back(it.value());
             }
-            if (!shape_users_per_result[it.index()].empty()) {
-              shape_results.push_back(
+            if (!shapeUsersPerResult[it.index()].empty()) {
+              shapeResults.push_back(
                   b.create<shape::ShapeOfOp>(loc, it.value()));
             }
           }
-          results.append(shape_results);
+          results.append(shapeResults);
           return results;
         });
 
     // Find the replacement values for the old assuming op.
     size_t i = 0;
-    auto new_aop_results = new_aop.getResults();
+    auto newAopResults = newAop.getResults();
     auto replacement = llvm::to_vector<8>(llvm::map_range(
-        has_non_shape_users_per_result, [&](bool has_non_shape_uses) -> Value {
-          return has_non_shape_uses ? new_aop_results[i++] : nullptr;
+        hasNonShapeUsersPerResult, [&](bool hasNonShapeUses) -> Value {
+          return hasNonShapeUses ? newAopResults[i++] : nullptr;
         }));
 
     // Replace all the shape uses with the shape values from the new assuming
     // region.
-    for (const auto &shape_users : shape_users_per_result) {
-      if (shape_users.empty()) continue;
-      for (shape::ShapeOfOp sop : shape_users) {
-        rewriter.replaceOp(sop, new_aop_results[i]);
+    for (const auto &shapeUsers : shapeUsersPerResult) {
+      if (shapeUsers.empty()) continue;
+      for (shape::ShapeOfOp sop : shapeUsers) {
+        rewriter.replaceOp(sop, newAopResults[i]);
       }
       i++;
     }
-    assert(i == new_aop_results.size() &&
+    assert(i == newAopResults.size() &&
            "expect to use all results of the new assuming op");
 
     // Finally, replace the old assuming op.
@@ -161,7 +158,7 @@ struct ShapeReificationPass
     // Collect patterns.
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    PopulateShapeReificationPatterns(ctx, &patterns);
+    populateShapeReificationPatterns(ctx, &patterns);
 
     // Apply patterns from the bottom up. This ensures to need no more than one
     // iteration.
@@ -176,7 +173,7 @@ struct ShapeReificationPass
 
 }  // namespace
 
-void PopulateShapeReificationPatterns(MLIRContext *ctx,
+void populateShapeReificationPatterns(MLIRContext *ctx,
                                       RewritePatternSet *patterns) {
   // clang-format off
   patterns->add<
@@ -185,7 +182,7 @@ void PopulateShapeReificationPatterns(MLIRContext *ctx,
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeReificationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createShapeReificationPass() {
   return std::make_unique<ShapeReificationPass>();
 }
 

@@ -436,7 +436,7 @@ static void GenOperandResultVerifier(raw_ostream &os,
   mlir::tblgen::FmtContext fctx;
 
   bool first = true;
-  for (auto static_value : llvm::enumerate(values)) {
+  for (const auto &static_value : llvm::enumerate(values)) {
     auto *definit = llvm::cast<llvm::DefInit>(static_value.value());
     auto *val = definit->getDef()->getValue("tflRuntimeTypePredicate");
     if (!val) continue;

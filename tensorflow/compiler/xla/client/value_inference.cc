@@ -199,8 +199,8 @@ struct HloProtoEvaluator {
   absl::Span<Literal> operands;
   ShapeIndex shape_index = {};
   HloComputation* computation = nullptr;
-  absl::optional<PrimitiveType> primitive_type = absl::nullopt;
-  absl::optional<HloOpcode> opcode = absl::nullopt;
+  std::optional<PrimitiveType> primitive_type = std::nullopt;
+  std::optional<HloOpcode> opcode = std::nullopt;
 };
 
 enum PostorderDFSNodeType {
@@ -293,7 +293,7 @@ using Visit2D = std::function<StatusOr<Literal>(Literal, Literal)>;
 
 // A postorder dfs node can be visited once its dependency requests are all
 // fulfilled.
-struct ABSL_MUST_USE_RESULT PostorderDFSNode {
+struct [[nodiscard]] PostorderDFSNode {
   PostorderDFSNode& AddDependency(int64_t handle, PostorderDFSNodeType type,
                                   InferenceContext context,
                                   std::string annotation = "") {
@@ -1386,7 +1386,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
             auto result = CreatePredLiteral(true, Shape(root->shape()));
             result.MutableEachCell<bool>(
                 [&](absl::Span<const int64_t> indices, bool value) {
-                  absl::optional<bool> optional_selector =
+                  std::optional<bool> optional_selector =
                       optional_selector_literal.Get<bool>(indices);
 
                   bool lhs_value = lhs.Get<bool>(indices);
@@ -1612,18 +1612,18 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
   return result;
 }
 
-StatusOr<absl::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
+StatusOr<std::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   // For now, only handle kGetDimensionSize as that's the most duplicated one.
   if (opcode != HloOpcode::kGetDimensionSize) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
   int64_t hash = absl::HashOf(inst->operand_ids(0), inst->dimensions(0));
   auto lookup = cse_map_.find(hash);
   if (lookup == cse_map_.end()) {
     cse_map_[hash] = handle;
-    return {absl::nullopt};
+    return {std::nullopt};
   }
   TF_ASSIGN_OR_RETURN(auto equivalent_op,
                       builder_->LookUpInstructionByHandle(lookup->second));
@@ -1633,14 +1633,14 @@ StatusOr<absl::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
       equivalent_op->operand_ids(0) != inst->operand_ids(0) ||
       equivalent_op->dimensions(0) != inst->dimensions(0)) {
     // Hash collision, don't CSE.
-    return {absl::nullopt};
+    return {std::nullopt};
   }
   int64_t cse = lookup->second;
   if (handle != cse) {
     // Successfully found a handle that's not the same as input but equivalent.
     return {cse};
   }
-  return {absl::nullopt};
+  return {std::nullopt};
 }
 
 StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
@@ -1692,11 +1692,11 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
           return CreateS64Literal(-1, output_shape);
         }
         // Recursive lambda needs explicit signature.
-        std::function<absl::optional<int64_t>(int64_t, int64_t)>
+        std::function<std::optional<int64_t>(int64_t, int64_t)>
             can_be_optimized;
         can_be_optimized = [this, &can_be_optimized](
                                int64_t lhs,
-                               int64_t rhs) -> absl::optional<int64_t> {
+                               int64_t rhs) -> std::optional<int64_t> {
           auto rhs_inst = builder_->LookUpInstructionByHandle(rhs).ValueOrDie();
           HloOpcode rhs_opcode =
               StringToHloOpcode(rhs_inst->opcode()).ValueOrDie();
@@ -1735,7 +1735,7 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
                   .handle();
             }
           }
-          return absl::nullopt;
+          return std::nullopt;
         };
         if (auto optimized = can_be_optimized(lhs_handle, rhs_handle)) {
           return LiteralUtil::CreateR0<int64_t>(optimized.value());

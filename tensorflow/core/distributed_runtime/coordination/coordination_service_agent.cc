@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
@@ -53,10 +54,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   ~CoordinationServiceAgentImpl() override {
     Status s = Shutdown();
     if (!s.ok()) {
-      LOG(ERROR) << "Agent shutdown failed with status: " << s;
+      LOG(ERROR) << "Coordination agent shutdown failed with status: " << s;
     }
-    // Cancel all pending GetKeyValue() RPC calls.
-    cancellation_manager_.StartCancel();
   }
   Status Initialize(Env* env, const ServerDef& server_def,
                     std::unique_ptr<CoordinationClientCache> client_cache,
@@ -109,6 +108,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void CancelBarrierAsync(const std::string& barrier_id,
                           StatusCallback done) override;
 
+  StatusOr<Env*> GetEnv() override;
+
  protected:
   void SetError(const Status& error) override;
   Status ActivateWatch(const std::string& key,
@@ -133,7 +134,11 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   };
   mutable mutex state_mu_;
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
-  Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
+  Status status_ TF_GUARDED_BY(state_mu_) = OkStatus();
+  // Note: this set grows without bounds. For now, this is okay as most users
+  // require < 100 barriers. If there is a use case that requires many barriers,
+  // consider using a monotonic sequence number to track instead.
+  absl::flat_hash_set<std::string> used_barrier_ids_ TF_GUARDED_BY(state_mu_);
 
   uint64_t leader_incarnation_ = 0;
   CoordinationServiceDeviceInfo cluster_devices_;
@@ -213,7 +218,7 @@ Status CoordinationServiceAgentImpl::Initialize(
   }
   error_fn_ = error_fn;
   state_ = State::DISCONNECTED;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CoordinationServiceAgentImpl::IsInitialized() {
@@ -314,7 +319,7 @@ Status CoordinationServiceAgentImpl::Connect() {
           }
         }
       }));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceAgentImpl::WaitForAllTasks(
@@ -339,7 +344,7 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
     return status;
   }
   cluster_devices_.MergeFrom(response.cluster_device_info());
-  return Status::OK();
+  return OkStatus();
 }
 
 const CoordinationServiceDeviceInfo&
@@ -393,11 +398,12 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
     n.Notify();
   });
   n.WaitForNotification();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceAgentImpl::Shutdown() {
-  Status status = Status::OK();
+  LOG(INFO) << "Coordination agent has initiated Shutdown().";
+  Status status = OkStatus();
   bool is_connected = false;
   {
     mutex_lock l(state_mu_);
@@ -437,13 +443,16 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     mutex_lock l(state_mu_);
     if (state_ == State::ERROR) {
       status = MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
-          "Shutdown() was called while agent is in error state, implying that "
-          "distributed execution failed. Note: agent will still shutdown "
-          "anyway. Agent status: ",
+          "Shutdown() was called while coordination agent is in error state, "
+          "implying that distributed execution failed. Note: agent will still "
+          "shutdown anyway. Agent status: ",
           status_.ToString())));
     }
     state_ = State::SHUTDOWN;
   }
+
+  // Cancel all pending GetKeyValue() RPC calls.
+  cancellation_manager_.StartCancel();
   return status;
 }
 
@@ -626,7 +635,7 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
     n.Notify();
   });
   n.WaitForNotification();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CoordinationServiceAgentImpl::UpdateKeyValue(const std::string& key,
@@ -685,6 +694,17 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
     done(agent_running_status);
     return;
   }
+  {
+    mutex_lock l(state_mu_);
+    auto [it, inserted] = used_barrier_ids_.insert(barrier_id);
+    if (!inserted) {
+      done(errors::FailedPrecondition(
+          "WaitAtBarrier() should not be called with the same id more than "
+          "once. Barrier id: ",
+          barrier_id));
+      return;
+    }
+  }
   auto request = std::make_shared<BarrierRequest>();
   auto response = std::make_shared<BarrierResponse>();
   request->set_barrier_id(barrier_id);
@@ -731,7 +751,7 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
   mutex_lock l(state_mu_);
   switch (state_) {
     case State::RUNNING:
-      return Status::OK();
+      return OkStatus();
 
     case State::UNINITIALIZED:
       return MakeCoordinationError(errors::FailedPrecondition(
@@ -753,6 +773,19 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
       return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
           "Agent is not in RUNNING state. Current state: ", state_)));
   }
+}
+
+StatusOr<Env*> CoordinationServiceAgentImpl::GetEnv() {
+  if (!IsInitialized()) {
+    return MakeCoordinationError(errors::FailedPrecondition(
+        "Coordination service agent has not been initialized."));
+  }
+  if (env_ == nullptr) {
+    return MakeCoordinationError(
+        errors::FailedPrecondition("Coordination service agent was not "
+                                   "initialized with a valid Env* object."));
+  }
+  return env_;
 }
 
 }  // namespace

@@ -78,23 +78,6 @@ cc_test(
 )
 
 cc_test(
-    name = "conv_buffer_1x1_test",
-    srcs = ["conv_buffer_1x1_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":cl_test",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "conv_constants_test",
     srcs = ["conv_constants_test.cc"],
     linkstatic = True,
@@ -112,8 +95,8 @@ cc_test(
 )
 
 cc_test(
-    name = "conv_powervr_test",
-    srcs = ["conv_powervr_test.cc"],
+    name = "conv_generic_test",
+    srcs = ["conv_generic_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
         "linux",
@@ -123,7 +106,7 @@ cc_test(
         ":cl_test",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -775,9 +758,8 @@ test_suite(
         "add_test",
         "cast_test",
         "concat_test",
-        "conv_buffer_1x1_test",
         "conv_constants_test",
-        "conv_powervr_test",
+        "conv_generic_test",
         "conv_weights_converter_test",
         "convolution_transposed_3x3_test",
         "convolution_transposed_3x3_thin_test",

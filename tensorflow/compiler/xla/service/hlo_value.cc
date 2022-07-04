@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -278,6 +278,20 @@ bool InstructionValueSet::AssignUnionOf(
       input_value_sets.push_back(&input->element(index));
     }
     changed |= value_set.AssignUnionOf(input_value_sets);
+  }
+
+  return changed;
+}
+
+bool InstructionValueSet::AssignUnionOf(const InstructionValueSet& input,
+                                        ShapeIndexView input_index) {
+  bool changed = false;
+  for (auto& [index, value_set] : *this) {
+    ShapeIndex source_index(input_index);
+    for (auto i : index) {
+      source_index.push_back(i);
+    }
+    changed |= value_set.AssignUnionOf({&input.element(source_index)});
   }
 
   return changed;

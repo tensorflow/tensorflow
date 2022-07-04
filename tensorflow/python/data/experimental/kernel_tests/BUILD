@@ -48,7 +48,7 @@ tf_py_test(
 
 tf_py_test(
     name = "auto_shard_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["auto_shard_dataset_test.py"],
     shard_count = 4,
     deps = [
@@ -67,7 +67,7 @@ tf_py_test(
 
 tf_py_test(
     name = "checkpoint_input_pipeline_hook_test",
-    size = "small",
+    size = "medium",
     srcs = ["checkpoint_input_pipeline_hook_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -132,7 +132,7 @@ tf_py_test(
 
 tf_py_test(
     name = "csv_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["csv_dataset_test.py"],
     shard_count = 8,
     deps = [
@@ -169,7 +169,7 @@ tf_py_test(
 
 tf_py_test(
     name = "dense_to_sparse_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["dense_to_sparse_batch_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -442,7 +442,7 @@ tf_py_test(
 
 tf_py_test(
     name = "parallel_interleave_test",
-    size = "small",
+    size = "medium",
     srcs = ["parallel_interleave_test.py"],
     shard_count = 8,
     deps = [
@@ -538,7 +538,7 @@ tf_py_test(
 
 tf_py_test(
     name = "replicate_test",
-    size = "small",
+    size = "medium",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
     tags = [
@@ -556,7 +556,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_and_repeat_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_and_repeat_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",

@@ -84,6 +84,9 @@ class HloCloneContext {
   }
 
  private:
+  HloCloneContext(const HloCloneContext&) = delete;
+  const HloCloneContext& operator=(const HloCloneContext&) = delete;
+
   HloModule* module_;
   std::string suffix_;
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instructions_;

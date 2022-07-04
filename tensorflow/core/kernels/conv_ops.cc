@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/blocking_counter.h"
@@ -539,7 +540,7 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
                                        params->explicit_paddings,
                                        /*num_dims=*/4, data_format));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeConv2DDimension(const Conv2DParameters& params,
@@ -646,7 +647,7 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef TF_REQUIRES
@@ -781,6 +782,11 @@ int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
   return default_value_in_bytes;
 }
 
+int64_t GetDnnWorkspaceLimitOrDefault() {
+  return GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                              1LL << 33);  // 8GB by default
+}
+
 template <typename T>
 void LaunchConv2DOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
@@ -836,8 +842,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
-                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                                  a_ptr, k, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   } else if (patch_rows == in_rows && patch_cols == in_cols &&
              !is_grouped_convolution && row_dilation == 1 &&
@@ -857,8 +865,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
-                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                                  a_ptr, k, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   }
 
@@ -1050,7 +1060,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
-    return Status::OK();
+    return OkStatus();
   };
 
   if (compute_data_format == FORMAT_NCHW) {
@@ -1084,10 +1094,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       AsDeviceMemory(transformed_output.template flat<T>().data(),
                      transformed_output.template flat<T>().size());
 
-  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
-      // default value is in bytes despite the name of the environment variable
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-  );
+  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
@@ -1115,7 +1122,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   Status cudnn_launch_status = LaunchAutotunedConv(

@@ -67,7 +67,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
     llvm::function_ref<void(const TFRTSavedModelSignatureInfo&)> map_fn) {
   // Create bound inputs for each functions.
   mlir::SymbolTable symbol_table(module);
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = OkStatus();
   module.walk([&symbol_table, map_fn, &status](mlir::func::FuncOp func) {
     // Use the exported name as the function name, and skip non-exported
     // functions.

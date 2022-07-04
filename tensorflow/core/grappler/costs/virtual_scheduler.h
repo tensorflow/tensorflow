@@ -174,7 +174,7 @@ class ReadyNodeManager {
   virtual ~ReadyNodeManager() {}
   virtual Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) {
-    return Status::OK();
+    return OkStatus();
   }
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;

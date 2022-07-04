@@ -185,7 +185,6 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
         dtensor_jobs=api.jobs(),
         client_id=api.client_id(),
         collective_leader=api.full_job_name(task_id=0),
-        protocol="grpc+loas",
         enable_coordination_service=enable_coordination_service)
 
   # Make sure the server change is fully propagated before attempting to run

@@ -20,7 +20,6 @@ import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -335,8 +334,6 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     compat_kwargs = {}
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
-    if compat.forward_compatible(2022, 6, 6) or cross_trainer_cache is not None:
-      compat_kwargs["cross_trainer_cache_options"] = cross_trainer_cache_options
 
     # If `uncompress` is `True`, the dataset will query the servers to find
     # out the actual compression used. It is always set to `True` the first
@@ -358,6 +355,7 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         target_workers=target_workers,
         uncompress=uncompress,
         uncompress_fn=uncompress_func.function,
+        cross_trainer_cache_options=cross_trainer_cache_options,
         **compat_kwargs,
         **self._flat_structure)
     super(_DataServiceDatasetV2, self).__init__(variant_tensor)

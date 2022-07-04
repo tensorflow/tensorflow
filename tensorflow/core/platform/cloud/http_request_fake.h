@@ -39,12 +39,12 @@ class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)
-      : FakeHttpRequest(request, response, Status::OK(), nullptr, {}, 200) {}
+      : FakeHttpRequest(request, response, OkStatus(), nullptr, {}, 200) {}
 
   /// Return the response with headers for the given request.
   FakeHttpRequest(const string& request, const string& response,
                   const std::map<string, string>& response_headers)
-      : FakeHttpRequest(request, response, Status::OK(), nullptr,
+      : FakeHttpRequest(request, response, OkStatus(), nullptr,
                         response_headers, 200) {}
 
   /// \brief Return the response for the request and capture the POST body.
@@ -52,7 +52,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   /// Post body is not expected to be a part of the 'request' parameter.
   FakeHttpRequest(const string& request, const string& response,
                   string* captured_post_body)
-      : FakeHttpRequest(request, response, Status::OK(), captured_post_body, {},
+      : FakeHttpRequest(request, response, OkStatus(), captured_post_body, {},
                         200) {}
 
   /// \brief Return the response and the status for the given request.
@@ -95,7 +95,7 @@ class FakeHttpRequest : public CurlHttpRequest {
                                    std::istreambuf_iterator<char>())
                                 .substr(offset);
     actual_request_ += "Put body: " + content + "\n";
-    return Status::OK();
+    return OkStatus();
   }
   void SetPostFromBuffer(const char* buffer, size_t size) override {
     if (captured_post_body_) {

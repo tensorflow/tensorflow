@@ -45,7 +45,7 @@ MAP_LHLO_TO_HLO(BitcastConvertOp);
 MAP_LHLO_TO_HLO(BroadcastInDimOp);
 MAP_LHLO_TO_HLO(CeilOp);
 MAP_LHLO_TO_HLO(ClampOp);
-MAP_LHLO_TO_HLO(ConstOp);
+MAP_LHLO_TO_HLO(ConstantOp);
 MAP_LHLO_TO_HLO(CompareOp);
 MAP_LHLO_TO_HLO(ComplexOp);
 MAP_LHLO_TO_HLO(ConcatenateOp);

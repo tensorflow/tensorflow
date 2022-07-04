@@ -407,7 +407,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
     status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
-                      absl::Cord(output.scalar<tstring>()()));
+                      output.scalar<tstring>()());
   }
 
   if (status.ok()) {

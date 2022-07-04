@@ -21,6 +21,8 @@ limitations under the License.
 //    "tfl_wrapped_jax_random_normal" with tfl.CustomOp("RandomUniform") and
 //     tfl.CustomOp("RandomStandardNormal"), respectively.
 
+#include <string>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -98,7 +100,8 @@ void LegalizeJaxRandomPass::runOnOperation() {
     result_shape_i32.push_back(static_cast<int32_t>(element));
   }
   auto result_shape_attr = builder.getI32TensorAttr(result_shape_i32);
-  Value result_shape_tensor = builder.create<mhlo::ConstOp>(result_shape_attr);
+  Value result_shape_tensor =
+      builder.create<mhlo::ConstantOp>(result_shape_attr);
   auto custom_code =
       IsJaxRandomUniform(func) ? "RandomUniform" : "RandomStandardNormal";
 

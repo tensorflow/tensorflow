@@ -84,7 +84,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
   for (int i = 0; i < filenames.size(); ++i) {
     TF_RETURN_IF_ERROR(WriteDataToFile(filenames[i], contents[i].data()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -173,7 +173,7 @@ Status WaitWhile(std::function<StatusOr<bool>()> f) {
   while (true) {
     TF_ASSIGN_OR_RETURN(bool result, f());
     if (!result) {
-      return Status::OK();
+      return OkStatus();
     }
     Env::Default()->SleepForMicroseconds(10 * 1000);  // 10ms.
   }

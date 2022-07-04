@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"

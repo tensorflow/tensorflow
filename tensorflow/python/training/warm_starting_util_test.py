@@ -18,7 +18,7 @@ import os
 
 import numpy as np
 import six
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,7 +30,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import warm_starting_util as ws_util
-from tensorflow.python.training.tracking import util as tracking_util
 
 ones = init_ops.ones_initializer
 norms = init_ops.truncated_normal_initializer

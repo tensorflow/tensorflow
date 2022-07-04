@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -210,10 +209,10 @@ tensorflow::TensorShape ToTensorShape(
 
 // Returns a limit scalar const op for the given type.
 // Requires FloatType or IntegerType
-static ConstOp GetScalarLimitConstOfType(Type ty, Location loc,
-                                         hlo::ScalarLimit limit,
-                                         OpBuilder *builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarLimitOfType(ty, limit));
+static ConstantOp GetScalarLimitConstOfType(Type ty, Location loc,
+                                            hlo::ScalarLimit limit,
+                                            OpBuilder *builder) {
+  return builder->create<ConstantOp>(loc, hlo::getScalarLimitOfType(ty, limit));
 }
 
 // Creates an mhlo::SliceOp where the major dimensions have full size, and
@@ -472,7 +471,7 @@ Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
 static Value ApplyReduction(Location loc, Value input,
                             DenseIntElementsAttr reduce_dims,
                             OpBuilder *builder) {
-  auto reduce_dims_op = builder->create<ConstOp>(loc, reduce_dims);
+  auto reduce_dims_op = builder->create<ConstantOp>(loc, reduce_dims);
   return builder->create<TF::SumOp>(loc, input, reduce_dims_op,
                                     builder->getBoolAttr(false));
 }
@@ -482,12 +481,12 @@ static Value ApplyReduction(Location loc, Value input,
 static mhlo::RngUniformOp CreateRngUniform32(Location loc, int num_elements,
                                              int lower_limit, int upper_limit,
                                              OpBuilder *builder) {
-  auto shape_tensor = builder->create<mhlo::ConstOp>(
+  auto shape_tensor = builder->create<mhlo::ConstantOp>(
       loc, GetI64ElementsAttr({num_elements}, builder));
 
-  auto lower = builder->create<mhlo::ConstOp>(
+  auto lower = builder->create<mhlo::ConstantOp>(
       loc, builder->getI32IntegerAttr(lower_limit));
-  auto upper = builder->create<mhlo::ConstOp>(
+  auto upper = builder->create<mhlo::ConstantOp>(
       loc, builder->getI32IntegerAttr(upper_limit));
 
   return builder->create<mhlo::RngUniformOp>(loc, lower, upper, shape_tensor);
@@ -530,7 +529,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 
   // The initial value for the loop induction variable is 0.
   init_values_with_loop_iv.push_back(
-      builder->create<mhlo::ConstOp>(loc, builder->getI32IntegerAttr(0)));
+      builder->create<mhlo::ConstantOp>(loc, builder->getI32IntegerAttr(0)));
   init_values_with_loop_iv.append(init_values.begin(), init_values.end());
 
   // Accumulate types of all the init values.
@@ -553,7 +552,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 
     // Get the loop induction variable and compare it against the upper limit.
     auto loop_iv = block->getArgument(0);
-    auto upper_limit = builder->create<mhlo::ConstOp>(
+    auto upper_limit = builder->create<mhlo::ConstantOp>(
         loc, builder->getI32IntegerAttr(num_iterations));
     Value compare = builder->create<mhlo::CompareOp>(loc, loop_iv, upper_limit,
                                                      ComparisonDirection::LT);
@@ -581,7 +580,7 @@ static void CreateWhile32(Location loc, int num_iterations,
 
     // Increment the loop induction variable by one.
     auto one =
-        builder->create<mhlo::ConstOp>(loc, builder->getI32IntegerAttr(1));
+        builder->create<mhlo::ConstantOp>(loc, builder->getI32IntegerAttr(1));
     auto scalar_broadcast_dims = GetI64ElementsAttr({}, builder);
     auto plus_one = builder->create<chlo::BroadcastAddOp>(
         loc, block->getArgument(0), one, scalar_broadcast_dims);
@@ -897,7 +896,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
     Builder *builder) {
   DenseIntElementsAttr constant_start_indices;
   if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    return hlo::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
+    return hlo::convertElementsAttr(slice_sizes, builder->getIntegerType(64))
         .cast<DenseIntElementsAttr>();
   }
 
@@ -1438,7 +1437,7 @@ class ConvertPadOpDynamic : public OpRewritePattern<TF::PadV2Op> {
     auto interior_attr = GetI64ElementsAttr(interior_values, &rewriter);
 
     Value interior_padding_tensor =
-        rewriter.create<mhlo::ConstOp>(loc, interior_attr);
+        rewriter.create<mhlo::ConstantOp>(loc, interior_attr);
     Type paddings_elem_ty = paddings_type.getElementType();
     if (!paddings_elem_ty.isInteger(64)) {
       interior_padding_tensor = rewriter.create<mhlo::ConvertOp>(
@@ -1673,7 +1672,7 @@ class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
     // offset = ((offset % axis_size) + axis_size) % axis_size
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     Value offset = op.shift();
-    auto axis_size = b.create<mhlo::ConstOp>(b.getIntegerAttr(
+    auto axis_size = b.create<mhlo::ConstantOp>(b.getIntegerAttr(
         getElementTypeOrSelf(offset.getType()), input_shape[axis]));
     offset = b.create<RemOp>(
         b.create<AddOp>(b.create<RemOp>(offset, axis_size), axis_size),
@@ -1685,7 +1684,7 @@ class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
     // information from input shape.
     auto concat = b.create<ConcatenateOp>(ValueRange{op.input(), op.input()},
                                           b.getI64IntegerAttr(axis));
-    Value zero = b.create<mhlo::ConstOp>(
+    Value zero = b.create<mhlo::ConstantOp>(
         b.getIntegerAttr(getElementTypeOrSelf(offset.getType()), 0));
     SmallVector<Value> slice_begin_indices(input_rank, zero);
     slice_begin_indices[axis] = b.create<SubOp>(axis_size, offset);
@@ -2265,7 +2264,7 @@ class ConvertFusedBatchNormGradBase
 
       // scratch1 = rsqrt(var + epsilon)
       RankedTensorType scalar_float = RankedTensorType::get({}, kernel_type);
-      auto epsilon = rewriter.create<ConstOp>(
+      auto epsilon = rewriter.create<ConstantOp>(
           loc, DenseFPElementsAttr::get(scalar_float, {op.epsilon()}));
       auto add_op = rewriter.create<chlo::BroadcastAddOp>(
           loc, var, epsilon.getResult(), scalar_broadcast_dims);
@@ -2301,7 +2300,7 @@ class ConvertFusedBatchNormGradBase
       // It doesn't matter what values we provide for the last 2 results.
       last_val[0] = last_val[1] = op.x();
     } else {
-      auto const_val = rewriter.create<ConstOp>(
+      auto const_val = rewriter.create<ConstantOp>(
           op.getLoc(),
           DenseElementsAttr::get<float>(
               RankedTensorType::get({0}, getElementTypeOrSelf(op.getResult(3))),
@@ -2395,7 +2394,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       int sample_size_minus_one = std::max(1, sample_size - 1);
       double factor = static_cast<double>(sample_size) /
                       static_cast<double>(sample_size_minus_one);
-      auto factor_const_op = rewriter.create<mhlo::ConstOp>(
+      auto factor_const_op = rewriter.create<mhlo::ConstantOp>(
           op.getLoc(), rewriter.getFloatAttr(scale_element_type, factor));
 
       Value corrected_variance = rewriter.create<chlo::BroadcastMulOp>(
@@ -2410,10 +2409,10 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       float exponential_avg_factor =
           op.exponential_avg_factor().convertToFloat();
       if (exponential_avg_factor != 1.0f) {
-        auto alpha = rewriter.create<mhlo::ConstOp>(
+        auto alpha = rewriter.create<mhlo::ConstantOp>(
             op.getLoc(), rewriter.getFloatAttr(mean_element_type,
                                                1.0f - exponential_avg_factor));
-        auto beta = rewriter.create<mhlo::ConstOp>(
+        auto beta = rewriter.create<mhlo::ConstantOp>(
             op.getLoc(),
             rewriter.getFloatAttr(mean_element_type, exponential_avg_factor));
 
@@ -2460,7 +2459,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
                                : 0;
         auto const_attr_type = RankedTensorType::get(
             {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-        Value dummy_const = rewriter.create<ConstOp>(
+        Value dummy_const = rewriter.create<ConstantOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
           dummy_const = rewriter.create<tensor::CastOp>(
@@ -2504,7 +2503,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
                                : 0;
         auto const_attr_type = RankedTensorType::get(
             {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-        Value dummy_const = rewriter.create<ConstOp>(
+        Value dummy_const = rewriter.create<ConstantOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
           dummy_const = rewriter.create<tensor::CastOp>(
@@ -2617,7 +2616,7 @@ Operation *AvgPoolDivideByCount(
 
     // Build all-ones tensor of same shape as the original input.
     ElementsAttr splat = hlo::getSplat(&rewriter, orig_input_type, 1);
-    auto all_ones_tensor = rewriter.create<ConstOp>(loc, splat);
+    auto all_ones_tensor = rewriter.create<ConstantOp>(loc, splat);
 
     // Get padding for the input.
     DenseIntElementsAttr input_padding_attr =
@@ -2920,8 +2919,8 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
       return failure();
     }
     Location loc = op.getLoc();
-    ConstOp init = GetScalarLimitConstOfType(element_type, loc,
-                                             hlo::kInfinityLowest, &rewriter);
+    ConstantOp init = GetScalarLimitConstOfType(
+        element_type, loc, hlo::kInfinityLowest, &rewriter);
 
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
@@ -3037,7 +3036,7 @@ class ConvertSigmoidOp : public RewritePattern {
   explicit ConvertSigmoidOp(MLIRContext *context)
       : RewritePattern(
             TF::SigmoidOp::getOperationName(), 0, context,
-            {mhlo::ConstOp::getOperationName(),
+            {mhlo::ConstantOp::getOperationName(),
              shape::ShapeOfOp::getOperationName(),
              shape::ToExtentTensorOp::getOperationName(),
              mhlo::DynamicBroadcastInDimOp::getOperationName(),
@@ -3054,7 +3053,7 @@ class ConvertSigmoidOp : public RewritePattern {
     auto operand_ty = operand.getType().cast<TensorType>();
     auto scalar_ty = RankedTensorType::get({}, operand_ty.getElementType());
     ElementsAttr attr = mlir::hlo::getSplat(&rewriter, scalar_ty, 0.5);
-    auto scalar_half = rewriter.create<ConstOp>(loc, attr);
+    auto scalar_half = rewriter.create<ConstantOp>(loc, attr);
     auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
 
     auto scaled_input = rewriter.create<MulOp>(loc, operand, half);
@@ -3205,7 +3204,7 @@ static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
     auto result_type =
         RankedTensorType::get(result_shape, type.getElementType());
     auto shape =
-        rewriter->create<shape::ConcatOp>(loc, result_batch_shape, tail_shape);
+        rewriter->create<shape::ConcatOp>(loc, shape_type, result_batch_shape, tail_shape);
     auto shape_tensor = rewriter->create<shape::ToExtentTensorOp>(
         loc,
         RankedTensorType::get({static_cast<int64_t>(result_shape.size())},
@@ -4522,12 +4521,13 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         indices_rank - 1);
 
     Location loc = op.getLoc();
-    auto scatter = rewriter.create<ScatterOp>(loc, op.getType(), op.tensor(),
+    auto scatter = rewriter.create<ScatterOp>(loc, op.getType(),
+                                              ValueRange(Value(op.tensor())),
                                               op.indices(), updates, dims_attr);
     Derived::BuildScatterBody(tensor_ty.getElementType(),
                               &scatter.update_computation(), loc, rewriter);
 
-    rewriter.replaceOp(op, scatter.getResult());
+    rewriter.replaceOp(op, scatter.getResult(0));
     return success();
   }
 };
@@ -5665,7 +5665,7 @@ class ConvertSigmoidGradOpDynamic : public OpRewritePattern<TF::SigmoidGradOp> {
       assert(elem_tp.isa<FloatType>());
       attr = rewriter.getFloatAttr(elem_tp, 1);
     }
-    Value one = rewriter.create<mhlo::ConstOp>(
+    Value one = rewriter.create<mhlo::ConstantOp>(
         loc, DenseElementsAttr::get(RankedTensorType::get({}, elem_tp), attr));
 
     auto v0 = rewriter.create<chlo::BroadcastMulOp>(
@@ -5744,13 +5744,13 @@ class GenericConvertUnsortedSegmentReductionOp : public OpRewritePattern<OpTy> {
         llvm::to_vector<4>(llvm::seq<int64_t>(segment_ids_rank, data_rank)),
         inserted_window_dims, scatter_dims_to_operand_dims, index_vector_dim);
 
-    auto scatter =
-        rewriter.create<ScatterOp>(op.getLoc(), op.getType(), broadcasted_init,
-                                   op.segment_ids(), op.data(), dims_attr);
+    auto scatter = rewriter.create<ScatterOp>(
+        op.getLoc(), op.getType(), ValueRange(Value(broadcasted_init)),
+        op.segment_ids(), op.data(), dims_attr);
     BuildReduceBody<ReductionOp>(data_type.getElementType(),
                                  &scatter.update_computation(), &rewriter);
 
-    rewriter.replaceOp(op, scatter.getResult());
+    rewriter.replaceOp(op, scatter.getResult(0));
     return success();
   }
 };
@@ -5885,7 +5885,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         auto keys =
             CreateRngUniform32(op.getLoc(), num_elements, /*lower_limit=*/0,
                                /*upper_limit=*/u32_max, &rewriter);
-        auto sorted = CreateSortOp(
+        auto sorted = createSortOp(
             &rewriter, op.getLoc(), {keys, current},
             {rewriter.getIntegerType(32), input_type.getElementType()},
             /*dimension=*/-1, /*is_stable=*/false,
@@ -6040,7 +6040,7 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
                               updates_type.getElementType()));
 
     auto cst =
-        rewriter.create<mhlo::ConstOp>(op.getLoc(), zero_attr).getResult();
+        rewriter.create<mhlo::ConstantOp>(op.getLoc(), zero_attr).getResult();
     auto split_updates = rewriter.create<TF::SplitOp>(
         op.getLoc(), split_updates_type, cst, updates);
 
@@ -6095,7 +6095,7 @@ class ConvertXlaReduceScatterOp
     if (!matchPattern(op.group_assignment(), m_Constant(&group_assignment)))
       return failure();
     auto replica_groups =
-        hlo::ConvertElementsAttr(group_assignment, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(group_assignment, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>();
     if (replica_groups.getType().getRank() != 2) return failure();
 
@@ -6111,7 +6111,7 @@ class ConvertXlaReduceScatterOp
         loc, op.getType(), op.input(),
         rewriter.getIntegerAttr(rewriter.getIntegerType(64),
                                 scatter_dimension.getSExtValue()),
-        replica_groups, ChannelHandle());
+        replica_groups, ChannelHandleAttr());
     StringRef reduce_op = op.reduce_op();
     if (reduce_op == "Add") {
       BuildReduceBody<AddOp>(element_type, &reduce_scatter.computation(),
@@ -6173,15 +6173,15 @@ class ConvertXlaReduceWindowOp
     // Create the mhlo.SelectAndScatter op.
     auto reduce_window_op = rewriter.create<mhlo::ReduceWindowOp>(
         loc, result_types, op.input(), op.init_value(),
-        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_strides, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(base_dilations, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(base_dilations, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(window_dilations, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_dilations, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(padding, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>());
     // Insert a call to the reducer in the region of the mhlo op.
     mlir::SymbolRefAttr func = op.computation();
@@ -6250,7 +6250,7 @@ class ConvertConstOp : public OpRewritePattern<TF::ConstOp> {
       return failure();
 
     Location loc = op.getLoc();
-    Value result = rewriter.create<mhlo::ConstOp>(loc, op.value());
+    Value result = rewriter.create<mhlo::ConstantOp>(loc, op.value());
     if (result.getType() != op.getType())
       result = rewriter.create<tensor::CastOp>(loc, op.getType(), result);
     rewriter.replaceOp(op, result);
@@ -6988,18 +6988,6 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
-// TF.PrintOp to mhlo.PrintOp
-class ConvertPrintOp : public OpRewritePattern<TF::PrintOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::PrintOp op,
-                                PatternRewriter &rewriter) const final {
-    auto input = op.input();
-    rewriter.replaceOpWithNewOp<mhlo::PrintOp>(op, op.getType(), input);
-    return success();
-  }
-};
-
 // Converts tf.XlaSelectAndScatter to mhlo.SelectAndScatter
 class ConvertXlaSelectAndScatterOp
     : public OpRewritePattern<TF::XlaSelectAndScatterOp> {
@@ -7021,11 +7009,11 @@ class ConvertXlaSelectAndScatterOp
     // Create the mhlo.SelectAndScatter op.
     auto select_and_scatter_op = rewriter.create<mhlo::SelectAndScatterOp>(
         loc, result_types, op.operand(), op.source(), op.init_value(),
-        hlo::ConvertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_dimensions, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(window_strides, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(window_strides, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>(),
-        hlo::ConvertElementsAttr(padding, rewriter.getIntegerType(64))
+        hlo::convertElementsAttr(padding, rewriter.getIntegerType(64))
             .cast<DenseIntElementsAttr>());
 
     auto insert_call_to = [&](const mlir::SymbolRefAttr &func, Region *region) {
@@ -7057,7 +7045,7 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
     // Create the sort op.
     Type element_type = getElementTypeOrSelf(op.input().getType());
     auto sort_op =
-        CreateSortOp(&rewriter, op.getLoc(), {op.input()}, {element_type},
+        createSortOp(&rewriter, op.getLoc(), {op.input()}, {element_type},
                      /*dimension=*/-1, /*is_stable=*/false,
                      /*direction=*/ComparisonDirection::LT);
     rewriter.replaceOp(op, sort_op.getResult(0));
@@ -7257,7 +7245,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertRollOp,
     ConvertLeakyReluOp,
     ConvertLeakyReluGradOp,
-    ConvertPrintOp,
     ConvertSplitOpDynamic,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,

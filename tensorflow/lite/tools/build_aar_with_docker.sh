@@ -66,6 +66,9 @@ case $i in
     --cache_dir=*)
       BAZEL_CACHE_DIR="${i#*=}"
       shift;;
+    --debug)
+      DEBUG_MODE=true
+      shift;;
     *)
       echo "ERROR: Unrecognized argument: ${i}"
       print_usage;;

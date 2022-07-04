@@ -14,12 +14,11 @@
 # ==============================================================================
 import functools
 import os
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.trackable import base
-from tensorflow.python.training.tracking import util
 
 
 class InterfaceTests(test.TestCase):

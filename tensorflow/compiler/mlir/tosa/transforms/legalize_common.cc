@@ -42,6 +42,21 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 
+static int64_t multiply_dims(int64_t a, int64_t b) {
+  if (a == ShapedType::kDynamicSize || b == ShapedType::kDynamicSize) {
+    return ShapedType::kDynamicSize;
+  }
+  return a * b;
+}
+
+namespace {
+// Given an axis that can be a positive or negative value and the tensor size,
+// return the adjusted axis value wrapped around the tensor size.
+int32_t adjust_axis(int32_t axis, int32_t tensor_size) {
+  return axis >= 0 ? axis % tensor_size : (axis + tensor_size) % tensor_size;
+}
+};  // namespace
+
 // Copied Nudge implementation from
 // tensorflow/core/kernels/fake_quant_ops_functor.h.
 // Suggested approach to avoid significant TensorFlow
@@ -771,10 +786,12 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
 
   // Insert padding on the spatial shape dimensions
   for (int i = 0; i < block_rank; i++) {
-    int32_t lo_pad = a0_pad_const[2 * (i + 1) + 0];
-    int32_t hi_pad = a0_pad_const[2 * (i + 1) + 1];
-
-    padded_shape[i + 1] = input_shape[i + 1] + lo_pad + hi_pad;
+    padded_shape[i + 1] = input_shape[i + 1];
+    if (!ShapedType::isDynamic(padded_shape[i + 1])) {
+      int32_t lo_pad = a0_pad_const[2 * (i + 1) + 0];
+      int32_t hi_pad = a0_pad_const[2 * (i + 1) + 1];
+      padded_shape[i + 1] += lo_pad + hi_pad;
+    }
   }
 
   // No padding on the remaining_shape dimensions
@@ -811,11 +828,12 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   a2_shape[0] = input_type.getShape()[0];
   for (int i = 0; i < block_rank; i++) {
     int32_t block_shape_val =
-        rewriter
-            .getI32IntegerAttr(
-                block_shape_elems.getValues<IntegerAttr>()[i].getInt())
-            .getInt();
-    a2_shape[1 + i * 2 + 0] = padded_shape[1 + i] / block_shape_val;
+        block_shape_elems.getValues<IntegerAttr>()[i].getInt();
+    a2_shape[1 + i * 2 + 0] = padded_shape[1 + i];
+    if (a2_shape[1 + i * 2 + 0] != ShapedType::kDynamicSize) {
+      a2_shape[1 + i * 2 + 0] /= block_shape_val;
+    }
+
     a2_shape[1 + i * 2 + 1] = block_shape_val;
     block_num_elems *= block_shape_val;
   }
@@ -875,16 +893,16 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   SmallVector<int64_t> a4_reshape_shape(input_rank);
 
   // Batch
-  a4_reshape_shape[0] = batch_size * block_num_elems;
+  a4_reshape_shape[0] = multiply_dims(batch_size, block_num_elems);
 
   // padded shape / block_shape.
   for (int i = 0; i < block_rank; i++) {
     int32_t block_shape_val =
-        rewriter
-            .getI32IntegerAttr(
-                block_shape_elems.getValues<IntegerAttr>()[i].getInt())
-            .getInt();
-    a4_reshape_shape[i + 1] = padded_shape[i + 1] / block_shape_val;
+        block_shape_elems.getValues<IntegerAttr>()[i].getInt();
+    a4_reshape_shape[i + 1] = padded_shape[i + 1];
+    if (a4_reshape_shape[i + 1] != ShapedType::kDynamicSize) {
+      a4_reshape_shape[i + 1] /= block_shape_val;
+    }
   }
 
   // Copy in remainder shape.
@@ -1038,7 +1056,9 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
 
   for (int i = 0; i < block_rank; i++) a1_shape[i] = block_shape[i];
 
-  a1_shape[block_rank] = input_shape[0] / block_num_elems;
+  a1_shape[block_rank] = (input_shape[0] == ShapedType::kDynamicSize)
+                             ? ShapedType::kDynamicSize
+                             : input_shape[0] / block_num_elems;
 
   for (int i = 0; i < input_rank - 1; i++)
     a1_shape[i + block_rank + 1] = input_shape[i + 1];
@@ -1092,9 +1112,12 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   // + remaining input shapes [input_shape[M+1.. N-1]]
   SmallVector<int64_t> a4_shape(input_rank);
 
-  a4_shape[0] = input_shape[0] / block_num_elems;
+  a4_shape[0] = input_shape[0];
+  if (a4_shape[0] != ShapedType::kDynamicSize) {
+    a4_shape[0] /= block_num_elems;
+  }
   for (int i = 0; i < block_rank; i++) {
-    a4_shape[1 + i] = input_shape[i + 1] * block_shape[i];
+    a4_shape[1 + i] = multiply_dims(input_shape[i + 1], block_shape[i]);
   }
   for (int i = 0; i < remaining_shape_rank; i++) {
     a4_shape[1 + block_rank + i] = input_shape[block_rank + 1 + i];
@@ -2049,7 +2072,12 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis >= 0 && axis < input_shape.size());
+  if ((axis >= 0 && axis >= input_shape.size()) ||
+      (axis < 0 && axis < -input_shape.size())) {
+    op->emitOpError("SplitV: invalid axis value.");
+    return llvm::None;
+  }
+  axis = adjust_axis(axis, input_shape.size());
   int32_t size_split_sum = 0;
   for (int i = 0; i < size_split.size(); i++) {
     size_split_sum += size_split[i];

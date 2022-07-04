@@ -33,7 +33,7 @@ struct TestShapeComponentAnalysisPass
   }
 
   void runOnOperation() override {
-    ShapeComponentAnalysis shape_component;
+    ShapeComponentAnalysis shapeComponent;
     llvm::outs() << "Testing : " << getOperation().getName() << '\n';
     // Analyze anything that looks like a shape tensor.
     getOperation().walk([&](Operation* op) {
@@ -42,7 +42,7 @@ struct TestShapeComponentAnalysisPass
       Value result = op->getResults().front();
 
       // Dump shape info if any.
-      if (auto shapeInfo = shape_component.GetShapeInfo(result)) {
+      if (auto shapeInfo = shapeComponent.GetShapeInfo(result)) {
         llvm::outs() << "Shape info for " << result << ":\n";
         for (const SymbolicExpr& d : *shapeInfo) {
           llvm::outs().indent(2);
@@ -51,7 +51,7 @@ struct TestShapeComponentAnalysisPass
       }
 
       // Dump value info if any.
-      if (auto valueInfo = shape_component.GetValueInfo(result)) {
+      if (auto valueInfo = shapeComponent.GetValueInfo(result)) {
         llvm::outs() << "Value info for " << result << ":\n";
         for (const SymbolicExpr& d : *valueInfo) {
           llvm::outs().indent(2);

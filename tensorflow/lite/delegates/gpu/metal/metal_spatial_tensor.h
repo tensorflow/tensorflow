@@ -63,7 +63,9 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
 
   TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
-  TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
+  TensorStorageType GetStorageType() const {
+    return descriptor_.GetStorageType();
+  }
 
   uint64_t GetMemorySizeInBytes() const;
 

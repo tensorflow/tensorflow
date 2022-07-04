@@ -148,7 +148,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name) {
         absl::StrCat("updating function ", fn.getName().str()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<ReturnValues> Runtime::CallFunction(

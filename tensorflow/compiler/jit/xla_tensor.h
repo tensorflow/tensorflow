@@ -96,9 +96,9 @@ class XlaTensor {
 
  private:
   // The optional contained ShapedBuffer.
-  absl::optional<xla::ScopedShapedBuffer> shaped_buffer_;
+  std::optional<xla::ScopedShapedBuffer> shaped_buffer_;
   // An optional host tensor value.
-  absl::optional<Tensor> host_tensor_;
+  std::optional<Tensor> host_tensor_;
   // An optional event that is triggered when the tensor's content has been
   // defined. If this event is nullptr, it is assumed that the tensor's content
   // is always defined.

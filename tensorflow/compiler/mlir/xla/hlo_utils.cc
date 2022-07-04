@@ -154,48 +154,48 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   // TODO(hinsu): Support remaining XLA primitive types.
   if (element_type.isInteger(1)) {
     CopyDenseElementsBy<bool>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(8)) {
     CopyDenseElementsBy<uint8_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(16)) {
     CopyDenseElementsBy<uint16_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(32)) {
     CopyDenseElementsBy<uint32_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isInteger(64)) {
     CopyDenseElementsBy<uint64_t>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isBF16()) {
     CopyDenseElementsBy<bfloat16>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isF16()) {
     CopyDenseElementsBy<half>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isF32()) {
     CopyDenseElementsBy<float>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (element_type.isF64()) {
     CopyDenseElementsBy<double>(data, output);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     if (complex_type.getElementType().isF32()) {
       CopyDenseElementsBy<complex64>(data, output);
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (complex_type.getElementType().isF64()) {
       CopyDenseElementsBy<complex128>(data, output);
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
   return tensorflow::errors::Internal(
@@ -279,7 +279,7 @@ mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
 StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   using mlir::isa;
 
-  if (isa<mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
+  if (isa<mlir::mhlo::ConstantOp, mlir::lmhlo::ConstantOp>(op)) {
     return xla::HloOpcode::kConstant;
   } else if (isa<mlir::mhlo::IotaOp, mlir::lmhlo::IotaOp>(op)) {
     return xla::HloOpcode::kIota;

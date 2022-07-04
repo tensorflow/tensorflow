@@ -28,7 +28,6 @@ from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import structured_function
@@ -64,8 +63,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.training.tracking import base as tracking_base
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base as tracking_base
+from tensorflow.python.trackable import resource as resource_lib
 from tensorflow.python.types import trace
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -312,7 +312,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     Returns:
       A dictionary mapping the node name of an asset constant to a tracked
-      `tracking.Asset` object.
+      `asset.Asset` object.
     """
     asset_tracker = {}
     for node in graph_def.node:
@@ -329,7 +329,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
           node_value = parsing_ops.parse_tensor(
               tensor_proto.SerializeToString(), dtypes.string).numpy()
         asset_tracker[node.name] = ([
-            self._track_trackable(tracking.Asset(n),
+            self._track_trackable(asset.Asset(n),
                                   name=node.name + "_" + str(i), overwrite=True)
             for i, n in enumerate(node_value)
         ])
@@ -615,9 +615,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       raise RuntimeError("`tf.data.Dataset.as_numpy_iterator()` is only "
                          "supported in eager mode.")
     for component_spec in nest.flatten(self.element_spec):
-      if not isinstance(
-          component_spec,
-          (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec)):
+      if not isinstance(component_spec,
+                        (tensor_spec.TensorSpec, ragged_tensor.RaggedTensorSpec,
+                         structure.NoneTensorSpec)):
         raise TypeError(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
@@ -3472,11 +3472,11 @@ name=None))
         seed that will be used to create the distribution. See
         `tf.random.set_seed` for behavior.
       stop_on_empty_dataset: If `True`, sampling stops if it encounters an empty
-        dataset. If `False`, it skips empty datasets. It is recommended to set
-        it to `True`. Otherwise, the distribution of samples starts off as the
-        user intends, but may change as input datasets become empty. This can be
-        difficult to detect since the dataset starts off looking correct.
-        Default to `False` for backward compatibility.
+        dataset. If `False`, it continues sampling and skips any empty datasets.
+        It is recommended to set it to `True`. Otherwise, the distribution of
+        samples starts off as the user intends, but may change as input datasets
+        become empty. This can be difficult to detect since the dataset starts
+        off looking correct. Default to `False` for backward compatibility.
 
     Returns:
       A dataset that interleaves elements from `datasets` at random, according
@@ -4645,7 +4645,7 @@ class _NumpyIterator(object):
     return self.__next__()
 
 
-class _VariantTracker(tracking.CapturableResource):
+class _VariantTracker(resource_lib.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object
@@ -6434,20 +6434,10 @@ class _DirectedInterleaveDataset(DatasetV2):
 
 def _apply_rewrite(dataset, rewrite):
   # pylint: disable=protected-access
-  if not compat.forward_compatible(2022, 6, 6):
-    return dataset
-
-  try:
-    return _VariantDataset(
-        gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
-                                        **dataset._flat_structure),
-        dataset.element_spec)
-  except AttributeError as e:
-    if "has no attribute 'rewrite_dataset'" in str(e):
-      # The TF server may be outdated. This try/except can be removed after 6/4
-      # when the forward compatibility window elapses.
-      return dataset
-    raise e
+  return _VariantDataset(
+      gen_dataset_ops.rewrite_dataset(dataset._variant_tensor, rewrite,
+                                      **dataset._flat_structure),
+      dataset.element_spec)
 
 
 def _collect_resource_inputs(op):

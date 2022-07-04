@@ -5,6 +5,7 @@ load(
     "tflite_custom_c_library",
 )
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -38,19 +39,6 @@ tflite_cc_shared_object(
         ":c_api_experimental",
         ":exported_symbols.lds",
         ":version_script.lds",
-    ],
-)
-
-cc_library(
-    name = "c_api_internal",
-    hdrs = ["c_api_internal.h"],
-    copts = tflite_copts(),
-    visibility = ["//visibility:private"],
-    deps = [
-        ":common",
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
     ],
 )
 
@@ -91,6 +79,7 @@ cc_library(
         ":c_api_internal",
         ":c_api_types",
         ":common",
+        ":common_internal",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
@@ -132,6 +121,19 @@ cc_library(
     hdrs = ["c_api_types.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+)
+
+cc_library(
+    name = "c_api_internal",
+    hdrs = ["c_api_internal.h"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":common",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+    ],
 )
 
 cc_test(
@@ -195,6 +197,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "c_api_signature_runner_test",
+    size = "small",
+    srcs = ["c_api_signature_runner_test.cc"],
+    copts = tflite_copts(),
+    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common",
     srcs = ["common.cc"],
@@ -219,6 +234,18 @@ cc_library(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
+cc_library(
+    name = "common_internal",
+    hdrs = ["common_internal.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    visibility = ["//tensorflow/lite:__pkg__"],
+    deps = [
+        ":c_api_types",
+        ":common",
+    ],
+)
+
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
@@ -237,6 +264,7 @@ filegroup(
         "c_api.cc",
         "c_api_experimental.cc",
         "c_api_opaque.cc",
+        "common_internal.h",
     ],
 )
 
@@ -272,9 +300,17 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
+    tags = [
+        # Testing on Android uses "--gunit_output=xml:test.xml" runtime flag,
+        # but this test is C code, not C++, and hence doesn't use GUnit,
+        # so doesn't support that flag.
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
         ":common",
     ],
 )
+
+tflite_portable_test_suite()

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {

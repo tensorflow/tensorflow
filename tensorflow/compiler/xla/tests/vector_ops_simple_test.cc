@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/array4d.h"
@@ -347,7 +348,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    add_half = computation_status.ConsumeValueOrDie();
+    add_half = std::move(computation_status).value();
   }
 
   XlaComputation clamp;
@@ -360,7 +361,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     Clamp(zero, y_value, ConstantR0<float>(&builder, 5));
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    clamp = computation_status.ConsumeValueOrDie();
+    clamp = std::move(computation_status).value();
   }
 
   XlaComputation mult_relu_add;
@@ -377,7 +378,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     Map(&builder, {inner}, clamp, {});
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    mult_relu_add = computation_status.ConsumeValueOrDie();
+    mult_relu_add = std::move(computation_status).value();
   }
 
   XlaBuilder builder("map10");

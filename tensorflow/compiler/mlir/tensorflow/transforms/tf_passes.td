@@ -676,6 +676,75 @@ def TPUBridgeExecutorIslandOutliningPass : Pass<"tf-executor-tpu-v1-island-outli
   }];
 }
 
+def DecomposeReduceDatasetPass : Pass<"tf-decompose-reduce-dataset", "mlir::func::FuncOp"> {
+  let summary = "Decomposes ReduceDataset op into dataset operations.";
+
+  let description = [{
+    Decomposes ReduceDataset op into a while loop that iterates the dataset and calls
+    into the reduction function.  This decomposition is only done if the
+    ReduceDataset op is marked for compilation with the _xla_compile_device_type
+    attribute.
+
+    For example, for the following function the ReduceDataset op:
+
+    ```mlir
+    func.func @single_state_single_dataset_type_no_arguments(
+      %arg0: tensor<!tf_type.variant>,
+      %arg1: tensor<i64>
+    ) {
+      %1 = "tf.ReduceDataset"(%arg0, %arg1) {
+        Targuments = [],
+        Tstate = [i64], device = "",
+        f = @__reduce_func_1, f._tf_data_function = true,
+        output_shapes = [#tf_type.shape<>],
+        output_types = [i64], use_inter_op_parallelism = true, _xla_compile_device_type="TPU"} :
+	  (tensor<!tf_type.variant>, tensor<i64>) -> (tensor<i64>)
+      func.return
+   }
+   ```
+
+   with the following reduction function:
+
+   ```mlir
+   func.func private @__reduce_func_1(%arg0: tensor<i64> {tf._user_specified_name = "args_0"},
+     %arg1: tensor<32xf32> {tf._user_specified_name = "args_1"}) -> (tensor<i64>)
+     attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+       %0 = "tf.JustPretend"(%arg1) : (tensor<32xf32>) -> (tensor<i64>)
+       func.return %0 : tensor<i64>
+   }
+   ```
+
+   will be transformed into:
+
+   ```mlir
+   func.func @single_state_single_dataset_type_no_arguments(%arg0: tensor<!tf_type.variant>, %arg1: tensor<i64>) {
+    %0 = "tf.AnonymousIteratorV3"() {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : () -> tensor<!tf_type.resource>
+    "tf.MakeIterator"(%arg0, %0) : (tensor<!tf_type.variant>, tensor<!tf_type.resource>) -> ()
+    %cst = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1:2 = "tf.WhileRegion"(%cst, %arg1) ({
+    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
+      "tf.Yield"(%arg2) : (tensor<i1>) -> ()
+    }, {
+    ^bb0(%arg2: tensor<i1>, %arg3: tensor<i64>):
+      %2 = "tf.IteratorGetNextAsOptional"(%0) {output_shapes = [#tf_type.shape<32>], output_types = [f32]} : (tensor<!tf_type.resource>) -> tensor<!tf_type.variant>
+      %3 = "tf.OptionalHasValue"(%2) : (tensor<!tf_type.variant>) -> tensor<i1>
+      %4 = "tf.IfRegion"(%3) ({
+        %5 = "tf.OptionalGetValue"(%2) : (tensor<!tf_type.variant>) -> tensor<32xf32>
+        %6 = func.call @__reduce_func_1(%arg3, %5) {_xla_compile_device_type = "TPU"} : (tensor<i64>, tensor<32xf32>) -> tensor<i64>
+        "tf.Yield"(%6) : (tensor<i64>) -> ()
+      }, {
+        "tf.Yield"(%arg3) : (tensor<i64>) -> ()
+      }) {_lower_using_switch_merge = true, is_stateless = false} : (tensor<i1>) -> tensor<i64>
+      "tf.Yield"(%3, %4) : (tensor<i1>, tensor<i64>) -> ()
+    }) {_lower_using_switch_merge = true, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i1>, tensor<i64>) -> (tensor<i1>, tensor<i64>)
+    return
+  }
+  ```
+  }];
+
+  let constructor = "TF::CreateDecomposeReduceDatasetPass()";
+}
+
 def ExecutorTPUV1IslandInliningPass : Pass<"tf-executor-tpu-v1-island-inlining", "ModuleOp"> {
   let summary = "Inline calls to the nested TPU module.";
 

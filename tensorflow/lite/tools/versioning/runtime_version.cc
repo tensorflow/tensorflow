@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 
 #include <cstring>
+#include <string>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"

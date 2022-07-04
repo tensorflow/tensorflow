@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 
 #include <cstdint>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -363,6 +364,7 @@ flatbuffers::Offset<data::BufferDescriptor> Encode(
       Encode(*static_cast<const GPUObjectDescriptor*>(&desc), builder);
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> attributes_fb;
+  attributes_fb.reserve(desc.attributes.size());
   for (auto& attr : desc.attributes) {
     attributes_fb.push_back(builder->CreateString(attr));
   }
@@ -534,7 +536,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
                     buffer_pair_fb->key()->size());
     BufferDescriptor desc;
     Decode(buffer_pair_fb->value(), &desc);
-    args->AddObject(key, absl::make_unique<BufferDescriptor>(std::move(desc)));
+    args->AddObject(key, std::make_unique<BufferDescriptor>(std::move(desc)));
   }
 
   for (auto texture_pair_fb : *fb_args->texture2d_objects()) {
@@ -543,7 +545,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Texture2DDescriptor desc;
     Decode(texture_pair_fb->value(), &desc);
     args->AddObject(key,
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_linear_objects()) {
@@ -552,7 +554,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     TensorLinearDescriptor desc;
     Decode(tensor_pair_fb->value(), &desc);
     args->AddObject(key,
-                    absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                    std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_objects()) {
@@ -560,7 +562,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
                     tensor_pair_fb->key()->size());
     TensorDescriptor desc;
     Decode(tensor_pair_fb->value(), &desc);
-    args->AddObject(key, absl::make_unique<TensorDescriptor>(std::move(desc)));
+    args->AddObject(key, std::make_unique<TensorDescriptor>(std::move(desc)));
   }
 
   for (auto buffer_pair_fb : *fb_args->buffer_refs()) {
@@ -570,7 +572,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Decode(buffer_pair_fb->value(), &desc);
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
-                       absl::make_unique<BufferDescriptor>(std::move(desc)));
+                       std::make_unique<BufferDescriptor>(std::move(desc)));
   }
 
   for (auto texture_pair_fb : *fb_args->texture2d_refs()) {
@@ -580,7 +582,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Decode(texture_pair_fb->value(), &desc);
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
-                       absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                       std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_linear_refs()) {
@@ -591,7 +593,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     auto access_type = desc.GetAccess();
     args->AddObjectRef(
         key, access_type,
-        absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+        std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_refs()) {
@@ -601,7 +603,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Decode(tensor_pair_fb->value(), &desc);
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
-                       absl::make_unique<TensorDescriptor>(std::move(desc)));
+                       std::make_unique<TensorDescriptor>(std::move(desc)));
   }
   return absl::OkStatus();
 }
@@ -856,12 +858,14 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   auto work_groups_count_fb = Encode(op.work_groups_count_, builder);
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> src_names_fb;
+  src_names_fb.reserve(op.src_tensors_names_.size());
   for (auto& name : op.src_tensors_names_) {
     src_names_fb.push_back(builder->CreateString(name));
   }
   auto src_names_fb_vec = builder->CreateVector(src_names_fb);
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> dst_names_fb;
+  dst_names_fb.reserve(op.dst_tensors_names_.size());
   for (auto& name : op.dst_tensors_names_) {
     dst_names_fb.push_back(builder->CreateString(name));
   }

@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 
 #include <cstring>
+#include <memory>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -223,7 +225,7 @@ TEST(CalibratorTest, UpdateMinMax) {
     }
   }
   auto input_0_quant_params =
-      absl::make_unique<tflite::QuantizationParametersT>();
+      std::make_unique<tflite::QuantizationParametersT>();
   input_0_quant_params->min.push_back(0.5);
   input_0_quant_params->max.push_back(1.5);
   model.subgraphs[0]->tensors[0]->quantization =

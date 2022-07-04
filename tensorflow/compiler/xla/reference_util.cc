@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 
 #include <array>
+#include <memory>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -35,7 +35,7 @@ namespace xla {
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(
     const Array2D<float>& input) {
   auto result =
-      absl::make_unique<Array2D<double>>(input.height(), input.width());
+      std::make_unique<Array2D<double>>(input.height(), input.width());
   for (int64_t rowno = 0; rowno < input.height(); ++rowno) {
     for (int64_t colno = 0; colno < input.height(); ++colno) {
       (*result)(rowno, colno) = input(rowno, colno);
@@ -82,7 +82,7 @@ ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
       a4dlhs, a4drhs, {kernel_stride, 1}, padding, {lhs_dilation, 1},
       {rhs_dilation, 1}, dnums2d);
 
-  auto convr3 = absl::make_unique<Array3D<float>>(
+  auto convr3 = std::make_unique<Array3D<float>>(
       convr4->planes(), convr4->depth(), convr4->height());
   convr4->Each([&](absl::Span<const int64_t> indices, float* value_ptr) {
     CHECK_EQ(indices[3], 0);
@@ -157,7 +157,7 @@ ReferenceUtil::ReduceWindow1DGeneric(
   int64_t result_size =
       window_util::StridedBound(padded_width, window_size, stride_amount);
   int64_t pad_low = padding[0].first;
-  auto result = absl::make_unique<std::vector<float>>(result_size);
+  auto result = std::make_unique<std::vector<float>>(result_size);
 
   // Do a full 1D reduce window.
   for (int64_t i0 = 0; i0 < result_size; ++i0) {
@@ -198,7 +198,7 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
         WindowCount(dim_lengths[i], window[i], stride[i], padding);
     pad_low[i] = padding_both[i].first;
   }
-  auto result = absl::make_unique<Array3D<float>>(
+  auto result = std::make_unique<Array3D<float>>(
       window_counts[0], window_counts[1], window_counts[2]);
 
   for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
@@ -260,7 +260,7 @@ ReferenceUtil::ReduceWindow4DGeneric(
         window_util::StridedBound(padded_width, window[i], stride[i]);
     pad_low[i] = padding[i].first;
   }
-  auto result = absl::make_unique<Array4D<float>>(
+  auto result = std::make_unique<Array4D<float>>(
       window_counts[0], window_counts[1], window_counts[2], window_counts[3]);
   // Do a full 4D reduce window.
   for (int64_t i0 = 0; i0 < window_counts[0]; ++i0) {
@@ -329,8 +329,8 @@ ReferenceUtil::SelectAndScatter4DGePlus(const Array4D<float>& operand,
                                         absl::Span<const int64_t> stride,
                                         bool same_padding) {
   Padding padding = same_padding ? Padding::kSame : Padding::kValid;
-  auto result = absl::make_unique<Array4D<float>>(operand.n1(), operand.n2(),
-                                                  operand.n3(), operand.n4());
+  auto result = std::make_unique<Array4D<float>>(operand.n1(), operand.n2(),
+                                                 operand.n3(), operand.n4());
   std::vector<int64_t> dim_lengths{operand.n1(), operand.n2(), operand.n3(),
                                    operand.n4()};
   auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
@@ -465,12 +465,12 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   dim2.set_base_dilation(lhs_dilation.second);
   *window.add_dimensions() = dim2;
 
-  const Shape& shape =
+  const Shape shape =
       ShapeInference::InferConvolveShape(
           lhs_literal.shape(), rhs_literal.shape(),
           /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
-          /*preferred_element_type=*/absl::nullopt)
-          .ConsumeValueOrDie();
+          /*preferred_element_type=*/std::nullopt)
+          .value();
 
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
@@ -488,15 +488,14 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;
-  Literal result_literal =
-      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
+  Literal result_literal = evaluator.Evaluate(*computation, {}).value();
 
   CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =
-      absl::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
-                                        result_literal.shape().dimensions(1),
-                                        result_literal.shape().dimensions(2),
-                                        result_literal.shape().dimensions(3));
+      std::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
+                                       result_literal.shape().dimensions(1),
+                                       result_literal.shape().dimensions(2),
+                                       result_literal.shape().dimensions(3));
 
   result->Each([&](absl::Span<const int64_t> indices, float* value) {
     *value = result_literal.Get<float>(indices);
@@ -511,7 +510,7 @@ ReferenceUtil::ReduceToColArray2D(
     const std::function<float(float, float)>& reduce_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
-  auto result = absl::make_unique<std::vector<float>>();
+  auto result = std::make_unique<std::vector<float>>();
   for (int64_t i = 0; i < rows; ++i) {
     float acc = init;
     for (int64_t j = 0; j < cols; ++j) {
@@ -528,7 +527,7 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float, float)>& reduce_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
-  auto result = absl::make_unique<std::vector<float>>();
+  auto result = std::make_unique<std::vector<float>>();
   for (int64_t i = 0; i < cols; ++i) {
     float acc = init;
     for (int64_t j = 0; j < rows; ++j) {
@@ -585,8 +584,8 @@ ReferenceUtil::ReduceToRowArray2D(
 /* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::Broadcast1DTo4D(
     const std::vector<float>& array, const std::vector<int64_t>& bounds,
     int64_t broadcast_from_dim) {
-  auto result = absl::make_unique<Array4D<float>>(bounds[0], bounds[1],
-                                                  bounds[2], bounds[3]);
+  auto result = std::make_unique<Array4D<float>>(bounds[0], bounds[1],
+                                                 bounds[2], bounds[3]);
   for (int64_t i = 0; i < result->n1(); ++i) {
     for (int64_t j = 0; j < result->n2(); ++j) {
       for (int64_t k = 0; k < result->n3(); ++k) {
@@ -620,7 +619,7 @@ ReferenceUtil::ReduceToRowArray2D(
   CHECK_EQ(dims.size(), 1);
   int64_t rows = dims[0] == 0 ? array.n2() : array.n1();
   int64_t cols = dims[0] == 2 ? array.n2() : array.n3();
-  auto result = absl::make_unique<Array2D<float>>(rows, cols);
+  auto result = std::make_unique<Array2D<float>>(rows, cols);
   result->Fill(init);
   for (int i0 = 0; i0 < array.n1(); ++i0) {
     for (int i1 = 0; i1 < array.n2(); ++i1) {
@@ -640,7 +639,7 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float)>& map_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
-  auto result = absl::make_unique<Array2D<float>>(rows, cols);
+  auto result = std::make_unique<Array2D<float>>(rows, cols);
   for (int64_t i = 0; i < rows; ++i) {
     for (int64_t j = 0; j < cols; ++j) {
       (*result)(i, j) = map_function(matrix(i, j));
@@ -656,7 +655,7 @@ ReferenceUtil::ReduceToRowArray2D(
   CHECK_EQ(lhs.width(), rhs.width());
   int64_t rows = lhs.height();
   int64_t cols = rhs.width();
-  auto result = absl::make_unique<Array2D<float>>(rows, cols);
+  auto result = std::make_unique<Array2D<float>>(rows, cols);
   for (int64_t i = 0; i < rows; ++i) {
     for (int64_t j = 0; j < cols; ++j) {
       (*result)(i, j) = map_function(lhs(i, j), rhs(i, j));
@@ -671,7 +670,7 @@ ReferenceUtil::ReduceToRowArray2D(
   int64_t n1 = array.n1();
   int64_t n2 = array.n2();
   int64_t n3 = array.n3();
-  auto result = absl::make_unique<Array3D<float>>(n1, n2, n3);
+  auto result = std::make_unique<Array3D<float>>(n1, n2, n3);
   for (int64_t i = 0; i < n1; ++i) {
     for (int64_t j = 0; j < n2; ++j) {
       for (int64_t k = 0; k < n3; ++k) {
@@ -691,7 +690,7 @@ ReferenceUtil::ReduceToRowArray2D(
   int64_t n1 = lhs.n1();
   int64_t n2 = rhs.n2();
   int64_t n3 = rhs.n3();
-  auto result = absl::make_unique<Array3D<float>>(n1, n2, n3);
+  auto result = std::make_unique<Array3D<float>>(n1, n2, n3);
   for (int64_t i = 0; i < n1; ++i) {
     for (int64_t j = 0; j < n2; ++j) {
       for (int64_t k = 0; k < n3; ++k) {
@@ -707,7 +706,7 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float, int64_t, int64_t)>& map_function) {
   int64_t rows = matrix.height();
   int64_t cols = matrix.width();
-  auto result = absl::make_unique<Array2D<float>>(rows, cols);
+  auto result = std::make_unique<Array2D<float>>(rows, cols);
   for (int64_t i = 0; i < rows; ++i) {
     for (int64_t j = 0; j < cols; ++j) {
       (*result)(i, j) = map_function(matrix(i, j), i, j);

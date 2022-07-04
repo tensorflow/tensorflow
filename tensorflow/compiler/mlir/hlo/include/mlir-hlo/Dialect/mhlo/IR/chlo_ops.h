@@ -72,7 +72,7 @@ template <typename T>
 static Value getConstantLike(OpBuilder& b, Location loc, T constant,
                              Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
-  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
+  if (auto complexTy = ty.dyn_cast<ComplexType>()) {
     // TODO(b/190374484): This code will only work for static shapes.
     // The proper way to support these constants is through chlo.constant_like
     // which then legalizes to code which works well for both static and dynamic
@@ -80,7 +80,7 @@ static Value getConstantLike(OpBuilder& b, Location loc, T constant,
     // The problem with that approach for complex numbers is that constant_like
     // doesn't work for complex numbers - it carries constants via attributes,
     // and there's no built-in attribute that carries complex numbers.
-    return b.create<mhlo::ConstOp>(
+    return b.create<mhlo::ConstantOp>(
         loc,
         hlo::getSplat(&b, val.getType().cast<RankedTensorType>(), constant));
   }

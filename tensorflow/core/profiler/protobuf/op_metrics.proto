@@ -26,7 +26,7 @@ message LayoutAnalysis {
 }
 
 // Metrics for an operation (accumulated over all occurrences).
-// Next ID: 21
+// Next ID: 22
 message OpMetrics {
   // HLO module id. 0 for TF ops.
   uint64 hlo_module_id = 13;
@@ -73,6 +73,8 @@ message OpMetrics {
   string deduplicated_name = 15;
   // Children of the op. e.g. fused ops if this op is fusion.
   OpMetricsDb children = 16;
+  // Number of cores this op occurs.
+  uint32 num_cores = 21;
   reserved 4, 8, 9;
 }
 

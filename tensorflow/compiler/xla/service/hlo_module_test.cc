@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -29,6 +32,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
+
+// In order to use TestCompilationEnvironment* with CompilationEnvironments, we
+// must define CreateDefaultEnv for them.
+template <>
+std::unique_ptr<test::TestCompilationEnvironment1>
+CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment1>() {
+  auto env = std::make_unique<test::TestCompilationEnvironment1>();
+  env->set_some_flag(100);
+  return env;
+}
 
 namespace {
 
@@ -96,10 +109,20 @@ TEST_F(HloModuleTest, CloneTest) {
       module->AddEmbeddedComputation(CreateCallComputation({computation1}));
   module->AddEntryComputation(
       CreateCallComputation({computation2, computation3}));
+  // Add a compilation environment to module
+  auto env = std::make_unique<test::TestCompilationEnvironment1>();
+  env->set_some_flag(10);
+  module->comp_envs().AddEnv(std::move(env));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
   auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  // Make sure module's CompilationEnvironments were copied to cloned_module
+  EXPECT_EQ(cloned_module->comp_envs()
+                .GetEnv<test::TestCompilationEnvironment1>()
+                .some_flag(),
+            10);
 
   EXPECT_EQ(post_order.size(), post_order_copied.size());
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();

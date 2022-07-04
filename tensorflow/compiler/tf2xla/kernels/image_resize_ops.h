@@ -62,7 +62,7 @@ class ResizeBilinearGradOp : public XlaOpKernel {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Fallback light outside compilation kernel for the option combination we do
   // not support.
-  absl::optional<CallTfKernelOp> fallback_tf_kernel_;
+  std::optional<CallTfKernelOp> fallback_tf_kernel_;
 #endif
 };
 

@@ -72,7 +72,7 @@ StatusOr<bool> ReduceScatterCreator::Run(HloModule *module) {
       }
       scatter_shape.set_dimensions(split_dim, scatter_dim_size);
 
-      absl::optional<int64_t> channel_id;
+      std::optional<int64_t> channel_id;
       if (ar->channel_id()) {
         // We cannot reuse the channel_id on all-reduce for reduce-scatter.
         channel_id = next_channel_id++;

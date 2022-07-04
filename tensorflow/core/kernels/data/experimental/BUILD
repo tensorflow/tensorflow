@@ -237,6 +237,8 @@ tf_kernel_library(
         "//tensorflow/core/data/service:worker_client",
         "//tensorflow/core/data/service:worker_impl",
         "//tensorflow/core/data/service:worker_proto_cc",
+        "//tensorflow/core/data/service/client:common",
+        "//tensorflow/core/data/service/client:validate_utils",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/platform:env_time",
@@ -275,6 +277,7 @@ tf_kernel_library(
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/kernels/data:iterator_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -376,7 +379,6 @@ tf_kernel_library(
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/data:iterator_ops",
-        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -231,7 +231,7 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
         call_op.fAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("fused_")) {
+    if (!function_name.startswith("composite_")) {
       return spec;
     }
     if (function_name.contains("depthwise_conv2d_with_bias")) {

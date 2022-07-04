@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
+#include <complex>
 #include <cstdarg>
 #include <cstddef>
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
@@ -28,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -45,6 +47,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace se = ::stream_executor;
+
+namespace {
+template <class T>
+struct is_complex : std::false_type {};
+template <class T>
+struct is_complex<std::complex<T>> : std::true_type {};
+}  // namespace
 
 namespace xla {
 namespace cpu {
@@ -74,12 +83,20 @@ extern const char* const kEigenMatMulC128SymbolName =
     "__xla_cpu_runtime_EigenMatMulC128";
 extern const char* const kEigenMatMulS32SymbolName =
     "__xla_cpu_runtime_EigenMatMulS32";
+extern const char* const kEigenBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenBatchMatMulF32";
 extern const char* const kMKLConv2DF32SymbolName =
     "__xla_cpu_runtime_MKLConv2DF32";
+extern const char* const kACLConv2DF32SymbolName =
+    "__xla_cpu_runtime_ACLConv2DF32";
 extern const char* const kMKLMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLMatMulF32";
 extern const char* const kMKLMatMulF64SymbolName =
     "__xla_cpu_runtime_MKLMatMulF64";
+extern const char* const kACLMatMulF32SymbolName =
+    "__xla_cpu_runtime_ACLMatMulF32";
+extern const char* const kACLBatchMatMulF32SymbolName =
+    "__xla_cpu_runtime_ACLBatchMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_MKLSingleThreadedMatMulF32";
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName =
@@ -507,6 +524,12 @@ class CpuAllReduceRendezvous
         case xla::F64:
           DoAllReduce<xla::F64>(participant);
           break;
+        case xla::C64:
+          DoAllReduce<xla::C64>(participant);
+          break;
+        case xla::C128:
+          DoAllReduce<xla::C128>(participant);
+          break;
         default:
           LOG(FATAL) << "Unexpected datatype;";
       }
@@ -604,7 +627,8 @@ class CpuAllReduceRendezvous
     using type = typename std::make_unsigned_t<T>;
   };
 
-  template <typename T>
+  template <typename T,
+            typename std::enable_if<!is_complex<T>::value>::type* = nullptr>
   T PerformReductionStep(xla::ReductionKind reduction_kind, T a, T b) {
     using SumProductType = typename SumProductTypeForReductionStep<
         T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
@@ -621,6 +645,26 @@ class CpuAllReduceRendezvous
         return std::min(a, b);
       case xla::ReductionKind::MAX:
         return std::max(a, b);
+    }
+  }
+
+  template <typename T,
+            typename std::enable_if<is_complex<T>::value>::type* = nullptr>
+  T PerformReductionStep(xla::ReductionKind reduction_kind, T a, T b) {
+    using SumProductType = typename SumProductTypeForReductionStep<
+        T, std::is_integral<T>::value && std::is_signed<T>::value>::type;
+    switch (reduction_kind) {
+      case xla::ReductionKind::SUM:
+        return absl::bit_cast<T>(
+            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) +
+                                        absl::bit_cast<SumProductType>(b)));
+      case xla::ReductionKind::PRODUCT:
+        return absl::bit_cast<T>(
+            static_cast<SumProductType>(absl::bit_cast<SumProductType>(a) *
+                                        absl::bit_cast<SumProductType>(b)));
+      case xla::ReductionKind::MIN:
+      case xla::ReductionKind::MAX:
+        LOG(FATAL) << "min/max not valid for complex types";
     }
   }
 };
@@ -649,7 +693,7 @@ GlobalAllToAllRendezvousMap() {
 xla::RendezvousKey GetRendezvousKey(
     const xla::ExecutableRunOptions* run_options,
     std::vector<xla::ReplicaGroup> group, int32_t channel_id_present,
-    absl::optional<bool> use_global_device_ids, int64_t op_id) {
+    std::optional<bool> use_global_device_ids, int64_t op_id) {
   const xla::DeviceAssignment& device_assignment =
       *run_options->device_assignment();
   int device_ordinal = GetDeviceOrdinal(run_options);
@@ -683,7 +727,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
       xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, group, channel_id_present,
-                       /*use_global_device_ids=*/absl::nullopt, op_id);
+                       /*use_global_device_ids=*/std::nullopt, op_id);
 
   AllToAllParticipantData participant(rendezvous_key, device_ordinal,
                                       run_options->stream());
@@ -693,7 +737,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
           xla::GlobalDeviceId(device_ordinal),
           *run_options->device_assignment(), group,
           xla::GetCollectiveOpGroupMode(channel_id_present != 0,
-                                        /*use_global_device_ids=*/absl::nullopt)
+                                        /*use_global_device_ids=*/std::nullopt)
               .ValueOrDie())
           .ValueOrDie();
   for (int i = 0; i < num_buffers; i++) {
@@ -702,7 +746,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllToAll(
                                                  buffer_size);
   }
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuAllToAllRendezvous>(k);
+    return std::make_unique<CpuAllToAllRendezvous>(k);
   };
   TF_CHECK_OK(CpuAllToAllRendezvous::SubmitParticipant(
                   [&] {
@@ -751,7 +795,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   }
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuAllReduceRendezvous>(k);
+    return std::make_unique<CpuAllReduceRendezvous>(k);
   };
 
   TF_CHECK_OK(CpuAllReduceRendezvous::SubmitParticipant(
@@ -807,7 +851,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   }
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, {}, channel_id_present,
-                       /*use_global_device_ids=*/absl::nullopt, op_id);
+                       /*use_global_device_ids=*/std::nullopt, op_id);
 
   CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
                                                run_options->stream());
@@ -818,7 +862,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   participant.byte_size = byte_size;
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
-    return absl::make_unique<CpuCollectivePermuteRendezvous>(k);
+    return std::make_unique<CpuCollectivePermuteRendezvous>(k);
   };
   TF_CHECK_OK(
       CpuCollectivePermuteRendezvous::SubmitParticipant(

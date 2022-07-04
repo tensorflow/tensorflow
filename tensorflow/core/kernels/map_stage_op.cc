@@ -171,7 +171,7 @@ class StagingMap : public ResourceBase {
           "' was out of bounds '", dtypes_.size(), "'."));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status copy_or_move_tensors(OptionalTuple* map_tuple, const Tensor& key,
@@ -203,7 +203,7 @@ class StagingMap : public ResourceBase {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check that the optional value at the specified index
@@ -218,7 +218,7 @@ class StagingMap : public ResourceBase {
                                      dtypes_.size(), "'.");
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check that the indices are strictly ordered
@@ -237,7 +237,7 @@ class StagingMap : public ResourceBase {
       return errors::InvalidArgument("Indices are not strictly ordered");
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Check bytes are within memory limits memory limits
@@ -250,7 +250,7 @@ class StagingMap : public ResourceBase {
           "'.");
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Insert incomplete data into the Barrier
@@ -327,7 +327,7 @@ class StagingMap : public ResourceBase {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Does the insertion into the actual staging area
@@ -338,7 +338,7 @@ class StagingMap : public ResourceBase {
 
     notify_removers();
 
-    return Status::OK();
+    return OkStatus();
   }
 
  public:
@@ -376,7 +376,7 @@ class StagingMap : public ResourceBase {
     // Update the current size
     current_bytes_ += tuple_bytes;
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status get(const KeyType* key, const Tensor* indices, Tuple* tuple) {
@@ -398,7 +398,7 @@ class StagingMap : public ResourceBase {
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status pop(const KeyType* key, const Tensor* indices, Tuple* tuple) {
@@ -429,7 +429,7 @@ class StagingMap : public ResourceBase {
 
     notify_inserters_if_bounded();
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status popitem(KeyType* key, const Tensor* indices, Tuple* tuple) {
@@ -464,7 +464,7 @@ class StagingMap : public ResourceBase {
 
     notify_inserters_if_bounded();
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status clear() {
@@ -475,7 +475,7 @@ class StagingMap : public ResourceBase {
 
     notify_inserters_if_bounded();
 
-    return Status::OK();
+    return OkStatus();
   }
 
   std::size_t incomplete_size() {
@@ -506,13 +506,13 @@ Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
     *ret = new StagingMap<Ordered>(dtypes, capacity, memory_limit);
-    return Status::OK();
+    return OkStatus();
   };
 
   TF_RETURN_IF_ERROR(cinfo.Init(rm, ndef, true /* use name() */));
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<StagingMap<Ordered>>(
       cinfo.container(), cinfo.name(), map, create_fn));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <bool Ordered>

@@ -27,6 +27,9 @@ class FuncOp;
 namespace scf {
 class SCFDialect;
 }  // namespace scf
+namespace vector {
+class VectorDialect;
+}  // namespace vector
 }  // namespace mlir
 
 #define GEN_PASS_CLASSES

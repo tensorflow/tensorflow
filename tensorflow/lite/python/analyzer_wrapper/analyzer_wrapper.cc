@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "pybind11/pybind11.h"
 #include "tensorflow/lite/python/analyzer_wrapper/model_analyzer.h"
 

@@ -2415,7 +2415,7 @@ func.func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>
 // CHECK:           return %[[VAL_14]] : tensor<4x2xf32>
 // CHECK:         }
 func.func @convert_dynamic_slice(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<4x2xf32> {
-  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
   func.return %0 : tensor<4x2xf32>
 }
 
@@ -2438,7 +2438,7 @@ func.func @convert_dynamic_slice(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>, %ar
 // CHECK:           return %[[VAL_14]] : tensor<4x2xf32>
 // CHECK:         }
 func.func @convert_dynamic_slice_ui32(%arg0: tensor<7x3xf32>, %arg1: tensor<ui32>, %arg2: tensor<ui32>) -> tensor<4x2xf32> {
-  %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<ui32>, tensor<ui32>) -> tensor<4x2xf32>
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<ui32>, tensor<ui32>) -> tensor<4x2xf32>
   func.return %0 : tensor<4x2xf32>
 }
 
@@ -3244,4 +3244,18 @@ func.func @reduce_window_trivial_window_dims(%arg0: tensor<4x12xf32>) -> tensor<
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {padding = dense<0> : tensor<2x2xi64>, window_dimensions = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
   func.return %1 : tensor<4x12xf32>
+}
+
+// CHECK-LABEL:   func @const_quant
+// CHECK-NOT:       "tf.Const"
+func.func @const_quant() -> tensor<512x1x!quant.uniform<i8:f32, 0.013133913278579712>> {
+  %0 = mhlo.constant() {value = dense<0> : tensor<512x1xi8>} : () -> tensor<512x1x!quant.uniform<i8:f32, 0.013133913278579712>>
+  func.return %0 : tensor<512x1x!quant.uniform<i8:f32, 0.013133913278579712>>
+}
+
+// CHECK-LABEL:   func @convert_dot_quant_type(
+// CHECK-NOT:       "tf.BatchMatMulV2"
+func.func @convert_dot_quant_type(%arg0: tensor<1x256xf32>, %arg1: tensor<256x!quant.uniform<i8:f32, 1.0>>) -> tensor<1xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x256xf32>, tensor<256x!quant.uniform<i8:f32, 1.0>>) -> tensor<1xf32>
+  func.return %0 : tensor<1xf32>
 }

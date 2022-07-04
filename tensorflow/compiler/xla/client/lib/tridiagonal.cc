@@ -45,7 +45,7 @@ Status CheckSecondToLastDimension(const Shape& op_shape, int64_t rank,
         expected, actual_num_dims);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,

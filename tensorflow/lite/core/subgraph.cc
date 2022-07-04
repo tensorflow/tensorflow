@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
@@ -411,26 +412,15 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
 
-#ifdef __ANDROID__
   // On Android the log message below is used for diagnosing delegation success
-  // also in production builds. Delegation happens sufficiently rarely that the
-  // message isn't spammy.
+  // also in production builds. Use VERBOSE here so that the logging is turned
+  // off in production builds on other platforms.
   TFLITE_LOG_PROD(
-      tflite::TFLITE_LOG_INFO,
+      tflite::TFLITE_LOG_VERBOSE,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
       nodes_to_replace->size,
       registration.custom_name ? registration.custom_name : "unknown",
       node_subsets.size());
-#else   // !__ANDROID__
-  // Server-side, delegation may happen so often as to make logging spammy + we
-  // don't have a clear need for the diagnostic in production builds.
-  TFLITE_LOG(
-      tflite::TFLITE_LOG_INFO,
-      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
-      nodes_to_replace->size,
-      registration.custom_name ? registration.custom_name : "unknown",
-      node_subsets.size());
-#endif  // __ANDROID__
 
   execution_plan_.clear();
 
@@ -961,6 +951,19 @@ TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
   return kTfLiteOk;
 }
 
+// Give 'op_reg' a chance to initialize itself using the contents of
+// 'buffer'. If registration_external is valid, use the 'init' callback from
+// that.
+void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
+                       size_t length) {
+  if (op_reg.registration_external && op_reg.registration_external->init) {
+    return op_reg.registration_external->init(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
+  }
+  if (op_reg.init == nullptr) return nullptr;
+  return op_reg.init(&context_, buffer, length);
+}
+
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.registration_external && op_reg.registration_external->prepare) {
@@ -982,7 +985,7 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
       } else {
         ReportError(
             "Encountered unresolved custom op: %s.\nSee instructions: "
-            "https://www.tensorflow.org/lite/guide/ops_custom",
+            "https://www.tensorflow.org/lite/guide/ops_custom ",
             op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteUnresolvedOps;
@@ -991,6 +994,32 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
     return kTfLiteOk;
   }
   return op_reg.prepare(&context_, node);
+}
+
+// Invoke the operator represented by 'node'.
+TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
+                                TfLiteNode* node) {
+  if (op_reg.registration_external && op_reg.registration_external->invoke) {
+    return op_reg.registration_external->invoke(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_),
+        reinterpret_cast<TfLiteOpaqueNode*>(node));
+  }
+  if (op_reg.invoke == nullptr) return kTfLiteError;
+  return op_reg.invoke(&context_, node);
+}
+
+// Let 'op_reg' release any memory it might have allocated via 'OpInit'.
+// If registration_external is valid, use the 'free' callback from that.
+void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
+  if (op_reg.registration_external && op_reg.registration_external->free &&
+      buffer) {
+    return op_reg.registration_external->free(
+        reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
+  }
+  if (op_reg.free == nullptr) return;
+  if (buffer) {
+    op_reg.free(&context_, buffer);
+  }
 }
 
 TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
@@ -1049,9 +1078,9 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
     memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
-    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
-                                           ShouldPreserveAllTensors(),
-                                           kDefaultTensorAlignment));
+    memory_planner_ = std::make_unique<ArenaPlanner>(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        kDefaultTensorAlignment);
 #endif
     memory_planner_->PlanAllocations();
   }

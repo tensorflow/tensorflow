@@ -39,9 +39,10 @@ absl::optional<NodeDef> ExtractSmallTensorValue(TFE_Context* context,
 
 // Returns true if the given input argument should be eligible for extracting
 // into a graph constant.
-bool ShouldFoldInputArgument(bool is_func, absl::string_view operation_name,
-                             int input_index);
+bool ShouldFoldInputArgument(absl::string_view operation_name, int input_index);
 
+// Returns true if the tensor proto of a and b are different.
+bool NodeDefsHaveDifferentTensorProto(const NodeDef& a, const NodeDef& b);
 }  // namespace dtensor
 }  // namespace tensorflow
 

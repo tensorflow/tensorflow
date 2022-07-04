@@ -123,7 +123,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
 
   if (internal_block_dims == 0) {
     context->set_output(0, orig_input_tensor);
-    return Status::OK();
+    return OkStatus();
   }
 
   // For the purpose of computing the result, the input will be treated as
@@ -211,7 +211,7 @@ Status SpaceToBatchOpCompute(OpKernelContext* context,
     TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(TF_SPACETOBATCH_BLOCK_DIMS_CASE)
 #undef TF_SPACETOBATCH_BLOCK_DIMS_CASE
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

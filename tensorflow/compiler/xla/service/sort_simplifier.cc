@@ -104,7 +104,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   }
   HloModule* module = sort->GetModule();
   HloComputation* new_compare = module->AddEmbeddedComputation(
-      comparator->CloneWithReplacements(std::move(replacements)));
+      comparator->CloneWithReplacements(&replacements));
   new_sort->set_to_apply(new_compare);
 
   // Map from original get-tuple-element tuple index to new HLO instruction

@@ -43,6 +43,10 @@ load(
     "if_mkldnn_openmp",
 )
 load(
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
+)
+load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
@@ -320,6 +324,16 @@ def if_registration_v2(if_true, if_false = []):
 def if_portable(if_true, if_false = []):
     return if_true
 
+# We are never indexing generated code in the OSS build, but still
+# return a select() for consistency.
+def if_indexing_source_code(
+        if_true,  # @unused
+        if_false):
+    """Return a select() on whether or not we are building for source code indexing."""
+    return select({
+        "//conditions:default": if_false,
+    })
+
 # Linux systems may required -lrt linker flag for e.g. clock_gettime
 # see https://github.com/tensorflow/tensorflow/issues/15129
 def lrt_if_needed():
@@ -409,6 +423,14 @@ def tf_copts(
             "//conditions:default": ["-pthread"],
         })
     )
+
+def tf_xla_acl_opts_defines():
+    return [
+        "-DXLA_CPU_USE_ACL=1",
+    ]
+
+def tf_xla_acl_copts():
+    return if_enable_acl(tf_xla_acl_opts_defines())
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
@@ -2859,6 +2881,7 @@ def pybind_extension(
         srcs,
         module_name = None,
         hdrs = [],
+        dynamic_deps = [],
         static_deps = [],
         deps = [],
         additional_exported_symbols = [],
@@ -2951,6 +2974,7 @@ def pybind_extension(
         cc_shared_library(
             name = so_file,
             roots = [cc_library_name],
+            dynamic_deps = dynamic_deps,
             static_deps = static_deps,
             additional_linker_inputs = [exported_symbols_file, version_script_file],
             compatible_with = compatible_with,
@@ -3142,6 +3166,7 @@ def tf_python_pybind_extension(
         module_name = None,
         hdrs = [],
         deps = [],
+        dynamic_deps = [],
         static_deps = [],
         compatible_with = None,
         copts = [],
@@ -3162,6 +3187,7 @@ def tf_python_pybind_extension(
         srcs,
         module_name = module_name,
         hdrs = hdrs,
+        dynamic_deps = dynamic_deps,
         static_deps = static_deps,
         deps = deps + tf_binary_pybind_deps() + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
         compatible_with = compatible_with,

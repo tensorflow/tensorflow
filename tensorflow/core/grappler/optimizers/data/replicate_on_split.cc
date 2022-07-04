@@ -39,7 +39,7 @@ Status ReplicateOnSplit::OptimizeAndCollectStats(Cluster* cluster,
       stats->num_changes++;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ReplicateOnSplit, "replicate_on_split");

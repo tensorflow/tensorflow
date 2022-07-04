@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -24,17 +26,17 @@ namespace xla {
 
 Status RetCheckFail() {
   TF_RET_CHECK(2 > 3);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RetCheckFailWithExtraMessage() {
   TF_RET_CHECK(2 > 3) << "extra message";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RetCheckSuccess() {
   TF_RET_CHECK(3 > 2);
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(StatusMacros, RetCheckFailing) {
@@ -67,7 +69,7 @@ TEST(StatusMacros, AssignOrAssertOnOK) {
   EXPECT_EQ(42, result);
 }
 
-Status ReturnStatusOK() { return Status::OK(); }
+Status ReturnStatusOK() { return OkStatus(); }
 
 Status ReturnStatusError() { return (tensorflow::errors::Internal("foobar")); }
 
@@ -81,7 +83,7 @@ StatusOr<int> CallStatusReturningFunction(const StatusReturningFunction& func) {
 TEST(StatusMacros, ReturnIfErrorOnOK) {
   StatusOr<int> rc = CallStatusReturningFunction(ReturnStatusOK);
   EXPECT_IS_OK(rc);
-  EXPECT_EQ(42, rc.ConsumeValueOrDie());
+  EXPECT_EQ(42, std::move(rc).value());
 }
 
 TEST(StatusMacros, ReturnIfErrorOnError) {
@@ -94,7 +96,7 @@ TEST(StatusMacros, AssignOrReturnSuccessfully) {
   Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);
-    return Status::OK();
+    return OkStatus();
   }();
   EXPECT_IS_OK(status);
 }
@@ -103,7 +105,7 @@ TEST(StatusMacros, AssignOrReturnUnsuccessfully) {
   Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntUnsuccessfully());
     (void)value;
-    return Status::OK();
+    return OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), tensorflow::error::INTERNAL);

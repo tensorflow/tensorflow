@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/step_intersection.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/tpu_xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -101,6 +102,15 @@ void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
       env->set_device_type("GPU");
     }
     env->set_device_core_count(gpu_planes.size());
+  } else if (std::vector<const XPlane*> tpu_planes =
+                 FindTensorCorePlanes(space);
+             !tpu_planes.empty()) {
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(tpu_planes.at(0));
+    auto xstat = visitor.GetStat(StatType::kDeviceTypeString);
+    if (xstat.has_value()) {
+      env->set_device_type(std::string(xstat->StrOrRefValue()));
+    }
+    env->set_device_core_count(tpu_planes.size());
   } else {
     env->set_device_type("CPU");
     env->set_device_core_count(0);
@@ -203,7 +213,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
   // if there is only a single XSpace.
   if (xspaces.size() == 1) {
     *combined_op_stats = ConvertXSpaceToOpStats(xspaces[0], options);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Read multiple XSpaces and convert to multiple OpStats.
@@ -227,7 +237,7 @@ Status ConvertMultiXSpacesToCombinedOpStats(const std::vector<XSpace>& xspaces,
       ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
   CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace profiler

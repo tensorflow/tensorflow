@@ -110,7 +110,7 @@ port::Status MultiPlatformManagerImpl::RegisterPlatform(
   for (const auto& listener : listeners_) {
     listener->PlatformRegistered(platform_ptr);
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
@@ -186,7 +186,7 @@ port::Status MultiPlatformManagerImpl::RegisterListener(
   CHECK(id_map_.empty());
   CHECK(name_map_.empty());
   listeners_.push_back(std::move(listener));
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<std::vector<Platform*>>

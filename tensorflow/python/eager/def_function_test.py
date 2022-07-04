@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from six.moves import range
 
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.checkpoint.checkpoint import Checkpoint
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
@@ -49,7 +50,6 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training.tracking.util import Checkpoint
 
 
 def undecorated_function(x):

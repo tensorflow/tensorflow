@@ -305,7 +305,7 @@ StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
           ConvertFunctionDef(func_op, gradient_map, function),
           "While importing function: ", function.signature().name());
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
 
   // TODO(jeffniu): Don't import functions in parallel if there are too few (how
@@ -405,7 +405,7 @@ Status GraphDefImporter::ConvertFunctionAttributes(
     attrs.append(op.resource_arg_unique_ids_valuesAttrName(),
                  b_.getI32TensorAttr(resource_arg_unique_ids_values));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
@@ -429,7 +429,7 @@ Status GraphDefImporter::ConvertArgumentAttributes(const OpDef::ArgDef &def,
         ConvertAttribute(def.experimental_full_type(), b_, dialect_));
     attrs.append(dialect_->getTfgFullTypeAttrIdentifier(), full_type);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Location GraphDefImporter::ConvertLocation(const NodeDef &node) {
@@ -638,7 +638,7 @@ Status GraphDefImporter::ConvertFunctionDef(
                     TypeAttr::get(b_.getFunctionType(arg_types, res_types)));
   func_op->setAttrs(func_attrs.getDictionary(ctx_));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertNodes(
@@ -691,7 +691,7 @@ Status GraphDefImporter::ConvertNodes(
   // delete it from the IR.
   s.Finalize();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
@@ -746,6 +746,9 @@ StatusOr<unsigned> GraphDefImporter::ArgNumType(const NamedAttrList &attrs,
 Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
                                         const NodeDef &node) {
   VLOG(4) << "Importing: " << node.name();
+  if (node.op().empty())
+    return InvalidArgument("Node ", node.name(), " has an empty op name");
+
   OperationState state(ConvertLocation(node), absl::StrCat("tfg.", node.op()));
 
   // The GraphImporter does light shape inference, but here we will defer all of
@@ -777,7 +780,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
     TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr full_type,
                         ConvertAttribute(full_type_def, b_, dialect_));
     state.addAttribute(dialect_->getFullTypeAttrIdentifier(), full_type);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   };
   if (node.has_experimental_type()) {
     TF_RETURN_IF_ERROR(add_full_type(node.experimental_type()));
@@ -886,7 +889,7 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   }
   info->backedges.clear();
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
@@ -896,7 +899,7 @@ Status GraphDefImporter::ConvertDataTypesToUnrankedTensorTypes(
     TF_RETURN_IF_ERROR(ConvertDataType(tf_dtype, b_, &dtype));
     results.push_back(UnrankedTensorType::get(dtype));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
@@ -907,8 +910,8 @@ StatusOr<OwningOpRef<ModuleOp>> ImportGraphDef(MLIRContext *context,
   return importer.ConvertGraphDef(graph_def);
 }
 
-StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
-    MLIRContext *context, const Graph &graph, const GraphDebugInfo &debug_info,
+StatusOr<OwningOpRef<ModuleOp>> ImportGraphAndFunctionsToMlir(
+    MLIRContext *context, const GraphDebugInfo &debug_info, const Graph &graph,
     const FunctionLibraryDefinition &flib_def) {
   // TODO(b/231723721): This conversion path is slow because both the graph and
   // the function library are converted to GraphDef.

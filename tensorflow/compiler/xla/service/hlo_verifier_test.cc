@@ -39,7 +39,7 @@ namespace {
 using ::testing::HasSubstr;
 
 std::unique_ptr<HloModule> CreateUnverifiedModule() {
-  return absl::make_unique<HloModule>("module", HloModuleConfig());
+  return std::make_unique<HloModule>("module", HloModuleConfig());
 }
 
 // This class cannot be converted to use HloTestBase. It explicitly
@@ -796,6 +796,26 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncUpdateAndAsyncDone) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTestLayoutSensitive,
+       AsyncStartAndAsyncUpdateAndAsyncDoneWithThreadName) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_thread_name="parallel_thread", custom_call_target="foo"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), async_thread_name="parallel_thread", custom_call_target="foo"
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_thread_name="parallel_thread", custom_call_target="foo"
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_thread_name="parallel_thread", custom_call_target="foo"
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -814,6 +834,25 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   EXPECT_THAT(status.error_message(),
               HasSubstr("async-done expects the async shape at index {1} to "
                         "match the async computation root shape"));
+}
+
+TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongThreadName) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY AsyncStartAndAsyncDone {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), async_thread_name="parallel_thread", custom_call_target="foo"
+    ROOT async-done = f32[2,3] custom-call-done(async-start), async_thread_name="main_thread", custom_call_target="bar"
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("thread name (main_thread vs parallel_thread)."));
 }
 
 TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongAttr) {
@@ -1092,6 +1131,50 @@ TEST_F(HloVerifierTest, AsyncUpdateWrongType) {
           "async-update expects the shape of operand and output to match"));
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, AsyncDoneWrongGroupId) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_group_id=0, custom_call_target="foo"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), async_group_id=0, custom_call_target="foo"
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_group_id=0, custom_call_target="foo"
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_group_id=1, custom_call_target="foo"
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("async-done expects its operand to have the same group "
+                        "id (1 vs 0)."));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, AsyncUpdateWrongGroupId) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_group_id=0, custom_call_target="foo"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), custom_call_target="foo"
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_group_id=0, custom_call_target="foo"
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_group_id=0, custom_call_target="foo"
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("async-update expects its operand to have the same "
+                        "group id (none vs 0)."));
+}
+
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
   const char* const hlo_string = R"(
   HloModule IotaTupleResult
@@ -1228,9 +1311,8 @@ int64_t ReplicaCount(const std::vector<std::vector<int64_t>>& replica_groups) {
 
 StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
     std::vector<std::vector<int64_t>> replica_groups,
-    absl::optional<int64_t> replica_count,
-    absl::optional<int64_t> num_partitions, absl::string_view other_attributes,
-    absl::string_view template_str) {
+    std::optional<int64_t> replica_count, std::optional<int64_t> num_partitions,
+    absl::string_view other_attributes, absl::string_view template_str) {
   HloModuleConfig config;
   config.set_replica_count(
       replica_count.value_or(ReplicaCount(replica_groups)));
@@ -1247,8 +1329,8 @@ StatusOr<std::unique_ptr<HloModule>> MakeCollectiveCommOpComputation(
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
     std::vector<std::vector<int64_t>> replica_groups,
-    absl::optional<int64_t> replica_count = absl::nullopt,
-    absl::optional<int64_t> num_partitions = absl::nullopt,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test
@@ -1440,8 +1522,8 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
 
 StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64_t>> replica_groups,
-    absl::optional<int64_t> replica_count = absl::nullopt,
-    absl::optional<int64_t> num_partitions = absl::nullopt,
+    std::optional<int64_t> replica_count = std::nullopt,
+    std::optional<int64_t> num_partitions = std::nullopt,
     absl::string_view other_attributes = "") {
   const char* kTemplate = R"(
   HloModule test

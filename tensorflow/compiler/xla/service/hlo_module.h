@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -27,9 +28,9 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -66,11 +67,8 @@ using LayoutCanonicalizationCallback =
 // attached to.
 class HloModule {
  public:
-  // Constructor without a versioned computation handle. This constructor should
-  // only be used for HloModules used outside of the XLA service (eg
-  // tests). The versioned handle is used by the service in the compilation
-  // cache. A default configuration is created for this module.
-  explicit HloModule(const std::string& name, HloModuleConfig config);
+  // Constructor.
+  HloModule(const std::string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -459,7 +457,14 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+
  private:
+  // This constructor is used in Clone() to copy the ComputationEnvironments.
+  // comp_envs may be null, in which case a clean one will be created.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs);
+
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
@@ -490,7 +495,7 @@ class HloModule {
   // The HloSchedule of the module. The schedule if it exists contains a
   // sequential order of instructions for each non-fusion computation in the
   // module.
-  absl::optional<HloSchedule> schedule_;
+  std::optional<HloSchedule> schedule_;
 
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
@@ -501,11 +506,11 @@ class HloModule {
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.
-  absl::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
+  std::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
 
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
-  absl::optional<HloSharding> spmd_output_sharding_;
+  std::optional<HloSharding> spmd_output_sharding_;
 
   // Arguments to be prefetched across programs.
   std::vector<std::pair<int64_t, ShapeIndex>> cross_program_prefetches_;
@@ -532,6 +537,11 @@ class HloModule {
   // Layout canonicalization callback, used only when
   // use_auto_spmd_partitioning_ = true.
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
+
+  // Compilation environments (protos that carry command line flags and
+  // environment variables).
+  std::unique_ptr<CompilationEnvironments> comp_envs_ =
+      std::make_unique<CompilationEnvironments>();
 };
 
 }  // namespace xla

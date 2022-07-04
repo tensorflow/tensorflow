@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -112,7 +111,7 @@ LogicalResult ConvertReplicaGroups(OpBuilder& builder,
     return op->emitOpError() << "expects constant group_assignment";
   }
   replica_groups =
-      hlo::ConvertElementsAttr(group_assignment, builder.getIntegerType(64))
+      hlo::convertElementsAttr(group_assignment, builder.getIntegerType(64))
           .cast<DenseIntElementsAttr>();
   if (replica_groups.getType().getRank() != 2) {
     return op->emitOpError() << "group_assignment should have rank 2, got "
@@ -121,16 +120,14 @@ LogicalResult ConvertReplicaGroups(OpBuilder& builder,
   return success();
 }
 
-ChannelHandle ConvertChannel(OpBuilder& builder, int64_t channel_id,
-                             StringRef mode) {
+ChannelHandleAttr ConvertChannel(OpBuilder& builder, int64_t channel_id,
+                                 StringRef mode) {
   if (mode == "CrossReplica") {
-    return ChannelHandle();
+    return ChannelHandleAttr();
   }
-  return ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id),
-      /*type=*/
-      builder.getI64IntegerAttr(xla::ChannelHandle::DEVICE_TO_DEVICE),
-      builder.getContext());
+  return ChannelHandleAttr::get(builder.getContext(),
+                                /*handle=*/channel_id,
+                                /*type=*/xla::ChannelHandle::DEVICE_TO_DEVICE);
 }
 
 LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
@@ -139,7 +136,7 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
                                StringRef mode, Value input, StringRef merge_op,
                                StringRef final_op, Operation* op) {
   builder.setInsertionPoint(op);
-  ChannelHandle channel_handle = ConvertChannel(builder, channel_id, mode);
+  ChannelHandleAttr channel_handle = ConvertChannel(builder, channel_id, mode);
   Location loc = op->getLoc();
   Type element_type = getElementTypeOrSelf(input.getType());
   auto all_reduce = builder.create<AllReduceOp>(loc, result_type, input,

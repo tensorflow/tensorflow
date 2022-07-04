@@ -20,9 +20,7 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/escaping.h"
@@ -119,11 +117,34 @@ void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
 
 std::vector<StackFrame> Status::GetStackTrace() const { return stack_trace_; }
 
-Status::Status(tensorflow::error::Code code, absl::string_view msg) {
+absl::Span<const SourceLocation> Status::GetSourceLocations() const {
+  return state_ != nullptr ? state_->source_locations
+                           : absl::Span<const SourceLocation>();
+}
+
+void Status::MaybeAddSourceLocation(SourceLocation loc) {
+  if (state_ == nullptr) {
+    return;
+  }
+  if (loc.line <= 0) {
+    return;
+  }
+  if (loc.file_name == nullptr) {
+    return;
+  }
+  if (loc.file_name[0] == '\0') {
+    return;
+  }
+  state_->source_locations.push_back(loc);
+}
+
+Status::Status(tensorflow::error::Code code, absl::string_view msg,
+               SourceLocation loc) {
   assert(code != tensorflow::error::OK);
   state_ = std::make_unique<State>();
   state_->code = code;
   state_->msg = std::string(msg);
+  MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
 }
@@ -216,10 +237,10 @@ std::string Status::ToString() const {
     result += ": ";
     result += state_->msg;
 
-    for (const std::pair<const std::string, absl::Cord>& element :
+    for (const std::pair<const std::string, std::string>& element :
          state_->payloads) {
       absl::StrAppend(&result, " [", element.first, "='",
-                      absl::CHexEscape(std::string(element.second)), "']");
+                      absl::CHexEscape(element.second), "']");
     }
 
     return result;
@@ -230,17 +251,17 @@ void Status::IgnoreError() const {
   // no-op
 }
 
-void Status::SetPayload(absl::string_view type_url, absl::Cord payload) {
+void Status::SetPayload(absl::string_view type_url, absl::string_view payload) {
   if (ok()) return;
-  state_->payloads[std::string(type_url)] = std::move(payload);
+  state_->payloads[std::string(type_url)] = std::string(payload);
 }
 
-absl::optional<absl::Cord> Status::GetPayload(
+absl::optional<absl::string_view> Status::GetPayload(
     absl::string_view type_url) const {
   if (ok()) return absl::nullopt;
   auto payload_iter = state_->payloads.find(std::string(type_url));
   if (payload_iter == state_->payloads.end()) return absl::nullopt;
-  return payload_iter->second;
+  return absl::string_view(payload_iter->second);
 }
 
 bool Status::ErasePayload(absl::string_view type_url) {
@@ -252,7 +273,7 @@ bool Status::ErasePayload(absl::string_view type_url) {
 }
 
 void Status::ForEachPayload(
-    absl::FunctionRef<void(absl::string_view, const absl::Cord&)> visitor)
+    const std::function<void(absl::string_view, absl::string_view)>& visitor)
     const {
   if (ok()) return;
   for (const auto& payload : state_->payloads) {
@@ -266,134 +287,6 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
 }
 
 Status OkStatus() { return Status(); }
-
-bool IsAborted(const Status& status) {
-  return status.code() == tensorflow::errors::Code::ABORTED;
-}
-
-bool IsAlreadyExists(const Status& status) {
-  return status.code() == tensorflow::errors::Code::ALREADY_EXISTS;
-}
-
-bool IsCancelled(const Status& status) {
-  return status.code() == tensorflow::errors::Code::CANCELLED;
-}
-
-bool IsDataLoss(const Status& status) {
-  return status.code() == tensorflow::errors::Code::DATA_LOSS;
-}
-
-bool IsDeadlineExceeded(const Status& status) {
-  return status.code() == tensorflow::errors::Code::DEADLINE_EXCEEDED;
-}
-
-bool IsFailedPrecondition(const Status& status) {
-  return status.code() == tensorflow::errors::Code::FAILED_PRECONDITION;
-}
-
-bool IsInternal(const Status& status) {
-  return status.code() == tensorflow::errors::Code::INTERNAL;
-}
-
-bool IsInvalidArgument(const Status& status) {
-  return status.code() == tensorflow::errors::Code::INVALID_ARGUMENT;
-}
-
-bool IsNotFound(const Status& status) {
-  return status.code() == tensorflow::errors::Code::NOT_FOUND;
-}
-
-bool IsOutOfRange(const Status& status) {
-  return status.code() == tensorflow::errors::Code::OUT_OF_RANGE;
-}
-
-bool IsPermissionDenied(const Status& status) {
-  return status.code() == tensorflow::errors::Code::PERMISSION_DENIED;
-}
-
-bool IsResourceExhausted(const Status& status) {
-  return status.code() == tensorflow::errors::Code::RESOURCE_EXHAUSTED;
-}
-
-bool IsUnauthenticated(const Status& status) {
-  return status.code() == tensorflow::errors::Code::UNAUTHENTICATED;
-}
-
-bool IsUnavailable(const Status& status) {
-  return status.code() == tensorflow::errors::Code::UNAVAILABLE;
-}
-
-bool IsUnimplemented(const Status& status) {
-  return status.code() == tensorflow::errors::Code::UNIMPLEMENTED;
-}
-
-bool IsUnknown(const Status& status) {
-  return status.code() == tensorflow::errors::Code::UNKNOWN;
-}
-
-Status AbortedError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::ABORTED, message);
-}
-
-Status AlreadyExistsError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::ALREADY_EXISTS, message);
-}
-
-Status CancelledError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::CANCELLED, message);
-}
-
-Status DataLossError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::DATA_LOSS, message);
-}
-
-Status DeadlineExceededError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::DEADLINE_EXCEEDED, message);
-}
-
-Status FailedPreconditionError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::FAILED_PRECONDITION, message);
-}
-
-Status InternalError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::INTERNAL, message);
-}
-
-Status InvalidArgumentError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::INVALID_ARGUMENT, message);
-}
-
-Status NotFoundError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::NOT_FOUND, message);
-}
-
-Status OutOfRangeError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::OUT_OF_RANGE, message);
-}
-
-Status PermissionDeniedError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::PERMISSION_DENIED, message);
-}
-
-Status ResourceExhaustedError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::RESOURCE_EXHAUSTED, message);
-}
-
-Status UnauthenticatedError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::UNAUTHENTICATED, message);
-}
-
-Status UnavailableError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::UNAVAILABLE, message);
-}
-
-Status UnimplementedError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::UNIMPLEMENTED, message);
-}
-
-Status UnknownError(absl::string_view message) {
-  return Status(tensorflow::errors::Code::UNKNOWN, message);
-}
 
 std::string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
                                       const char* msg) {
@@ -424,7 +317,7 @@ Status StatusGroup::MakeDerived(const Status& s) {
     // TODO(b/200167936): Serialize an instance of DerivedStatus proto instead
     // of using the string directly. The string is never used so it is not
     // causing any issues at the moment.
-    derived.SetPayload(kDerivedStatusProtoUrl, absl::Cord(""));
+    derived.SetPayload(kDerivedStatusProtoUrl, "");
     return derived;
   }
 }
@@ -453,11 +346,11 @@ void StatusGroup::Update(const Status& s) {
 static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
 static constexpr int kMaxAttachedLogMessageSize = 512;
 
-std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
-  std::unordered_map<std::string, absl::Cord> payloads;
+std::unordered_map<std::string, std::string> StatusGroup::GetPayloads() const {
+  std::unordered_map<std::string, std::string> payloads;
   auto capture_payload = [&payloads](absl::string_view key,
-                                     const absl::Cord& value) {
-    payloads[std::string(key)] = value;
+                                     absl::string_view value) {
+    payloads[std::string(key)] = std::string(value);
   };
 
   for (const auto& status : derived_) {
@@ -475,8 +368,9 @@ std::unordered_map<std::string, absl::Cord> StatusGroup::GetPayloads() const {
   return payloads;
 }
 
-Status MakeStatus(tensorflow::error::Code code, absl::string_view message,
-                  const std::unordered_map<std::string, absl::Cord>& payloads) {
+Status MakeStatus(
+    tensorflow::error::Code code, absl::string_view message,
+    const std::unordered_map<std::string, std::string>& payloads) {
   Status status(code, message);
   for (const auto& payload : payloads) {
     status.SetPayload(payload.first, payload.second);
@@ -492,7 +386,7 @@ std::string MakeString(const Status& status) {
 // individual Status objects in the StatusGroup are not already summarized.
 Status StatusGroup::as_summary_status() const {
   if (ok_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Gather recent logs as a string
@@ -558,7 +452,7 @@ Status StatusGroup::as_summary_status() const {
 // individual Status objects in the StatusGroup are already summarized Status.
 Status StatusGroup::as_concatenated_status() const {
   if (ok_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If only one root status is found, return it directly.

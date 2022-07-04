@@ -19,6 +19,8 @@ See `util.py` the other checkpointing utils.
 """
 
 import collections
+from tensorflow.python.checkpoint import saveable_compat
+from tensorflow.python.trackable import trackable_utils
 
 
 _DeferredSlotVariableRestoration = collections.namedtuple(
@@ -68,4 +70,14 @@ def queue_slot_variables(checkpoint_position, visit_queue):
               slot_restoration.slot_name))
       if slot_variable_position is not None:
         visit_queue.append((slot_variable_position, slot_variable))
+
+
+def extract_saveable_name(trackable, checkpoint_key):
+  if saveable_compat.get_saveable_name(trackable) is not None:
+    # If there is a legacy saveable name, the saveable name is the checkpoint
+    # key.
+    return checkpoint_key
+  # Substring the checkpoint key to the end of the ".ATTRIBUTES/" (len=12)
+  return checkpoint_key[:checkpoint_key.index(
+      trackable_utils.OBJECT_ATTRIBUTES_NAME) + 12]
 

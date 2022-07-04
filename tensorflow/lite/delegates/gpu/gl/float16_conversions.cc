@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/float16_conversions.h"
 
 #include <cstdint>
+#include <variant>
 #include <vector>
 
 #include "fp16.h"  // from @FP16
@@ -61,7 +62,7 @@ struct ConverterToFloat16 {
 
 bool MaybeConvertToFloat16(Object* object) {
   if (object->data_type == DataType::FLOAT32 &&
-      absl::visit(ConverterToFloat16(), object->object)) {
+      std::visit(ConverterToFloat16(), object->object)) {
     object->data_type = DataType::FLOAT16;
     return true;
   }

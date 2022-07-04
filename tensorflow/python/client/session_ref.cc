@@ -394,7 +394,7 @@ SessionRef::~SessionRef() = default;
 Status SessionRef::CheckNotClosed() {
   mutex_lock l(run_lock_);
   if (session_ == nullptr) return errors::Cancelled("Session has been closed.");
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // If logging is active, log the start and end time of the operation along with
@@ -480,7 +480,7 @@ Status SessionRef::ReleaseCallable(CallableHandle handle) {
     mutex_lock l(run_lock_);
     if (session_ == nullptr) {
       // Session already closed. Do nothing.
-      return Status::OK();
+      return OkStatus();
     }
   }
   LOG_AND_RUN_OPERATION(ReleaseCallable, handle);

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -93,7 +93,7 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 class PjRtClient;
 
 using PjRtDeviceAttribute =
-    absl::variant<std::string, int64_t, std::vector<int64_t>>;
+    std::variant<std::string, int64_t, std::vector<int64_t>>;
 
 class PjRtDevice {
  public:
@@ -195,7 +195,7 @@ struct PjRtCrossHostRecvState {
   PjRtCrossHostSendCancelNotifier cancel_notifier;
 };
 using PjRtCrossHostRecvNotifier =
-    std::function<void(StatusOr<PjRtCrossHostRecvState>&&)>;
+    std::function<void(StatusOr<PjRtCrossHostRecvState>)>;
 
 // Provides configuration for implementations that support compile and execute
 // spanning multiple slices. A slice is a set of devices connected by dedicated
@@ -220,7 +220,7 @@ class MultiSliceConfig {
 
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
-  absl::optional<std::vector<Shape>> argument_layouts;
+  std::optional<std::vector<Shape>> argument_layouts;
 
   // If true, the supplied computation expects its arguments to be wrapped in a
   // tuple and passed as a single parameter.
@@ -241,6 +241,134 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+};
+
+// A sized chunk of host data. The host data can be either in host layout or in
+// device layout, and it can be one part of the entire buffer. The PjRt
+// implementations can customize how the memory is allocated and deallocated.
+class PjRtChunk {
+ public:
+  // Allocate a PjRtChunk using malloc.
+  static PjRtChunk AllocateDefault(size_t size) {
+    return PjRtChunk(malloc(size), size, [](void* ptr) { free(ptr); });
+  }
+
+  PjRtChunk() = default;
+  PjRtChunk(void* data, size_t size, std::function<void(void*)> deleter)
+      : data_(static_cast<uint8_t*>(data)),
+        size_(size),
+        deleter_(std::move(deleter)) {}
+
+  ~PjRtChunk() {
+    if (data_) {
+      deleter_(data_);
+    }
+  }
+
+  PjRtChunk(PjRtChunk&& other)
+      : data_(other.data_),
+        size_(other.size_),
+        deleter_(std::move(other.deleter_)) {
+    other.data_ = nullptr;
+  }
+  PjRtChunk& operator=(PjRtChunk&& other) {
+    if (data_) {
+      deleter_(data_);
+    }
+    data_ = other.data_;
+    size_ = other.size_;
+    deleter_ = std::move(other.deleter_);
+    other.data_ = nullptr;
+    return *this;
+  }
+
+  PjRtChunk(const PjRtChunk&) = delete;
+  PjRtChunk& operator=(const PjRtChunk&) = delete;
+
+  uint8_t* data() { return data_; }
+  const uint8_t* data() const { return data_; }
+  int64_t size() const { return size_; }
+
+ private:
+  // The ownership of the bytes pointed to by `data_` is controlled by the
+  // `deleter_`.
+  uint8_t* data_ = nullptr;
+  size_t size_ = 0;
+  std::function<void(void*)> deleter_;
+};
+
+// A stream of Chunks from the host to the device. Once the stream enters
+// Complete state it never changes state again.
+//
+// This class is thread-safe.
+class CopyToDeviceStream {
+ public:
+  explicit CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
+      : total_bytes_(total_bytes), granule_bytes_(granule_bytes) {}
+
+  // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
+  // if the Chunk's size causes the amount of transferred data to exceed
+  // total_bytes() or if the stream is already complete.
+  //
+  // The size of the chunk must be a multiple of granule_bytes().
+  // TODO(jmolloy): Enforce the granule size.
+  Status AddChunk(PjRtChunk chunk);
+
+  // Returns the total amount of data the stream expects to be transferred.
+  int64_t total_bytes() const { return total_bytes_; }
+
+  // Returns the granule size in bytes. The size of the chunk added to this
+  // stream must be a multiple of this number.
+  int64_t granule_size_in_bytes() const { return granule_bytes_; }
+
+  // Returns the amount of data the stream currently has either transferred or
+  // has buffered to transfer.
+  int64_t current_bytes() const {
+    absl::MutexLock lock(&mu_);
+    return current_bytes_;
+  }
+
+  // Returns true if the stream is complete; all expected bytes have been
+  // transferred or are buffered to transfer.
+  bool IsComplete() const {
+    absl::MutexLock lock(&mu_);
+    return current_bytes_ == total_bytes_;
+  }
+
+  // Returns true if the stream is empty; no data has been queued.
+  bool empty() const { return current_bytes() == 0; }
+
+  // Consumes the next chunk. If no chunks remain, returns nullopt. Blocks
+  // until a chunk is available.
+  std::optional<PjRtChunk> ConsumeNextChunk();
+
+  // Members are protected to allow subclassing for mocking in tests.
+ protected:
+  int64_t total_bytes_;
+  int64_t granule_bytes_;
+  int64_t current_bytes_ ABSL_GUARDED_BY(mu_) = 0;
+  std::deque<PjRtChunk> buffered_chunks_ ABSL_GUARDED_BY(mu_);
+  mutable absl::Mutex mu_;
+};
+
+class PjRtHostMemoryForDeviceManager {
+ public:
+  virtual ~PjRtHostMemoryForDeviceManager();
+
+  // Transforms the host memory representations of a shape with the host layout
+  // to the host memory representation of the same shape with the device layout.
+  // `src_shape` and `dst_shape` may only differ in their layouts.
+  virtual StatusOr<PjRtChunk> ToDeviceLayout(const void* src_data,
+                                             size_t src_size,
+                                             const Shape& host_shape,
+                                             const Shape& device_shape) = 0;
+
+  // Transforms the host memory representations of a shape with the device
+  // layout to the host memory representation of the same shape with the host
+  // layout. `src_shape` and `dst_shape` may only differ in their layouts.
+  virtual Status ToHostLayout(const void* src_data, size_t src_size,
+                              const Shape& src_shape, void* dst_data,
+                              size_t dst_size, const Shape& dst_shape) = 0;
 };
 
 class PjRtExecutable;
@@ -294,6 +422,12 @@ class PjRtExecutable;
 // will eventually be able to make progress.
 class PjRtClient {
  public:
+  PjRtClient() = default;
+  explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
+                          host_memory_for_device_manager)
+      : host_memory_for_device_manager_(
+            std::move(host_memory_for_device_manager)) {}
+
   virtual ~PjRtClient() = default;
 
   // Return the process index of this client. Always 0 in single-process
@@ -350,7 +484,7 @@ class PjRtClient {
   // num_replicas_per_slice is going to be "num_replicas / num_slices".
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, absl::optional<int> num_replicas_per_slice,
+      int num_replicas, std::optional<int> num_replicas_per_slice,
       int num_partitions, const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
@@ -366,8 +500,8 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
 
-  // Generates a unique fingerprint for `executable`, may be absl::nullopt.
-  virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+  // Generates a unique fingerprint for `executable`, may be std::nullopt.
+  virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
       const PjRtExecutable& executable) const = 0;
 
   // Returns a platform-specific serialization of `executable`. The
@@ -524,7 +658,7 @@ class PjRtClient {
   // with dimensions in major-to-minor order.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      absl::optional<absl::Span<int64_t const>> byte_strides,
+      std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
@@ -566,7 +700,7 @@ class PjRtClient {
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier&& notifier) = 0;
+                              PjRtCrossHostRecvNotifier notifier) = 0;
 
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers, as in MakeCrossHostReceiveBuffers above, however
@@ -600,7 +734,7 @@ class PjRtClient {
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier&& notifier) = 0;
+      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) = 0;
 
   // Create ChannelHandles for XLA send/recv.
   virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
@@ -610,6 +744,16 @@ class PjRtClient {
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
   virtual Status Defragment() = 0;
+
+  // Return the PjRtHostMemoryForDeviceManager for this client. It can be
+  // nullptr if the implementation does not provide one.
+  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+    return host_memory_for_device_manager_.get();
+  }
+
+ private:
+  std::unique_ptr<PjRtHostMemoryForDeviceManager>
+      host_memory_for_device_manager_;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer
@@ -844,6 +988,38 @@ class ExecuteContext {
   virtual ~ExecuteContext() = default;
 };
 
+struct PjRtTransferMetadata {
+  Shape device_shape;
+};
+
+struct SendCallback {
+  int64_t channel_id;
+  // The callback for retrieving the send value. It will be invoked once for
+  // each invocation of the corresponding Send op in the HLO program (So it can
+  // be invoked multiple times if it is in a loop). Currently there is no
+  // guarantee that the callback here will be invoked in the same order as their
+  // corresponding HLO Send ops.
+  //
+  // TODO(chky): Currently the callback invocation order may not be consistent
+  // with the HLO send op invocation order, due to limitations in some PjRt
+  // implementation. Consider making it strictly the same order as HLO program.
+  std::function<void(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
+                     size_t total_size_in_bytes, bool done)>
+      callback;
+};
+
+struct RecvCallback {
+  int64_t channel_id;
+  // The callback for feeding the recv value. It will be invoked once for each
+  // invocation of the corresponding Recv op in the HLO program (So it can be
+  // invoked multiple times if it is in a loop). Currently there is no
+  // guarantee that the callback here will be invoked in the same order as their
+  // corresponding HLO Recv ops.
+  std::function<void(const PjRtTransferMetadata& metadata,
+                     CopyToDeviceStream& stream)>
+      callback;
+};
+
 struct ExecuteOptions {
   // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
@@ -869,6 +1045,14 @@ struct ExecuteOptions {
   // config should match what was used during compilation to generate this
   // executable.
   const MultiSliceConfig* multi_slice_config = nullptr;
+
+  // The send/recv callbacks for PjRt execution. The first level span is for
+  // multi-device parallel execution, the second level vector contains the
+  // callbacks for all send/recv ops in the executable. These callbacks can be
+  // stateful and the user code is responsible for managing the states here.
+  // These callbacks must outlive the execution.
+  absl::Span<const std::vector<SendCallback>> send_callbacks;
+  absl::Span<const std::vector<RecvCallback>> recv_callbacks;
 };
 
 // Static device memory usage for a compiled program.
@@ -952,15 +1136,14 @@ class PjRtExecutable {
   // The caller is *NOT* required to ensure that PjRtExecutable stays alive
   // until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  Execute(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options,
-      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) = 0;
+  Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+          const ExecuteOptions& options,
+          std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) = 0;
   // Convenience wrapper for Execute that never returns futures.
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options) {
-    absl::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
     return Execute(std::move(argument_handles), options, returned_futures);
   }
 
@@ -977,13 +1160,12 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) = 0;
+      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) = 0;
   // Convenience wrapper for ExecuteSharded that always returns a future.
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future) {
+      std::optional<PjRtFuture<Status>>& returned_future) {
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/true);
   }
@@ -991,7 +1173,7 @@ class PjRtExecutable {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) {
-    absl::optional<PjRtFuture<Status>> returned_future;
+    std::optional<PjRtFuture<Status>> returned_future;
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/false);
   }
@@ -1009,13 +1191,12 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future,
-      bool fill_future) = 0;
+      std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) = 0;
   // Convenience wrapper for ExecutePortable that always returns a future.
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      absl::optional<PjRtFuture<Status>>& returned_future) {
+      std::optional<PjRtFuture<Status>>& returned_future) {
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/true);
   }
@@ -1023,7 +1204,7 @@ class PjRtExecutable {
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options) {
-    absl::optional<PjRtFuture<Status>> returned_future;
+    std::optional<PjRtFuture<Status>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
   }
@@ -1039,7 +1220,7 @@ class PjRtExecutable {
   // combining the result buffers with a future that becomes ready when the
   // execution completes.
   struct Result {
-    absl::optional<PjRtFuture<Status>> future;
+    std::optional<PjRtFuture<Status>> future;
     std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   };
 };

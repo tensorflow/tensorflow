@@ -70,7 +70,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     config.set_debug_options(debug_opts);
 
     auto result = backend().compiler()->RunHloPasses(
-        ParseAndReturnVerifiedModule(hlo_string, config).ConsumeValueOrDie(),
+        ParseAndReturnVerifiedModule(hlo_string, config).value(),
         backend().default_stream_executor(), backend().memory_allocator());
     if (!result.status().ok()) {
       TF_EXPECT_OK(result.status())
@@ -357,9 +357,9 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
           .compiler()
           ->RunHloPasses(
               ParseAndReturnVerifiedModule(kHloString, GetModuleConfigForTest())
-                  .ConsumeValueOrDie(),
+                  .value(),
               backend().default_stream_executor(), backend().memory_allocator())
-          .ConsumeValueOrDie()
+          .value()
           ->ToString();
   EXPECT_THAT(optimized_hlo_string,
               ::testing::ContainsRegex(

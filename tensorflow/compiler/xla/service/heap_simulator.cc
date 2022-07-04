@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <tuple>
 #include <vector>
 
@@ -25,7 +26,6 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
@@ -62,9 +62,8 @@ StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
   // bound, by minimizing the liveness of sub-computations.
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
-      HeapSimulator::Run(
-          absl::make_unique<NoFragmentationStatsHeap<HloValue>>(), *module,
-          schedule, *alias_analysis, size_function));
+      HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
+                         *module, schedule, *alias_analysis, size_function));
   return result.heap_size;
 }
 
@@ -77,10 +76,9 @@ StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
         memory_by_computation) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
-      HeapSimulator::Run(
-          absl::make_unique<NoFragmentationStatsHeap<HloValue>>(), computation,
-          sequence, alias_analysis, size_function, HeapSimulator::Options(),
-          memory_by_computation));
+      HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
+                         computation, sequence, alias_analysis, size_function,
+                         HeapSimulator::Options(), memory_by_computation));
   return result.heap_size;
 }
 
@@ -91,10 +89,9 @@ StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloSchedule* schedule) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
-      HeapSimulator::Run(
-          absl::make_unique<NoFragmentationStatsHeap<HloValue>>(), computation,
-          sequence, alias_analysis, size_function, schedule,
-          HeapSimulator::Options()));
+      HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
+                         computation, sequence, alias_analysis, size_function,
+                         schedule, HeapSimulator::Options()));
   return result.heap_size;
 }
 
@@ -333,7 +330,7 @@ Status HeapSimulator::RunComputation(
       Free(value, value->instruction());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 HeapSimulator::HeapSimulator(
@@ -343,7 +340,7 @@ HeapSimulator::HeapSimulator(
     const absl::flat_hash_map<const HloComputation*, int64_t>*
         memory_by_computation)
     : no_fragmentation_stats_(
-          absl::make_unique<NoFragmentationStatsHeap<HloValue>>()),
+          std::make_unique<NoFragmentationStatsHeap<HloValue>>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),

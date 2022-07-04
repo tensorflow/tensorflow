@@ -36,8 +36,7 @@ int main(int argc, char **argv) {
     LOG(QFATAL) << "Usage: " << argv[0] << " <path-to-serialized-literal-text>";
   }
 
-  xla::Literal literal =
-      xla::TextLiteralReader::ReadPath(argv[1]).ConsumeValueOrDie();
+  xla::Literal literal = xla::TextLiteralReader::ReadPath(argv[1]).value();
 
   LOG(INFO) << "literal: " << literal;
   fprintf(stderr, "%s\n", literal.ToString().c_str());

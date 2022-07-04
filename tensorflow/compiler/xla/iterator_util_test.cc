@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/test.h"
 
 namespace xla {
@@ -27,7 +27,7 @@ namespace {
 TEST(UnwrappingIteratorTest, Simple) {
   std::vector<std::unique_ptr<int>> v;
   for (int i = 0; i < 3; ++i) {
-    v.push_back(absl::make_unique<int>(i));
+    v.push_back(std::make_unique<int>(i));
   }
   int i = 0;
   for (auto iter = MakeUnwrappingIterator(v.begin());
@@ -51,7 +51,7 @@ TEST(UnwrappingIteratorTest, PostincrementOperator) {
 TEST(UnwrappingIteratorTest, StdFind) {
   std::list<std::unique_ptr<int>> l;
   for (int i = 0; i < 3; ++i) {
-    l.push_back(absl::make_unique<int>(i));
+    l.push_back(std::make_unique<int>(i));
   }
   EXPECT_EQ(l.begin()->get(),
             *std::find(MakeUnwrappingIterator(l.begin()),

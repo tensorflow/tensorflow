@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 #include <iostream>
+#include <memory>
 #include <sstream>
+#include <string>
 
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
@@ -336,9 +338,9 @@ std::unique_ptr<profiling::memory::MemoryUsageMonitor>
 BenchmarkModel::MayCreateMemoryUsageMonitor() const {
   if (!params_.Get<bool>("report_peak_memory_footprint")) return nullptr;
 
-  return std::unique_ptr<profiling::memory::MemoryUsageMonitor>(
-      new profiling::memory::MemoryUsageMonitor(
-          params_.Get<int32_t>("memory_footprint_check_interval_ms")));
+  return std::make_unique<profiling::memory::MemoryUsageMonitor>(
+
+      params_.Get<int32_t>("memory_footprint_check_interval_ms"));
 }
 
 }  // namespace benchmark

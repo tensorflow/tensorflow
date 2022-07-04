@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_join.h"

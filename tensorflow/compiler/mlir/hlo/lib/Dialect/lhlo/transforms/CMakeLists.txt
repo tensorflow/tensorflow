@@ -34,9 +34,10 @@ add_mlir_library(LmhloPasses
 
   LINK_LIBS PUBLIC
   LmhloDialect
-  MLIRComplex
+  MLIRComplexDialect
   MLIRGPUOps
-  MLIRLinalg
+  MLIRLinalgDialect
+  MLIRLinalgAnalysis
   MLIRLinalgTransforms
   MLIRMhloUtils
   MLIRIR

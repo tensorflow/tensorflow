@@ -282,7 +282,7 @@ class PyTpuBuffer {
   // Allocates and optionally initializes a non-tuple buffer on the device.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> CreateBuffer(
       const Shape& non_tuple_shape,
-      absl::optional<BufferInitializer> initializer,
+      std::optional<BufferInitializer> initializer,
       std::shared_ptr<PyTpuClient> client, std::shared_ptr<PjRtDevice> device);
 
   const std::shared_ptr<PyTpuClient> client_;
@@ -317,13 +317,12 @@ class PyTpuExecutable {
  public:
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
+      std::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 
   static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileMlir(
-      mlir::ModuleOp module,
-      absl::optional<std::vector<Shape>> argument_layouts,
+      mlir::ModuleOp module, std::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 

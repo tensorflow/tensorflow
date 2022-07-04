@@ -186,6 +186,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
+  Status EmitLaunchFunc(mlir::Operation* op);
   Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
@@ -709,8 +710,8 @@ class IrEmitterUnnested : public IrEmitter {
   // to only given thread and/or block id.
   void EmitPrintfWithThreadId(
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
-      absl::optional<int64_t> thread_id_filter = absl::nullopt,
-      absl::optional<int64_t> block_id_filter = absl::nullopt);
+      std::optional<int64_t> thread_id_filter = std::nullopt,
+      std::optional<int64_t> block_id_filter = std::nullopt);
 
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);

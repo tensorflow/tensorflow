@@ -20,8 +20,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.037248 ],
 // CHECK-NEXT:         zero_point: [ -19 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 528 ],
 // CHECK-NEXT:       type: INT8,
@@ -30,8 +29,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.059802 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 528 ],
 // CHECK-NEXT:       type: INT8,
@@ -40,8 +38,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.031926 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 528 ],
 // CHECK-NEXT:       type: INT8,
@@ -50,8 +47,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.056272 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 528 ],
 // CHECK-NEXT:       type: INT8,
@@ -60,8 +56,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.063764 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 640 ],
 // CHECK-NEXT:       type: INT8,
@@ -70,8 +65,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.013359 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 640 ],
 // CHECK-NEXT:       type: INT8,
@@ -80,8 +74,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.02283 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 640 ],
 // CHECK-NEXT:       type: INT8,
@@ -90,8 +83,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.032276 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048, 640 ],
 // CHECK-NEXT:       type: INT8,
@@ -100,8 +92,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.035427 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT32,
@@ -110,8 +101,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.0 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT32,
@@ -120,8 +110,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.0 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT32,
@@ -130,8 +119,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.0 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT32,
@@ -140,8 +128,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.0 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 640, 2048 ],
 // CHECK-NEXT:       type: INT8,
@@ -150,8 +137,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.021174 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 640 ],
 // CHECK-NEXT:       type: INT32,
@@ -160,8 +146,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.00016 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT16,
@@ -170,8 +155,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.000437 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT16,
@@ -180,8 +164,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.00011 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT16,
@@ -190,8 +173,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.000168 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 2048 ],
 // CHECK-NEXT:       type: INT16,
@@ -200,8 +182,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.000156 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1, 640 ],
 // CHECK-NEXT:       type: INT8,
@@ -210,8 +191,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:         scale: [ 0.096711 ],
 // CHECK-NEXT:         zero_point: [ 10 ]
 // CHECK-NEXT:       },
-// CHECK-NEXT:       is_variable: true,
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       is_variable: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1, 2048 ],
 // CHECK-NEXT:       type: INT16,
@@ -220,8 +200,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:         scale: [ 0.000488 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
 // CHECK-NEXT:       },
-// CHECK-NEXT:       is_variable: true,
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       is_variable: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 0 ],
 // CHECK-NEXT:       type: INT16,
@@ -229,8 +208,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.004989 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 0 ],
 // CHECK-NEXT:       type: INT16,
@@ -238,8 +216,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.007885 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 0 ],
 // CHECK-NEXT:       type: INT16,
@@ -247,8 +224,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.008763 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 0 ],
 // CHECK-NEXT:       type: INT16,
@@ -256,8 +232,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.005753 ],
 // CHECK-NEXT:         zero_point: [ 0 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 0 ],
 // CHECK-NEXT:       type: INT8,
@@ -265,8 +240,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.007563 ],
 // CHECK-NEXT:         zero_point: [ 2 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1, 640 ],
 // CHECK-NEXT:       type: INT8,
@@ -275,8 +249,7 @@ func.func @main(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.037248000502586365:
 // CHECK-NEXT:       quantization: {
 // CHECK-NEXT:         scale: [ 0.096711 ],
 // CHECK-NEXT:         zero_point: [ 10 ]
-// CHECK-NEXT:       },
-// CHECK-NEXT:       has_rank: true
+// CHECK-NEXT:       }
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 ],
 // CHECK-NEXT:     outputs: [ 26 ],

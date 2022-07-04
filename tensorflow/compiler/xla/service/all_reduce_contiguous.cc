@@ -79,7 +79,7 @@ Status ReplaceWithContiguousAllReduce(HloAllReduceInstruction* all_reduce) {
   // Replace original all-reduce with tuple of slices from new all-reduce.
   TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
       all_reduce, HloInstruction::CreateTuple(outputs)));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

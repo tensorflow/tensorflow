@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/jpeg_header_parser.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg_decoder.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -100,7 +101,8 @@ constexpr char kMetricPrefix[] = "metrics/";
 class ValidationGraphBuilder {
  public:
   ValidationGraphBuilder(const Model* main_model,
-                         std::vector<std::string> jpeg_data, float scale,
+                         std::vector<std::string> jpeg_data,
+                         int32_t jpeg_output_channels, float scale,
                          int64_t zero_point, const Model* validation_model,
                          const reflection::Schema* schema,
                          bool use_ondevice_cpu_for_golden);
@@ -437,13 +439,13 @@ class ValidationGraphBuilder {
       bool intermediate_only, const TensorInfo& tensor_info) {
     std::vector<fb::Offset<Operator>> ops;
     // Jpeg decode.
-    ops.push_back(
-        CreateOperator(fbb_, kDecodeJpegOperatorCode,
-                       fbb_.CreateVector(tensor_info.jpeg_images),
-                       fbb_.CreateVector(tensor_info.quantized_images),
-                       tflite::BuiltinOptions_NONE, 0,
-                       JpegOpCustomOptions(tensor_info.jpeg_height,
-                                           tensor_info.jpeg_width, 3)));
+    ops.push_back(CreateOperator(
+        fbb_, kDecodeJpegOperatorCode,
+        fbb_.CreateVector(tensor_info.jpeg_images),
+        fbb_.CreateVector(tensor_info.quantized_images),
+        tflite::BuiltinOptions_NONE, 0,
+        JpegOpCustomOptions(tensor_info.jpeg_height, tensor_info.jpeg_width,
+                            jpeg_output_channels_)));
     if (!tensor_info.float_images.empty()) {
       // Dequantize.
       ops.push_back(
@@ -656,6 +658,7 @@ class ValidationGraphBuilder {
 
   const Model* main_model_;
   std::vector<std::string> jpeg_data_;
+  int32_t jpeg_output_channels_;
   float scale_;
   int64_t zero_point_;
   const Model* validation_model_;
@@ -677,11 +680,13 @@ const int32_t ValidationGraphBuilder::kMainSubgraphIndex;
 const int32_t ValidationGraphBuilder::kValidationSubgraphIndex;
 
 ValidationGraphBuilder::ValidationGraphBuilder(
-    const Model* main_model, std::vector<std::string> jpeg_data, float scale,
-    int64_t zero_point, const Model* validation_model,
-    const reflection::Schema* schema, bool use_ondevice_cpu_for_golden)
+    const Model* main_model, std::vector<std::string> jpeg_data,
+    int32_t jpeg_output_channels, float scale, int64_t zero_point,
+    const Model* validation_model, const reflection::Schema* schema,
+    bool use_ondevice_cpu_for_golden)
     : main_model_(main_model),
       jpeg_data_(jpeg_data),
+      jpeg_output_channels_(jpeg_output_channels),
       scale_(scale),
       zero_point_(zero_point),
       validation_model_(validation_model),
@@ -767,10 +772,12 @@ absl::Status Embedder::ValidateInputs() {
   VALIDATE(shape->size() == 4,
            "main subgraph input must have 4 dimensions (got %d)",
            shape->size());
+  jpeg_output_channels_ = shape->Get(3);
   VALIDATE(shape->Get(0) == 1,
-           "main subgraph input must have batch size (got %d)", shape->Get(0));
-  VALIDATE(shape->Get(3) == 1 || shape->Get(3) == 3,
-           "main subgraph input must have 1 or 3 channels (got %d)",
+           "main subgraph input must have batch size 1 (got %d)",
+           shape->Get(0));
+  VALIDATE(shape->Get(3) == 1 || shape->Get(3) == 3 || shape->Get(3) == 4,
+           "main subgraph input must have 1 or 3 or 4 channels (got %d)",
            shape->Get(3));
 
   VALIDATE(!jpeg_data_.empty(), "must have at least 1 jpeg input");
@@ -788,11 +795,20 @@ absl::Status Embedder::ValidateInputs() {
     height = header.height;
     components = header.channels;
     VALIDATE(height == shape->Get(1) && width == shape->Get(2) &&
-                 components == shape->Get(3),
+                 (components == shape->Get(3) ||
+                  // A workaround to allow RGBA channels extracted from RGB
+                  // images with alpha channel as 255 (fully opaque) by default.
+                  components == 3 && shape->Get(3) == 4),
              "Jpeg input at index %d has different size from input tensor "
              "(jpeg h: %d, w: %d, c: %d; tensor h: %d, w: %d, c: %d)",
              jpeg_number, height, width, components, shape->Get(1),
              shape->Get(2), shape->Get(3));
+    if (components < shape->Get(3)) {
+      TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                      "Jpeg input at index %d has %d channels. Lower than the "
+                      "expected %d channels.",
+                      jpeg_number, components, shape->Get(3));
+    }
     jpeg_number++;
   }
 
@@ -870,9 +886,9 @@ absl::Status Embedder::CreateModelWithEmbeddedValidation(
     return status;
   }
   fb::FlatBufferBuilder intermediate_fbb;
-  ValidationGraphBuilder builder(main_model_, jpeg_data_, scale_, zero_point_,
-                                 validation_model_, schema_,
-                                 use_ondevice_cpu_for_golden_);
+  ValidationGraphBuilder builder(main_model_, jpeg_data_, jpeg_output_channels_,
+                                 scale_, zero_point_, validation_model_,
+                                 schema_, use_ondevice_cpu_for_golden_);
   status = builder.BuildIntermediateModel(&intermediate_fbb);
   if (!status.ok()) {
     return status;

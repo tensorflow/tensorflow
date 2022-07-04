@@ -2091,11 +2091,6 @@ tf_xla_py_test(
     name = "tridiagonal_solve_ops_test",
     size = "medium",
     srcs = ["tridiagonal_solve_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-        "cpu",
-        "gpu",
-    ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
@@ -2296,9 +2291,6 @@ tpu_py_test(
     disable_experimental = False,
     # TODO(b/225357174): Implement MLIR legalization properly.
     disable_mlir_bridge = True,
-    # TODO(b/225357162): Flaky segfault when transfering from device to host
-    # using TFRT.
-    disable_tfrt = True,
     tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",

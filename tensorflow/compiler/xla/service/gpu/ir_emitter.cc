@@ -92,7 +92,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
@@ -104,7 +104,7 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
@@ -118,7 +118,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           // based on the real element type.
           /*alignment=*/1, GetBasePointer(*operand),
           llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
@@ -147,7 +147,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitCallToNestedComputation(
@@ -178,7 +178,7 @@ Status IrEmitter::EmitCallToNestedComputation(
 
   Call(emitted_function, arguments);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IrEmitter::MaybeEmitDirectAtomicOperation(
@@ -443,7 +443,7 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Set the insertion point to the exit basic block so that the caller of
   // this method can continue emitting code to the right place.
   SetToFirstInsertPoint(loop_exit_bb, &b_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitAtomicOperationForNestedComputation(
@@ -459,7 +459,7 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   if (MaybeEmitDirectAtomicOperation(computation, output_address,
                                      source_address)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
@@ -531,7 +531,7 @@ std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
-    return Status::OK();
+    return OkStatus();
   }
   // TODO(b/31409998): Support convolution with dilation.
   return Unimplemented(
@@ -541,7 +541,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 Status IrEmitter::HandleFft(HloInstruction* fft) {
   if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
-    return Status::OK();
+    return OkStatus();
   }
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
@@ -552,7 +552,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {

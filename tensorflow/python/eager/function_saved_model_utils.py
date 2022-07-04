@@ -31,9 +31,9 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import registration
-from tensorflow.python.training.tracking import asset
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import resource
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import resource
 
 
 @registration.register_tf_serializable()

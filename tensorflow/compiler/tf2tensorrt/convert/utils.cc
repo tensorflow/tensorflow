@@ -217,33 +217,33 @@ absl::string_view GetDeviceName(const Node* node) {
   return node->requested_device();
 }
 
-absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+std::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
     const Node* node) {
   absl::string_view device_name = GetDeviceName(node);
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return parsed_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a,
     const DeviceNameUtils::ParsedName& b) {
   DeviceNameUtils::ParsedName merged_name = a;
   if (!DeviceNameUtils::MergeDevNames(&merged_name, b,
                                       /*allow_soft_placement=*/false)
            .ok()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return merged_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b) {
   DeviceNameUtils::ParsedName b_parsed_name;
   if (!DeviceNameUtils::ParseFullName(b, &b_parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return MergeIfCompatible(a, b_parsed_name);

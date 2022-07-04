@@ -47,7 +47,7 @@ using ::testing::UnorderedElementsAre;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
-constexpr absl::Duration kShutdownBarrierTimeout = absl::Seconds(1);
+constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
 constexpr char kCoordinationServiceType[] = "standalone";
 
 KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
@@ -69,7 +69,7 @@ class TestCoordinationClient : public CoordinationClient {
   void RegisterTaskAsync(CallOptions* opts, const RegisterTaskRequest* request,
                          RegisterTaskResponse* response,
                          StatusCallback done) override {
-    done(Status::OK());
+    done(OkStatus());
   }
 
   void ReportErrorToTaskAsync(CallOptions* call_opts,
@@ -79,7 +79,7 @@ class TestCoordinationClient : public CoordinationClient {
     mutex_lock l(mu_);
     status_ = Status(static_cast<errors::Code>(request->error_code()),
                      request->error_message());
-    done(Status::OK());
+    done(OkStatus());
   }
 
 #define UNIMPLEMENTED(method)                                         \
@@ -624,7 +624,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   CoordinatedTask task_2;
   task_2.set_job_name("worker");
   task_2.set_task_id(2);
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
@@ -682,7 +682,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   CoordinatedTask task_2;
   task_2.set_job_name("worker");
   task_2.set_task_id(2);
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
@@ -746,7 +746,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   CoordinatedTask task_1;
   task_1.set_job_name("worker");
   task_1.set_task_id(1);
-  Status status = Status::OK();
+  Status status = OkStatus();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(

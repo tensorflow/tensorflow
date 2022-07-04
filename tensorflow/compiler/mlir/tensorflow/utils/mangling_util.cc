@@ -114,7 +114,7 @@ Status DemangleDataType(absl::string_view str, DataType* proto) {
     return errors::FailedPrecondition(
         "Could not parse TFDataType mangled proto");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace mangling_util

@@ -19,11 +19,13 @@ from concurrent import futures
 import numpy as np
 import tensorflow  # pylint: disable=unused-import
 
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import quantize_model
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save as saved_model_save
@@ -68,14 +70,19 @@ class MultiThreadedTest(test.TestCase):
     saved_model_save.save(
         root, temp_path, signatures=root.add.get_concrete_function())
 
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=quant_opts_pb2.QuantizationMethod
+            .ExperimentalMethod.STATIC_RANGE))
+
     model = quantize_model.quantize(
         temp_path, ['serving_default'], [tag_constants.SERVING],
-        optimization_method=quantize_model.OptimizationMethod
-        .STATIC_RANGE_QUANT,
-        representative_dataset=data_gen)
+        quantization_options=quantization_options,
+        representative_dataset=data_gen())
     return model
 
-  def testMultipleConversionJobsWithCalibration(self):
+  @test_util.run_in_graph_and_eager_modes
+  def test_multiple_conversion_jobs_with_calibration(self):
     # Ensure that multiple conversion jobs with calibration won't encounter any
     # concurrency issue.
     with self.pool:

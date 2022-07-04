@@ -94,7 +94,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Max(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -110,7 +110,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Min(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -126,7 +126,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Add(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -142,7 +142,7 @@ const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
     auto y =
         xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     xla::Mul(x, y);
-    return b.Build().ConsumeValueOrDie();
+    return b.Build().value();
   });
 }
 
@@ -173,7 +173,7 @@ Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
                                 result.collective_info->group_size)
         .status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,

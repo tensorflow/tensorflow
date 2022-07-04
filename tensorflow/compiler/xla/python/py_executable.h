@@ -39,7 +39,8 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   PyExecutable(std::shared_ptr<PyClient> client,
                std::unique_ptr<PjRtExecutable> executable,
                std::shared_ptr<Traceback> traceback,
-               absl::optional<std::string> fingerprint);
+               std::optional<std::string> fingerprint,
+               std::vector<pybind11::capsule> host_callbacks);
   ~PyExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
@@ -83,9 +84,7 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
 
   PjRtExecutable* mutable_pjrt_executable() const { return executable_.get(); }
   const ExecuteOptions& options() const { return options_; }
-  const absl::optional<std::string>& fingerprint() const {
-    return fingerprint_;
-  }
+  const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
   // Keep `obj` alive as long as PyExecutable.
   void KeepAlive(pybind11::object obj);
@@ -100,7 +99,10 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   // Identical executables (i.e. representing the same program) will have the
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
-  absl::optional<std::string> fingerprint_;
+  std::optional<std::string> fingerprint_;
+
+  // The python callbacks implemented using send/recv support.
+  std::vector<pybind11::capsule> host_callbacks_;
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;

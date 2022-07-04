@@ -61,7 +61,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, default_thread_pool,
@@ -69,7 +69,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         Rendezvous::Factory{
             [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
               *r = new IntraProcessRendezvous(device_mgr);
-              return Status::OK();
+              return OkStatus();
             }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
@@ -109,7 +109,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
@@ -190,7 +190,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       EXPECT_GE(call_count, 1);  // Test runner is used.
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   FunctionLibraryRuntime* flr0_;

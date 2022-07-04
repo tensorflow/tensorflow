@@ -53,14 +53,14 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     optimized_ = true;
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -83,7 +83,7 @@ class TestOptimizerWithParams : public TestOptimizer {
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     CHECK(config != nullptr);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -107,7 +107,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -116,7 +116,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
     if (optimization_options_) {
       optimization_options_->insert({item.id, item.optimization_options()});
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -711,7 +711,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -720,7 +720,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
     Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     optimized_graph->add_node();
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -896,7 +896,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_post_verifiers(nullptr, config_proto);
   Status status =
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
@@ -1078,7 +1078,6 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
       /*funcs=*/
       {case_func});
   item.fetch = {"case"};
-  item.keep_ops = {"x"};
 
   GraphDef output;
   ConfigProto config_proto;
@@ -1089,7 +1088,7 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
   EXPECT_EQ(output.library().function_size(), 1);
   // One of the arguments was removed.
   auto& func = output.library().function(0);
-  ASSERT_EQ(func.signature().input_arg_size(), 1);
+  EXPECT_EQ(func.signature().input_arg_size(), 1);
   EXPECT_EQ(func.signature().input_arg(0).name(), "x_tfg_result_0");
 }
 
@@ -1197,14 +1196,14 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     ++count_;
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

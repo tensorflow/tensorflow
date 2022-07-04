@@ -65,7 +65,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'var_list\', \'exclude_from_weight_decay\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "compute_gradients"
@@ -73,7 +73,7 @@ tf_class {
   }
   member_method {
     name: "exclude_from_weight_decay"
-    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'var_list\', \'var_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "finalize_variable_values"

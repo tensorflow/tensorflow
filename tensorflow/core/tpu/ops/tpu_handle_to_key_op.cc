@@ -27,7 +27,7 @@ REGISTER_OP("TpuHandleToProtoKey")
       shape_inference::ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
       c->set_output(0, c->UnknownShapeOfRank(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

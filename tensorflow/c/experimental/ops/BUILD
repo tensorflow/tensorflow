@@ -126,8 +126,5 @@ filegroup(
         "nn_ops.h",
         "resource_variable_ops.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
 )

@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
 
   llvm::Triple triple(triple_string);
 
-  xla::XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  xla::XlaComputation computation = builder.Build().value();
   xla::CompileOnlyClient::AotXlaComputationInstance instance{
       &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
 
@@ -92,8 +92,7 @@ int main(int argc, char** argv) {
       /*cpu_name=*/"", /*features=*/"", "SumAndDouble",
       xla::cpu::CpuAotCompilationOptions::RelocationModel::Static);
 
-  auto results =
-      client->CompileAheadOfTime({instance}, options).ConsumeValueOrDie();
+  auto results = client->CompileAheadOfTime({instance}, options).value();
   auto result = xla::unique_ptr_static_cast<xla::cpu::CpuAotCompilationResult>(
       std::move(results.front()));
   // It's lame to hard-code the buffer assignments, but we need

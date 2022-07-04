@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MAYBE_OWNING_DEVICE_MEMORY_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MAYBE_OWNING_DEVICE_MEMORY_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "absl/types/variant.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
@@ -55,7 +56,7 @@ class MaybeOwningDeviceMemory {
   // moves the ownership of the memory buffer from the object to the caller.
   //
   // A nullopt is returned if the HasOwnership() == false;
-  absl::optional<tensorflow::se::OwningDeviceMemory> Release();
+  std::optional<tensorflow::se::OwningDeviceMemory> Release();
 
   // If the device memory is owned, returns a pointer to the internal
   // OwningDeviceMemory, otherwise nullptr is returned.
@@ -65,8 +66,8 @@ class MaybeOwningDeviceMemory {
   bool HasOwnership() const;
 
  private:
-  absl::variant<tensorflow::se::OwningDeviceMemory,
-                tensorflow::se::DeviceMemoryBase>
+  std::variant<tensorflow::se::OwningDeviceMemory,
+               tensorflow::se::DeviceMemoryBase>
       mem_;
 };
 

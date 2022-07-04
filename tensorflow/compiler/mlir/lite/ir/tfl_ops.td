@@ -25,7 +25,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
-include "tensorflow/compiler/mlir/lite/ir/tfl_structs.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -301,11 +301,14 @@ class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
+class TFL_OperandHasRankAtMostPred<int n, int m> :
+  Or<[TFL_OperandIsUnrankedPred<n>,
+    CPred<"$_op.getOperand(" # n #
+    ").getType().cast<ShapedType>().getRank() <= " # m>]>;
+
 class TFL_OperandHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
-    Or<[TFL_OperandIsUnrankedPred<n>,
-      CPred<"$_op.getOperand(" # n #
-      ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
+    TFL_OperandHasRankAtMostPred<n, m>>;
 
 class TFL_OperandHasRankAtLeast<int n, int m> :
   PredOpTrait<"operand " # n # " is at least " # m # "-D",
@@ -1075,6 +1078,9 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
+   TFL_RuntimePredOpTrait<"lhs and rhs of this op must have rank between [2, 5]",
+     And<[TFL_OperandHasRankAtMostPred<0, 5>,
+          TFL_OperandHasRankAtMostPred<1, 5>]>>,
    DynamicRangeQuantizedOpInterface]> {
 
   let summary = "Batch Matrix Multiply Operator";
@@ -2318,7 +2324,8 @@ def TFL_SumOp: TFL_Op<"sum", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect]> {
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
 
   let summary = "Sum operator";
 
@@ -2336,6 +2343,14 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // Eight-bit types don't require same operands and results scales.
+      return bit_width != 8;
+    }
+  }];
 }
 
 def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
@@ -3052,7 +3067,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
     NoSideEffect,
     QuantizableResult,
     SameOperandsAndResultsScale,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 4>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 5>,
     PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
     PredOpTrait<"operands and result have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
