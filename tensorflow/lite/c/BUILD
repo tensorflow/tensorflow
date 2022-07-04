@@ -197,6 +197,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "c_api_signature_runner_test",
+    size = "small",
+    srcs = ["c_api_signature_runner_test.cc"],
+    copts = tflite_copts(),
+    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common",
     srcs = ["common.cc"],
