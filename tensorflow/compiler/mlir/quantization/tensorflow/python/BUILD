@@ -6,6 +6,9 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_library")
+
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
@@ -147,12 +150,41 @@ tf_py_test(
     tags = ["no_pip"],
     deps = [
         ":quantize_model",
+        ":quantize_model_test_base",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_library(
+    name = "quantize_model_test_base",
+    testonly = 1,
+    srcs = ["integration_test/quantize_model_test_base.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":representative_dataset",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/types",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
