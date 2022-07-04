@@ -717,13 +717,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
-      HloVerifierOpts{}
-          .MakeLayoutSensitive()
-          .WithInstructionCanChangeLayout(
-              LayoutAssignment::InstructionCanChangeLayout)
-          .VerifyBroadcastDimensionsOrder()
-          .VerifyReshapeIsBitcast());
+      HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+          LayoutAssignment::InstructionCanChangeLayout));
 
+  pipeline.AddPass<ReshapeDecomposer>();
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
