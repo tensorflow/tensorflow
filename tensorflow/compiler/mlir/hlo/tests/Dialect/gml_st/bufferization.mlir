@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s -test-gml-st-bufferization -canonicalize -cse \
-// RUN:   -split-input-file | FileCheck %s --dump-input=always
+// RUN:   -split-input-file | FileCheck %s
 
 func.func @set_space(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index

@@ -1,6 +1,9 @@
 // RUN: mlir-hlo-opt --split-input-file %s \
 // RUN:  --gml-st-pipeline="tile-sizes=256" \
-// RUN: | FileCheck --dump-input=always %s
+// RUN: | FileCheck %s
+
+// TODO(akuegel): Also run with the option lower-to-loops. This fails currently
+// due to not having a bufferization for gml_st.dynamic_broadcast_in_dim.
 
 // CHECK-LABEL: func @log(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<2048xf32>)

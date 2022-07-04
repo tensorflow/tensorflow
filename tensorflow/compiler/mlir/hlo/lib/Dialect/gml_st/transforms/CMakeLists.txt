@@ -59,6 +59,7 @@ add_mlir_library(GmlStPasses
   gml_st_to_scf.cc
   legalize_mhlo_to_gml.cc
   tiling.cc
+  vectorization.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -69,9 +70,13 @@ add_mlir_library(GmlStPasses
   LINK_LIBS PUBLIC
   GmlStFusionInterface
   GmlStFusionInterfaceImpl
+  MLIRFuncDialect
   MLIRIR
+  MLIRLinalgDialect
+  MLIRLinalgTransforms
   MLIRPass
   MLIRSupport
+  MLIRVectorDialect
 )
 
 add_mlir_library(GmlStTransforms

@@ -48,6 +48,7 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
   // Convert Linalg + GmlSt to SCF loops.
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
+  pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass());
   pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
 }
 
