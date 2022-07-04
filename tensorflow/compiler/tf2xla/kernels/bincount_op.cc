@@ -44,7 +44,7 @@ class DenseBincountOp : public XlaOpKernel {
     auto output_rank = output_shape_param.rank();
     OP_REQUIRES(
       ctx, output_rank == 0,
-      xla::InvalidArgument("Shape must be rank 0 but is rank 1", output_rank));
+      errors::InvalidArgument("Shape must be rank 0 but is rank 1", output_rank));
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("size", &output_size));
     OP_REQUIRES(
       ctx, output_size >= 0,
