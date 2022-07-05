@@ -15,19 +15,22 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 
+#include <tuple>
+
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 
 namespace mlir {
 namespace gml_st {
 
 namespace {
 
-bool isElementwise(linalg::GenericOp genericOp) {
+bool isElementwiseOrTranspose(linalg::GenericOp genericOp) {
   if (!genericOp.hasTensorSemantics()) return false;
   if (genericOp.outputs().size() != 1) return false;
   if (!llvm::all_of(genericOp.iterator_types(), [](Attribute attr) {
@@ -36,7 +39,7 @@ bool isElementwise(linalg::GenericOp genericOp) {
     return false;
   }
   if (!llvm::all_of(genericOp.indexing_maps(), [](Attribute attr) {
-        return attr.cast<AffineMapAttr>().isIdentity();
+        return attr.cast<AffineMapAttr>().getAffineMap().isPermutation();
       })) {
     return false;
   }
@@ -52,10 +55,10 @@ struct LingalgGenericFusionInterface
 
     // Supports only tile subsets.
     auto tileTy = subset.getType().dyn_cast<TileType>();
-    if (!tileTy.isa<TileType>()) return {};
+    if (!tileTy) return {};
 
     // Supports only element-wise `linalg.generic` ops.
-    if (!isElementwise(genericOp)) return {};
+    if (!isElementwiseOrTranspose(genericOp)) return {};
 
     // Create tiled op.
     Value output = genericOp.outputs().front();
@@ -64,9 +67,63 @@ struct LingalgGenericFusionInterface
         RankedTensorType::get(tileTy.getShape(), outputTy.getElementType());
     SmallVector<Value> subOperands;
     subOperands.reserve(genericOp.getNumInputs());
-    for (auto input : genericOp.inputs()) {
-      subOperands.push_back(builder.create<MaterializeOp>(loc, input, subset));
+    for (const auto& inputAndMap :
+         llvm::zip(genericOp.inputs(), genericOp.getIndexingMaps())) {
+      Value input;
+      AffineMap map;
+      std::tie(input, map) = inputAndMap;
+      if (map.isIdentity()) {
+        subOperands.push_back(
+            builder.create<MaterializeOp>(loc, input, subset));
+        continue;
+      }
+      assert(map.isPermutation());
+      // Materialize a space for the input.
+      auto inputTy = input.getType().cast<RankedTensorType>();
+      auto spaceTy = builder.getType<TileType>(inputTy.getShape());
+      auto dynamicDims = tensor::createDynamicDimValues(builder, loc, input);
+      auto staticDims = builder.getI64ArrayAttr(inputTy.getShape());
+      Value inputSpace =
+          builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDims);
+
+      // Create a new tile with permutated operands.
+      SmallVector<Value> inputTileOffsets, inputTileSizes, inputTileStrides;
+      SmallVector<int64_t> inputStaticOffsets, inputStaticSizes;
+      // Use original tileOp where possible.
+      auto tileOp = subset.getDefiningOp<TileOp>();
+
+      for (unsigned int r = 0, e = map.getNumResults(); r < e; ++r) {
+        auto permutedDim = map.getPermutedPosition(r);
+        auto permutedDimConstant =
+            builder.create<arith::ConstantIndexOp>(loc, permutedDim);
+        // TODO(unknown): With a canonicalizer, we could always use values.
+        if (!tileOp || tileOp.isDynamicOffset(permutedDim)) {
+          inputTileOffsets.push_back(
+              builder.createOrFold<OffsetOp>(loc, subset, permutedDimConstant));
+          inputStaticOffsets.push_back(ShapedType::kDynamicStrideOrOffset);
+        } else {
+          inputStaticOffsets.push_back(tileOp.getStaticOffset(permutedDim));
+        }
+        if (!tileOp || tileOp.isDynamicSize(permutedDim)) {
+          inputTileSizes.push_back(
+              builder.createOrFold<SizeOp>(loc, subset, permutedDimConstant));
+          inputStaticSizes.push_back(ShapedType::kDynamicSize);
+        } else {
+          inputStaticSizes.push_back(tileOp.getStaticSize(permutedDim));
+        }
+      }
+      auto inputStaticStrides = builder.getI64ArrayAttr(
+          SmallVector<int64_t>(inputStaticSizes.size(), 1));
+      auto operandTileTy =
+          TileType::get(subResultTy.getContext(), inputStaticSizes);
+      auto permutedSubset = builder.create<TileOp>(
+          loc, operandTileTy, inputSpace, inputTileOffsets, inputTileSizes,
+          ValueRange{}, builder.getI64ArrayAttr(inputStaticOffsets),
+          builder.getI64ArrayAttr(inputStaticSizes), inputStaticStrides);
+      subOperands.push_back(
+          builder.create<MaterializeOp>(loc, input, permutedSubset));
     }
+    // Materialize the tiled output.
     subOperands.push_back(builder.create<MaterializeOp>(loc, output, subset));
     linalg::LinalgOp linalgOp = genericOp;
     Operation* tiledOp = linalgOp.clone(builder, loc, subResultTy, subOperands);

@@ -36,6 +36,9 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling, fusion, vectorization and other transformations.
   pm.addNestedPass<FuncOp>(gml_st::createTilingPass(options.tileSizes));
+  if (options.fuse) {
+    pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
+  }
 
   if (!options.lowerToLoops) return;
 

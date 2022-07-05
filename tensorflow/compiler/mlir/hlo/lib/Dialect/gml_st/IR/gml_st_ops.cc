@@ -1293,6 +1293,7 @@ LogicalResult PointOp::verify() {
   }
   return success();
 }
+
 //
 //===----------------------------------------------------------------------===//
 // TileOp
@@ -1503,6 +1504,63 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
   return builder.create<DynamicBroadcastInDimOp>(
       loc, tiledResultTy, tiledOperand, tiledInit, broadcast_dimensions(),
       known_expanding_dimensionsAttr(), known_nonexpanding_dimensionsAttr());
+}
+
+//===----------------------------------------------------------------------===//
+// DimOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
+  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
+  if (!idxAttr) return {};
+
+  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
+    auto idx = idxAttr.getInt();
+    if (tileOp.isDynamicSize(idx)) return tileOp.getDynamicSize(idx);
+
+    Builder b(idxAttr.getContext());
+    return b.getIndexAttr(tileOp.getStaticSize(idx));
+  }
+  // TODO(unknown): Handle space op, as well.
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// OffsetOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult OffsetOp::fold(ArrayRef<Attribute> operands) {
+  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
+  if (!idxAttr) return {};
+
+  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
+    auto idx = idxAttr.getInt();
+    if (tileOp.isDynamicOffset(idx)) return tileOp.getDynamicOffset(idx);
+
+    Builder b(idxAttr.getContext());
+    return b.getIndexAttr(tileOp.getStaticOffset(idx));
+  }
+  // TODO(unknown): Handle space op, as well.
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// SizeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
+  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
+  if (!idxAttr) return {};
+
+  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
+    auto idx = idxAttr.getInt();
+    if (tileOp.isDynamicSize(idx)) return tileOp.getDynamicSize(idx);
+
+    Builder b(idxAttr.getContext());
+    return b.getIndexAttr(tileOp.getStaticSize(idx));
+  }
+  // TODO(unknown): Handle space op, as well.
+  return {};
 }
 
 }  // namespace gml_st

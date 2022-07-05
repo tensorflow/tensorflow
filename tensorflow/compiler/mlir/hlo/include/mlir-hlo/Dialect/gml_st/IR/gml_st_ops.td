@@ -42,6 +42,7 @@ def GMLST_DimOp : GMLST_Op<"dim", []> {
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
+  let hasFolder = 1;
 }
 
 def GMLST_OffsetOp : GMLST_Op<"offset", []> {
@@ -52,6 +53,7 @@ def GMLST_OffsetOp : GMLST_Op<"offset", []> {
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
+  let hasFolder = 1;
 }
 
 def GMLST_SizeOp : GMLST_Op<"size", []> {
@@ -62,6 +64,7 @@ def GMLST_SizeOp : GMLST_Op<"size", []> {
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
+  let hasFolder = 1;
 }
 
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>

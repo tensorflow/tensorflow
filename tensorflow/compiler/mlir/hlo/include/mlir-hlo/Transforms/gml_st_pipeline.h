@@ -24,6 +24,9 @@ struct GmlStPipelineOptions
     : public mlir::PassPipelineOptions<GmlStPipelineOptions> {
   ListOption<int64_t> tileSizes{
       *this, "tile-sizes", llvm::cl::desc("Tiling sizes for the tiling pass")};
+  Option<bool> fuse{*this, "fuse",
+                    llvm::cl::desc("Fuse into GmlSt loop nests."),
+                    llvm::cl::init(false)};
   Option<bool> lowerToLoops{
       *this, "lower-to-loops",
       llvm::cl::desc("Enable bufferization and lowering to SCF dialect for "
