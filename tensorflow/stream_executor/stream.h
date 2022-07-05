@@ -89,6 +89,17 @@ struct NonDeduced {
 template <typename T>
 using NonDeducedType = typename NonDeduced<T>::type;
 
+// Helper to return if `T` is the same type as `First` or any or `Rest`.
+template <typename T>
+constexpr bool is_any_of() {
+  return false;
+}
+
+template <typename T, typename First, typename... Rest>
+constexpr bool is_any_of() {
+  return std::is_same_v<T, First> || is_any_of<T, Rest...>();
+}
+
 }  // namespace detail
 
 // Convert a type to the corresponding QuantizedActivationMode.
@@ -1201,24 +1212,18 @@ class Stream {
                             const DeviceMemory<InputType> &b, int ldb,
                             ConstantType beta, DeviceMemory<InputType> *c,
                             int ldc, blas::ComputePrecision precision) {
-    static_assert(!std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<ConstantType, float>::value ||
-                      std::is_same<ConstantType, Eigen::half>::value,
+    static_assert(
+        detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16, float,
+                          double, std::complex<float>, std::complex<double>>(),
+        "Input can be half, bf16, float, double, std::complex<float> or "
+        "std::complex<double>");
+    static_assert(!std::is_same_v<InputType, Eigen::half> ||
+                      detail::is_any_of<ConstantType, float, Eigen::half>(),
                   "If input is Eigen::half, constant has to be either "
                   "Eigen::half or float");
     static_assert(
-        std::is_same<InputType, Eigen::half>::value ||
-            std::is_same<InputType, ConstantType>::value,
+        detail::is_any_of<InputType, Eigen::half, ConstantType>(),
         "If input is not Eigen::half, constant and input types have to match");
-    static_assert(
-        std::is_same<InputType, Eigen::half>::value ||
-            std::is_same<InputType, Eigen::bfloat16>::value ||
-            std::is_same<InputType, float>::value ||
-            std::is_same<InputType, double>::value ||
-            std::is_same<InputType, std::complex<float>>::value ||
-            std::is_same<InputType, std::complex<double>>::value,
-        "Input can be half, bf16, float, double, std::complex<float> or "
-        "std::complex<double>");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -1461,17 +1466,15 @@ class Stream {
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
       int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
       int64_t stride_c, int batch_count) {
-    static_assert(((std::is_same<InputType, Eigen::half>::value ||
-                    std::is_same<InputType, Eigen::bfloat16>::value) &&
-                   std::is_same<ConstantType, float>::value) ||
-                      ((std::is_same<InputType, float>::value ||
-                        std::is_same<InputType, Eigen::half>::value ||
-                        std::is_same<InputType, Eigen::bfloat16>::value ||
-                        std::is_same<InputType, double>::value ||
-                        std::is_same<InputType, std::complex<float>>::value ||
-                        std::is_same<InputType, std::complex<double>>::value) &&
-                       std::is_same<ConstantType, InputType>::value),
-                  "Input or constant type mismatch");
+    static_assert(
+        detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
+                          double, std::complex<float>, std::complex<double>>(),
+        "Unsupported input type");
+    static_assert(
+        std::is_same_v<ConstantType, InputType> ||
+            (detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16>() &&
+             std::is_same_v<ConstantType, float>),
+        "Mismatched input and alpha/beta types");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return port::InternalError(
@@ -2036,40 +2039,48 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   // Checks whether types match before a call to extended BLAS version.
-  template <typename InputType, typename OutputType, typename ConstantType>
+  template <typename ABType, typename CType, typename ScaleType>
   port::Status CheckTypesForExtendedBlas(
       blas::ComputationType computation_type) {
-    static_assert(std::is_same<InputType, Eigen::half>::value ||
-                      std::is_same<InputType, Eigen::bfloat16>::value ||
-                      std::is_same<InputType, float>::value ||
-                      std::is_same<InputType, double>::value ||
-                      std::is_same<InputType, int8>::value ||
-                      std::is_same<InputType, std::complex<float>>::value ||
-                      std::is_same<InputType, std::complex<double>>::value,
-                  "The only buffer types supported are: Eigen::half, float, "
-                  "double, int8, std::complex<float> and std::complex<double>");
     static_assert(
-        std::is_same<InputType, OutputType>::value ||
-            (std::is_same<InputType, int8>::value &&
-             std::is_same<OutputType, int32>::value),
+        detail::is_any_of<ABType, Eigen::half, Eigen::bfloat16, float, double,
+                          int8_t, std::complex<float>, std::complex<double>>(),
+        "The only buffer types supported are: Eigen::half, float, "
+        "double, int8, std::complex<float> and std::complex<double>");
+    static_assert(
+        std::is_same_v<ABType, CType> ||
+            (std::is_same_v<ABType, int8_t> && std::is_same_v<CType, int32_t>),
         "Input and output buffer types should be the same unless input is "
         "int8 and output is int32");
-    static_assert(std::is_same<ConstantType, OutputType>::value ||
-                      (std::is_same<ConstantType, float>::value &&
-                       (std::is_same<OutputType, Eigen::half>::value ||
-                        std::is_same<OutputType, Eigen::bfloat16>::value)),
-                  "Constant and output types should match");
-    blas::ComputationType expected_computation_type =
-        blas::ToComputationType<ConstantType>::value;
-    if (expected_computation_type != computation_type &&
-        !(computation_type == blas::ComputationType::kF32 &&
-          (expected_computation_type == blas::ComputationType::kF16 ||
-           expected_computation_type == blas::ComputationType::kBF16AsF32))) {
+    static_assert(
+        std::is_same_v<ScaleType, CType> ||
+            (std::is_same_v<ScaleType, float> &&
+             detail::is_any_of<CType, Eigen::half, Eigen::bfloat16>()),
+        "Mismatched alpha/beta and output types");
+
+    bool valid_computation_type = [computation_type] {
+      switch (computation_type) {
+        case blas::ComputationType::kF16:
+          return std::is_same_v<CType, Eigen::half>;
+        case blas::ComputationType::kF32:
+          return detail::is_any_of<CType, Eigen::half, Eigen::bfloat16, float,
+                                   std::complex<float>>();
+        case blas::ComputationType::kF64:
+          return detail::is_any_of<CType, double, std::complex<double>>();
+        case blas::ComputationType::kI32:
+          return std::is_same_v<CType, int32_t>;
+        case blas::ComputationType::kF16AsF32:   // fall-through
+        case blas::ComputationType::kBF16AsF32:  // fall-through
+        case blas::ComputationType::kTF32AsF32:
+          return detail::is_any_of<CType, float, std::complex<float>>();
+      }
+    }();
+
+    if (!valid_computation_type) {
       return port::InternalError(absl::StrCat(
-          "Alpha/beta type and computation type have to match, got ",
-          blas::ComputationTypeString(computation_type),
-          " for computation type, expected: ",
-          blas::ComputationTypeString(expected_computation_type)));
+          "Invalid computation type ",
+          blas::ComputationTypeString(computation_type), " for output type: ",
+          blas::DataTypeString(blas::ToDataType<CType>::value)));
     }
     return ::tensorflow::OkStatus();
   }

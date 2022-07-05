@@ -36,43 +36,12 @@ namespace stream_executor {
 namespace cuda {
 namespace {
 
-blas::DataType GetScaleType(blas::DataType data_type,
+blas::DataType GetScaleType(blas::DataType c_type,
                             blas::ComputationType compute_type) {
-  switch (compute_type) {
-    case blas::ComputationType::kF16:
-      return blas::DataType::kHalf;
-    case blas::ComputationType::kF32:        // fall-through
-    case blas::ComputationType::kTF32AsF32:  // fall-through
-    case blas::ComputationType::kBF16AsF32:
-      return blas::DataType::kFloat;
-    case blas::ComputationType::kF64:
-      return blas::DataType::kDouble;
-    case blas::ComputationType::kComplexF32:
-      return blas::DataType::kComplexFloat;
-    case blas::ComputationType::kComplexF64:
-      return blas::DataType::kComplexDouble;
-    case blas::ComputationType::kI32:
-      return blas::DataType::kInt32;
-  }
-}
-
-cublasComputeType_t AsCublasComputeType(blas::ComputationType type) {
-  switch (type) {
-    case blas::ComputationType::kF16:
-      return CUBLAS_COMPUTE_16F;
-    case blas::ComputationType::kF32:  // fall-through
-    case blas::ComputationType::kComplexF32:
-      return CUBLAS_COMPUTE_32F;
-    case blas::ComputationType::kF64:  // fall-through
-    case blas::ComputationType::kComplexF64:
-      return CUBLAS_COMPUTE_64F;
-    case blas::ComputationType::kI32:
-      return CUBLAS_COMPUTE_32I;
-    case blas::ComputationType::kTF32AsF32:
-      return CUBLAS_COMPUTE_32F_FAST_TF32;
-    case blas::ComputationType::kBF16AsF32:
-      return CUBLAS_COMPUTE_32F_FAST_16BF;
-  }
+  return ((compute_type == blas::ComputationType::kF32) &&
+          (c_type != blas::DataType::kComplexFloat))
+             ? blas::DataType::kFloat
+             : c_type;
 }
 
 cublasLtPointerMode_t AsCublasLtPointerMode(BlasLt::PointerMode pointer_mode) {

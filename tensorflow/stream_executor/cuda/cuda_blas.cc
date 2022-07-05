@@ -309,8 +309,7 @@ cublasSideMode_t CUDABlasSide(blas::Side side) {
 }
 
 // CUDADataType<T>::type translates from a C++ type (e.g. float) to a
-// cudaDataType_t (e.g. CUDA_R_32F).  CUDAComputationType(ty) translates from a
-// blas::ComputationType to a cudaDataType_t.
+// cudaDataType_t (e.g. CUDA_R_32F).
 //
 // These are used to build the argument type and computation type args to
 // cublasGemmEx.
@@ -371,28 +370,6 @@ template <>
 struct CUDADataType<std::complex<uint8>> {
   static constexpr cudaDataType_t type = CUDA_C_8U;
 };
-
-cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
-  switch (ty) {
-    case blas::ComputationType::kF16:
-      return CUDA_R_16F;
-    case blas::ComputationType::kF32:
-      return CUDA_R_32F;
-    case blas::ComputationType::kF64:
-      return CUDA_R_64F;
-    case blas::ComputationType::kI32:
-      return CUDA_R_32I;
-    case blas::ComputationType::kComplexF32:
-      return CUDA_C_32F;
-    case blas::ComputationType::kComplexF64:
-      return CUDA_C_64F;
-    case blas::ComputationType::kTF32AsF32:  // fall-through
-    case blas::ComputationType::kBF16AsF32:
-      // These cases are currently only supported in the blasLt routines, which
-      // use CUBLASComputationType() instead.
-      LOG(FATAL) << "Invalid value of blas::ComputationType.";
-  }
-}
 
 }  // namespace
 
@@ -2043,7 +2020,7 @@ port::Status CUDABlas::DoBlasGemmWithAlgorithm(
       AsCublasOperation(transa), AsCublasOperation(transb), m, n, k, alpha,
       a.opaque(), AsCudaDataType(type_a), lda, b.opaque(),
       AsCudaDataType(type_b), ldb, beta, c->opaque(), AsCudaDataType(type_c),
-      ldc, CUDAComputationType(computation_type),
+      ldc, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));
@@ -2082,7 +2059,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
           math_type, AsCublasOperation(transa), AsCublasOperation(transb), m, n,
           k, static_cast<const float *>(alpha), a_matrix, CUDA_R_16BF, lda,
           b_matrix, CUDA_R_16BF, ldb, static_cast<const float *>(beta),
-          c_matrix, CUDA_R_16BF, ldc, CUDAComputationType(computation_type),
+          c_matrix, CUDA_R_16BF, ldc, AsCublasComputeType(computation_type),
           static_cast<cublasGemmAlgo_t>(algorithm)));
     }
     TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
@@ -2096,7 +2073,7 @@ port::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       math_type, AsCublasOperation(transa), AsCublasOperation(transb), m, n, k,
       alpha, a.opaque(), cuda_in_type, lda, stride_a, b.opaque(), cuda_in_type,
       ldb, stride_b, beta, c->opaque(), AsCudaDataType(type_c), ldc, stride_c,
-      batch_count, CUDAComputationType(computation_type),
+      batch_count, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer.get(), algorithm,
                                               output_profile_result, stream));

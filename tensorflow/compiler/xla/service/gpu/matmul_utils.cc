@@ -416,6 +416,26 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
   return swap_operands;
 }
 
+StatusOr<se::blas::ComputationType> GetBlasComputationType(
+    PrimitiveType dtype) {
+  switch (dtype) {
+    case F16:  // fall-through
+    case BF16:
+      // Accumulate in f32 precision.
+      return se::blas::ComputationType::kF32;
+    case F32:  // fall-through
+    case C64:
+      return se::blas::ComputationType::kTF32AsF32;
+    case F64:  // fall-through
+    case C128:
+      return se::blas::ComputationType::kF64;
+    case S32:
+      return se::blas::ComputationType::kI32;
+    default:
+      return InternalError("unsupported type");
+  }
+}
+
 se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
   // BLAS is column-major by default.
   return (order == MatrixLayout::Order::kColumnMajor)
@@ -433,29 +453,6 @@ se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
   };
 }
 
-// Converts from an XLA PrimitiveType to a blas::ComputationType, which is
-// used to specify the precision with which matmul computations should be
-// performed, separately from the precision of the inputs and result.
-std::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
-    PrimitiveType type) {
-  switch (type) {
-    case F16:  // Use F32 computation for higher precision.
-    case BF16:
-    case F32:
-      return se::blas::ComputationType::kF32;
-    case F64:
-      return se::blas::ComputationType::kF64;
-    case C64:
-      return se::blas::ComputationType::kComplexF32;
-    case C128:
-      return se::blas::ComputationType::kComplexF64;
-    case S32:
-      return se::blas::ComputationType::kI32;
-    default:
-      return std::nullopt;
-  }
-}
-
 template <typename Input, typename Output>
 Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            const se::blas::MatrixDescriptor& lhs,
@@ -466,8 +463,8 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  se::blas::ComputationType computation_type =
-      *ComputationTypeFromPrimitive(output_type);
+  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
+                      GetBlasComputationType(output_type));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -616,25 +613,6 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
-StatusOr<se::blas::ComputationType> AsBlasComputationType(PrimitiveType dtype) {
-  switch (dtype) {
-    case F16:
-      return se::blas::ComputationType::kF16;
-    case BF16:
-      return se::blas::ComputationType::kBF16AsF32;
-    case F32:
-      return se::blas::ComputationType::kF32;
-    case F64:
-      return se::blas::ComputationType::kF64;
-    case C64:
-      return se::blas::ComputationType::kComplexF32;
-    case C128:
-      return se::blas::ComputationType::kComplexF64;
-    default:
-      return InternalError("unsupported type");
-  }
-}
-
 template <typename Input>
 Status DoGemmLt(const se::cuda::BlasLt::MatmulPlan& plan, Input alpha,
                 se::DeviceMemoryBase lhs_buffer,
@@ -696,7 +674,7 @@ StatusOr<MatmulPlanParams> GetBlasLtMatmulPlanParams(const GemmConfig& config) {
   TF_ASSIGN_OR_RETURN(se::blas::DataType dtype,
                       AsBlasDataType(output_layout.dtype));
   TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      AsBlasComputationType(output_layout.dtype));
+                      GetBlasComputationType(output_layout.dtype));
 
   se::cuda::BlasLt::MatmulPlanParams params{
       /*ab_type=*/dtype,

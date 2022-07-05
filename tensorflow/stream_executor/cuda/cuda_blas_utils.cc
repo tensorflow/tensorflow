@@ -62,6 +62,25 @@ cudaDataType_t AsCudaDataType(blas::DataType type) {
   }
 }
 
+cublasComputeType_t AsCublasComputeType(blas::ComputationType type) {
+  switch (type) {
+    case blas::ComputationType::kF16:
+      return CUBLAS_COMPUTE_16F;
+    case blas::ComputationType::kF32:
+      return CUBLAS_COMPUTE_32F;
+    case blas::ComputationType::kF64:
+      return CUBLAS_COMPUTE_64F;
+    case blas::ComputationType::kI32:
+      return CUBLAS_COMPUTE_32I;
+    case blas::ComputationType::kF16AsF32:
+      return CUBLAS_COMPUTE_32F_FAST_16F;
+    case blas::ComputationType::kBF16AsF32:
+      return CUBLAS_COMPUTE_32F_FAST_16BF;
+    case blas::ComputationType::kTF32AsF32:
+      return CUBLAS_COMPUTE_32F_FAST_TF32;
+  }
+}
+
 cublasOperation_t AsCublasOperation(blas::Transpose trans) {
   switch (trans) {
     case blas::Transpose::kNoTranspose:
