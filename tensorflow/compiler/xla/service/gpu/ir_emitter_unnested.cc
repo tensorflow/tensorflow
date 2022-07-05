@@ -41,7 +41,12 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Linker/Linker.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -49,8 +54,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
@@ -505,7 +516,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   auto arg_it = kernel->arg_begin();
   for (size_t arg_no = 0; arg_no < args.size(); ++arg_no) {
     const BufferAllocation* alloc = args[arg_no];
-    llvm::Argument* fn_arg = &*arg_it;
+    llvm::Argument& fn_arg = *arg_it;
     ++arg_it;
 
     kernel->addDereferenceableParamAttr(arg_no, alloc->size());
@@ -525,9 +536,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
         llvm::Attribute::get(context, llvm::Attribute::Alignment, alignment));
 
     if (alloc->IsPreallocatedTempBuffer()) {
-      fn_arg->setName("temp_buf");
+      fn_arg.setName("temp_buf");
     } else {
-      fn_arg->setName(StrCat("alloc", alloc->index()));
+      fn_arg.setName(StrCat("alloc", alloc->index()));
     }
   }
 
@@ -1662,6 +1673,97 @@ static bool EnableLogicalIndexGenerationForOutput(
     }
   }
   return true;
+}
+
+Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
+  auto launch_func = mlir::cast<mlir::gpu::LaunchFuncOp>(op);
+  auto kernel_func =
+      mlir::SymbolTable::lookupNearestSymbolFrom<mlir::LLVM::LLVMFuncOp>(
+          launch_func, launch_func.kernel());
+  if (!kernel_func) {
+    return InternalError("kernel '%s' not found",
+                         launch_func.getKernelName().str());
+  }
+
+  mlir::DialectRegistry registry;
+  mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerNVVMDialectTranslation(registry);
+  mlir::registerROCDLDialectTranslation(registry);
+  op->getContext()->appendDialectRegistry(registry);
+
+  // Lower kernel module to NVVM.
+  auto gpu_module = kernel_func->getParentOfType<mlir::gpu::GPUModuleOp>();
+  std::unique_ptr<llvm::Module> llvm_module = mlir::translateModuleToLLVMIR(
+      gpu_module, module_->getContext(), gpu_module.getName());
+  if (!llvm_module)
+    return InternalError("Failed to translate GPU module to LLVM");
+
+  // Add kernel to LLVM module.
+  llvm_module->setDataLayout(module_->getDataLayout());
+  llvm::Linker::linkModules(*module_, std::move(llvm_module));
+
+  // Retrieve launch dimensions from arith.constant ops.
+  auto get_dim3d = [](mlir::gpu::KernelDim3 dim3) {
+    auto get_const = [](mlir::Value value) -> int64_t {
+      auto const_op = value.getDefiningOp<mlir::arith::ConstantOp>();
+      if (!const_op) return -1;
+      auto attr = const_op.getValue().cast<mlir::IntegerAttr>();
+      if (!attr) return -1;
+      return attr.getValue().getSExtValue();
+    };
+    return LaunchDimensions::Dim3D{get_const(dim3.x), get_const(dim3.y),
+                                   get_const(dim3.z)};
+  };
+  LaunchDimensions launch_dimensions(
+      get_dim3d(launch_func.getGridSizeOperandValues()),
+      get_dim3d(launch_func.getBlockSizeOperandValues()));
+
+  // Create BufferSlice array from launch_func arguments, using the
+  // attribute depicting which arguments are written by the kernel.
+  std::vector<BufferSlice> slices;
+  unsigned num_kernel_operands = launch_func.getNumKernelOperands();
+  slices.reserve(num_kernel_operands);
+  mlir::ArrayRef<mlir::Attribute> written_operands =
+      mlir::getWrittenOperandsAttribute(launch_func).getValue();
+  for (const auto& [operand, written] :
+       llvm::zip_first(launch_func.operands(),
+                       written_operands.take_back(num_kernel_operands))) {
+    BufferSlice slice;
+    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                        GetAllocationSlice(operand, &slice.constant_name));
+    slice.shape = GetShape(operand);
+    slice.written = written.cast<mlir::BoolAttr>().getValue();
+    slices.push_back(std::move(slice));
+  }
+
+  // Add kernel prototype to module_, kernel thunk to thunk_sequence_.
+  std::string kernel_name = GetIrNameFromLoc(launch_func.getLoc());
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Thunk> kernel_thunk,
+      BuildKernelThunkImpl(kernel_name, GetThunkInfo(op), slices, &ir_arrays,
+                           launch_dimensions));
+  thunk_sequence_.emplace_back(std::move(kernel_thunk));
+
+  // Move function body into kernel prototype.
+  llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
+  llvm::Function* implementation_func =
+      module_->getFunction(kernel_func.getName());
+  prototype_func->getBasicBlockList().splice(
+      prototype_func->end(), implementation_func->getBasicBlockList());
+  for (const auto& [arg, ir_array] :
+       llvm::zip_first(implementation_func->args(), ir_arrays)) {
+    arg.replaceAllUsesWith(ir_array.GetBasePointer());
+  }
+  implementation_func->eraseFromParent();
+
+  // Replace pre-existing return with unconditional branch to next block.
+  llvm::Instruction* terminator =
+      prototype_func->getEntryBlock().getTerminator();
+  llvm::BranchInst::Create(&*std::next(prototype_func->begin()), terminator);
+  terminator->eraseFromParent();
+
+  return Status::OK();
 }
 
 // TODO(timshen): update the comment once the HandleFusion code path deleted.
@@ -5673,6 +5775,17 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 
   if (mlir::isa<mlir::lmhlo::WhileOp>(op)) {
     return EmitWhile(op);
+  }
+
+  if (mlir::isa<mlir::gpu::LaunchFuncOp>(op)) {
+    return EmitLaunchFunc(op);
+  }
+
+  // Remaining arith.constant ops are the gpu.launch_func dimensions as a result
+  // of inlining the fusion region after lowering. They can safely be skipped
+  // because constants have no side effects.
+  if (mlir::isa<mlir::arith::ConstantOp>(op)) {
+    return Status::OK();
   }
 
   return InternalError("Unrecognized op: %s", MlirToString(op));

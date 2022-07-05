@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -275,6 +277,16 @@ const StatTypeMap& GetStatTypeMap() {
       {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
       {"occupancy_min_grid_size", kOccupancyMinGridSize},
       {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
+      // Aggregrated Stat
+      {"self_duration_ps", kSelfDurationPs},
+      {"min_duration_ps", kMinDurationPs},
+      {"max_iteration_num", kMaxIterationNum},
+      {"device_type", kDeviceType},
+      {"uses_megacore", kUsesMegaCore},
+      {"symbol_id", kSymbolId},
+      {"hlo_category", kHloCategory},
+      {"tf_op_name", kTfOpName},
+      {"dma_stall_duration_ps", kDmaStallDurationPs},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

@@ -187,7 +187,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
   auto broadcastDimensions = op->getAttr("broadcast_dimensions")
                                  .dyn_cast_or_null<DenseIntElementsAttr>();
   if (broadcastDimensions &&
-      !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, broadcastDimensions)) {
+      !hlo::isLegalNumpyRankedBroadcast(lhs, rhs, broadcastDimensions)) {
     // Note: It is unclear whether the general specification of explicit
     // broadcast_dimensions on binary ops is a feature we want to carry
     // forward. While it can technically be implemented for ranked-dynamic,
@@ -200,7 +200,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
            << "broadcast_dimensions = " << broadcastDimensions;
   }
 
-  result.push_back(hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
+  result.push_back(hlo::computeBinaryElementwiseBroadcastingResultExtents(
       loc, lhs, rhs, builder));
   return success();
 }
@@ -429,7 +429,7 @@ LogicalResult BroadcastSelectOp::inferReturnTypeComponents(
 
 LogicalResult BroadcastSelectOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands, SmallVectorImpl<Value>& result) {
-  result.push_back(hlo::ComputeNaryElementwiseBroadcastingResultExtents(
+  result.push_back(hlo::computeNaryElementwiseBroadcastingResultExtents(
       getLoc(), operands, builder));
   return success();
 }

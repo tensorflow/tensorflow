@@ -49,6 +49,14 @@ static int64_t multiply_dims(int64_t a, int64_t b) {
   return a * b;
 }
 
+namespace {
+// Given an axis that can be a positive or negative value and the tensor size,
+// return the adjusted axis value wrapped around the tensor size.
+int32_t adjust_axis(int32_t axis, int32_t tensor_size) {
+  return axis >= 0 ? axis % tensor_size : (axis + tensor_size) % tensor_size;
+}
+};  // namespace
+
 // Copied Nudge implementation from
 // tensorflow/core/kernels/fake_quant_ops_functor.h.
 // Suggested approach to avoid significant TensorFlow
@@ -2064,7 +2072,12 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis >= 0 && axis < input_shape.size());
+  if ((axis >= 0 && axis >= input_shape.size()) ||
+      (axis < 0 && axis < -input_shape.size())) {
+    op->emitOpError("SplitV: invalid axis value.");
+    return llvm::None;
+  }
+  axis = adjust_axis(axis, input_shape.size());
   int32_t size_split_sum = 0;
   for (int i = 0; i < size_split.size(); i++) {
     size_split_sum += size_split[i];

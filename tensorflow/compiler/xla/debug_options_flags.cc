@@ -48,6 +48,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
+#ifdef XLA_CPU_USE_ACL
+  opts.set_xla_cpu_use_acl(true);
+#endif
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
   // Run all GPU work on one stream by default.  Using multiple streams
@@ -94,6 +97,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
+  opts.set_xla_gpu_enable_mlir_lowering(false);
   opts.set_xla_gpu_normalize_layouts(false);
   return opts;
 }
@@ -441,6 +445,10 @@ static void AllocateFlags() {
                        flag_values->xla_cpu_use_mkl_dnn(),
                        "Generate calls to MKL-DNN in the CPU backend."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
+      flag_values->xla_cpu_use_acl(),
+      "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_crash_on_verification_failures),
@@ -753,6 +761,11 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
       flag_values->xla_cpu_enable_mlir_lowering(),
       "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_mlir_lowering",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_lowering),
+      flag_values->xla_gpu_enable_mlir_lowering(),
+      "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_normalize_layouts",
       bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),

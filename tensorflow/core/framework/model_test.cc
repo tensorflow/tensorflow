@@ -1903,6 +1903,297 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
   EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
 }
 
+class BufferSizeTest : public ::testing::Test {
+ public:
+  void ReadModel(const std::string& model_pbtxt) {
+    ModelProto model_proto;
+    protobuf::TextFormat::ParseFromString(model_pbtxt, &model_proto);
+    TF_CHECK_OK(Model::FromProto(model_proto, &model_));
+    auto nodes = model_->output()->CollectNodes(
+        TraversalOrder::BFS, [](const std::shared_ptr<Node>) { return true; });
+    node_map_.clear();
+    node_map_[model_->output()->id()] = model_->output();
+    for (const auto& node : nodes) {
+      node_map_[node->id()] = node;
+    }
+  }
+
+  // Returns a node given its node id. If node id does not exist, it will fail.
+  std::shared_ptr<Node> GetNode(int64_t node_id) const {
+    return node_map_.at(node_id);
+  }
+
+ protected:
+  std::unique_ptr<Model> model_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Node>> node_map_;
+};
+
+TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
+  ReadModel(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 2
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 3
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 4
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
+
+  std::shared_ptr<Node> node_1 = GetNode(1);
+  std::shared_ptr<Node> node_2 = GetNode(2);
+  std::shared_ptr<Node> node_3 = GetNode(3);
+  std::shared_ptr<Node> node_4 = GetNode(4);
+  // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
+  // downsized to 2.
+  node_1->record_buffer_event(100, 1);
+  node_1->record_buffer_event(100, 1);
+  EXPECT_EQ(1, node_1->buffered_elements_low());
+  EXPECT_EQ(2, node_1->buffered_elements_high());
+  // Set node 2 low watermark to 1 and high watermark to 5. Expect that it is
+  // not changed.
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(400, 4);
+  node_2->record_buffer_event(-100, -1);
+  EXPECT_EQ(1, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  // Set node 3 low watermark to 0 and high watermark to 5. Expect that it is
+  // upsized to 10.
+  node_3->record_buffer_event(100, 1);
+  node_3->record_buffer_event(-100, -1);
+  node_3->record_buffer_event(500, 5);
+  node_3->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  // Set node 4 low watermark to 0 and high watermark to 5. Its max buffer size
+  // is set to 8. Expect that it is upsized to 8.
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(500, 5);
+  node_4->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_4->buffered_elements_low());
+  EXPECT_EQ(5, node_4->buffered_elements_high());
+
+  model_->OptimizeBuffers(node_1, 10000);
+
+  EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
+  EXPECT_EQ(5, node_2->parameter_value(kBufferSize));
+  EXPECT_EQ(10, node_3->parameter_value(kBufferSize));
+  EXPECT_EQ(8, node_4->parameter_value(kBufferSize));
+}
+
+TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
+  ReadModel(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 2
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 3
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 4
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
+
+  std::shared_ptr<Node> node_1 = GetNode(1);
+  std::shared_ptr<Node> node_2 = GetNode(2);
+  std::shared_ptr<Node> node_3 = GetNode(3);
+  std::shared_ptr<Node> node_4 = GetNode(4);
+  // Set low watermark to 0 and high watermark to 5 for all nodes.
+  node_1->record_buffer_event(100, 1);
+  node_1->record_buffer_event(-100, -1);
+  node_1->record_buffer_event(500, 5);
+  EXPECT_EQ(0, node_1->buffered_elements_low());
+  EXPECT_EQ(5, node_1->buffered_elements_high());
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(-100, -1);
+  node_2->record_buffer_event(-100, -1);
+  node_2->record_buffer_event(400, 4);
+  node_2->record_buffer_event(100, 1);
+  EXPECT_EQ(0, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  node_3->record_buffer_event(100, 1);
+  node_3->record_buffer_event(-100, -1);
+  node_3->record_buffer_event(500, 5);
+  EXPECT_EQ(0, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(500, 5);
+  node_4->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_4->buffered_elements_low());
+  EXPECT_EQ(5, node_4->buffered_elements_high());
+
+  model_->OptimizeBuffers(node_1, 3000);
+
+  EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_3->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_4->parameter_value(kBufferSize));
+}
+
 TEST_F(ModelTimingTest, OptimizeGreedy_OneStage) {
   BuildModelFromProto(R"pb(
     nodes: {

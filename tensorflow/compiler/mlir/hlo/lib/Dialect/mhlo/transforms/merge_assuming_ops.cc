@@ -287,8 +287,8 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
     auto isNewOpResult = [newOp](Value v) {
       return llvm::is_contained(newOp->getResults(), v);
     };
-    auto yield_op = cast<shape::AssumingYieldOp>(body->getTerminator());
-    if (llvm::none_of(yield_op.getOperands(), isNewOpResult)) return success();
+    auto yieldOp = cast<shape::AssumingYieldOp>(body->getTerminator());
+    if (llvm::none_of(yieldOp.getOperands(), isNewOpResult)) return success();
 
     // If the assuming region yields any of the new op's results, these values
     // can instead bypass the assuming region. There is no need to yield them
@@ -306,7 +306,7 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
 
           // Collect new yield operands.
           SmallVector<Value, 2> newYieldOperands;
-          for (Value result : yield_op.getOperands()) {
+          for (Value result : yieldOp.getOperands()) {
             if (isNewOpResult(result)) {
               replacementValues.push_back(result);
             } else {

@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 
+#include <utility>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+
 namespace xla {
 namespace {
 
@@ -86,7 +89,9 @@ XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
   // Invariant sanity check -- Left branch and right branch need to have
   // compatible shapes.
   CHECK(!right_branch_shape.IsTuple());
-  CHECK(left_branch_shape.rank() == right_branch_shape.rank());
+  CHECK_EQ(left_branch_shape.rank(), right_branch_shape.rank())
+      << "left rank of (" << left_branch_shape.rank() << ") vs. right rank of ("
+      << right_branch_shape.rank() << ")";
   for (int64_t dim = 0; dim < left_branch_shape.rank(); ++dim) {
     XlaOp original_dim = GetDimensionSize(result, dim);
     if (left_branch_shape.dimensions(dim) <

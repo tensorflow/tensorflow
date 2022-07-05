@@ -409,6 +409,15 @@ INSTANTIATE_TEST_SUITE_P(
              "test_only_experiment_100"}},
         GetExperimentsOptTestCase{
             /*opt_ins=*/{"test_only_experiment_0", "test_only_experiment_100"},
+            /*opt_outs=*/{"all_except_opt_in"},
+            /*expected_in=*/
+            {"test_only_experiment_0", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99"}},
+        GetExperimentsOptTestCase{
+            /*opt_ins=*/{"test_only_experiment_0", "test_only_experiment_100"},
             /*opt_outs=*/{},
             /*expected_in=*/
             {"test_only_experiment_0", "test_only_experiment_1",

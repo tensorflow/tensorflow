@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 
 #include <numeric>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -57,7 +58,7 @@ DenseIntElementsAttr getBroadcastDimensionsAttr(Builder* b, Value x, Value y,
   return DenseIntElementsAttr::get(type, broadcastDimensions);
 }
 
-DenseElementsAttr GetScalarOfType(Type ty, int64_t rawValue) {
+DenseElementsAttr getScalarOfType(Type ty, int64_t rawValue) {
   RankedTensorType scalarTy = RankedTensorType::get({}, ty);
 
   if (auto floatTy = ty.dyn_cast<FloatType>()) {
@@ -80,7 +81,7 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t rawValue) {
   llvm_unreachable("unsupported type");
 }
 
-DenseElementsAttr GetScalarNegZeroOfType(Type ty) {
+DenseElementsAttr getScalarNegZeroOfType(Type ty) {
   RankedTensorType scalarTy = RankedTensorType::get({}, ty);
 
   if (auto floatTy = ty.dyn_cast<FloatType>()) {
@@ -146,7 +147,7 @@ static APInt getScalarLimitOfIntegerType(IntegerType integerTy,
   llvm_unreachable("invalid limit");
 }
 
-DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
+DenseElementsAttr getScalarLimitOfType(Type ty, ScalarLimit limit) {
   RankedTensorType scalarTy = RankedTensorType::get({}, ty);
   if (auto floatTy = ty.dyn_cast<FloatType>()) {
     return DenseElementsAttr::get(scalarTy,
@@ -159,7 +160,7 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
   llvm_unreachable("unsupported type");
 }
 
-std::string LmhloToMhloOpName(llvm::StringRef opName,
+std::string lmhloToMhloOpName(llvm::StringRef opName,
                               mlir::MLIRContext* context) {
   assert(opName.startswith("lmhlo.") && "Expected an LMHLO op");
 
@@ -176,7 +177,7 @@ std::string LmhloToMhloOpName(llvm::StringRef opName,
   return "";
 }
 
-bool IsSequenceStartingWith0(Attribute attr) {
+bool isSequenceStartingWith0(Attribute attr) {
   DenseIntElementsAttr denseAttr = attr.dyn_cast<DenseIntElementsAttr>();
   for (int64_t i = 0, e = denseAttr.getNumElements(); i < e; ++i)
     if (denseAttr.getValues<APInt>()[i].getSExtValue() != i) return false;

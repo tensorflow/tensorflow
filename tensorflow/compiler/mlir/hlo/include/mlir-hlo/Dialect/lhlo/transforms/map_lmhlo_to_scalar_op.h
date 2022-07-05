@@ -30,7 +30,7 @@ struct LhloOpToStdScalarOp {
                 !std::is_same<MhloOpTy, std::false_type>::value>>
   static Value map(LhloOpTy op, ArrayRef<Type> resultTypes, ValueRange args,
                    OpBuilder* b, int /*i*/ = 0) {
-    return mlir::mhlo::impl::MapMhloOpToStdScalarOp<MhloOpTy>(
+    return mlir::mhlo::impl::mapMhloOpToStdScalarOp<MhloOpTy>(
         op.getLoc(), resultTypes, llvm::to_vector<4>(op->getOperandTypes()),
         args, b);
   }
@@ -41,7 +41,7 @@ struct LhloOpToStdScalarOp {
   static Value map(lmhlo::CompareOp op, ArrayRef<Type> resultTypes,
                    ValueRange args, OpBuilder* b) {
     auto comparisonDirection = op.getComparisonDirection();
-    return mlir::mhlo::impl::MapCompareOpToStdScalarOp(
+    return mlir::mhlo::impl::mapCompareOpToStdScalarOp(
         op.getLoc(), comparisonDirection, resultTypes,
         llvm::to_vector<4>(op->getOperandTypes()), args, b);
   }
@@ -54,7 +54,7 @@ struct LhloOpToStdScalarOp {
   static Value map(Location loc, ArrayRef<Type> resultTypes,
                    ArrayRef<Type> argTypes, ValueRange args, OpBuilder* b,
                    unsigned /*i*/ = 0) {
-    return mlir::mhlo::impl::MapMhloOpToStdScalarOp<MhloOpTy>(
+    return mlir::mhlo::impl::mapMhloOpToStdScalarOp<MhloOpTy>(
         loc, resultTypes, argTypes, args, b);
   }
 };

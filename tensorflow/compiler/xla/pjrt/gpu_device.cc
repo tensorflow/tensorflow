@@ -275,7 +275,7 @@ StatusOr<std::unique_ptr<se::DeviceMemoryAllocator>> GetGpuDeviceAllocator(
       }
       LOG(ERROR) << "Failed to initialize CUDA async allocator: "
                  << allocator_or.status() << "; falling back to BFC.";
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     }
 
     case GpuAllocatorConfig::Kind::kDefault:

@@ -480,8 +480,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+    static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();

@@ -84,4 +84,9 @@ std::optional<PjRtChunk> CopyToDeviceStream::ConsumeNextChunk() {
   return std::move(chunk);
 }
 
+// Defining the first virtual non-pure method, which is usually the virtual
+// destructor, makes it a key function. This reduces the program size and takes
+// fewer linker resources.
+PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
+
 }  // namespace xla

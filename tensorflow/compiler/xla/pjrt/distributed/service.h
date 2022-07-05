@@ -163,6 +163,8 @@ class CoordinationServiceImpl {
 
   // Must be called after gRPC server has started.
   void StartRpcThread();
+  // Must be called before shutting down gRPC server.
+  void Shutdown();
 
   CoordinationServiceImpl(const CoordinationServiceImpl&) = delete;
   CoordinationServiceImpl(CoordinationServiceImpl&&) = delete;

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/core/platform/casts.h"
 
 namespace xla {
 
@@ -35,7 +34,6 @@ class PjRtCApiClient;
 class PjRtCApiDevice : public PjRtDevice {
  public:
   explicit PjRtCApiDevice(PJRT_Device* device);
-  ~PjRtCApiDevice() override;
 
   // Must set client exactly once.
   void SetClient(PjRtCApiClient* client) {
@@ -45,11 +43,11 @@ class PjRtCApiDevice : public PjRtDevice {
 
   PjRtClient* client() const override;
 
-  bool IsAddressable() const override { return wrapped_->IsAddressable(); }
+  bool IsAddressable() const override;
 
   int id() const override;
 
-  int process_index() const override { return wrapped_->process_index(); }
+  int process_index() const override;
 
   int local_hardware_id() const override {
     return wrapped_->local_hardware_id();
@@ -83,6 +81,8 @@ class PjRtCApiDevice : public PjRtDevice {
     return wrapped_->Attributes();
   }
 
+  PJRT_Device* c_device() const { return device_; }
+
   PjRtDevice* wrapped() const { return wrapped_; }
 
   static PjRtDevice* GetWrapped(PjRtDevice* c_api_device) {
@@ -91,6 +91,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
  private:
   PjRtCApiClient* client_ = nullptr;
+  // `device_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_Device* device_;
   // TODO(shahrokhi): wrapped_ is a non-C API pointer that was used to bypass
   // the C API calls until all the C API's got implemented. Remove it when it's
@@ -100,22 +101,15 @@ class PjRtCApiDevice : public PjRtDevice {
 
 class PjRtCApiClient : public PjRtClient {
  public:
-  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client,
-                 std::vector<std::unique_ptr<PjRtCApiDevice>> devices);
+  PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client);
 
   int process_index() const override;
 
-  int device_count() const override { return wrapped_->device_count(); }
+  int device_count() const override;
+  int addressable_device_count() const override;
 
-  int addressable_device_count() const override {
-    return wrapped_->addressable_device_count();
-  }
-
-  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
-
-  absl::Span<PjRtDevice* const> addressable_devices() const override {
-    return addressable_devices_;
-  }
+  absl::Span<PjRtDevice* const> devices() const override;
+  absl::Span<PjRtDevice* const> addressable_devices() const override;
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
     TF_ASSIGN_OR_RETURN(PjRtDevice * wrapped_device,
@@ -168,9 +162,7 @@ class PjRtCApiClient : public PjRtClient {
       const PjRtExecutable& executable) const override;
 
   StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
-  }
+      absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override {
@@ -258,6 +250,14 @@ class PjRtCApiClient : public PjRtClient {
 
   const PJRT_Api* pjrt_c_api() const;
 
+  PJRT_Client* pjrt_c_client() { return c_client_.get(); }
+
+  PjRtCApiDevice* GetCppDevice(PJRT_Device* c_device) const {
+    auto it = c_to_cpp_device_map_.find(c_device);
+    CHECK(it != c_to_cpp_device_map_.end());
+    return it->second;
+  }
+
  private:
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
@@ -265,6 +265,7 @@ class PjRtCApiClient : public PjRtClient {
   std::vector<std::unique_ptr<PjRtCApiDevice>> owned_devices_;
   std::vector<PjRtDevice*> devices_;
   std::vector<PjRtDevice*> addressable_devices_;
+  absl::flat_hash_map<PJRT_Device*, PjRtCApiDevice*> c_to_cpp_device_map_;
 
   // TODO(skyewm): this is a shim so we can run PjRtCApiClient code without the
   // C API being fully implemented. All methods using wrapped_ should either be
@@ -272,6 +273,8 @@ class PjRtCApiClient : public PjRtClient {
   // wrapped_ and related functionality should be removed.
   PjRtClient* wrapped_;
   absl::flat_hash_map<PjRtDevice*, PjRtCApiDevice*> wrapped_device_map_;
+
+  void InitDevices();
 };
 
 class PjRtCApiBuffer : public PjRtBuffer {
@@ -311,7 +314,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->CopyRawToHost(dst, offset, transfer_size);
   }
 
-  void Delete() override { wrapped_->Delete(); }
+  void Delete() override;
 
   StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override {
@@ -319,7 +322,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
         wait_for_operations_to_complete);
   }
 
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override {
@@ -427,8 +430,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  void Delete() override { return wrapped()->Delete(); }
-  bool IsDeleted() override { return wrapped()->IsDeleted(); }
+  void Delete() override;
+  bool IsDeleted() override;
 
   PjRtExecutable* wrapped() const;
 
@@ -437,10 +440,14 @@ class PjRtCApiExecutable : public PjRtExecutable {
         ->wrapped();
   }
 
+  const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+
  private:
   PjRtCApiClient* client_;
   PJRT_Executable* executable_;
   std::vector<PjRtDevice*> addressable_devices_;
+
+  void InitDevices();
 };
 
 // Takes ownership of wrapped.

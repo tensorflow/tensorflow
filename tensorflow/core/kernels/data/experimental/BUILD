@@ -237,6 +237,8 @@ tf_kernel_library(
         "//tensorflow/core/data/service:worker_client",
         "//tensorflow/core/data/service:worker_impl",
         "//tensorflow/core/data/service:worker_proto_cc",
+        "//tensorflow/core/data/service/client:common",
+        "//tensorflow/core/data/service/client:validate_utils",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/platform:env_time",

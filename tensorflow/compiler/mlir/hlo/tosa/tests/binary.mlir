@@ -21,6 +21,13 @@ func.func @maximum_f64(%arg0 : tensor<10xf64>, %arg1 : tensor<10xf64>) -> tensor
   return %0 : tensor<10xf64>
 }
 
+// CHECK-LABEL: @multiply
+func.func @multiply(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: tosa.mul
+  %0 = "mhlo.multiply"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
 // CHECK-LABEL: @subtract
 func.func @subtract(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: tosa.sub

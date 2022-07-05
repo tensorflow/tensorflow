@@ -25,7 +25,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
+mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
                                        mlir::Type newType) {
   auto oldType = getElementTypeOrSelf(elements);
   // TODO(kramerb): Add support when MLIR can represent const complex tensors.

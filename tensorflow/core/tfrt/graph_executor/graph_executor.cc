@@ -416,22 +416,32 @@ tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
-GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
+GraphExecutor::ImportAndCompileClientGraph(
+    const GraphExecutor::ClientGraph& client_graph) {
   auto loaded_client_graph = std::make_unique<LoadedClientGraph>();
   loaded_client_graph->name = client_graph.name;
   loaded_client_graph->resource_context = CreateResourceContext(
       runtime(), tpu_model_resource_, options_.compile_options.tpu_target);
 
-  // Step 1: Import the client graph from proto to an MLIR module.
+  // Step 1 of loading: Import the client graph from proto to an MLIR module.
   mlir::MLIRContext context;
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, &context));
 
-  // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
+  // Step 2 of loading: Compile the MLIR module from TF dialect to TFRT dialect
+  // (in BEF).
   ASSIGN_OR_RETURN_IN_COMPILE(loaded_client_graph->bef,
                               CompileMlirModuleToBef(module.get()));
 
-  // Step 3: Initialize runtime states using special BEF functions.
+  return loaded_client_graph;
+}
+
+StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
+GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
+  TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
+                      ImportAndCompileClientGraph(client_graph));
+
+  // Step 3 of loading: Initialize runtime states using special BEF functions.
   ASSIGN_OR_RETURN_IN_INIT(
       loaded_client_graph->bef_file,
       tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));

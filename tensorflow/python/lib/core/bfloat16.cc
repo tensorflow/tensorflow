@@ -561,7 +561,7 @@ void NPyCustomFloat_CopySwap(void* dst, void* src, int swap, void* arr) {
   if (!src) {
     return;
   }
-  memcpy(dst, src, sizeof(uint16_t));
+  memcpy(dst, src, sizeof(T));
   static_assert(sizeof(T) == sizeof(int16_t) || sizeof(T) == sizeof(int8_t),
                 "Not supported");
   if (swap && sizeof(T) == sizeof(int16_t)) {

@@ -27,7 +27,7 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
+bool isLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                                  DenseIntElementsAttr broadcastDims) {
   RankedTensorType lhsType = lhs.getType().dyn_cast<RankedTensorType>();
   RankedTensorType rhsType = rhs.getType().dyn_cast<RankedTensorType>();
@@ -47,14 +47,14 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
                     broadcastDims.value_begin<APInt>());
 }
 
-Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
+Value computeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
                                                         Value rhs,
                                                         OpBuilder& builder) {
-  return ComputeNaryElementwiseBroadcastingResultExtents(
+  return computeNaryElementwiseBroadcastingResultExtents(
       loc, ValueRange{lhs, rhs}, builder);
 }
 
-Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
+Value computeNaryElementwiseBroadcastingResultExtents(Location loc,
                                                       ValueRange operands,
                                                       OpBuilder& builder) {
   auto shapes = llvm::to_vector<4>(llvm::map_range(operands, [&](Value v) {

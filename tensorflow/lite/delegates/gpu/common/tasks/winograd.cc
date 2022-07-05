@@ -126,36 +126,7 @@ MAIN_FUNCTION($0) {
     c += "  }\n";
   }
 
-  const auto dst_desc = op_def.dst_tensors[0];
-
-  if (dst_desc.IsLinear()) {
-    c += R"(
-  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
-  args.dst_tensor.GetAddress(dst_adress, dst_x, 0, S);
-  for (int y = 0; y < 6; ++y) {
-    FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(7) * I[y][1] + args.Bt.Read(8) * I[y][2] + args.Bt.Read(9) * I[y][3] + args.Bt.Read(10) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(13) * I[y][1] + args.Bt.Read(14) * I[y][2] + args.Bt.Read(15) * I[y][3] + args.Bt.Read(16) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(19) * I[y][1] + args.Bt.Read(20) * I[y][2] + args.Bt.Read(21) * I[y][3] + args.Bt.Read(22) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(25) * I[y][1] + args.Bt.Read(26) * I[y][2] + args.Bt.Read(27) * I[y][3] + args.Bt.Read(28) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(31) * I[y][1] + args.Bt.Read(33) * I[y][3] + I[y][5];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-  }
-}
-)";
-  } else {
-    c += R"(
+  c += R"(
   int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
   for (int y = 0; y < 6; ++y) {
     FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
@@ -173,7 +144,6 @@ MAIN_FUNCTION($0) {
   }
 }
 )";
-  }
   return c;
 }
 

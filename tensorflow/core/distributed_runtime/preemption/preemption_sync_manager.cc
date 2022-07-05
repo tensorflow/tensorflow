@@ -23,18 +23,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-#include "learning/brain/runtime/preemption/borg_preemption_notifier.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 namespace tensorflow {
 namespace {
@@ -57,10 +54,9 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
     shutdown_.Notify();
   }
   Status Initialize(CoordinationServiceAgent* agent) override;
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-  Status InitWithBorgPreemptionNotifier(
-      CoordinationServiceAgent* agent) override;
-#endif
+  Status Initialize(xla::DistributedRuntimeClient* client) override;
+  Status Initialize(CoordinationServiceAgent* agent,
+                    const std::string& preemption_notifier_type) override;
   Status Initialize(CoordinationServiceAgent* agent,
                     std::unique_ptr<PreemptionNotifier> notifier) override;
   bool ReachedSyncPoint(int step_counter) override;
@@ -88,18 +84,24 @@ class PreemptionSyncManagerImpl : public PreemptionSyncManager {
   std::shared_ptr<CallOptions> call_opts_;
 };
 
-Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
-  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
-  return Initialize(agent, CreateSigtermNotifier(env));
+Status PreemptionSyncManagerImpl::Initialize(
+    xla::DistributedRuntimeClient* client) {
+  TF_ASSIGN_OR_RETURN(CoordinationServiceAgent * coord_agent,
+                      client->GetCoordinationServiceAgent());
+  return Initialize(coord_agent);
 }
 
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-Status PreemptionSyncManagerImpl::InitWithBorgPreemptionNotifier(
-    CoordinationServiceAgent* agent) {
-  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
-  return Initialize(agent, CreateBorgPreemptionNotifier(env));
+Status PreemptionSyncManagerImpl::Initialize(CoordinationServiceAgent* agent) {
+  return Initialize(agent, "sigterm");
 }
-#endif
+
+Status PreemptionSyncManagerImpl::Initialize(
+    CoordinationServiceAgent* agent,
+    const std::string& preemption_notifier_type) {
+  TF_ASSIGN_OR_RETURN(Env * env, agent->GetEnv());
+  return Initialize(agent, PreemptionNotifier::CreatePreemptionNotifier(
+                               preemption_notifier_type, env));
+}
 
 Status PreemptionSyncManagerImpl::Initialize(
     CoordinationServiceAgent* agent,

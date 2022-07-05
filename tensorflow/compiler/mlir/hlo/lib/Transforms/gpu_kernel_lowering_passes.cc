@@ -89,11 +89,11 @@ void GpuKernelToROCDLPass::runOnOperation() {
 }
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
-mlir::CreateGpuKernelToNvvmPass() {
+mlir::createGpuKernelToNvvmPass() {
   return std::make_unique<GpuKernelToNVVMPass>();
 }
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
-mlir::CreateGpuKernelToRocdlPass() {
+mlir::createGpuKernelToRocdlPass() {
   return std::make_unique<GpuKernelToROCDLPass>();
 }

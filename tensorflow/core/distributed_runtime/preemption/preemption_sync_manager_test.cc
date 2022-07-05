@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -50,8 +49,9 @@ constexpr char kJobName[] = "test_worker";
 // Send fake preemption notices at any time for testing.
 class FakePreemptionNotifier : public PreemptionNotifier {
  public:
+  FakePreemptionNotifier() : PreemptionNotifier(/*env=*/nullptr) {}
+
   ~FakePreemptionNotifier() override {
-    mutex_lock l(mu_);
     NotifyRegisteredListeners(
         errors::Cancelled("~FakePreemptionNotifier() was called."));
   }
@@ -59,14 +59,8 @@ class FakePreemptionNotifier : public PreemptionNotifier {
   void AnnounceDeath(absl::Time death_time) {
     LOG(WARNING) << "Received preemption notice with death time: "
                  << death_time;
-    {
-      mutex_lock l(mu_);
-      death_time_ = death_time;
-      NotifyRegisteredListeners(death_time_);
-    }
+    NotifyRegisteredListeners(death_time);
   }
-
-  void Reset() override {}
 };
 
 class PreemptionSyncManagerTest : public ::testing::Test {

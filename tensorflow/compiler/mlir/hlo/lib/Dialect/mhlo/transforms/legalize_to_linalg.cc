@@ -116,7 +116,8 @@ Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
 Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
                           ArrayRef<Value> dynSizes) {
   return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
-                                                /*copy=*/Value());
+                                                /*copy=*/Value(),
+                                                /*memory_space=*/IntegerAttr());
 }
 
 Value getInitTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
@@ -1151,14 +1152,18 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
               shape[targetDim] = 1;
           }
         }
-        auto newOperandType = RankedTensorType::get(shape, elemType);
+        // Insert a cast if types are not the same (ignoring sparse encoding).
+        auto enc = sparse_tensor::getSparseTensorEncoding(operandType);
+        auto newOperandType = RankedTensorType::get(shape, elemType, enc);
         if (newOperandType != operandType) {
           operand = rewriter.create<tensor::CastOp>(reshapeOp.getLoc(),
                                                     newOperandType, operand);
         }
+        // Generate collapse operation.
         rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
             reshapeOp, resultType, operand, *reassociationMap);
       } else {
+        // Generate expand operation.
         rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
             reshapeOp, resultType, operand, *reassociationMap);
       }
@@ -2630,7 +2635,7 @@ struct ReduceWindowOpConversion
       }
 
       // Create a fake window dimension.
-      auto fake_window_dims = rewriter.create<linalg::InitTensorOp>(
+      auto fakeWindowDims = rewriter.create<linalg::InitTensorOp>(
           loc, fakeWindowShapes, resultType.getElementType());
 
       SmallVector<Value> resultDynamicDims;
@@ -2673,7 +2678,7 @@ struct ReduceWindowOpConversion
             rewriter
                 .create<std::remove_pointer_t<decltype(typePtr)>>(
                     loc, ArrayRef<Type>{resultType},
-                    ValueRange{input, fake_window_dims.getResult()},
+                    ValueRange{input, fakeWindowDims.getResult()},
                     filledInitTensor, strides, dilations,
                     pruneAttributeList(op))
                 .getOperation());
@@ -3179,7 +3184,7 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
     auto initTensor =
         getInitTensorFor(rewriter, loc, outputType, op, adaptor.getOperands());
     Value zeroTensor = fillTensorWithZeros(rewriter, loc, initTensor);
-    SmallVector<AffineMap, 3> indexing_maps;
+    SmallVector<AffineMap, 3> indexingMaps;
 
     auto getMap = [&](int64_t rank, ArrayRef<int64_t> batchingDims,
                       ArrayRef<int64_t> contractingDims, size_t extraDims) {
@@ -3195,9 +3200,9 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
           indices[i] = rewriter.getAffineDimExpr(extraDims++);
         }
       }
-      indexing_maps.push_back(AffineMap::get(/*dimCount=*/totalLoopCount,
-                                             /*symbolCount=*/0, indices,
-                                             op->getContext()));
+      indexingMaps.push_back(AffineMap::get(/*dimCount=*/totalLoopCount,
+                                            /*symbolCount=*/0, indices,
+                                            op->getContext()));
     };
     getMap(lhsRank, lhsBatchingDims, lhsContractingDims,
            lhsBatchingDims.size());
@@ -3209,15 +3214,15 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
       dimExprs.reserve(targetRank);
       for (unsigned i = 0; i < targetRank; ++i)
         dimExprs.push_back(rewriter.getAffineDimExpr(i));
-      indexing_maps.push_back(AffineMap::get(/*dimCount=*/totalLoopCount,
-                                             /*symbolCount=*/0, dimExprs,
-                                             op.getContext()));
+      indexingMaps.push_back(AffineMap::get(/*dimCount=*/totalLoopCount,
+                                            /*symbolCount=*/0, dimExprs,
+                                            op.getContext()));
     }
 
     Operation* linalgOp = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/TypeRange{outputType},
         /*inputs=*/ValueRange{adaptor.lhs(), adaptor.rhs()},
-        /*outputBuffers=*/ValueRange{zeroTensor}, indexing_maps,
+        /*outputBuffers=*/ValueRange{zeroTensor}, indexingMaps,
         getParallelAndReductionIterators(
             /*nLoops=*/totalLoopCount,
             /*nReduction=*/numContracting),
@@ -3321,6 +3326,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SubOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
       PointwiseToLinalgConverter<mhlo::XorOp>,
+      PointwiseToLinalgConverter<mhlo::ReducePrecisionOp>,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,

@@ -192,3 +192,13 @@ def test_rng_algorithm():
   assert attr is not None
   assert str(attr) == ("#mhlo.rng_algorithm<DEFAULT>")
   assert attr.rng_algorithm == "DEFAULT"
+
+
+@run
+def test_channel_handle():
+  """Check that ChannelHandle attribute is available and usable."""
+
+  attr = ChannelHandle.get(handle=1, type=2)
+  assert attr is not None
+  assert attr.handle == 1
+  assert attr.channel_type == 2

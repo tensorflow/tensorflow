@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -106,6 +107,19 @@ void MayBeAddConvertion(const std::string& conversion, std::string* result) {
   if (!conversion.empty()) {
     *result = conversion + "(" + *result + ")";
   }
+}
+
+absl::optional<std::string> GetLinearIndexFromTemplateArgs(
+    const std::vector<std::string>& template_args) {
+  for (const auto& template_arg : template_args) {
+    const std::string kTokenLinearIndex = "LinearIndex::";
+    size_t pos = template_arg.find(kTokenLinearIndex);
+    if (pos != std::string::npos) {
+      pos += kTokenLinearIndex.size();
+      return template_arg.substr(pos, template_arg.size() - pos);
+    }
+  }
+  return absl::nullopt;
 }
 
 }  // namespace
@@ -480,7 +494,6 @@ absl::Status TensorDescriptor::PerformReadPerChannelSelector(
     channels_index++;
   }
   if (channels_index >= coord_args.size()) {
-    std::cout << channels_index << " " << coord_args.size() << std::endl;
     return absl::NotFoundError(
         "Wrong number of coordinates in ReadPerChannel.");
   }
@@ -534,6 +547,14 @@ absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
 absl::Status TensorDescriptor::PerformWriteSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
+  if (IsLinear()) {
+    const auto linear_index = GetLinearIndexFromTemplateArgs(template_args);
+    if (linear_index.has_value()) {
+      std::vector<std::string> new_args = {args[0], linear_index.value()};
+      return PerformWriteLinearSelector(gpu_info, new_args, template_args,
+                                        result);
+    }
+  }
   std::string xc;
   std::string yc;
   std::string zc;

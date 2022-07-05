@@ -142,7 +142,7 @@ TfLiteStatus ProcessPerChannelQuantizedBias(
   auto* bias_data_node = graph_builder->AddConstNodeWithData(
       bias_shape.data(),
       reinterpret_cast<char*>(preprocessed_bias_data->data()),
-      preprocessed_bias_data->size() * sizeof(preprocessed_bias_data[0]));
+      preprocessed_bias_data->size() * sizeof((*preprocessed_bias_data)[0]));
   if (bias_const_node) {
     *bias_const_node = bias_data_node;
   }

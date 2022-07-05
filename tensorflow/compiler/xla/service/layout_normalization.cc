@@ -21,22 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/pattern_matcher.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace {
@@ -78,6 +71,67 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto bc_to_orig = MakeBitcastHlo(bc_to_normalized, shape);
     TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
     MarkAsChanged();
+    return OkStatus();
+  }
+
+  // Converts concatenation to normalized layout.
+  //
+  // With respect to layouts, concatenations are simple, as they are
+  // layout-preserving. However, there are some complications with respect to
+  // degenerate dimensions: since our normalized form drops degenerate
+  // dimensions, that might make the concatenation impossible, as the
+  // corresponding concatenated dimension might not exist in the normalized
+  // form.
+  //
+  // So we drop all degenerate dimensions EXCEPT for the one being concatenated.
+  Status HandleConcatenate(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto orig_concat_dim = hlo->dimensions(0);
+
+    std::vector<HloInstruction*> normalized_inputs;
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
+      auto normalized_input_s = normalized_input->shape();
+      auto operand_s = operand->shape();
+
+      // Drop all degenerate dimensions, unless it is being concatenated.
+      auto operand_s_filtered = ShapeUtil::FilterDimensions(
+          [&](int dim) {
+            return operand_s.dimensions(dim) != 1 || dim == orig_concat_dim;
+          },
+          operand_s);
+
+      auto operand_s_normalized =
+          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+              operand_s_filtered);
+      auto new_operand =
+          operand_s_normalized == normalized_input_s
+              ? normalized_input
+              : MakeBitcastHlo(normalized_input, operand_s_normalized);
+      normalized_inputs.push_back(new_operand);
+    }
+
+    auto out_shape_degen_dropped = ShapeUtil::FilterDimensions(
+        [&](int dim) {
+          return s.dimensions(dim) != 1 || dim == orig_concat_dim;
+        },
+        s);
+    auto normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+    auto normalized_shape =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            out_shape_degen_dropped);
+
+    auto l = ToTransposeDimensions(s.layout());
+    int64_t normalized_concat_dim = FindIndex(l, orig_concat_dim);
+    auto degen_delta = absl::c_count_if(
+        normalized_w_degen.dimensions().subspan(0, normalized_concat_dim),
+        [&](int dim) { return dim == 1; });
+    auto normalized_concat = hlo->AddInstruction(
+        HloInstruction::CreateConcatenate(normalized_shape, normalized_inputs,
+                                          normalized_concat_dim - degen_delta));
+    auto bc_to_orig = MakeBitcastHlo(normalized_concat, hlo->shape());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
   }
 
@@ -298,7 +352,120 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // The reverse HLO has a list of dimensions it reverses, which again becomes
+  // pretty interesting in the presence of degenerate dimensions: we need to
+  // drop those from the list.
+  //
+  // Luckily, reverse is layout-preserving.
+  Status HandleReverse(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto s_normalized = Normalize(s);
+    auto normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+
+    std::vector<int64_t> new_dimensions =
+        TransformDimensionsForLayoutPreservingHlo(hlo, normalized_w_degen,
+                                                  s_normalized);
+    auto normalized_reverse = hlo->AddInstruction(
+        HloInstruction::CreateReverse(a0->shape(), a0, new_dimensions));
+    auto bc_to_orig = MakeBitcastHlo(normalized_reverse, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
+  // Padding is layout-preserving, so we only have to permute values inside the
+  // padding config.
+  //
+  // Like in broadcast, we have to be mindful that we can't remove degenerate
+  // dimensions if they are padded.
+  Status HandlePad(HloInstruction* hlo) override {
+    auto s = hlo->shape();
+    auto operand = hlo->mutable_operand(0);
+    const auto& operand_s = operand->shape();
+    auto padded_by = hlo->mutable_operand(1);
+    TF_ASSIGN_OR_RETURN(auto a0, GetNormalizedInput(operand));
+    auto padded_config = hlo->padding_config();
+
+    auto operand_s_filtered = ShapeUtil::FilterDimensions(
+        [&](int dim) {
+          return operand_s.dimensions(dim) != 1 ||
+                 !IsZeroPadding(hlo->padding_config().dimensions(dim));
+        },
+        operand->shape());
+    auto operand_s_normalized =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            operand_s_filtered);
+    auto new_operand = operand_s_normalized == a0->shape()
+                           ? a0
+                           : MakeBitcastHlo(a0, operand_s_normalized);
+
+    auto s_normalized = Normalize(s);
+    auto l = ToTransposeDimensions(s.layout());
+
+    auto normalized_w_degen =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+
+    PaddingConfig new_padding;
+    new_padding.mutable_dimensions()->Reserve(s_normalized.dimensions_size());
+    for (int dim = 0; dim < s_normalized.dimensions_size(); dim++) {
+      new_padding.add_dimensions();
+    }
+
+    for (int dim = 0; dim < s.dimensions_size(); dim++) {
+      if (s.dimensions(dim) == 1) {
+        continue;
+      }
+      int tr_dim = static_cast<int>(FindIndex(l, dim));
+      int out_dim = tr_dim - DegenDimsUpTo(normalized_w_degen, tr_dim);
+      *new_padding.mutable_dimensions(out_dim) = padded_config.dimensions(dim);
+    }
+
+    auto padded_normalized = hlo->AddInstruction(HloInstruction::CreatePad(
+        s_normalized, new_operand, padded_by, new_padding));
+    auto bc_to_orig = MakeBitcastHlo(padded_normalized, s);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
  private:
+  bool IsZeroPadding(const PaddingConfig::PaddingConfigDimension& c) {
+    return c.edge_padding_high() == 0 && c.edge_padding_low() == 0 &&
+           c.interior_padding() == 0;
+  }
+
+  // Returns a list of dimensions associated with `hlo` after layout
+  // normalization.
+  std::vector<int64_t> TransformDimensionsForLayoutPreservingHlo(
+      HloInstruction* hlo, const Shape& normalized_shape_w_degen,
+      const Shape& normalized_out_shape) {
+    bool skip_degen_dims = normalized_shape_w_degen != normalized_out_shape;
+    std::vector<int64_t> new_dimensions;
+    const auto& s = hlo->shape();
+    auto l = ToTransposeDimensions(s.layout());
+
+    for (int64_t dim : hlo->dimensions()) {
+      if (s.dimensions(dim) == 1 && skip_degen_dims) {
+        continue;
+      }
+
+      auto tr_dim = FindIndex(l, dim);
+      auto degen_delta =
+          skip_degen_dims ? DegenDimsUpTo(normalized_shape_w_degen, tr_dim) : 0;
+      new_dimensions.push_back(tr_dim - degen_delta);
+    }
+    absl::c_sort(new_dimensions);
+    return new_dimensions;
+  }
+
+  // Returns number of degenerate dimensions in `shape` up to (exclusive) a
+  // `dim`.
+  int DegenDimsUpTo(const Shape& shape, int dim) {
+    return absl::c_count_if(shape.dimensions().subspan(0, dim),
+                            [&](int d) { return d == 1; });
+  }
+
   // Drops items from `dimensions` corresponding to degenerate dimensions in
   // `input_shape`.
   std::vector<int64_t> NoDegenerateDims(absl::Span<int64_t const> dimensions,

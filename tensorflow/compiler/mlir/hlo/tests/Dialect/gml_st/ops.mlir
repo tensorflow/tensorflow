@@ -1,4 +1,7 @@
-// RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --allow-unregistered-dialect | \
+// RUN: mlir-hlo-opt --verify-diagnostics --split-input-file \
+// RUN:     --allow-unregistered-dialect | \
+// RUN: FileCheck %s
 
 // CHECK-LABEL: @types
 func.func @types() {
@@ -267,7 +270,7 @@ func.func @parallel_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
         linalg.yield %s : f32
     } -> tensor<4xf32>
 
-    gml_st.subset_yield %result_sub into %output[%tile]
+    gml_st.set_yield %result_sub into %output[%tile]
       : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
@@ -300,7 +303,7 @@ func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
         linalg.yield %s : f32
     } -> tensor<4xf32>
 
-    gml_st.subset_yield %result_sub into %output[%tile]
+    gml_st.set_yield %result_sub into %out_[%tile]
       : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>

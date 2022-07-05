@@ -192,7 +192,7 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // this ScopedShapedBuffer, without freeing any of the associated memory.
   //
   // It's the caller's job to ensure that the memory contained therein is freed.
-  ABSL_MUST_USE_RESULT ShapedBuffer release();
+  [[nodiscard]] ShapedBuffer release();
 
   // Extracts the sub-tree rooted at 'index' and returns a ScopedShapedBuffer
   // that holds ownership of the subtree. Sets the buffers corresponding to the

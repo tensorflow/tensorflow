@@ -139,6 +139,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
       model_ = std::make_shared<model::Model>();
+      if (GetExperiments().contains("autotune_buffer_optimization")) {
+        model_->SetExperiment("autotune_buffer_optimization");
+      }
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
       max_intra_op_parallelism_ =

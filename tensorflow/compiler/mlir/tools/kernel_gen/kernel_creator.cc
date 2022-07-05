@@ -172,7 +172,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
-      /*allow_partial_conversion=*/false));
+      /*allow_partial_conversion=*/true));
   pm.addNestedPass<FuncOp>(mlir::mhlo::createRankSpecializationClusterPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
@@ -377,9 +377,9 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createConvertSCFToCFPass());
 #if TENSORFLOW_USE_ROCM
-  kernelPm.addPass(mlir::CreateGpuKernelToRocdlPass());
+  kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA
-  kernelPm.addPass(mlir::CreateGpuKernelToNvvmPass());
+  kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
   kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.

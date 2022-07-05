@@ -46,8 +46,8 @@ auto getInputs(OpT op, char) -> decltype(op.operands(), ValueRange{}) {
 }  // namespace accessor_dispatch
 
 template <typename OpT>
-static LogicalResult VerifyAllReduce(OpT op) {
-  if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
+static LogicalResult verifyAllReduce(OpT op) {
+  if (failed(mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/false)))
     return failure();
 
   // AllReduce has variadic operands and results that have the same size.

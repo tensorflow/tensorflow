@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
@@ -57,6 +56,8 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   xla::Status KeyValueSet(std::string key, std::string value) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
+  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+  GetCoordinationServiceAgent() override;
 
  private:
   // Entry point for the heartbeat thread.
@@ -122,6 +123,8 @@ class DistributedRuntimeCoordinationServiceClient
   xla::Status KeyValueSet(std::string key, std::string value) override;
   xla::Status WaitAtBarrier(std::string barrier_id,
                             absl::Duration timeout) override;
+  xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+  GetCoordinationServiceAgent() override;
 
  private:
   std::unique_ptr<tensorflow::CoordinationServiceAgent> coord_agent_;
@@ -367,6 +370,14 @@ xla::Status DistributedRuntimeClientImpl::WaitAtBarrier(
   return FromGrpcStatus(status);
 }
 
+xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+DistributedRuntimeClientImpl::GetCoordinationServiceAgent() {
+  return xla::Internal(
+      "Invoking GetCoordinationServiceAgent() while coordination service is "
+      "not enabled. Enable coordination service via "
+      "--jax_coordination_service.");
+}
+
 void DistributedRuntimeClientImpl::HeartbeatLoop() {
   int num_missing_heartbeats = 0;
   while (true) {
@@ -521,6 +532,11 @@ xla::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
 xla::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
     std::string barrier_id, absl::Duration timeout) {
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, /*tasks=*/{});
+}
+
+xla::StatusOr<tensorflow::CoordinationServiceAgent*>
+DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
+  return coord_agent_.get();
 }
 
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(

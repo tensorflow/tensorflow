@@ -61,10 +61,9 @@ py_library(
     srcs = ["xla_client_test.py"],
     srcs_version = "PY3",
     deps = [
-        ":custom_call_for_test",
         ":xla_client",
-        ":xla_extension",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -83,6 +82,7 @@ py_test(
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ] + xla_py_test_deps(),
@@ -104,6 +104,7 @@ py_test(
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:framework_test_lib",
@@ -277,6 +278,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        ":host_callback",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -700,6 +702,7 @@ pybind_extension(
         "//third_party/py/numpy",
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
+    visibility = ["//visibility:public"],
     deps = [
                ":dlpack",
                ":jax_jit",
@@ -741,6 +744,7 @@ pybind_extension(
                # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
                # not require Tensorflow.
                "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+               "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
                "//tensorflow/python:bfloat16_lib",
            ] + select({
                ":gpu_enabled": [
@@ -757,4 +761,13 @@ pybind_extension(
                ],
                "//conditions:default": [],
            }),
+)
+
+cc_library(
+    name = "host_callback",
+    srcs = ["host_callback.cc"],
+    hdrs = ["host_callback.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
 )

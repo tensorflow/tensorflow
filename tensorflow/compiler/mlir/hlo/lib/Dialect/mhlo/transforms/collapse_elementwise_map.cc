@@ -66,7 +66,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
       operands.reserve(op.getNumOperands());
       for (auto value : op.getOperands())
         operands.push_back(blockAndValueMap.lookup(value));
-      auto newOp = rewriter.create(
+      auto *newOp = rewriter.create(
           op.getLoc(), op.getName().getIdentifier(), operands,
           op.getResultTypes()[0].cast<TensorType>().clone(shape));
       // Maps the result.
