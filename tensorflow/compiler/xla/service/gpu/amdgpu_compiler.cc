@@ -105,7 +105,6 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // bitcast. This leads to having to linearize and then delinearize the
   // index.
   AlgebraicSimplifierOptions options;
-  options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
