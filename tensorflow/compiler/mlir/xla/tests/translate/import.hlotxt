@@ -487,7 +487,7 @@ add {
   %Arg_2.3 = s32[] parameter(2)
   %Arg_3.4 = s32[] parameter(3)
 
-  // CHECK-NEXT:  "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
+  // CHECK-NEXT:  "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
   ROOT %dynamic-update-slice.5 = f32[4, 4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3, %Arg_3.4)
 }
 
@@ -497,7 +497,7 @@ add {
   %Arg_1.2 = f32[2] parameter(1)
   %Arg_2.3 = s32[] parameter(2)
 
-  // CHECK-NEXT:  "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
+  // CHECK-NEXT:  "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
   ROOT %dynamic-update-slice.5 = f32[4] dynamic-update-slice(%Arg_0.1, %Arg_1.2, %Arg_2.3)
 }
 

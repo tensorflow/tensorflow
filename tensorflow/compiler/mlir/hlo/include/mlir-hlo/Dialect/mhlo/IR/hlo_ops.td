@@ -1196,7 +1196,7 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic_slice",
   let hasVerifier = 1;
 }
 
-def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
+def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic_update_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
        AllShapesMatch<["operand", "result"]>]> {
   let summary = "Dynamic Update Slice operator";

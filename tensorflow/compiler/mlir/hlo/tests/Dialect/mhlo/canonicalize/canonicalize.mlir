@@ -374,17 +374,17 @@ func.func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32>
 func.func @dynamic_update_slice_identity_update(%arg0: tensor<3x4xi64>, %arg1: tensor<3x4xi64>) -> tensor<3x4xi64> {
   // CHECK: return %arg1
   %0 = mhlo.constant dense<0> : tensor<i64>
-  %1 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %0, %0) : (tensor<3x4xi64>, tensor<3x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  %1 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %0, %0) : (tensor<3x4xi64>, tensor<3x4xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
   func.return %1 : tensor<3x4xi64>
 }
 
 // CHECK-LABEL: dynamic_update_slice_fold_fail_dynamic_shapes
 func.func @dynamic_update_slice_fold_fail_dynamic_shapes(%arg0: tensor<?x?xi64>, %arg1: tensor<?x?xi64>) -> tensor<?x?xi64> {
   %0 = mhlo.constant dense<0> : tensor<i64>
-  %1 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %0, %0) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
+  %1 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %0, %0) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
   func.return %1 : tensor<?x?xi64>
   // CHECK: %[[CST:.*]] = mhlo.constant dense<0> : tensor<i64>
-  // CHECK: %[[VAL:.*]] = "mhlo.dynamic-update-slice"(%arg0, %arg1, %[[CST]], %[[CST]]) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
+  // CHECK: %[[VAL:.*]] = "mhlo.dynamic_update_slice"(%arg0, %arg1, %[[CST]], %[[CST]]) : (tensor<?x?xi64>, tensor<?x?xi64>, tensor<i64>, tensor<i64>) -> tensor<?x?xi64>
   // CHECK: return %[[VAL]] : tensor<?x?xi64>
 }
 

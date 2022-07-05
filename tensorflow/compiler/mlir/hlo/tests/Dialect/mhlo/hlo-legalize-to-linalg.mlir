@@ -2990,7 +2990,7 @@ func.func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, 
 // -----
 
 func.func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi32>, %c0: tensor<i32>) -> tensor<3x3xi32> {
-  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %c0, %c0)
     : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<i32>, tensor<i32>) -> tensor<3x3xi32>
   func.return %0 : tensor<3x3xi32>
 }
@@ -3017,7 +3017,7 @@ func.func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi3
 // -----
 
 func.func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2x2xui32>, %c0: tensor<i32>) -> tensor<3x3xui32> {
-  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %c0, %c0)
     : (tensor<3x3xui32>, tensor<2x2xui32>, tensor<i32>, tensor<i32>) -> tensor<3x3xui32>
   func.return %0 : tensor<3x3xui32>
 }
@@ -3049,7 +3049,7 @@ func.func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: ten
 func.func @dynamic_update_slice_float(%target: tensor<3x3xf32>,
                                  %update: tensor<2x2xf32>,
                                  %c0: tensor<i32>) -> tensor<3x3xf32> {
-  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %c0, %c0)
     : (tensor<3x3xf32>, tensor<2x2xf32>, tensor<i32>, tensor<i32>) -> tensor<3x3xf32>
   func.return %0 : tensor<3x3xf32>
 }

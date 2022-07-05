@@ -2972,7 +2972,7 @@ func.func @if(%arg0: tensor<i1>) -> (tensor<i32>) {
 // CHECK:           return %[[RESULT]] : tensor<28x1x100xf32>
 // CHECK:         }
 func.func @convert_dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x1x100xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<28x1x100xf32> {
-  %0 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
   func.return %0 : tensor<28x1x100xf32>
 }
 
