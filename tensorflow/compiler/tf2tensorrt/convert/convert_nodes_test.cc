@@ -3786,13 +3786,26 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
     return dtype == DT_INT32 ? static_cast<int32>(value) : value;
   };
 
+  // A function that builds the next lexicographically greater configuration
+  // for the current one. The configuration is described as a (0,1)-vector
+  // config, where config[i] is 0 or 1 when the i-th parameter is passed as
+  // a weight or tensor, respectively. The function returns TRUE if such
+  // a configuration is built, or FALSE otherwise.
+  auto nextTensorWeigtConfiguration = [this](std::vector<int>& config) {
+    for (int i = config.size(); i-- > 0;) {
+      if (config[i] = 1 - config[i]) return true;
+    }
+    return false;
+  };
+
   auto set_parameters = [this](const std::array<const char*, 3>& name,
                                const std::array<std::vector<float>, 3>& value,
                                const std::array<DataType, 3>& type,
-                               bool all_tensors = false, int shape_idx = -1) {
+                               const std::vector<int>& config,
+                               int shape_idx = -1) {
     Reset();
     for (int i = 0; i < 3; i++) {
-      if (all_tensors) {
+      if (config[i]) {
         std::vector<int32> partial_shape_dims = {};
         // The correct partial shape will be provided
         // (a) for all parameters, when shape_idx > 3
@@ -3827,109 +3840,135 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
                  ops::Placeholder(s.WithOpName(param_name[1]), param_type[1]),
                  ops::Placeholder(s.WithOpName(param_name[2]), param_type[2]));
 
-  const NodeDef& node_def = range.operation.node()->def();
+  const NodeDef& ndef = range.operation.node()->def();
   const std::vector<DataType> param_types{DT_FLOAT, DT_HALF, DT_INT32};
 
   // ConverterRange is not implemented for Implicite batch mode.
+  std::vector<int> config(3, 0);
   if (trt_mode_ == TrtTestMode::kImplicitBatch) {
-    for (bool all_tensors : {false, true}) {
-      set_parameters(param_name, param_value, param_type, all_tensors);
-      RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+    do {
+      set_parameters(param_name, param_value, param_type, config);
+      RunValidationAndConversion(ndef, error::UNIMPLEMENTED,
                                  "Conversion for Range is not implemented in "
                                  "implicit batch mode");
-    }
+    } while (nextTensorWeigtConfiguration(config));
+
     return;
   }
 
-  const std::string expected_msg = convert_range_expected_msg(node_def);
-  {
-    // We expect that all three (start, limit and delta) are passed as weights
-    // OR tensors and we reject parameters, if it's not true.
-    Reset();
-    // Passing (start, limit) as weights
-    for (int i = 0; i < 2; i++) {
-      AddTestWeights(param_name[i], {1}, param_value[i], param_type[i]);
-    }
-    // ... and delta as a tensor
-    AddTestTensor(param_name[2], {1}, param_type[2], param_value[2]);
+  const std::string expect_msg = convert_range_expected_msg(ndef);
+  bool all_weights = true;
+  do {
+    for (auto limit_type : param_types) {
+      param_type[1] = limit_type;
+      for (auto delta_type : param_types) {
+        param_type[2] = delta_type;
 
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               expected_msg + "passed as weights OR tensors");
-  }
+        const auto all_integers = start_type == DT_INT32 &&
+                                  limit_type == DT_INT32 &&
+                                  delta_type == DT_INT32;
 
-  nvinfer1::DataType trt_type;
-  TF_ASSERT_OK(TfTypeToTrtType(tf_type_, &trt_type));
-  const std::string expected = DebugString(trt_type);
+        if (all_weights || all_integers && !config[2]) {
+          // Reject invalid parameters if delta = 0 and it's passed as a weight.
+          param_value[2] = {0};
+          set_parameters(param_name, param_value, param_type, config);
+          RunValidationAndConversion(
+              ndef, error::INVALID_ARGUMENT,
+              "The delta parameter of Range operation cannot be equal to 0");
 
-  // Reject invalid parameters if delta = 0  (for weights only).
-  for (auto limit_type : param_types) {
-    param_type[1] = limit_type;
-    for (auto delta_type : param_types) {
-      param_type[2] = delta_type;
-      param_value[2] = {0};
-
-      set_parameters(param_name, param_value, param_type);
-      RunValidationAndConversion(
-          node_def, error::INVALID_ARGUMENT,
-          "The delta parameter of Range operation cannot be equal to 0");
-
-      // Reject invalid parameters preventing the limit from
-      // being reached for fixed values of start and delta.
-      for (int j = 0; j <= 1; j++) {
-        param_value[j] = {get_casted_value(start, tf_type_)};
-        param_value[1 - j] = {get_casted_value(limit, limit_type)};
-        param_value[2] = {(2 * j - 1) * get_casted_value(delta, delta_type)};
-        set_parameters(param_name, param_value, param_type);
-        const auto error = convert_range_error_msg(
-            param_value[0][0], param_value[1][0], param_value[2][0]);
-        RunValidationAndConversion(node_def, error::INVALID_ARGUMENT, error);
-      }
-
-      param_value[0] = {start};
-      // When passed as tensors, all parameters should be of DT_INT32 type.
-      if (start_type == DT_INT32 && limit_type == DT_INT32 &&
-          delta_type == DT_INT32) {
-        if (trt_mode_ == TrtTestMode::kDynamicShape) {
-          // Wrong dimension for one of parameters.
-          for (int j = 0; j < 3; j++) {
-            const string err =
-                StrCat("Dimension for '", param_name[j],
-                       "' of Range operator should be equal to 1");
-            set_parameters(param_name, param_value, param_type, true, j);
-            RunValidationAndConversion(node_def, error::INVALID_ARGUMENT, err);
+          if (!all_weights && !config[2]) {
+            param_value[2] = {-1};
+            set_parameters(param_name, param_value, param_type, config);
+            const string err = StrCat(
+                "The delta parameter of Range operation "
+                "cannot be negative, when one of (start, limit) is passed as "
+                "a tensor, but got ",
+                param_value[2][0]);
+            RunValidationAndConversion(ndef, error::INVALID_ARGUMENT, err);
           }
         }
-      } else {
-        // When at least one parameter is set as non-integer tensors,
-        // the following test should fail.
-        set_parameters(param_name, param_value, param_type, true);
-        RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                                   expected_msg + "tensors");
+
+        if (all_weights) {
+          // Reject invalid parameters preventing the limit from
+          // being reached for fixed values of start and delta.
+          for (int j = 0; j <= 1; j++) {
+            param_value[j] = {get_casted_value(start, tf_type_)};
+            param_value[1 - j] = {get_casted_value(limit, limit_type)};
+            param_value[2] = {(2 * j - 1) *
+                              get_casted_value(delta, delta_type)};
+            set_parameters(param_name, param_value, param_type, config);
+            const auto error = convert_range_error_msg(
+                param_value[0][0], param_value[1][0], param_value[2][0]);
+            RunValidationAndConversion(ndef, error::INVALID_ARGUMENT, error);
+          }
+        }
+
+        param_value[0] = {start};
+        param_value[2] = {delta};
+        if (all_integers) {
+          if (trt_mode_ == TrtTestMode::kDynamicShape) {
+            // Wrong dimension for the parameter passed as a tensor.
+            for (int j = 0; j < 3; j++) {
+              if (!config[j]) continue;
+
+              const string err =
+                  StrCat("Dimension for '", param_name[j],
+                         "' of Range operator should be equal to 1");
+              set_parameters(param_name, param_value, param_type, config, j);
+              RunValidationAndConversion(ndef, error::INVALID_ARGUMENT, err);
+            }
+          }
+        } else {
+          if (!all_weights) {
+            // The following test should fail, when
+            //    (a) at least one parameter is passed as a tensor;
+            //    (b) at least one parameter is not of type DT_INT32.
+            set_parameters(param_name, param_value, param_type, config);
+            RunValidationAndConversion(ndef, error::UNIMPLEMENTED, expect_msg);
+          }
+        }
       }
     }
-  }
+    // All other configs will be set so that at least one parameter
+    // will be passed as a tensor
+    all_weights = false;
+  } while (nextTensorWeigtConfiguration(config));
+
+  nvinfer1::DataType trt_type;
+  TF_ASSERT_OK(TfTypeToTrtType(DT_BOOL, &trt_type));
+  const std::string error_msg =
+      "Unsupported data type " + DebugString(trt_type) + " used for '";
+  do {
+    for (auto limit_type : param_types) {
+      param_type[1] = limit_type;
+      for (auto delta_type : param_types) {
+        param_type[2] = delta_type;
+
+        for (int i = 0; i < 3; i++) {
+          if (!config[i]) {
+            const auto saved_type = param_type[i];
+            param_type[i] = DT_BOOL;
+            set_parameters(param_name, param_value, param_type, config);
+            param_type[i] = saved_type;
+            RunValidationAndConversion(ndef, error::INVALID_ARGUMENT,
+                                       error_msg + param_name[i] + "'");
+          }
+        }
+      }
+    }
+  } while (nextTensorWeigtConfiguration(config));
 
   // The tests that pass all checks in ConvertRange::Validate().
   const Status status = Status::OK();
   const std::vector<DataType> int_type{DT_INT32};
-  for (bool all_tensors : {false, true}) {
-    // For now when (start, limit, delta) are passed as tensors
-    // these tensors should be of DT_INT32 type.
-    int partial_shape_idx = -1;
-    if (all_tensors) {
-      if (start_type != DT_INT32) {
-        continue;
-      }
-      if (trt_mode_ == TrtTestMode::kDynamicShape) {
-        // The correct partial shape will be provided for all parameters
-        partial_shape_idx = 3;
-      }
-    }
-
-    // For now only parameters of DT_INT32 type could be used when
-    // they are pased as tensors.
-    const auto& types = all_tensors ? int_type : param_types;
-    const auto jEnd = all_tensors ? 0 : 1;
+  int partial_shape_idx = -1;
+  all_weights = true;
+  do {
+    // For now when at least one of (start, limit, delta) is passed as a tensor
+    //    (a) all these parameters should be of DT_INT32 type;
+    //    (b) only positive delta could be used.
+    const auto& types = all_weights ? param_types : int_type;
+    const auto jEnd = all_weights ? 1 : 0;
     for (auto limit_type : types) {
       param_type[1] = limit_type;
       for (auto delta_type : types) {
@@ -3955,15 +3994,24 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
             value += delta_curr;
           }
 
-          set_parameters(param_name, param_value, param_type, all_tensors,
+          set_parameters(param_name, param_value, param_type, config,
                          partial_shape_idx);
           const std::vector<int> output_dims = {num_values};
-          TestOpConverter("my_range", node_def, output_dims, status, status,
+          TestOpConverter("my_range", ndef, output_dims, status, status,
                           ElementsAreArray(expected_output));
         }
       }
     }
-  }
+
+    if (all_weights) {
+      if (start_type != DT_INT32) break;
+      if (trt_mode_ == TrtTestMode::kDynamicShape) partial_shape_idx = 3;
+
+      // All other configs will be set so that at least one parameter
+      // will be passed as a tensor
+      all_weights = false;
+    }
+  } while (nextTensorWeigtConfiguration(config));
 }
 
 TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertLikeOps) {
