@@ -35,7 +35,8 @@ constexpr char kPrefetchDataset[] = "PrefetchDataset";
 constexpr char UseGpuCompatAllocatorAttr[] = "use_gpu_compat_allocator";
 
 bool HasUseGpuCompatAllocatorAttr(const NodeDef& node) {
-    return node.attr().contains(UseGpuCompatAllocatorAttr);
+    return NodeIsOnGpu(&node) &&
+      node.attr().contains(UseGpuCompatAllocatorAttr);
 }
 }  // namespace
 
