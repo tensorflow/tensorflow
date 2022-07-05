@@ -803,31 +803,6 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
   return OkStatus();
 }
 
-tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-SavedModelImpl::ImportSubgraph(
-    mlir::MLIRContext* context,
-    const tensorflow::GraphImportConfig::InputArrays& input_nodes,
-    const std::vector<std::string>& output_nodes,
-    const std::vector<std::string>& target_nodes) {
-  tensorflow::GraphImportConfig graph_import_config;
-  graph_import_config.prune_unused_nodes = true;
-  graph_import_config.enable_shape_inference = false;
-  graph_import_config.inputs = input_nodes;
-  graph_import_config.outputs = output_nodes;
-  graph_import_config.control_outputs = target_nodes;
-
-  // Optimize the graph.
-  TF_ASSIGN_OR_RETURN(
-      auto optimization_result,
-      graph_executor_->graph_execution_state().CreateOptimizedGraph(
-          graph_import_config));
-
-  // Convert the optimized graph to an MLIR module.
-  return tensorflow::ConvertGraphToMlir(
-      *optimization_result.graph, /*debug_info=*/{},
-      optimization_result.graph->flib_def(), graph_import_config, context);
-}
-
 tensorflow::Status SavedModelImpl::RunByTensorNames(
     const RunOptions& run_options,
     absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs,
