@@ -23,6 +23,8 @@ limitations under the License.
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
+#include "tensorflow/lite/kernels/internal/optimized/reduce_utils.h"
+#include "tensorflow/lite/kernels/internal/reduce_common.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -295,6 +297,238 @@ inline bool MeanGeneral<float, float>(
                              output_data, output_dims, output_num_dims, axis,
                              num_axis_dimensions, keep_dims, temp_index,
                              resolved_axis, temp_sum);
+}
+
+template <typename T>
+struct SumOp {
+  inline T operator()(const T& a, const T& b) { return a + b; }
+  static constexpr T kNeutralElement = T(0);
+};
+
+template <typename T, typename U>
+struct CastSumOp {
+  inline U operator()(const U& a, const T& b) { return a + static_cast<U>(b); }
+  static constexpr U kNeutralElement = U(0);
+};
+
+template <typename T>
+struct ProdOp {
+  inline T operator()(const T& a, const T& b) { return a * b; }
+  static constexpr T kNeutralElement = T(1);
+};
+
+template <typename T>
+struct MaxOp {
+  inline T operator()(const T& a, const T& b) { return (a > b) ? a : b; }
+  static constexpr T kNeutralElement = std::numeric_limits<T>::lowest();
+};
+
+template <typename T>
+struct MinOp {
+  inline T operator()(const T& a, const T& b) { return (a < b) ? a : b; }
+  static constexpr T kNeutralElement = std::numeric_limits<T>::max();
+};
+
+struct AndOp {
+  inline bool operator()(bool a, bool b) { return a && b; }
+  static constexpr bool kNeutralElement = true;
+};
+
+struct OrOp {
+  inline bool operator()(bool a, bool b) { return a || b; }
+  static constexpr bool kNeutralElement = false;
+};
+
+// When the number of axis is zero, the reduction is simply a copy.
+template <typename T>
+void ReduceIsCopy(const T* input_data, const int* input_dims,
+                  const int input_num_dims, T* output_data) {
+  int num_elems = 1;
+  for (int i = 0; i < input_num_dims; ++i) {
+    num_elems *= input_dims[i];
+  }
+  memcpy(output_data, input_data, num_elems * sizeof(T));
+}
+
+// Reduces the input over either odd or even dimensions using Op.
+// One recursive call for each dimension is made.
+// 'depth' is the depth of recursion.
+// 'parity' indicates whether odd or even dimensions are being reduced.
+template <typename T, typename U, typename Op>
+inline std::pair<const T*, U*> ReduceImpl(const T* input_data,
+                                          const int* input_dims,
+                                          const int input_num_dims,
+                                          U* output_data, int depth,
+                                          int parity) {
+  if (depth < input_num_dims - 1) {
+    U* future_output = output_data;
+    bool update_output = ((input_num_dims - depth) % 2) == parity;
+    for (int i = 0; i < input_dims[depth]; ++i) {
+      std::tie(input_data, future_output) =
+          ReduceImpl<T, U, Op>(input_data, input_dims, input_num_dims,
+                               output_data, depth + 1, parity);
+      if (update_output) {
+        output_data = future_output;
+      }
+    }
+    output_data = future_output;
+  } else {
+    if (!parity) {
+      U res = *output_data;
+      for (int i = 0; i < input_dims[input_num_dims - 1]; ++i) {
+        res = Op()(res, *input_data++);
+      }
+      *output_data++ = res;
+    } else {
+      for (int i = 0; i < input_dims[input_num_dims - 1]; ++i) {
+        U res = *output_data;
+        res = Op()(res, *input_data++);
+        *output_data++ = res;
+      }
+    }
+  }
+  return {input_data, output_data};
+}
+
+// A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
+// This method iterates through input data and reduce elements along the
+// dimensions given in axis.
+template <typename In, typename Out, typename Op>
+inline bool Reduce(const In* input_data, const int* input_dims,
+                   const int input_num_dims, const int* axis,
+                   const int num_axis, Out* output_data) {
+  const int parity = (axis[num_axis - 1] == input_num_dims - 1) ? 0 : 1;
+  ReduceImpl<In, Out, Op>(input_data, input_dims, input_num_dims, output_data,
+                          /*depth=*/0, parity);
+  return true;
+}
+
+using ops::builtin::reduce::ReduceType;
+
+template <typename T>
+inline bool ReduceDispatcher(const T* input_data, const int* input_dims,
+                             const int input_num_dims, const int* output_dims,
+                             int output_num_dims, T* output_data,
+                             const int* axis, const int64_t num_axis_dimensions,
+                             ReduceType reduce_type) {
+  T init_value;
+  switch (reduce_type) {
+    case ReduceType::kProd:
+      init_value = ProdOp<T>::kNeutralElement;
+      break;
+    case ReduceType::kSum:
+      init_value = SumOp<T>::kNeutralElement;
+      break;
+    case ReduceType::kMin:
+      init_value = MinOp<T>::kNeutralElement;
+      break;
+    case ReduceType::kMax:
+      init_value = MaxOp<T>::kNeutralElement;
+      break;
+    default:
+      return false;
+  }
+  // Reset output data.
+  if (!reference_ops::InitTensorDataForReduce(output_dims, output_num_dims,
+                                              init_value, output_data)) {
+    return false;
+  }
+
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with Op::kNeutralElement.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
+  }
+
+  switch (reduce_type) {
+    case ReduceType::kProd:
+      return Reduce<T, T, ProdOp<T>>(input_data, input_dims, input_num_dims,
+                                     axis, num_axis_dimensions, output_data);
+    case ReduceType::kSum:
+      return Reduce<T, T, SumOp<T>>(input_data, input_dims, input_num_dims,
+                                    axis, num_axis_dimensions, output_data);
+    case ReduceType::kMin:
+      return Reduce<T, T, MinOp<T>>(input_data, input_dims, input_num_dims,
+                                    axis, num_axis_dimensions, output_data);
+    case ReduceType::kMax:
+      return Reduce<T, T, MaxOp<T>>(input_data, input_dims, input_num_dims,
+                                    axis, num_axis_dimensions, output_data);
+    default:
+      return false;
+  }
+}
+
+template <>
+inline bool ReduceDispatcher<bool>(const bool* input_data,
+                                   const int* input_dims,
+                                   const int input_num_dims,
+                                   const int* output_dims, int output_num_dims,
+                                   bool* output_data, const int* axis,
+                                   const int64_t num_axis_dimensions,
+                                   ReduceType reduce_type) {
+  bool init_value;
+  switch (reduce_type) {
+    case ReduceType::kAny:
+      init_value = OrOp::kNeutralElement;
+      break;
+    case ReduceType::kAll:
+      init_value = AndOp::kNeutralElement;
+      break;
+    default:
+      return false;
+  }
+
+  // Reset output data.
+  if (!reference_ops::InitTensorDataForReduce(output_dims, output_num_dims,
+                                              init_value, output_data)) {
+    return false;
+  }
+
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with Op::kNeutralElement.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
+  }
+  switch (reduce_type) {
+    case ReduceType::kAll:
+      return Reduce<bool, bool, AndOp>(input_data, input_dims, input_num_dims,
+                                       axis, num_axis_dimensions, output_data);
+    case ReduceType::kAny:
+      return Reduce<bool, bool, OrOp>(input_data, input_dims, input_num_dims,
+                                      axis, num_axis_dimensions, output_data);
+    default:
+      return false;
+  }
+}
+
+// Computes the generic value (i.e., sum/max/min/prod) of elements across
+// dimensions given in axis. It needs to pass in init_value and reducer.
+template <typename T>
+inline bool ReduceGeneric(const T* input_data, const int* input_dims,
+                          const int input_num_dims, T* output_data,
+                          const int* output_dims, const int output_num_dims,
+                          const int* axis, const int64_t num_axis_dimensions,
+                          int* resolved_axis, int* normalized_dims,
+                          ReduceType reduce_type) {
+  int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
+  if (!reduce_utils::ResolveAxis(input_num_dims, axis, num_axis_dimensions,
+                                 resolved_axis, &num_resolved_axis, input_dims,
+                                 normalized_dims, &normalized_num_dims)) {
+    return false;
+  }
+  if (num_resolved_axis == 0) {
+    optimized_ops::ReduceIsCopy(input_data, input_dims, input_num_dims,
+                                output_data);
+    return true;
+  }
+  return ReduceDispatcher(input_data, normalized_dims, normalized_num_dims,
+                          output_dims, output_num_dims, output_data,
+                          resolved_axis, num_resolved_axis, reduce_type);
 }
 
 }  // namespace optimized_ops
