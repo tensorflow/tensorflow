@@ -3102,8 +3102,6 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
 
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
-
-  // Replace transposes with bitcasts if possible.
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
