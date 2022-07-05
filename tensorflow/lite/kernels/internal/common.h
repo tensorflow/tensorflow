@@ -477,6 +477,38 @@ LUTPopulate(float input_scale, int32_t input_zero_point, float output_scale,
                         output_zero_point, transform, lut);
 }
 
+// Deprecated and will be removed in future, please use LUTPopulate instead
+template <typename FloatT, typename LutInT, typename LutOutT>
+inline void gen_lut(FloatT (*func)(FloatT), FloatT input_min, FloatT input_max,
+                    FloatT output_min, FloatT output_max, LutOutT* lut) {
+  static_assert(std::is_same<LutInT, LutOutT>::value,
+                "Input and output type of the LUT must be the same.");
+  static_assert(std::is_same<LutInT, int16_t>::value,
+                "Only int16_t type LUT are supported.");
+  static_assert(std::is_same<FloatT, float>::value,
+                "Only float type is supported for FloatT.");
+  using T = LutInT;
+
+  const auto zero_point = [](float min, float max, float scale) {
+    // Symmetric int16 LUT, we know the zero-point will not overflow an int32_t
+    // and zero-point from min will be the same as from max.
+    return static_cast<int32_t>(
+        static_cast<float>(std::numeric_limits<T>::min()) - min / scale);
+  };
+
+  const float scale = static_cast<float>(std::numeric_limits<T>::max() -
+                                         std::numeric_limits<T>::min());
+  const float input_scale = (input_max - input_min) / scale;
+  const FloatT output_scale = (output_max - output_min) / scale;
+  const int32_t input_zero_point =
+      zero_point(input_min, input_max, input_scale);
+  const int32_t output_zero_point =
+      zero_point(output_min, output_max, output_scale);
+
+  return LUTPopulate<T, float>(input_scale, input_zero_point, output_scale,
+                               output_zero_point, func, lut);
+}
+
 // int16_t -> int16_t table lookup with interpolation
 // LUT must have 513 values
 inline int16_t LUTLookup(int16_t value, const int16_t* lut) {
