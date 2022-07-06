@@ -46,8 +46,8 @@ bool isElementwiseOrTranspose(linalg::GenericOp genericOp) {
   return true;
 }
 
-struct LingalgGenericFusionInterface
-    : public FusionInterface::ExternalModel<LingalgGenericFusionInterface,
+struct LinalgGenericFusionInterface
+    : public FusionInterface::ExternalModel<LinalgGenericFusionInterface,
                                             linalg::GenericOp> {
   Value fuse(Operation* op, Location loc, Value subset,
              OpBuilder& builder) const {
@@ -88,7 +88,8 @@ struct LingalgGenericFusionInterface
 
       // Create a new tile with permutated operands.
       SmallVector<Value> inputTileOffsets, inputTileSizes, inputTileStrides;
-      SmallVector<int64_t> inputStaticOffsets, inputStaticSizes;
+      SmallVector<int64_t> inputStaticOffsets, inputStaticSizes,
+          inputStaticStrides;
       // Use original tileOp where possible.
       auto tileOp = subset.getDefiningOp<TileOp>();
 
@@ -111,15 +112,21 @@ struct LingalgGenericFusionInterface
         } else {
           inputStaticSizes.push_back(tileOp.getStaticSize(permutedDim));
         }
+        if (!tileOp || tileOp.isDynamicStride(permutedDim)) {
+          inputTileStrides.push_back(
+              builder.createOrFold<StrideOp>(loc, subset, permutedDimConstant));
+          inputStaticStrides.push_back(ShapedType::kDynamicStrideOrOffset);
+        } else {
+          inputStaticStrides.push_back(tileOp.getStaticStride(permutedDim));
+        }
       }
-      auto inputStaticStrides = builder.getI64ArrayAttr(
-          SmallVector<int64_t>(inputStaticSizes.size(), 1));
       auto operandTileTy =
           TileType::get(subResultTy.getContext(), inputStaticSizes);
       auto permutedSubset = builder.create<TileOp>(
           loc, operandTileTy, inputSpace, inputTileOffsets, inputTileSizes,
-          ValueRange{}, builder.getI64ArrayAttr(inputStaticOffsets),
-          builder.getI64ArrayAttr(inputStaticSizes), inputStaticStrides);
+          inputTileStrides, builder.getI64ArrayAttr(inputStaticOffsets),
+          builder.getI64ArrayAttr(inputStaticSizes),
+          builder.getI64ArrayAttr(inputStaticStrides));
       subOperands.push_back(
           builder.create<MaterializeOp>(loc, input, permutedSubset));
     }
@@ -170,7 +177,7 @@ struct ElementwiseFusionInterface
 void registerFusionInterfaceExternalModels(DialectRegistry& registry) {
   registry.insert<linalg::LinalgDialect>();
   registry.addExtension(+[](MLIRContext* ctx, linalg::LinalgDialect*) {
-    linalg::GenericOp::attachInterface<LingalgGenericFusionInterface>(*ctx);
+    linalg::GenericOp::attachInterface<LinalgGenericFusionInterface>(*ctx);
   });
 
   // TODO(frgossen): Update tests and remove these in favor of

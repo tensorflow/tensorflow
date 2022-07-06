@@ -56,6 +56,17 @@ def GMLST_SizeOp : GMLST_Op<"size", []> {
   let hasFolder = 1;
 }
 
+def GMLST_StrideOp : GMLST_Op<"stride", []> {
+  let summary = [{Returns the stride of a tile in a given dimension}];
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
+  }];
+  let hasVerifier = 0;
+  let hasFolder = 1;
+}
+
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     : GMLST_Op<mnemonic, !listconcat(traits, [
       AttrSizedOperandSegments,

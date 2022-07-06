@@ -1544,6 +1544,25 @@ OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+//===----------------------------------------------------------------------===//
+// StrideOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult StrideOp::fold(ArrayRef<Attribute> operands) {
+  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
+  if (!idxAttr) return {};
+
+  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
+    auto idx = idxAttr.getInt();
+    if (tileOp.isDynamicStride(idx)) return tileOp.getDynamicStride(idx);
+
+    Builder b(idxAttr.getContext());
+    return b.getIndexAttr(tileOp.getStaticStride(idx));
+  }
+  // TODO(unknown): Handle space op, as well.
+  return {};
+}
+
 }  // namespace gml_st
 }  // namespace mlir
 

@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-fusion | FileCheck %s --dump-input=always
+// RUN: mlir-hlo-opt %s --split-input-file --gml-fusion | FileCheck %s
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
@@ -89,6 +89,27 @@ func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
   %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
   %1 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
   func.return %1 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @add_two_users
+// CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
+    %tile: !gml_st.tile<?x?>) -> tensor<?x?xf32> {
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  // CHECK-DAG: %[[ADD1:.*]] = mhlo.add %[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  // CHECK-DAG: %[[ADD2:.*]] = mhlo.add %[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>
+  // CHECK-DAG: %[[RES:.*]] = mhlo.add %[[ADD1]], %[[ADD2]] : tensor<?x?xf32>
+  // CHECK:     return %[[RES]]
+  %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
+  %1 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  %2 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  %3 = mhlo.add %1, %2 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // -----
