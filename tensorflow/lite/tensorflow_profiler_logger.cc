@@ -18,8 +18,10 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -31,7 +33,9 @@ struct Statistics {
   uint64_t total_bytes_allocated = 0LL;
   uint64_t peak_bytes_in_use = 0LL;
 };
-Statistics g_stat;
+static Statistics g_stat;
+
+static char g_current_op_name[256];
 
 // Adds memory trace information for TensorFlow profiler.
 // `is_allocating`: Whether memory is being allocated or deallocated.
@@ -79,7 +83,14 @@ void AddTraceMe(bool is_allocating, TfLiteTensor* tensor,
                 size_t allocation_bytes) {
   if (tensor == nullptr || allocation_bytes == 0) return;
   int64_t tensor_id = reinterpret_cast<int64_t>(tensor->data.raw);
-  std::string name = tensor->name ? tensor->name : "";
+  std::string name;
+  if (g_current_op_name[0]) {
+    name = g_current_op_name;
+  }
+  if (tensor->name) {
+    name += ":";
+    name += tensor->name;
+  }
   std::string dims = tensor->dims ? GetShapeDebugString(tensor->dims) : "[]";
   int64_t requested_bytes = is_allocating ? allocation_bytes : 0;
   const std::string allocator_name = "_tflite_native_dynamic";
@@ -95,6 +106,14 @@ void AddTraceMe(bool is_allocating, TfLiteTensor* tensor,
 }
 
 }  // namespace
+
+void OnTfLiteOpInvoke(const char* op_name, const int node_index) {
+  snprintf(g_current_op_name, sizeof(g_current_op_name), "%s_%d", op_name,
+           node_index);
+  // Updates TF's current annotation object by creating scoped annotation obj.
+  tensorflow::profiler::ScopedMemoryDebugAnnotation annotation(
+      g_current_op_name);
+}
 
 void OnTfLiteTensorAlloc(TfLiteTensor* tensor, size_t num_bytes) {
   AddTraceMe(/*is_allocating=*/true, tensor, num_bytes);

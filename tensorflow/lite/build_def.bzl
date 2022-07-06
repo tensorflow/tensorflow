@@ -48,6 +48,9 @@ def tflite_copts():
         "//conditions:default": [
             "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
+    }) + select({
+        "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()

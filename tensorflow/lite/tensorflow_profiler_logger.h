@@ -19,13 +19,21 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "tensorflow/lite/core/macros.h"
+
 struct TfLiteTensor;
 
 namespace tflite {
+// Records an op invocation with `op_name` and `node_index`.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpInvoke(const char* op_name,
+                                            const int node_index);
+
 // Records an event of `num_bytes` of memory allocated for `tensor`.
-void OnTfLiteTensorAlloc(size_t num_bytes, TfLiteTensor* tensor);
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorAlloc(TfLiteTensor* tensor,
+                                               size_t num_bytes);
+
 // Records an event of memory deallocated for `tensor`.
-void OnTfLiteTensorDealloc(TfLiteTensor* tensor);
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorDealloc(TfLiteTensor* tensor);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TENSORFLOW_PROFILER_LOGGER_H_
