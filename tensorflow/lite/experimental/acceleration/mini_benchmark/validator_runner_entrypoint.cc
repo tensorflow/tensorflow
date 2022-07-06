@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <thread>  // NOLINT: only used on Android, where std::thread is allowed
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
@@ -122,7 +123,7 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
         break;
       }
       fbb.Reset();
-      std::vector<int64_t> initialization_times{results.compilation_time_us};
+      std::vector<int64_t> delegate_prep_time_us{results.delegate_prep_time_us};
       std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> metrics;
       metrics.reserve(results.metrics.size());
       for (const auto& name_and_values : results.metrics) {
@@ -132,14 +133,14 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
       }
       return storage.Append(
           &fbb,
-          CreateBenchmarkEvent(
-              fbb, CreateTFLiteSettings(fbb, &tflite_settings),
-              BenchmarkEventType_END,
-              CreateBenchmarkResult(fbb, fbb.CreateVector(initialization_times),
-                                    fbb.CreateVector(results.execution_time_us),
-                                    0, results.ok, fbb.CreateVector(metrics)),
-              /* error */ 0, Validator::BootTimeMicros(),
-              Validator::WallTimeMicros()));
+          CreateBenchmarkEvent(fbb, CreateTFLiteSettings(fbb, &tflite_settings),
+                               BenchmarkEventType_END,
+                               CreateBenchmarkResult(
+                                   fbb, fbb.CreateVector(delegate_prep_time_us),
+                                   fbb.CreateVector(results.execution_time_us),
+                                   0, results.ok, fbb.CreateVector(metrics)),
+                               /* error */ 0, Validator::BootTimeMicros(),
+                               Validator::WallTimeMicros()));
     }
   }
   flatbuffers::FlatBufferBuilder fbb;

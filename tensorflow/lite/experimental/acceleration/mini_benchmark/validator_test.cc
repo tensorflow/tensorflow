@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
@@ -64,6 +66,18 @@ TEST_F(ValidatorTest, HappyPath) {
   EXPECT_EQ(results.delegate_error, 0);
 }
 
+TEST_F(ValidatorTest, DelegateNotSupported) {
+  proto::ComputeSettings settings_proto;
+  settings_proto.mutable_tflite_settings()->set_delegate(proto::CORE_ML);
+  flatbuffers::FlatBufferBuilder fbb;
+  const ComputeSettings* settings = ConvertFromProto(settings_proto, &fbb);
+
+  Validator validator(plain_model_path_, settings);
+  Validator::Results results;
+  EXPECT_EQ(validator.RunValidation(&results),
+            kMinibenchmarkDelegateNotSupported);
+}
+
 TEST_F(ValidatorTest, NoValidationSubgraph) {
   flatbuffers::FlatBufferBuilder fbb;
   fbb.Finish(CreateComputeSettings(fbb));
@@ -71,7 +85,6 @@ TEST_F(ValidatorTest, NoValidationSubgraph) {
       flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer());
 
   Validator validator(plain_model_path_, settings);
-  EXPECT_EQ(validator.CheckModel(), kMinibenchmarkValidationSubgraphNotFound);
   Validator::Results results;
   EXPECT_EQ(validator.RunValidation(&results),
             kMinibenchmarkValidationSubgraphNotFound);

@@ -848,8 +848,11 @@ cc_test(
         ":validator",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_cc_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/experimental/acceleration/configuration:flatbuffer_to_proto",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+        "//tensorflow/lite/experimental/acceleration/configuration:proto_to_flatbuffer",
     ] + select({
         clean_dep("//tensorflow:android"): [
             "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",

@@ -99,8 +99,7 @@ MinibenchmarkStatus ValidatorRunner::Init() {
         model_fd_, model_offset_, model_size_,
         flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
   }
-  MinibenchmarkStatus load_status =
-      check_validator->CheckModel(/* load_only */ true);
+  MinibenchmarkStatus load_status = check_validator->CheckModel();
   if (load_status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model %s: %d",
                          model_path_.c_str(), static_cast<int>(load_status));
