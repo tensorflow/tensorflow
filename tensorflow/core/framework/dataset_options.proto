@@ -148,7 +148,7 @@ message OptimizationOptions {
   // if the last transformation is synchronous; otherwise does nothing.
   oneof optional_inject_prefetch {
     bool inject_prefetch = 19;
-
+  }
   // Whether to use gpu compatible memory prior to the 
   // prefetch_to_device call
   oneof optional_enable_gpu_compatible_memory {
