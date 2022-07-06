@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -188,6 +189,91 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
+// Fold the constant quantized Transpose ops.
+struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
+  explicit FoldTransposeOp(MLIRContext* context)
+      : OpRewritePattern<TransposeOp>(context, 1) {}
+
+  // Computes the permutation of a constant `input_tensor` according to `perm`.
+  // The function recursively traverses the dimensions of the output tensor in
+  // a row-major order and writes the value in the output tensor into
+  // `new_values`.
+  void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
+                          ArrayRef<int64_t> output_shape, int num_dimensions,
+                          int output_axis, std::vector<uint64_t>* input_indices,
+                          std::vector<Attribute>* new_values) const {
+    // Refer to the implementation of `Transpose` function in
+    // tensorflow/lite/kernels/internal/reference/reference_ops.h
+    assert(output_axis < num_dimensions);
+    const int input_axis = perm[output_axis];
+    for (int i = 0; i < output_shape[output_axis]; ++i) {
+      // Update the input indices on `input_axis`.
+      assert(input_axis < input_indices->size());
+      input_indices->operator[](input_axis) = static_cast<uint64_t>(i);
+      // Write the value from `input_tensor` if it is the last axis or
+      // recurse into the next axis.
+      const bool is_last_axis = output_axis == num_dimensions - 1;
+      if (is_last_axis) {
+        new_values->push_back(
+            input_tensor.getValues<Attribute>()[*input_indices]);
+      } else {
+        ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+                           output_axis + 1, input_indices, new_values);
+      }
+    }
+  }
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* def_op = op.input().getDefiningOp();
+    auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
+    if (qconst_op == nullptr) return failure();
+
+    DenseIntElementsAttr perm_tensor;
+    if (!matchPattern(op.perm(), m_Constant(&perm_tensor))) return failure();
+
+    if (!(getElementTypeOrSelf(op.output().getType()))
+             .isa<quant::UniformQuantizedType>())
+      return failure();
+
+    ElementsAttr input_tensor = qconst_op.value();
+
+    assert(perm_tensor.getType().getRank() == 1);
+    const int num_dimensions = input_tensor.getType().getRank();
+    assert(perm_tensor.getType().getNumElements() == num_dimensions);
+
+    ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
+    auto output_type = op.output().getType().cast<ShapedType>();
+
+    SmallVector<int32_t, 4> perm;
+    SmallVector<int64_t, 4> output_shape;
+    for (int i = 0; i < num_dimensions; ++i) {
+      perm.push_back(perm_tensor.getValues<IntegerAttr>()[i].getInt());
+      output_shape.push_back(input_shape[perm[i]]);
+
+      // Check that the derived output shape matches the static shape.
+      assert(!output_type.hasStaticShape() ||
+             output_type.getShape()[i] == output_shape[i]);
+    }
+
+    std::vector<Attribute> new_values;
+    new_values.reserve(input_tensor.getType().getNumElements());
+    std::vector<uint64_t> input_indices(num_dimensions);
+    ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+                       /*output_axis=*/0, &input_indices, &new_values);
+    auto result_type =
+        RankedTensorType::get(output_shape, output_type.getElementType());
+    auto values_type = RankedTensorType::get(
+        output_shape, output_type.getElementType()
+                          .cast<quant::UniformQuantizedType>()
+                          .getStorageType());
+    rewriter.replaceOpWithNewOp<QConstOp>(
+        op, TypeAttr::get(result_type),
+        DenseIntElementsAttr::get(values_type, new_values));
+    return success();
+  }
+};
+
 // Removes operations with side effect (i.e. LSTM, SVDF) that have dangling
 // output.
 template <typename OpTy>
@@ -250,8 +336,9 @@ void PostQuantizePass::runOnOperation() {
 
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
-                       RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
+  phase_2_patterns
+      .add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
+           RemoveVolatileOps<kPreserveInputsAndOutputs>, FoldTransposeOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
