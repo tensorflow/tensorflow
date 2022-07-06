@@ -65,7 +65,8 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
     return _xla.get_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0, platform_name=None):
+def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
+                    allowed_devices=None):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -92,7 +93,8 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None):
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id,
-      platform_name=platform_name)
+      platform_name=platform_name,
+      allowed_devices=allowed_devices)
 
 
 def make_tpu_client():
