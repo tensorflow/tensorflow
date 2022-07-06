@@ -4868,6 +4868,58 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     return ReplaceInstruction(dynamic_slice, new_broadcast);
   }
 
+  HloInstruction *reshape, *reshape_operand;
+  if (Match(operand, m::Reshape(&reshape, m::Op(&reshape_operand))) &&
+      reshape->ReshapeMerelyInsertsOrDeletes1SizedDimensions().has_value() &&
+      !options_.is_layout_sensitive()) {
+    int64_t slice_dim = 0;
+    HloInstruction* zero = MakeScalarLike(dynamic_slice->mutable_operand(1), 0);
+    std::vector<HloInstruction*> starts;
+    starts.reserve(reshape_operand->shape().rank());
+    std::vector<int64_t> slice_sizes;
+    slice_sizes.reserve(reshape_operand->shape().rank());
+    for (int64_t dim = 0; dim < reshape_operand->shape().rank(); ++dim) {
+      if (reshape_operand->shape().dimensions(dim) == 1) {
+        starts.push_back(zero);
+        slice_sizes.push_back(1);
+        continue;
+      }
+      while (dynamic_slice->operand(0)->shape().dimensions(slice_dim) == 1) {
+        ++slice_dim;
+      }
+      starts.push_back(dynamic_slice->mutable_operand(1 + slice_dim));
+      slice_sizes.push_back(dynamic_slice->slice_sizes(slice_dim));
+      ++slice_dim;
+    }
+    HloInstruction* new_dynamic_slice =
+        dynamic_slice->AddInstruction(HloInstruction::CreateDynamicSlice(
+            ShapeUtil::MakeShape(dynamic_slice->shape().element_type(),
+                                 slice_sizes),
+            reshape_operand, starts, slice_sizes));
+    return ReplaceWithNewInstruction(
+        dynamic_slice, HloInstruction::CreateReshape(dynamic_slice->shape(),
+                                                     new_dynamic_slice));
+  }
+
+  HloInstruction *transpose, *transpose_operand;
+  if (Match(operand, m::Transpose(&transpose, m::Op(&transpose_operand))) &&
+      !options_.is_layout_sensitive()) {
+    auto output_to_input = InversePermutation(transpose->dimensions());
+    HloInstruction* new_slice =
+        dynamic_slice->AddInstruction(HloInstruction::CreateDynamicSlice(
+            ShapeUtil::PermuteDimensions(output_to_input,
+                                         dynamic_slice->shape()),
+            transpose_operand,
+            Permute(absl::MakeSpan(dynamic_slice->operands().begin() + 1,
+                                   dynamic_slice->operands().end()),
+                    output_to_input),
+            Permute(dynamic_slice->dynamic_slice_sizes(), output_to_input)));
+    return ReplaceWithNewInstruction(
+        dynamic_slice,
+        HloInstruction::CreateTranspose(dynamic_slice->shape(), new_slice,
+                                        transpose->dimensions()));
+  }
+
   // Convert a dynamic slice into a slice if all offsets are constant and the
   // operand is not constant.
   if (operand->opcode() != HloOpcode::kConstant &&
