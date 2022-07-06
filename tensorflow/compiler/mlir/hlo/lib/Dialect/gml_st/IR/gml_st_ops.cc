@@ -1276,10 +1276,8 @@ LogicalResult PointOp::verify() {
     // Check whether the known indices are in-bounds of known dimension sizes.
     for (auto dimAndIndex : llvm::zip(tileShape, static_indices())) {
       auto dimSize = std::get<0>(dimAndIndex);
-      auto index = std::get<1>(dimAndIndex)
-                       .dyn_cast<mlir::IntegerAttr>()
-                       .getValue()
-                       .getSExtValue();
+      auto index =
+          std::get<1>(dimAndIndex).dyn_cast<mlir::IntegerAttr>().getInt();
       if (index == ShapedType::kDynamicStrideOrOffset) continue;
       if (index < 0) {
         return emitOpError("expected index = ")
@@ -1492,6 +1490,57 @@ Value TileOp::compose(OpBuilder &builder) {
                                 composedOffsets.second, sizes(),
                                 composedStrides.second, composedOffsets.first,
                                 static_sizes(), composedStrides.first);
+}
+
+//===----------------------------------------------------------------------===//
+// PointOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// TODO(frgossen): Move this upstream to the ViewLikeInterface
+SmallVector<OpFoldResult> getMixedImpl(ArrayAttr staticValues,
+                                       ValueRange dynamicValues,
+                                       const int64_t dynamicValuePlaceholder) {
+  int64_t idxDynamic = 0;
+  SmallVector<OpFoldResult> result;
+  for (const auto &staticAttr : staticValues) {
+    int64_t staticInt = staticAttr.cast<IntegerAttr>().getInt();
+    if (staticInt == dynamicValuePlaceholder) {
+      result.push_back(dynamicValues[idxDynamic++]);
+    } else {
+      result.push_back(staticAttr);
+    }
+  }
+  return result;
+}
+
+// TODO(frgossen): Move this upstream to the ViewLikeInterface
+SmallVector<OpFoldResult> getMixedStridesOrOffsets(ArrayAttr staticValues,
+                                                   ValueRange dynamicValues) {
+  return getMixedImpl(staticValues, dynamicValues,
+                      ShapedType::kDynamicStrideOrOffset);
+}
+
+}  // namespace
+
+Value PointOp::compose(OpBuilder &builder) {
+  auto supersetOp = llvm::dyn_cast_or_null<TileOp>(superset().getDefiningOp());
+  if (!supersetOp) return {};
+
+  // Compose offsets with newOffset = supersetOffset + supersetStride *
+  // offset.
+  auto loc = getLoc();
+  auto composedOffsets = decomposeMixedStridesOrOffsets(
+      builder,
+      composeOffsets(
+          supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
+          getMixedStridesOrOffsets(static_indices(), dynamic_indices()), loc,
+          builder));
+
+  // Build the composed point op.
+  return builder.create<PointOp>(loc, supersetOp.superset(),
+                                 composedOffsets.second, composedOffsets.first);
 }
 
 //===----------------------------------------------------------------------===//

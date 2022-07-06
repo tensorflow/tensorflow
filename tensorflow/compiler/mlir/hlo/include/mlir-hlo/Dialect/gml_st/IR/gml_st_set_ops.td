@@ -62,7 +62,9 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
   let hasVerifier = 1;
 }
 
-def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
+def GMLST_PointOp : GMLST_Op<"point", [
+    NoSideEffect,
+    DeclareOpInterfaceMethods<ComposeTileInterface>]> {
   let arguments = (ins AnySet:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
@@ -78,7 +80,9 @@ def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
   let hasVerifier = 1;
 }
 
-def GMLST_TileOp : GMLST_Op<"tile", [NoSideEffect, AttrSizedOperandSegments,
+def GMLST_TileOp : GMLST_Op<"tile", [
+    NoSideEffect,
+    AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<ComposeTileInterface>]> {

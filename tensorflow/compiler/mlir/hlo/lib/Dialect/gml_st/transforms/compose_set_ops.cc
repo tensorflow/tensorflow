@@ -54,12 +54,19 @@ class ComposeSetOpsPass : public ComposeSetOpsPassBase<ComposeSetOpsPass> {
 
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
+
     RewritePatternSet patterns(ctx);
-    patterns.insert<ComposePattern<TileOp>>(ctx);
-    mlir::GreedyRewriteConfig config;
+    // clang-format off
+    patterns.insert<
+        ComposePattern<PointOp>,
+        ComposePattern<TileOp>>(ctx);
+    // clang-format on
+
     // Apply patterns from the top down. This makes sure that we have already
     // composed the operand of a tiling op.
+    mlir::GreedyRewriteConfig config;
     config.useTopDownTraversal = true;
+
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       return signalPassFailure();
