@@ -1123,8 +1123,8 @@ table DynamicUpdateSliceOptions {
 }
 
 table UnsortedSegmentProdOptions {
-  num_segments:int;
 }
+
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.

@@ -836,16 +836,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_UNSORTED_SEGMENT_PROD: {
-      auto params = safe_allocator.Allocate<TfLiteUnsortedSegmentProdParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* unsorted_segment_prod_params =
-              op->builtin_options_as_UnsortedSegmentProdOptions()) {
-        params->num_segments = unsorted_segment_prod_params->num_segments();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
@@ -868,6 +858,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_REVERSE_V2:
+    case BuiltinOperator_UNSORTED_SEGMENT_PROD:
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
     case BuiltinOperator_NON_MAX_SUPPRESSION_V4:

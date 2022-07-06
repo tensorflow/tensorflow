@@ -11055,21 +11055,13 @@ flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(f
 
 struct UnsortedSegmentProdOptionsT : public flatbuffers::NativeTable {
   typedef UnsortedSegmentProdOptions TableType;
-  int32_t num_segments = 0;
 };
 
 struct UnsortedSegmentProdOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef UnsortedSegmentProdOptionsT NativeTableType;
   typedef UnsortedSegmentProdOptionsBuilder Builder;
-  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_NUM_SEGMENTS = 4
-  };
-  int32_t num_segments() const {
-    return GetField<int32_t>(VT_NUM_SEGMENTS, 0);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_NUM_SEGMENTS, 4) &&
            verifier.EndTable();
   }
   UnsortedSegmentProdOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -11081,9 +11073,6 @@ struct UnsortedSegmentProdOptionsBuilder {
   typedef UnsortedSegmentProdOptions Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_num_segments(int32_t num_segments) {
-    fbb_.AddElement<int32_t>(UnsortedSegmentProdOptions::VT_NUM_SEGMENTS, num_segments, 0);
-  }
   explicit UnsortedSegmentProdOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -11096,10 +11085,8 @@ struct UnsortedSegmentProdOptionsBuilder {
 };
 
 inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProdOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    int32_t num_segments = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb) {
   UnsortedSegmentProdOptionsBuilder builder_(_fbb);
-  builder_.add_num_segments(num_segments);
   return builder_.Finish();
 }
 
@@ -16267,7 +16254,6 @@ inline UnsortedSegmentProdOptionsT *UnsortedSegmentProdOptions::UnPack(const fla
 inline void UnsortedSegmentProdOptions::UnPackTo(UnsortedSegmentProdOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  { auto _e = num_segments(); _o->num_segments = _e; }
 }
 
 inline flatbuffers::Offset<UnsortedSegmentProdOptions> UnsortedSegmentProdOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentProdOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -16278,10 +16264,8 @@ inline flatbuffers::Offset<UnsortedSegmentProdOptions> CreateUnsortedSegmentProd
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnsortedSegmentProdOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
-  auto _num_segments = _o->num_segments;
   return tflite::CreateUnsortedSegmentProdOptions(
-      _fbb,
-      _num_segments);
+      _fbb);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
