@@ -1574,6 +1574,56 @@ LogicalResult CollapseTileOp::inferReturnTypes(
 
 LogicalResult SetYieldOp::verify() { return success(); }
 
+void SetYieldOp::print(OpAsmPrinter &p) {
+  p.printOptionalAttrDict(getOperation()->getAttrs());
+
+  for (auto zip : llvm::zip(srcs(), dsts(), sets())) {
+    Value src, dst, set;
+    std::tie(src, dst, set) = zip;
+    p << ' ' << src << " into " << dst << '[' << set << "] : " << src.getType()
+      << " into " << dst.getType() << '[' << set.getType() << ']';
+  }
+}
+
+ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> srcs, dsts, sets;
+  SmallVector<Type, 4> srcTypes, dstTypes, setTypes;
+
+  auto parseElt = [&]() -> ParseResult {
+    OpAsmParser::UnresolvedOperand src;
+    auto parseResult = parser.parseOptionalOperand(src, false);
+
+    if (!parseResult.hasValue()) return success();
+    srcs.push_back(src);
+
+    if (parser.parseKeyword("into") ||
+        parser.parseOperand(dsts.emplace_back()) || parser.parseLSquare() ||
+        parser.parseOperand(sets.emplace_back()) || parser.parseRSquare())
+      return failure();
+
+    if (parser.parseColon() || parser.parseType(srcTypes.emplace_back()) ||
+        parser.parseKeyword("into") ||
+        parser.parseType(dstTypes.emplace_back()) || parser.parseLSquare() ||
+        parser.parseType(setTypes.emplace_back()) || parser.parseRSquare())
+      return failure();
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::None, parseElt))
+    return failure();
+
+  if (parser.resolveOperands(srcs, srcTypes, parser.getCurrentLocation(),
+                             result.operands) ||
+      parser.resolveOperands(dsts, dstTypes, parser.getCurrentLocation(),
+                             result.operands) ||
+      parser.resolveOperands(sets, setTypes, parser.getCurrentLocation(),
+                             result.operands))
+    return failure();
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//

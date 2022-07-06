@@ -268,10 +268,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
                        Variadic<AnyType>:$dsts,
                        Variadic<AnyType>:$sets);
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
-  let assemblyFormat = [{
-    attr-dict ($srcs^ `into` $dsts `[` $sets `]`
-      `:` type($srcs) `into` type($dsts) `[` type($sets) `]`)?
-  }];
+
+
+  let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
 
