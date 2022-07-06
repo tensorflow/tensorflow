@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -31,18 +31,18 @@ namespace gml_st {
 namespace {
 
 template <typename TilingOp>
-struct ComposePattern : public OpRewritePattern<TilingOp> {
+struct ComposeSetPattern : public OpRewritePattern<TilingOp> {
   using OpRewritePattern<TilingOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(TilingOp op,
                                 PatternRewriter& rewriter) const override {
-    auto iface = llvm::dyn_cast<ComposeTileInterface>(op.getOperation());
+    auto iface = llvm::dyn_cast<ComposeSetInterface>(op.getOperation());
     if (!iface) return failure();
 
-    Value composedTile = iface.compose(rewriter);
-    if (!composedTile) return failure();
+    Value composed = iface.compose(rewriter);
+    if (!composed) return failure();
 
-    rewriter.replaceOp(op, composedTile);
+    rewriter.replaceOp(op, composed);
     return success();
   }
 };
@@ -58,8 +58,8 @@ class ComposeSetOpsPass : public ComposeSetOpsPassBase<ComposeSetOpsPass> {
     RewritePatternSet patterns(ctx);
     // clang-format off
     patterns.insert<
-        ComposePattern<PointOp>,
-        ComposePattern<TileOp>>(ctx);
+        ComposeSetPattern<PointOp>,
+        ComposeSetPattern<TileOp>>(ctx);
     // clang-format on
 
     // Apply patterns from the top down. This makes sure that we have already

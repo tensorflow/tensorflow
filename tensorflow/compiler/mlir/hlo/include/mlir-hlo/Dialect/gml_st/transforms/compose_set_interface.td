@@ -13,13 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_COMPOSE_TILE_INTERFACE_H
-#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_COMPOSE_TILE_INTERFACE_H
+#ifndef COMPOSE_SET_INTERFACE
+#define COMPOSE_SET_INTERFACE
 
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OpDefinition.h"
+include "mlir/IR/OpBase.td"
 
-/// Include the generated interface declarations.
-#include "mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h.inc"
+def ComposeSetInterface : OpInterface<"ComposeSetInterface"> {
+  let description = [{
+    This interface should be implemented by all set operations that can be
+    composed with their superset operand.
+  }];
+  let cppNamespace = "::mlir::gml_st";
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_COMPOSE_TILE_INTERFACE_H
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/"Returns a composition of this set with its superset operand.",
+      /*retTy=*/"::mlir::Value",
+      /*methodName=*/"compose",
+      /*args=*/(ins "OpBuilder&":$builder)>,
+  ];
+}
+
+#endif // COMPOSE_SET_INTERFACE

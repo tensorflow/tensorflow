@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h"
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_COMPOSE_SET_INTERFACE_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_COMPOSE_SET_INTERFACE_H
 
-#include "mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.cc.inc"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+
+/// Include the generated interface declarations.
+#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc"
+
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_COMPOSE_SET_INTERFACE_H

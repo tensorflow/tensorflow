@@ -13,25 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef COMPOSE_TILE_INTERFACE
-#define COMPOSE_TILE_INTERFACE
+#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
 
-include "mlir/IR/OpBase.td"
-
-def ComposeTileInterface : OpInterface<"ComposeTileInterface"> {
-  let description = [{
-    This interface should be implemented by each Tiling op so that it can be
-    collapsed with its superset operand.
-  }];
-  let cppNamespace = "::mlir::gml_st";
-
-  let methods = [
-    InterfaceMethod<
-      /*desc=*/"Returns a composition of this set with the superset.",
-      /*retTy=*/"::mlir::Value",
-      /*methodName=*/"compose",
-      /*args=*/(ins "OpBuilder&":$builder)>,
-  ];
-}
-
-#endif // COMPOSE_TILE_INTERFACE
+#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc"

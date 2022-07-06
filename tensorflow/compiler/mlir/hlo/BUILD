@@ -2397,7 +2397,7 @@ gentbl_cc_library(
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td",
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.td",
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td",
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
     ],
     deps = [":gml_st_ops_td_files"],
@@ -2413,7 +2413,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":compose_tile_interface",
+        ":compose_set_interface",
         ":fusion_interface",
         ":gml_st_ops_inc_gen",
         "@llvm-project//llvm:Support",
@@ -2490,37 +2490,37 @@ cc_library(
 )
 
 gentbl_cc_library(
-    name = "compose_tile_interface_inc_gen",
+    name = "compose_set_interface_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     strip_include_prefix = "include",
     tbl_outs = [
         (
             ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h.inc",
+            "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc",
         ),
         (
             ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.cc.inc",
+            "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.td",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td",
     deps = ["@llvm-project//mlir:OpBaseTdFiles"],
 )
 
 cc_library(
-    name = "compose_tile_interface",
+    name = "compose_set_interface",
     srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.cc.inc",
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h.inc",
-        "lib/Dialect/gml_st/transforms/compose_tile_interface.cc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc",
+        "lib/Dialect/gml_st/transforms/compose_set_interface.cc",
     ],
     hdrs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h",
     ],
     includes = ["include"],
     deps = [
-        ":compose_tile_interface_inc_gen",
+        ":compose_set_interface_inc_gen",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -2624,7 +2624,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":compose_tile_interface",
+        ":compose_set_interface",
         ":gml_st",
         ":gml_st_passes_inc_gen",
         "@llvm-project//llvm:Support",

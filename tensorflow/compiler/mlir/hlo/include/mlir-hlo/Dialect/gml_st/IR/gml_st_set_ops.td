@@ -23,7 +23,7 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
-include "mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.td"
+include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td"
 
 // Base class of all subset types.
 class GMLST_Set<string name> : TypeDef<GmlSt_Dialect, name> { }
@@ -64,7 +64,7 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 
 def GMLST_PointOp : GMLST_Op<"point", [
     NoSideEffect,
-    DeclareOpInterfaceMethods<ComposeTileInterface>]> {
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
   let arguments = (ins AnySet:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
@@ -85,7 +85,7 @@ def GMLST_TileOp : GMLST_Op<"tile", [
     AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<ComposeTileInterface>]> {
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
   let arguments = (ins GMLST_TileType:$superset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
