@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef INTEL_MKL
+
 #include "tensorflow/core/util/onednn_env_vars.h"
+
 #include "absl/base/call_once.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
-#ifdef INTEL_MKL
 bool AreWeightsFrozen() {
   static bool weights_const = false;
   static absl::once_flag once;
@@ -40,6 +41,6 @@ bool UseSystemAlloc() {
   });
   return use_sys_alloc;
 }
-#endif  // INTEL_MKL
 
 }  // namespace tensorflow
+#endif  // INTEL_MKL

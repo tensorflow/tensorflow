@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/port.h"
 
+
 namespace tensorflow {
 
 bool IsGoogleCudaEnabled() {
