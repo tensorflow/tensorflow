@@ -512,7 +512,8 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
-  auto runtime = tensorflow::tfrt_stub::Runtime::Create();
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/4);
 
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_native_ops = false;
