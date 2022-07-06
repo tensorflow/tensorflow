@@ -38,7 +38,8 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
   }];
 }
 
-def GMLST_PointType : GMLST_Set<"Point"> {
+def GMLST_PointType : GMLST_Set<"Point">,
+    BuildableType<"$_builder.getType<::mlir::gml_st::PointType>()"> {
   let mnemonic = "point";
   let summary = "Type that represents a point of an index space.";
   let assemblyFormat = "";

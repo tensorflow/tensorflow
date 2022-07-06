@@ -441,7 +441,7 @@ FailureOr<TilingResult> tileToPoints(RewriterBase &b,
       loc, output.getType(), lowerBounds, upperBounds, steps,
       [&](OpBuilder &b, Location nestedLoc, ValueRange ivs) {
         Value point = b.create<PointOp>(
-            nestedLoc, b.getType<PointType>(), space, ivs,
+            nestedLoc, space, ivs,
             b.getI64ArrayAttr(SmallVector<int64_t>(
                 outputType.getRank(), ShapedType::kDynamicStrideOrOffset)));
 
