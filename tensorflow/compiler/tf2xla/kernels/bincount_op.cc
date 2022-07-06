@@ -107,7 +107,7 @@ class DenseBincountOp : public XlaOpKernel {
           one, {input_shape.dimensions(0) * input_shape.dimensions(1)});
       output = xla::Broadcast(
           zero, {output_shape.dimensions(0), output_shape.dimensions(1)});
-      if (has_weights and !binary_output_) {
+      if (has_weights && !binary_output_) {
         weights = xla::Reshape(
             weights, {input_shape.dimensions(0) * input_shape.dimensions(1)});
         updates = weights;
@@ -117,7 +117,7 @@ class DenseBincountOp : public XlaOpKernel {
       idx = xla::Reshape(input, {size, 1});
       updates = xla::Broadcast(one, {size});
       output = xla::Broadcast(zero, {output_size});
-      if (has_weights and !binary_output_) {
+      if (has_weights && !binary_output_) {
         updates = weights;
       }
     }
