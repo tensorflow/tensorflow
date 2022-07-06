@@ -1488,7 +1488,7 @@ Value ConvertDot(PatternRewriter &rewriter, Value lhs, Value rhs,
                           lhs_dot_dimensions_info.FlattenedOutDimensionSize()},
                       llvm::ArrayRef<int64_t>{
                           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
-  auto matmul = rewriter.create<TF::BatchMatMulV2Op>(
+  auto matmul = rewriter.create<TF::BatchMatMulV3Op>(
       loc, RankedTensorType::get(matmul_shape, result_type.getElementType()),
       lhs_flattend.getResult(), rhs_flattend.getResult());
   auto reshaped =
