@@ -156,8 +156,8 @@ typedef struct {
   PJRT_Device** addressable_devices;  // out
   size_t num_addressable_devices;     // out
 } PJRT_Client_AddressableDevices_Args;
-const size_t PJRT_Client_AddressableDevices_Args_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Client_AddressableDevices_Args, addressable_devices);
+const size_t PJRT_Client_AddressableDevices_Args_STRUCT_SIZE = PJRT_STRUCT_SIZE(
+    PJRT_Client_AddressableDevices_Args, num_addressable_devices);
 
 // Returns a list of devices that are addressable from the client.
 // Addressable devices are those that the client can issue commands to.
