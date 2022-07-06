@@ -15,13 +15,11 @@ limitations under the License.
 
 #ifndef TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
 #define TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
+#ifdef INTEL_MKL
 
 namespace tensorflow {
-#ifdef INTEL_MKL
 bool AreWeightsFrozen();
 bool UseSystemAlloc();
-#endif  // INTEL_MKL
-
-bool IsOneDNNEnabled();
 }  // namespace tensorflow
+#endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
