@@ -603,3 +603,11 @@ class Reference(trace.TraceType, serialization.Serializable):
   def __repr__(self):
     return (f"{self.__class__.__name__}(base={self.base!r}, "
             f"identifier={self.identifier!r})")
+
+serialization.register_serializable(Literal)
+serialization.register_serializable(Tuple)
+serialization.register_serializable(List)
+serialization.register_serializable(NamedTuple)
+serialization.register_serializable(Attrs)
+serialization.register_serializable(Dict)
+serialization.register_serializable(Reference)

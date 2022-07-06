@@ -39,6 +39,9 @@ class MyCustomClass(serialization.Serializable):
     return proto
 
 
+serialization.register_serializable(MyCustomClass)
+
+
 class MyCompositeClass(serialization.Serializable):
 
   def __init__(self, *elements):
@@ -60,6 +63,9 @@ class MyCompositeClass(serialization.Serializable):
     proto = serialization_test_pb2.MyCompositeRepresentation(
         elements=serialized_elements)
     return proto
+
+
+serialization.register_serializable(MyCompositeClass)
 
 
 class SerializeTest(test.TestCase):
@@ -124,25 +130,26 @@ class SerializeTest(test.TestCase):
     self.assertEqual(deserialized.elements[2].name, "name_3")
 
   def testNonUniqueProto(self):
+    class ClassThatReusesProto(serialization.Serializable):
+
+      @classmethod
+      def experimental_type_proto(cls):
+        return serialization_test_pb2.MyCustomRepresentation
+
+      @classmethod
+      def experimental_from_proto(cls, proto):
+        raise NotImplementedError
+
+      def experimental_as_proto(self):
+        raise NotImplementedError
+
     with self.assertRaisesRegex(
         ValueError,
         ("Existing Python class MyCustomClass already has "
          "MyCustomRepresentation as its associated proto representation. "
          "Please ensure ClassThatReusesProto has a unique proto representation."
         )):
-
-      class ClassThatReusesProto(serialization.Serializable):  # pylint: disable=unused-variable
-
-        @classmethod
-        def experimental_type_proto(cls):
-          return serialization_test_pb2.MyCustomRepresentation
-
-        @classmethod
-        def experimental_from_proto(cls, proto):
-          raise NotImplementedError
-
-        def experimental_as_proto(self):
-          raise NotImplementedError
+      serialization.register_serializable(ClassThatReusesProto)
 
   def testWrongProto(self):
 
