@@ -1382,6 +1382,118 @@ LogicalResult TileOp::verify() {
   return success();
 }
 
+namespace {
+
+OpFoldResult multiplyOperandsOrIntegers(OpBuilder &builder, Location loc,
+                                        OpFoldResult lhs, OpFoldResult rhs) {
+  // Both operands are static.
+  if (lhs.is<Attribute>() && rhs.is<Attribute>()) {
+    return builder.getI64IntegerAttr(
+        lhs.get<Attribute>().cast<IntegerAttr>().getInt() *
+        rhs.get<Attribute>().cast<IntegerAttr>().getInt());
+  }
+
+  // Exploit commutativity and move static operand to the left (if any).
+  if (rhs.is<Attribute>()) std::swap(lhs, rhs);
+
+  // Create constant if needed.
+  if (lhs.is<Attribute>()) {
+    int64_t lhsInt = lhs.get<Attribute>().cast<IntegerAttr>().getInt();
+
+    // Exploit static operand if possible.
+    if (lhsInt == 0) return lhs;
+    if (lhsInt == 1) return rhs;
+
+    lhs = builder.create<arith::ConstantIndexOp>(loc, lhsInt).getResult();
+  }
+
+  // Multiply.
+  return builder.create<arith::MulIOp>(loc, lhs.get<Value>(), rhs.get<Value>())
+      .getResult();
+}
+
+OpFoldResult addOperandsOrIntegers(OpBuilder &builder, Location loc,
+                                   OpFoldResult lhs, OpFoldResult rhs) {
+  // Both operands are static.
+  if (lhs.is<Attribute>() && rhs.is<Attribute>()) {
+    return builder.getI64IntegerAttr(
+        lhs.get<Attribute>().cast<IntegerAttr>().getInt() +
+        rhs.get<Attribute>().cast<IntegerAttr>().getInt());
+  }
+
+  // Exploit commutativity and move static operand to the left (if any).
+  if (rhs.is<Attribute>()) std::swap(lhs, rhs);
+
+  // Create constant if needed.
+  if (lhs.is<Attribute>()) {
+    int64_t lhsInt = lhs.get<Attribute>().cast<IntegerAttr>().getInt();
+
+    // Exploit static operand if possible.
+    if (lhsInt == 0) return rhs;
+
+    lhs = builder.create<arith::ConstantIndexOp>(loc, lhsInt).getResult();
+  }
+
+  // Add.
+  return builder.create<arith::AddIOp>(loc, lhs.get<Value>(), rhs.get<Value>())
+      .getResult();
+}
+
+// Compose offsets with newOffset = supersetOffset + supersetStride * offset.
+SmallVector<OpFoldResult> composeOffsets(
+    const llvm::SmallVectorImpl<OpFoldResult> &supersetOffsets,
+    const llvm::SmallVectorImpl<OpFoldResult> &supersetStrides,
+    const llvm::SmallVectorImpl<OpFoldResult> &offsets, Location loc,
+    OpBuilder &builder) {
+  SmallVector<OpFoldResult> composedOffsets;
+  for (auto it : llvm::zip(supersetOffsets, supersetStrides, offsets)) {
+    composedOffsets.push_back(addOperandsOrIntegers(
+        builder, loc, std::get<0>(it),
+        multiplyOperandsOrIntegers(builder, loc, std::get<1>(it),
+                                   std::get<2>(it))));
+  }
+  return composedOffsets;
+}
+
+// Compose strides with newStride = supersetStride * stride.
+SmallVector<OpFoldResult> composeStrides(
+    OpBuilder &builder, Location loc,
+    const llvm::SmallVectorImpl<OpFoldResult> &supersetStrides,
+    const llvm::SmallVectorImpl<OpFoldResult> &strides) {
+  SmallVector<OpFoldResult> composedStrides;
+  for (auto it : llvm::zip(supersetStrides, strides)) {
+    composedStrides.push_back(multiplyOperandsOrIntegers(
+        builder, loc, std::get<0>(it), std::get<1>(it)));
+  }
+  return composedStrides;
+}
+
+}  // namespace
+
+Value TileOp::compose(OpBuilder &builder) {
+  auto supersetOp = llvm::dyn_cast_or_null<TileOp>(superset().getDefiningOp());
+  if (!supersetOp) return {};
+
+  // Compose offsets with newOffset = supersetOffset + supersetStride *
+  // offset.
+  auto loc = getLoc();
+  auto composedOffsets = decomposeMixedStridesOrOffsets(
+      builder,
+      composeOffsets(supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
+                     getMixedOffsets(), loc, builder));
+
+  // Compose strides with newStride = supersetStride * stride.
+  auto composedStrides = decomposeMixedStridesOrOffsets(
+      builder, composeStrides(builder, loc, supersetOp.getMixedStrides(),
+                              getMixedStrides()));
+
+  // Build the composed tile op.
+  return builder.create<TileOp>(loc, supersetOp.superset(),
+                                composedOffsets.second, sizes(),
+                                composedStrides.second, composedOffsets.first,
+                                static_sizes(), composedStrides.first);
+}
+
 //===----------------------------------------------------------------------===//
 // CollapseTileOp
 //===----------------------------------------------------------------------===//

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/compose_tile_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -29,117 +30,19 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-OpFoldResult multiplyOperandsOrIntegers(PatternRewriter& rewriter, Location loc,
-                                        OpFoldResult lhs, OpFoldResult rhs) {
-  // Both operands are static.
-  if (lhs.is<Attribute>() && rhs.is<Attribute>()) {
-    return rewriter.getI64IntegerAttr(
-        lhs.get<Attribute>().cast<IntegerAttr>().getInt() *
-        rhs.get<Attribute>().cast<IntegerAttr>().getInt());
-  }
+template <typename TilingOp>
+struct ComposePattern : public OpRewritePattern<TilingOp> {
+  using OpRewritePattern<TilingOp>::OpRewritePattern;
 
-  // Exploit commutativity and move static operand to the left (if any).
-  if (rhs.is<Attribute>()) std::swap(lhs, rhs);
-
-  // Create constant if needed.
-  if (lhs.is<Attribute>()) {
-    int64_t lhsInt = lhs.get<Attribute>().cast<IntegerAttr>().getInt();
-
-    // Exploit static operand if possible.
-    if (lhsInt == 0) return lhs;
-    if (lhsInt == 1) return rhs;
-
-    lhs = rewriter.create<arith::ConstantIndexOp>(loc, lhsInt).getResult();
-  }
-
-  // Multiply.
-  return rewriter.create<arith::MulIOp>(loc, lhs.get<Value>(), rhs.get<Value>())
-      .getResult();
-}
-
-OpFoldResult addOperandsOrIntegers(PatternRewriter& rewriter, Location loc,
-                                   OpFoldResult lhs, OpFoldResult rhs) {
-  // Both operands are static.
-  if (lhs.is<Attribute>() && rhs.is<Attribute>()) {
-    return rewriter.getI64IntegerAttr(
-        lhs.get<Attribute>().cast<IntegerAttr>().getInt() +
-        rhs.get<Attribute>().cast<IntegerAttr>().getInt());
-  }
-
-  // Exploit commutativity and move static operand to the left (if any).
-  if (rhs.is<Attribute>()) std::swap(lhs, rhs);
-
-  // Create constant if needed.
-  if (lhs.is<Attribute>()) {
-    int64_t lhsInt = lhs.get<Attribute>().cast<IntegerAttr>().getInt();
-
-    // Exploit static operand if possible.
-    if (lhsInt == 0) return rhs;
-
-    lhs = rewriter.create<arith::ConstantIndexOp>(loc, lhsInt).getResult();
-  }
-
-  // Add.
-  return rewriter.create<arith::AddIOp>(loc, lhs.get<Value>(), rhs.get<Value>())
-      .getResult();
-}
-
-// Compose offsets with newOffset = supersetOffset + supersetStride * offset.
-SmallVector<OpFoldResult> composeOffsets(
-    const llvm::SmallVectorImpl<OpFoldResult>& supersetOffsets,
-    const llvm::SmallVectorImpl<OpFoldResult>& supersetStrides,
-    const llvm::SmallVectorImpl<OpFoldResult>& offsets, Location loc,
-    PatternRewriter& rewriter) {
-  SmallVector<OpFoldResult> composedOffsets;
-  for (auto it : llvm::zip(supersetOffsets, supersetStrides, offsets)) {
-    composedOffsets.push_back(addOperandsOrIntegers(
-        rewriter, loc, std::get<0>(it),
-        multiplyOperandsOrIntegers(rewriter, loc, std::get<1>(it),
-                                   std::get<2>(it))));
-  }
-  return composedOffsets;
-}
-
-// Compose strides with newStride = supersetStride * stride.
-SmallVector<OpFoldResult> composeStrides(
-    PatternRewriter& rewriter, Location loc,
-    const llvm::SmallVectorImpl<OpFoldResult>& supersetStrides,
-    const llvm::SmallVectorImpl<OpFoldResult>& strides) {
-  SmallVector<OpFoldResult> composedStrides;
-  for (auto it : llvm::zip(supersetStrides, strides)) {
-    composedStrides.push_back(multiplyOperandsOrIntegers(
-        rewriter, loc, std::get<0>(it), std::get<1>(it)));
-  }
-  return composedStrides;
-}
-
-struct ComposeTilesPattern : public OpRewritePattern<TileOp> {
-  using OpRewritePattern<TileOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TileOp op,
+  LogicalResult matchAndRewrite(TilingOp op,
                                 PatternRewriter& rewriter) const override {
-    auto supersetOp =
-        llvm::dyn_cast_or_null<TileOp>(op.superset().getDefiningOp());
-    if (!supersetOp) return failure();
+    auto iface = llvm::dyn_cast<ComposeTileInterface>(op.getOperation());
+    if (!iface) return failure();
 
-    // Compose offsets with newOffset = supersetOffset + supersetStride *
-    // offset.
-    auto loc = op.getLoc();
-    auto composedOffsets = decomposeMixedStridesOrOffsets(
-        rewriter, composeOffsets(supersetOp.getMixedOffsets(),
-                                 supersetOp.getMixedStrides(),
-                                 op.getMixedOffsets(), loc, rewriter));
+    Value composedTile = iface.compose(rewriter);
+    if (!composedTile) return failure();
 
-    // Compose strides with newStride = supersetStride * stride.
-    auto composedStrides = decomposeMixedStridesOrOffsets(
-        rewriter, composeStrides(rewriter, loc, supersetOp.getMixedStrides(),
-                                 op.getMixedStrides()));
-
-    // Build the composed tile op.
-    rewriter.replaceOpWithNewOp<TileOp>(
-        op, supersetOp.superset(), composedOffsets.second, op.sizes(),
-        composedStrides.second, composedOffsets.first, op.static_sizes(),
-        composedStrides.first);
+    rewriter.replaceOp(op, composedTile);
     return success();
   }
 };
@@ -152,9 +55,13 @@ class ComposeSetOpsPass : public ComposeSetOpsPassBase<ComposeSetOpsPass> {
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    patterns.insert<ComposeTilesPattern>(ctx);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    patterns.insert<ComposePattern<TileOp>>(ctx);
+    mlir::GreedyRewriteConfig config;
+    // Apply patterns from the top down. This makes sure that we have already
+    // composed the operand of a tiling op.
+    config.useTopDownTraversal = true;
+    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
+                                            config))) {
       return signalPassFailure();
     }
   }

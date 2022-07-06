@@ -42,6 +42,16 @@ add_mlir_library(GmlStFusionInterfaceImpl
   MLIRSupport
 )
 
+add_mlir_library(GmlStComposeTileInterface
+  compose_tile_interface.cc
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+
+  DEPENDS
+  MLIRGmlStComposeTileInterfaceIncGen
+)
+
 add_mlir_library(GmlStBufferizableOpInterface
   bufferizable_op_interface_impl.cc
 
@@ -68,6 +78,7 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
+  GmlStComposeTileInterface
   GmlStFusionInterface
   GmlStFusionInterfaceImpl
   MLIRFuncDialect

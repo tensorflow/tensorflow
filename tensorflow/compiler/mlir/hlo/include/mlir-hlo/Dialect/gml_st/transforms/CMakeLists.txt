@@ -26,3 +26,8 @@ set(LLVM_TARGET_DEFINITIONS fusion_interface.td)
 mlir_tablegen(fusion_interface.h.inc -gen-op-interface-decls)
 mlir_tablegen(fusion_interface.cc.inc -gen-op-interface-defs)
 add_public_tablegen_target(MLIRGmlStFusionInterfaceIncGen)
+
+set(LLVM_TARGET_DEFINITIONS compose_tile_interface.td)
+mlir_tablegen(compose_tile_interface.h.inc -gen-op-interface-decls)
+mlir_tablegen(compose_tile_interface.cc.inc -gen-op-interface-defs)
+add_public_tablegen_target(MLIRGmlStComposeTileInterfaceIncGen)
