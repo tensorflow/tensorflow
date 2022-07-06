@@ -810,8 +810,8 @@ cc_library(
         ":precompiled_kernels",
         ":triangular_solve_thunk",
     ]) + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cuda_stream",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
@@ -1057,9 +1057,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/cuda:cublas_lt_header",
     ]),
 )
 
@@ -1085,7 +1086,7 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:blas",
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
@@ -1114,7 +1115,8 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/stream_executor:stream_header",
     ] + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/stream_executor/cuda:cublas_lt_header",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor:host_or_device_scalar",
         "//tensorflow/stream_executor:scratch_allocator",
     ]),

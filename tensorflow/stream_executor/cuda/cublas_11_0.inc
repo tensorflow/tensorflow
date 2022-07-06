@@ -1,7 +1,6 @@
 // Auto-generated, do not edit.
 
 extern "C" {
-
 cublasStatus_t CUBLASWINAPI cublasCreate_v2(cublasHandle_t *handle) {
   using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(cublasHandle_t *);
   static auto func_ptr = LoadSymbol<FuncPtr>("cublasCreate_v2");
@@ -117,6 +116,36 @@ cublasStatus_t CUBLASWINAPI cublasSetMathMode(cublasHandle_t handle,
   static auto func_ptr = LoadSymbol<FuncPtr>("cublasSetMathMode");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, mode);
+}
+
+cublasStatus_t CUBLASWINAPI cublasGetSmCountTarget(cublasHandle_t handle,
+                                                   int *smCountTarget) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(cublasHandle_t, int *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasGetSmCountTarget");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, smCountTarget);
+}
+
+cublasStatus_t CUBLASWINAPI cublasSetSmCountTarget(cublasHandle_t handle,
+                                                   int smCountTarget) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(cublasHandle_t, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasSetSmCountTarget");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, smCountTarget);
+}
+
+const char *CUBLASWINAPI cublasGetStatusName(cublasStatus_t status) {
+  using FuncPtr = const char *(CUBLASWINAPI *)(cublasStatus_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasGetStatusName");
+  if (!func_ptr) return "cublasGetStatusName symbol not found.";
+  return func_ptr(status);
+}
+
+const char *CUBLASWINAPI cublasGetStatusString(cublasStatus_t status) {
+  using FuncPtr = const char *(CUBLASWINAPI *)(cublasStatus_t);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasGetStatusString");
+  if (!func_ptr) return "cublasGetStatusString symbol not found.";
+  return func_ptr(status);
 }
 
 cublasStatus_t CUBLASWINAPI cublasLoggerConfigure(int logIsOn, int logToStdOut,
@@ -1974,6 +2003,141 @@ cublasZhpr2_v2(cublasHandle_t handle, cublasFillMode_t uplo, int n,
   static auto func_ptr = LoadSymbol<FuncPtr>("cublasZhpr2_v2");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(handle, uplo, n, alpha, x, incx, y, incy, AP);
+}
+
+cublasStatus_t CUBLASWINAPI cublasSgemvBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const float *alpha, /* host or device pointer */
+    const float *const Aarray[], int lda, const float *const xarray[], int incx,
+    const float *beta, /* host or device pointer */
+    float *const yarray[], int incy, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const float *,
+      const float *const[], int, const float *const[], int, const float *,
+      float *const[], int, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasSgemvBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, Aarray, lda, xarray, incx, beta,
+                  yarray, incy, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI cublasDgemvBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const double *alpha, /* host or device pointer */
+    const double *const Aarray[], int lda, const double *const xarray[],
+    int incx, const double *beta, /* host or device pointer */
+    double *const yarray[], int incy, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const double *,
+      const double *const[], int, const double *const[], int, const double *,
+      double *const[], int, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasDgemvBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, Aarray, lda, xarray, incx, beta,
+                  yarray, incy, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI cublasCgemvBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const cuComplex *alpha, /* host or device pointer */
+    const cuComplex *const Aarray[], int lda, const cuComplex *const xarray[],
+    int incx, const cuComplex *beta, /* host or device pointer */
+    cuComplex *const yarray[], int incy, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const cuComplex *,
+      const cuComplex *const[], int, const cuComplex *const[], int,
+      const cuComplex *, cuComplex *const[], int, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasCgemvBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, Aarray, lda, xarray, incx, beta,
+                  yarray, incy, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI
+cublasZgemvBatched(cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+                   const cuDoubleComplex *alpha, /* host or device pointer */
+                   const cuDoubleComplex *const Aarray[], int lda,
+                   const cuDoubleComplex *const xarray[], int incx,
+                   const cuDoubleComplex *beta, /* host or device pointer */
+                   cuDoubleComplex *const yarray[], int incy, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const cuDoubleComplex *,
+      const cuDoubleComplex *const[], int, const cuDoubleComplex *const[], int,
+      const cuDoubleComplex *, cuDoubleComplex *const[], int, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasZgemvBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, Aarray, lda, xarray, incx, beta,
+                  yarray, incy, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI cublasSgemvStridedBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const float *alpha,                             /* host or device pointer */
+    const float *A, int lda, long long int strideA, /* purposely signed */
+    const float *x, int incx, long long int stridex,
+    const float *beta, /* host or device pointer */
+    float *y, int incy, long long int stridey, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const float *, const float *,
+      int, long long, const float *, int, long long, const float *, float *,
+      int, long long, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasSgemvStridedBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, A, lda, strideA, x, incx, stridex,
+                  beta, y, incy, stridey, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI cublasDgemvStridedBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const double *alpha, /* host or device pointer */
+    const double *A, int lda, long long int strideA, /* purposely signed */
+    const double *x, int incx, long long int stridex,
+    const double *beta, /* host or device pointer */
+    double *y, int incy, long long int stridey, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const double *,
+      const double *, int, long long, const double *, int, long long,
+      const double *, double *, int, long long, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasDgemvStridedBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, A, lda, strideA, x, incx, stridex,
+                  beta, y, incy, stridey, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI cublasCgemvStridedBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const cuComplex *alpha, /* host or device pointer */
+    const cuComplex *A, int lda, long long int strideA, /* purposely signed */
+    const cuComplex *x, int incx, long long int stridex,
+    const cuComplex *beta, /* host or device pointer */
+    cuComplex *y, int incy, long long int stridey, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const cuComplex *,
+      const cuComplex *, int, long long, const cuComplex *, int, long long,
+      const cuComplex *, cuComplex *, int, long long, int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasCgemvStridedBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, A, lda, strideA, x, incx, stridex,
+                  beta, y, incy, stridey, batchCount);
+}
+
+cublasStatus_t CUBLASWINAPI cublasZgemvStridedBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const cuDoubleComplex *alpha, /* host or device pointer */
+    const cuDoubleComplex *A, int lda,
+    long long int strideA, /* purposely signed */
+    const cuDoubleComplex *x, int incx, long long int stridex,
+    const cuDoubleComplex *beta, /* host or device pointer */
+    cuDoubleComplex *y, int incy, long long int stridey, int batchCount) {
+  using FuncPtr = cublasStatus_t(CUBLASWINAPI *)(
+      cublasHandle_t, cublasOperation_t, int, int, const cuDoubleComplex *,
+      const cuDoubleComplex *, int, long long, const cuDoubleComplex *, int,
+      long long, const cuDoubleComplex *, cuDoubleComplex *, int, long long,
+      int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cublasZgemvStridedBatched");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(handle, trans, m, n, alpha, A, lda, strideA, x, incx, stridex,
+                  beta, y, incy, stridey, batchCount);
 }
 
 cublasStatus_t CUBLASWINAPI cublasSgemm_v2(

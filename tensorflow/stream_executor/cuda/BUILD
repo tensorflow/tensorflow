@@ -261,6 +261,15 @@ alias(
 )
 
 cc_library(
+    name = "cublas_lt_header",
+    hdrs = ["cuda_blas_lt.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/stream_executor/platform",
+    ],
+)
+
+cc_library(
     name = "cublas_lt_stub",
     srcs = if_cuda_is_configured(["cublasLt_stub.cc"]),
     textual_hdrs = glob(["cublasLt_*.inc"]),
