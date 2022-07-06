@@ -260,3 +260,33 @@ func.func @fuse_cwise_linalg_generic(%lhs: tensor<?x?xf32>,
   %4 = gml_st.materialize %3[%tile] : tensor<?x?xf32>[!gml_st.tile<?x?>]
   return %4 : tensor<?x?xf32>
 }
+
+// -----
+
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:      @fuse_cwise_linalg_generic_at_point
+// CHECK-SAME: %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>, %[[POINT:.*]]: !gml_st.point
+func.func @fuse_cwise_linalg_generic_at_point(%lhs: tensor<?x?xf32>,
+    %rhs: tensor<?x?xf32>, %point: !gml_st.point) -> f32 {
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[POINT]]]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[POINT]]]
+  // CHECK-DAG: %[[RES:.*]] = arith.addf %[[LHS_SUB]], %[[RHS_SUB]]
+  // CHECK:     return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
+  %1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
+  %2 = linalg.init_tensor [%0, %1] : tensor<?x?xf32>
+  %3 = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%2 : tensor<?x?xf32>) {
+  ^bb0(%arg3: f32, %arg4: f32, %arg5: f32):
+    %5 = arith.addf %arg3, %arg4 : f32
+    linalg.yield %5 : f32
+  } -> tensor<?x?xf32>
+  %4 = gml_st.materialize %3[%point] : tensor<?x?xf32>[!gml_st.point]
+  return %4 : f32
+}
