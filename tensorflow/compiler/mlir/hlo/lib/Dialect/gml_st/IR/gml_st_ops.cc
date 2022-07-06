@@ -1507,25 +1507,6 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
 }
 
 //===----------------------------------------------------------------------===//
-// DimOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-
-  if (auto tileOp = tile().getDefiningOp<TileOp>()) {
-    auto idx = idxAttr.getInt();
-    if (tileOp.isDynamicSize(idx)) return tileOp.getDynamicSize(idx);
-
-    Builder b(idxAttr.getContext());
-    return b.getIndexAttr(tileOp.getStaticSize(idx));
-  }
-  // TODO(unknown): Handle space op, as well.
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
 // OffsetOp
 //===----------------------------------------------------------------------===//
 

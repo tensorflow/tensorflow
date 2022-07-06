@@ -34,17 +34,6 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
   let hasVerifier = 0;
 }
 
-def GMLST_DimOp : GMLST_Op<"dim", []> {
-  let summary = [{Returns the size of a tile in a given dimension}];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
-}
-
 def GMLST_OffsetOp : GMLST_Op<"offset", []> {
   let summary = [{Returns the offset of a tile in a given dimension}];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
