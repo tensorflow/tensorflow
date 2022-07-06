@@ -248,6 +248,8 @@ tf_cc_test(
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/gpu:gemm_broadcast_folding_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
