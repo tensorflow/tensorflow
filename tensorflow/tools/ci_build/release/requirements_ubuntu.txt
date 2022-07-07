@@ -5,5 +5,5 @@
 PyYAML ~= 6.0
 
 # Test dependencies which don't exist on Windows
-jax ~= 0.3
-jaxlib ~= 0.3
+jax ~= 0.3.14
+jaxlib ~= 0.3.14
