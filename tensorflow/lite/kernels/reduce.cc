@@ -873,6 +873,34 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <typename T>
+TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context, OpContext* op_context,
+                                int* temp_index, int* resolved_axis,
+                                int* temp_sum, KernelType kernel_type,
+                                bool compute_sum) {
+  int num_axis = static_cast<int>(NumElements(op_context->axis));
+  auto args = std::tuple(
+      GetTensorData<T>(op_context->input), op_context->input->params.zero_point,
+      op_context->input->params.scale, &op_context->input->dims->data[0],
+      op_context->input->dims->size, GetTensorData<T>(op_context->output),
+      op_context->output->params.zero_point, op_context->output->params.scale,
+      &op_context->output->dims->data[0], op_context->output->dims->size,
+      GetTensorData<int>(op_context->axis), num_axis,
+      op_context->params->keep_dims, temp_index, resolved_axis, temp_sum,
+      compute_sum);
+  if (kernel_type == kReference) {
+    TF_LITE_ENSURE(
+        context,
+        std::apply(reference_ops::QuantizedMeanOrSum<T, int32_t>, args));
+  } else {
+    TF_LITE_ENSURE(
+        context,
+        std::apply(optimized_ops::QuantizedMeanOrSum<T, int32_t>, args));
+  }
+  return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
 TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   ruy::profiler::ScopeLabel label("Sum");
@@ -886,7 +914,6 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   const bool need_rescale = (eight_bit_quantized && !same_scale);
   if (need_rescale) {
     // Rescaling 8bit reduce sum.
-    int num_axis = static_cast<int>(NumElements(op_context.axis));
     TfLiteTensor* temp_index;
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/0, &temp_index));
@@ -906,41 +933,20 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
     }
 
     if (input->type == kTfLiteUInt8) {
-      TF_LITE_ENSURE(
-          context,
-          reference_ops::QuantizedMeanOrSum<>(
-              GetTensorData<uint8_t>(op_context.input),
-              op_context.input->params.zero_point,
-              op_context.input->params.scale, op_context.input->dims->data,
-              op_context.input->dims->size,
-              GetTensorData<uint8_t>(op_context.output),
-              op_context.output->params.zero_point,
-              op_context.output->params.scale, op_context.output->dims->data,
-              op_context.output->dims->size,
-              GetTensorData<int>(op_context.axis), num_axis,
-              op_context.params->keep_dims, GetTensorData<int>(temp_index),
-              GetTensorData<int>(resolved_axis), GetTensorData<int32>(temp_sum),
-              /*compute_sum=*/true));
-    }
-    if (input->type == kTfLiteInt8) {
-      TF_LITE_ENSURE(
-          context,
-          reference_ops::QuantizedMeanOrSum<>(
-              GetTensorData<int8_t>(op_context.input),
-              op_context.input->params.zero_point,
-              op_context.input->params.scale, op_context.input->dims->data,
-              op_context.input->dims->size,
-              GetTensorData<int8_t>(op_context.output),
-              op_context.output->params.zero_point,
-              op_context.output->params.scale, op_context.output->dims->data,
-              op_context.output->dims->size,
-              GetTensorData<int>(op_context.axis), num_axis,
-              op_context.params->keep_dims, GetTensorData<int>(temp_index),
-              GetTensorData<int>(resolved_axis), GetTensorData<int32>(temp_sum),
-              /*compute_sum=*/true));
+      QuantizedMeanOrSum<uint8_t>(context, &op_context,
+                                  GetTensorData<int>(temp_index),
+                                  GetTensorData<int>(resolved_axis),
+                                  GetTensorData<int32_t>(temp_sum), kernel_type,
+                                  /*compute_sum=*/true);
+    } else {
+      QuantizedMeanOrSum<int8_t>(context, &op_context,
+                                 GetTensorData<int>(temp_index),
+                                 GetTensorData<int>(resolved_axis),
+                                 GetTensorData<int32_t>(temp_sum), kernel_type,
+                                 /*compute_sum=*/true);
     }
   } else {
-    return EvalGeneric<kReference, kSum>(context, node);
+    return EvalGeneric<kernel_type, kSum>(context, node);
   }
 
   return kTfLiteOk;
@@ -1043,7 +1049,15 @@ TfLiteRegistration* Register_MEAN_REF() {
 
 TfLiteRegistration* Register_SUM_REF() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareMeanOrSum, reduce::EvalSum};
+                                 reduce::PrepareMeanOrSum,
+                                 reduce::EvalSum<reduce::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_SUM_OPT() {
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareMeanOrSum,
+                                 reduce::EvalSum<reduce::kGenericOptimized>};
   return &r;
 }
 
@@ -1117,7 +1131,7 @@ TfLiteRegistration* Register_MEAN() {
 #endif
 }
 
-TfLiteRegistration* Register_SUM() { return Register_SUM_REF(); }
+TfLiteRegistration* Register_SUM() { return Register_SUM_OPT(); }
 TfLiteRegistration* Register_REDUCE_PROD() {
   return Register_REDUCE_PROD_REF();
 }

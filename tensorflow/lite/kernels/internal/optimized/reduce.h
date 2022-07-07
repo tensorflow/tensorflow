@@ -356,31 +356,38 @@ void ReduceIsCopy(const T* input_data, const int* input_dims,
 // 'parity' indicates whether odd or even dimensions are being reduced.
 template <typename T, typename U, typename Op>
 inline std::pair<const T*, U*> ReduceImpl(const T* input_data,
-                                          const int* input_dims,
-                                          const int input_num_dims,
-                                          U* output_data, int depth,
-                                          int parity) {
-  if (depth < input_num_dims - 1) {
+                                          const int* input_dims, U* output_data,
+                                          int depth, int parity) {
+  if (depth > 0) {
+    // The output pointer is incremented conditionally depending on whether the
+    // odd or even dimension is being reduced.
+    // The input pointer is always incremented as each input is read once.
     U* future_output = output_data;
-    bool update_output = ((input_num_dims - depth) % 2) == parity;
-    for (int i = 0; i < input_dims[depth]; ++i) {
-      std::tie(input_data, future_output) =
-          ReduceImpl<T, U, Op>(input_data, input_dims, input_num_dims,
-                               output_data, depth + 1, parity);
+    bool update_output = (depth % 2) == parity;
+    for (int i = 0; i < input_dims[0]; ++i) {
+      // Recursively call this function once per dimension until the last
+      // dimension is reached.
+      std::tie(input_data, future_output) = ReduceImpl<T, U, Op>(
+          input_data, &input_dims[1], output_data, depth - 1, parity);
       if (update_output) {
         output_data = future_output;
       }
     }
     output_data = future_output;
   } else {
-    if (!parity) {
+    // Reduce the final dimension.
+    if (parity) {
+      // Reduce the even dimension. The entire dimension is reduced into one
+      // value.
       U res = *output_data;
-      for (int i = 0; i < input_dims[input_num_dims - 1]; ++i) {
+      for (int i = 0; i < input_dims[0]; ++i) {
         res = Op()(res, *input_data++);
       }
       *output_data++ = res;
     } else {
-      for (int i = 0; i < input_dims[input_num_dims - 1]; ++i) {
+      // Reduce the odd dimension. Each input is accumulated into a separate
+      // output.
+      for (int i = 0; i < input_dims[0]; ++i) {
         U res = *output_data;
         res = Op()(res, *input_data++);
         *output_data++ = res;
@@ -397,9 +404,99 @@ template <typename In, typename Out, typename Op>
 inline bool Reduce(const In* input_data, const int* input_dims,
                    const int input_num_dims, const int* axis,
                    const int num_axis, Out* output_data) {
-  const int parity = (axis[num_axis - 1] == input_num_dims - 1) ? 0 : 1;
-  ReduceImpl<In, Out, Op>(input_data, input_dims, input_num_dims, output_data,
-                          /*depth=*/0, parity);
+  const int parity = (axis[num_axis - 1] == input_num_dims - 1) ? 1 : 0;
+  ReduceImpl<In, Out, Op>(input_data, input_dims, output_data,
+                          /*depth=*/input_num_dims - 1, parity);
+  return true;
+}
+
+// Computes the mean or sum of elements across dimensions given in axis.
+// It does so in two stages, first calculates the sum of elements along the axis
+// then divides it by the number of element in axis for quantized values.
+template <typename T, typename U>
+bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
+                        float input_scale, const int* input_dims,
+                        const int input_num_dims, T* output_data,
+                        int32_t output_zero_point, float output_scale,
+                        const int* output_dims, const int output_num_dims,
+                        const int* axis, const int num_axis_dimensions,
+                        bool keep_dims, int* normalized_dims,
+                        int* resolved_axis, U* temp_sum, bool compute_sum) {
+  ruy::profiler::ScopeLabel label(compute_sum ? "QuantizedSum"
+                                              : "QuantizedMean");
+  // Reset output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    size_t current = static_cast<size_t>(output_dims[idx]);
+    // Overflow prevention.
+    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_outputs *= current;
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = 0;
+    temp_sum[idx] = 0;
+  }
+
+  // Return early when input shape has zero dim. This is done after initializing
+  // data for output tensor because there are cases that the input tensor is
+  // empty but output tensor is not. In that case, output tensor should be
+  // filled with init_value.
+  for (int i = 0; i < input_num_dims; ++i) {
+    if (input_dims[i] == 0) return true;
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
+  if (!reduce_utils::ResolveAxis(input_num_dims, axis, num_axis_dimensions,
+                                 resolved_axis, &num_resolved_axis, input_dims,
+                                 normalized_dims, &normalized_num_dims)) {
+    return false;
+  }
+
+  if (!Reduce<T, U, CastSumOp<T, U>>(input_data, normalized_dims,
+                                     normalized_num_dims, resolved_axis,
+                                     num_resolved_axis, temp_sum)) {
+    return false;
+  }
+
+  // Calculate mean by dividing output_data by num of aggregated element.
+  size_t num_elements_in_axis = 1;
+  for (int idx = 0; idx < num_resolved_axis; ++idx) {
+    size_t current = static_cast<size_t>(normalized_dims[resolved_axis[idx]]);
+    // Overflow prevention.
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
+      return false;
+    }
+    num_elements_in_axis *= current;
+  }
+
+  if (num_elements_in_axis > 0) {
+    const float scale = input_scale / output_scale;
+    if (compute_sum) {
+      const float bias = -input_zero_point * scale * num_elements_in_axis;
+      for (size_t idx = 0; idx < num_outputs; ++idx) {
+        const U value =
+            static_cast<U>(TfLiteRound(temp_sum[idx] * scale + bias)) +
+            output_zero_point;
+        output_data[idx] = static_cast<T>(value);
+      }
+    } else {
+      const float bias = -input_zero_point * scale;
+      for (size_t idx = 0; idx < num_outputs; ++idx) {
+        float float_mean = static_cast<float>(temp_sum[idx]) /
+                           static_cast<float>(num_elements_in_axis);
+        float result = TfLiteMin(
+            TfLiteRound(float_mean * scale + bias) + output_zero_point,
+            static_cast<float>(std::numeric_limits<T>::max()));
+        result = TfLiteMax(result,
+                           static_cast<float>(std::numeric_limits<T>::min()));
+        output_data[idx] = static_cast<T>(result);
+      }
+    }
+  }
   return true;
 }
 
