@@ -294,6 +294,10 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEqual(dtype.min, float.fromhex("-0x1.FEp127"))
         self.assertEqual(dtype.max, float.fromhex("0x1.FEp127"))
 
+  def testLimitsUndefinedError(self):
+    with self.assertRaises(ValueError):
+      dtypes.string.limits()
+
   def testRepr(self):
     self.skipTest("b/142725777")
     for enum, name in dtypes._TYPE_TO_STRING.items():

@@ -147,7 +147,11 @@ class DType(_dtypes.DType):
         values. Returns
       min, max : tuple Lower and upper intensity limits.
     """
-    min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+    if self.as_numpy_dtype in dtype_range:
+      min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+    else:
+      raise ValueError(str(self) + " does not have defined limits.")
+
     if clip_negative:
       min = 0  # pylint: disable=redefined-builtin
     return min, max
