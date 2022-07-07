@@ -274,6 +274,60 @@ struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
   }
 };
 
+// Fold constant quantized Reshape ops.
+struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
+  // Does not take ownership of context, which must refer to a valid value that
+  // outlives this object.
+  explicit FoldReshapeOp(MLIRContext* context)
+      : OpRewritePattern<ReshapeOp>(context, /*benefit=*/1) {}
+
+  LogicalResult matchAndRewrite(ReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* def_op = op.input().getDefiningOp();
+    auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
+    if (qconst_op == nullptr) return failure();
+
+    auto dense_elements =
+        qconst_op.value().dyn_cast_or_null<DenseElementsAttr>();
+    if (dense_elements == nullptr) return failure();
+
+    // Handle per tensor cases only.
+    if (!(getElementTypeOrSelf(op.getType()))
+             .isa<quant::UniformQuantizedType>()) {
+      return failure();
+    }
+
+    // Remove identity reshape with both static result and input shape.
+    auto result_type = op.getType().cast<ShapedType>();
+    auto input_type = op.input().getType().cast<ShapedType>();
+
+    // Constant folding
+    // If the result type isn't static, tries to derive the result type from
+    // the #2 operand.
+    if (!result_type.hasStaticShape()) {
+      DenseIntElementsAttr shape_elements;
+      if (!matchPattern(op.shape(), m_Constant(&shape_elements)))
+        return failure();
+
+      SmallVector<int64_t, 4> shape_data;
+      for (const APInt& it : shape_elements.getValues<APInt>()) {
+        shape_data.push_back(it.getSExtValue());
+      }
+      result_type =
+          RankedTensorType::get(shape_data, input_type.getElementType());
+    }
+    auto values_type = RankedTensorType::get(
+        result_type.getShape(), result_type.getElementType()
+                                    .cast<quant::UniformQuantizedType>()
+                                    .getStorageType());
+
+    DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
+    rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
+                                          reshaped_elements);
+    return success();
+  }
+};
+
 // Removes operations with side effect (i.e. LSTM, SVDF) that have dangling
 // output.
 template <typename OpTy>
@@ -336,9 +390,9 @@ void PostQuantizePass::runOnOperation() {
 
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns
-      .add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
-           RemoveVolatileOps<kPreserveInputsAndOutputs>, FoldTransposeOp>(ctx);
+  phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
+                       RemoveVolatileOps<kPreserveInputsAndOutputs>,
+                       FoldTransposeOp, FoldReshapeOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
