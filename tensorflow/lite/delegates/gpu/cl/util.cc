@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 
-#include <string>
-
-#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -251,7 +248,7 @@ absl::StatusOr<std::vector<cl_platform_id>> GetOpenCLPlatforms() {
         absl::StrFormat("clGetPlatformIDs returned %d", status));
   }
 
-  return platforms;
+  return std::move(platforms);
 }
 
 absl::StatusOr<std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(
@@ -275,7 +272,7 @@ absl::StatusOr<std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(
         absl::StrFormat("clGetDeviceIDs returned %d", status));
   }
 
-  return devices;
+  return std::move(devices);
 }
 
 absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,

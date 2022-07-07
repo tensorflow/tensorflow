@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_UTIL_H_
 
 #include <string>
-#include <utility>
-
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"

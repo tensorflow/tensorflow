@@ -517,6 +517,7 @@ target_link_libraries(tensorflow-lite
     absl::flags
     absl::hash
     absl::status
+    absl::statusor
     absl::strings
     absl::synchronization
     absl::variant
