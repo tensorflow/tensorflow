@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -24,12 +25,19 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+#if defined(PLATFORM_GOOGLE)
+using ::testing::EqualsProto;
+using ::testing::proto::IgnoringRepeatedFieldOrdering;
+#endif
 
 XEvent CreateEvent(int64_t offset_ps, int64_t duration_ps) {
   XEvent event;
@@ -373,6 +381,102 @@ TEST(XplaneUtilsTest, FindMutablePlanesWithPredicate) {
       &xspace, [](XPlane& xplane) { return xplane.name() == "test-prefix:1"; });
   ASSERT_EQ(1, xplanes.size());
   ASSERT_EQ(p1, xplanes[0]);
+}
+
+TEST(XplaneUtilsTest, TestAggregateXPlanes) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+  XEventMetadata* event_metadata1 = builder.GetOrCreateEventMetadata(1);
+  XEventMetadata* event_metadata2 = builder.GetOrCreateEventMetadata(2);
+  XEventMetadata* event_metadata3 = builder.GetOrCreateEventMetadata(3);
+  XEventMetadata* event_metadata4 = builder.GetOrCreateEventMetadata(4);
+
+  XLineBuilder line = builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event1 = line.AddEvent(*event_metadata1);
+  event1.SetOffsetNs(0);
+  event1.SetDurationNs(5);
+  XEventBuilder event3 = line.AddEvent(*event_metadata3);
+  event3.SetOffsetNs(0);
+  event3.SetDurationNs(2);
+  XEventBuilder event2 = line.AddEvent(*event_metadata2);
+  event2.SetOffsetNs(5);
+  event2.SetDurationNs(5);
+  XEventBuilder event4 = line.AddEvent(*event_metadata2);
+  event4.SetOffsetNs(10);
+  event4.SetDurationNs(5);
+  XEventBuilder event5 = line.AddEvent(*event_metadata4);
+  event5.SetOffsetNs(15);
+  event5.SetDurationNs(6);
+  XEventBuilder event6 = line.AddEvent(*event_metadata1);
+  event6.SetOffsetNs(15);
+  event6.SetDurationNs(4);
+  XEventBuilder event7 = line.AddEvent(*event_metadata3);
+  event7.SetOffsetNs(15);
+  event7.SetDurationNs(3);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+// Protobuf matchers are unavailable in OSS (b/169705709)
+#if defined(PLATFORM_GOOGLE)
+  ASSERT_THAT(aggregated_xplane,
+              IgnoringRepeatedFieldOrdering(EqualsProto(
+                  R"pb(lines {
+                         id: 1
+                         name: "TensorFlow Ops"
+                         events {
+                           metadata_id: 1
+                           duration_ps: 9000
+                           stats { metadata_id: 1 int64_value: 4000 }
+                           stats { metadata_id: 2 int64_value: 4000 }
+                           num_occurrences: 2
+                         }
+                         events {
+                           metadata_id: 3
+                           duration_ps: 5000
+                           stats { metadata_id: 1 int64_value: 2000 }
+                           num_occurrences: 2
+                         }
+                         events {
+                           metadata_id: 2
+                           duration_ps: 10000
+                           stats { metadata_id: 1 int64_value: 5000 }
+                           num_occurrences: 2
+                         }
+                         events {
+                           metadata_id: 4
+                           duration_ps: 6000
+                           stats { metadata_id: 2 int64_value: 2000 }
+                           num_occurrences: 1
+                         }
+                       }
+                       event_metadata {
+                         key: 1
+                         value { id: 1 }
+                       }
+                       event_metadata {
+                         key: 2
+                         value { id: 2 }
+                       }
+                       event_metadata {
+                         key: 3
+                         value { id: 3 }
+                       }
+                       event_metadata {
+                         key: 4
+                         value { id: 4 }
+                       }
+                       stat_metadata {
+                         key: 1
+                         value { id: 1 name: "min_duration_ps" }
+                       }
+                       stat_metadata {
+                         key: 2
+                         value { id: 2 name: "self_duration_ps" }
+                       }
+                  )pb")));
+#endif
 }
 
 }  // namespace
