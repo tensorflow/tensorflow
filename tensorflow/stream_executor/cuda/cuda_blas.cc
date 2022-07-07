@@ -65,7 +65,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -2207,21 +2206,21 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   // Decide how to allocate device-side copy of pointers to matrices based on
   // whether a scratch allocator was passed.
   if (scratch_allocator != nullptr) {
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
+    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
                         scratch_allocator->AllocateBytes(size));
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
+    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
                         scratch_allocator->AllocateBytes(size));
-    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
+    TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
                         scratch_allocator->AllocateBytes(size));
     a = DeviceMemory<CUDA_T *>(a_bytes);
     b = DeviceMemory<CUDA_T *>(b_bytes);
     c = DeviceMemory<CUDA_T *>(c_bytes);
   } else {
-    SE_ASSIGN_OR_RETURN(a_temporary,
+    TF_ASSIGN_OR_RETURN(a_temporary,
                         stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    SE_ASSIGN_OR_RETURN(b_temporary,
+    TF_ASSIGN_OR_RETURN(b_temporary,
                         stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
-    SE_ASSIGN_OR_RETURN(c_temporary,
+    TF_ASSIGN_OR_RETURN(c_temporary,
                         stream->AllocateTemporaryArray<CUDA_T *>(batch_count));
     a = DeviceMemory<CUDA_T *>(*a_temporary->mutable_device_memory());
     b = DeviceMemory<CUDA_T *>(*b_temporary->mutable_device_memory());

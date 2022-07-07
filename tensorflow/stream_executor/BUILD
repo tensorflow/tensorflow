@@ -369,6 +369,7 @@ cc_library(
     deps = [
         ":platform",
         ":stream_executor_headers",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",

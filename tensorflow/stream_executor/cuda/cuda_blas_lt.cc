@@ -164,13 +164,13 @@ port::StatusOr<BlasLt::UniqueOpDesc> CreateCublasLtOperationDesc(
                      computation_type, ") failed: ", ToString(status)));
   }
   BlasLt::UniqueOpDesc unique_desc(desc);
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
                                      AsCublasLtPointerMode(pointer_mode)));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
                                      AsCublasLtEpilogue(epilogue)));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
                                      AsCublasOperation(transa)));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB,
                                      AsCublasOperation(transb)));
   return unique_desc;
 }
@@ -187,9 +187,9 @@ port::StatusOr<BlasLt::UniqueLayoutDesc> CreateCublasLtLayoutDesc(
         absl::StrCat("cublasLtMatrixLayoutCreate failed: ", ToString(status)));
   }
   BlasLt::UniqueLayoutDesc unique_desc(desc);
-  SE_RETURN_IF_ERROR(
+  TF_RETURN_IF_ERROR(
       SetCublasLtAttr(desc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, batch_count));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(
       desc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, stride));
   return unique_desc;
 }
@@ -225,7 +225,7 @@ port::StatusOr<BlasLt::UniqueMatmulPreference> CreateCublasLtMatmulPreference(
                                      ToString(status)));
   }
   BlasLt::UniqueMatmulPreference unique_preference(preference);
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(preference,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(preference,
                                      CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
                                      max_workspace_bytes));
 
@@ -239,25 +239,25 @@ port::StatusOr<BlasLt::UniqueMatmulPreference> CreateCublasLtMatmulPreference(
     return (stride & -stride) * GetDataTypeSizeBytes(dtype);
   };
   if (plan.params().stride_a) {
-    SE_RETURN_IF_ERROR(
+    TF_RETURN_IF_ERROR(
         SetCublasLtAttr(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_A_BYTES,
                         (uint32)get_alignment_bytes(plan.params().stride_a,
                                                     plan.params().ab_type)));
   }
   if (plan.params().stride_b) {
-    SE_RETURN_IF_ERROR(
+    TF_RETURN_IF_ERROR(
         SetCublasLtAttr(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_B_BYTES,
                         (uint32)get_alignment_bytes(plan.params().stride_b,
                                                     plan.params().ab_type)));
   }
   if (plan.params().stride_c) {
-    SE_RETURN_IF_ERROR(
+    TF_RETURN_IF_ERROR(
         SetCublasLtAttr(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_C_BYTES,
                         (uint32)get_alignment_bytes(plan.params().stride_c,
                                                     plan.params().c_type)));
   }
   if (plan.params().stride_c) {
-    SE_RETURN_IF_ERROR(
+    TF_RETURN_IF_ERROR(
         SetCublasLtAttr(preference, CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_D_BYTES,
                         (uint32)get_alignment_bytes(plan.params().stride_c,
                                                     plan.params().c_type)));
@@ -268,7 +268,7 @@ port::StatusOr<BlasLt::UniqueMatmulPreference> CreateCublasLtMatmulPreference(
 port::Status AllocateWorkspace(void **workspace,
                                ScratchAllocator *scratch_allocator,
                                size_t num_bytes) {
-  SE_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace_bytes,
                       scratch_allocator->AllocateBytes(num_bytes));
   *workspace = (void *)gpu::GpuMemoryMutable(&workspace_bytes);
   return port::Status::OK();
@@ -298,7 +298,7 @@ int BlasLt::MatmulAlgorithm::algo_id() const {
 port::Status BlasLt::MatmulPlan::init(const MatmulPlanParams &p) {
   params_ = p;
   scale_type_ = GetScaleType(p.c_type, p.computation_type);
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       op_desc_,
       CreateCublasLtOperationDesc(
           p.computation_type, GetScaleType(p.c_type, p.computation_type),
@@ -307,34 +307,34 @@ port::Status BlasLt::MatmulPlan::init(const MatmulPlanParams &p) {
   uint64_t cols_a = p.transa == blas::Transpose::kNoTranspose ? p.k : p.m;
   uint64_t rows_b = p.transb == blas::Transpose::kNoTranspose ? p.k : p.n;
   uint64_t cols_b = p.transb == blas::Transpose::kNoTranspose ? p.n : p.k;
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       a_desc_, CreateCublasLtLayoutDesc(p.ab_type, rows_a, cols_a, p.lda,
                                         p.stride_a, capped_batch_count()));
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       b_desc_, CreateCublasLtLayoutDesc(p.ab_type, rows_b, cols_b, p.ldb,
                                         p.stride_b, capped_batch_count()));
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       c_desc_, CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc, p.stride_c,
                                         capped_batch_count()));
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       d_desc_, CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc, p.stride_c,
                                         capped_batch_count()));
   remainder_batch_count_ =
       p.batch_count > kMaxBatchCount ? p.batch_count % kMaxBatchCount : 0;
   if (remainder_batch_count_) {
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         a_remainder_desc_,
         CreateCublasLtLayoutDesc(p.ab_type, rows_a, cols_a, p.lda, p.stride_a,
                                  remainder_batch_count_));
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         b_remainder_desc_,
         CreateCublasLtLayoutDesc(p.ab_type, rows_b, cols_b, p.ldb, p.stride_b,
                                  remainder_batch_count_));
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         c_remainder_desc_,
         CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc, p.stride_c,
                                  remainder_batch_count_));
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         d_remainder_desc_,
         CreateCublasLtLayoutDesc(p.c_type, p.m, p.n, p.ldc, p.stride_c,
                                  remainder_batch_count_));
@@ -351,7 +351,7 @@ bool BlasLt::MatmulPlan::SetBiasPointer(const void *bias) const {
 /*static*/ port::StatusOr<BlasLt::MatmulPlan> BlasLt::CreateMatmulPlan(
     const BlasLt::MatmulPlanParams &p) {
   MatmulPlan cuda_plan;
-  SE_RETURN_IF_ERROR(cuda_plan.init(p));
+  TF_RETURN_IF_ERROR(cuda_plan.init(p));
   return std::move(cuda_plan);
 }
 
@@ -360,7 +360,7 @@ BlasLt::GetMatmulAlgorithmsInternal(const BlasLt::MatmulPlan &plan,
                                     size_t max_workspace_size,
                                     int max_algorithm_count,
                                     bool for_remainder_batch) {
-  SE_ASSIGN_OR_RETURN(UniqueMatmulPreference preference,
+  TF_ASSIGN_OR_RETURN(UniqueMatmulPreference preference,
                       CreateCublasLtMatmulPreference(plan, max_workspace_size));
 
   std::vector<cublasLtMatmulHeuristicResult_t> results(max_algorithm_count);
