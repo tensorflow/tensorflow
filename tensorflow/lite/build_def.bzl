@@ -49,6 +49,9 @@ def tflite_copts():
             "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
     }) + select({
+        "//tensorflow/lite:tflite_with_xnnpack_explicit_false": ["-DTFLITE_WITHOUT_XNNPACK"],
+        "//conditions:default": [],
+    }) + select({
         "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
         "//conditions:default": [],
     })
