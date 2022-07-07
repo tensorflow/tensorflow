@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_
 
 #include "absl/status/status.h"  // IWYU pragma: export
+#include "absl/status/statusor.h"
 #include "tensorflow/lite/delegates/gpu/common/google/status_macros.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_STATUS_H_

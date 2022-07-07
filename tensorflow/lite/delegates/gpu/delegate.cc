@@ -336,7 +336,7 @@ class DelegateKernel {
     return absl::OkStatus();
   }
 
-  static std::pair<absl::Status, cl_device_id> GetDeviceFor(TargeCLDeviceVendor vendor_enum, int32_t device_ordinal) {
+  static absl::StatusOr<cl_device_id> GetDeviceFor(TargeCLDeviceVendor vendor_enum, int32_t device_ordinal) {
       std::string vendor_string = [](auto vendor_enum) {
         switch(vendor_enum) {
           case NVIDIA:
@@ -351,23 +351,23 @@ class DelegateKernel {
       }(vendor_enum);
 
       if(vendor_string.empty())
-        return {absl::UnknownError("Specified GPU vendor is unknown"), 0};
+        return absl::UnknownError("Specified GPU vendor is unknown");
 
-      auto [status_platform, platform_ids] = tflite::gpu::cl::GetOpenCLPlatforms();
-      if(!status_platform.ok())
-        return {status_platform, 0};
-      auto platform_id_maybe = tflite::gpu::cl::FindPlatformByVendor(platform_ids, vendor_string);
+      auto platform_ids = tflite::gpu::cl::GetOpenCLPlatforms();
+      if(!platform_ids.ok())
+        return platform_ids.status();
+      auto platform_id_maybe = tflite::gpu::cl::FindPlatformByVendor(*platform_ids, vendor_string);
       if(!platform_id_maybe.has_value())
-        return {absl::UnknownError("Specified GPU vendor is not supported on current machine"), 0};
+        return absl::UnknownError("Specified GPU vendor is not supported on current machine");
 
-      auto [status_device, device_ids] = tflite::gpu::cl::GetOpenCLDevicesForPlatform(platform_id_maybe.value());
-      if(!status_device.ok())
-        return {status_device, 0};
+      auto device_ids = tflite::gpu::cl::GetOpenCLDevicesForPlatform(platform_id_maybe.value());
+      if(!device_ids.ok())
+        return device_ids.status();
 
-      if(device_ids.size() <= device_ordinal)
-        return {absl::UnknownError("Specified device ordinal exceeds number of availabe GPUs"), 0};
+      if(device_ids->size() <= device_ordinal)
+        return absl::UnknownError("Specified device ordinal exceeds number of availabe GPUs");
 
-      return {absl::OkStatus(), device_ids[device_ordinal]};
+      return (*device_ids)[device_ordinal];
   }
 
   absl::Status InitializeOpenClApi(GraphFloat32* graph,
@@ -400,10 +400,10 @@ class DelegateKernel {
     options.usage = ToUsage(delegate_options.inference_preference);
 
     if(delegate_options.target_vendor != DONTCARE && delegate_options.target_gpu_ordinal >= 0) {
-      auto[status, dev_id] = GetDeviceFor(delegate_options.target_vendor, delegate_options.target_gpu_ordinal);
-      if(!status.ok())
-        return status;
-      env_options.device = dev_id;
+      auto dev_id = GetDeviceFor(delegate_options.target_vendor, delegate_options.target_gpu_ordinal);
+      if(!dev_id.ok())
+        return dev_id.status();
+      env_options.device = *dev_id;
     }
 
     if (!serialization) {

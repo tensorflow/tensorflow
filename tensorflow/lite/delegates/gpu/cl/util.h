@@ -61,8 +61,8 @@ absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
                                cl_channel_type channel_type, void* data,
                                cl_mem* result);
 
-std::pair<absl::Status, std::vector<cl_platform_id>> GetOpenCLPlatforms();
-std::pair<absl::Status, std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id);
+absl::StatusOr<std::vector<cl_platform_id>> GetOpenCLPlatforms();
+absl::StatusOr<std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id);
 
 template <typename T>
 T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {

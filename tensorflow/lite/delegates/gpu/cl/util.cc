@@ -233,47 +233,43 @@ std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
   return result;
 }
 
-std::pair<absl::Status, std::vector<cl_platform_id>> GetOpenCLPlatforms() {
+absl::StatusOr<std::vector<cl_platform_id>> GetOpenCLPlatforms() {
   cl_uint num_platforms;
   cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
   if (status != CL_SUCCESS) {
-    return {absl::UnknownError(
-        absl::StrFormat("clGetPlatformIDs returned %d", status)), {}};
+    return absl::UnknownError(absl::StrFormat("clGetPlatformIDs returned %d", status));
   }
   if (num_platforms == 0) {
-    return {absl::UnknownError("No supported OpenCL platform."), {}};
+    return absl::UnknownError("No supported OpenCL platform.");
   }
   std::vector<cl_platform_id> platforms(num_platforms);
   status = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
   if (status != CL_SUCCESS) {
-    return {absl::UnknownError(
-        absl::StrFormat("clGetPlatformIDs returned %d", status)), {}};
+    return absl::UnknownError(absl::StrFormat("clGetPlatformIDs returned %d", status));
   }
 
-  return {absl::OkStatus(), platforms};
+  return platforms;
 }
 
-std::pair<absl::Status, std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id platform_id) {
+absl::StatusOr<std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id platform_id) {
   cl_uint num_devices;
   cl_int status =
       clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (status != CL_SUCCESS) {
-    return {absl::UnknownError(
-        absl::StrFormat("clGetDeviceIDs returned %d", status)),{}};
+    return absl::UnknownError(absl::StrFormat("clGetDeviceIDs returned %d", status));
   }
   if (num_devices == 0) {
-    return {absl::UnknownError("No GPU on current platform."), {}};
+    return absl::UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
   status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices,
                           devices.data(), nullptr);
   if (status != CL_SUCCESS) {
-    return {absl::UnknownError(
-        absl::StrFormat("clGetDeviceIDs returned %d", status)), {}};
+    return absl::UnknownError(absl::StrFormat("clGetDeviceIDs returned %d", status));
   }
 
-  return {absl::OkStatus(), devices};
+  return devices;
 }
 
 absl::Status CreateCLBuffer(cl_context context, int size_in_bytes,
