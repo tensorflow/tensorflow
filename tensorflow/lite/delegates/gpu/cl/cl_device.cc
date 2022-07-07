@@ -341,16 +341,13 @@ void CLDevice::DisableOneLayerTextureArray() {
 }
 
 absl::Status CreateDefaultGPUDevice(CLDevice* result) {
-
   auto platforms = GetOpenCLPlatforms();
-  if(!platforms.ok())
-    return platforms.status();
+  if (!platforms.ok()) return platforms.status();
 
   cl_platform_id platform_id = (*platforms)[0];
 
   auto devices = GetOpenCLDevicesForPlatform(platform_id);
-  if(!devices.ok())
-    return devices.status();
+  if (!devices.ok()) return devices.status();
 
   *result = CLDevice((*devices)[0], platform_id);
   return absl::OkStatus();

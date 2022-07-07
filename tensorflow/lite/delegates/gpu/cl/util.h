@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <string>
 #include <utility>
-#include "absl/types/span.h"
+
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -62,7 +63,8 @@ absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
                                cl_mem* result);
 
 absl::StatusOr<std::vector<cl_platform_id>> GetOpenCLPlatforms();
-absl::StatusOr<std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(cl_platform_id);
+absl::StatusOr<std::vector<cl_device_id>> GetOpenCLDevicesForPlatform(
+    cl_platform_id);
 
 template <typename T>
 T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
@@ -75,7 +77,9 @@ T GetPlatformInfo(cl_platform_id id, cl_platform_info info) {
 }
 
 std::string GetPlatformInfo(cl_platform_id id, cl_platform_info info);
-absl::optional<cl_platform_id> FindPlatformByVendor(std::vector<cl_platform_id> const& platform_ids, std::string const& vendor_id);
+absl::optional<cl_platform_id> FindPlatformByVendor(
+    std::vector<cl_platform_id> const& platform_ids,
+    std::string const& vendor_id);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
