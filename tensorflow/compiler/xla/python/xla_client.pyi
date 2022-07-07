@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy
 
@@ -71,7 +71,9 @@ def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
 
 def make_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
-    node_id: int = ...) -> Client:
+    node_id: int = ...,
+    platform_name: Optional[str] = ...,
+    allowed_devices: Optional[Set[int]] = ...) -> Client:
   ...
 
 
