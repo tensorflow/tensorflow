@@ -98,7 +98,299 @@ LogicalResult GetConstantSplatValue(Value value, SplatValueType &splat_value) {
   return success();
 }
 
-class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
+struct PermutationAndShape {
+  DenseIntElementsAttr permutation;
+  ShapedType shape;
+};
+
+// Returns a DenseIntElementsAttr for a permutation and the shape after
+// applying the permutation to a given shape through a transpose.
+PermutationAndShape GetPermutationAndTransposedShape(
+    llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
+    ConversionPatternRewriter &rewriter) {
+  assert(permutation_array.size() == input_type.getRank());
+  llvm::SmallVector<int64_t> transposed_shape(permutation_array.size());
+  for (int64_t i = 0; i < permutation_array.size(); ++i) {
+    transposed_shape[i] = input_type.getDimSize(permutation_array[i]);
+  }
+  auto transposed_type =
+      RankedTensorType::get(transposed_shape, input_type.getElementType());
+  DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
+      RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
+      permutation_array);
+  return {permutation, transposed_type};
+}
+
+// Returns the inverse permutation array for a permutation array.
+llvm::SmallVector<int64_t> GetInversePermutationArray(
+    llvm::ArrayRef<int64_t> permutation_array) {
+  llvm::SmallVector<int64_t> inverse_permutation_array(
+      permutation_array.size());
+  const auto permutation_array_size = permutation_array.size();
+  for (int64_t i = 0; i < permutation_array_size; ++i) {
+    inverse_permutation_array[permutation_array[i]] = i;
+  }
+  return inverse_permutation_array;
+}
+
+// Returns the DenseIntElementsAttr for an inverse permutation given a
+// permutation_array.
+DenseIntElementsAttr GetInversePermutation(
+    llvm::ArrayRef<int64_t> permutation_array,
+    ConversionPatternRewriter &rewriter) {
+  SmallVector<int64_t, 4> inverse_permutation_array =
+      GetInversePermutationArray(permutation_array);
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(inverse_permutation_array.size(),
+                            rewriter.getI64Type()),
+      inverse_permutation_array);
+}
+
+// Returns a DenseIntElementsAttr for an inverse permutation and the shape after
+// applying the inverse permutation to a given shape through a transpose.
+PermutationAndShape GetInversePermutationAndShape(
+    llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
+    ConversionPatternRewriter &rewriter) {
+  SmallVector<int64_t, 4> inverse_permutation_array =
+      GetInversePermutationArray(permutation_array);
+  return GetPermutationAndTransposedShape(inverse_permutation_array, input_type,
+                                          rewriter);
+}
+
+// Common functionality for ConvertConvOp classes.
+template <int SupportedSpatialDims>
+struct ConvertNdConvOp {
+  bool IsSupportedConvOp(mhlo::ConvOp conv_op) const {
+    if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
+        !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
+        !conv_op.getType().cast<ShapedType>().hasStaticShape())
+      return false;
+
+    // All ones in "lhs_dilation" means this "mhlo.conv" op should be
+    // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
+    if (conv_op.lhs_dilation().hasValue()) {
+      auto lhs_dilation = conv_op.lhs_dilation().getValue();
+      if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
+        return false;
+    }
+
+    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
+                                                        .getValue()
+                                                        .getType()
+                                                        .cast<ShapedType>()
+                                                        .getRank() != 1)
+      return false;
+
+    auto num_spatial_dims =
+        conv_op.dimension_numbers().getInputSpatialDimensions().size();
+    // TODO(b/158636600): Currently we don't support 3D Convolution.
+    if (num_spatial_dims != SupportedSpatialDims) return false;
+
+    return true;
+  }
+};
+
+// Convert a 1-D convolution into a 2-D convolution (which TF supports) so that
+// it can be rewritten by the pattern `Convert2DConvOp`.
+class Convert1DConvOp : public OpConversionPattern<mhlo::ConvOp>,
+                        ConvertNdConvOp<1> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvOp conv_op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const final {
+    //
+    // Check that input is a supported 1d convolution.
+    //
+
+    if (!IsSupportedConvOp(conv_op) || conv_op->getNumResults() != 1)
+      return rewriter.notifyMatchFailure(conv_op, "unsupported conv op.");
+
+    const mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
+
+    // Group convolution is not supported yet.
+    const int64_t input_feature_dimension = dnums.getInputFeatureDimension();
+    const int64_t input_channels =
+        conv_op.lhs().getType().cast<ShapedType>().getDimSize(
+            input_feature_dimension);
+    const int64_t feature_group_count = conv_op.feature_group_count();
+    if (feature_group_count != 1 && feature_group_count != input_channels)
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "Group convolution is not supported,");
+
+    //
+    // Transpose and reshape the input and kernel
+    //
+
+    // Reshape input image to add a new spatial dimension.
+    auto image_type = conv_op.lhs().getType().cast<ShapedType>();
+    SmallVector<int64_t, 4> image_2d_shape(image_type.getShape().begin(),
+                                           image_type.getShape().end());
+    image_2d_shape.push_back(1);
+    auto image_2d_type =
+        RankedTensorType::get(image_2d_shape, image_type.getElementType());
+    auto image_2d_op = rewriter.create<mhlo::ReshapeOp>(
+        conv_op.getLoc(), image_2d_type, conv_op.lhs());
+
+    // Transpose image to get it into NWHC form (where H is the added dim).
+    SmallVector<int64_t, 4> image_permutation = {
+        dnums.getInputBatchDimension(), dnums.getInputSpatialDimensions()[0],
+        3,  // The trailing dim that we added.
+        dnums.getInputFeatureDimension()};
+    auto image_permutation_and_shape = GetPermutationAndTransposedShape(
+        image_permutation, image_2d_type, rewriter);
+    auto transposed_image_2d_op = rewriter.create<mhlo::TransposeOp>(
+        conv_op.getLoc(), image_permutation_and_shape.shape,
+        image_2d_op->getResult(0), image_permutation_and_shape.permutation);
+
+    // Reshape kernel to add a new spatial dimension.
+    auto kernel_type = conv_op.rhs().getType().cast<ShapedType>();
+    SmallVector<int64_t, 4> kernel_2d_shape;
+    for (int64_t dim : kernel_type.getShape()) {
+      kernel_2d_shape.push_back(dim);
+    }
+    kernel_2d_shape.push_back(1);
+    auto kernel_2d_type =
+        RankedTensorType::get(kernel_2d_shape, kernel_type.getElementType());
+    auto kernel_2d_op = rewriter.create<mhlo::ReshapeOp>(
+        conv_op.getLoc(), kernel_2d_type, conv_op.rhs());
+
+    // Transpose kernel to get it into WHIO form (where H is the added dim).
+    SmallVector<int64_t, 4> kernel_permutation = {
+        dnums.getKernelSpatialDimensions()[0],
+        3,  // The trailing dim that we added.
+        dnums.getKernelInputFeatureDimension(),
+        dnums.getKernelOutputFeatureDimension()};
+    auto kernel_permutation_and_shape = GetPermutationAndTransposedShape(
+        kernel_permutation, kernel_2d_type, rewriter);
+    auto transposed_kernel_2d_op = rewriter.create<mhlo::TransposeOp>(
+        conv_op.getLoc(), kernel_permutation_and_shape.shape,
+        kernel_2d_op->getResult(0), kernel_permutation_and_shape.permutation);
+
+    //
+    // Create 2d equivalents for 1d convolution attributes.
+    //
+
+    // Window Strides
+    SmallVector<int64_t, 2> window_strides_2d_array;
+    for (const auto v : conv_op.window_strides()->getValues<int64_t>()) {
+      window_strides_2d_array.emplace_back(v);
+    }
+    window_strides_2d_array.push_back(1);
+    auto window_strides_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        window_strides_2d_array);
+
+    // Padding
+    SmallVector<int64_t, 4> padding_2d_array;
+    for (const auto v : conv_op.padding().getValue().getValues<int64_t>()) {
+      padding_2d_array.emplace_back(v);
+    }
+    // The newly added spatial dimension requires zero left and right padding.
+    padding_2d_array.push_back(0);
+    padding_2d_array.push_back(0);
+    auto padding_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2, 2}, rewriter.getI64Type()), padding_2d_array);
+
+    // LHS dilation
+    SmallVector<int64_t, 4> lhs_dilation_array_2d;
+    for (const auto v :
+         conv_op.lhs_dilation().getValue().getValues<int64_t>()) {
+      lhs_dilation_array_2d.emplace_back(v);
+    }
+    lhs_dilation_array_2d.push_back(1);
+    auto lhs_dilation_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        lhs_dilation_array_2d);
+
+    // RHS dilation
+    SmallVector<int64_t, 4> rhs_dilation_array_2d;
+    for (const auto v :
+         conv_op.rhs_dilation().getValue().getValues<int64_t>()) {
+      rhs_dilation_array_2d.emplace_back(v);
+    }
+    rhs_dilation_array_2d.push_back(1);
+    auto rhs_dilation_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        rhs_dilation_array_2d);
+
+    // Window reversal is unsupported.
+    if (conv_op.window_reversal().hasValue() &&
+        conv_op.window_reversal()->getValues<bool>()[0] == true)
+      return failure();
+    auto window_reversal_2d = DenseIntElementsAttr::get(
+        RankedTensorType::get({2}, rewriter.getI64Type()),
+        SmallVector<int64_t>({0, 0}));
+
+    // Precision config
+    if (!conv_op.precision_config().hasValue()) return failure();
+
+    // Dimension numbers reflect the form of the 2d conv op NWHC * WHIO -> NWHC
+    auto dnums_2d =
+        mhlo::ConvDimensionNumbersAttr::get(rewriter.getContext(),
+                                            /*inputBatchDimension=*/0,
+                                            /*inputFeatureDimension=*/3,
+                                            /*inputSpatialDimensions=*/{1, 2},
+                                            /*kernelInputDimension=*/2,
+                                            /*kernelOutputDimension=*/3,
+                                            /*kernelSpatialDimensions=*/{0, 1},
+                                            /*outputBatchDimension=*/0,
+                                            /*outputFeatureDimension=*/3,
+                                            /*outputSpatialDimensions=*/{1, 2});
+    //
+    // Generate a 2-D convolution
+    //
+
+    // Determine the 2-D convolution output shape.
+    auto output_type = conv_op->getResult(0).getType().cast<ShapedType>();
+    SmallVector<int64_t, 4> output_2d_shape;
+    for (int64_t dim : output_type.getShape()) {
+      output_2d_shape.push_back(dim);
+    }
+    output_2d_shape.push_back(1);
+    auto output_2d_type =
+        RankedTensorType::get(output_2d_shape, output_type.getElementType());
+    SmallVector<int64_t, 4> output_permutation = {
+        dnums.getOutputBatchDimension(), dnums.getOutputSpatialDimensions()[0],
+        3,  // The trailing dim that we added.
+        dnums.getOutputFeatureDimension()};
+    auto transposed_output_2d_shape =
+        GetPermutationAndTransposedShape(output_permutation, output_2d_type,
+                                         rewriter)
+            .shape;
+
+    auto conv2d_op = rewriter.create<mhlo::ConvOp>(
+        conv_op.getLoc(), transposed_output_2d_shape,
+        transposed_image_2d_op.getResult(), transposed_kernel_2d_op.getResult(),
+        window_strides_2d, padding_2d, lhs_dilation_2d, rhs_dilation_2d,
+        window_reversal_2d, dnums_2d, conv_op.feature_group_count(),
+        conv_op.batch_group_count(), *conv_op.precision_config());
+
+    OpResult conv2d_output = conv2d_op->getResult(0);
+    auto conv2d_output_type = conv2d_output.getType().cast<ShapedType>();
+
+    //
+    // Transpose and reshape the output
+    //
+
+    // Since output is in NWHC form we need to undo the permutation we have
+    // affectively applied.
+    auto output_permutation_and_shape = GetInversePermutationAndShape(
+        output_permutation, conv2d_output_type, rewriter);
+    auto transposed_output_2d_op = rewriter.create<mhlo::TransposeOp>(
+        conv_op.getLoc(), output_permutation_and_shape.shape, conv2d_output,
+        output_permutation_and_shape.permutation);
+
+    // Drop the trailing spatial dimension from the output.
+    rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(
+        conv_op, output_type, transposed_output_2d_op.getResult());
+    return success();
+  }
+};
+
+class Convert2DConvOp : public OpConversionPattern<mhlo::ConvOp>,
+                        ConvertNdConvOp<2> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
@@ -403,35 +695,6 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
           conv_op.getLoc(), conv_op.getType(), output, permutation);
     }
     rewriter.replaceOp(conv_op, {output});
-  }
-
-  bool IsSupportedConvOp(mhlo::ConvOp conv_op) const {
-    if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
-        !conv_op.getType().cast<ShapedType>().hasStaticShape())
-      return false;
-
-    // All ones in "lhs_dilation" means this "mhlo.conv" op should be
-    // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
-    if (conv_op.lhs_dilation().hasValue()) {
-      auto lhs_dilation = conv_op.lhs_dilation().getValue();
-      if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
-        return false;
-    }
-
-    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
-                                                        .getValue()
-                                                        .getType()
-                                                        .cast<ShapedType>()
-                                                        .getRank() != 1)
-      return false;
-
-    auto num_spatial_dims =
-        conv_op.dimension_numbers().getInputSpatialDimensions().size();
-    // TODO(b/158636600): Currently we don't support 3D Convolution.
-    if (num_spatial_dims != 2) return false;
-
-    return true;
   }
 };
 
@@ -2492,42 +2755,6 @@ bool IsIotaAttr(ArrayRef<int64_t> arr, int64_t size) {
   return true;
 }
 
-DenseIntElementsAttr GetInversePermutation(
-    llvm::ArrayRef<int64_t> permutation_array,
-    ConversionPatternRewriter &rewriter) {
-  llvm::SmallVector<int64_t, 4> inverse_permutation_array(
-      permutation_array.size());
-  const auto permutation_array_size = permutation_array.size();
-  for (int64_t i = 0; i < permutation_array_size; ++i) {
-    inverse_permutation_array[permutation_array[i]] = i;
-  }
-  return DenseIntElementsAttr::get(
-      RankedTensorType::get(inverse_permutation_array.size(),
-                            rewriter.getI64Type()),
-      inverse_permutation_array);
-}
-
-struct PermutationAndShape {
-  DenseIntElementsAttr permutation;
-  ShapedType shape;
-};
-
-PermutationAndShape GetPermutationAndTransposedShape(
-    llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
-    ConversionPatternRewriter &rewriter) {
-  assert(permutation_array.size() == input_type.getRank());
-  llvm::SmallVector<int64_t, 4> transposed_shape(permutation_array.size());
-  for (int64_t i = 0; i < permutation_array.size(); ++i) {
-    transposed_shape[i] = input_type.getDimSize(permutation_array[i]);
-  }
-  auto transposed_type =
-      RankedTensorType::get(transposed_shape, input_type.getElementType());
-  DenseIntElementsAttr permutation = DenseIntElementsAttr::get(
-      RankedTensorType::get(permutation_array.size(), rewriter.getI64Type()),
-      permutation_array);
-  return {permutation, transposed_type};
-}
-
 // Convert updates into canonical form as expected by tf.scatter ops.
 //
 // tf.scatter expects `update_window_dims` to be the trailing dimensions.
@@ -3100,9 +3327,10 @@ void LegalizeHloToTf::runOnOperation() {
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
   patterns->add<
-      ConvertAvgPoolOp, ConvertConvOp, ConvertNonTrivialConvOp,
-      ConvertDynamicSliceOp, ConvertDynamicUpdateSliceOp, ConvertGatherOp,
-      ConvertIfOp, ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
+      ConvertAvgPoolOp, Convert2DConvOp, Convert1DConvOp,
+      ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
+      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertIfOp,
+      ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
       ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
       ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
       ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
