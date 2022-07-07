@@ -73,6 +73,8 @@ cc_library(
     ],
 )
 
+exports_files(["nnapi_delegate_c_api.h"])
+
 cc_library(
     name = "nnapi_delegate_verbose_validation",
     srcs = select({
