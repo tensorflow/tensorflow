@@ -320,3 +320,30 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
   func.return
 }
 // CHECK-LABEL: func @dynamic_broadcast_in_dim
+
+// -----
+
+func.func @gather(%arg: tensor<100xf32>,
+                                    %indices: tensor<42x1xi64>,
+                                    %dst: tensor<42xf32>) -> tensor<42xf32> {
+  %gather = gml_st.gather
+      ins(%arg: tensor<100xf32>, %indices: tensor<42x1xi64>)
+      outs(%dst: tensor<42xf32>)
+  func.return %gather : tensor<42xf32>
+}
+// CHECK-LABEL: func @gather
+
+// -----
+
+func.func @scatter(%arg: tensor<3x3xf32>,
+                   %indices: tensor<2x2xi64>,
+                   %updates: tensor<3xf32>,
+                   %dst: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  %scatter = gml_st.scatter
+      ins(%arg: tensor<3x3xf32>,
+          %indices: tensor<2x2xi64>,
+          %updates: tensor<3xf32>)
+      outs(%dst: tensor<3x3xf32>)
+  func.return %scatter : tensor<3x3xf32>
+}
+// CHECK-LABEL: func @scatter
