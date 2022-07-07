@@ -748,6 +748,44 @@ class StridedSliceOpClusteringPolicy
   }
 };
 
+// -------------------------------------------------------------------------- //
+// Gather Operations.
+// -------------------------------------------------------------------------- //
+
+class GatherOpClusteringPolicy : public DefaultClusteringPolicy {
+ public:
+  GatherOpClusteringPolicy()
+      : DefaultClusteringPolicy(IsGatherOp(), ValueConstraint::kRank) {}
+
+ private:
+  std::function<bool(Operation* op)> IsGatherOp() {
+    return [](Operation* op) {
+      return mlir::isa<mlir::TF::GatherNdOp, mlir::TF::GatherV2Op,
+                       mlir::TF::GatherOp>(op);
+    };
+  }
+};
+
+// -------------------------------------------------------------------------- //
+// Scatter Operations.
+// -------------------------------------------------------------------------- //
+
+class ScatterOpClusteringPolicy : public DefaultClusteringPolicy {
+ public:
+  ScatterOpClusteringPolicy()
+      : DefaultClusteringPolicy(IsScatterOp(), ValueConstraint::kRank) {}
+
+ private:
+  std::function<bool(Operation* op)> IsScatterOp() {
+    return [](Operation* op) {
+      return mlir::isa<
+          mlir::TF::ScatterNdOp, mlir::TF::TensorScatterAddOp,
+          mlir::TF::TensorScatterMaxOp, mlir::TF::TensorScatterMinOp,
+          mlir::TF::TensorScatterSubOp, mlir::TF::TensorScatterUpdateOp>(op);
+    };
+  }
+};
+
 }  // namespace
 
 void populateTfJitRtClusteringPolicies(ClusteringPolicySet& policies,
@@ -778,6 +816,11 @@ void populateTfJitRtClusteringPolicies(ClusteringPolicySet& policies,
                  ReshapeOpClusteringPolicy,     //
                  ShapeOpClusteringPolicy,       //
                  SqueezeOpClusteringPolicy>();
+  }
+
+  if (is_enabled(JitRtClusteringTier::kGatherScatter)) {
+    policies.Add<GatherOpClusteringPolicy,  //
+                 ScatterOpClusteringPolicy>();
   }
 
   if (is_enabled(JitRtClusteringTier::kAll)) {
