@@ -82,7 +82,7 @@ REQUIRED_PACKAGES = [
     'h5py >= 2.9.0',
     'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
     'libclang >= 13.0.0',
-    'numpy >= 1.20',
+    'numpy >= 1.20, < 1.23',  # 1.23 is causing some unit test fails
     'opt_einsum >= 2.3.2',
     'packaging',
     # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
