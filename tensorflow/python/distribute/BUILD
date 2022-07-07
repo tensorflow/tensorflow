@@ -98,7 +98,6 @@ cuda_py_test(
     name = "device_util_test",
     srcs = ["device_util_test.py"],
     python_version = "PY3",
-    tags = ["no_oss_py2"],
     deps = [
         ":combinations",
         ":device_util",
