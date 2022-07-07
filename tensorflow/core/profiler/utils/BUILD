@@ -273,7 +273,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:context_types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -286,9 +285,7 @@ tf_cc_test(
     srcs = ["xplane_utils_test.cc"],
     deps = [
         ":math_utils",
-        ":tf_xplane_visitor",
         ":xplane_builder",
-        ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib",

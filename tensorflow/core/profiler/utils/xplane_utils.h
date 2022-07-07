@@ -201,10 +201,6 @@ class XEventContextTracker {
   int64_t current_index_ = -1;
 };
 
-// Aggregate traces on full_trace xplane and add them onto the aggregated_trace
-// xplane.
-void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace);
-
 }  // namespace profiler
 }  // namespace tensorflow
 

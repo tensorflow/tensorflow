@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/core/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -93,22 +92,6 @@ template <typename T, typename Pred>
 void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
   std::vector<int> indices = FindAll(*array, pred);
   RemoveAt(array, indices);
-}
-
-void CopyEventMetadata(const XEventMetadata& src_event_metadata,
-                       XEventMetadata& dst_event_metadata) {
-  if (dst_event_metadata.display_name().empty() &&
-      !src_event_metadata.display_name().empty()) {
-    dst_event_metadata.set_display_name(src_event_metadata.display_name());
-  }
-  if (dst_event_metadata.metadata().empty() &&
-      !src_event_metadata.metadata().empty()) {
-    dst_event_metadata.set_metadata(src_event_metadata.metadata());
-  }
-}
-
-bool IsOpLineName(absl::string_view line_name) {
-  return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName;
 }
 
 }  // namespace
@@ -286,9 +269,18 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     }
 
     line.ForEachEvent([&](const XEventVisitor& event) {
+      const XEventMetadata* src_event_metadata = event.metadata();
       XEventMetadata* dst_event_metadata =
           dst.GetOrCreateEventMetadata(event.Name());
-      CopyEventMetadata(*event.metadata(), *dst_event_metadata);
+      if (dst_event_metadata->display_name().empty() &&
+          !src_event_metadata->display_name().empty()) {
+        dst_event_metadata->set_display_name(
+            src_event_metadata->display_name());
+      }
+      if (dst_event_metadata->metadata().empty() &&
+          !src_event_metadata->metadata().empty()) {
+        dst_event_metadata->set_metadata(src_event_metadata->metadata());
+      }
       XEventBuilder dst_event = dst_line.AddEvent(*dst_event_metadata);
       dst_event.SetOffsetPs(event.OffsetPs() + time_offset_ps);
       dst_event.SetDurationPs(event.DurationPs());
@@ -462,64 +454,6 @@ std::optional<XEventVisitor> XEventContextTracker::GetOverlappingEvent(
     break;  // overlapping
   }
   return std::nullopt;
-}
-
-void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
-  struct EventStat {
-    Stat<int64_t> stat;
-    int64_t children_duration;
-  };
-  using StatByEvent = absl::flat_hash_map<int64_t /*event_id*/, EventStat>;
-
-  absl::flat_hash_map<int64_t /*line_id*/, StatByEvent> stats;
-
-  XPlaneVisitor plane(&full_trace);
-  XPlaneBuilder aggregated_plane(&aggregated_trace);
-
-  plane.ForEachLine([&](const XLineVisitor& line) {
-    if (!IsOpLineName(line.Name())) return;
-    XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line.Id());
-    aggregated_line.SetName(line.Name());
-    std::vector<XEventVisitor> event_stack;
-    line.ForEachEvent([&](XEventVisitor event) {
-      StatByEvent& line_stats = stats[line.Id()];
-      line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
-      DCHECK(event_stack.empty() || event_stack.back() < event);
-      while (!event_stack.empty() &&
-             !event_stack.back().GetTimespan().Includes(event.GetTimespan())) {
-        event_stack.pop_back();
-      }
-      if (!event_stack.empty()) {
-        line_stats[event_stack.back().Id()].children_duration +=
-            event.DurationPs();
-      }
-      event_stack.push_back(std::move(event));
-    });
-  });
-
-  for (const auto& [line_id, stat_by_event] : stats) {
-    XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line_id);
-    for (const auto& [event_id, event_stat] : stat_by_event) {
-      XEventMetadata& event_metadata =
-          *aggregated_plane.GetOrCreateEventMetadata(event_id);
-      CopyEventMetadata(*plane.GetEventMetadata(event_id), event_metadata);
-      XEventBuilder aggregated_event = aggregated_line.AddEvent(event_metadata);
-      aggregated_event.SetNumOccurrences(event_stat.stat.count());
-      aggregated_event.SetDurationPs(event_stat.stat.sum());
-      if (event_stat.stat.count() > 1) {
-        aggregated_event.AddStatValue(
-            *aggregated_plane.GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kMinDurationPs)),
-            event_stat.stat.min());
-      }
-      if (event_stat.children_duration != 0) {
-        aggregated_event.AddStatValue(
-            *aggregated_plane.GetOrCreateStatMetadata(
-                GetStatTypeStr(StatType::kSelfDurationPs)),
-            event_stat.stat.sum() - event_stat.children_duration);
-      }
-    }
-  }
 }
 
 }  // namespace profiler
