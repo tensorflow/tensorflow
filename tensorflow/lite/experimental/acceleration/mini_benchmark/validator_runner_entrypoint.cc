@@ -27,7 +27,6 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -36,6 +35,51 @@ limitations under the License.
 
 namespace tflite {
 namespace acceleration {
+namespace {
+
+MinibenchmarkStatus RunValidator(const std::string& model_path,
+                                 const std::string& nnapi_sl_path,
+                                 TFLiteSettingsT& tflite_settings,
+                                 Validator::Results& results) {
+  // Load NNAPI Support Library if specified.
+  std::unique_ptr<const ::tflite::nnapi::NnApiSupportLibrary> nnapi_sl_handle;
+  if (tflite_settings.nnapi_settings && !nnapi_sl_path.empty()) {
+    // We are not calling dlclose, it will be done once the
+    // validator process ends.
+    nnapi_sl_handle = ::tflite::nnapi::loadNnApiSupportLibrary(nnapi_sl_path);
+
+    if (!nnapi_sl_handle) {
+      return kMiniBenchmarkCannotLoadSupportLibrary;
+    }
+
+    tflite_settings.nnapi_settings->support_library_handle =
+        reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5());
+  }
+
+  flatbuffers::FlatBufferBuilder fbb;
+  fbb.Finish(
+      CreateComputeSettings(fbb, ExecutionPreference_ANY,
+                            CreateTFLiteSettings(fbb, &tflite_settings)));
+  std::unique_ptr<Validator> validator;
+  if (model_path.find("fd:") == 0) {  // NOLINT
+    int model_fd;
+    size_t model_offset, model_size;
+    if (sscanf(model_path.c_str(), "fd:%d:%zu:%zu", &model_fd, &model_offset,
+               &model_size) != 3) {
+      return kMinibenchmarkPreconditionNotMet;
+    }
+    validator = std::make_unique<Validator>(
+        model_fd, model_offset, model_size,
+        flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
+  } else {
+    validator = std::make_unique<Validator>(
+        model_path,
+        flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
+  }
+  return validator->RunValidation(&results);
+}
+
+}  // namespace
 
 extern "C" {
 int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
@@ -57,7 +101,6 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
   if (status != kMinibenchmarkSuccess) {
     return status;
   }
-  status = kMinibenchmarkNoValidationRequestFound;
   TFLiteSettingsT tflite_settings;
 
   int32_t set_big_core_affinity_errno = SetBigCoresAffinity();
@@ -76,53 +119,21 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
             Validator::BootTimeMicros(), Validator::WallTimeMicros()));
   }
 
+  status = kMinibenchmarkNoValidationRequestFound;
   for (int i = storage.Count() - 1; i >= 0; i--) {
     const BenchmarkEvent* event = storage.Get(i);
     if (event->event_type() == BenchmarkEventType_START) {
       event->tflite_settings()->UnPackTo(&tflite_settings);
 
-      std::unique_ptr<const ::tflite::nnapi::NnApiSupportLibrary>
-          nnapi_sl_handle;
-      if (tflite_settings.nnapi_settings && !nnapi_sl_path.empty()) {
-        // We are not calling dlclose, it will be done once the
-        // validator process ends.
-        nnapi_sl_handle =
-            ::tflite::nnapi::loadNnApiSupportLibrary(nnapi_sl_path);
-
-        if (!nnapi_sl_handle) {
-          status = kMiniBenchmarkCannotLoadSupportLibrary;
-          break;
-        }
-
-        tflite_settings.nnapi_settings->support_library_handle =
-            reinterpret_cast<uint64_t>(nnapi_sl_handle->getFL5());
-      }
-
-      flatbuffers::FlatBufferBuilder fbb;
-      fbb.Finish(
-          CreateComputeSettings(fbb, ExecutionPreference_ANY,
-                                CreateTFLiteSettings(fbb, &tflite_settings)));
-      std::unique_ptr<Validator> validator;
-      if (model_path.find("fd:") == 0) {  // NOLINT
-        int model_fd, model_offset, model_size;
-        if (sscanf(model_path.c_str(), "fd:%d:%d:%d", &model_fd, &model_offset,
-                   &model_size) != 3) {
-          status = kMinibenchmarkPreconditionNotMet;
-        }
-        validator = std::make_unique<Validator>(
-            model_fd, model_offset, model_size,
-            flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
-      } else {
-        validator = std::make_unique<Validator>(
-            model_path,
-            flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
-      }
       Validator::Results results;
-      status = validator->RunValidation(&results);
+      status =
+          RunValidator(model_path, nnapi_sl_path, tflite_settings, results);
       if (status != kMinibenchmarkSuccess) {
         break;
       }
-      fbb.Reset();
+
+      // If succeed, write MiniBenchmark metrics to file then return.
+      flatbuffers::FlatBufferBuilder fbb;
       std::vector<int64_t> delegate_prep_time_us{results.delegate_prep_time_us};
       std::vector<flatbuffers::Offset<tflite::BenchmarkMetric>> metrics;
       metrics.reserve(results.metrics.size());
@@ -143,6 +154,7 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
                                Validator::WallTimeMicros()));
     }
   }
+  // Write error to file.
   flatbuffers::FlatBufferBuilder fbb;
   return storage.Append(
       &fbb, CreateBenchmarkEvent(
