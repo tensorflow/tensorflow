@@ -2134,7 +2134,7 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType,
-       InferTensorTypeWithReify]> {
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.

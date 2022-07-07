@@ -6689,10 +6689,10 @@ LogicalResult TransposeOp::reifyReturnTypeShapes(
 
 // Method for InferTypeOpInterface: infer the return type from the operand type
 // and the permutation.
-LogicalResult TransposeOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> loc, ValueShapeRange operands,
+LogicalResult TransposeOp::inferReturnTypes(
+    MLIRContext* /*context*/, Optional<Location> loc, ValueRange operands,
     DictionaryAttr attributes, RegionRange,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnTypes) {
+    SmallVectorImpl<Type>& inferredReturnTypes) {
   auto type = operands[0].getType();
   auto rankedTy = type.dyn_cast<RankedTensorType>();
   if (!rankedTy) {
@@ -6725,7 +6725,8 @@ LogicalResult TransposeOp::inferReturnTypeComponents(
   for (int64_t dim : permutation.getValues<int64_t>()) {
     resultShape.push_back(inputShape[dim]);
   }
-  inferredReturnTypes.emplace_back(resultShape, rankedTy.getElementType());
+  inferredReturnTypes.emplace_back(RankedTensorType::get(
+      resultShape, rankedTy.getElementType(), rankedTy.getEncoding()));
   return success();
 }
 

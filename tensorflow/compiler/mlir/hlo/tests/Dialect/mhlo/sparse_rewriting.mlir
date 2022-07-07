@@ -68,3 +68,13 @@ func.func @rewrite_convert_nop(%arg0: tensor<10x10xf64, #CSR>) -> tensor<10x10xf
   %2 = sparse_tensor.convert %1 : tensor<10x10xf64, #CSR> to tensor<10x10xf64, #CSR>
   return %2 : tensor<10x10xf64, #CSR>
 }
+
+// CHECK-LABEL: func @rewrite_transpose(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<100x200xf64, #{{.*}}>) -> tensor<200x100xf64, #{{.*}}> {
+// CHECK:         %[[VAL:.*]] = "mhlo.transpose"(%[[ARG0]]) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<100x200xf64, #{{.*}}>) -> tensor<200x100xf64, #{{.*}}>
+// CHECK-NEXT:    return %[[VAL:.*]] : tensor<200x100xf64, #{{.*}}>
+func.func @rewrite_transpose(%arg0: tensor<100x200xf64, #CSR>) -> tensor<200x100xf64, #CSR> {
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<100x200xf64, #CSR>) -> tensor<200x100xf64>
+  %1 = sparse_tensor.convert %0 : tensor<200x100xf64> to tensor<200x100xf64, #CSR>
+  return %1 : tensor<200x100xf64, #CSR>
+}
