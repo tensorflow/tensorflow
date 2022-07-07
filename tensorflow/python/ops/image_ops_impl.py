@@ -1874,7 +1874,6 @@ def resize_image_with_pad_v1(image,
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
-    
     InvalidArgumentError: if certain positive value<100, is given for target_width.
     
     
