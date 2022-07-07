@@ -30,19 +30,17 @@ namespace mlir {
 namespace gml_st {
 namespace {
 
-template <typename TilingOp>
-struct ComposeSetPattern : public OpRewritePattern<TilingOp> {
-  using OpRewritePattern<TilingOp>::OpRewritePattern;
+struct ComposeSetPattern
+    : public OpInterfaceRewritePattern<ComposeSetInterface> {
+  using OpInterfaceRewritePattern<
+      ComposeSetInterface>::OpInterfaceRewritePattern;
 
-  LogicalResult matchAndRewrite(TilingOp op,
+  LogicalResult matchAndRewrite(ComposeSetInterface iface,
                                 PatternRewriter& rewriter) const override {
-    auto iface = llvm::dyn_cast<ComposeSetInterface>(op.getOperation());
-    if (!iface) return failure();
-
     Value composed = iface.compose(rewriter);
     if (!composed) return failure();
 
-    rewriter.replaceOp(op, composed);
+    rewriter.replaceOp(iface.getOperation(), composed);
     return success();
   }
 };
@@ -56,11 +54,7 @@ class ComposeSetOpsPass : public ComposeSetOpsPassBase<ComposeSetOpsPass> {
     MLIRContext* ctx = &getContext();
 
     RewritePatternSet patterns(ctx);
-    // clang-format off
-    patterns.insert<
-        ComposeSetPattern<PointOp>,
-        ComposeSetPattern<TileOp>>(ctx);
-    // clang-format on
+    patterns.insert<ComposeSetPattern>(ctx);
 
     // Apply patterns from the top down. This makes sure that we have already
     // composed the operand of a tiling op.
