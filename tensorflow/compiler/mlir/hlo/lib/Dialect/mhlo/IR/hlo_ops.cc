@@ -4945,10 +4945,23 @@ LogicalResult RngBitGeneratorOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// RngNormalOp
+// RngOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult RngNormalOp::inferReturnTypeComponents(
+LogicalResult RngOp::verify() {
+  auto dist = rng_distribution();
+  if (dist == RngDistribution::UNIFORM) {
+    return success();
+  }
+  auto muTy = a().getType().cast<TensorType>().getElementType();
+  auto sigmaTy = b().getType().cast<TensorType>().getElementType();
+  if (muTy.isa<FloatType>() && sigmaTy.isa<FloatType>()) {
+    return success();
+  }
+  return emitOpError() << "mu and sigma must be floats";
+}
+
+LogicalResult RngOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
@@ -4956,31 +4969,10 @@ LogicalResult RngNormalOp::inferReturnTypeComponents(
                                       regions, inferredReturnShapes);
 }
 
-LogicalResult RngNormalOp::reifyReturnTypeShapes(
+LogicalResult RngOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
-  RngNormalOp::Adaptor adaptor(operands);
-  reifiedReturnShapes.push_back(
-      castToIndexTensor(builder, getLoc(), adaptor.shape()));
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// RngUniformOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult RngUniformOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  return rngInferReturnTypeComponents(context, location, operands, attributes,
-                                      regions, inferredReturnShapes);
-}
-
-LogicalResult RngUniformOp::reifyReturnTypeShapes(
-    OpBuilder& builder, ValueRange operands,
-    SmallVectorImpl<Value>& reifiedReturnShapes) {
-  RngUniformOp::Adaptor adaptor(operands);
+  RngOp::Adaptor adaptor(operands);
   reifiedReturnShapes.push_back(
       castToIndexTensor(builder, getLoc(), adaptor.shape()));
   return success();

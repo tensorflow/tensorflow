@@ -520,6 +520,29 @@ MlirStringRef mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr) {
 }
 
 //
+// RngDistributionAttr.
+//
+
+MlirAttribute mlirMhloRngDistributionAttrGet(MlirContext ctx,
+                                             MlirStringRef distribution) {
+  llvm::Optional<mlir::mhlo::RngDistribution> rngDistribution =
+      mlir::mhlo::symbolizeRngDistribution(unwrap(distribution));
+  if (!rngDistribution) llvm_unreachable("Invalid rng-distribution specified.");
+  return wrap(mlir::mhlo::RngDistributionAttr::get(unwrap(ctx),
+                                                   rngDistribution.getValue()));
+}
+
+bool mlirMhloAttributeIsARngDistributionAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::RngDistributionAttr>();
+}
+
+MlirStringRef mlirMhloRngDistributionAttrGetRngDistribution(
+    MlirAttribute attr) {
+  return wrap(mlir::mhlo::stringifyRngDistribution(
+      unwrap(attr).cast<mlir::mhlo::RngDistributionAttr>().getValue()));
+}
+
+//
 // RngAlgorithmAttr.
 //
 

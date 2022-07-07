@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -402,24 +403,30 @@ StatusOr<XlaOp> MlirHloBuilder::SetDimensionSizeInternal(const Shape& shape,
 StatusOr<XlaOp> MlirHloBuilder::RngOpInternal(
     RandomDistribution distribution, absl::Span<const XlaOp> parameters,
     const Shape& shape) {
-  // TODO(hinsu): Introduce RngOp in the HLO dialect in MLIR and then RngUniform
-  // and RngNormal can be mapped to the new op.
-  std::string op_name;
+  mlir::mhlo::RngDistributionAttr attr;
   if (distribution == xla::RandomDistribution::RNG_UNIFORM) {
-    op_name = "mhlo.rng_uniform";
+    attr = mlir::mhlo::RngDistributionAttr::get(
+        builder_.getContext(), mlir::mhlo::RngDistribution::UNIFORM);
   } else {
     TF_RET_CHECK(distribution == xla::RandomDistribution::RNG_NORMAL)
         << "Unexpected distribution: " << distribution;
-    op_name = "mhlo.rng_normal";
+    attr = mlir::mhlo::RngDistributionAttr::get(
+        builder_.getContext(), mlir::mhlo::RngDistribution::NORMAL);
   }
+  llvm::SmallVector<mlir::NamedAttribute, 1> attributes = {
+      builder_.getNamedAttr("rng_distribution", attr)};
 
   if (shape.is_dynamic())
     return Unimplemented("RngOp with dynamic dims not supported");
-  llvm::SmallVector<XlaOp, 3> operands;
-  operands.append(parameters.begin(), parameters.end());
-  operands.push_back(
-      ConstantLiteral(LiteralUtil::CreateR1<int64_t>(shape.dimensions())));
-  return CreateOp(op_name, shape, operands);
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+
+  auto op = builder_.create<mlir::mhlo::RngOp>(
+      loc_, ty, GetValue(parameters[0]), GetValue(parameters[1]),
+      GetValue(
+          ConstantLiteral(LiteralUtil::CreateR1<int64_t>(shape.dimensions()))),
+      attr);
+  return MakeXlaOp(op.getResult());
 }
 
 StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(

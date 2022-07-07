@@ -1059,14 +1059,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
           return func_builder
-              ->create<mlir::mhlo::RngUniformOp>(loc, result_type, operands[0],
-                                                 operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(
+                  loc, result_type, operands[0], operands[1], shape,
+                  ::mlir::mhlo::RngDistribution::UNIFORM)
               .getOperation();
 
         case xla::RNG_NORMAL:
           return func_builder
-              ->create<mlir::mhlo::RngNormalOp>(loc, result_type, operands[0],
-                                                operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(loc, result_type, operands[0],
+                                          operands[1], shape,
+                                          ::mlir::mhlo::RngDistribution::NORMAL)
               .getOperation();
 
         default:

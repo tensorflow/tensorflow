@@ -1022,7 +1022,7 @@ func.func @main(%arg0 : tensor<10x11x12x13xf32>) -> tensor<10x11x12x13xf32> {
 // CHECK:  HloModule
 func.func @main(%mu: tensor<f32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  %0 = "mhlo.rng_normal"(%mu, %sigma, %shape) : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  %0 = "mhlo.rng"(%mu, %sigma, %shape) {rng_distribution = #mhlo.rng_distribution<NORMAL>} : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   func.return %0 : tensor<2x3x5xf32>
 }
 
@@ -1038,7 +1038,7 @@ func.func @main() -> tensor<2x3x5xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %2 = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  %3 = "mhlo.rng_uniform"(%0, %1, %2) : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  %3 = "mhlo.rng"(%0, %1, %2) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   func.return %3 : tensor<2x3x5xf32>
 }
 

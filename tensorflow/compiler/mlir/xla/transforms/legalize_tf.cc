@@ -478,9 +478,9 @@ static Value ApplyReduction(Location loc, Value input,
 
 // Creates a mhlo.rng_uniform op with `builder` to generate `num_elements`
 // 32-bit integer numbers in the range of [`lower_limit`, `upper_limit`).
-static mhlo::RngUniformOp CreateRngUniform32(Location loc, int num_elements,
-                                             int lower_limit, int upper_limit,
-                                             OpBuilder *builder) {
+static mhlo::RngOp CreateRngUniform32(Location loc, int num_elements,
+                                      int lower_limit, int upper_limit,
+                                      OpBuilder *builder) {
   auto shape_tensor = builder->create<mhlo::ConstantOp>(
       loc, GetI64ElementsAttr({num_elements}, builder));
 
@@ -489,7 +489,8 @@ static mhlo::RngUniformOp CreateRngUniform32(Location loc, int num_elements,
   auto upper = builder->create<mhlo::ConstantOp>(
       loc, builder->getI32IntegerAttr(upper_limit));
 
-  return builder->create<mhlo::RngUniformOp>(loc, lower, upper, shape_tensor);
+  return builder->create<mhlo::RngOp>(loc, lower, upper, shape_tensor,
+                                      ::mlir::mhlo::RngDistribution::UNIFORM);
 }
 
 using WhileBodyFnType = llvm::function_ref<void(

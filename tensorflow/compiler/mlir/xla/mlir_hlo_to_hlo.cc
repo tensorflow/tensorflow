@@ -1425,24 +1425,20 @@ LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp mu, sigma;
-  if (failed(GetXlaOp(op.mu(), value_map, &mu, op))) return failure();
-  if (failed(GetXlaOp(op.sigma(), value_map, &sigma, op))) return failure();
-
-  value_map[op] = xla::RngNormal(mu, sigma, xla::TypeToShape(op.getType()));
-  return success();
-}
-
-LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp a, b;
   if (failed(GetXlaOp(op.a(), value_map, &a, op))) return failure();
   if (failed(GetXlaOp(op.b(), value_map, &b, op))) return failure();
 
-  value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
-  return success();
+  if (op.rng_distribution() == RngDistribution::UNIFORM) {
+    value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  } else if (op.rng_distribution() == RngDistribution::NORMAL) {
+    value_map[op] = xla::RngNormal(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  }
+  return failure();
 }
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {

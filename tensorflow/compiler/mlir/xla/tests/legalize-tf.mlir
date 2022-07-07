@@ -4163,7 +4163,7 @@ func.func @rng_uniform(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
   // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[CONV:.*]] = mhlo.convert(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
-  // CHECK: %[[F32:.*]] = "mhlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
+  // CHECK: %[[F32:.*]] = "mhlo.rng"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*UNIFORM.*}} -> tensor<12x?x64xf32>
   %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
   // CHECK: return %[[F32]]
   func.return %0 : tensor<12x?x64xf32>
@@ -4176,7 +4176,7 @@ func.func @rng_std_normal(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
   // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[CONV:.*]] = mhlo.convert(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
-  // CHECK: %[[F32:.*]] = "mhlo.rng_normal"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
+  // CHECK: %[[F32:.*]] = "mhlo.rng"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*NORMAL.*}} -> tensor<12x?x64xf32>
   %0 = "tf.RandomStandardNormal"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
   // CHECK: return %[[F32]]
   func.return %0 : tensor<12x?x64xf32>
@@ -5297,7 +5297,7 @@ func.func @random_shuffle_1D_16(%input: tensor<16xf32>) -> tensor<16xf32> {
   // CHECK-DAG: [[SHAPE:%.*]] = mhlo.constant dense<16> : tensor<1xi64>
   // CHECK-DAG: [[LOWER:%.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK-DAG: [[UPPER:%.*]] = mhlo.constant dense<-1> : tensor<i32>
-  // CHECK: [[RNG:%.*]] = "mhlo.rng_uniform"([[LOWER]], [[UPPER]], [[SHAPE]])
+  // CHECK: [[RNG:%.*]] = "mhlo.rng"([[LOWER]], [[UPPER]], [[SHAPE]]) {rng_distribution = #mhlo.rng_distribution<UNIFORM>}
   // CHECK: [[SORT:%.*]]:2 = "mhlo.sort"([[RNG]], [[INPUT]]) ({
   // CHECK: ^{{.*}}([[ARG1:%.*]]: tensor<i32>, [[ARG2:%.*]]: tensor<i32>, {{.*}}: tensor<f32>, {{.*}}: tensor<f32>):
   // CHECK:   "mhlo.compare"([[ARG1]], [[ARG2]]) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction LT">}
@@ -5311,9 +5311,9 @@ func.func @random_shuffle_1D_16(%input: tensor<16xf32>) -> tensor<16xf32> {
 
 // CHECK-LABEL: @random_shuffle_1D_10240
 func.func @random_shuffle_1D_10240(%input: tensor<10240xf32>) -> tensor<10240xf32> {
-  // CHECK: mhlo.rng_uniform
+  // CHECK: mhlo.rng{{.*UNIFORM.*}}
   // CHECK: mhlo.sort
-  // CHECK: mhlo.rng_uniform
+  // CHECK: mhlo.rng{{.*UNIFORM.*}}
   // CHECK: mhlo.sort
   %0 = "tf.RandomShuffle"(%input) : (tensor<10240xf32>) -> (tensor<10240xf32>)
   func.return %0: tensor<10240xf32>
@@ -5329,7 +5329,7 @@ func.func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
   // CHECK-DAG: [[RNG_SHAPE:%.*]] = mhlo.constant dense<4> : tensor<1xi64>
   // CHECK-DAG: [[RNG_LOWER:%.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK-DAG: [[RNG_UPPER:%.*]] = mhlo.constant dense<4> : tensor<i32>
-  // CHECK: [[SWAPS:%.*]] = "mhlo.rng_uniform"([[RNG_LOWER]], [[RNG_UPPER]], [[RNG_SHAPE]])
+  // CHECK: [[SWAPS:%.*]] = "mhlo.rng"([[RNG_LOWER]], [[RNG_UPPER]], [[RNG_SHAPE]]) {rng_distribution = #mhlo.rng_distribution<UNIFORM>}
 
   // CHECK: [[IV_INIT:%.*]] = mhlo.constant dense<0> : tensor<i32>
 

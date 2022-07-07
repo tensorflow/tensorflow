@@ -838,7 +838,7 @@ add {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
   // CHECK:  [[CST:%.*]] = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  // CHECK:  "mhlo.rng_normal"([[ARG0]], [[ARG1]], [[CST]])
+  // CHECK:  "mhlo.rng"([[ARG0]], [[ARG1]], [[CST]]) {rng_distribution = #mhlo.rng_distribution<NORMAL>}
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_normal
 }
 
@@ -848,7 +848,7 @@ add {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
   // CHECK:  [[CST:%.*]] = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  // CHECK:  "mhlo.rng_uniform"([[ARG0]], [[ARG1]], [[CST]])
+  // CHECK:  "mhlo.rng"([[ARG0]], [[ARG1]], [[CST]]) {rng_distribution = #mhlo.rng_distribution<UNIFORM>}
   ROOT %rng.4 = f32[2,3,5] rng(f32[] %Arg_0.1, f32[] %Arg_1.2), distribution=rng_uniform
 }
 

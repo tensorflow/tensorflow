@@ -303,17 +303,21 @@ static bool hasCanonicalDimensionNumbers(
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.RngUniformOp conversion patterns.
+// mhlo.RngOp conversion patterns.
 //===----------------------------------------------------------------------===//
 
-// Pass to lower from rng_uniform to stateless uniform pseudo RNG with LCG
+// Pass to lower from rng to stateless pseudo RNG with LCG
 // algorithm
-struct RngUniformConversion : public OpConversionPattern<mhlo::RngUniformOp> {
-  using OpConversionPattern<mhlo::RngUniformOp>::OpConversionPattern;
+struct RngUniformConversion : public OpConversionPattern<mhlo::RngOp> {
+  using OpConversionPattern<mhlo::RngOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::RngUniformOp op, OpAdaptor adaptor,
+      mhlo::RngOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    // We only handle uniform distributions
+    if (op.rng_distribution() != ::mlir::mhlo::RngDistribution::UNIFORM) {
+      return failure();
+    }
     // TODO(raikonenfnu): Handle other element types as well.
     auto minTy = adaptor.getOperands()[0].getType().dyn_cast<ShapedType>();
     auto maxTy = adaptor.getOperands()[0].getType().dyn_cast<ShapedType>();

@@ -4450,7 +4450,7 @@ func.func @torch_index_select(%arg0: tensor<5x1x5xi32>,
 func.func @rng_uniform_1d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<10xf32>
 {
   %shape = arith.constant dense<[10]>  : tensor<1xi32>
-  %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<10xf32>
+  %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
 // CHECK-LABEL: func @rng_uniform_1d
@@ -4477,7 +4477,7 @@ func.func @rng_uniform_1d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<10xf32
 func.func @rng_uniform_2d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<3x3xf32>
 {
         %shape = arith.constant dense<[3, 3]>  : tensor<2xi32>
-        %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<2xi32>) -> tensor<3x3xf32>
+        %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<2xi32>) -> tensor<3x3xf32>
         func.return %0 : tensor<3x3xf32>
 }
 // CHECK-LABEL: func @rng_uniform_2d
@@ -4509,7 +4509,7 @@ func.func @rng_uniform_2d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<3x3xf3
 func.func @rng_uniform_3d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<2x2x2xf32>
 {
         %shape = arith.constant dense<[2, 2, 2]>  : tensor<3xi32>
-        %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<3xi32>) -> tensor<2x2x2xf32>
+        %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<3xi32>) -> tensor<2x2x2xf32>
         func.return %0 : tensor<2x2x2xf32>
 }
 // CHECK-LABEL: func @rng_uniform_3d
@@ -4545,7 +4545,7 @@ func.func @rng_uniform_3d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<2x2x2x
 
 func.func @rng_uniform_dynamic_1d(%min: tensor<f32>, %max: tensor<f32>, %shape: tensor<1xi32>) -> tensor<?xf32>
 {
-  %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<?xf32>
+  %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
 // CHECK-LABEL: func @rng_uniform_dynamic_1d

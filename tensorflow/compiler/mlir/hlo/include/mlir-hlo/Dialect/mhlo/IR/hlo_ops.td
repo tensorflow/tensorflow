@@ -2310,53 +2310,35 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
+def HLO_RngOp : HLO_Op<"rng", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
-    following the uniform distribution over the interval `[a,b)`. The parameters
-    and output element type have to be a boolean type, an integral type or a
-    floating point types, and the types have to be consistent.
+    following the given `rng_distribution` with two parameters:
+      `UNIFORM`: the uniform distribution over the interval `[a,b)`. The parameters
+                 and output element type have to be a boolean type, an integral type or a
+                 floating point types, and the types have to be consistent.
 
-    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+                 See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+
+      `NORMAL`: the normal distribution with parameters `mu` (=`a`) and
+                `sigma` (=`b`). The parameters and output shape have to have a
+                floating point elemental type. The parameters furthermore have
+                to be scalar valued.
+
+                See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
     0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$a,
     0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$b,
-    HLO_DimensionTensor:$shape
+    HLO_DimensionTensor:$shape,
+    HLO_RngDistributionAttr:$rng_distribution
   );
 
   let results = (outs HLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    // Returns whether the return types are compatible.
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(::mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
-}
-
-def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElementTypesMatch<["mu", "sigma", "result"]>]> {
-  let summary = "RNG with normal distribution.";
-  let description = [{
-    Constructs an output of a given shape with random numbers generated
-    following the normal distribution with parameters `mu` and `sigma`. The
-    parameters and output shape have to have a floating point elemental type.
-    The parameters furthermore have to be scalar valued.
-
-    See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
-  }];
-  let arguments = (ins
-    0DTensorOf<[HLO_Float]>:$mu,
-    0DTensorOf<[HLO_Float]>:$sigma,
-    HLO_DimensionTensor:$shape
-  );
-
-  let results = (outs HLO_FpTensor:$result);
-
-  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
