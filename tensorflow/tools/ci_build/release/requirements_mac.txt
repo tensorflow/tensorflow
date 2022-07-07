@@ -8,5 +8,5 @@ twine ~= 3.6.0
 setuptools
 
 # Test dependencies which don't exist on Windows
-jax ~= 0.2.26
-jaxlib ~= 0.1.75
+jax ~= 0.3
+jaxlib ~= 0.3
