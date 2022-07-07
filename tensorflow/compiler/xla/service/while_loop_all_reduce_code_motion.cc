@@ -447,7 +447,6 @@ MovableAllReduceContext IsAllReduceMovable(
       [&is_value_replicated_within_replica_group](
           const HloInstruction& dynamic_update_slice) -> bool {
     for (int i = 2; i < dynamic_update_slice.operand_count(); ++i) {
-      LOG(INFO) << " operand: " << dynamic_update_slice.operand(i)->ToString();
       if (!is_value_replicated_within_replica_group(
               *dynamic_update_slice.operand(i), {})) {
         return false;
