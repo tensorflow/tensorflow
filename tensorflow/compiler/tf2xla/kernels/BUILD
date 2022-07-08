@@ -33,7 +33,6 @@ tf_kernel_library(
         "beta_op.cc",
         "bias_ops.cc",
         "binary_ops.cc",
-        "bincount_op.cc",
         "broadcast_to_op.cc",
         "bucketize_op.cc",
         "cast_op.cc",
