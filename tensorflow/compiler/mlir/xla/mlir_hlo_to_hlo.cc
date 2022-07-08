@@ -1524,6 +1524,17 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   return success();
 }
 
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sin(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
 }

@@ -80,11 +80,11 @@ def : Pat<(HLO_AbsOp HLO_ComplexTensor:$val),
 //   sin(a) * cosh(b) + icos(a) * sinh(b)
 //   sinh(b) = (e^x - e^-x) / 2
 //   cosh(b) = (e^x + e^-x) / 2
-def : Pat<(HLO_SinOp HLO_ComplexTensor:$val),
+def : Pat<(HLO_SineOp HLO_ComplexTensor:$val),
             (HLO_ComplexOp
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_SinOp (HLO_RealOp:$real $val)),
+                  (HLO_SineOp (HLO_RealOp:$real $val)),
                   (HLO_AddOp
                     (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
                     (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
@@ -109,7 +109,7 @@ def : Pat<(HLO_CosOp HLO_ComplexTensor:$val),
                  (HLO_ConstantOp : $two (ConstantSplat<"2.0"> $real))),
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_SinOp $real),
+                  (HLO_SineOp $real),
                   (HLO_SubOp $nexp, $exp)), $two))>;
 
 // Exponential can be lowered to an exponential on the real component and a
@@ -125,7 +125,7 @@ def : Pat<(HLO_ExpOp HLO_ComplexTensor:$val),
            (HLO_MulOp
             (HLO_CosOp (HLO_ImagOp:$imag $val)),
             (HLO_ExpOp:$exp (HLO_RealOp:$real $val))),
-           (HLO_MulOp (HLO_SinOp $imag), $exp))>;
+           (HLO_MulOp (HLO_SineOp $imag), $exp))>;
 
 foreach pair = [[HLO_ComparisonDirectionValue<"NE">, HLO_OrOp],
                 [HLO_ComparisonDirectionValue<"EQ">, HLO_AndOp]] in {

@@ -666,7 +666,7 @@ foreach Mapping = [
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SigmoidOp, HLO_LogisticOp],
                    [TF_SinhOp, CHLO_SinhOp],
-                   [TF_SinOp, HLO_SinOp],
+                   [TF_SinOp, HLO_SineOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
                    [TF_TanOp, CHLO_TanOp]

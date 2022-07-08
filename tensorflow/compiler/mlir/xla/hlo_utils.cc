@@ -404,7 +404,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kRsqrt;
   } else if (isa<mlir::mhlo::SignOp, mlir::lmhlo::SignOp>(op)) {
     return xla::HloOpcode::kSign;
-  } else if (isa<mlir::mhlo::SinOp, mlir::lmhlo::SinOp>(op)) {
+  } else if (isa<mlir::mhlo::SineOp, mlir::lmhlo::SineOp>(op)) {
     return xla::HloOpcode::kSin;
   } else if (isa<mlir::mhlo::SqrtOp, mlir::lmhlo::SqrtOp>(op)) {
     return xla::HloOpcode::kSqrt;

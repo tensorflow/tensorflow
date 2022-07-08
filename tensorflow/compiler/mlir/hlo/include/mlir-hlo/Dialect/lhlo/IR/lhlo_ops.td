@@ -320,7 +320,7 @@ def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign"> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
-def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
+def LHLO_SineOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
   let summary = "Sin operator";
   let description = [{
     Returns `Sin(operand)` element-wise.

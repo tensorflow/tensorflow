@@ -92,7 +92,7 @@ MAP_HLO_TO_LHLO(ShiftLeftOp);
 MAP_HLO_TO_LHLO(ShiftRightArithmeticOp);
 MAP_HLO_TO_LHLO(ShiftRightLogicalOp);
 MAP_HLO_TO_LHLO(SignOp);
-MAP_HLO_TO_LHLO(SinOp);
+MAP_HLO_TO_LHLO(SineOp);
 MAP_HLO_TO_LHLO(SliceOp);
 MAP_HLO_TO_LHLO(SqrtOp);
 MAP_HLO_TO_LHLO(SubOp);

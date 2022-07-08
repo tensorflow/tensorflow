@@ -1455,7 +1455,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
-      NO_ATTRIBUTE_CASE(kSin, SinOp);
+      NO_ATTRIBUTE_CASE(kSin, SineOp);
       NO_ATTRIBUTE_CASE(kSqrt, SqrtOp);
       NO_ATTRIBUTE_CASE(kSubtract, SubOp);
       NO_ATTRIBUTE_CASE(kTanh, TanhOp);

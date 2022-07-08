@@ -40,7 +40,7 @@ static bool canFuseWithSparseConvert(Operation *op) {
          isa<Expm1Op>(op) || isa<FloorOp>(op) || isa<ImagOp>(op) ||
          isa<LogOp>(op) || isa<Log1pOp>(op) || isa<NegOp>(op) ||
          isa<RealOp>(op) || isa<RoundOp>(op) || isa<SignOp>(op) ||
-         isa<SinOp>(op) || isa<SqrtOp>(op) || isa<TanhOp>(op) ||
+         isa<SineOp>(op) || isa<SqrtOp>(op) || isa<TanhOp>(op) ||
          isa<AddOp>(op) || isa<DivOp>(op) || isa<MulOp>(op) || isa<RemOp>(op) ||
          isa<TransposeOp>(op) || isa<SubOp>(op);
 }

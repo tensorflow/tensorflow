@@ -416,7 +416,8 @@ def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
   }];
   let hasFolder = 1;
 }
-def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
+
+def HLO_SineOp: HLO_UnaryElementwiseOp<"sine",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Sin operator";
   let description = [{
@@ -425,7 +426,9 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasCustomHLOConverter = 1;
 }
+
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Square-root operator";

@@ -128,7 +128,7 @@ foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_NegOp, TF_NegOp],
                    [HLO_RealOp, TF_RealOp],
                    [HLO_RsqrtOp, TF_RsqrtOp],
-                   [HLO_SinOp, TF_SinOp],
+                   [HLO_SineOp, TF_SinOp],
                    [HLO_SignOp, TF_SignOp],
                    [HLO_SqrtOp, TF_SqrtOp],
                    [HLO_TanhOp, TF_TanhOp]] in
