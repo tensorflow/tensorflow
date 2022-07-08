@@ -5,6 +5,7 @@ learning models to recognize sounds and spoken words in an Android app. Audio
 classification models like the ones shown in this tutorial can be used to detect
 activity, identify actions, or recognize voice commands.
 
+![Audio recognition animated demo](https://storage.googleapis.com/download.tensorflow.org/tflite/examples/audio_classification.gif){: .attempt-right}
 This tutorial shows you how to download the example code, load the project into
 [Android Studio](https://developer.android.com/studio/), and explains key parts
 of the code example so you can start adding this functionality to your own app.
