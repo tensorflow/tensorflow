@@ -152,10 +152,10 @@ def GMLST_TransposeTileOp : GMLST_Op<"transpose_tile", [
   }];
   let arguments = (ins
     GMLST_TileType:$superset,
-    I64ElementsAttr:$permutation);
+    DenseI64ArrayAttr:$permutation);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    $superset `,` custom<I64ElementsAttr>($permutation) attr-dict `:`
+    $superset `,` $permutation attr-dict `:`
     qualified(type($superset)) `to` qualified(type($result))
   }];
   let hasVerifier = 1;

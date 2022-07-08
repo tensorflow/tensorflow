@@ -1600,8 +1600,7 @@ LogicalResult TransposeTileOp::inferReturnTypes(
 
   // Derive result shape.
   SmallVector<int64_t> shape = llvm::to_vector(llvm::map_range(
-      adaptor.permutation(),
-      [&](const auto &d) { return argShape[d.getLimitedValue()]; }));
+      adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
 
   auto resultTy = TileType::get(ctx, shape);
   inferredReturnTypes.push_back(resultTy);
@@ -1624,10 +1623,7 @@ Value TransposeTileOp::compose(OpBuilder &builder) {
   if (!spaceOp) return {};
 
   auto loc = getLoc();
-  SmallVector<int64_t> perm =
-      llvm::to_vector(llvm::map_range(permutation(), [](const auto &d) {
-        return static_cast<int64_t>(d.getLimitedValue());
-      }));
+  ArrayRef<int64_t> perm = permutation();
   int64_t rank = perm.size();
 
   // Create a new space op that has the permutation applied.
@@ -1699,7 +1695,7 @@ LogicalResult TransposeTileOp::verify() {
   // Store where a certain number occurred.
   SmallVector<int64_t> position(rank, -1);
   for (const auto &it : llvm::enumerate(permutation())) {
-    int64_t dim = static_cast<int64_t>(it.value().getLimitedValue());
+    int64_t dim = it.value();
     if (dim < 0 || dim >= rank) {
       return emitOpError("permutation[")
              << it.index() << "] = " << dim << " is outside of range [0, "

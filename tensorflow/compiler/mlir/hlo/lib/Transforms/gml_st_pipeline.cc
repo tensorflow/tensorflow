@@ -39,6 +39,7 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
   if (options.fuse) {
     pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
   }
+  pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 
   if (!options.lowerToLoops) return;
 
