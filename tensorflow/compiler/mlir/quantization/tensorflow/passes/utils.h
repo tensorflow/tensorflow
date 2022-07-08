@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <type_traits>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -29,6 +30,12 @@ namespace quant {
 
 // Returns true if the op has any quantized tensors as input or output.
 bool HasQuantizedTensors(Operation *op);
+
+// Returns true if the value has static shape.
+bool HasStaticShape(Value value);
+
+// Returns true if the value has static shape at given dims.
+bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims);
 
 enum class QuantizationMethod {
   kQuantizationAwareTraining,

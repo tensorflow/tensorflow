@@ -70,7 +70,7 @@ td_library(
         "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
-        "passes/tf_quant_ops.td",
+        "passes/replace_cast_hacks_with_tf_xla_ops.td",
         "passes/utils.td",
     ],
     compatible_with = get_compatible_with_cloud(),
@@ -217,6 +217,20 @@ cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "replace_cast_hacks_with_tf_xla_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/replace_cast_hacks_with_tf_xla_ops.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/replace_cast_hacks_with_tf_xla_ops.td",
+    deps = [":quant_td_files"],
+)
+
 cc_library(
     name = "passes",
     srcs = [
@@ -243,6 +257,8 @@ cc_library(
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
         "passes/quantized_function_library.h",
+        "passes/replace_cast_hacks_with_tf_xla_ops.cc",
+        "passes/replace_cast_hacks_with_tf_xla_ops.inc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -263,12 +279,14 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:mangling",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:path",
+        "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/random",

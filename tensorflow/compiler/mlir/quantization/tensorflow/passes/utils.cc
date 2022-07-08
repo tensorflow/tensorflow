@@ -36,6 +36,23 @@ bool HasQuantizedTensors(Operation* op) {
   return false;
 }
 
+bool HasStaticShape(Value value) {
+  auto shaped_type = value.getType().dyn_cast<ShapedType>();
+  if (!shaped_type) return false;
+
+  return shaped_type.hasStaticShape();
+}
+
+bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims) {
+  auto shaped_type = value.getType().dyn_cast<ShapedType>();
+  if (!shaped_type) return false;
+
+  for (auto dim : dims) {
+    if (shaped_type.isDynamicDim(dim)) return false;
+  }
+  return true;
+}
+
 Type CloneTypeWithNewElementType(Type old_type, Type element_type) {
   if (!old_type.isa<ShapedType>()) return {};
 

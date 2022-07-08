@@ -101,6 +101,12 @@ CreateConvertTFQuantOpsToMHLOPass();
 // Applies optimization patterns after quantization.
 std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
 
+// Creates an instance of the ReplaceCastHacksWithTFXLAOpsPass, which will
+// replace mixed-type convolution and matmul cast hacks by XLA Conv2DOp and
+// MatmulOp.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateReplaceCastHacksWithTFXLAOpsPass();
+
 }  // namespace quant
 }  // namespace mlir
 
