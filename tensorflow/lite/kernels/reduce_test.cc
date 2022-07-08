@@ -136,6 +136,19 @@ TYPED_TEST(DynamicReductionIsCopyTestBool, ReduceIsCopy) {
   EXPECT_THAT(m.template GetOutput<bool>(), ElementsAreArray(data));
 }
 
+TEST(ConstFloatMeanOpTest, FoldFirstDim) {
+  int count = 1 * 2 * 2 * 3;
+  std::vector<float> data(count);
+  std::iota(data.begin(), data.end(), 0);
+  SumOpConstModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
+                    {TensorType_FLOAT32, {2, 2}}, {2}, {3, 0}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({3, 12, 21, 30})));
+}
+
 TEST(ConstFloatMeanOpTest, Flatten2ReduceDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -586,6 +599,67 @@ TEST(ConstUint8MeanOpTest, QuantizedKeepDims) {
 }
 
 // Tests for reduce_sum
+
+TEST(ConstFloatSumOpTest, Size1) {
+  std::vector<float> data = {1.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}}, {1},
+                    {0}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({1})));
+}
+
+TEST(ConstFloatSumOpTest, Size1Dims) {
+  std::vector<float> data = {1.0, 2.0};
+  SumOpConstModel m({TensorType_FLOAT32, {2}}, {TensorType_FLOAT32, {1}}, {1},
+                    {0}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3})));
+}
+
+TEST(ConstFloatSumOpTest, Size1Contiguous) {
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  SumOpConstModel m({TensorType_FLOAT32, {8, 1}}, {TensorType_FLOAT32, {8}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({8}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(data)));
+}
+
+TEST(ConstFloatSumOpTest, Size1DisContiguous) {
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1, 8}}, {TensorType_FLOAT32, {1}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({36})));
+}
+
+TEST(ConstFloatSumOpTest, RedundantDimension) {
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1, 2, 4}}, {TensorType_FLOAT32, {2}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({6, 8, 10, 12})));
+}
+
+TEST(ConstFloatSumOpTest, AllSize1) {
+  std::vector<float> data = {1.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1, 1, 1}}, {TensorType_FLOAT32, {1}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({1})));
+}
 
 TEST(ConstFloatSumOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,

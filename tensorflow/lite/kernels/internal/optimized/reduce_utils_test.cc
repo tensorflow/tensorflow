@@ -34,8 +34,8 @@ void TestFunction(const std::vector<int>& axis_in,
   std::vector<int> actual_shape_out(num_dims);
   std::vector<int> actual_axis_out(num_dims);
   ResolveAxis(shape_in.size(), axis_in.data(), axis_in.size(),
-              actual_axis_out.data(), &actual_out_num_axis, shape_in.data(),
-              actual_shape_out.data(), &actual_out_num_dims);
+              actual_axis_out.data(), actual_out_num_axis, shape_in.data(),
+              actual_shape_out.data(), actual_out_num_dims);
   EXPECT_EQ(expected_out_num_dims, actual_out_num_dims);
   EXPECT_EQ(expected_out_num_axis, actual_out_num_axis);
   EXPECT_THAT(expected_shape_out,
@@ -105,6 +105,30 @@ TEST(ResolveAxisTest, DuplicateNegativeAxis) {
   const std::vector<int> shape_in = {4, 3, 2};
   const std::vector<int> expected_shape_out{4, 6};
   const std::vector<int> expected_axis_out{1};
+  TestFunction(axis_in, shape_in, expected_axis_out, expected_shape_out);
+}
+
+TEST(ResolveAxisTest, RemoveSize1Dim) {
+  const std::vector<int> axis_in = {0};
+  const std::vector<int> shape_in = {1, 4, 3, 1};
+  const std::vector<int> expected_shape_out{4, 3};
+  const std::vector<int> expected_axis_out{};
+  TestFunction(axis_in, shape_in, expected_axis_out, expected_shape_out);
+}
+
+TEST(ResolveAxisTest, OneSize1DimToScalar) {
+  const std::vector<int> axis_in = {0};
+  const std::vector<int> shape_in = {1};
+  const std::vector<int> expected_shape_out{};
+  const std::vector<int> expected_axis_out{};
+  TestFunction(axis_in, shape_in, expected_axis_out, expected_shape_out);
+}
+
+TEST(ResolveAxisTest, InterleavedSize1Dim) {
+  const std::vector<int> axis_in = {1, 3};
+  const std::vector<int> shape_in = {1, 2, 1, 4, 1, 7};
+  const std::vector<int> expected_shape_out{8, 7};
+  const std::vector<int> expected_axis_out{0};
   TestFunction(axis_in, shape_in, expected_axis_out, expected_shape_out);
 }
 

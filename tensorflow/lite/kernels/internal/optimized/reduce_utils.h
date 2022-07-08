@@ -22,22 +22,50 @@ limitations under the License.
 namespace tflite {
 namespace reduce_utils {
 
+inline void RemoveSize1Dims(int* shape_out, int& out_num_dims, int* axis_out,
+                            int& out_num_axis) {
+  for (int64_t i = 0; i < out_num_dims;) {
+    if (shape_out[i] == 1) {
+      for (int64_t j = i + 1; j < out_num_dims; ++j) {
+        shape_out[j - 1] = shape_out[j];
+      }
+      for (int64_t j = 0; j < out_num_axis; ++j) {
+        if (axis_out[j] == i) {
+          for (int64_t k = j + 1; k < out_num_axis; ++k) {
+            axis_out[k - 1] = axis_out[k];
+          }
+          out_num_axis -= 1;
+          break;
+        }
+      }
+      for (int64_t j = 0; j < out_num_axis; ++j) {
+        if (axis_out[j] > i) {
+          axis_out[j] -= 1;
+        }
+      }
+      --out_num_dims;
+    } else {
+      ++i;
+    }
+  }
+}
+
 // This method parses the input 'axis' to remove duplicates, handle negative
-// values and remove redundant dimensions. It returns a valid 'out_axis' and
+// values and remove redundant dimensions. It returns a valid 'axis_out' and
 // 'shape_out' contains the flattened input shape. 'out_num_dims' contains the
 // reduced number of dimensions.
 inline bool ResolveAxis(const int num_dims, const int* axis,
-                        const int64_t num_axis, int* out_axis,
-                        int* out_num_axis, const int* shape_in, int* shape_out,
-                        int* out_num_dims) {
+                        const int64_t num_axis, int* axis_out,
+                        int& out_num_axis, const int* shape_in, int* shape_out,
+                        int& out_num_dims) {
   // Short-circuit axis resolution for scalars; the axis will go unused.
   if (num_dims == 0) {
-    *out_num_axis = 0;
-    *out_num_dims = 0;
+    out_num_axis = 0;
+    out_num_dims = 0;
     return true;
   }
-  int num_out_axis = 0;
-  int dims_out = num_dims;
+  out_num_axis = 0;
+  out_num_dims = num_dims;
   // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
   for (int64_t idx = 0; idx < num_axis; ++idx) {
     // Handle negative index. A positive index 'p_idx' can be represented as a
@@ -48,51 +76,52 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
       return false;
     }
     bool is_dup = false;
-    for (int j = 0; j < num_out_axis; ++j) {
-      if (out_axis[j] == current) {
+    for (int j = 0; j < out_num_axis; ++j) {
+      if (axis_out[j] == current) {
         is_dup = true;
         break;
       }
     }
     if (!is_dup) {
-      out_axis[num_out_axis] = current;
-      num_out_axis += 1;
+      axis_out[out_num_axis] = current;
+      out_num_axis += 1;
     }
   }
   // If two or more adjacent dimensions are either reduced
   // over or not, then the second and subsequent dimensions may be flattened.
   memcpy(shape_out, shape_in, num_dims * sizeof(int));
-  if (num_out_axis > 0) {
-    std::sort(&out_axis[0], &out_axis[num_out_axis]);
+  std::sort(&axis_out[0], &axis_out[out_num_axis]);
 
-    int64_t j = num_out_axis - 1;
-    // true if the previous index is present in out_axis.
-    bool previous_here = (out_axis[j] == num_dims - 1);
+  RemoveSize1Dims(shape_out, out_num_dims, axis_out, out_num_axis);
+  if (out_num_axis > 0) {
+    int64_t j = out_num_axis - 1;
+    // true if the previous index is present in axis_out.
+    bool previous_here = (axis_out[j] == out_num_dims - 1);
     if (previous_here) {
       j -= 1;
     }
 
-    for (int64_t i = num_dims - 2; i >= 0; --i) {
-      // true if the current index is present in out_axis.
-      bool current_here = j >= 0 ? (out_axis[j] == i) : false;
+    for (int64_t i = out_num_dims - 2; i >= 0; --i) {
+      // true if the current index is present in axis_out.
+      bool current_here = j >= 0 ? (axis_out[j] == i) : false;
       if (current_here == previous_here) {
         shape_out[i] *= shape_out[i + 1];
-        for (int64_t k = i + 1; k + 1 < num_dims; ++k) {
+        for (int64_t k = i + 1; k + 1 < out_num_dims; ++k) {
           shape_out[k] = shape_out[k + 1];
         }
         // All axis bigger than this need to be reduced by 1.
-        for (int64_t k = 0; k < num_out_axis; ++k) {
-          if (out_axis[k] > i) {
-            out_axis[k] -= 1;
+        for (int64_t k = 0; k < out_num_axis; ++k) {
+          if (axis_out[k] > i) {
+            axis_out[k] -= 1;
           }
         }
         if (current_here) {
-          for (int64_t k = j + 1; k + 1 < num_out_axis; ++k) {
-            out_axis[k] = out_axis[k + 1];
+          for (int64_t k = j + 1; k + 1 < out_num_axis; ++k) {
+            axis_out[k] = axis_out[k + 1];
           }
-          num_out_axis -= 1;
+          out_num_axis -= 1;
         }
-        dims_out -= 1;
+        out_num_dims -= 1;
       }
       if (current_here) {
         j -= 1;
@@ -100,8 +129,6 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
       previous_here = current_here;
     }
   }
-  *out_num_axis = num_out_axis;
-  *out_num_dims = dims_out;
   return true;
 }
 }  // namespace reduce_utils

@@ -476,8 +476,8 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   int num_resolved_axis = 0;
   int normalized_num_dims = 0;
   if (!reduce_utils::ResolveAxis(input_num_dims, axis, num_axis_dimensions,
-                                 resolved_axis, &num_resolved_axis, input_dims,
-                                 normalized_dims, &normalized_num_dims)) {
+                                 resolved_axis, num_resolved_axis, input_dims,
+                                 normalized_dims, normalized_num_dims)) {
     return false;
   }
 
@@ -667,8 +667,8 @@ inline bool QuantizedReduceProd(
   int normalized_num_dims = 0;
   if (!reduce_utils::ResolveAxis(input_shape.DimensionsCount(), axis,
                                  num_axis_dimensions, resolved_axis,
-                                 &num_resolved_axis, input_shape.DimsData(),
-                                 normalized_dims, &normalized_num_dims)) {
+                                 num_resolved_axis, input_shape.DimsData(),
+                                 normalized_dims, normalized_num_dims)) {
     return false;
   }
 
@@ -704,8 +704,8 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
   int num_resolved_axis = 0;
   int normalized_num_dims = 0;
   if (!reduce_utils::ResolveAxis(input_num_dims, axis, num_axis_dimensions,
-                                 resolved_axis, &num_resolved_axis, input_dims,
-                                 normalized_dims, &normalized_num_dims)) {
+                                 resolved_axis, num_resolved_axis, input_dims,
+                                 normalized_dims, normalized_num_dims)) {
     return false;
   }
   if (num_resolved_axis == 0) {
