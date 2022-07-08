@@ -4870,6 +4870,13 @@ void HloInstruction::set_async_thread_name(
   Cast<HloAsyncInstruction>(this)->set_async_thread_name(async_thread_name);
 }
 
+void HloInstruction::set_called_computations_thread_name(
+    const std::optional<std::string>& async_thread_name,
+    bool skip_async_thread_name_overwrite) {
+  Cast<HloCallableInstruction>(this)->RecursivelySetComputationsThreadName(
+      async_thread_name, skip_async_thread_name_overwrite);
+}
+
 bool HloInstruction::is_cross_program_prefetch() const {
   return Cast<HloCopyStartInstruction>(this)->is_cross_program_prefetch();
 }

@@ -2139,6 +2139,12 @@ class HloInstruction {
   void set_async_thread_name(
       const std::optional<std::string>& async_thread_name);
 
+  // Delegates to
+  // HloCallableInstruction::RecursivelySetComputationsThreadName().
+  void set_called_computations_thread_name(
+      const std::optional<std::string>& async_thread_name,
+      bool skip_async_thread_name_overwrite);
+
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;
 
