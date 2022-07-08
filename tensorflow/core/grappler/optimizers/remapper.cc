@@ -429,10 +429,10 @@ bool IsGpuCompatible(const RemapperContext& ctx,
     // in-graph computation in micro benchmarks (see kernels/conv_ops_test.cc),
     // and significantly slower in large scale benchmarks.
     bool is_spatial_conv = Rank(filter_shape) == 4 &&          //
+                           IsKnown(filter_shape.dim(0)) &&     //
                            IsKnown(filter_shape.dim(1)) &&     //
-                           IsKnown(filter_shape.dim(2)) &&     //
-                           filter_shape.dim(1).size() != 1 &&  //
-                           filter_shape.dim(2).size() != 1;
+                           filter_shape.dim(0).size() != 1 &&  //
+                           filter_shape.dim(1).size() != 1;
 
     return is_spatial_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
   } else if (IsMatMul(contraction_node)) {
