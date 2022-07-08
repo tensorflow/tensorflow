@@ -779,7 +779,7 @@ Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   //              = digamma(1 - x) - pi * cos(pi * x) / sin(pi * x)
   Value pi = getConstantLike(rewriter, loc, M_PI, x);
   Value piMulReducedX = rewriter.create<mhlo::MulOp>(loc, pi, reducedX);
-  Value cos = rewriter.create<mhlo::CosOp>(loc, piMulReducedX);
+  Value cos = rewriter.create<mhlo::CosineOp>(loc, piMulReducedX);
   Value sin = rewriter.create<mhlo::SineOp>(loc, piMulReducedX);
   Value reflection = rewriter.create<mhlo::SubOp>(
       loc, digamma,
@@ -1208,7 +1208,7 @@ Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
   TanOp::Adaptor transformed(operands);
   return rewriter.create<mhlo::DivOp>(
       loc, rewriter.create<mhlo::SineOp>(loc, transformed.operand()),
-      rewriter.create<mhlo::CosOp>(loc, transformed.operand()));
+      rewriter.create<mhlo::CosineOp>(loc, transformed.operand()));
 }
 
 struct ConvertTanOp : public OpConversionPattern<TanOp> {

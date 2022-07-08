@@ -52,7 +52,7 @@ MAP_LHLO_TO_HLO(ConcatenateOp);
 MAP_LHLO_TO_HLO(ConvolutionOp);
 MAP_LHLO_TO_HLO(ConvertOp);
 MAP_LHLO_TO_HLO(CopyOp);
-MAP_LHLO_TO_HLO(CosOp);
+MAP_LHLO_TO_HLO(CosineOp);
 MAP_LHLO_TO_HLO(CustomCallOp);
 MAP_LHLO_TO_HLO(DivOp);
 MAP_LHLO_TO_HLO(DotOp);

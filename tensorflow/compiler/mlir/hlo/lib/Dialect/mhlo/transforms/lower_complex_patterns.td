@@ -91,18 +91,18 @@ def : Pat<(HLO_SineOp HLO_ComplexTensor:$val),
                  (HLO_ConstantOp : $two (ConstantSplat<"2.0"> $real))),
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_CosOp $real),
+                  (HLO_CosineOp $real),
                   (HLO_SubOp $exp, $nexp)), $two))>;
 
 // Can deconstruct cos(a + ib) as follows:
 //   cos(a) * cosh(b) - isin(a) * sinh(b)
 //   sinh(b) = (e^x - e^-x) / 2
 //   cosh(b) = (e^x + e^-x) / 2
-def : Pat<(HLO_CosOp HLO_ComplexTensor:$val),
+def : Pat<(HLO_CosineOp HLO_ComplexTensor:$val),
             (HLO_ComplexOp
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_CosOp (HLO_RealOp:$real $val)),
+                  (HLO_CosineOp (HLO_RealOp:$real $val)),
                   (HLO_AddOp
                     (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
                     (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
@@ -123,7 +123,7 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 def : Pat<(HLO_ExpOp HLO_ComplexTensor:$val),
           (HLO_ComplexOp
            (HLO_MulOp
-            (HLO_CosOp (HLO_ImagOp:$imag $val)),
+            (HLO_CosineOp (HLO_ImagOp:$imag $val)),
             (HLO_ExpOp:$exp (HLO_RealOp:$real $val))),
            (HLO_MulOp (HLO_SineOp $imag), $exp))>;
 

@@ -152,7 +152,7 @@ def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert", LHLO_Buffer, [SameOperan
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
   }];
 }
-def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
+def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
   let summary = "Cos operator";
   let description = [{
     Returns `Cos(operand)` element-wise.

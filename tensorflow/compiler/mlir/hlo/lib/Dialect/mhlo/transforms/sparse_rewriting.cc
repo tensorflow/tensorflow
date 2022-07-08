@@ -36,7 +36,7 @@ namespace {
 // TODO(b/231360416): replace this list with "supports sparsity" trait?
 static bool canFuseWithSparseConvert(Operation *op) {
   return isa<sparse_tensor::ConvertOp>(op) || isa<AbsOp>(op) ||
-         isa<CeilOp>(op) || isa<ConvertOp>(op) || isa<CosOp>(op) ||
+         isa<CeilOp>(op) || isa<ConvertOp>(op) || isa<CosineOp>(op) ||
          isa<Expm1Op>(op) || isa<FloorOp>(op) || isa<ImagOp>(op) ||
          isa<LogOp>(op) || isa<Log1pOp>(op) || isa<NegOp>(op) ||
          isa<RealOp>(op) || isa<RoundOp>(op) || isa<SignOp>(op) ||
