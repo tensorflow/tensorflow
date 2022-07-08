@@ -952,7 +952,7 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-template <typename T>
+template <KernelType kernel_type, typename T>
 TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
                                OpContext* op_context) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -967,7 +967,9 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
   TfLiteTensor* temp_prod;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, /*index=*/2, &temp_prod));
-
+  TfLiteTensor* normalized_dims;
+  TF_LITE_ENSURE_OK(
+      context, GetTemporarySafe(context, node, /*index=*/3, &normalized_dims));
   const TfLiteTensor* input = op_context->input;
   TfLiteTensor* output = op_context->output;
 
@@ -976,6 +978,10 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
     if (input->dims->data[i] == 0) return kTfLiteOk;
   }
 
+  if (IsDynamicTensor(normalized_dims)) {
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempDims(context, op_context, normalized_dims));
+  }
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
@@ -995,19 +1001,34 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
     QuantizeMultiplier(scaling, &data->multiplier, &data->shift);
   }
 
-  TF_LITE_ENSURE(
-      context,
-      reference_ops::QuantizedReduceProd<T>(
-          GetTensorData<T>(input), input->params.zero_point,
-          GetTensorShape(input), GetTensorData<T>(output),
-          output->params.zero_point, GetTensorShape(output),
-          GetTensorData<int>(op_context->axis), num_axis,
-          op_context->params->keep_dims, GetTensorData<int>(temp_index),
-          GetTensorData<int>(resolved_axis), GetTensorData<int32>(temp_prod),
-          data->multiplier, data->shift));
-  return kTfLiteOk;
+  if (kernel_type == kReference) {
+    TF_LITE_ENSURE(
+        context,
+        reference_ops::QuantizedReduceProd<T>(
+            GetTensorData<T>(input), input->params.zero_point,
+            GetTensorShape(input), GetTensorData<T>(output),
+            output->params.zero_point, GetTensorShape(output),
+            GetTensorData<int>(op_context->axis), num_axis,
+            op_context->params->keep_dims, GetTensorData<int>(temp_index),
+            GetTensorData<int>(resolved_axis), GetTensorData<int32>(temp_prod),
+            data->multiplier, data->shift));
+    return kTfLiteOk;
+  } else {
+    TF_LITE_ENSURE(
+        context,
+        optimized_ops::QuantizedReduceProd<T>(
+            GetTensorData<T>(input), input->params.zero_point,
+            GetTensorShape(input), GetTensorData<T>(output),
+            output->params.zero_point, GetTensorShape(output),
+            GetTensorData<int>(op_context->axis), num_axis,
+            GetTensorData<int>(resolved_axis),
+            GetTensorData<int>(normalized_dims),
+            GetTensorData<int32>(temp_prod), data->multiplier, data->shift));
+    return kTfLiteOk;
+  }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   // As we need to support both quantized and non-quantized int8/int16 inputs,
@@ -1016,16 +1037,17 @@ TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
   // other non-quantized types).
   if (op_context.input->quantization.type != kTfLiteNoQuantization) {
     if (op_context.input->type == kTfLiteInt8) {
-      return EvalQuantizedProd<int8_t>(context, node, &op_context);
+      return EvalQuantizedProd<kernel_type, int8_t>(context, node, &op_context);
     } else if (op_context.input->type == kTfLiteInt16) {
-      return EvalQuantizedProd<int16_t>(context, node, &op_context);
+      return EvalQuantizedProd<kernel_type, int16_t>(context, node,
+                                                     &op_context);
     } else {
       TF_LITE_KERNEL_LOG(context, "Unsupported quantized data type: %d",
                          op_context.input->type);
       return kTfLiteError;
     }
   } else {
-    return EvalGeneric<reduce::kReference, kProd>(context, node);
+    return EvalGeneric<kernel_type, kProd>(context, node);
   }
 }
 
@@ -1063,7 +1085,15 @@ TfLiteRegistration* Register_SUM_OPT() {
 
 TfLiteRegistration* Register_REDUCE_PROD_REF() {
   static TfLiteRegistration r = {reduce::Init, reduce::Free,
-                                 reduce::PrepareProd, reduce::EvalProd};
+                                 reduce::PrepareProd,
+                                 reduce::EvalProd<reduce::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_REDUCE_PROD_OPT() {
+  static TfLiteRegistration r = {reduce::Init, reduce::Free,
+                                 reduce::PrepareProd,
+                                 reduce::EvalProd<reduce::kGenericOptimized>};
   return &r;
 }
 
@@ -1133,7 +1163,7 @@ TfLiteRegistration* Register_MEAN() {
 
 TfLiteRegistration* Register_SUM() { return Register_SUM_OPT(); }
 TfLiteRegistration* Register_REDUCE_PROD() {
-  return Register_REDUCE_PROD_REF();
+  return Register_REDUCE_PROD_OPT();
 }
 TfLiteRegistration* Register_REDUCE_MAX() { return Register_REDUCE_MAX_OPT(); }
 TfLiteRegistration* Register_REDUCE_MIN() { return Register_REDUCE_MIN_OPT(); }

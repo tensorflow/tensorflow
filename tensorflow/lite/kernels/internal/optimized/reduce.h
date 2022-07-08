@@ -301,41 +301,50 @@ inline bool MeanGeneral<float, float>(
 
 template <typename T>
 struct SumOp {
-  inline T operator()(const T& a, const T& b) { return a + b; }
+  inline T operator()(const T& a) const { return a; }
+  inline T operator()(const T& a, const T& b) const { return a + b; }
   static constexpr T kNeutralElement = T(0);
 };
 
 template <typename T, typename U>
 struct CastSumOp {
-  inline U operator()(const U& a, const T& b) { return a + static_cast<U>(b); }
+  inline U operator()(const T& a) const { return static_cast<U>(a); }
+  inline U operator()(const U& a, const T& b) const {
+    return a + static_cast<U>(b);
+  }
   static constexpr U kNeutralElement = U(0);
 };
 
 template <typename T>
 struct ProdOp {
-  inline T operator()(const T& a, const T& b) { return a * b; }
+  inline T operator()(const T& a) const { return a; }
+  inline T operator()(const T& a, const T& b) const { return a * b; }
   static constexpr T kNeutralElement = T(1);
 };
 
 template <typename T>
 struct MaxOp {
-  inline T operator()(const T& a, const T& b) { return (a > b) ? a : b; }
+  inline T operator()(const T& a) const { return a; }
+  inline T operator()(const T& a, const T& b) const { return (a > b) ? a : b; }
   static constexpr T kNeutralElement = std::numeric_limits<T>::lowest();
 };
 
 template <typename T>
 struct MinOp {
-  inline T operator()(const T& a, const T& b) { return (a < b) ? a : b; }
+  inline T operator()(const T& a) const { return a; }
+  inline T operator()(const T& a, const T& b) const { return (a < b) ? a : b; }
   static constexpr T kNeutralElement = std::numeric_limits<T>::max();
 };
 
 struct AndOp {
-  inline bool operator()(bool a, bool b) { return a && b; }
+  inline bool operator()(bool a) const { return a; }
+  inline bool operator()(bool a, bool b) const { return a && b; }
   static constexpr bool kNeutralElement = true;
 };
 
 struct OrOp {
-  inline bool operator()(bool a, bool b) { return a || b; }
+  inline bool operator()(bool a) const { return a; }
+  inline bool operator()(bool a, bool b) const { return a || b; }
   static constexpr bool kNeutralElement = false;
 };
 
@@ -354,21 +363,29 @@ void ReduceIsCopy(const T* input_data, const int* input_dims,
 // One recursive call for each dimension is made.
 // 'depth' is the depth of recursion.
 // 'parity' indicates whether odd or even dimensions are being reduced.
-template <typename T, typename U, typename Op>
+// ReducerFirst is applied to the first element to be written to each output
+// position.
+// ReducerNext is applied to each subsequent element to be written to each
+// output position.
+template <typename T, typename U, typename ReducerFirst, typename ReducerNext>
 inline std::pair<const T*, U*> ReduceImpl(const T* input_data,
                                           const int* input_dims, U* output_data,
-                                          int depth, int parity) {
+                                          int depth, int parity, bool next,
+                                          const ReducerFirst& reducer_first,
+                                          const ReducerNext& reducer_next) {
+  // The output pointer is incremented conditionally depending on whether the
+  // odd or even dimension is being reduced.
+  // The input pointer is always incremented as each input is read once.
   if (depth > 0) {
-    // The output pointer is incremented conditionally depending on whether the
-    // odd or even dimension is being reduced.
-    // The input pointer is always incremented as each input is read once.
     U* future_output = output_data;
     bool update_output = (depth % 2) == parity;
     for (int i = 0; i < input_dims[0]; ++i) {
-      // Recursively call this function once per dimension until the last
-      // dimension is reached.
-      std::tie(input_data, future_output) = ReduceImpl<T, U, Op>(
-          input_data, &input_dims[1], output_data, depth - 1, parity);
+      if (i > 0 && !update_output) {
+        next = true;
+      }
+      std::tie(input_data, future_output) =
+          ReduceImpl(input_data, &input_dims[1], output_data, depth - 1, parity,
+                     next, reducer_first, reducer_next);
       if (update_output) {
         output_data = future_output;
       }
@@ -379,18 +396,26 @@ inline std::pair<const T*, U*> ReduceImpl(const T* input_data,
     if (parity) {
       // Reduce the even dimension. The entire dimension is reduced into one
       // value.
-      U res = *output_data;
-      for (int i = 0; i < input_dims[0]; ++i) {
-        res = Op()(res, *input_data++);
+      U res = next ? reducer_next(*output_data, *input_data++)
+                   : reducer_first(*input_data++);
+      for (int i = 1; i < input_dims[0]; ++i) {
+        res = reducer_next(res, *input_data++);
       }
       *output_data++ = res;
     } else {
       // Reduce the odd dimension. Each input is accumulated into a separate
       // output.
-      for (int i = 0; i < input_dims[0]; ++i) {
-        U res = *output_data;
-        res = Op()(res, *input_data++);
-        *output_data++ = res;
+      if (!next) {
+        for (int i = 0; i < input_dims[0]; ++i) {
+          U res = reducer_first(*input_data++);
+          *output_data++ = res;
+        }
+      } else {
+        for (int i = 0; i < input_dims[0]; ++i) {
+          U res = *output_data;
+          res = reducer_next(res, *input_data++);
+          *output_data++ = res;
+        }
       }
     }
   }
@@ -399,14 +424,18 @@ inline std::pair<const T*, U*> ReduceImpl(const T* input_data,
 
 // A generic reduce method that can be used for reduce_sum, reduce_mean, etc.
 // This method iterates through input data and reduce elements along the
-// dimensions given in axis.
-template <typename In, typename Out, typename Op>
+// dimensions given in axis. ReducerFirst is used the first time each output
+// element is written and ReducerNext is used for all subsequent writes.
+template <typename In, typename Out, typename ReducerFirst,
+          typename ReducerNext>
 inline bool Reduce(const In* input_data, const int* input_dims,
                    const int input_num_dims, const int* axis,
-                   const int num_axis, Out* output_data) {
+                   const int num_axis, Out* output_data,
+                   const ReducerFirst& reducer_first,
+                   const ReducerNext& reducer_next) {
   const int parity = (axis[num_axis - 1] == input_num_dims - 1) ? 1 : 0;
-  ReduceImpl<In, Out, Op>(input_data, input_dims, output_data,
-                          /*depth=*/input_num_dims - 1, parity);
+  ReduceImpl(input_data, input_dims, output_data, input_num_dims - 1, parity,
+             /*next=*/false, reducer_first, reducer_next);
   return true;
 }
 
@@ -434,10 +463,6 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
     }
     num_outputs *= current;
   }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = 0;
-    temp_sum[idx] = 0;
-  }
 
   // Return early when input shape has zero dim. This is done after initializing
   // data for output tensor because there are cases that the input tensor is
@@ -456,9 +481,9 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
     return false;
   }
 
-  if (!Reduce<T, U, CastSumOp<T, U>>(input_data, normalized_dims,
-                                     normalized_num_dims, resolved_axis,
-                                     num_resolved_axis, temp_sum)) {
+  if (!Reduce<T, U, CastSumOp<T, U>, CastSumOp<T, U>>(
+          input_data, normalized_dims, normalized_num_dims, resolved_axis,
+          num_resolved_axis, temp_sum, CastSumOp<T, U>(), CastSumOp<T, U>())) {
     return false;
   }
 
@@ -525,33 +550,34 @@ inline bool ReduceDispatcher(const T* input_data, const int* input_dims,
     default:
       return false;
   }
-  // Reset output data.
-  if (!reference_ops::InitTensorDataForReduce(output_dims, output_num_dims,
-                                              init_value, output_data)) {
-    return false;
-  }
-
   // Return early when input shape has zero dim. This is done after initializing
   // data for output tensor because there are cases that the input tensor is
   // empty but output tensor is not. In that case, output tensor should be
   // filled with Op::kNeutralElement.
   for (int i = 0; i < input_num_dims; ++i) {
-    if (input_dims[i] == 0) return true;
+    if (input_dims[i] == 0) {
+      return reference_ops::InitTensorDataForReduce(
+          output_dims, output_num_dims, init_value, output_data);
+    }
   }
 
   switch (reduce_type) {
     case ReduceType::kProd:
-      return Reduce<T, T, ProdOp<T>>(input_data, input_dims, input_num_dims,
-                                     axis, num_axis_dimensions, output_data);
+      return Reduce<T, T, ProdOp<T>, ProdOp<T>>(
+          input_data, input_dims, input_num_dims, axis, num_axis_dimensions,
+          output_data, ProdOp<T>(), ProdOp<T>());
     case ReduceType::kSum:
-      return Reduce<T, T, SumOp<T>>(input_data, input_dims, input_num_dims,
-                                    axis, num_axis_dimensions, output_data);
+      return Reduce<T, T, SumOp<T>, SumOp<T>>(
+          input_data, input_dims, input_num_dims, axis, num_axis_dimensions,
+          output_data, SumOp<T>(), SumOp<T>());
     case ReduceType::kMin:
-      return Reduce<T, T, MinOp<T>>(input_data, input_dims, input_num_dims,
-                                    axis, num_axis_dimensions, output_data);
+      return Reduce<T, T, MinOp<T>, MinOp<T>>(
+          input_data, input_dims, input_num_dims, axis, num_axis_dimensions,
+          output_data, MinOp<T>(), MinOp<T>());
     case ReduceType::kMax:
-      return Reduce<T, T, MaxOp<T>>(input_data, input_dims, input_num_dims,
-                                    axis, num_axis_dimensions, output_data);
+      return Reduce<T, T, MaxOp<T>, MaxOp<T>>(
+          input_data, input_dims, input_num_dims, axis, num_axis_dimensions,
+          output_data, MaxOp<T>(), MaxOp<T>());
     default:
       return false;
   }
@@ -576,30 +602,94 @@ inline bool ReduceDispatcher<bool>(const bool* input_data,
     default:
       return false;
   }
-
-  // Reset output data.
-  if (!reference_ops::InitTensorDataForReduce(output_dims, output_num_dims,
-                                              init_value, output_data)) {
-    return false;
-  }
-
   // Return early when input shape has zero dim. This is done after initializing
   // data for output tensor because there are cases that the input tensor is
   // empty but output tensor is not. In that case, output tensor should be
   // filled with Op::kNeutralElement.
   for (int i = 0; i < input_num_dims; ++i) {
-    if (input_dims[i] == 0) return true;
+    if (input_dims[i] == 0) {
+      return reference_ops::InitTensorDataForReduce(
+          output_dims, output_num_dims, init_value, output_data);
+    }
   }
   switch (reduce_type) {
     case ReduceType::kAll:
-      return Reduce<bool, bool, AndOp>(input_data, input_dims, input_num_dims,
-                                       axis, num_axis_dimensions, output_data);
+      return Reduce<bool, bool, AndOp, AndOp>(
+          input_data, input_dims, input_num_dims, axis, num_axis_dimensions,
+          output_data, AndOp(), AndOp());
     case ReduceType::kAny:
-      return Reduce<bool, bool, OrOp>(input_data, input_dims, input_num_dims,
-                                      axis, num_axis_dimensions, output_data);
+      return Reduce<bool, bool, OrOp, OrOp>(
+          input_data, input_dims, input_num_dims, axis, num_axis_dimensions,
+          output_data, OrOp(), OrOp());
     default:
       return false;
   }
+}
+
+// Calculate the reduced product by rescaling each multiplication step to
+// avoid an overflow.
+template <typename T>
+struct ReducerFirst {
+  explicit ReducerFirst(int input_zero_point_arg)
+      : input_zero_point(input_zero_point_arg) {}
+  int32_t operator()(T in) const { return in - input_zero_point; }
+  int input_zero_point;
+};
+
+template <typename T>
+struct ReducerNext {
+  ReducerNext(int32_t input_zero_point_arg, int32_t scaling_multiplier_arg,
+              int32_t scaling_shift_arg)
+      : input_zero_point(input_zero_point_arg),
+        scaling_multiplier(scaling_multiplier_arg),
+        scaling_shift(scaling_shift_arg) {}
+  int32_t operator()(int32_t current, T in) const {
+    const int64_t result =
+        static_cast<int64_t>(current) * (in - input_zero_point);
+    return MultiplyByQuantizedMultiplier(result, scaling_multiplier,
+                                         scaling_shift);
+  }
+  int32_t input_zero_point, scaling_multiplier, scaling_shift;
+};
+
+template <typename T>
+inline bool QuantizedReduceProd(
+    const T* input_data, int32_t input_zero_point,
+    const RuntimeShape& input_shape, T* output_data, int32_t output_zero_point,
+    const RuntimeShape& output_shape, const int* axis,
+    const int64_t num_axis_dimensions, int* resolved_axis, int* normalized_dims,
+    int32_t* temp_prod, int32_t scaling_multiplier, int scaling_shift) {
+  const int32_t kMinValue = std::numeric_limits<T>::min();
+  const int32_t kMaxValue = std::numeric_limits<T>::max();
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  int normalized_num_dims = 0;
+  if (!reduce_utils::ResolveAxis(input_shape.DimensionsCount(), axis,
+                                 num_axis_dimensions, resolved_axis,
+                                 &num_resolved_axis, input_shape.DimsData(),
+                                 normalized_dims, &normalized_num_dims)) {
+    return false;
+  }
+
+  if (!Reduce<T, int32_t, ReducerFirst<T>, ReducerNext<T>>(
+          input_data, normalized_dims, normalized_num_dims, resolved_axis,
+          num_resolved_axis, temp_prod, ReducerFirst<T>(input_zero_point),
+          ReducerNext<T>(input_zero_point, scaling_multiplier,
+                         scaling_shift))) {
+    return false;
+  }
+
+  for (int i = 0; i < output_shape.FlatSize(); i++) {
+    int32_t result =
+        MultiplyByQuantizedMultiplier(static_cast<int64_t>(temp_prod[i]),
+                                      scaling_multiplier, scaling_shift) +
+        output_zero_point;
+    result = std::min(std::max(result, kMinValue), kMaxValue);
+    output_data[i] = static_cast<T>(result);
+  }
+
+  return true;
 }
 
 // Computes the generic value (i.e., sum/max/min/prod) of elements across
