@@ -59,6 +59,10 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
     custom<OperandsOrIntegersSizesList>($dynamic_sizes, $static_sizes)
     attr-dict `:` qualified(type($result))
   }];
+  let extraClassDeclaration = [{
+    unsigned getNumDynamicEntriesUpToIdx(unsigned idx);
+    mlir::Value getDynamicSize(unsigned idx);
+  }];
   let hasVerifier = 1;
 }
 
@@ -135,6 +139,26 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
     qualified(type($superset)) `->` qualified(type($result))
   }];
   let hasVerifier = 0;
+}
+
+def GMLST_TransposeTileOp : GMLST_Op<"transpose_tile", [
+    NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
+  let summary = "Transposes a tile.";
+  let description = [{
+    Transposes the argument tile by applying the permutation to the dimensions,
+    offsets and strides of the operand tile.
+  }];
+  let arguments = (ins
+    GMLST_TileType:$superset,
+    I64ElementsAttr:$permutation);
+  let results = (outs GMLST_TileType:$result);
+  let assemblyFormat = [{
+    $superset `,` custom<I64ElementsAttr>($permutation) attr-dict `:`
+    qualified(type($superset)) `to` qualified(type($result))
+  }];
+  let hasVerifier = 1;
 }
 
 #endif // GML_ST_SET_OPS

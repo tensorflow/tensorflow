@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 
+#include <algorithm>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -1254,6 +1256,19 @@ LogicalResult SpaceOp::verify() {
       dynamic_sizes(), ShapedType::isDynamic);
 }
 
+unsigned SpaceOp::getNumDynamicEntriesUpToIdx(unsigned idx) {
+  return std::count_if(static_sizes().begin(), static_sizes().begin() + idx,
+                       [&](const mlir::Attribute size) {
+                         return mlir::ShapedType::isDynamic(
+                             size.cast<mlir::IntegerAttr>().getInt());
+                       });
+}
+
+mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
+  auto numDynamic = getNumDynamicEntriesUpToIdx(idx);
+  return dynamic_sizes()[numDynamic];
+}
+
 //===----------------------------------------------------------------------===//
 // PointOp
 //===----------------------------------------------------------------------===//
@@ -1566,6 +1581,139 @@ LogicalResult CollapseTileOp::inferReturnTypes(
 
   auto resultTy = TileType::get(ctx, shape);
   inferredReturnTypes.push_back(resultTy);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeTileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TransposeTileOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  // Get argument tile type.
+  TransposeTileOp::Adaptor adaptor(operands, attributes, regions);
+  auto argTy = adaptor.superset().getType().dyn_cast<TileType>();
+  if (!argTy) return failure();
+  auto argShape = argTy.getShape();
+
+  // Derive result shape.
+  SmallVector<int64_t> shape = llvm::to_vector(llvm::map_range(
+      adaptor.permutation(),
+      [&](const auto &d) { return argShape[d.getLimitedValue()]; }));
+
+  auto resultTy = TileType::get(ctx, shape);
+  inferredReturnTypes.push_back(resultTy);
+  return success();
+}
+
+Value TransposeTileOp::compose(OpBuilder &builder) {
+  // We can compose with a TileOp operand which has a SpaceOp operand, or
+  // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
+  // strides)) is replaced by tile(transpose(space), transpose(offsets),
+  // transpose(sizes), transpose(strides)). transpose_tile(space) is replaced by
+  // transpose(space).
+  Operation *definingOp = superset().getDefiningOp();
+  auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(definingOp);
+  auto tileOp = llvm::dyn_cast_or_null<TileOp>(definingOp);
+  if (tileOp) {
+    spaceOp =
+        llvm::dyn_cast_or_null<SpaceOp>(tileOp.superset().getDefiningOp());
+  }
+  if (!spaceOp) return {};
+
+  auto loc = getLoc();
+  SmallVector<int64_t> perm =
+      llvm::to_vector(llvm::map_range(permutation(), [](const auto &d) {
+        return static_cast<int64_t>(d.getLimitedValue());
+      }));
+  int64_t rank = perm.size();
+
+  // Create a new space op that has the permutation applied.
+  SmallVector<Value> dynamicDims;
+  SmallVector<Attribute> staticDims;
+  SmallVector<int64_t> shape;
+  auto originalShape = spaceOp.getType().getShape();
+  dynamicDims.reserve(spaceOp.dynamic_sizes().size());
+  staticDims.reserve(rank);
+  shape.reserve(rank);
+  for (int64_t dim : perm) {
+    shape.push_back(originalShape[dim]);
+    staticDims.push_back(spaceOp.static_sizes()[dim]);
+    if (ShapedType::isDynamic(staticDims.back().cast<IntegerAttr>().getInt())) {
+      dynamicDims.push_back(spaceOp.getDynamicSize(dim));
+    }
+  }
+  auto spaceTy = builder.getType<TileType>(shape);
+  Value newSpace = builder.create<SpaceOp>(loc, spaceTy, dynamicDims,
+                                           builder.getArrayAttr(staticDims));
+  if (!tileOp) return newSpace;
+
+  // Otherwise we need to apply the permutation to the 'tileOp' operand.
+  SmallVector<Value> inputTileOffsets, inputTileSizes, inputTileStrides;
+  SmallVector<int64_t> inputStaticOffsets, inputStaticSizes, inputStaticStrides;
+  inputStaticOffsets.reserve(rank);
+  inputStaticSizes.reserve(rank);
+  inputStaticStrides.reserve(rank);
+  inputTileOffsets.reserve(tileOp.offsets().size());
+  inputTileSizes.reserve(tileOp.sizes().size());
+  inputTileStrides.reserve(tileOp.strides().size());
+  for (int64_t dim : perm) {
+    if (tileOp.isDynamicOffset(dim)) {
+      inputTileOffsets.push_back(tileOp.getDynamicOffset(dim));
+      inputStaticOffsets.push_back(ShapedType::kDynamicStrideOrOffset);
+    } else {
+      inputStaticOffsets.push_back(tileOp.getStaticOffset(dim));
+    }
+    if (tileOp.isDynamicSize(dim)) {
+      inputTileSizes.push_back(tileOp.getDynamicSize(dim));
+      inputStaticSizes.push_back(ShapedType::kDynamicSize);
+    } else {
+      inputStaticSizes.push_back(tileOp.getStaticSize(dim));
+    }
+    if (tileOp.isDynamicStride(dim)) {
+      inputTileStrides.push_back(tileOp.getDynamicStride(dim));
+      inputStaticStrides.push_back(ShapedType::kDynamicStrideOrOffset);
+    } else {
+      inputStaticStrides.push_back(tileOp.getStaticStride(dim));
+    }
+  }
+
+  return builder.create<TileOp>(loc, getType(), newSpace, inputTileOffsets,
+                                inputTileSizes, inputTileStrides,
+                                builder.getI64ArrayAttr(inputStaticOffsets),
+                                builder.getI64ArrayAttr(inputStaticSizes),
+                                builder.getI64ArrayAttr(inputStaticStrides));
+}
+
+LogicalResult TransposeTileOp::verify() {
+  TileType type = getType();
+  int64_t rank = type.getShape().size();
+  // 'permutation' should have 'rank' elements.
+  if (permutation().size() != rank) {
+    return emitOpError("expected permutation attribute size = ")
+           << permutation().size() << " to match rank = " << rank;
+  }
+  // Verify that 'permutation' is in fact a permutation.
+  // Store where a certain number occurred.
+  SmallVector<int64_t> position(rank, -1);
+  for (const auto &it : llvm::enumerate(permutation())) {
+    int64_t dim = static_cast<int64_t>(it.value().getLimitedValue());
+    if (dim < 0 || dim >= rank) {
+      return emitOpError("permutation[")
+             << it.index() << "] = " << dim << " is outside of range [0, "
+             << rank - 1 << "]";
+    }
+    if (position[dim] >= 0) {
+      return emitOpError(
+                 "expected permutation attribute to contain no duplicate "
+                 "values, but got ")
+             << dim << " at positions " << position[dim] << " and "
+             << it.index();
+    }
+    position[dim] = it.index();
+  }
   return success();
 }
 

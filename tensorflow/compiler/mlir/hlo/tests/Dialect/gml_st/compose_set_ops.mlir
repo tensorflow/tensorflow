@@ -29,9 +29,9 @@ func.func @tile_of_tile(%arg : tensor<?x?xf32>, %i : index, %j : index,
 // CHECK-SAME:  %[[ARG:.*]]: tensor<4096x2048xf32>
 func.func @tile_of_tile_of_tile_all_constant(%arg : tensor<4096x2048xf32>)
     -> tensor<128x64xf32> {
-  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
-  // CHECK-DAG: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [18, 64] [128, 64] [4, 0] : !gml_st.tile<4096x2048> to !gml_st.tile<128x64>
-  // CHECK-DAG: %[[RES:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]] : tensor<4096x2048xf32>[!gml_st.tile<128x64>]
+  // CHECK: %[[SPACE:.*]] = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
+  // CHECK: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [18, 64] [128, 64] [4, 0] : !gml_st.tile<4096x2048> to !gml_st.tile<128x64>
+  // CHECK: %[[RES:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]] : tensor<4096x2048xf32>[!gml_st.tile<128x64>]
   // CHECK:     return %[[RES]]
   %s = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
   %t = gml_st.tile %s [0, 32] [2048, 256] [1, 2]
@@ -145,9 +145,9 @@ func.func @point_of_tile(%arg : tensor<?x?xf32>, %i : index, %j : index,
 // CHECK-SAME:  %[[ARG:.*]]: tensor<4096x2048xf32>
 func.func @point_of_tile_of_tile_all_constant(%arg : tensor<4096x2048xf32>)
     -> f32 {
-  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
-  // CHECK-DAG: %[[POINT:.*]] = gml_st.point %[[SPACE]] [18, 64] : !gml_st.tile<4096x2048> to !gml_st.point
-  // CHECK-DAG: %[[RES:.*]] = gml_st.materialize %[[ARG]][%[[POINT]]] : tensor<4096x2048xf32>[!gml_st.point]
+  // CHECK: %[[SPACE:.*]] = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
+  // CHECK: %[[POINT:.*]] = gml_st.point %[[SPACE]] [18, 64] : !gml_st.tile<4096x2048> to !gml_st.point
+  // CHECK: %[[RES:.*]] = gml_st.materialize %[[ARG]][%[[POINT]]] : tensor<4096x2048xf32>[!gml_st.point]
   // CHECK:     return %[[RES]]
   %s = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
   %t = gml_st.tile %s [0, 32] [2048, 256] [1, 2]
@@ -184,4 +184,64 @@ func.func @point_chain_w_zeroes_and_ones(%arg : tensor<8192x4096x2048xf32>,
   %result = gml_st.materialize %arg[%point_of_tile]
       : tensor<8192x4096x2048xf32>[!gml_st.point]
   func.return %result : f32
+}
+
+// -----
+
+// CHECK-LABEL: @point_of_transpose_tile_of_tile_all_constant
+// CHECK-SAME:  %[[ARG:.*]]: tensor<2048x4096xf32>
+func.func @point_of_transpose_tile_of_tile_all_constant(%arg : tensor<2048x4096xf32>)
+    -> f32 {
+  // CHECK: %[[SPACE:.*]] = gml_st.space [2048, 4096] : !gml_st.tile<2048x4096>
+  // CHECK: %[[POINT:.*]] = gml_st.point %[[SPACE]] [40, 8] : !gml_st.tile<2048x4096> to !gml_st.point
+  // CHECK: %[[RES:.*]] = gml_st.materialize %[[ARG]][%[[POINT]]] : tensor<2048x4096xf32>[!gml_st.point]
+  // CHECK:     return %[[RES]]
+  %s = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
+  %t = gml_st.tile %s [0, 32] [128, 256] [1, 2]
+      : !gml_st.tile<4096x2048> to !gml_st.tile<128x256>
+  %tt = gml_st.transpose_tile %t, [1, 0]
+      : !gml_st.tile<128x256> to !gml_st.tile<256x128>
+  %ptt = gml_st.point %tt [4, 8] : !gml_st.tile<256x128> to !gml_st.point
+  %res = gml_st.materialize %arg[%ptt]
+      : tensor<2048x4096xf32>[!gml_st.point]
+  func.return %res : f32
+}
+
+// -----
+
+// CHECK-LABEL: @transpose_tile_of_transpose_tile_of_tile
+// CHECK-SAME:  %[[ARG:.*]]: tensor<10x?x5xf32>, %[[SIZE:.*]]: index
+func.func @transpose_tile_of_transpose_tile_of_tile(
+    %arg : tensor<10x?x5xf32>, %size: index) -> tensor<4x?x5xf32> {
+// CHECK: %[[SPACE:.*]] = gml_st.space [10, %[[SIZE]], 5] : !gml_st.tile<10x?x5>
+// CHECK: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [3, 0, 0] [4, %[[SIZE]], 5] [2, %[[SIZE]], 1] : !gml_st.tile<10x?x5> to !gml_st.tile<4x?x5>
+// CHECK: %[[RES:.*]] = gml_st.materialize %arg0[%[[TILE]]] : tensor<10x?x5xf32>[!gml_st.tile<4x?x5>]
+// CHECK: return %[[RES]] : tensor<4x?x5xf32>
+  %s = gml_st.space [%size, 5, 10] : !gml_st.tile<?x5x10>
+  %t = gml_st.tile %s [0, 0, 3] [%size, 5, 4] [%size, 1, 2]
+      : !gml_st.tile<?x5x10> to !gml_st.tile<?x5x4>
+  %tt = gml_st.transpose_tile %t, [1, 0, 2]
+      : !gml_st.tile<?x5x4> to !gml_st.tile<5x?x4>
+  %tt2 = gml_st.transpose_tile %tt, [2, 1, 0]
+      : !gml_st.tile<5x?x4> to !gml_st.tile<4x?x5>
+  %res = gml_st.materialize %arg[%tt2]
+      : tensor<10x?x5xf32>[!gml_st.tile<4x?x5>]
+  func.return %res : tensor<4x?x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @transpose_tile_of_space
+// CHECK-SAME:  %[[ARG:.*]]: tensor<5x10x?xf32>, %[[SIZE:.*]]: index
+func.func @transpose_tile_of_space(
+    %arg : tensor<5x10x?xf32>, %size: index) -> tensor<5x10x?xf32> {
+// CHECK: %[[SPACE:.*]] = gml_st.space [5, 10, %[[SIZE]]] : !gml_st.tile<5x10x?>
+// CHECK: %[[RES:.*]] = gml_st.materialize %arg0[%[[SPACE]]] : tensor<5x10x?xf32>[!gml_st.tile<5x10x?>]
+// CHECK: return %[[RES]] : tensor<5x10x?xf32>
+  %s = gml_st.space [%size, 5, 10] : !gml_st.tile<?x5x10>
+  %tt = gml_st.transpose_tile %s, [1, 2, 0]
+      : !gml_st.tile<?x5x10> to !gml_st.tile<5x10x?>
+  %res = gml_st.materialize %arg[%tt]
+      : tensor<5x10x?xf32>[!gml_st.tile<5x10x?>]
+  func.return %res : tensor<5x10x?xf32>
 }
