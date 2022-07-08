@@ -370,6 +370,14 @@ func.func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: dynamic_update_slice_fold_length_0
+func.func @dynamic_update_slice_fold_length_0(%arg0: tensor<3x4xi64>, %arg1: tensor<3x0xi64>) -> tensor<3x4xi64> {
+  // CHECK: return %arg0
+  %0 = mhlo.constant dense<0> : tensor<i64>
+  %1 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %0, %0) : (tensor<3x4xi64>, tensor<3x0xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  func.return %1 : tensor<3x4xi64>
+}
+
 // CHECK-LABEL: dynamic_update_slice_identity_update
 func.func @dynamic_update_slice_identity_update(%arg0: tensor<3x4xi64>, %arg1: tensor<3x4xi64>) -> tensor<3x4xi64> {
   // CHECK: return %arg1

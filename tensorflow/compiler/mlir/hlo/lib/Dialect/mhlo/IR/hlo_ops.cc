@@ -1803,6 +1803,13 @@ OpFoldResult DynamicUpdateSliceOp::fold(ArrayRef<Attribute> operands) {
   auto operandShape = this->operand().getType().cast<RankedTensorType>();
   auto updateShape = this->update().getType().cast<RankedTensorType>();
 
+  // If any of the dimensions are length-0, the update does nothing.
+  for (auto dim : updateShape.getShape()) {
+    if (dim == 0) {
+      return this->operand();
+    }
+  }
+
   if (operandShape != updateShape || !operandShape.hasStaticShape()) {
     return {};
   }
