@@ -1811,6 +1811,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %cst_2 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
     %cst_3 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %0 = tf_executor.graph {
+      // CHECK: "tf.XlaConv"(%arg0, %arg1, %cst, %cst_0, %cst_1, %cst_2, %cst_3) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_CPU:0", dimension_numbers = "\18\012\01\02@\01P\01Z\01\02b\01\02", precision_config = "\0A\02\01\01"} : (tensor<*xf32>, tensor<*xf32>, tensor<1xi32>, tensor<1x2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<i32>) -> tensor<*xf32>
       %outputs, %control = tf_executor.island wraps "tf.XlaConv"(%arg0, %arg1, %cst, %cst_0, %cst_1, %cst_2, %cst_3) {_XlaHasReferenceVars = false, device = "/job:localhost/replica:0/task:0/device:XLA_CPU:0", dimension_numbers = "\18\012\01\02@\01P\01Z\01\02b\01\02", precision_config = "\0A\02\01\01"} : (tensor<*xf32>, tensor<*xf32>, tensor<1xi32>, tensor<1x2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<i32>) -> tensor<*xf32>
       tf_executor.fetch %outputs : tensor<*xf32>
     }
