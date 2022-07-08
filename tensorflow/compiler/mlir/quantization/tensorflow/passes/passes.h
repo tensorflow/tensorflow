@@ -98,6 +98,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertTFQuantOpsToMHLOPass();
 
+// Applies optimization patterns after quantization.
+std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
+
 }  // namespace quant
 }  // namespace mlir
 

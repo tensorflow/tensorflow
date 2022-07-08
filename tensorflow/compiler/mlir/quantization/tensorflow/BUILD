@@ -66,6 +66,7 @@ td_library(
     srcs = [
         "passes/lift_quantizable_spots_as_functions.td",
         "passes/lift_quantizable_spots_as_functions_drq.td",
+        "passes/optimize.td",
         "passes/prepare_lifting.td",
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
@@ -172,6 +173,20 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "optimize_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/optimize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/optimize.td",
+    deps = [":quant_td_files"],
+)
+
 cc_library(
     name = "tf_quant_ops",
     srcs = [
@@ -216,6 +231,8 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.inc",
         "passes/lift_quantizable_spots_as_functions_drq.cc",
         "passes/lift_quantizable_spots_as_functions_drq.inc",
+        "passes/optimize.cc",
+        "passes/optimize.inc",
         "passes/post_quantize.cc",
         "passes/prepare_lifting.cc",
         "passes/prepare_lifting.inc",
