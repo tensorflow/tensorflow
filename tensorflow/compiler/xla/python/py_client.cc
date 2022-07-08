@@ -577,7 +577,7 @@ StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
 
   host_callback->callback = [callback = std::move(callback)](void** outputs,
                                                              void** inputs) {
-    callback->Call(outputs, inputs, /*status=*/nullptr);
+    callback->PrepareAndCall(outputs, inputs, /*status=*/nullptr);
   };
 
   py::capsule callback_capsule(
