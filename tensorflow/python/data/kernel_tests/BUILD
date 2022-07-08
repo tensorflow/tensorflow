@@ -713,7 +713,6 @@ tf_py_test(
     name = "prefetch_test",
     size = "medium",
     srcs = ["prefetch_test.py"],
-    tags = ["notsan"],  # b/238324240
     deps = [
         ":checkpoint_test_base",
         ":test_base",
