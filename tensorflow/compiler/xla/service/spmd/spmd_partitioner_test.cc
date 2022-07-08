@@ -8929,7 +8929,7 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::DynamicSlice());
+  auto operand = AllOf(op::Shape("s32[1,4,2,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,1,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[1,4,2,2]"), op::Gather(operand, indices));
   EXPECT_THAT(root,
@@ -9144,7 +9144,7 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   const auto root = module->entry_computation()->root_instruction();
-  auto operand = AllOf(op::Shape("s32[2,4,1,2]"), op::DynamicSlice());
+  auto operand = AllOf(op::Shape("s32[2,4,1,2]"), op::Reshape());
   auto indices = AllOf(op::Shape("s32[2,2,4]"), op::Subtract());
   auto gather = AllOf(op::Shape("s32[2,4,1,2]"), op::Gather(operand, indices));
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(
@@ -10452,6 +10452,115 @@ ENTRY entry {
 
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Gather(), op::Shape("f32[16,16,6,128,128]")));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardFromPartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[4,15,4,16] parameter(0)
+  %p.copy = f32[4,15,4,16] copy(p),
+    sharding={devices=[1,1,1,2,4]0,2,4,6,1,3,5,7 last_tile_dim_replicate}
+  %a = f32[4,15,4,16] add(p.copy, p.copy),
+    sharding={devices=[1,1,1,2,4]0,2,4,6,1,3,5,7 last_tile_dim_replicate}
+  ROOT %c2 = f32[4,15,4,16] copy(a), sharding={devices=[1,8,1,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_))))));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardToPartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[4,15,4,16] parameter(0)
+  %p.copy = f32[4,15,4,16] copy(p),
+    sharding={devices=[1,4,2,1]0,1,2,3,4,5,6,7}
+  %a = f32[4,15,4,16] add(p.copy, p.copy),
+    sharding={devices=[1,4,2,1]0,1,2,3,4,5,6,7}
+  ROOT %c2 = f32[4,15,4,16] copy(a), sharding={devices=[1,1,1,2,4]0,2,4,6,1,3,5,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Reshape(op::Transpose(op::AllToAll(_)))));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardMoveMergeDimensionRight) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[4,15,4,15] parameter(0)
+  %p.copy = f32[4,15,4,15] copy(p),
+    sharding={devices=[1,4,1,2]0,1,2,3,4,5,6,7}
+  %a = f32[4,15,4,15] add(p.copy, p.copy),
+    sharding={devices=[1,4,1,2]0,1,2,3,4,5,6,7}
+  ROOT %c2 = f32[4,15,4,15] copy(a), sharding={devices=[1,1,1,8]0,2,4,6,1,3,5,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Reshape(
+                  op::Slice(op::Reshape(op::Transpose(op::AllToAll(_)))))));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardMoveMergeDimensionLeft) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[2,15,1,2] parameter(0)
+  %p.copy = f32[2,15,1,2] copy(p),
+    sharding={devices=[1,4,1,2]0,1,2,3,4,5,6,7}
+  %a = f32[2,15,1,2] add(p.copy, p.copy),
+    sharding={devices=[1,4,1,2]0,1,2,3,4,5,6,7}
+  ROOT %c2 = f32[2,15,1,2] copy(a), sharding={devices=[1,8,1,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_))))));
+}
+
+TEST_F(SpmdPartitioningTest, ComplexReshardMoveMergeDimensionLeftReorder) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[4,15,4,16] parameter(0)
+  %p.copy = f32[4,15,4,16] copy(p),
+    sharding={devices=[1,4,1,2]0,1,2,3,4,5,6,7}
+  %a = f32[4,15,4,16] add(p.copy, p.copy),
+    sharding={devices=[1,4,1,2]0,1,2,3,4,5,6,7}
+  ROOT %c2 = f32[4,15,4,16] copy(a), sharding={devices=[1,8,1,1]0,2,4,6,1,3,5,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::CollectivePermute(
+                  op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_)))))));
 }
 
 }  // namespace
