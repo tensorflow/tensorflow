@@ -52,23 +52,18 @@ namespace {
 constexpr int64_t i32BitLimit = 4294967296;
 using shape::ShapeOfOp;
 
-bool IsTFOperation(Operation *op) {
-  return op != nullptr &&
-         op->getDialect() ==
-             op->getContext()->getLoadedDialect<TF::TensorFlowDialect>();
+bool IsSingleResultTFOperation(Operation *op) {
+  assert(op != nullptr && "expect op");
+  if (op->getDialect() !=
+      op->getContext()->getLoadedDialect<TF::TensorFlowDialect>())
+    return false;
+  if (op->getNumResults() != 1) return false;
+  return true;
 }
 
 bool IsUnaryTFOperation(Operation *op) {
-  return IsTFOperation(op) && op->getNumOperands() == 1;
+  return IsSingleResultTFOperation(op) && op->getNumOperands() == 1;
 }
-
-struct ModuleParameters {
-  llvm::ArrayRef<int64_t> tile_sizes;
-  llvm::ArrayRef<int64_t> unroll_factors;
-  int64_t max_supported_rank;
-  bool index_64bit;
-  bool cpu_codegen;
-};
 
 struct TFToJITInvocationsPattern : public RewritePattern {
   explicit TFToJITInvocationsPattern(MLIRContext *ctx)
@@ -76,80 +71,111 @@ struct TFToJITInvocationsPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // Apply to all TF ops except those that are already in a JIT-compiled
-    // region.
-    if (!IsTFOperation(op) || op->getParentOfType<tf_framework::JITCompileOp>())
+    // Apply to all single result TF ops except those that are already in a
+    // JIT-compiled region.
+    if (!IsSingleResultTFOperation(op) ||
+        op->getParentOfType<tf_framework::JITCompileOp>())
       return failure();
 
-    // Find last TF op.
-    while (IsTFOperation(op->getNextNode())) op = op->getNextNode();
+    Location loc = op->getLoc();
+    Value op_result = op->getResults().front();
 
-    // Find JIT compile region operands and results.
-    SmallVector<Operation *, 16> cluster;
-    llvm::SmallPtrSet<Value, 16> operand_set, result_set;
-    Operation *it = op;
-    while (IsTFOperation(it)) {
-      // Find results that escape the JIT compile region.
-      for (auto &use : it->getUses()) {
-        if (!llvm::is_contained(cluster, use.getOwner()))
-          result_set.insert(use.get());
-      }
+    // Create the JIT compile op.
+    auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
+        loc, rewriter.getType<tf_framework::JITCallableType>(),
+        /*ctx=*/llvm::None);
 
-      // Update JIT region operands and results.
-      for (Value v : it->getResults()) operand_set.erase(v);
-      for (Value v : it->getOperands()) operand_set.insert(v);
+    // Move the TF operation into the body.
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      llvm::SmallVector<Location> locs(op->getNumOperands(), loc);
+      Block *block = rewriter.createBlock(&jit_compile_op.body(), {},
+                                          op->getOperandTypes(), locs);
 
-      cluster.push_back(it);
-      it = it->getPrevNode();
+      // Map operands.
+      BlockAndValueMapping bvm;
+      for (auto it : llvm::zip(op->getOperands(), block->getArguments()))
+        bvm.map(std::get<0>(it), std::get<1>(it));
+
+      rewriter.setInsertionPointToStart(block);
+      rewriter.clone(*op, bvm);
+      rewriter.create<tf_framework::JITCompileYieldOp>(loc,
+                                                       bvm.lookup(op_result));
     }
 
-    // Introduce order to the operands and results.
-    auto operands = llvm::to_vector<16>(operand_set);
-    auto results = llvm::to_vector<16>(result_set);
-    auto operand_types = llvm::to_vector<16>(
-        llvm::map_range(operands, [](Value v) { return v.getType(); }));
+    // Create JIT execute op.
+    rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
+        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.result(),
+        op->getOperands());
+    return success();
+  }
+};
+
+struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
+  explicit TFToI64JITInvocationForLargeTensorsPattern(MLIRContext *ctx)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    if (!IsUnaryTFOperation(op) ||
+        !llvm::isa<func::FuncOp>(op->getParentOp())) {
+      return failure();
+    }
+
+    auto results = llvm::to_vector<16>(op->getResults());
+    auto operand_types = llvm::to_vector<16>(llvm::map_range(
+        op->getOperands(), [](Value v) { return v.getType(); }));
     auto result_types = llvm::to_vector<16>(
         llvm::map_range(results, [](Value v) { return v.getType(); }));
 
     // Create the JIT compile op.
     auto loc = op->getLoc();
-    auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
-        loc, rewriter.getType<tf_framework::JITCallableType>(), llvm::None);
+    Value shape_size_limit =
+        rewriter.create<arith::ConstantIndexOp>(loc, i32BitLimit);
+    auto arg = op->getOperands().front();
+    auto shape = rewriter.create<shape::ShapeOfOp>(loc, arg);
+    auto num_elems = rewriter.create<shape::NumElementsOp>(loc, shape);
+    Value coniditon_check_main = rewriter.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::sgt, num_elems, shape_size_limit);
 
-    // Move the TF operations into the new op's body.
-    BlockAndValueMapping bvm;
-    {
-      OpBuilder::InsertionGuard guard(rewriter);
-      Block *block =
-          rewriter.createBlock(&jit_compile_op.body(), {}, operand_types,
-                               SmallVector<Location>(operands.size(), loc));
-      for (auto it : llvm::zip(operands, block->getArguments()))
-        bvm.map(std::get<0>(it), std::get<1>(it));
-      rewriter.setInsertionPointToStart(block);
-      for (Operation *it : llvm::reverse(cluster)) rewriter.clone(*it, bvm);
-      auto mapped_results = llvm::to_vector<16>(
-          llvm::map_range(results, [&](Value v) { return bvm.lookup(v); }));
-      rewriter.create<tf_framework::JITCompileYieldOp>(loc, TypeRange{},
-                                                       mapped_results);
-    }
+    Value conditional_path =
+        rewriter
+            .create<scf::IfOp>(
+                loc, op->getResultTypes(), coniditon_check_main,
+                [&](OpBuilder &b, Location l) {
+                  auto jit_compile_op =
+                      rewriter.create<tf_framework::JITCompileOp>(
+                          loc,
+                          rewriter.getType<tf_framework::JITCallableType>(),
+                          llvm::None);
+                  BlockAndValueMapping bvm;
+                  {
+                    OpBuilder::InsertionGuard guard(rewriter);
+                    Block *block = rewriter.createBlock(
+                        &jit_compile_op.body(), {}, operand_types,
+                        SmallVector<Location>(operand_types.size(), loc));
+                    for (auto it :
+                         llvm::zip(op->getOperands(), block->getArguments()))
+                      bvm.map(std::get<0>(it), std::get<1>(it));
+                    rewriter.setInsertionPointToStart(block);
+                    rewriter.clone(*op, bvm);
+                    auto new_op = rewriter.clone(*op, bvm);
+                    rewriter.create<tf_framework::JITCompileYieldOp>(
+                        loc, TypeRange{}, new_op->getResults());
+                  }
+                  auto jit_execute_op =
+                      rewriter.create<tf_framework::JITExecuteOp>(
+                          loc, result_types, Value(), jit_compile_op.result(),
+                          op->getOperands());
+                  b.create<scf::YieldOp>(l, jit_execute_op.result());
+                },
+                [&](OpBuilder &b, Location l) {
+                  auto new_op = rewriter.clone(*op);
+                  b.create<scf::YieldOp>(l, new_op->getResult(0));
+                })
+            .getResult(0);
 
-    // Create JIT execute op.
-    auto jit_execute_op = rewriter.create<tf_framework::JITExecuteOp>(
-        loc, result_types, Value(), jit_compile_op.result(), operands);
-
-    // Replace old TF ops with the new results.
-    for (auto it : llvm::zip(results, jit_execute_op.results()))
-      bvm.map(std::get<0>(it), std::get<1>(it));
-    for (Operation *it : cluster) {
-      if (it->getUses().empty()) {
-        rewriter.eraseOp(it);
-        continue;
-      }
-      auto replacements = llvm::to_vector<16>(llvm::map_range(
-          it->getResults(), [&](Value v) { return bvm.lookup(v); }));
-      rewriter.replaceOp(it, replacements);
-    }
-
+    rewriter.replaceOp(op, conditional_path);
     return success();
   }
 };
@@ -259,74 +285,6 @@ struct TFToJITInvocationPass
   }
 };
 
-struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
-  explicit TFToI64JITInvocationForLargeTensorsPattern(MLIRContext *ctx)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx) {}
-
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    if (!IsUnaryTFOperation(op) ||
-        !llvm::isa<func::FuncOp>(op->getParentOp())) {
-      return failure();
-    }
-
-    auto results = llvm::to_vector<16>(op->getResults());
-    auto operand_types = llvm::to_vector<16>(llvm::map_range(
-        op->getOperands(), [](Value v) { return v.getType(); }));
-    auto result_types = llvm::to_vector<16>(
-        llvm::map_range(results, [](Value v) { return v.getType(); }));
-
-    // Create the JIT compile op.
-    auto loc = op->getLoc();
-    Value shape_size_limit =
-        rewriter.create<arith::ConstantIndexOp>(loc, i32BitLimit);
-    auto arg = op->getOperands().front();
-    auto shape = rewriter.create<shape::ShapeOfOp>(loc, arg);
-    auto num_elems = rewriter.create<shape::NumElementsOp>(loc, shape);
-    Value coniditon_check_main = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::sgt, num_elems, shape_size_limit);
-
-    Value conditional_path =
-        rewriter
-            .create<scf::IfOp>(
-                loc, op->getResultTypes(), coniditon_check_main,
-                [&](OpBuilder &b, Location l) {
-                  auto jit_compile_op =
-                      rewriter.create<tf_framework::JITCompileOp>(
-                          loc,
-                          rewriter.getType<tf_framework::JITCallableType>(),
-                          llvm::None);
-                  BlockAndValueMapping bvm;
-                  {
-                    OpBuilder::InsertionGuard guard(rewriter);
-                    Block *block = rewriter.createBlock(
-                        &jit_compile_op.body(), {}, operand_types,
-                        SmallVector<Location>(operand_types.size(), loc));
-                    for (auto it :
-                         llvm::zip(op->getOperands(), block->getArguments()))
-                      bvm.map(std::get<0>(it), std::get<1>(it));
-                    rewriter.setInsertionPointToStart(block);
-                    rewriter.clone(*op, bvm);
-                    auto new_op = rewriter.clone(*op, bvm);
-                    rewriter.create<tf_framework::JITCompileYieldOp>(
-                        loc, TypeRange{}, new_op->getResults());
-                  }
-                  auto jit_execute_op =
-                      rewriter.create<tf_framework::JITExecuteOp>(
-                          loc, result_types, Value(), jit_compile_op.result(),
-                          op->getOperands());
-                  b.create<scf::YieldOp>(l, jit_execute_op.results());
-                },
-                [&](OpBuilder &b, Location l) {
-                  auto new_op = rewriter.clone(*op);
-                  b.create<scf::YieldOp>(l, new_op->getResult(0));
-                })
-            .getResult(0);
-
-    rewriter.replaceOp(op, conditional_path);
-    return success();
-  }
-};
 }  // namespace
 
 void PopulateTFToJITInvocationPatterns(
