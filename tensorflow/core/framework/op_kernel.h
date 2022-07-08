@@ -1530,6 +1530,8 @@ class OpKernelRegistrar {
                     std::unique_ptr<OpKernelFactory> factory);
 };
 
+void UnregisterDeviceKernels(StringPiece device_type);
+
 }  // namespace kernel_factory
 
 // -----------------------------------------------------------------------------

@@ -103,6 +103,15 @@ void DeviceFactory::Register(const string& device_type,
   } else {
     if (iter->second.priority < priority) {
       iter->second = {std::move(factory), priority, is_pluggable_device};
+
+      if (is_pluggable_device) {
+        // Pluggable devices are registered after all static kernels have been
+        // initialized, and they are allowed to override existing device types
+        // (e.g. "GPU"). To avoid duplicate kernel registrations issues, we
+        // remove all kernels that have already been registered on the lower
+        // priority device.
+        kernel_factory::UnregisterDeviceKernels(device_type);
+      }
     } else if (iter->second.priority == priority) {
       LOG(FATAL) << "Duplicate registration of device factory for type "
                  << device_type << " with the same priority " << priority;

@@ -1296,6 +1296,23 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
   return (*create_func_)(context);
 }
 
+void UnregisterDeviceKernels(StringPiece device_type) {
+  auto global_registry =
+      reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+  mutex_lock l(global_registry->mu);
+
+  auto start = global_registry->registry.begin();
+  auto end = global_registry->registry.end();
+
+  for (auto iter = start; iter != end;) {
+    if (iter->second.def.device_type() == device_type) {
+      iter = global_registry->registry.erase(iter);
+    } else {
+      ++iter;
+    }
+  }
+}
+
 }  // namespace kernel_factory
 
 namespace {
