@@ -398,7 +398,10 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
     call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
 
     // Copy backend specific attributes.
-    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    auto algorithm_attr = op.getAlgorithm()
+                              ? op.getAlgorithmAttr()
+                              : b.getI64IntegerAttr(se::blas::kDefaultGemmAlgo);
+    call->setAttr(b.getStringAttr("algorithm"), algorithm_attr);
     call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
     call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());

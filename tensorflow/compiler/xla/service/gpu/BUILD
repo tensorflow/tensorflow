@@ -2972,6 +2972,7 @@ test_suite(
         "//tensorflow/compiler/xla/tests:deconstruct_tuple_test_gpu",
         "//tensorflow/compiler/xla/tests:deep_graph_test_gpu",
         "//tensorflow/compiler/xla/tests:dot_operation_single_threaded_runtime_test_gpu",
+        "//tensorflow/compiler/xla/tests:dot_operation_test_autotune_disabled_gpu",
         "//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
         "//tensorflow/compiler/xla/tests:dynamic_ops_test_gpu",
         "//tensorflow/compiler/xla/tests:execution_profile_test_gpu",
