@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -74,6 +75,43 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled.')
 
+  def _VerifyValues(self, model_fn, use_low_precision, fused_op, epilog_ops):
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    metadata = config_pb2.RunMetadata()
+    # Compute reference value.
+    config = _get_config(remapping_on=False)
+    with session.Session(config=config) as sess:
+      sess.run(variables.global_variables_initializer())
+      output_ref = sess.run(
+          model_fn, options=run_options, run_metadata=metadata)
+    # Compute output with fusion.
+    config = _get_config(remapping_on=True)
+    with session.Session(config=config) as sess:
+      sess.run(variables.global_variables_initializer())
+      output_val = sess.run(
+          model_fn, options=run_options, run_metadata=metadata)
+      graph = metadata.partition_graphs[0]
+
+    # Graph should contain fused op.
+    found_fused_op = False
+    for node in graph.node:
+      if node.op in fused_op:
+        fused_ops = node.attr['fused_ops'].list.s
+        ops_matched = len(fused_ops) >= 1 and len(fused_ops) == len(epilog_ops)
+        for op_a, op_b in zip(fused_ops, epilog_ops):
+          if op_a != op_b:
+            ops_matched = False
+            break
+        found_fused_op = ops_matched
+        break
+    self.assertTrue(found_fused_op)
+
+    # Computed output value should be close to reference value.
+    tol = 1e-2 if use_low_precision else 1e-5
+    self.assertAllClose(output_ref, output_val, atol=tol, rtol=tol)
+
+    return graph
+
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
@@ -81,8 +119,6 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self._maybe_skip(mode)
     is_bf16_supported = _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU()
-    run_options = config_pb2.RunOptions(output_partition_graphs=True)
-    metadata = config_pb2.RunMetadata()
 
     m, n, k = (3, 3, 4)  # Matrix dimensions
     for precision in ('float32', 'bfloat16'):
@@ -109,33 +145,11 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
           z = nn.bias_add(y, b)
           out = nn.gelu(z, approximate=approximate)
 
-        # Compute reference value.
-        config = _get_config(remapping_on=False)
-        with session.Session(config=config) as sess:
-          sess.run(variables.global_variables_initializer())
-          output_val_ref = sess.run(
-              out, options=run_options, run_metadata=metadata)
-        # Compute output with fusion.
-        config = _get_config(remapping_on=True)
-        with session.Session(config=config) as sess:
-          sess.run(variables.global_variables_initializer())
-          output_val = sess.run(out, options=run_options, run_metadata=metadata)
-          graph = metadata.partition_graphs[0]
-
-        # Graph should contain fused op.
-        found_fused_op = False
         gelu_type = b'GeluApproximate' if approximate else b'GeluExact'
-        for node in graph.node:
-          if node.op in ('_MklNativeFusedMatMul', '_MklFusedMatMul'):
-            fused_ops = node.attr['fused_ops'].list.s
-            found_fused_op = len(fused_ops) == 2 and \
-                fused_ops[0] == b'BiasAdd' and fused_ops[1] == gelu_type
-            break
-        self.assertTrue(found_fused_op)
-
-        # Computed output value should be close to reference value.
-        tol = 1e-5 if precision == 'float32' else 1e-2
-        self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+        epilog_ops = [b'BiasAdd', gelu_type]
+        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul']
+        graph = self._VerifyValues(out, precision == 'bfloat16', fused_op,
+                                   epilog_ops)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
@@ -143,43 +157,38 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
       self.skipTest('No GPU available')
-    run_options = config_pb2.RunOptions(output_partition_graphs=True)
-    metadata = config_pb2.RunMetadata()
 
-    n, h, w, c = (5, 3, 3, 4)
+    N, H, W, C = (5, 3, 3, 4)
 
-    ops.reset_default_graph()
-    x = _input([n, c, h, w])
-    w = _weight([2, 2, c, c])
-    b = _bias([c])
-    y = nn_ops.conv2d(x, w, strides=(1, 1), padding='SAME', data_format='NCHW')
-    z = nn.bias_add(y, b, data_format='NC..')
-    out = nn.relu(z)
+    for precision in ('float16', 'float32'):
+      ops.reset_default_graph()
+      x_shape = [N, C, H, W]
+      x_format = 'NCHW'
+      b_format = 'NC..'
+      use_fp16 = precision == 'float16'
+      if use_fp16:
+        x_shape = [N, H, W, C]
+        x_format = 'NHWC'
+        b_format = 'N..C'
 
-    # Compute reference value.
-    config = _get_config(remapping_on=False)
-    with session.Session(config=config) as sess:
-      sess.run(variables.global_variables_initializer())
-      output_val_ref = sess.run(out, options=run_options, run_metadata=metadata)
-    # Compute output with fusion.
-    config = _get_config(remapping_on=True)
-    with session.Session(config=config) as sess:
-      sess.run(variables.global_variables_initializer())
-      output_val = sess.run(out, options=run_options, run_metadata=metadata)
-      graph = metadata.partition_graphs[0]
+      x = _input(x_shape)
+      w = _weight([2, 2, C, C])
+      b = _bias([C])
 
-    # Graph should contain fused op.
-    found_fused_op = False
-    for node in graph.node:
-      if node.op == '_FusedConv2D':
-        found_fused_op = True
-        break
-    self.assertTrue(found_fused_op)
+      if use_fp16:
+        x = math_ops.cast(x, dtypes.float16)
+        w = math_ops.cast(w, dtypes.float16)
+        b = math_ops.cast(b, dtypes.float16)
 
-    # Computed output value should be close to reference value.
-    tol = 1e-5
-    self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+      y = nn_ops.conv2d(
+          x, w, strides=(1, 1), padding='SAME', data_format=x_format)
+      z = nn.bias_add(y, b, data_format=b_format)
+      out = nn.relu(z)
+      out = array_ops.identity(out)
 
+      epilog_ops = [b'BiasAdd', b'Relu']
+      fused_op = ['_FusedConv2D']
+      graph = self._VerifyValues(out, use_fp16, fused_op, epilog_ops)
 
 if __name__ == '__main__':
   test.main()
