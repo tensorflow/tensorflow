@@ -326,8 +326,8 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
 // -----
 
 func.func @gather(%arg: tensor<100xf32>,
-                                    %indices: tensor<42x1xi64>,
-                                    %dst: tensor<42xf32>) -> tensor<42xf32> {
+                  %indices: tensor<42x1xi64>,
+                  %dst: tensor<42xf32>) -> tensor<42xf32> {
   %gather = gml_st.gather
       ins(%arg: tensor<100xf32>, %indices: tensor<42x1xi64>)
       outs(%dst: tensor<42xf32>)

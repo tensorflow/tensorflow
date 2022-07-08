@@ -52,7 +52,7 @@ def GMLST_GatherOp : GMLST_Op<"gather", [
     - slice_sizes is [1,1,...]
     - offset_dims is []
     - collapsed_slice_dims is range(operand.shape.rank)
-    - start_index_map is range(slice_sizes.shape.rank)
+    - start_index_map is range(slice_sizes.shape[index_vector_dim])
   }];
   let arguments = (ins
     AnyTensor:$operand,

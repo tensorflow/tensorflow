@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
@@ -63,6 +64,62 @@ struct DynamicBroadcastInDimOpPattern
   }
 };
 
+// Rewrites simple gather patterns (as checked below).
+struct GatherPattern : public OpRewritePattern<mhlo::GatherOp> {
+  using OpRewritePattern<mhlo::GatherOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::GatherOp op,
+                                PatternRewriter& rewriter) const override {
+    auto startIndicesType =
+        op.start_indices().getType().dyn_cast<RankedTensorType>();
+    auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+
+    if (!startIndicesType || !operandType) return failure();
+
+    // index_vector_dim must be the last dimension of start_indices.
+    int indexVectorDim = op.dimension_numbers().getIndexVectorDim();
+    if (startIndicesType.getRank() - 1 != indexVectorDim) return failure();
+
+    // All slice_sizes must be 1.
+    if (!llvm::all_of(op.slice_sizes(), [](auto size) { return size == 1; }))
+      return failure();
+
+    // offset_dims must be []
+    if (!op.dimension_numbers().getOffsetDims().empty()) return failure();
+
+    // collapsed_slice_dims[] must be range(operand.rank)
+    auto collapsedSliceDims = op.dimension_numbers().getCollapsedSliceDims();
+    if (!isIotaArray(collapsedSliceDims, operandType.getRank()))
+      return failure();
+
+    // start_index_map[] must be range(start_indices.shape[index_vector_dim])
+    auto startIndexMap = op.dimension_numbers().getStartIndexMap();
+    if (!isIotaArray(startIndexMap,
+                     startIndicesType.getShape()[indexVectorDim]))
+      return failure();
+
+    // The shape of the result must be statically known.
+    if (op.getType().getNumDynamicDims() > 0) return failure();
+
+    auto loc = op.getLoc();
+    auto initTensor = rewriter.create<linalg::InitTensorOp>(
+        loc, mlir::ValueRange{}, op.getType().getShape(),
+        op.getType().getElementType());
+    rewriter.replaceOpWithNewOp<gml_st::GatherOp>(
+        op, op.getType(), op.operand(), op.start_indices(), initTensor);
+    return success();
+  }
+
+ private:
+  static bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize) {
+    if (array.size() != expectedSize) return false;
+    for (int i = 0, e = array.size(); i < e; ++i) {
+      if (i != array[i]) return false;
+    }
+    return true;
+  }
+};
+
 class LegalizeMHLOToGMLPass
     : public LegalizeMHLOToGMLPassBase<LegalizeMHLOToGMLPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
@@ -74,7 +131,7 @@ class LegalizeMHLOToGMLPass
     RewritePatternSet patterns(ctx);
 
     // List of patterns.
-    patterns.insert<DynamicBroadcastInDimOpPattern>(ctx);
+    patterns.insert<DynamicBroadcastInDimOpPattern, GatherPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
