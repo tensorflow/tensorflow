@@ -1399,8 +1399,8 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
                               batch_group_count_attr, paddings_attr};
-    rewriter.replaceOpWithNewOp<ConvOp>(op, op.getType(), operands,
-                                        llvm::makeArrayRef(attrs));
+    rewriter.replaceOpWithNewOp<ConvolutionOp>(op, op.getType(), operands,
+                                               llvm::makeArrayRef(attrs));
     return success();
   }
 };
@@ -5041,7 +5041,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
 
     // activation gradients
     //   = gradients (with padding and dilation) <conv> mirrored_weights
-    Value result = rewriter.create<ConvOp>(
+    Value result = rewriter.create<ConvolutionOp>(
         op.getLoc(), op.getType(), op.out_backprop(), filter,
         /*window_strides=*/
         GetI64ElementsAttrForValue(/*size=*/num_spatial_dims, /*val=*/1,
@@ -5247,7 +5247,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
     const int batch_dim =
         tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
 
-    Value result = rewriter.create<ConvOp>(
+    Value result = rewriter.create<ConvolutionOp>(
         op.getLoc(), op.getType(), op.input(), op.out_backprop(),
         /*window_strides=*/GetI64ElementsAttr(window_strides, &rewriter),
         /*padding=*/paddings_attr, /*lhs_dilation=*/

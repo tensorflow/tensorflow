@@ -1274,7 +1274,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       return func_builder
-          ->create<mlir::mhlo::ConvOp>(loc, result_type, operands, attributes)
+          ->create<mlir::mhlo::ConvolutionOp>(loc, result_type, operands,
+                                              attributes)
           .getOperation();
     }
 

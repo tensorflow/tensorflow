@@ -1031,7 +1031,7 @@ LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(mlir::mhlo::ConvolutionOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();

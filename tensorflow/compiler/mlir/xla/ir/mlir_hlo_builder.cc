@@ -108,7 +108,7 @@ StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
   mlir::ArrayAttr config_attr;
   if (precision_config)
     config_attr = ConvertPrecisionConfig(precision_config, &builder_);
-  auto op = builder_.create<mlir::mhlo::ConvOp>(
+  auto op = builder_.create<mlir::mhlo::ConvolutionOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
       GetI64ElementsAttr(window_strides, &builder_),
       ConvertPadding(padding, &builder_),

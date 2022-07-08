@@ -160,7 +160,7 @@ PermutationAndShape GetInversePermutationAndShape(
 // Common functionality for ConvertConvOp classes.
 template <int SupportedSpatialDims>
 struct ConvertNdConvOp {
-  bool IsSupportedConvOp(mhlo::ConvOp conv_op) const {
+  bool IsSupportedConvOp(mhlo::ConvolutionOp conv_op) const {
     if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
         !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
         !conv_op.getType().cast<ShapedType>().hasStaticShape())
@@ -192,13 +192,13 @@ struct ConvertNdConvOp {
 
 // Convert a 1-D convolution into a 2-D convolution (which TF supports) so that
 // it can be rewritten by the pattern `Convert2DConvOp`.
-class Convert1DConvOp : public OpConversionPattern<mhlo::ConvOp>,
+class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
                         ConvertNdConvOp<1> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     //
     // Check that input is a supported 1d convolution.
@@ -360,7 +360,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvOp>,
                                          rewriter)
             .shape;
 
-    auto conv2d_op = rewriter.create<mhlo::ConvOp>(
+    auto conv2d_op = rewriter.create<mhlo::ConvolutionOp>(
         conv_op.getLoc(), transposed_output_2d_shape,
         transposed_image_2d_op.getResult(), transposed_kernel_2d_op.getResult(),
         window_strides_2d, padding_2d, lhs_dilation_2d, rhs_dilation_2d,
@@ -389,13 +389,13 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvOp>,
   }
 };
 
-class Convert2DConvOp : public OpConversionPattern<mhlo::ConvOp>,
+class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
                         ConvertNdConvOp<2> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!IsSupportedConvOp(conv_op)) {
       return failure();
@@ -469,7 +469,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvOp>,
   };
 
  private:
-  bool IsSamePadding(mhlo::ConvOp conv_op, int num_spatial_dims,
+  bool IsSamePadding(mhlo::ConvolutionOp conv_op, int num_spatial_dims,
                      ArrayRef<int64_t> strides, ArrayRef<int64_t> dilation,
                      ArrayRef<int64_t> padding_array) const {
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
@@ -602,7 +602,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvOp>,
                                     start_attr, size_attr);
   }
 
-  void CreateConvOp(mhlo::ConvOp conv_op, ArrayRef<int64_t> strides,
+  void CreateConvOp(mhlo::ConvolutionOp conv_op, ArrayRef<int64_t> strides,
                     StringRef padding, ArrayRef<int64_t> explicit_padding,
                     ArrayRef<int64_t> dilation, bool is_depthwise_conv,
                     int input_channels, int num_spatial_dims,
@@ -698,12 +698,13 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvOp>,
   }
 };
 
-class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
+class ConvertNonTrivialConvOp
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp conv_op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (IsSupportedConvOp(conv_op, rewriter).failed()) {
       return rewriter.notifyMatchFailure(
@@ -788,7 +789,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
   };
 
  private:
-  bool IsSamePadding(mhlo::ConvOp conv_op, int num_spatial_dims,
+  bool IsSamePadding(mhlo::ConvolutionOp conv_op, int num_spatial_dims,
                      ArrayRef<int64_t> strides) const {
     for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
       int dim = i + 1;
@@ -804,7 +805,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     return true;
   }
 
-  LogicalResult IsSupportedConvOp(mhlo::ConvOp conv_op,
+  LogicalResult IsSupportedConvOp(mhlo::ConvolutionOp conv_op,
                                   ConversionPatternRewriter &rewriter) const {
     if (!conv_op.lhs().getType().cast<ShapedType>().hasStaticShape() ||
         !conv_op.rhs().getType().cast<ShapedType>().hasStaticShape() ||
@@ -888,7 +889,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     return success();
   }
 
-  void CreateResizeBilinearOp(mhlo::ConvOp conv_op,
+  void CreateResizeBilinearOp(mhlo::ConvolutionOp conv_op,
                               llvm::ArrayRef<int32_t> output_sizes,
                               bool align_corners,
                               ConversionPatternRewriter &rewriter) const {
@@ -908,7 +909,7 @@ class ConvertNonTrivialConvOp : public OpConversionPattern<mhlo::ConvOp> {
     rewriter.replaceOp(conv_op, {output});
   }
 
-  LogicalResult MatchResizeOp(mhlo::ConvOp conv_op, bool &align_corners,
+  LogicalResult MatchResizeOp(mhlo::ConvolutionOp conv_op, bool &align_corners,
                               llvm::SmallVector<int, 2> &output_sizes,
                               ConversionPatternRewriter &rewriter) const {
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();

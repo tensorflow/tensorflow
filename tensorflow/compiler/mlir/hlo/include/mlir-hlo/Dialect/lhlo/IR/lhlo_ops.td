@@ -851,7 +851,7 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []> {
    );
 }
 
-def LHLO_ConvOp : LHLO_Op<"convolution", []> {
+def LHLO_ConvolutionOp : LHLO_Op<"convolution", []> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.

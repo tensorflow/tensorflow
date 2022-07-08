@@ -691,7 +691,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
 
 // -----
 
-// The following tests checks the inferred output-type of ConvOp. We
+// The following tests checks the inferred output-type of ConvolutionOp. We
 // deliberately put an invalid output-type in these tests so that the
 // inffered-type can be highlighted in the error message.
 

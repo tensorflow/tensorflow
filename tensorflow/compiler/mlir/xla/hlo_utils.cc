@@ -351,7 +351,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClamp;
   } else if (isa<mlir::mhlo::ConcatenateOp, mlir::lmhlo::ConcatenateOp>(op)) {
     return xla::HloOpcode::kConcatenate;
-  } else if (isa<mlir::mhlo::ConvOp, mlir::lmhlo::ConvOp>(op)) {
+  } else if (isa<mlir::mhlo::ConvolutionOp, mlir::lmhlo::ConvolutionOp>(op)) {
     return xla::HloOpcode::kConvolution;
   } else if (isa<mlir::mhlo::SortOp, mlir::lmhlo::SortOp>(op)) {
     return xla::HloOpcode::kSort;

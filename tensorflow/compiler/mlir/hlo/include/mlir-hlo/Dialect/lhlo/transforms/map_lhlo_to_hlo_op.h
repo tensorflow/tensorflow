@@ -49,7 +49,7 @@ MAP_LHLO_TO_HLO(ConstantOp);
 MAP_LHLO_TO_HLO(CompareOp);
 MAP_LHLO_TO_HLO(ComplexOp);
 MAP_LHLO_TO_HLO(ConcatenateOp);
-MAP_LHLO_TO_HLO(ConvOp);
+MAP_LHLO_TO_HLO(ConvolutionOp);
 MAP_LHLO_TO_HLO(ConvertOp);
 MAP_LHLO_TO_HLO(CopyOp);
 MAP_LHLO_TO_HLO(CosOp);

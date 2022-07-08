@@ -1861,7 +1861,7 @@ LogicalResult CollectivePermuteOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ConvOp
+// ConvolutionOp
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -1874,7 +1874,7 @@ namespace {
 //  Note that the spatial + non-spatial dimensions may not cover all the
 //  dimensions in the range [0,num) because of the presence of 'unknown'
 //  dimensions (ref. cl/415132294).
-LogicalResult isSpatialDimensionsValid(ConvOp op) {
+LogicalResult isSpatialDimensionsValid(ConvolutionOp op) {
   auto inputSpatialDimensions =
       op.dimension_numbers().getInputSpatialDimensions();
   auto kernelSpatialDimensions =
@@ -1962,7 +1962,7 @@ LogicalResult isSpatialDimensionsValid(ConvOp op) {
 //        b % bgc == 0
 //        f % fgc == 0 and i = f / fgc
 //        o (or f') % bgc == 0 and o (or f') % fgc == 0
-LogicalResult verifyConvolutionAttributes(ConvOp op) {
+LogicalResult verifyConvolutionAttributes(ConvolutionOp op) {
   // P1.
   if (failed(isSpatialDimensionsValid(op))) return failure();
 
@@ -2044,12 +2044,12 @@ LogicalResult verifyConvolutionAttributes(ConvOp op) {
   return success();
 }
 
-// Infer the return-shape of ConvOp.
+// Infer the return-shape of ConvolutionOp.
 // Precondition:
-//  1. Input args to ConvOp 'op' are RankedTypes.
+//  1. Input args to ConvolutionOp 'op' are RankedTypes.
 //  2. rank-of(input-type) == rank-of(output-type)
-SmallVector<int64_t> inferConvOpReturnShape(
-    ConvOp op, const ArrayRef<WindowDimension> window) {
+SmallVector<int64_t> inferConvolutionOpReturnShape(
+    ConvolutionOp op, const ArrayRef<WindowDimension> window) {
   // We keep the 'unknown' dimensions (cl/415132294) as it is in the
   // output-shape. To do that we initilize the output dimensions with the shape
   // of the return-type and updates only the spatial + non-spatial dimensions.
@@ -2097,7 +2097,7 @@ SmallVector<int64_t> inferConvOpReturnShape(
  *  P4. Verify the return shape.
  *      TODO(b/232574102): Verify the element-type of return-value.
  */
-LogicalResult ConvOp::verify() {
+LogicalResult ConvolutionOp::verify() {
   auto lhsType = lhs().getType().dyn_cast<RankedTensorType>();
   auto rhsType = rhs().getType().dyn_cast<RankedTensorType>();
 
@@ -2149,7 +2149,7 @@ LogicalResult ConvOp::verify() {
                          << numDims << "), but got "
                          << actualReturnRankedType.getRank() << ".";
 
-  auto expectedReturnShape = inferConvOpReturnShape(*this, *windowOrErr);
+  auto expectedReturnShape = inferConvolutionOpReturnShape(*this, *windowOrErr);
   auto expectedReturnType =
       RankedTensorType::get(expectedReturnShape, actualReturnElementType);
   if (failed(verifyCompatibleShape(expectedReturnType, actualReturnRankedType)))

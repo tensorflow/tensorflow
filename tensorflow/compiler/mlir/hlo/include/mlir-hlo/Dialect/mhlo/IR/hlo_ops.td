@@ -1561,7 +1561,7 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
   let hasVerifier = 1;
 }
 
-def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
+def HLO_ConvolutionOp : HLO_Op<"convolution", [NoSideEffect]> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.
