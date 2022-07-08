@@ -83,7 +83,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   field.
   """
   _fields: Mapping[str, Union[ops.Tensor, ragged_tensor.RaggedTensor,
-                              'StructuredTensor']]
+                              'StructuredTensor', extension_type.ExtensionType]]
   _ragged_shape: dynamic_ragged_shape.DynamicRaggedShape
 
   __name__ = 'tf.StructuredTensor'
@@ -1158,6 +1158,8 @@ def _convert_to_structured_field_value(value):
     return value
   elif ragged_tensor.is_ragged(value):
     return ragged_tensor.convert_to_tensor_or_ragged_tensor(value)
+  elif isinstance(value, extension_type.ExtensionType):
+    return value
   else:
     try:
       return ops.convert_to_tensor(value)
@@ -1593,7 +1595,17 @@ def _dynamic_ragged_shape_from_tensor(
   """Extension of DynamicRaggedShape.from_tensor to support StructuredTensor."""
   if isinstance(field, StructuredTensor):
     return field._ragged_shape  # pylint: disable=protected-access
-  return dynamic_ragged_shape.DynamicRaggedShape.from_tensor(field, dtype)
+  shape = array_ops.shape_v2(field, out_type=dtype)
+
+  if isinstance(shape, ops.Tensor):
+    return dynamic_ragged_shape.DynamicRaggedShape(
+        row_partitions=[],
+        inner_shape=shape)
+  elif isinstance(shape, dynamic_ragged_shape.DynamicRaggedShape):
+    return shape
+  # TODO(martinz): add a test for the following line.
+  raise TypeError(f'Expected shape tf.shape({field}) to return a Tensor or a '
+                  f'DynamicRaggedShape. Instead, got: {shape}.')
 
 
 def _merge_with_optional(

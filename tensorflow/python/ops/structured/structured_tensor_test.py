@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -39,6 +40,36 @@ from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured import structured_tensor_dynamic
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import dispatch
+
+
+class _PrivateSpecialType(extension_type.ExtensionType):
+  ragged: ragged_tensor.RaggedTensor
+
+
+@dispatch.dispatch_for_types(array_ops.shape_v2, _PrivateSpecialType)
+def shape_v2_special(input: _PrivateSpecialType, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+                     name=None):
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return array_ops.shape_v2(input.ragged, out_type)  # pylint: disable=protected-access
+
+
+class _PrivateBrokenType(extension_type.ExtensionType):
+  ragged: ragged_tensor.RaggedTensor
+
+
+@dispatch.dispatch_for_types(array_ops.shape_v2, _PrivateBrokenType)
+def shape_v2_broken(input: _PrivateBrokenType, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+                    name=None):
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  del input
+  del out_type
+  return {
+      "foo": "This is not a shape",
+      "bar": "But if I put a string here, it becomes a vector"
+  }
 
 
 # pylint: disable=g-long-lambda
@@ -770,6 +801,24 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     struct_3 = struct_2.partition_outer_dimension(
         row_partition.RowPartition.from_row_splits([0, 1, 2]))
     self.assertEqual(3, struct_3.rank)
+
+  def testWithPrivateSpecialType(self):
+    rt = ragged_tensor.RaggedTensor.from_value_rowids(
+        array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
+    pst = _PrivateSpecialType(rt)
+    pst_shape = array_ops.shape_v2(pst)
+    st = structured_tensor.StructuredTensor.from_fields_and_rank({"r": pst}, 1)
+    st_shape = st._ragged_shape
+    self.assertEqual(1, st.rank)
+    self.assertAllEqual(pst_shape[0], st_shape[0])
+
+  def testWithPrivateBrokenType(self):
+    rt = ragged_tensor.RaggedTensor.from_value_rowids(
+        array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
+    pbt = _PrivateBrokenType(rt)
+
+    with self.assertRaisesRegex(ValueError, "Error in shape of r"):
+      structured_tensor.StructuredTensor.from_fields_and_rank({"r": pbt}, 1)
 
   def testPartitionOuterDimsErrors(self):
     st = StructuredTensor.from_fields({})
