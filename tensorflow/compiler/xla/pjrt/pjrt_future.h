@@ -192,7 +192,7 @@ class PjRtFuture {
   // `IsReady()` was called. `IsReady()` will return immediately if a call to
   // `Await()` has already returned, or any callback passed to `OnReady` has
   // already been triggered. Otherwise IsReady() may block for the duration of a
-  // network message on some backends."
+  // network message on some backends.
   bool IsReady() { return promise_ref_.IsAvailable(); }
   // `IsKnownReady()` is guaranteed to return immediately. `IsKnownReady()` will
   // always return true if a call to `Await()` has already returned, or any
