@@ -1083,7 +1083,6 @@ cc_library(
         ":ir_emission_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla:shape_util",

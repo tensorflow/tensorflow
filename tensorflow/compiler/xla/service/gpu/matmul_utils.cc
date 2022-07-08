@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -362,42 +361,33 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
                          se::blas::kDefaultComputePrecision, use_cublaslt);
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::Operation* op,
+/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op,
                                                 bool use_cublaslt) {
-  auto get_config = [&](auto op, llvm::APFloat beta) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
-    std::optional<int64_t> algorithm;
-    if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
+  std::optional<int64_t> algorithm;
+  if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
 
-    int64_t compute_precision = 0;  // Default
-    if (op.getPrecisionConfig().hasValue()) {
-      auto precision_config = op.getPrecisionConfig();
-      for (auto attr : precision_config.getValue()) {
-        int64_t value = static_cast<int64_t>(
-            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-        if (value > compute_precision) {
-          compute_precision = value;
-        }
+  int64_t compute_precision = 0;  // Default
+  if (op.getPrecisionConfig().hasValue()) {
+    auto precision_config = op.getPrecisionConfig();
+    for (auto attr : precision_config.getValue()) {
+      int64_t value = static_cast<int64_t>(
+          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+      if (value > compute_precision) {
+        compute_precision = value;
       }
     }
+  }
 
-    return GemmConfig::For(
-        GetShape(op.getLhs()), dot_dims.getLhsBatchingDimensions(),
-        dot_dims.getLhsContractingDimensions(), GetShape(op.getRhs()),
-        dot_dims.getRhsBatchingDimensions(),
-        dot_dims.getRhsContractingDimensions(), GetShape(op.getOutput()),
-        op.getAlphaReal().convertToDouble(),
-        op.getAlphaImag().convertToDouble(), beta.convertToDouble(), algorithm,
-        compute_precision, use_cublaslt);
-  };
-
-  if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op))
-    return get_config(gemm, llvm::APFloat(0.));
-
-  auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(op);
-  TF_RET_CHECK(gemm != nullptr);
-  return get_config(gemm, gemm.getBeta());
+  return GemmConfig::For(
+      GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+      dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+      dot_dims.getRhsBatchingDimensions(),
+      dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+      op.getAlphaReal().convertToDouble(), op.getAlphaImag().convertToDouble(),
+      op.getBeta().convertToDouble(), algorithm, compute_precision,
+      use_cublaslt);
 }
 
 namespace {

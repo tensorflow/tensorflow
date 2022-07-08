@@ -106,7 +106,6 @@ using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::ConvolutionBackendConfigAttr;
-using mlir::lmhlo_gpu::GEMM_BiasOp;
 using mlir::lmhlo_gpu::GEMMOp;
 using mlir::memref::AllocaOp;
 using mlir::memref::GetGlobalOp;
@@ -360,24 +359,15 @@ class GemmUidGenerator {
   std::atomic<int64_t> cnt_;
 };
 
-template <typename Gemm>
-class GemmLowering : public OpRewritePattern<Gemm> {
+class GemmOpLowering : public OpRewritePattern<GEMMOp> {
  private:
   static StringRef CustomCallTarget(GEMMOp) { return "xla.gpu.gemm"; }
-  static StringRef CustomCallTarget(GEMM_BiasOp) { return "xla.gpu.gemm.bias"; }
-
-  static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMMOp op,
-                               CallOp call) {}
-  static void SetOptionalAttrs(ImplicitLocOpBuilder& b, GEMM_BiasOp op,
-                               CallOp call) {
-    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
-  }
 
  public:
-  GemmLowering(MLIRContext* ctx, GemmUidGenerator& uid)
-      : OpRewritePattern<Gemm>(ctx), uid_(uid) {}
+  GemmOpLowering(MLIRContext* ctx, GemmUidGenerator& uid)
+      : OpRewritePattern<GEMMOp>(ctx), uid_(uid) {}
 
-  LogicalResult matchAndRewrite(Gemm op,
+  LogicalResult matchAndRewrite(GEMMOp op,
                                 PatternRewriter& rewriter) const override {
     MLIRContext* ctx = this->getContext();
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -411,9 +401,7 @@ class GemmLowering : public OpRewritePattern<Gemm> {
     call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
     call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
-
-    // Set optional arguments that are defined only for some Gemm ops.
-    SetOptionalAttrs(b, op, call);
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
 
     // TODO(ezhulenev): Once cutom calls support passing structured attributes
     // we should be able to pass `mhlo.dot` attribute directly.
@@ -436,16 +424,6 @@ class GemmLowering : public OpRewritePattern<Gemm> {
 
  private:
   GemmUidGenerator& uid_;
-};
-
-class GemmOpLowering : public GemmLowering<GEMMOp> {
- public:
-  using GemmLowering::GemmLowering;
-};
-
-class GemmBiasOpLowering : public GemmLowering<GEMM_BiasOp> {
- public:
-  using GemmLowering::GemmLowering;
 };
 
 // -------------------------------------------------------------------------- //
@@ -1517,7 +1495,7 @@ void ConvertLmhloGpuToJitRtPass::runOnOperation() {
 
   // Each unique Gemm operation in the module will get assigned a uid.
   GemmUidGenerator gemm_uid;
-  patterns.insert<GemmOpLowering, GemmBiasOpLowering>(ctx, gemm_uid);
+  patterns.insert<GemmOpLowering>(ctx, gemm_uid);
 
   // Assign shared unique id to each unique pair of async start-done operations,
   // all other collective operations will get assigned uid.

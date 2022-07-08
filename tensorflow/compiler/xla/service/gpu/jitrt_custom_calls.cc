@@ -259,13 +259,12 @@ static Shape ToShape(const jitrt::StridedMemrefView& memref) {
 static StatusOr<GemmConfig> GetGemmConfig(
     const DebugOptions* debug_options, const jitrt::StridedMemrefView& lhs,
     const jitrt::StridedMemrefView& rhs, const jitrt::StridedMemrefView& out,
-    int64_t algorithm, double alpha_real, double alpha_imag,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
     ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-    llvm::Optional<double> beta = llvm::None) {
+    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract) {
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
-                         alpha_imag, beta.getValueOr(0.0), algorithm,
+                         alpha_imag, beta, algorithm,
                          se::blas::kDefaultComputePrecision,
                          debug_options->xla_gpu_enable_cublaslt());
 }
@@ -426,7 +425,7 @@ struct Gemm {
       const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
       jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
       jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-      double alpha_imag, ArrayRef<int64_t> lhs_batch,
+      double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
       ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
       ArrayRef<int64_t> rhs_contract, int64_t uid) const;
 
@@ -439,7 +438,7 @@ LogicalResult Gemm::operator()(
     const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
     jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
     jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-    double alpha_imag, ArrayRef<int64_t> lhs_batch,
+    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
     ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
     ArrayRef<int64_t> rhs_contract, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
@@ -453,111 +452,11 @@ LogicalResult Gemm::operator()(
   const GemmConfig* config = configs->Get(uid);
   if (config == nullptr) {
     auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_real, alpha_imag, lhs_batch, lhs_contract,
-                             rhs_batch, rhs_contract);
+                             alpha_real, alpha_imag, beta, lhs_batch,
+                             lhs_contract, rhs_batch, rhs_contract);
     if (!cfg.ok()) return failure();
     config = configs->Set(uid, std::move(*cfg));
   }
-
-  Status executed = [&] {
-    if (config->use_cublaslt) {
-      TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
-                          GetBlasLtMatmulPlanParams(*config));
-
-      // TODO(cjfj): Cache the plan.
-      se::cuda::BlasLt::MatmulPlan matmul_plan;
-      TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
-
-      if (matmul_plan_params.must_swap_operands) {
-        std::swap(lhs_data, rhs_data);
-      }
-
-      se::OwningScratchAllocator<> scratch_allocator(
-          run_options->device_ordinal(), run_options->allocator());
-
-      return RunBlasLtMatmul(matmul_plan, {alpha_real, alpha_imag}, lhs_data,
-                             rhs_data, /*beta=*/0., output_data, stream,
-                             scratch_allocator);
-    }
-    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }();
-
-  if (!executed.ok()) return failure();
-
-  return success();
-}
-
-static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.gemm")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<const DebugOptions*>()
-          .UserData<JitRtGemmConfigCache*>()
-          .Arg<jitrt::StridedMemrefView>()  // lhs
-          .Arg<jitrt::StridedMemrefView>()  // rhs
-          .Arg<jitrt::StridedMemrefView>()  // out
-          .Attr<int64_t>("algorithm")
-          .Attr<double>("alpha_real")
-          .Attr<double>("alpha_imag")
-          .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_contracting_dimensions")
-          .Attr<int64_t>("uid")
-          .To<RuntimeChecks()>(Gemm::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct GemmBias {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-      jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-      jitrt::StridedMemrefView bias, jitrt::StridedMemrefView out,
-      int64_t algorithm, double alpha_real, double alpha_imag, double beta,
-      ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-      ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-      int64_t uid) const;
-  static GemmBias Handler() { return GemmBias(); }
-};
-}  // namespace
-
-LogicalResult GemmBias::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-    jitrt::StridedMemrefView bias, jitrt::StridedMemrefView out,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
-    ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-    int64_t uid) const {
-  se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
-  se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
-  se::DeviceMemoryBase bias_data = GetDeviceAddress(bias);
-  se::DeviceMemoryBase output_data = GetDeviceAddress(out);
-
-  VLOG(3) << "Running GEMM + Bias [beta=" << beta << "]";
-  se::Stream* stream = run_options->stream();
-
-  // Find the gemm config for this instance of operation based on uid.
-  const GemmConfig* config = configs->Get(uid);
-  if (config == nullptr) {
-    auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_real, alpha_imag, lhs_batch, lhs_contract,
-                             rhs_batch, rhs_contract, beta);
-    if (!cfg.ok()) return failure();
-    config = configs->Set(uid, std::move(*cfg));
-  }
-
-  // Copy bias to the output buffer of they are different.
-  if (out.data != bias.data)
-    stream->ThenMemcpy(&output_data, bias_data, bias_data.size());
 
   Status executed = [&] {
     if (config->use_cublaslt) {
@@ -587,15 +486,14 @@ LogicalResult GemmBias::operator()(
   return success();
 }
 
-static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
+static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler =
-      CustomCall::Bind("xla.gpu.gemm.bias")
+      CustomCall::Bind("xla.gpu.gemm")
           .UserData<const ServiceExecutableRunOptions*>()
           .UserData<const DebugOptions*>()
           .UserData<JitRtGemmConfigCache*>()
           .Arg<jitrt::StridedMemrefView>()  // lhs
           .Arg<jitrt::StridedMemrefView>()  // rhs
-          .Arg<jitrt::StridedMemrefView>()  // bias
           .Arg<jitrt::StridedMemrefView>()  // out
           .Attr<int64_t>("algorithm")
           .Attr<double>("alpha_real")
@@ -606,7 +504,7 @@ static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
           .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
           .Attr<ArrayRef<int64_t>>("rhs_contracting_dimensions")
           .Attr<int64_t>("uid")
-          .To<RuntimeChecks()>(GemmBias::Handler())
+          .To<RuntimeChecks()>(Gemm::Handler())
           .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs));
@@ -2079,7 +1977,6 @@ DirectCustomCallLibrary JitRtGpuCustomCalls() {
   lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
   lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
-  lib.Insert("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
   lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
