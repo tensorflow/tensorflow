@@ -242,6 +242,7 @@ pytype_strict_library(
     name = "multi_client_util",
     srcs = ["multi_client_util.py"],
     deps = [
+        ":api",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",

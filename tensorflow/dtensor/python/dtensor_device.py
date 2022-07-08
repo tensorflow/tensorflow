@@ -61,7 +61,7 @@ class DTensorDevice(object):
     if any(not isinstance(mesh, layout_lib.Mesh) for mesh in meshes):
       raise TypeError(
           "Expected a flat list of Mesh objects, got {}".format(meshes))
-    global _next_device_number, _next_device_number_lock
+    global _next_device_number
     ctx = context.context()
     with _next_device_number_lock:
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
@@ -98,9 +98,7 @@ class DTensorDevice(object):
     return os.environ.get(_DT_JOB_NAME, "localhost")
 
   def _full_job_name(self):
-    """Returns the fully qualified TF job name for this or another task."""
-    if self._job_name() == "localhost":
-      return "localhost/replica:0/task:0"
+    """Returns the fully qualified TF job name for this task."""
     return self._job_name() + "/replica:0/task:" + str(self._client_id())
 
   def _create_host_array(self, shape, host_id):
