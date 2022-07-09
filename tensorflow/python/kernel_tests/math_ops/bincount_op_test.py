@@ -105,6 +105,7 @@ class BincountTest(test_util.TensorFlowTestCase):
             np.bincount(arr, weights))
 
   @test_util.run_gpu_only
+  @test_util.disable_xla("XLA uses scatter and could be deterministic")
   def test_bincount_determinism_error(self):
     arr = np.random.randint(0, 1000, size=1000)
     with test_util.deterministic_ops(), self.assertRaisesRegex(
@@ -124,6 +125,7 @@ class BincountTest(test_util.TensorFlowTestCase):
           self.evaluate(bincount_ops.bincount(np.arange(1000), np.zeros(1000))),
           np.zeros(1000))
 
+  @test_util.disable_xla("This is not raised on XLA CPU")
   def test_negative(self):
     # unsorted_segment_sum will only report InvalidArgumentError on CPU
     with self.cached_session(), ops.device("/CPU:0"):
@@ -263,7 +265,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ],
                        axis=0), (num_rows, size))
     with test_util.use_gpu():
-      self.assertAllEqual(
+      self.assertAllClose(
           np_out,
           self.evaluate(
               gen_math_ops.dense_bincount(
