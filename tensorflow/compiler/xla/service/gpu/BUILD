@@ -8,6 +8,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load(
@@ -2109,7 +2110,7 @@ cc_library(
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 tf_cc_test(
