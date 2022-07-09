@@ -454,7 +454,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       c += "  reducer.x = min(reducer.x, reducer.w);\n";
     }
   }
-  const std::string conversion = GetTypeConvertion(
+  const std::string conversion = GetTypeConversion(
       gpu_info, accum_type, op_def.src_tensors[0].data_type, 4);
   if (conversion.empty()) {
     c += "  args.src_tensor::type result = reducer;\n";

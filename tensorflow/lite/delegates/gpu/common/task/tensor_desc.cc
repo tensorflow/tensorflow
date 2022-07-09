@@ -79,7 +79,7 @@ std::string GetWriteImageFromDataType(DataType data_type) {
   }
 }
 
-std::string GetConvertionForImage(const GpuInfo& gpu_info, DataType src_type,
+std::string GetConversionForImage(const GpuInfo& gpu_info, DataType src_type,
                                   DataType dst_type) {
   DataType interm_type = src_type;
   if (gpu_info.IsApiOpenCl()) {
@@ -90,20 +90,20 @@ std::string GetConvertionForImage(const GpuInfo& gpu_info, DataType src_type,
   } else if (gpu_info.IsApiMetal()) {
     interm_type = ToMetalTextureType(src_type);
   }
-  return GetTypeConvertion(gpu_info, interm_type, dst_type, 4);
+  return GetTypeConversion(gpu_info, interm_type, dst_type, 4);
 }
 
-std::string GetConvertion(const GpuInfo& gpu_info,
+std::string GetConversion(const GpuInfo& gpu_info,
                           TensorStorageType storage_type, DataType src_type,
                           DataType dst_type) {
   if (storage_type == TensorStorageType::BUFFER) {
-    return GetTypeConvertion(gpu_info, src_type, dst_type, 4);
+    return GetTypeConversion(gpu_info, src_type, dst_type, 4);
   } else {
-    return GetConvertionForImage(gpu_info, src_type, dst_type);
+    return GetConversionForImage(gpu_info, src_type, dst_type);
   }
 }
 
-void MayBeAddConvertion(const std::string& conversion, std::string* result) {
+void MayBeAddConversion(const std::string& conversion, std::string* result) {
   if (!conversion.empty()) {
     *result = conversion + "(" + *result + ")";
   }
@@ -610,7 +610,7 @@ std::string TensorDescriptor::Read(
     const GpuInfo& gpu_info, DataType read_as_type,
     const std::vector<std::string>& coords) const {
   const std::string conversion =
-      GetConvertion(gpu_info, storage_type, data_type, read_as_type);
+      GetConversion(gpu_info, storage_type, data_type, read_as_type);
   if (gpu_info.IsApiOpenCl() &&
       !(data_type == DataType::FLOAT16 && read_as_type == DataType::FLOAT32)) {
     read_as_type = data_type;
@@ -626,7 +626,7 @@ std::string TensorDescriptor::Read(
       } else {
         result = absl::StrCat("buffer[", coords[0], "]");
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::TEXTURE_2D:
@@ -647,7 +647,7 @@ std::string TensorDescriptor::Read(
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::TEXTURE_3D: {
@@ -668,7 +668,7 @@ std::string TensorDescriptor::Read(
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::TEXTURE_ARRAY: {
@@ -689,7 +689,7 @@ std::string TensorDescriptor::Read(
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::IMAGE_BUFFER: {
@@ -706,7 +706,7 @@ std::string TensorDescriptor::Read(
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::UNKNOWN:
@@ -740,7 +740,7 @@ std::string TensorDescriptor::Write(
   std::string write_expr = var_name;
   if (write_type != write_required_type) {
     const std::string conversion =
-        GetTypeConvertion(gpu_info, write_type, write_required_type, 4);
+        GetTypeConversion(gpu_info, write_type, write_required_type, 4);
     if (!conversion.empty()) {
       write_expr = conversion + "(" + write_expr + ")";
     }
