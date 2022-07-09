@@ -259,23 +259,22 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   if (!tensor_desc) {
     return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
   }
-  resources->ints.push_back(
-      {"slice_stride", tensor_desc->GetSliceStrideSize(shape_)});
+  resources->AddInt("slice_stride", tensor_desc->GetSliceStrideSize(shape_));
   if (descriptor_.HasAxis(Axis::WIDTH)) {
-    resources->ints.push_back({"width", tensor_desc->GetWidthSize(shape_)});
+    resources->AddInt("width", tensor_desc->GetWidthSize(shape_));
   }
   if (descriptor_.HasAxis(Axis::HEIGHT)) {
-    resources->ints.push_back({"height", Height()});
+    resources->AddInt("height", Height());
   }
   if (descriptor_.HasAxis(Axis::CHANNELS)) {
-    resources->ints.push_back({"slices", Slices()});
-    resources->ints.push_back({"channels", Channels()});
+    resources->AddInt("slices", Slices());
+    resources->AddInt("channels", Channels());
   }
   if (descriptor_.HasAxis(Axis::BATCH)) {
-    resources->ints.push_back({"batch", Batch()});
+    resources->AddInt("batch", Batch());
   }
   if (descriptor_.HasAxis(Axis::DEPTH)) {
-    resources->ints.push_back({"depth", Depth()});
+    resources->AddInt("depth", Depth());
   }
 
   if (descriptor_.GetStorageType() == TensorStorageType::BUFFER) {
@@ -283,8 +282,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   } else if (descriptor_.GetStorageType() == TensorStorageType::TEXTURE_2D) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
         tensor_desc->GetUseBufferForWriteOnlyTexture2d()) {
-      resources->ints.push_back(
-          {"aligned_texture_width", aligned_texture_width_});
+      resources->AddInt("aligned_texture_width", aligned_texture_width_);
       resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
     } else {
       resources->images2d.push_back({"image2d", texture_mem_});
