@@ -562,5 +562,22 @@ void UpdateEagerClientErrorCounter(const string& error_source,
   eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
 }
 
+void UpdateTfMlirBridgeGraphAnalysisPerOp(
+    const std::string& op_name, const std::string& construction_context,
+    bool is_single_core_inference_mode, const std::string& unsupported_reason,
+    bool has_unsupported_features) {
+  static auto* metric = monitoring::Counter<5>::New(
+      "/tensorflow/core/tf_mlir_bridge_graph_analysis_per_op",
+      "Tracks processing state per op in first phase of mlir bridge", "op_name",
+      "construction_context", "is_single_core_inference_mode",
+      "unsupported_reason", "has_unsupported_features");
+
+  metric
+      ->GetCell(op_name, construction_context,
+                is_single_core_inference_mode ? "Yes" : "No",
+                unsupported_reason, has_unsupported_features ? "Yes" : "No")
+      ->IncrementBy(1);
+}
+
 }  // namespace metrics
 }  // namespace tensorflow
