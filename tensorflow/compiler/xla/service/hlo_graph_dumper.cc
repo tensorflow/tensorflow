@@ -931,8 +931,9 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
         }
       } else if (operand->opcode() == HloOpcode::kGetTupleElement) {
         operand_str =
-            StrFormat("tuple-element %d of %s", operand->tuple_index(),
-                      operand->operand(0)->name());
+            StrFormat("tuple-element %d of %s %s", operand->tuple_index(),
+                      operand->operand(0)->name(),
+                      ShapeUtil::HumanStringWithLayout(operand->shape()));
       } else {
         operand_str = operand->name();
       }
@@ -954,9 +955,10 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
         instr->parent()->FusionInstruction()->operand(
             instr->parameter_number());
     if (param_input->opcode() == HloOpcode::kGetTupleElement) {
-      lines.push_back(StrFormat("tuple-element %d of %s",
-                                param_input->tuple_index(),
-                                param_input->operand(0)->name()));
+      lines.push_back(
+          StrFormat("tuple-element %d of %s %s", param_input->tuple_index(),
+                    param_input->operand(0)->name(),
+                    ShapeUtil::HumanStringWithLayout(param_input->shape())));
     }
   }
 
