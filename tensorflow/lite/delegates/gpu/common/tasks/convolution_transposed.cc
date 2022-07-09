@@ -140,14 +140,14 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     if (weights_layout_ == WeightsLayout::kOSpatialIOGroupI4O4 ||
         weights_layout_ == WeightsLayout::kOSpatialIOGroupO4I4) {
       BufferDescriptor desc;
-      desc.element_type = op_def.src_tensors[1].data_type;
+      desc.element_type = op_def.src_tensors[1].GetDataType();
       desc.element_size = 16;
       desc.memory_type = MemoryType::GLOBAL;
       AddSrcBuffer("weights", desc);
     } else {
       for (int i = 0; i < 4; ++i) {
         Texture2DDescriptor desc;
-        desc.element_type = op_def.src_tensors[1 + i].data_type;
+        desc.element_type = op_def.src_tensors[1 + i].GetDataType();
         const std::string name = "weights" + std::to_string(i);
         AddSrcTexture2D("weights" + std::to_string(i), desc);
       }

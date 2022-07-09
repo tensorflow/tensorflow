@@ -295,7 +295,7 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
       definition_.src_tensors.push_back(desc);
       for (int i = 0; i < 4; ++i) {
         Texture2DDescriptor desc;
-        desc.element_type = definition_.src_tensors[1 + i].data_type;
+        desc.element_type = definition_.src_tensors[1 + i].GetDataType();
         const std::string name = "weights" + std::to_string(i);
         AddSrcTexture2D("weights" + std::to_string(i), desc);
       }

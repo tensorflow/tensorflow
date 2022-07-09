@@ -167,7 +167,7 @@ absl::Status AddDynamicConv(ModelHints hints, const GpuInfo& gpu_info,
   gpu_subgraph->operations.push_back({});
   auto& conv_op = gpu_subgraph->operations.back();
   OperationDef conv_temp_def = op_def;
-  conv_temp_def.src_tensors[1] = {op_def.src_tensors[1].data_type,
+  conv_temp_def.src_tensors[1] = {op_def.src_tensors[1].GetDataType(),
                                   TensorStorageType::BUFFER, Layout::HWC};
   WeightsDescription weights_desc;
   const BHWC weights_shape_bhwc(weights_shape.o, weights_shape.h,
@@ -364,10 +364,10 @@ absl::Status GPUOperationFromNodePart0(
         const BHWC hwc_output_shape(1, dst_shape.b * dst_shape.h, dst_shape.w,
                                     dst_shape.c);
         TensorDescriptor hwc_input_desc = {
-            op_def.src_tensors[0].data_type,
+            op_def.src_tensors[0].GetDataType(),
             op_def.src_tensors[0].GetStorageType(), Layout::BHWC};
         TensorDescriptor hwc_output_desc = {
-            op_def.dst_tensors[0].data_type,
+            op_def.dst_tensors[0].GetDataType(),
             op_def.dst_tensors[0].GetStorageType(), Layout::BHWC};
         src_id = gpu_subgraph->AddTensor(hwc_input_shape, hwc_input_desc);
         dst_id = gpu_subgraph->AddTensor(hwc_output_shape, hwc_output_desc);
@@ -390,7 +390,7 @@ absl::Status GPUOperationFromNodePart0(
           dst_shape, src_id, inputs[1]->id, dst_id, gpu_subgraph));
       if (dst_shape.b != 1) {
         TensorDescriptor hwc_output_desc = {
-            op_def.dst_tensors[0].data_type,
+            op_def.dst_tensors[0].GetDataType(),
             op_def.dst_tensors[0].GetStorageType(), Layout::BHWC};
 
         OperationDef reshape_output_def;
@@ -497,7 +497,7 @@ absl::Status GPUOperationFromNodePart0(
                 attr.weights.shape.w, attr.weights.shape.i);
             OperationDef conv_temp_def = op_def;
             conv_temp_def.src_tensors.push_back(
-                {op_def.src_tensors[0].data_type, TensorStorageType::BUFFER,
+                {op_def.src_tensors[0].GetDataType(), TensorStorageType::BUFFER,
                  Layout::HWC});
             *gpu_op = SelectConvolutionWithDynamicWeights(
                 attr, weights_shape_bhwc, output_shape, gpu_info, conv_temp_def,

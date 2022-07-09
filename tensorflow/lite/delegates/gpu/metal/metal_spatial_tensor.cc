@@ -33,11 +33,11 @@ absl::Status CreateTextureBuffer(id<MTLBuffer> buffer, uint64_t buffer_offset,
   if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
     const int slices = DivideRoundUp(shape.c, 4);
     const size_t flt4_count = shape.b * shape.w * shape.h * shape.d * slices;
-    const size_t data_size = flt4_count * 4 * SizeOf(descriptor.data_type);
+    const size_t data_size = flt4_count * 4 * SizeOf(descriptor.GetDataType());
     MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
     texture_desc.width = flt4_count;
     texture_desc.pixelFormat =
-        DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+        DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
     texture_desc.textureType = MTLTextureTypeTextureBuffer;
     texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
     texture_desc.storageMode = buffer.storageMode;
@@ -64,7 +64,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
       const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
-                               4 * SizeOf(descriptor.data_type);
+                               4 * SizeOf(descriptor.GetDataType());
       if (data_ptr) {
         *buffer = [device newBufferWithBytes:data_ptr
                                       length:data_size
@@ -85,7 +85,8 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
     case TensorStorageType::TEXTURE_2D: {
       MTLTextureDescriptor* texture_desc = [MTLTextureDescriptor
           texture2DDescriptorWithPixelFormat:DataTypeToRGBAPixelFormat(
-                                                 descriptor.data_type, false)
+                                                 descriptor.GetDataType(),
+                                                 false)
                                        width:shape.w * shape.b * shape.d
                                       height:shape.h * slices
                                    mipmapped:NO];
@@ -109,7 +110,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       texture_desc.height = shape.h;
       texture_desc.depth = slices * shape.d;
       texture_desc.pixelFormat =
-          DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+          DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
       texture_desc.textureType = MTLTextureType3D;
       texture_desc.usage =
           MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
@@ -130,7 +131,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       texture_desc.height = shape.h;
       texture_desc.arrayLength = slices * shape.d;
       texture_desc.pixelFormat =
-          DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+          DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
       texture_desc.textureType = MTLTextureType2DArray;
       texture_desc.usage =
           MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
@@ -365,7 +366,7 @@ absl::Status MetalSpatialTensor::IsValid(const BHWDC& shape) const {
 }
 
 uint64_t MetalSpatialTensor::GetMemorySizeInBytes() const {
-  const int flt_size = SizeOf(descriptor_.data_type);
+  const int flt_size = SizeOf(descriptor_.GetDataType());
   const int flt4_size = 4 * flt_size;
   switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
@@ -566,10 +567,10 @@ absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
   texture_desc.mipmapLevelCount = 1;
   texture_desc.sampleCount = 1;
   texture_desc.pixelFormat =
-      DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+      DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
   texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
   texture_desc.storageMode = buffer.storageMode;
-  const size_t pixel_size = channels * SizeOf(descriptor.data_type);
+  const size_t pixel_size = channels * SizeOf(descriptor.GetDataType());
   const size_t bytes_per_row = width * pixel_size;
   const size_t bytes_per_row_aligned =
       AlignByN(bytes_per_row, row_bytes_alignment);

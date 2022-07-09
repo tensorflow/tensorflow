@@ -477,11 +477,12 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size = SizeOf(descriptor.data_type);
+    const size_t element_size = SizeOf(descriptor.GetDataType());
     size_t buffer_size;
     size_t row_bytes_alignment = [device->device()
         minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(
-                                                        descriptor.data_type,
+                                                        descriptor
+                                                            .GetDataType(),
                                                         false)];
     if (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D) {
       min_common_alignment =
@@ -575,7 +576,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
               TensorStorageType::SINGLE_TEXTURE_2D) {
         size_t row_bytes_alignment = [device->device()
             minimumLinearTextureAlignmentForPixelFormat:
-                DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];
+                DataTypeToRGBAPixelFormat(tensor_dummy.GetDataType(), false)];
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
             base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
             row_bytes_alignment, &shared_buffer_tensors_[tensor_index],

@@ -212,7 +212,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   };
 
-  auto accum_type = GetAccumType(op_def.src_tensors[0].data_type);
+  auto accum_type = GetAccumType(op_def.src_tensors[0].GetDataType());
   const std::string accum_type_decl =
       GetTypeDeclaration(gpu_info, accum_type, 4);
   std::string read_as_template;
@@ -455,7 +455,7 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   }
   const std::string conversion = GetTypeConversion(
-      gpu_info, accum_type, op_def.src_tensors[0].data_type, 4);
+      gpu_info, accum_type, op_def.src_tensors[0].GetDataType(), 4);
   if (conversion.empty()) {
     c += "  args.src_tensor::type result = reducer;\n";
   } else {

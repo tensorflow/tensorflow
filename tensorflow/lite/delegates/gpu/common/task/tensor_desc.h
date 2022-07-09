@@ -97,6 +97,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool CanReadOutOfBorder(const Axis& axis) const;
   bool IsLinear() const;
 
+  DataType GetDataType() const { return data_type; }
   TensorStorageType GetStorageType() const { return storage_type; }
 
   // applicable only for types that: IsLinear -> true.
@@ -118,8 +119,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   // with old storage type
   absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
                                             const BHWC& shape);
-
-  DataType data_type = DataType::UNKNOWN;
 
   void SetUseBufferForWriteOnlyTexture2d(bool value) {
     use_buffer_for_write_only_2d_texture = value;
@@ -240,6 +239,7 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   template <typename T>
   void DownloadData(T* dst);
 
+  DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
 
   // This field describes logical layout, actual(physical) GPU layout can be
