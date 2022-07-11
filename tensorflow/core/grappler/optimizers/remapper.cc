@@ -1070,9 +1070,6 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
                               std::map<string, int>* matched_nodes_map,
                               std::set<int>* remove_node_indices,
                               bool* is_gelu_approximate) {
-  utils::MutableNodeView* node_view = ctx->graph_view.GetNode(node_index);
-  const NodeDef* node_def = node_view->node();
-  bool root_on_gpu = NodeIsOnGpu(node_def);
   // Gelu fusion is enabled with oneDNN or cublasLt library.
   if (!IsMKLEnabled() && !BlasLtMatmulEnabled()) return false;
 
@@ -1110,11 +1107,14 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
         }
       }
     };
+  // clang-format on
 
-  // Gelu approximate uses Pow(x, 3). On CPU, it is optimized by arithmetic optimizer
-  // as Mul(x, Square(x)) with an arifact of control dependency. So we
-  // try to match pattern at second pass of remapper which reccieves _FusedMatMul
-  // (MatMul + BiasAdd) with control dependency removed.
+  // Gelu approximate uses Pow(x, 3). On GPU, it is a single Pow() node, but on
+  // CPU, it is optimized by arithmetic optimizer as Mul(x, Square(x)) with an
+  // arifact of control dependency. So we try to match pattern at second pass of
+  // remapper which reccieves _FusedMatMul (MatMul + BiasAdd) with control
+  // dependency removed.
+  // clang-format off
   utils::OpTypePattern subgraph_gpu =
     {"Mul", "mul", NodeStatus::kRemove,
       {
@@ -1143,8 +1143,15 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
         }
       }
     };
-  utils::OpTypePattern* subgraph_pattern = root_on_gpu ? &subgraph_gpu : &subgraph_cpu;
+  // clang-format on
 
+  utils::MutableNodeView* node_view = ctx->graph_view.GetNode(node_index);
+  const NodeDef* node_def = node_view->node();
+  bool root_on_gpu = NodeIsOnGpu(node_def);
+  utils::OpTypePattern* subgraph_pattern =
+      root_on_gpu ? &subgraph_gpu : &subgraph_cpu;
+
+  // clang-format off
   utils::OpTypePattern gelu_approximate_pattern =
     {"Mul", "output", NodeStatus::kReplace,
       {
@@ -1177,6 +1184,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
       }
     };
   // clang-format on
+
   bool found_gelu_exact = false;
   bool found_gelu_approximate = false;
   utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(

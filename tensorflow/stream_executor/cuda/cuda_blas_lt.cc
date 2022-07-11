@@ -174,11 +174,11 @@ port::StatusOr<BlasLt::UniqueOpDesc> CreateCublasLtOperationDesc(
   BlasLt::UniqueOpDesc unique_desc(desc);
   TF_ASSIGN_OR_RETURN(
       cublasLtEpilogue_t epilog_op, AsCublasLtEpilogue(epilogue));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
                                      AsCublasLtPointerMode(pointer_mode)));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
                                      epilog_op));
-  SE_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
+  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
                                      AsCublasOperation(transa)));
   TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB,
                                      AsCublasOperation(transb)));

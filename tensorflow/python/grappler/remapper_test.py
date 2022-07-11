@@ -82,6 +82,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       if os.name == "nt":
         self.skipTest("This test doesn't support Windows")
 
+      # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
       cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
@@ -175,8 +176,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
         gelu_type = b'GeluApproximate' if approximate else b'GeluExact'
         epilog_ops = [b'BiasAdd', gelu_type]
-        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul']
-        graph = self._VerifyValues(out, precision == 'bfloat16', fused_op,
+        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+        graph = self._VerifyValues(out, precision != dtypes.float32, fused_op,
                                    epilog_ops)
 
   @test_util.run_deprecated_v1
