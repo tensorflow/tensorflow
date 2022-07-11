@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -86,7 +86,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
-  static StatusOr<GemmConfig> For(mlir::Operation* op, bool use_cublaslt);
+  static StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op,
+                                  bool use_cublaslt);
 
   static StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,

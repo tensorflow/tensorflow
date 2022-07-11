@@ -38,6 +38,7 @@ func.func @async(%memref: memref<4x4xf32>) {
       >,
       alpha_real = 0.5,
       alpha_imag = 0.0,
+      beta = 0.0,
       batch_size = 1,
       lhs_stride = 16,
       rhs_stride = 16
@@ -73,6 +74,7 @@ func.func @async(%memref: memref<4x4xf32>) {
       >,
       alpha_real = 0.5,
       alpha_imag = 0.0,
+      beta = 0.0,
       batch_size = 1,
       lhs_stride = 16,
       rhs_stride = 16
@@ -98,6 +100,7 @@ func.func @async(%memref: memref<4x4xf32>) {
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16

@@ -161,7 +161,7 @@ ConvertToBef(mlir::ModuleOp module, tfrt::HostContext* host) {
 }
 
 static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
-  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
     return Thunk::Kind::kGemm;
   }
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {

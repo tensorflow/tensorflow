@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -120,6 +121,27 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
   }
 }
 
+Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
+                                             bool skip_nested_async_op_check) {
+  std::optional<absl::string_view> thread_name = comp->thread_name();
+  for (const HloInstruction* instr : comp->instructions()) {
+    if (skip_nested_async_op_check && instr->IsAsynchronous()) {
+      continue;
+    }
+    for (const HloComputation* cmp : instr->called_computations()) {
+      if (cmp->thread_name() != thread_name) {
+        return InternalError(
+            "Nested computations expects same computation's thread name (%s vs "
+            "%s).",
+            thread_name ? absl::StrCat(*thread_name) : "none",
+            cmp->thread_name() ? absl::StrCat(*cmp->thread_name()) : "none");
+      }
+      TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
+          cmp, skip_nested_async_op_check));
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
@@ -1382,11 +1404,56 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
   }
   return Status::OK();
 }
+
+Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
+  std::optional<absl::string_view> async_thread_name =
+      async_op->async_thread_name();
+  if (async_thread_name !=
+      async_op->async_wrapped_computation()->thread_name()) {
+    return InternalError(
+        "async-start expects same async thread name as wrapped computation's "
+        "thread name (%s vs %s).",
+        async_thread_name ? absl::StrCat(*async_thread_name) : "none",
+        async_op->async_wrapped_computation()->thread_name()
+            ? absl::StrCat(
+                  *async_op->async_wrapped_computation()->thread_name())
+            : "none");
+  }
+  return CheckNestedComputationThreadNameEqual(
+      async_op->async_wrapped_computation(),
+      /*skip_nested_async_op_check=*/false);
+}
+
+// TODO(b/229887502): apply CheckCallableInstructionThreadName to all
+// CallableInstructions verifier.
+Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
+                                          bool skip_nested_async_op_check) {
+  for (const HloComputation* computation : instruction->called_computations()) {
+    if (instruction->parent() != nullptr) {
+      if (instruction->parent()->thread_name() != computation->thread_name()) {
+        return InternalError(
+            "callable instruction %s expects parent computation thread name "
+            "same as called computation's thread name (%s vs %s).",
+            instruction->ToString(),
+            instruction->parent()->thread_name()
+                ? absl::StrCat(*instruction->parent()->thread_name())
+                : "none",
+            computation->thread_name()
+                ? absl::StrCat(*computation->thread_name())
+                : "none");
+      }
+    }
+    TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
+        computation, skip_nested_async_op_check));
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
   TF_RETURN_IF_ERROR(
       CheckAsyncOpComputationShapes(async_start, async_start->shape()));
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_start));
   const Shape& param_shape = async_start->shape().tuple_shapes(0);
   for (int i = 0; i < async_start->operand_count(); ++i) {
     if (param_shape.tuple_shapes(i) != async_start->operand(i)->shape()) {
@@ -1402,6 +1469,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
 }
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_update));
   if (async_update->operand(0)->shape() != async_update->shape()) {
     return InternalError(
         "The %s expects the shape of operand and output to match (%s vs %s).",
@@ -1415,6 +1483,7 @@ Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
 }
 
 Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
+  TF_RETURN_IF_ERROR(CheckAsyncOpComputationThreadName(async_done));
   TF_RETURN_IF_ERROR(CheckAsyncOpComputationShapes(
       async_done, async_done->operand(0)->shape()));
   const Shape& root_shape = async_done->operand(0)->shape().tuple_shapes(1);
@@ -2294,6 +2363,8 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction*) override { return OkStatus(); }
 
   Status HandleFusion(HloInstruction* fusion) override {
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
+        fusion, /*skip_nested_async_op_check*/ false));
     return CheckFusionInstruction(fusion);
   }
 

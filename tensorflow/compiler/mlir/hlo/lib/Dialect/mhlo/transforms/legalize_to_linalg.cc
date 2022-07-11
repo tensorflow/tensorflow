@@ -303,17 +303,21 @@ static bool hasCanonicalDimensionNumbers(
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.RngUniformOp conversion patterns.
+// mhlo.RngOp conversion patterns.
 //===----------------------------------------------------------------------===//
 
-// Pass to lower from rng_uniform to stateless uniform pseudo RNG with LCG
+// Pass to lower from rng to stateless pseudo RNG with LCG
 // algorithm
-struct RngUniformConversion : public OpConversionPattern<mhlo::RngUniformOp> {
-  using OpConversionPattern<mhlo::RngUniformOp>::OpConversionPattern;
+struct RngUniformConversion : public OpConversionPattern<mhlo::RngOp> {
+  using OpConversionPattern<mhlo::RngOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::RngUniformOp op, OpAdaptor adaptor,
+      mhlo::RngOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    // We only handle uniform distributions
+    if (op.rng_distribution() != ::mlir::mhlo::RngDistribution::UNIFORM) {
+      return failure();
+    }
     // TODO(raikonenfnu): Handle other element types as well.
     auto minTy = adaptor.getOperands()[0].getType().dyn_cast<ShapedType>();
     auto maxTy = adaptor.getOperands()[0].getType().dyn_cast<ShapedType>();
@@ -2093,11 +2097,12 @@ Value applyConvolutionPadding(Location loc, Value input,
 /// Converts mhlo.conv operation to linalg named op. This only covers normal
 /// convolution cases. The op must have canonical dimension numbers. Depthwise
 /// convolution and pointwise convolution are not handled in the conversion.
-struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
-  using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
+struct NormalConvolutionOpConversion
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
+  using OpConversionPattern<mhlo::ConvolutionOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     if (!hasCanonicalDimensionNumbers(op.dimension_numbers())) return failure();
     if (op.feature_group_count() != 1u) return failure();
@@ -2170,11 +2175,12 @@ struct NormalConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
 /// Converts mhlo.convolution operation to
 /// linalg.depthwise_conv_2d_input_nhwc_filter_hwcf op or
 /// depthwise_conv_2d_input_nhwc_filter_hwc op.
-struct DepthwiseConvOpConversion : public OpConversionPattern<mhlo::ConvOp> {
-  using OpConversionPattern<mhlo::ConvOp>::OpConversionPattern;
+struct DepthwiseConvolutionOpConversion
+    : public OpConversionPattern<mhlo::ConvolutionOp> {
+  using OpConversionPattern<mhlo::ConvolutionOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ConvOp op, OpAdaptor adaptor,
+      mhlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     if (op.batch_group_count() != 1) return failure();
     // Fall into the normal convolution cases.
@@ -3294,7 +3300,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::ComplexOp>,
       PointwiseToLinalgConverter<mhlo::ConvertOp>,
       PointwiseToLinalgConverter<mhlo::CopyOp>,
-      PointwiseToLinalgConverter<mhlo::CosOp>,
+      PointwiseToLinalgConverter<mhlo::CosineOp>,
       PointwiseToLinalgConverter<mhlo::DivOp>,
       PointwiseToLinalgConverter<mhlo::ExpOp>,
       PointwiseToLinalgConverter<mhlo::Expm1Op>,
@@ -3321,7 +3327,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::ShiftRightArithmeticOp>,
       PointwiseToLinalgConverter<mhlo::ShiftRightLogicalOp>,
       PointwiseToLinalgConverter<mhlo::SignOp>,
-      PointwiseToLinalgConverter<mhlo::SinOp>,
+      PointwiseToLinalgConverter<mhlo::SineOp>,
       PointwiseToLinalgConverter<mhlo::SqrtOp>,
       PointwiseToLinalgConverter<mhlo::SubOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
@@ -3334,8 +3340,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
       TransposeConverter<mhlo::TransposeOp>,
-      NormalConvOpConversion,
-      DepthwiseConvOpConversion,
+      NormalConvolutionOpConversion,
+      DepthwiseConvolutionOpConversion,
       GatherConversion,
       PadOpConversion,
       PadOpNegativePaddingConversion,

@@ -255,7 +255,7 @@ std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
   }
 }
 
-std::string GetTypeConvertion(const GpuInfo& gpu_info, DataType src_type,
+std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size) {
   if (src_type != dst_type) {
     if (gpu_info.IsApiOpenCl()) {

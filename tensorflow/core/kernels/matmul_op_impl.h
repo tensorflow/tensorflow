@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -425,7 +426,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         OP_REQUIRES(context, status_or_computation_type.ok(),
                     errors::Internal("Unsupported dtype for batched matmul."));
         se::blas::ComputationType computation_type =
-            status_or_computation_type.ConsumeValueOrDie();
+            std::move(status_or_computation_type).value();
 
         se::cuda::BlasLt::MatmulPlanParams matmul_params{
             /*ab_type=*/blas_dtype,
@@ -453,7 +454,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             GetPlanAndAlgorithms(stream, matmul_params, max_algorithm_count);
         OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
         const auto* plan_and_algorithms =
-            plan_and_algorithms_or.ConsumeValueOrDie();
+            std::move(plan_and_algorithms_or).value();
         const auto& plan = plan_and_algorithms->plan;
         const auto& algorithms = plan_and_algorithms->algorithms;
 

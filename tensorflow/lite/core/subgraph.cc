@@ -49,6 +49,9 @@ limitations under the License.
 #else
 #include "tensorflow/lite/arena_planner.h"
 #endif
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+#include "tensorflow/lite/tensorflow_profiler_logger.h"
+#endif  // TF_LITE_TENSORFLOW_PROFILER
 
 namespace tflite {
 
@@ -1218,6 +1221,12 @@ TfLiteStatus Subgraph::Invoke() {
 
     const char* op_name = nullptr;
     if (profiler_) op_name = GetTFLiteOpName(registration);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    if (!op_name) {
+      op_name = GetTFLiteOpName(registration);
+    }
+    tflite::OnTfLiteOpInvoke(op_name, node_index);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     for (int i = 0; i < node.inputs->size; ++i) {

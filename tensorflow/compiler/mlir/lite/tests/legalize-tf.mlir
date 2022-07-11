@@ -2039,7 +2039,7 @@ func.func @unsorted_segment_prod(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> 
   %0 = "tf.UnsortedSegmentProd"(%arg0, %arg1, %num_segments) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
   // CHECK-LABEL: unsorted_segment_prod
-  // CHECK:  [[BCT:%.*]] = "tfl.unsorted_segment_prod"(%arg0, %arg1) {num_segments = 8 : i32} : (tensor<8xf32>, tensor<8xi32>) -> tensor<8xf32>
+  // CHECK:  [[BCT:%.*]] = "tfl.unsorted_segment_prod"(%arg0, %arg1, %cst) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
   // CHECK:  return [[BCT]] : tensor<8xf32>
 }
 

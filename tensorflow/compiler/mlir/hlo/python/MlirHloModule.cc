@@ -426,6 +426,24 @@ PYBIND11_MODULE(_mlirHlo, m) {
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
+      m, "RngDistributionAttr", mlirMhloAttributeIsARngDistributionAttr)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const std::string &distribution, MlirContext ctx) {
+            return cls(mlirMhloRngDistributionAttrGet(
+                ctx, mlirStringRefCreate(distribution.c_str(),
+                                         distribution.size())));
+          },
+          py::arg("cls"), py::arg("rng_distribution"),
+          py::arg("context") = py::none(),
+          "Creates a RngDistribution attribute with the given rng "
+          "distribution.")
+      .def_property_readonly("rng_distribution", [](MlirAttribute self) {
+        auto distribution = mlirMhloRngDistributionAttrGetRngDistribution(self);
+        return py::str(distribution.data, distribution.length);
+      });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
       m, "RngAlgorithmAttr", mlirMhloAttributeIsARngAlgorithmAttr)
       .def_classmethod(
           "get",

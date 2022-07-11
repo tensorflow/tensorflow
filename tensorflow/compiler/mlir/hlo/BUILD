@@ -1365,6 +1365,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
@@ -2193,6 +2194,7 @@ cc_library(
     deps = [
         ":bufferize_pass",
         ":gml_st_tiling",
+        ":gml_st_vectorization",
         ":legalize_mhlo_to_gml",
         ":legalize_to_linalg",
         "@llvm-project//mlir:BufferizationTransforms",
@@ -2394,9 +2396,10 @@ gentbl_cc_library(
     td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
     td_srcs = [
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td",
-        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td",
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td",
+        "include/mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td",
     ],
     deps = [":gml_st_ops_td_files"],
 )
@@ -2411,6 +2414,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":compose_set_interface",
         ":fusion_interface",
         ":gml_st_ops_inc_gen",
         "@llvm-project//llvm:Support",
@@ -2474,14 +2478,49 @@ cc_library(
     deps = [
         ":fusion_interface",
         ":gml_st",
-        ":hlo",
-        ":map_mhlo_to_scalar_op",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorUtils",
+    ],
+)
+
+gentbl_cc_library(
+    name = "compose_set_interface_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-op-interface-decls"],
+            "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc",
+        ),
+        (
+            ["-gen-op-interface-defs"],
+            "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td",
+    deps = ["@llvm-project//mlir:OpBaseTdFiles"],
+)
+
+cc_library(
+    name = "compose_set_interface",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc",
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc",
+        "lib/Dialect/gml_st/transforms/compose_set_interface.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":compose_set_interface_inc_gen",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -2584,6 +2623,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":compose_set_interface",
         ":gml_st",
         ":gml_st_passes_inc_gen",
         "@llvm-project//llvm:Support",
@@ -2592,6 +2632,28 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "gml_st_vectorization",
+    srcs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/pass_detail.h",
+        "lib/Dialect/gml_st/transforms/vectorization.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":gml_st",
+        ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 

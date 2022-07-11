@@ -19,12 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/status_macros.h"
 
 #define SE_CUBLAS_RETURN_IF_ERROR(expr) \
-  SE_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
+  TF_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
 
 namespace stream_executor {
 namespace cuda {
@@ -32,6 +32,7 @@ namespace cuda {
 const char* ToString(cublasStatus_t status);
 port::Status ToStatus(cublasStatus_t status, const char* prefix = "cublasLt");
 cudaDataType_t AsCudaDataType(blas::DataType type);
+cublasComputeType_t AsCublasComputeType(blas::ComputationType type);
 cublasOperation_t AsCublasOperation(blas::Transpose trans);
 
 }  // namespace cuda

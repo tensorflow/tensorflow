@@ -31,7 +31,7 @@ class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition,
                                    const GpuInfo& gpu_info, const BHWC& shape,
-                                   float variance_bias);
+                                   float variance_bias, bool two_step);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -49,12 +49,15 @@ class MeanStdDevNormalization : public GPUOperation {
   MeanStdDevNormalization& operator=(const MeanStdDevNormalization&) = delete;
 
  private:
-  std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4);
+  std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4,
+                                   bool two_step);
 };
 
+// std dev can be calculated in single step, but two step algorithm can
+// provide more stable and robust results
 MeanStdDevNormalization CreateMeanStdDevNormalization(
     const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
-    float variance_bias = 1.0e-8f);
+    float variance_bias = 1.0e-8f, bool two_step = true);
 
 }  // namespace gpu
 }  // namespace tflite

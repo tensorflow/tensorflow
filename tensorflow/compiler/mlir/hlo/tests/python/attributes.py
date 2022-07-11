@@ -185,6 +185,16 @@ def test_fusion_kind():
 
 
 @run
+def test_rng_distribution():
+  """Check that RngDistribution attribute is available and usable."""
+
+  attr = RngDistributionAttr.get("UNIFORM")
+  assert attr is not None
+  assert str(attr) == ("#mhlo.rng_distribution<UNIFORM>")
+  assert attr.rng_distribution == "UNIFORM"
+
+
+@run
 def test_rng_algorithm():
   """Check that RngAlgorithm attribute is available and usable."""
 

@@ -34,16 +34,6 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
   let hasVerifier = 0;
 }
 
-def GMLST_DimOp : GMLST_Op<"dim", []> {
-  let summary = [{Returns the size of a tile in a given dimension}];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-}
-
 def GMLST_OffsetOp : GMLST_Op<"offset", []> {
   let summary = [{Returns the offset of a tile in a given dimension}];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
@@ -52,6 +42,7 @@ def GMLST_OffsetOp : GMLST_Op<"offset", []> {
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
+  let hasFolder = 1;
 }
 
 def GMLST_SizeOp : GMLST_Op<"size", []> {
@@ -62,6 +53,18 @@ def GMLST_SizeOp : GMLST_Op<"size", []> {
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
   }];
   let hasVerifier = 0;
+  let hasFolder = 1;
+}
+
+def GMLST_StrideOp : GMLST_Op<"stride", []> {
+  let summary = [{Returns the stride of a tile in a given dimension}];
+  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let results = (outs Index:$result);
+  let assemblyFormat = [{
+    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
+  }];
+  let hasVerifier = 0;
+  let hasFolder = 1;
 }
 
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
@@ -265,10 +268,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
                        Variadic<AnyType>:$dsts,
                        Variadic<AnyType>:$sets);
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
-  let assemblyFormat = [{
-    attr-dict ($srcs^ `into` $dsts `[` $sets `]`
-      `:` type($srcs) `into` type($dsts) `[` type($sets) `]`)?
-  }];
+
+
+  let hasCustomAssemblyFormat = 1;
 
   let extraClassDeclaration = [{
 

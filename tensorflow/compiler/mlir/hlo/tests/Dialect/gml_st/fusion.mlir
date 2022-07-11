@@ -48,7 +48,10 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // Check tiled broadcast.
   // CHECK-DAG: %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[RES_TILE]]] : tensor<?x?x?xf32>[!gml_st.tile<3x4x5>]
   // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]] : tensor<?x?xf32>[!gml_st.tile<?x?>]
-  // CHECK-DAG: %[[RES:.*]] = gml_st.dynamic_broadcast_in_dim %[[INIT_SUB]], %[[ARG_SUB]], [0, 2] : tensor<3x4x5xf32>, tensor<?x?xf32> -> tensor<3x4x5xf32>
+  // CHECK-NEXT: %[[RES:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK-SAME ins(%[[ARG_SUB]] : tensor<?x?xf32>)
+  // CHECK-SAME outs(%[[INIT_SUB]] : tensor<3x4x5xf32>)
+  // CHECK-SAME {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}
   // CHECK: return %[[RES]] : tensor<3x4x5xf32>
 
   %c0 = arith.constant 0 : index
@@ -60,8 +63,8 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
-  %bcast = gml_st.dynamic_broadcast_in_dim %dst, %arg, [0, 2]
-      : tensor<?x?x?xf32>, tensor<?x?xf32> -> tensor<?x?x?xf32>
+  %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>) 
+      outs(%dst: tensor<?x?x?xf32>) { broadcast_dimensions = dense<[0, 2]> : tensor<2xi64> }
 
   // Materialze a tile.
   %space = gml_st.space [%d0, %d1, %d2] : !gml_st.tile<?x?x?>
@@ -75,122 +78,268 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
 
 // -----
 
-// CHECK-LABEL: @add
-// CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+// CHECK: #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:      @add
+// CHECK-SAME: %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>)
 func.func @add(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %tile: !gml_st.tile<?x?>) -> tensor<?x?xf32> {
-  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
-  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
-  // CHECK-DAG: %[[RES:.*]] = mhlo.add %[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>
-  // CHECK:     return %[[RES]]
-  %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
-  %1 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
-  func.return %1 : tensor<?x?xf32>
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK-DAG:  %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+  // CHECK-DAG:  %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
+  // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[RES:.*]] = linalg.generic
+  // CHECK-SAME:     indexing_maps = [#[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]],
+  // CHECK-SAME:     iterator_types = ["parallel", "parallel"]
+  // CHECK-SAME:     ins(%[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>, tensor<?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xf32>)
+  // CHECK:      ^bb0(%[[LHS_SCALAR:.*]]: f32, %[[RHS_SCALAR:.*]]: f32, %{{.*}}: f32):
+  // CHECK-DAG:    %[[RES_SCALAR:.*]] = arith.addf %[[LHS_SCALAR]], %[[RHS_SCALAR]]
+  // CHECK:        linalg.yield %[[RES_SCALAR]]
+  // CHECK:      return %[[RES]]
+  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %linalg = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<32x32xf32>, tensor<32x32xf32>)
+      outs(%init : tensor<32x32xf32>) {
+  ^bb0(%lhs_scalar: f32, %rhs_scalar: f32, %_: f32):
+    %add = arith.addf %lhs_scalar, %rhs_scalar : f32
+    linalg.yield %add : f32
+  } -> tensor<32x32xf32>
+  %result = gml_st.materialize %linalg[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  return %result : tensor<?x?xf32>
 }
 
 // -----
 
-// CHECK-LABEL: @cos
-// CHECK-SAME:  %[[ARG:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK-LABEL: @add_two_users
+// CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>, %[[D0:.*]]: index, %[[D1:.*]]: index
+func.func @add_two_users(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
+    %tile: !gml_st.tile<?x?>, %d0: index, %d1: index) -> tensor<?x?xf32> {
+  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK:      %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+  // CHECK:      %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
+  // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[GENERIC0:.*]] = linalg.generic
+  // CHECK-SAME:     ins(%[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>, tensor<?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xf32>)
+  // CHECK:      %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+  // CHECK:      %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
+  // CHECK:      %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[GENERIC1:.*]] = linalg.generic
+  // CHECK-SAME:     ins(%[[LHS_SUB]], %[[RHS_SUB]] : tensor<?x?xf32>, tensor<?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xf32>)
+  // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]]]
+  // CHECK:      %[[RES:.*]] = linalg.generic
+  // CHECK-SAME:     ins(%[[GENERIC0]], %[[GENERIC1]] : tensor<?x?xf32>, tensor<?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT]] : tensor<?x?xf32>)
+  // CHECK: return %[[RES]]
+  %init0 = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %linalg0 = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<32x32xf32>, tensor<32x32xf32>)
+      outs(%init0 : tensor<32x32xf32>) {
+  ^bb0(%lhs_scalar: f32, %rhs_scalar: f32, %_: f32):
+    %add = arith.addf %lhs_scalar, %rhs_scalar : f32
+    linalg.yield %add : f32
+  } -> tensor<32x32xf32>
+  %user0 = gml_st.materialize %linalg0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  %user1 = gml_st.materialize %linalg0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  %init1 = linalg.init_tensor [%d0, %d1] : tensor<?x?xf32>
+  %linalg1 = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%user0, %user1 : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%init1 : tensor<?x?xf32>) {
+  ^bb0(%lhs_scalar: f32, %rhs_scalar: f32, %_: f32):
+    %add = arith.addf %lhs_scalar, %rhs_scalar : f32
+    linalg.yield %add : f32
+  } -> tensor<?x?xf32>
+  func.return %linalg1 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK: #[[ID_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:      @cos
+// CHECK-SAME: %[[ARG:.*]]: tensor<32x32xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
 func.func @cos(%arg: tensor<32x32xf32>, %tile: !gml_st.tile<?x?>)
     -> tensor<?x?xf32> {
-  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]] : tensor<32x32xf32>[!gml_st.tile<?x?>]
-  // CHECK-DAG: %[[RES:.*]] = mhlo.cosine %[[ARG_SUB]] : tensor<?x?xf32>
-  // CHECK:     return %[[RES]]
-  %0 = mhlo.cosine %arg : tensor<32x32xf32>
-  %1 = gml_st.materialize %0[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
-  return %1 : tensor<?x?xf32>
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [32, 32]
+  // CHECK-DAG:  %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[TILE]]]
+  // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[RES:.*]] = linalg.generic
+  // CHECK-SAME:     indexing_maps = [#[[ID_MAP]], #[[ID_MAP]]],
+  // CHECK-SAME:     iterator_types = ["parallel", "parallel"]
+  // CHECK-SAME:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?xf32>)
+  // CHECK:      ^bb0(%[[ARG_SCALAR:.*]]: f32, %{{.*}}: f32):
+  // CHECK-DAG:    %[[RES_SCALAR:.*]] = math.cos %[[ARG_SCALAR]]
+  // CHECK:        linalg.yield %[[RES_SCALAR]]
+  // CHECK:      return %[[RES]]
+  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %linalg = linalg.generic {
+      indexing_maps = [#id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%arg : tensor<32x32xf32>)
+      outs(%init : tensor<32x32xf32>) {
+  ^bb0(%arg_scalar: f32, %_: f32):
+    %cos = math.cos %arg_scalar : f32
+    linalg.yield %cos : f32
+  } -> tensor<32x32xf32>
+  %result = gml_st.materialize %linalg[%tile] : tensor<32x32xf32>[!gml_st.tile<?x?>]
+  return %result : tensor<?x?xf32>
 }
 
 // -----
+
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @add_point
 // CHECK-SAME:  %[[LHS:.*]]: tensor<32x32xf32>, %[[RHS:.*]]: tensor<32x32xf32>, %[[POINT:.*]]: !gml_st.point
 func.func @add_point(%lhs: tensor<32x32xf32>, %rhs: tensor<32x32xf32>,
     %point: !gml_st.point) -> f32 {
-  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[POINT]]] : tensor<32x32xf32>[!gml_st.point]
-  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[POINT]]] : tensor<32x32xf32>[!gml_st.point]
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[POINT]]]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[POINT]]]
   // CHECK-DAG: %[[RES:.*]] = arith.addf %[[LHS_SUB]], %[[RHS_SUB]]
   // CHECK:     return %[[RES]]
-  %0 = mhlo.add %lhs, %rhs : tensor<32x32xf32>
-  %1 = gml_st.materialize %0[%point] : tensor<32x32xf32>[!gml_st.point]
-  func.return %1 : f32
+  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %linalg = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<32x32xf32>, tensor<32x32xf32>)
+      outs(%init : tensor<32x32xf32>) {
+  ^bb0(%lhs_scalar: f32, %rhs_scalar: f32, %_: f32):
+    %add = arith.addf %lhs_scalar, %rhs_scalar : f32
+    linalg.yield %add : f32
+  } -> tensor<32x32xf32>
+  %result = gml_st.materialize %linalg[%point] : tensor<32x32xf32>[!gml_st.point]
+  return %result : f32
 }
 
 // -----
+
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @cos_point
 // CHECK-SAME:  %[[ARG:.*]]: tensor<32x32xf32>, %[[POINT:.*]]: !gml_st.point
 func.func @cos_point(%arg: tensor<32x32xf32>, %point: !gml_st.point) -> f32 {
-  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[POINT]]] : tensor<32x32xf32>[!gml_st.point]
+  // CHECK-DAG: %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[POINT]]]
   // CHECK-DAG: %[[RES:.*]] = math.cos %[[ARG_SUB]]
   // CHECK:     return %[[RES]]
-  %0 = mhlo.cosine %arg : tensor<32x32xf32>
-  %1 = gml_st.materialize %0[%point] : tensor<32x32xf32>[!gml_st.point]
-  return %1 : f32
+  %init = linalg.init_tensor [32, 32] : tensor<32x32xf32>
+  %linalg = linalg.generic {
+      indexing_maps = [#id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%arg : tensor<32x32xf32>)
+      outs(%init : tensor<32x32xf32>) {
+  ^bb0(%arg_scalar: f32, %_: f32):
+    %cos = math.cos %arg_scalar : f32
+    linalg.yield %cos : f32
+  } -> tensor<32x32xf32>
+  %result = gml_st.materialize %linalg[%point] : tensor<32x32xf32>[!gml_st.point]
+  return %result : f32
 }
 
 // -----
 
-#cwise_trait = {
-  indexing_maps = [
-    affine_map<(d0) -> (d0)>,
-    affine_map<(d0) -> (d0)>,
-    affine_map<(d0) -> (d0)>
-  ],
-  iterator_types = ["parallel"]
-}
+// CHECK: #[[ID_MAP:.*]] = affine_map<(d0) -> (d0)>
+#id_map = affine_map<(d0) -> (d0)>
 
-// CHECK-LABEL: @fuse_into_ploop
-// CHECK-SAME:  %[[LHS:.*]]: tensor<8xf32>, %[[RHS:.*]]: tensor<8xf32>, %[[OUT:.*]]: tensor<8xf32>
-func.func @fuse_into_ploop(%lhs : tensor<8xf32>, %rhs : tensor<8xf32>,
-                           %out: tensor<8xf32>) -> tensor<8xf32> {
-  // CHECK-DAG: %[[C8:.*]] = arith.constant 8
-  // CHECK-DAG: %[[C4:.*]] = arith.constant 4
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
-  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [8] : !gml_st.tile<8>
-  // CHECK:     %[[RES:.*]] = gml_st.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]]) {
-  // CHECK-DAG:   %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[I]]] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
-  // CHECK-DAG:   %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]] : tensor<8xf32>[!gml_st.tile<4>]
-  // CHECK-DAG:   %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]] : tensor<8xf32>[!gml_st.tile<4>]
-  // CHECK-DAG:   %[[OUT_SUB:.*]] = gml_st.materialize %[[OUT]][%[[TILE]]] : tensor<8xf32>[!gml_st.tile<4>]
-  // CHECK-DAG:   %[[TANH_SUB:.*]] = mhlo.tanh %[[LHS_SUB]]
-  // CHECK-DAG:   %[[COS_SUB:.*]] = mhlo.cosine %[[RHS_SUB]]
-  // CHECK:       %[[RES_SUB:.*]] = linalg.generic {indexing_maps = [#map, #map, #map], iterator_types = ["parallel"]} ins(%[[TANH_SUB]], %[[COS_SUB]] : tensor<4xf32>, tensor<4xf32>) outs(%[[OUT_SUB]] : tensor<4xf32>)
-  // CHECK:       ^bb0(%[[TANH_SCALAR:.*]]: f32, %[[COS_SCALAR:.*]]: f32, %{{.*}}: f32):
-  // CHECK-DAG:     %[[RES_SCALAR:.*]] = arith.addf %[[TANH_SCALAR]], %[[COS_SCALAR]] : f32
-  // CHECK:         linalg.yield %[[RES_SCALAR]]
-  // CHECK:       gml_st.set_yield %[[RES_SUB]] into %[[OUT]][%[[TILE]]
-  // CHECK-SAME:    : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
-  // CHECK:     return %[[RES]]
-
-  %tanh = mhlo.tanh %lhs : tensor<8xf32>
-  %cos = mhlo.cosine %rhs : tensor<8xf32>
-
-  %c0 = arith.constant 0 : index
-  %c4 = arith.constant 4 : index
+// CHECK:      @fuse_into_ploop
+// CHECK-SAME: %[[LHS:.*]]: tensor<8xf32>, %[[RHS:.*]]: tensor<8xf32>
+func.func @fuse_into_ploop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>)
+    -> tensor<8xf32> {
+  // CHECK-DAG:  %[[C8:.*]] = arith.constant 8
+  // CHECK-DAG:  %[[C4:.*]] = arith.constant 4
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [8]
+  // CHECK-DAG:  %[[SPACE:.*]] = gml_st.space [8]
+  // CHECK:      %[[RESULT:.*]] = gml_st.parallel (%[[IV:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]])
+  // CHECK-DAG:    %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[IV]]] [4] [1]
+  // CHECK-DAG:    %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
+  // CHECK-DAG:    %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:        %[[TANH_SUB:.*]] = linalg.generic
+  // CHECK-SAME:       indexing_maps = [#[[ID_MAP]], #[[ID_MAP]]]
+  // CHECK-SAME:       iterator_types = ["parallel"]
+  // CHECK-SAME:       ins(%[[LHS_SUB]] : tensor<4xf32>)
+  // CHECK-SAME:       outs(%[[INIT_SUB]] : tensor<4xf32>)
+  // CHECK:        ^bb0(%[[LHS_SCALAR:.*]]: f32, %{{.*}}: f32):
+  // CHECK-DAG:      %[[TANH_SCALAR:.*]] = math.tanh %[[LHS_SCALAR]]
+  // CHECK:          linalg.yield %[[TANH_SCALAR]]
+  // CHECK-DAG:    %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
+  // CHECK-DAG:    %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:        %[[COS_SUB:.*]] = linalg.generic
+  // CHECK-SAME:       indexing_maps = [#[[ID_MAP]], #[[ID_MAP]]]
+  // CHECK-SAME:       iterator_types = ["parallel"]
+  // CHECK-SAME:       ins(%[[RHS_SUB]] : tensor<4xf32>)
+  // CHECK-SAME:       outs(%[[INIT_SUB]] : tensor<4xf32>)
+  // CHECK:        ^bb0(%[[RHS_SCALAR:.*]]: f32, %{{.*}}: f32):
+  // CHECK-DAG:      %[[COS_SCALAR:.*]] = math.cos %[[RHS_SCALAR]]
+  // CHECK:          linalg.yield %[[COS_SCALAR]]
+  // CHECK-DAG:    %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:        %[[RESULT_SUB:.*]] = linalg.generic
+  // CHECK-SAME:       indexing_maps = [#[[ID_MAP]], #[[ID_MAP]], #[[ID_MAP]]]
+  // CHECK-SAME:       iterator_types = ["parallel"]
+  // CHECK-SAME:       ins(%[[TANH_SUB]], %[[COS_SUB]] : tensor<4xf32>, tensor<4xf32>)
+  // CHECK-SAME:       outs(%[[INIT_SUB]] : tensor<4xf32>)
+  // CHECK:        ^bb0(%[[TANH_SCALAR:.*]]: f32, %[[COS_SCALAR:.*]]: f32, %{{.*}}: f32):
+  // CHECK-DAG:      %[[RESULT_SCALAR:.*]] = arith.addf %[[TANH_SCALAR]], %[[COS_SCALAR]]
+  // CHECK:          linalg.yield %[[RESULT_SCALAR]]
+  // CHECK:        gml_st.set_yield %[[RESULT_SUB]] into %[[INIT]][%[[TILE]]]
+  // CHECK:      return %[[RESULT]]
   %c8 = arith.constant 8 : index
+  %c4 = arith.constant 4 : index
+  %c0 = arith.constant 0 : index
+  %init = linalg.init_tensor [8] : tensor<8xf32>
+  %tanh = linalg.generic {
+      indexing_maps = [#id_map, #id_map],
+      iterator_types = ["parallel"]}
+      ins(%lhs : tensor<8xf32>)
+      outs(%init : tensor<8xf32>) {
+  ^bb0(%lhs_scalar: f32, %_: f32):
+    %tanh_scalar = math.tanh %lhs_scalar : f32
+    linalg.yield %tanh_scalar : f32
+  } -> tensor<8xf32>
+  %cos = linalg.generic {
+      indexing_maps = [#id_map, #id_map],
+      iterator_types = ["parallel"]}
+      ins(%rhs : tensor<8xf32>)
+      outs(%init : tensor<8xf32>) {
+  ^bb0(%rhs_scalar: f32, %_: f32):
+    %cos_scalar = math.cos %rhs_scalar : f32
+    linalg.yield %cos_scalar : f32
+  } -> tensor<8xf32>
   %space = gml_st.space [8] : !gml_st.tile<8>
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
-    %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<8> to !gml_st.tile<4>
+  %result = gml_st.parallel (%iv) = (%c0) to (%c8) step (%c4) {
+    %tile = gml_st.tile %space [%iv] [4] [1]
+        : !gml_st.tile<8> to !gml_st.tile<4>
     %tanh_sub = gml_st.materialize %tanh[%tile]
         : tensor<8xf32>[!gml_st.tile<4>]
     %cos_sub = gml_st.materialize %cos[%tile]
         : tensor<8xf32>[!gml_st.tile<4>]
-    %out_sub = gml_st.materialize %out[%tile]
+    %init_sub = gml_st.materialize %init[%tile]
         : tensor<8xf32>[!gml_st.tile<4>]
-
-    %result_sub = linalg.generic #cwise_trait
+    %result_sub = linalg.generic {
+        indexing_maps = [#id_map, #id_map, #id_map],
+        iterator_types = ["parallel"]}
         ins(%tanh_sub, %cos_sub : tensor<4xf32>, tensor<4xf32>)
-        outs(%out_sub : tensor<4xf32>) {
-      ^bb(%l: f32, %r: f32, %o: f32) :
-        %s = arith.addf %l, %r : f32
-        linalg.yield %s : f32
+        outs(%init_sub : tensor<4xf32>) {
+    ^bb0(%arg4: f32, %arg5: f32, %arg6: f32):
+      %tanh0 = arith.addf %arg4, %arg5 : f32
+      linalg.yield %tanh0 : f32
     } -> tensor<4xf32>
-
-    gml_st.set_yield %result_sub into %out[%tile] : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
+    gml_st.set_yield %result_sub into %init[%tile]
+        : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
-  func.return %sum : tensor<8xf32>
+  return %result : tensor<8xf32>
 }
 
 // -----
@@ -235,4 +384,34 @@ func.func @fuse_cwise_linalg_generic(%lhs: tensor<?x?xf32>,
   } -> tensor<?x?xf32>
   %4 = gml_st.materialize %3[%tile] : tensor<?x?xf32>[!gml_st.tile<?x?>]
   return %4 : tensor<?x?xf32>
+}
+
+// -----
+
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:      @fuse_cwise_linalg_generic_at_point
+// CHECK-SAME: %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>, %[[POINT:.*]]: !gml_st.point
+func.func @fuse_cwise_linalg_generic_at_point(%lhs: tensor<?x?xf32>,
+    %rhs: tensor<?x?xf32>, %point: !gml_st.point) -> f32 {
+  // CHECK-DAG: %[[LHS_SUB:.*]] = gml_st.materialize %[[LHS]][%[[POINT]]]
+  // CHECK-DAG: %[[RHS_SUB:.*]] = gml_st.materialize %[[RHS]][%[[POINT]]]
+  // CHECK-DAG: %[[RES:.*]] = arith.addf %[[LHS_SUB]], %[[RHS_SUB]]
+  // CHECK:     return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
+  %1 = tensor.dim %lhs, %c1 : tensor<?x?xf32>
+  %2 = linalg.init_tensor [%0, %1] : tensor<?x?xf32>
+  %3 = linalg.generic {
+      indexing_maps = [#id_map, #id_map, #id_map],
+      iterator_types = ["parallel", "parallel"]}
+      ins(%lhs, %rhs : tensor<?x?xf32>, tensor<?x?xf32>)
+      outs(%2 : tensor<?x?xf32>) {
+  ^bb0(%arg3: f32, %arg4: f32, %arg5: f32):
+    %5 = arith.addf %arg3, %arg4 : f32
+    linalg.yield %5 : f32
+  } -> tensor<?x?xf32>
+  %4 = gml_st.materialize %3[%point] : tensor<?x?xf32>[!gml_st.point]
+  return %4 : f32
 }

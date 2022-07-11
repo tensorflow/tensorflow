@@ -196,6 +196,24 @@ TEST(XlaCompilationTest, StringUnsupported) {
   EXPECT_TRUE(clusters.empty());
 }
 
+TEST(XlaCompilationTest, WhereUnsupported) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_INT32)
+                                         .WithAttr("value", Tensor()));
+    Node* b = ops::UnaryOp("Where", a, builder.opts().WithName("B"));
+    ops::BinaryOp("Gather", b, a, builder.opts().WithName("C"));
+    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  }
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+  EXPECT_TRUE(!clusters.empty());
+}
+
 TEST(XlaCompilationTest, HalfSupported) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   {

@@ -62,7 +62,7 @@ absl::Status LinearStorage::GetGPUResources(
         "Expected TensorLinearDescriptor on input.");
   }
 
-  resources->ints.push_back({"length", depth_});
+  resources->AddInt("length", depth_);
 
   if (storage_type_ == LinearStorageType::BUFFER) {
     resources->buffers.push_back({"buffer", memory_});

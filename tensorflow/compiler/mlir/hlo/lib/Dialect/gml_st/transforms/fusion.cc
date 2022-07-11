@@ -36,7 +36,7 @@ struct FusionPattern : public OpRewritePattern<MaterializeOp> {
     Operation* def = op.source().getDefiningOp();
     if (!def) return failure();
 
-    auto iface = llvm::dyn_cast<FusionIterface>(def);
+    auto iface = llvm::dyn_cast<FusionInterface>(def);
     if (!iface) return failure();
 
     Value fused = iface.fuse(op.getLoc(), op.set(), rewriter);

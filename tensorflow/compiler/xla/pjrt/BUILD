@@ -249,6 +249,7 @@ cc_library(
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

@@ -71,7 +71,7 @@ struct MhloToScalarOp<mhlo::ClzOp> {
   using UOp = ::mlir::math::CountLeadingZerosOp;
 };
 template <>
-struct MhloToScalarOp<mhlo::CosOp> {
+struct MhloToScalarOp<mhlo::CosineOp> {
   using FOp = ::mlir::math::CosOp;
   using COp = ::mlir::complex::CosOp;
 };
@@ -150,7 +150,7 @@ struct MhloToScalarOp<mhlo::SqrtOp> {
   using COp = ::mlir::complex::SqrtOp;
 };
 template <>
-struct MhloToScalarOp<mhlo::SinOp> {
+struct MhloToScalarOp<mhlo::SineOp> {
   using FOp = ::mlir::math::SinOp;
   using COp = ::mlir::complex::SinOp;
 };

@@ -212,6 +212,21 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result);
 
+// Records the activity per op using the
+// tf_metadata.tf_mlir_bridge_graph_analysis_per_op.
+// op_name: the name of op.
+// construction_context: eager, session, Not tracked.
+// is_single_core_inference_mode: true, false.
+// unsupported_reason: the reason why the graph is not supported in MLIR-based
+// bridge, like invalid graph, has unsupported ops, etc.
+// has_unsupported_features: true indicates MLIR-based bridge is disabled,
+// false indicates MLIR-based bridge is enabled.
+
+void UpdateTfMlirBridgeGraphAnalysisPerOp(
+    const std::string& op_name, const std::string& construction_context,
+    bool is_single_core_inference_mode, const std::string& unsupported_reason,
+    bool has_unsupported_features);
+
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
 class ScopedCounter final {

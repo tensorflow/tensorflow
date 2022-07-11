@@ -1485,7 +1485,7 @@ func.func @reshape(%arg0: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<256xf32>) -> tensor<1xf32> {
 // CHECK:           %[[VAL_2:.*]] = arith.constant dense<[256, 1]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_2]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<256x1xf32>
-// CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV2"(%[[VAL_0]], %[[VAL_3]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV3"(%[[VAL_0]], %[[VAL_3]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
 // CHECK:           %[[VAL_5:.*]] = arith.constant dense<1> : tensor<1xi64>
 // CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x1xf32>, tensor<1xi64>) -> tensor<1xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1xf32>
@@ -1502,7 +1502,7 @@ func.func @convert_dot_2d_1d(%arg0: tensor<1x256xf32>, %arg1: tensor<256xf32>) -
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<1x256xf32>
 // CHECK:           %[[VAL_4:.*]] = arith.constant dense<[256, 1]> : tensor<2xi64>
 // CHECK:           %[[VAL_5:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_4]]) : (tensor<256xf32>, tensor<2xi64>) -> tensor<256x1xf32>
-// CHECK:           %[[VAL_6:.*]] = "tf.BatchMatMulV2"(%[[VAL_3]], %[[VAL_5]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
+// CHECK:           %[[VAL_6:.*]] = "tf.BatchMatMulV3"(%[[VAL_3]], %[[VAL_5]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
 // CHECK:           %[[VAL_7:.*]] = arith.constant dense<> : tensor<0xi64>
 // CHECK:           %[[VAL_8:.*]] = "tf.Reshape"(%[[VAL_6]], %[[VAL_7]]) : (tensor<1x1xf32>, tensor<0xi64>) -> tensor<f32>
 // CHECK:           return %[[VAL_8]] : tensor<f32>
@@ -1515,7 +1515,7 @@ func.func @convert_dot_1d_1d(%arg0: tensor<256xf32>, %arg1: tensor<256xf32>) -> 
 // CHECK-LABEL:   func @convert_dot_2d_2d(
 // CHECK-SAME:                            %[[VAL_0:.*]]: tensor<1x256xf32>,
 // CHECK-SAME:                            %[[VAL_1:.*]]: tensor<256x1xf32>) -> tensor<1x1xf32> {
-// CHECK:           %[[VAL_2:.*]] = "tf.BatchMatMulV2"(%[[VAL_0]], %[[VAL_1]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
+// CHECK:           %[[VAL_2:.*]] = "tf.BatchMatMulV3"(%[[VAL_0]], %[[VAL_1]]) {adj_x = false, adj_y = false} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
 // CHECK:           return %[[VAL_2]] : tensor<1x1xf32>
 // CHECK:         }
 func.func @convert_dot_2d_2d(%arg0: tensor<1x256xf32>, %arg1: tensor<256x1xf32>) -> tensor<1x1xf32> {
@@ -1558,7 +1558,7 @@ func.func @broadcast_in_dim_general_case(%arg0: tensor<3x1x16xf32>) -> tensor<3x
 // CHECK:           %[[VAL_7:.*]] = "tf.Reshape"(%[[VAL_3]], %[[VAL_6]]) : (tensor<3x5x1x2x6xf32>, tensor<3xi64>) -> tensor<3x5x12xf32>
 // CHECK:           %[[VAL_8:.*]] = arith.constant dense<[3, 12, 4]> : tensor<3xi64>
 // CHECK:           %[[VAL_9:.*]] = "tf.Reshape"(%[[VAL_5]], %[[VAL_8]]) : (tensor<3x2x6x4xf32>, tensor<3xi64>) -> tensor<3x12x4xf32>
-// CHECK:           %[[VAL_10:.*]] = "tf.BatchMatMulV2"(%[[VAL_7]], %[[VAL_9]]) {adj_x = false, adj_y = false} : (tensor<3x5x12xf32>, tensor<3x12x4xf32>) -> tensor<3x5x4xf32>
+// CHECK:           %[[VAL_10:.*]] = "tf.BatchMatMulV3"(%[[VAL_7]], %[[VAL_9]]) {adj_x = false, adj_y = false} : (tensor<3x5x12xf32>, tensor<3x12x4xf32>) -> tensor<3x5x4xf32>
 // CHECK:           %[[VAL_11:.*]] = arith.constant dense<[3, 5, 1, 4]> : tensor<4xi64>
 // CHECK:           %[[VAL_12:.*]] = "tf.Reshape"(%[[VAL_10]], %[[VAL_11]]) : (tensor<3x5x4xf32>, tensor<4xi64>) -> tensor<3x5x1x4xf32>
 // CHECK:           return %[[VAL_12]] : tensor<3x5x1x4xf32>
@@ -1581,7 +1581,7 @@ func.func @convert_dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4
 // CHECK-SAME:                                       %[[VAL_1:.*]]: tensor<1024x1024xf32>) -> tensor<1x1x1024xf32> {
 // CHECK:           %[[VAL_2:.*]] = arith.constant dense<[1, 1024]> : tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : {{.*}} -> tensor<1x1024xf32>
-// CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV2"(%[[VAL_3]], %[[VAL_1]]) {adj_x = false, adj_y = false} : {{.*}} -> tensor<1x1024xf32>
+// CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV3"(%[[VAL_3]], %[[VAL_1]]) {adj_x = false, adj_y = false} : {{.*}} -> tensor<1x1024xf32>
 // CHECK:           %[[VAL_5:.*]] = arith.constant dense<[1, 1, 1024]> : tensor<3xi64>
 // CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : {{.*}} -> tensor<1x1x1024xf32>
 // CHECK:           return %[[VAL_6]] : tensor<1x1x1024xf32>
@@ -1597,6 +1597,149 @@ func.func @convert_dot_general_repeated(%arg0: tensor<1x1x1024xf32>, %arg1: tens
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<1x1x1024xf32>, tensor<1024x1024xf32>) -> tensor<1x1x1024xf32>
   func.return %0 : tensor<1x1x1024xf32>
+}
+
+// CHECK-LABEL:   func @convert_dot_general_int8(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<256xi8>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<256x8xi8>) -> tensor<8xi32> {
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<[1, 256]> : tensor<2xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<256xi8>, tensor<2xi64>) -> tensor<1x256xi8>
+// CHECK:           %[[VAL_4:.*]] = "tf.BatchMatMulV3"(%[[VAL_3]], %[[VAL_1]]) {adj_x = false, adj_y = false} : (tensor<1x256xi8>, tensor<256x8xi8>) -> tensor<1x8xi32>
+// CHECK:           %[[VAL_5:.*]] = arith.constant dense<8> : tensor<1xi64>
+// CHECK:           %[[VAL_6:.*]] = "tf.Reshape"(%[[VAL_4]], %[[VAL_5]]) : (tensor<1x8xi32>, tensor<1xi64>) -> tensor<8xi32>
+// CHECK:           return %[[VAL_6]] : tensor<8xi32>
+// CHECK:         }
+func.func @convert_dot_general_int8(%arg0: tensor<256xi8>, %arg1: tensor<256x8xi8>) -> tensor<8xi32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [0],
+      rhs_contracting_dimensions = [0]>,
+      precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+  } : (tensor<256xi8>, tensor<256x8xi8>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+}
+
+// CHECK-LABEL:   func.func @convert_conv1d(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+// CHECK-DAG:       %[[VAL_2:.*]] = arith.constant dense<[16, 32, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<16x32x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_5:.*]] = "tf.Transpose"(%[[VAL_3]], %[[VAL_4]]) : (tensor<16x32x256x1xbf16>, tensor<4xi64>) -> tensor<16x32x1x256xbf16>
+// CHECK-DAG:       %[[VAL_6:.*]] = arith.constant dense<[1, 256, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_7:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_6]]) : (tensor<1x256x256xbf16>, tensor<4xi64>) -> tensor<1x256x256x1xbf16>
+// CHECK-DAG:       %[[VAL_8:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_7]], %[[VAL_8]]) : (tensor<1x256x256x1xbf16>, tensor<4xi64>) -> tensor<1x1x256x256xbf16>
+// CHECK:           %[[VAL_10:.*]] = "tf.Conv2D"(%[[VAL_5]], %[[VAL_9]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<16x32x1x256xbf16>, tensor<1x1x256x256xbf16>) -> tensor<16x32x1x256xbf16>
+// CHECK:           %[[VAL_11:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_12:.*]] = "tf.Transpose"(%[[VAL_10]], %[[VAL_11]]) : (tensor<16x32x1x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK:           %[[VAL_13:.*]] = arith.constant dense<[16, 32, 256]> : tensor<3xi64>
+// CHECK:           %[[VAL_14:.*]] = "tf.Reshape"(%[[VAL_12]], %[[VAL_13]]) : (tensor<16x32x256x1xbf16>, tensor<3xi64>) -> tensor<16x32x256xbf16>
+// CHECK:           return %[[VAL_14]] : tensor<16x32x256xbf16>
+// CHECK:         }
+func.func @convert_conv1d(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<1xi64>,
+    padding = dense<0> : tensor<1x2xi64>,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    rhs_dilation = dense<1> : tensor<1xi64>,
+    window_strides = dense<1> : tensor<1xi64>
+  } : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
+  func.return %0 : tensor<16x32x256xbf16>
+}
+
+// CHECK-LABEL:   func.func @convert_conv1d_non_canonical_dimension_numbers(
+// CHECK-SAME:                                                              %[[VAL_0:.*]]: tensor<32x16x256xbf16>,
+// CHECK-SAME:                                                              %[[VAL_1:.*]]: tensor<256x1x256xbf16>) -> tensor<256x16x32xbf16> {
+// CHECK-DAG:       %[[VAL_2:.*]] = arith.constant dense<[32, 16, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<32x16x256xbf16>, tensor<4xi64>) -> tensor<32x16x256x1xbf16>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<[1, 0, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_5:.*]] = "tf.Transpose"(%[[VAL_3]], %[[VAL_4]]) : (tensor<32x16x256x1xbf16>, tensor<4xi64>) -> tensor<16x32x1x256xbf16>
+// CHECK:           %[[VAL_6:.*]] = arith.constant dense<[256, 1, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_7:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_6]]) : (tensor<256x1x256xbf16>, tensor<4xi64>) -> tensor<256x1x256x1xbf16>
+// CHECK-DAG:       %[[VAL_8:.*]] = "tf.Const"() {value = dense<[1, 3, 2, 0]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_7]], %[[VAL_8]]) : (tensor<256x1x256x1xbf16>, tensor<4xi64>) -> tensor<1x1x256x256xbf16>
+// CHECK:           %[[VAL_10:.*]] = "tf.Conv2D"(%[[VAL_5]], %[[VAL_9]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<16x32x1x256xbf16>, tensor<1x1x256x256xbf16>) -> tensor<16x32x1x256xbf16>
+// CHECK-DAG:       %[[VAL_11:.*]] = "tf.Const"() {value = dense<[3, 0, 1, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_12:.*]] = "tf.Transpose"(%[[VAL_10]], %[[VAL_11]]) : (tensor<16x32x1x256xbf16>, tensor<4xi64>) -> tensor<256x16x32x1xbf16>
+// CHECK:           %[[VAL_13:.*]] = arith.constant dense<[256, 16, 32]> : tensor<3xi64>
+// CHECK:           %[[VAL_14:.*]] = "tf.Reshape"(%[[VAL_12]], %[[VAL_13]]) : (tensor<256x16x32x1xbf16>, tensor<3xi64>) -> tensor<256x16x32xbf16>
+// CHECK:           return %[[VAL_14]] : tensor<256x16x32xbf16>
+// CHECK:         }
+func.func @convert_conv1d_non_canonical_dimension_numbers(%arg0: tensor<32x16x256xbf16>, %arg1: tensor<256x1x256xbf16>) -> tensor<256x16x32xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[0, b, f]x[o, 0, i]->[f, b, 0]>,
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<1xi64>,
+    padding = dense<0> : tensor<1x2xi64>,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    rhs_dilation = dense<1> : tensor<1xi64>,
+    window_strides = dense<1> : tensor<1xi64>
+  } : (tensor<32x16x256xbf16>, tensor<256x1x256xbf16>) -> tensor<256x16x32xbf16>
+  func.return %0 : tensor<256x16x32xbf16>
+}
+
+// CHECK-LABEL:   func.func @no_convert_conv1d_dynamic(
+// CHECK-SAME:                                         %[[VAL_0:.*]]: tensor<16x?x256xbf16>,
+// CHECK-SAME:                                         %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x?x256xbf16> {
+// CHECK:           %[[VAL_2:.*]] = mhlo.convolution(%[[VAL_0]], %[[VAL_1]]) dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f], window = {stride = [1], pad = {{\[\[}}0, 0]], lhs_dilate = [1], rhs_dilate = [1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<16x?x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x?x256xbf16>
+// CHECK:           return %[[VAL_2]] : tensor<16x?x256xbf16>
+// CHECK:         }
+func.func @no_convert_conv1d_dynamic(%arg0: tensor<16x?x256xbf16>, %arg1: tensor<1x256x256xbf16>) -> tensor<16x?x256xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<1xi64>,
+    padding = dense<0> : tensor<1x2xi64>,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    rhs_dilation = dense<1> : tensor<1xi64>,
+    window_strides = dense<1> : tensor<1xi64>
+  } : (tensor<16x?x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x?x256xbf16>
+  func.return %0 : tensor<16x?x256xbf16>
+}
+
+// CHECK-LABEL:   func.func @no_convert_conv1d_feature_group_gt_1(
+// CHECK-SAME:                                                    %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
+// CHECK-SAME:                                                    %[[VAL_1:.*]]: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
+// CHECK:           %[[VAL_2:.*]] = mhlo.convolution(%[[VAL_0]], %[[VAL_1]]) dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f], window = {stride = [1], pad = {{\[\[}}0, 0]], lhs_dilate = [1], rhs_dilate = [1]} {batch_group_count = 1 : i64, feature_group_count = 2 : i64, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<16x32x256xbf16>, tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16>
+// CHECK:           return %[[VAL_2]] : tensor<16x32x128xbf16>
+// CHECK:         }
+func.func @no_convert_conv1d_feature_group_gt_1(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,
+    feature_group_count = 2 : i64,
+    lhs_dilation = dense<1> : tensor<1xi64>,
+    padding = dense<0> : tensor<1x2xi64>,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    rhs_dilation = dense<1> : tensor<1xi64>,
+    window_strides = dense<1> : tensor<1xi64>
+  } : (tensor<16x32x256xbf16>, tensor<1x128x128xbf16>) -> tensor<16x32x128xbf16>
+  func.return %0 : tensor<16x32x128xbf16>
+}
+
+// CHECK-LABEL:   func.func @no_convert_conv1d_missing_windows_strides(
+// CHECK-SAME:                                                         %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
+// CHECK-SAME:                                                         %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+// CHECK:           %[[VAL_2:.*]] = mhlo.convolution(%[[VAL_0]], %[[VAL_1]]) dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f], window = {pad = {{\[\[}}0, 0]], lhs_dilate = [1], rhs_dilate = [1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
+// CHECK:           return %[[VAL_2]] : tensor<16x32x256xbf16>
+// CHECK:         }
+func.func @no_convert_conv1d_missing_windows_strides(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<1xi64>,
+    padding = dense<0> : tensor<1x2xi64>,
+    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    rhs_dilation = dense<1> : tensor<1xi64>
+  } : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
+  func.return %0 : tensor<16x32x256xbf16>
 }
 
 // CHECK-LABEL:   func @convert_conv2d(
@@ -2972,7 +3115,7 @@ func.func @if(%arg0: tensor<i1>) -> (tensor<i32>) {
 // CHECK:           return %[[RESULT]] : tensor<28x1x100xf32>
 // CHECK:         }
 func.func @convert_dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x1x100xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<28x1x100xf32> {
-  %0 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
   func.return %0 : tensor<28x1x100xf32>
 }
 
@@ -3254,7 +3397,7 @@ func.func @const_quant() -> tensor<512x1x!quant.uniform<i8:f32, 0.01313391327857
 }
 
 // CHECK-LABEL:   func @convert_dot_quant_type(
-// CHECK-NOT:       "tf.BatchMatMulV2"
+// CHECK-NOT:       "tf.BatchMatMulV3"
 func.func @convert_dot_quant_type(%arg0: tensor<1x256xf32>, %arg1: tensor<256x!quant.uniform<i8:f32, 1.0>>) -> tensor<1xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x256xf32>, tensor<256x!quant.uniform<i8:f32, 1.0>>) -> tensor<1xf32>
   func.return %0 : tensor<1xf32>

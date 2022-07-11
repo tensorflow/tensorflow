@@ -43,9 +43,6 @@ def _print_context(num_global_devices: int, num_clients: int, client_id: int,
   # pylint: enable=protected-access
 
 
-_in_multi_client_mode = None
-
-
 @tf_export('experimental.dtensor.create_mesh', v1=[])
 def create_mesh(mesh_dims: Optional[List[Tuple[str, int]]] = None,
                 mesh_name: str = '',
@@ -165,10 +162,9 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     if num_clients <= 0:
       raise ValueError(f'num_clients ({num_clients}) must be > 0')
 
-    if _in_multi_client_mode is None and num_clients > 1:
-      raise ValueError(
-          'Invalid multi-client topology, run dtensor.initialize_multi_client() first'
-      )
+    if api.num_clients() > 1 and not multi_client_util.is_initialized():
+      raise ValueError('Invalid multi-client topology, please run '
+                       'dtensor.initialize_multi_client() first.')
 
     if client_id is None:
       client_id = api.client_id()
@@ -263,24 +259,11 @@ def dtensor_initialize_multi_client(
       service to make sure that workers know the devices on each other, a
       prerequisite for data transfer through cross-worker rendezvous.
   """
-  global _in_multi_client_mode
   assert context.executing_eagerly()
-
-  _in_multi_client_mode = api.job_name() != 'localhost'
-
-  if not _in_multi_client_mode and api.num_clients() != 1:
-    raise ValueError(
-        'DTENSOR_NUM_CLIENTS is set and not 1, while DTENSOR_JOB_NAME is '
-        'set to localhost for single client mode.')
 
   # Collective GRPC servers are only necessary in multi-client setup.
   # Single clients can use local mode of collectives.
-  if _in_multi_client_mode:
-    if api.jobs() is None:
-      raise ValueError(
-          'DTENSOR_JOBS environment variable is required when'
-          'using multi-client to properly set up communications between servers'
-      )
+  if api.num_clients() > 1:
     multi_client_util.initialize_multi_client_cluster(
         job_name=api.job_name(),
         dtensor_jobs=api.jobs(),

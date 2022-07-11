@@ -74,6 +74,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -239,18 +240,18 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
         << "Duplicate device id: " << device->id();
 
     if (device->IsAddressable()) {
-      int idx = device->local_hardware_id();
-      if (idx >= addressable_devices_.size()) {
-        addressable_devices_.resize(idx + 1);
-      }
-      CHECK(addressable_devices_[idx] == nullptr) << idx;
-      addressable_devices_[idx] = device.get();
+      addressable_devices_.push_back(device.get());
     }
     device->SetClient(this);
   }
-  for (int idx = 0; idx < addressable_devices_.size(); ++idx) {
-    CHECK(addressable_devices_[idx] != nullptr) << idx;
-  }
+  // TODO(phawkins): we don't really promise anything about the order of
+  // these devices, but users may be depending on the current order. Sort into
+  // device ordinal order, which is the historical order these values have
+  // appeared.
+  absl::c_sort(addressable_devices_,
+               [](const PjRtDevice* a, const PjRtDevice* b) {
+                 return a->local_hardware_id() < b->local_hardware_id();
+               });
 }
 
 StatusOr<DeviceAssignment> PjRtStreamExecutorClient::GetDefaultDeviceAssignment(

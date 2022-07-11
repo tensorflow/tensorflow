@@ -811,6 +811,17 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Cos(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
@@ -1031,7 +1042,7 @@ LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(mlir::mhlo::ConvolutionOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
@@ -1425,24 +1436,20 @@ LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp mu, sigma;
-  if (failed(GetXlaOp(op.mu(), value_map, &mu, op))) return failure();
-  if (failed(GetXlaOp(op.sigma(), value_map, &sigma, op))) return failure();
-
-  value_map[op] = xla::RngNormal(mu, sigma, xla::TypeToShape(op.getType()));
-  return success();
-}
-
-LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp a, b;
   if (failed(GetXlaOp(op.a(), value_map, &a, op))) return failure();
   if (failed(GetXlaOp(op.b(), value_map, &b, op))) return failure();
 
-  value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
-  return success();
+  if (op.rng_distribution() == RngDistribution::UNIFORM) {
+    value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  } else if (op.rng_distribution() == RngDistribution::NORMAL) {
+    value_map[op] = xla::RngNormal(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  }
+  return failure();
 }
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
@@ -1526,6 +1533,17 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   value_map[op] = xla::SendWithToken(
       operand, token, Convert_channel_handle(op.channel_handle()));
   return success();
+}
+
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sin(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {

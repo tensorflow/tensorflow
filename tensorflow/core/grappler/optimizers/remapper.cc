@@ -307,9 +307,7 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
 bool IsGpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-  if (IsConv2D(*contraction)) {
-    return dtype == DT_FLOAT;
-  } else if (IsMatMul(*contraction)) {
+  if (IsConv2D(*contraction) || IsMatMul(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_HALF;
   } else {
     return false;
@@ -429,10 +427,10 @@ bool IsGpuCompatible(const RemapperContext& ctx,
     // in-graph computation in micro benchmarks (see kernels/conv_ops_test.cc),
     // and significantly slower in large scale benchmarks.
     bool is_spatial_conv = Rank(filter_shape) == 4 &&          //
+                           IsKnown(filter_shape.dim(0)) &&     //
                            IsKnown(filter_shape.dim(1)) &&     //
-                           IsKnown(filter_shape.dim(2)) &&     //
-                           filter_shape.dim(1).size() != 1 &&  //
-                           filter_shape.dim(2).size() != 1;
+                           filter_shape.dim(0).size() != 1 &&  //
+                           filter_shape.dim(1).size() != 1;
 
     return is_spatial_conv && IsGpuCompatibleConv2D(ctx, &contraction_node);
   } else if (IsMatMul(contraction_node)) {
@@ -3129,7 +3127,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
   const auto is_relu_biasadd_conv_candidate = [&]() -> bool {
     if (!IsRelu(*node_def)) return false;
-    if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
+    DataType act_dtype = GetDataTypeFromAttr(*node_def, "T");
+    if (act_dtype != DT_FLOAT && act_dtype != DT_HALF) return false;
 
     if (node_view->NumRegularFanins() < 1) return false;
     const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
@@ -3138,8 +3137,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
     if (!IsBiasAdd(*relu_fanin_0_node_def) && !IsAdd(*relu_fanin_0_node_def))
       return false;
-    if (GetDataTypeFromAttr(*relu_fanin_0_node_def, "T") != DT_FLOAT)
-      return false;
+    DataType biasadd_dtype = GetDataTypeFromAttr(*relu_fanin_0_node_def, "T");
+    if (biasadd_dtype != DT_FLOAT && biasadd_dtype != DT_HALF) return false;
 
     if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
 
@@ -3149,8 +3148,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (!IsConv2D(*biasadd_fanin_0_node_def) &&
         !IsConv3D(*biasadd_fanin_0_node_def))
       return false;
-    if (GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T") != DT_FLOAT)
-      return false;
+    DataType conv_dtype = GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T");
+    if (conv_dtype != DT_FLOAT && conv_dtype != DT_HALF) return false;
     return true;
   };
 

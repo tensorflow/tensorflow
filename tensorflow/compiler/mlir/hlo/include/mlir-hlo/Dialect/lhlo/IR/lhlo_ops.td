@@ -152,7 +152,7 @@ def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert", LHLO_Buffer, [SameOperan
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
   }];
 }
-def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
+def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
   let summary = "Cos operator";
   let description = [{
     Returns `Cos(operand)` element-wise.
@@ -320,7 +320,7 @@ def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign"> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
-def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
+def LHLO_SineOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
   let summary = "Sin operator";
   let description = [{
     Returns `Sin(operand)` element-wise.
@@ -851,7 +851,7 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []> {
    );
 }
 
-def LHLO_ConvOp : LHLO_Op<"convolution", []> {
+def LHLO_ConvolutionOp : LHLO_Op<"convolution", []> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.

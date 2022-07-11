@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def FusionIterface : OpInterface<"FusionIterface"> {
+def FusionInterface : OpInterface<"FusionInterface"> {
   let description = [{
     TBD
   }];

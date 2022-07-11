@@ -1265,6 +1265,7 @@ py_library(
     deps = [
         ":dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/util",
@@ -1857,6 +1858,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],

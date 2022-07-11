@@ -95,7 +95,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   if (op_def.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_type = op_def.src_tensors[1].GetDataType();
     desc.element_size = 4;
     desc.memory_type =
         weights_upload_type ==

@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -362,42 +361,33 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
                          se::blas::kDefaultComputePrecision, use_cublaslt);
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::Operation* op,
+/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op,
                                                 bool use_cublaslt) {
-  auto get_config = [&](auto op, llvm::APFloat beta) {
-    mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
-    std::optional<int64_t> algorithm;
-    if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
+  std::optional<int64_t> algorithm;
+  if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
 
-    int64_t compute_precision = 0;  // Default
-    if (op.getPrecisionConfig().hasValue()) {
-      auto precision_config = op.getPrecisionConfig();
-      for (auto attr : precision_config.getValue()) {
-        int64_t value = static_cast<int64_t>(
-            attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-        if (value > compute_precision) {
-          compute_precision = value;
-        }
+  int64_t compute_precision = 0;  // Default
+  if (op.getPrecisionConfig().hasValue()) {
+    auto precision_config = op.getPrecisionConfig();
+    for (auto attr : precision_config.getValue()) {
+      int64_t value = static_cast<int64_t>(
+          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+      if (value > compute_precision) {
+        compute_precision = value;
       }
     }
+  }
 
-    return GemmConfig::For(
-        GetShape(op.getLhs()), dot_dims.getLhsBatchingDimensions(),
-        dot_dims.getLhsContractingDimensions(), GetShape(op.getRhs()),
-        dot_dims.getRhsBatchingDimensions(),
-        dot_dims.getRhsContractingDimensions(), GetShape(op.getOutput()),
-        op.getAlphaReal().convertToDouble(),
-        op.getAlphaImag().convertToDouble(), beta.convertToDouble(), algorithm,
-        compute_precision, use_cublaslt);
-  };
-
-  if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op))
-    return get_config(gemm, llvm::APFloat(0.));
-
-  auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(op);
-  TF_RET_CHECK(gemm != nullptr);
-  return get_config(gemm, gemm.getBeta());
+  return GemmConfig::For(
+      GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+      dot_dims.getLhsContractingDimensions(), GetShape(op.getB()),
+      dot_dims.getRhsBatchingDimensions(),
+      dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
+      op.getAlphaReal().convertToDouble(), op.getAlphaImag().convertToDouble(),
+      op.getBeta().convertToDouble(), algorithm, compute_precision,
+      use_cublaslt);
 }
 
 namespace {
@@ -414,6 +404,26 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
     output.Transpose();
   }
   return swap_operands;
+}
+
+StatusOr<se::blas::ComputationType> GetBlasComputationType(
+    PrimitiveType dtype) {
+  switch (dtype) {
+    case F16:  // fall-through
+    case BF16:
+      // Accumulate in f32 precision.
+      return se::blas::ComputationType::kF32;
+    case F32:  // fall-through
+    case C64:
+      return se::blas::ComputationType::kTF32AsF32;
+    case F64:  // fall-through
+    case C128:
+      return se::blas::ComputationType::kF64;
+    case S32:
+      return se::blas::ComputationType::kI32;
+    default:
+      return InternalError("unsupported type");
+  }
 }
 
 se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
@@ -433,29 +443,6 @@ se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
   };
 }
 
-// Converts from an XLA PrimitiveType to a blas::ComputationType, which is
-// used to specify the precision with which matmul computations should be
-// performed, separately from the precision of the inputs and result.
-std::optional<se::blas::ComputationType> ComputationTypeFromPrimitive(
-    PrimitiveType type) {
-  switch (type) {
-    case F16:  // Use F32 computation for higher precision.
-    case BF16:
-    case F32:
-      return se::blas::ComputationType::kF32;
-    case F64:
-      return se::blas::ComputationType::kF64;
-    case C64:
-      return se::blas::ComputationType::kComplexF32;
-    case C128:
-      return se::blas::ComputationType::kComplexF64;
-    case S32:
-      return se::blas::ComputationType::kI32;
-    default:
-      return std::nullopt;
-  }
-}
-
 template <typename Input, typename Output>
 Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            const se::blas::MatrixDescriptor& lhs,
@@ -466,8 +453,8 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  se::blas::ComputationType computation_type =
-      *ComputationTypeFromPrimitive(output_type);
+  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
+                      GetBlasComputationType(output_type));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -616,25 +603,6 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
-StatusOr<se::blas::ComputationType> AsBlasComputationType(PrimitiveType dtype) {
-  switch (dtype) {
-    case F16:
-      return se::blas::ComputationType::kF16;
-    case BF16:
-      return se::blas::ComputationType::kBF16AsF32;
-    case F32:
-      return se::blas::ComputationType::kF32;
-    case F64:
-      return se::blas::ComputationType::kF64;
-    case C64:
-      return se::blas::ComputationType::kComplexF32;
-    case C128:
-      return se::blas::ComputationType::kComplexF64;
-    default:
-      return InternalError("unsupported type");
-  }
-}
-
 template <typename Input>
 Status DoGemmLt(const se::cuda::BlasLt::MatmulPlan& plan, Input alpha,
                 se::DeviceMemoryBase lhs_buffer,
@@ -696,7 +664,7 @@ StatusOr<MatmulPlanParams> GetBlasLtMatmulPlanParams(const GemmConfig& config) {
   TF_ASSIGN_OR_RETURN(se::blas::DataType dtype,
                       AsBlasDataType(output_layout.dtype));
   TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      AsBlasComputationType(output_layout.dtype));
+                      GetBlasComputationType(output_layout.dtype));
 
   se::cuda::BlasLt::MatmulPlanParams params{
       /*ab_type=*/dtype,

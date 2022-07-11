@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <algorithm>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -27,14 +29,32 @@ namespace unsorted_segment_prod {
 
 static const int kInputDataTensor = 0;
 static const int kInputSegmentIdsTensor = 1;
+static const int kInputNumSegmentsTensor = 2;
 static const int kOutputTensor = 0;
 
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* data,
-                                const int num_segments, TfLiteTensor* output) {
+                                const TfLiteTensor* segment_ids,
+                                const TfLiteTensor* num_segments,
+                                TfLiteTensor* output) {
+  // We take the first element in num_segments as the valid number of segments
+  // in the case where num_segments tensor is initialized with more than one
+  // elements
+  TF_LITE_ENSURE(context, (num_segments->dims->size == 1 &&
+                           num_segments->dims->data[0] == 1) ||
+                              num_segments->dims->size == 0);
+  int32_t output_dim = GetTensorData<int32_t>(num_segments)[0];
+  const int segment_id_size = segment_ids->dims->data[0];
+  TF_LITE_ENSURE_EQ(context, segment_id_size, data->dims->data[0]);
+  int max_index = -1;
+  for (int i = 0; i < segment_id_size; i++) {
+    max_index = std::max(GetTensorData<int32_t>(segment_ids)[i], max_index);
+  }
+  TF_LITE_ENSURE(context, max_index < output_dim);
+
   const int data_rank = NumDimensions(data);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(NumDimensions(data));
-  output_shape->data[0] = num_segments;
+  output_shape->data[0] = output_dim;
   for (int i = 1; i < data_rank; ++i) {
     output_shape->data[i] = data->dims->data[i];
   }
@@ -42,7 +62,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* data;
   TF_LITE_ENSURE_OK(context,
@@ -50,6 +70,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* segment_ids;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputSegmentIdsTensor,
                                           &segment_ids));
+  const TfLiteTensor* num_segments;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetInputSafe(context, node, kInputNumSegmentsTensor, &num_segments));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
@@ -57,35 +81,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  data->type == kTfLiteInt32 || data->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
 
-  if (!IsConstantTensor(data) || !IsConstantTensor(segment_ids)) {
+  if (IsDynamicTensor(data) || !IsConstantTensor(segment_ids) ||
+      !IsConstantTensor(num_segments)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }
-
-  const auto no_segments =
-      reinterpret_cast<const TfLiteUnsortedSegmentProdParams*>(
-          node->builtin_data)
-          ->num_segments;
-  return ResizeOutputTensor(context, data, no_segments, output);
+  return ResizeOutputTensor(context, data, segment_ids, num_segments, output);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto* params = reinterpret_cast<const TfLiteUnsortedSegmentProdParams*>(
-      node->builtin_data);
   const TfLiteTensor* data;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputDataTensor, &data));
   const TfLiteTensor* segment_ids;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputSegmentIdsTensor,
                                           &segment_ids));
+  const TfLiteTensor* num_segments;
+  TF_LITE_ENSURE_OK(
+      context,
+      GetInputSafe(context, node, kInputNumSegmentsTensor, &num_segments));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (IsDynamicTensor(output)) {
-    TF_LITE_ENSURE_OK(
-        context,
-        ResizeOutputTensor(context, data, params->num_segments, output));
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, data, segment_ids,
+                                                  num_segments, output));
   }
   TF_LITE_ENSURE_EQ(context, GetTensorShape(data).Dims(0),
                     GetTensorShape(segment_ids).Dims(0));
@@ -94,8 +115,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   reference_ops::UnsortedSegmentProd<dtype>(                            \
       GetTensorShape(data), GetTensorData<dtype>(data),                 \
       GetTensorShape(segment_ids), GetTensorData<int32_t>(segment_ids), \
-      params->num_segments, GetTensorShape(output),                     \
-      GetTensorData<dtype>(output));
+      GetTensorShape(output), GetTensorData<dtype>(output));
   switch (data->type) {
     case kTfLiteInt32:
       TF_LITE_UNSORTED_SEGMENT_PROD(int32_t);

@@ -28,18 +28,6 @@ PROTO_CLASS_TO_PY_CLASS = {}
 class Serializable(metaclass=abc.ABCMeta):
   """TraceTypes implementing this additional interface are portable."""
 
-  def __init_subclass__(cls, **kwargs):
-    super().__init_subclass__(**kwargs)
-    if cls.experimental_type_proto() in PROTO_CLASS_TO_PY_CLASS:
-      raise ValueError(
-          "Existing Python class " +
-          PROTO_CLASS_TO_PY_CLASS[cls.experimental_type_proto()].__name__ +
-          " already has " + cls.experimental_type_proto().__name__ +
-          " as its associated proto representation. Please ensure " +
-          cls.__name__ + " has a unique proto representation.")
-
-    PROTO_CLASS_TO_PY_CLASS[cls.experimental_type_proto()] = cls
-
   @classmethod
   @abc.abstractmethod
   def experimental_type_proto(cls) -> Type[message.Message]:
@@ -56,6 +44,25 @@ class Serializable(metaclass=abc.ABCMeta):
   def experimental_as_proto(self) -> message.Message:
     """Returns a proto representing this instance."""
     raise NotImplementedError
+
+
+def register_serializable(cls: Type[Serializable]):
+  """Registers a Python class to support serialization.
+
+  Only register standard TF types. Custom types should NOT be registered.
+
+  Args:
+    cls: Python class to register.
+  """
+  if cls.experimental_type_proto() in PROTO_CLASS_TO_PY_CLASS:
+    raise ValueError(
+        "Existing Python class " +
+        PROTO_CLASS_TO_PY_CLASS[cls.experimental_type_proto()].__name__ +
+        " already has " + cls.experimental_type_proto().__name__ +
+        " as its associated proto representation. Please ensure " +
+        cls.__name__ + " has a unique proto representation.")
+
+  PROTO_CLASS_TO_PY_CLASS[cls.experimental_type_proto()] = cls
 
 
 def serialize(to_serialize: Serializable) -> SerializedTraceType:

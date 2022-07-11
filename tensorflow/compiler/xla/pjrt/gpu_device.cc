@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
@@ -186,9 +188,8 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 StatusOr<std::vector<std::unique_ptr<LocalDeviceState>>> BuildLocalDeviceStates(
     LocalClient* xla_client, bool asynchronous) {
   std::vector<std::unique_ptr<LocalDeviceState>> addressable_devices;
-  for (int i = 0; i < xla_client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        xla_client->backend().stream_executor(i).ValueOrDie();
+  for (se::StreamExecutor* executor :
+       xla_client->backend().stream_executors()) {
     addressable_devices.push_back(std::make_unique<LocalDeviceState>(
         executor, xla_client, LocalDeviceState::kComputeSynchronized,
         /*max_inflight_computations=*/32,

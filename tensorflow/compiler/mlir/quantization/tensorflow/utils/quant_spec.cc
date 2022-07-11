@@ -27,6 +27,7 @@ std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
   if (llvm::isa<
           // clang-format off
           // go/keep-sorted start
+          TF::AvgPoolOp,
           TF::ConcatV2Op,
           TF::IdentityOp,
           TF::MaxPoolOp,

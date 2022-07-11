@@ -176,6 +176,7 @@ py_library(
     deps = [
         ":util",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:converter",

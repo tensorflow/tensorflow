@@ -1112,7 +1112,6 @@ inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
                                 const T* input_data,
                                 const RuntimeShape& segment_ids_shape,
                                 const int32_t* segment_ids_data,
-                                const int32_t num_segments,
                                 const RuntimeShape& output_shape,
                                 T* output_data) {
   for (int i = 0; i < output_shape.FlatSize(); ++i) {
@@ -1122,6 +1121,7 @@ inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
       MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
   for (int i = 0; i < input_shape.Dims(0); i++) {
     int output_index = segment_ids_data[i];
+    if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {
       output_data[output_index * segment_flat_size + j] *=
           input_data[i * segment_flat_size + j];

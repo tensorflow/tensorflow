@@ -1110,71 +1110,25 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
-  auto make_bef_thunk =
-      [&](auto op, std::optional<BufferAllocation::Slice> bias =
-                       std::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
-    TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.getLhs()));
-    TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.getRhs()));
-    TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.getOutput()));
-    std::vector<BufferAllocation::Slice> buffers = {lhs, rhs};
-    if (bias.has_value()) {
-      buffers.push_back(bias.value());
-    }
-    buffers.push_back(output);
-    return CreateBefThunk(GetThunkInfo(op), op, std::move(buffers));
-  };
+  TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
+    auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op);
+    TF_RET_CHECK(gemm != nullptr);
 
-  auto make_gemm_thunk =
-      [&](auto op, std::optional<double> gemm_bias_beta =
-                       std::nullopt) -> StatusOr<std::unique_ptr<Thunk>> {
-    TF_ASSIGN_OR_RETURN(auto lhs, GetAllocationSlice(op.getLhs()));
-    TF_ASSIGN_OR_RETURN(auto rhs, GetAllocationSlice(op.getRhs()));
-    TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(op.getOutput()));
+    TF_ASSIGN_OR_RETURN(auto a, GetAllocationSlice(gemm.getA()));
+    TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
+    TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
+
+    if (IsBefThunkEnabled(hlo_module_config_)) {
+      return CreateBefThunk(GetThunkInfo(op), op, {a, b, c});
+    }
 
     bool use_cublaslt =
         hlo_module_config_.debug_options().xla_gpu_enable_cublaslt();
 
-    TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(op, use_cublaslt));
+    TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm, use_cublaslt));
 
     return std::unique_ptr<Thunk>(
-        new GemmThunk(GetThunkInfo(op), std::move(config), lhs, rhs, output));
-  };
-
-  TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
-    if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op)) {
-      if (IsBefThunkEnabled(hlo_module_config_)) return make_bef_thunk(gemm);
-      return make_gemm_thunk(gemm);
-    }
-
-    if (auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
-      double gemm_bias_beta = gemm.getBeta().convertToDouble();
-      TF_ASSIGN_OR_RETURN(auto bias, GetAllocationSlice(gemm.getBias()));
-      TF_ASSIGN_OR_RETURN(auto output, GetAllocationSlice(gemm.getOutput()));
-
-      if (IsBefThunkEnabled(hlo_module_config_))
-        return make_bef_thunk(gemm, bias);
-
-      // The bias is passed inside the output buffer. If those buffers are
-      // shared we can just use it, otherwise copy the bias values into the
-      // output buffer first.
-      if (bias == output) {
-        return make_gemm_thunk(gemm, gemm_bias_beta);
-      }
-
-      ThunkSequence thunks;
-      thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo(),
-          /*source_buffer=*/bias,
-          /*destination_buffer=*/output,
-          /*mem_size=*/
-          ShapeUtil::ByteSizeOf(GetShape(gemm.getOutput()))));
-      TF_ASSIGN_OR_RETURN(auto thunk, make_gemm_thunk(gemm, gemm_bias_beta));
-      thunks.push_back(std::move(thunk));
-      return std::unique_ptr<Thunk>(
-          new SequentialThunk(GetThunkInfo(op), std::move(thunks)));
-    }
-
-    return tensorflow::errors::Internal("Unexpected op.");
+        new GemmThunk(GetThunkInfo(op), std::move(config), a, b, c));
   }());
 
   AddThunkToThunkSequence(std::move(thunk));
@@ -5668,7 +5622,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
     return EmitCustomCallThunk(op);
   }
 
-  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
     return EmitGemmThunk(op);
   }
 

@@ -35,7 +35,10 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
+<<<<<<< HEAD
 #        "@com_google_absl//absl/log:check",
+=======
+>>>>>>> upstream/master
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",

@@ -663,23 +663,3 @@ build:ubsan --linkopt -lubsan
 # Disable TFRT integration for now unless --config=tfrt is specified.
 build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
 build:tfrt --deleted_packages=
-
-# Experimental configuration for building XLA GPU lowering to TFRT.
-build:experimental_enable_xlir --config=tfrt
-build:experimental_enable_xlir --@tf_runtime//:enable_gpu
-build:experimental_enable_xlir --@rules_cuda//cuda:cuda_runtime=//tensorflow/compiler/xla/service/gpu:cuda_runtime_for_xlir
-build:experimental_enable_xlir --nocheck_visibility
-build:experimental_enable_xlir --incompatible_strict_action_env
-build:experimental_enable_xlir --config=monolithic
-build:experimental_enable_xlir --//tensorflow/compiler/xla/service/gpu:enable_xlir
-
-# bazel test --config=experimental_enable_bef_thunk \
-#   //tensorflow/compiler/xla/service/gpu:bef_thunk_tests
-build:experimental_enable_bef_thunk      --config=experimental_enable_xlir
-test:experimental_enable_bef_thunk       --test_env=XLA_FLAGS=--xla_gpu_bef_thunk
-
-# bazel test --config=experimental_enable_bef_executable \
-#   //tensorflow/compiler/xla/service/gpu:bef_executable_tests
-build:experimental_enable_bef_executable --config=experimental_enable_xlir
-test:experimental_enable_bef_executable  --test_env=XLA_FLAGS=--xla_gpu_bef_executable
-

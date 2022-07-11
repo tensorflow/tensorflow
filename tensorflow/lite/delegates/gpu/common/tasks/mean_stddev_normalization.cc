@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 
 #include <algorithm>
+#include <map>
 #include <string>
 
 #include "absl/strings/substitute.h"
@@ -27,7 +28,8 @@ namespace gpu {
 namespace {
 
 std::string GetReduceCode(const std::string& src_value,
-                          const std::string& dst_value, int3 work_group_size) {
+                          const std::string& dst_value, int3 work_group_size,
+                          bool two_step) {
   int reduction_size = work_group_size.z;
   std::string mem_name = work_group_size.x * work_group_size.y != 1
                              ? "shared_mem[LOCAL_ID_1][LOCAL_ID_0]"
@@ -42,7 +44,9 @@ std::string GetReduceCode(const std::string& src_value,
       result += "    " + dst_value + " += " + mem_name + "[" +
                 std::to_string(i) + "];\n";
     }
-    result += "    LOCAL_MEM_BARRIER;\n";
+    if (two_step) {
+      result += "    LOCAL_MEM_BARRIER;\n";
+    }
     result += "  }\n";
     return result;
   } else {
@@ -93,7 +97,8 @@ std::string ZeroClampVec4Code(const std::string& slice_name,
 MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
                                                  const GpuInfo& gpu_info,
                                                  const BHWC& shape,
-                                                 float variance_bias)
+                                                 float variance_bias,
+                                                 bool two_step)
     : GPUOperation(definition) {
   const int tensor_slices = DivideRoundUp(shape.c, 4);
   int desired_work_group_size = gpu_info.GetMaxWorkGroupSizeForZ();
@@ -169,11 +174,12 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
     }
   }
   args_.AddFloat("variance_bias", variance_bias);
-  code_ = GetNormalizationCode(gpu_info, shape.c % 4 == 0);
+  args_.AddFloat("inv_ch_count", 1.0f / shape.c);
+  code_ = GetNormalizationCode(gpu_info, shape.c % 4 == 0, two_step);
 }
 
 std::string MeanStdDevNormalization::GetNormalizationCode(
-    const GpuInfo& gpu_info, bool channels_x4) {
+    const GpuInfo& gpu_info, bool channels_x4, bool two_step) {
   AddSrcTensor("src_tensor", definition_.src_tensors[0]);
   AddDstTensor("dst_tensor", definition_.dst_tensors[0]);
 
@@ -185,12 +191,14 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
          std::to_string(work_group_size_.z) + ")))\n";
   }
   c += "MAIN_FUNCTION($0) {\n";
+  std::string accum_type = two_step ? "float" : "float2";
   if (work_group_size_.x * work_group_size_.y == 1) {
-    c += "__local float shared_mem[" + std::to_string(work_group_size_.z) +
-         "];\n";
+    c += "__local " + accum_type + " shared_mem[" +
+         std::to_string(work_group_size_.z) + "];\n";
   } else {
-    c += "__local float shared_mem[" + std::to_string(work_group_size_.x) +
-         "][" + std::to_string(work_group_size_.y) + "][" +
+    c += "__local " + accum_type + " shared_mem[" +
+         std::to_string(work_group_size_.x) + "][" +
+         std::to_string(work_group_size_.y) + "][" +
          std::to_string(work_group_size_.z) + "];\n";
   }
   if (definition_.dst_tensors[0].HasAxis(Axis::BATCH)) {
@@ -203,9 +211,10 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
     c += "  int X = GLOBAL_ID_0;\n";
   }
   c += "  int Y = GLOBAL_ID_1;\n";
+  if (!two_step) {
+    c += "  float4 private_sum4_sq = INIT_FLOAT4(0.0f);\n";
+  }
   c += R"(
-  // Calculate the total sum of the input tensor.
-  // First, get a local sum of input[local_id_x + N*local_size_x] for all N.
   float4 private_sum4 = INIT_FLOAT4(0.0f);
   int local_id = LOCAL_ID_2;
   int reduction_group_size = GROUP_SIZE_2;
@@ -216,17 +225,25 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
   if (!channels_x4) {
     c += ZeroClampVec4Code("S", "args.src_tensor.Channels()", "t");
   }
-  c += R"(
-    private_sum4 += t;
+  if (two_step) {
+    c += "    private_sum4 += t;\n";
+    c += "  }\n";
+    c += "  float private_sum = dot(private_sum4, INIT_FLOAT4(1.0f));\n";
+    c += "  float sum;\n";
+  } else {
+    c += "    private_sum4 += t;\n";
+    c += "    private_sum4_sq += t * t;\n";
+    c += "  }\n";
+    c += "  float2 private_sum;\n";
+    c += "  private_sum.x = dot(private_sum4, INIT_FLOAT4(1.0f));\n";
+    c += "  private_sum.y = dot(private_sum4_sq, INIT_FLOAT4(1.0f));\n";
+    c += "  float2 sum;\n";
   }
-  // Reduce the vector to a single float and do a workgroup reduce.
-  float private_sum = dot(private_sum4, INIT_FLOAT4(1.0f));
-  float sum;
-)";
-  c += GetReduceCode("private_sum", "sum", work_group_size_);
-  c += R"(
+  c += GetReduceCode("private_sum", "sum", work_group_size_, two_step);
+  if (two_step) {
+    c += R"(
   // Calculate the mean
-  float mean = sum / INIT_FLOAT(args.src_tensor.Channels());
+  float mean = sum * args.inv_ch_count;
   // Calculate the squared sum of the difference from the mean.
   float4 private_sum_diff_sq4 = INIT_FLOAT4(0.0f);
   for (int S = local_id; S < args.src_tensor.Slices(); S += reduction_group_size) {
@@ -234,23 +251,29 @@ std::string MeanStdDevNormalization::GetNormalizationCode(
     int y_clamped = min(Y, args.src_tensor.Height() - 1);
     float4 t = args.src_tensor.Read<float>(x_clamped, y_clamped, S);
     float4 diff = t - mean;)";
-  if (!channels_x4) {
-    c += ZeroClampVec4Code("S", "args.src_tensor.Channels()", "diff");
-  }
-  c += R"(
+    if (!channels_x4) {
+      c += ZeroClampVec4Code("S", "args.src_tensor.Channels()", "diff");
+    }
+    c += R"(
     private_sum_diff_sq4 += diff * diff;
   }
   // Reduce
   float private_sum_diff_sq = dot(private_sum_diff_sq4, INIT_FLOAT4(1.0f));
   float sum_diff_sq;
 )";
-  c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size_);
+    c += GetReduceCode("private_sum_diff_sq", "sum_diff_sq", work_group_size_,
+                       two_step);
+    c += "  float variance = sum_diff_sq * args.inv_ch_count;\n";
+  } else {
+    c += "  float mean = sum.x * args.inv_ch_count;\n";
+    c += "  float mean_sq = sum.y * args.inv_ch_count;\n";
+    c += "  float variance = mean_sq - mean * mean;\n";
+  }
   c += R"(
   // no more shared memory usage, 'useless' threads can exit now
   if (X >= args.dst_tensor.Width()) { return; }
   if (Y >= args.dst_tensor.Height()) { return; }
   // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
-  float variance = sum_diff_sq / INIT_FLOAT(args.src_tensor.Channels());
   float stddev_inv = rsqrt(variance + args.variance_bias);
   // Calculate (t-mean)/stddev for each element
   for (int S = local_id; S < args.src_tensor.Slices(); S += reduction_group_size) {
@@ -273,8 +296,9 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
     const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
-    float variance_bias) {
-  return MeanStdDevNormalization(definition, gpu_info, shape, variance_bias);
+    float variance_bias, bool two_step) {
+  return MeanStdDevNormalization(definition, gpu_info, shape, variance_bias,
+                                 two_step);
 }
 
 }  // namespace gpu

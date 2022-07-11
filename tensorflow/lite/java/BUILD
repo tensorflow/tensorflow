@@ -133,6 +133,7 @@ aar_with_jni(
         "//tensorflow/lite/c:c_api_experimental.h",
         # TODO(b/175298345): Clean up and if possible remove common.h here.
         "//tensorflow/lite/c:common.h",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
     ],
 )
 

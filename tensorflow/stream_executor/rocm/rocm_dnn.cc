@@ -3172,7 +3172,7 @@ port::Status MIOpenSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       auto runner,
       ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
                              output_type, input_descriptor, filter_descriptor,
@@ -3225,7 +3225,7 @@ port::Status MIOpenSupport::GetConvolveRunners(
   }
 
   for (const auto& profile_result : profile_results) {
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         auto runner, ConvolveRunnerFromDesc(
                          stream, profile_result.algorithm(), kind, input_type,
                          output_type, input_descriptor, filter_descriptor,

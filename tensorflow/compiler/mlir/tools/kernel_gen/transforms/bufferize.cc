@@ -43,13 +43,9 @@ struct BufferizeJITExecuteOp
   LogicalResult matchAndRewrite(
       tf_framework::JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    SmallVector<Type, 2> result_types;
-    if (failed(getTypeConverter()->convertTypes(op.getResultTypes(),
-                                                result_types))) {
-      return failure();
-    }
+    Type result_ty = getTypeConverter()->convertType(op.getType());
     rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
-        op, result_types, adaptor.getOperands(), op->getAttrs());
+        op, result_ty, adaptor.getOperands(), op->getAttrs());
     return success();
   }
 };

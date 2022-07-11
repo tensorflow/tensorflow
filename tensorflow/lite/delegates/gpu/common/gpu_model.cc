@@ -136,7 +136,7 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
                                             const TensorDescriptor& tensor_desc,
                                             const BHWC& shape,
                                             DataType data_type) {
-  if (tensor_desc.data_type != data_type) {
+  if (tensor_desc.GetDataType() != data_type) {
     return absl::InvalidArgumentError(
         "Global precision and precision of predefined/external tensors must be "
         "synchronized.");

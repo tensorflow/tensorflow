@@ -478,9 +478,9 @@ static Value ApplyReduction(Location loc, Value input,
 
 // Creates a mhlo.rng_uniform op with `builder` to generate `num_elements`
 // 32-bit integer numbers in the range of [`lower_limit`, `upper_limit`).
-static mhlo::RngUniformOp CreateRngUniform32(Location loc, int num_elements,
-                                             int lower_limit, int upper_limit,
-                                             OpBuilder *builder) {
+static mhlo::RngOp CreateRngUniform32(Location loc, int num_elements,
+                                      int lower_limit, int upper_limit,
+                                      OpBuilder *builder) {
   auto shape_tensor = builder->create<mhlo::ConstantOp>(
       loc, GetI64ElementsAttr({num_elements}, builder));
 
@@ -489,7 +489,8 @@ static mhlo::RngUniformOp CreateRngUniform32(Location loc, int num_elements,
   auto upper = builder->create<mhlo::ConstantOp>(
       loc, builder->getI32IntegerAttr(upper_limit));
 
-  return builder->create<mhlo::RngUniformOp>(loc, lower, upper, shape_tensor);
+  return builder->create<mhlo::RngOp>(loc, lower, upper, shape_tensor,
+                                      ::mlir::mhlo::RngDistribution::UNIFORM);
 }
 
 using WhileBodyFnType = llvm::function_ref<void(
@@ -1398,8 +1399,8 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
     NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
                               batch_group_count_attr, paddings_attr};
-    rewriter.replaceOpWithNewOp<ConvOp>(op, op.getType(), operands,
-                                        llvm::makeArrayRef(attrs));
+    rewriter.replaceOpWithNewOp<ConvolutionOp>(op, op.getType(), operands,
+                                               llvm::makeArrayRef(attrs));
     return success();
   }
 };
@@ -5040,7 +5041,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
 
     // activation gradients
     //   = gradients (with padding and dilation) <conv> mirrored_weights
-    Value result = rewriter.create<ConvOp>(
+    Value result = rewriter.create<ConvolutionOp>(
         op.getLoc(), op.getType(), op.out_backprop(), filter,
         /*window_strides=*/
         GetI64ElementsAttrForValue(/*size=*/num_spatial_dims, /*val=*/1,
@@ -5246,7 +5247,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
     const int batch_dim =
         tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
 
-    Value result = rewriter.create<ConvOp>(
+    Value result = rewriter.create<ConvolutionOp>(
         op.getLoc(), op.getType(), op.input(), op.out_backprop(),
         /*window_strides=*/GetI64ElementsAttr(window_strides, &rewriter),
         /*padding=*/paddings_attr, /*lhs_dilation=*/

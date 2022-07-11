@@ -100,52 +100,19 @@ std::string SideString(Side s);
 // the type of their inputs/outputs.  This lets you e.g. multiply two matrices
 // of int8s using float32s to store the matmul's intermediate values.
 enum class ComputationType {
-  kF16,         // 16-bit floating-point
-  kF32,         // 32-bit floating-point
-  kF64,         // 64-bit floating-point
-  kI32,         // 32-bit integer
-  kComplexF32,  // Complex number comprised of two f32s.
-  kComplexF64,  // Complex number comprised of two f64s.
-  // The below values are only supported for BlasLt routines (both real and
-  // complex). They use float32 for accumulation but round the input mantissas
-  // to a smaller number of bits.
-  kTF32AsF32,  // 32-bit floating-point with reduced (>=10-bit) mantissa
-  kBF16AsF32,  // 32-bit floating-point with reduced (7-bit) mantissa
+  kF16,  // 16-bit floating-point
+  kF32,  // 32-bit floating-point
+  kF64,  // 64-bit floating-point
+  kI32,  // 32-bit integer
+  // The below values use float32 for accumulation, but allow the inputs and
+  // outputs to be downcast to a lower precision:
+  kF16AsF32,   // Allow downcast to F16 precision.
+  kBF16AsF32,  // Allow downcast to BF16 precision.
+  kTF32AsF32,  // Allow downcast to TF32 precision.
 };
 
 // Converts a ComputationType to a string.
 std::string ComputationTypeString(ComputationType ty);
-
-template <typename T>
-struct ToComputationType;
-template <>
-struct ToComputationType<float> {
-  static constexpr ComputationType value = ComputationType::kF32;
-};
-template <>
-struct ToComputationType<double> {
-  static constexpr ComputationType value = ComputationType::kF64;
-};
-template <>
-struct ToComputationType<Eigen::half> {
-  static constexpr ComputationType value = ComputationType::kF16;
-};
-template <>
-struct ToComputationType<Eigen::bfloat16> {
-  static constexpr ComputationType value = ComputationType::kBF16AsF32;
-};
-template <>
-struct ToComputationType<tensorflow::int32> {
-  static constexpr ComputationType value = ComputationType::kI32;
-};
-template <>
-struct ToComputationType<std::complex<float>> {
-  static constexpr ComputationType value = ComputationType::kComplexF32;
-};
-template <>
-struct ToComputationType<std::complex<double>> {
-  static constexpr ComputationType value = ComputationType::kComplexF64;
-};
 
 std::ostream &operator<<(std::ostream &os, ComputationType ty);
 

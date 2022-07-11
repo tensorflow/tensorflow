@@ -216,6 +216,8 @@ def GroupReductionDimensionsPass
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
+
+  let dependentDialects = ["arith::ArithmeticDialect", "shape::ShapeDialect", "tensor::TensorDialect"];
 }
 
 def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {

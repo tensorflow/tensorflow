@@ -253,6 +253,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                 MaybeConstantFoldBias(bias),
                             });
     TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
+    // Force bias input to alias with output, as GEMM operates in-place.
+    xla::Cast<HloCustomCallInstruction>(gemm_call.get())
+        ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     return OkStatus();

@@ -586,11 +586,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     // It is OK to capture `buffer` pointer because the `output_buffer` can't be
     // deleted until all the usage holds have gone away.
     tfrt::EnqueueWork(
-        GetHostContext(),
-        [literal, av = avs[0].CopyRef(),
-         movable_device_buffer{device_buffer.ToClosure()}, shape]() mutable {
+        GetHostContext(), [literal, av = avs[0].CopyRef(),
+                           db = std::move(device_buffer), shape]() mutable {
           tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           const std::shared_ptr<MaybeOwningCpuMemory>& b =
               device_buffer->Buffers()[0];
           CHECK_EQ(literal.size_bytes(), b->size());
@@ -607,11 +606,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
       // It is OK to capture `buffer` pointer because the `output_buffer` can't
       // be deleted until all the usage holds have gone away.
       tfrt::EnqueueWork(
-          GetHostContext(),
-          [i, literal, av = avs[i].CopyRef(), shape,
-           movable_device_buffer{device_buffer.ToClosure()}]() mutable {
+          GetHostContext(), [i, literal, av = avs[i].CopyRef(), shape,
+                             db = std::move(device_buffer)]() mutable {
             tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-            TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+            TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
             auto slice = LiteralSlice(literal, {i});
             const std::shared_ptr<MaybeOwningCpuMemory>& b =
                 device_buffer->Buffers()[i];
@@ -641,6 +639,22 @@ TfrtCpuBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
   other.SetState(kMoved);
 }
 
+TfrtCpuBuffer::ScopedHold& TfrtCpuBuffer::ScopedHold::operator=(
+    ScopedHold&& other) {
+  if (ok()) {
+    parent_->DropHold(type_, buffer().get());
+  }
+  parent_ = other.parent_;
+  type_ = other.type_;
+  state_ = other.state_;
+  status_ = std::move(other.status_);
+  buffer_ = std::move(other.buffer_);
+  // Preserve the invariant that status is invalid if buffer == nullptr.
+  other.SetState(kMoved);
+
+  return *this;
+}
+
 void TfrtCpuBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
@@ -654,14 +668,6 @@ void TfrtCpuBuffer::ScopedHold::Acquire(
   }
   // Check the invariant holds.
   CHECK(!ok() || buffer_ != nullptr);
-}
-
-TfrtCpuBuffer::ScopedHold::ForClosure TfrtCpuBuffer::ScopedHold::ToClosure() {
-  CHECK(ok());
-  ForClosure for_closure(parent_, type_, state_, std::move(status_),
-                         std::move(buffer_));
-  SetState(kReleased);
-  return for_closure;
 }
 
 void TfrtCpuBuffer::ScopedHold::ConvertUsageHold(
@@ -1045,11 +1051,11 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     // parallel.
     EnqueueWorkWhenReady(
         host_ctx, device_buffer_wait_avs,
-        [this, movable_device_buffer{device_buffer.ToClosure()},
+        [this, db = std::move(device_buffer),
          device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, ready_event = ready_event.CopyRef()] {
+         literal, ready_event = ready_event.CopyRef()]() mutable {
           tensorflow::profiler::TraceMe traceme("D2H Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {

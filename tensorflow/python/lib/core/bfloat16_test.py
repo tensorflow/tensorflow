@@ -177,6 +177,9 @@ class CustomFloatTest(parameterized.TestCase):
       self.assertEqual("%.6g" % float(float_type(value)),
                        repr(float_type(value)))
 
+  def testItem(self, float_type):
+    self.assertIsInstance(float_type(0).item(), float)
+
   def testHashZero(self, float_type):
     """Tests that negative zero and zero hash to the same value."""
     self.assertEqual(hash(float_type(-0.0)), hash(float_type(0.0)))

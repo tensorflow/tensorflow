@@ -45,6 +45,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
 // its body.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
 
+/// Pass to vectorize linalg.generic ops tiled to gml_st.parallel and gml_st.for
+/// loops.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass();
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 

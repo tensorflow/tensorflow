@@ -1082,7 +1082,7 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
   if (definition.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor weights_desc;
-    weights_desc.element_type = definition.src_tensors[1].data_type;
+    weights_desc.element_type = definition.src_tensors[1].GetDataType();
     weights_desc.element_size = 4;
     weights_desc.memory_type = params.GetMemoryType();
     desc.AddSrcBuffer("weights", weights_desc);
@@ -1133,7 +1133,7 @@ ConvolutionMetal CreateConvolutionMetalBatchedMatMul(
 
   // dynamic weights
   BufferDescriptor weights_desc;
-  weights_desc.element_type = definition.src_tensors[1].data_type;
+  weights_desc.element_type = definition.src_tensors[1].GetDataType();
   weights_desc.element_size = 4;
   weights_desc.memory_type = params.GetMemoryType();
   desc.AddSrcBuffer("weights", weights_desc);
