@@ -211,6 +211,17 @@ class SerializeTRTResource : public OpKernel {
 
     int num_serialized_engines = 0;
     if (save_gpu_specific_engines_) {
+      // If user requests TRT engines export, recursively create
+      // requisite directories.
+      const char* export_trt_engines_env =
+          getenv("TF_TRT_EXPORT_TRT_ENGINES_PATH");
+      if (export_trt_engines_env) {
+        VLOG(1) << "Exporting TRT engines to directory: "
+                << export_trt_engines_env;
+        OP_REQUIRES_OK(
+            ctx, ctx->env()->RecursivelyCreateDir(export_trt_engines_env));
+      }
+
       for (const auto& pair : resource->cache_) {
         // Ignore engines that failed to build.
         const std::unique_ptr<EngineContext>& engine = pair.second;
@@ -227,6 +238,28 @@ class SerializeTRTResource : public OpKernel {
             engine->GetCudaEngine()->serialize());
         engine_instance.set_serialized_engine(engine_data->data(),
                                               engine_data->size());
+
+        if (export_trt_engines_env) {
+          const std::string engine_filename =
+              std::string(export_trt_engines_env) + "/" + resource_name;
+          std::unique_ptr<WritableFile> engine_file;
+          OP_REQUIRES_OK(
+              ctx, ctx->env()->NewWritableFile(engine_filename, &engine_file));
+          OP_REQUIRES_OK(ctx, engine_file->Append(StringPiece(
+                                  static_cast<char*>(engine_data->data()),
+                                  engine_data->size())));
+
+          const std::string dims_filename =
+              std::string(export_trt_engines_env) + "/dims-" + resource_name;
+          std::unique_ptr<WritableFile> dims_file;
+          OP_REQUIRES_OK(
+              ctx, ctx->env()->NewWritableFile(dims_filename, &dims_file));
+
+          for (const TensorShape& shape : engine_input_shapes) {
+            OP_REQUIRES_OK(ctx,
+                           dims_file->Append(StringPiece(shape.DebugString())));
+          }
+        }
 
         OP_REQUIRES_OK(
             ctx, writer->WriteRecord(engine_instance.SerializeAsString()));
