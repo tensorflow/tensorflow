@@ -319,3 +319,35 @@ func.func @for_loop_wrong_yield_target(
   } : tensor<f32>
   func.return %sum : tensor<f32>
 }
+
+// -----
+
+func.func @yield_with_accumulator_mismatched_type(
+    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+
+  %space_1d = gml_st.space [8] : !gml_st.tile<8>
+  %space_0d = gml_st.space [] : !gml_st.tile<>
+
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+    %tile = gml_st.tile %space_1d [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %arg_sub = gml_st.materialize %arg[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+    %out_sub = gml_st.materialize %output[%space_0d]
+      : tensor<f32>[!gml_st.tile<>]
+
+    %result_sub = linalg.dot
+       ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
+       outs(%out_sub : tensor<f32>) -> tensor<f32>
+
+    // expected-error@+1 {{'gml_st.set_yield' op expected accumulator region to have 2 arguments of type 'tensor<f32>'}}
+    gml_st.set_yield %result_sub into %output[%space_0d]
+      acc (%in, %out: memref<f32>) {
+        gml_st.yield %in : memref<f32>
+      }: tensor<f32> into tensor<f32>[!gml_st.tile<>]
+  } : tensor<f32>
+  func.return %sum : tensor<f32>
+}

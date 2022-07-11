@@ -251,7 +251,9 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 }
 
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
-      Terminator, SameVariadicOperandSize]> {
+      Terminator, SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"ReturnOp">
+  ]> {
   let summary = "Set yield operation";
   let description = [{
     `gml_st.set_yield` is a special terminator operation for
@@ -266,11 +268,24 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
   }];
   let arguments = (ins Variadic<AnyType>:$srcs,
                        Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$sets);
-  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
-
-
+                       Variadic<AnyType>:$sets,
+                       BoolArrayAttr:$accumulatorFlags);
+  let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);
   let hasCustomAssemblyFormat = 1;
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins)>,
+
+    // Builder with default update behaviour, i.e. overriding output.
+    OpBuilder<(ins "ValueRange":$srcs, "ValueRange":$dsts, "ValueRange":$sets)>,
+
+    // Builder with custom update behaviour.
+    OpBuilder<(ins "ValueRange":$srcs, "ValueRange":$dsts, "ValueRange":$sets,
+      "ArrayAttr":$accumulatorFlags,
+      "ArrayRef<function_ref<void(OpBuilder &, Location, Value, Value)>>"
+      :$combiners)>
+  ];
 
   let extraClassDeclaration = [{
 
@@ -334,6 +349,23 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       return operand.getOperandNumber() % 3 == 2;
     }
   }];
+}
+
+def GMLST_ReturnOp : GMLST_Op<"return", [NoSideEffect, ReturnLike,
+      Terminator, HasParent<"::mlir::gml_st::SetYieldOp">]>,
+    Arguments<(ins AnyType:$value)> {
+  let summary = "Return operation";
+  let description = [{
+    `gml_st.return` is a special terminator operation for `gml_st.set_yield`
+    regions.
+
+    Example:
+
+    ```mlir
+    gml_st.return %f0, %f1 : tensor<f32>, tensor<?xf32>
+    ```
+  }];
+  let assemblyFormat = "attr-dict $value `:` type($value)";
 }
 
 #endif // GML_ST_OPS
