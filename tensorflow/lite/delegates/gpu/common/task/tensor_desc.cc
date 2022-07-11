@@ -251,6 +251,27 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   return resources;
 }
 
+void TensorDescriptor::GetGpuResources(
+    const BHWDC& tensor_shape, GenericGPUResourcesWithValue* resources) const {
+  resources->AddInt("slice_stride", GetSliceStrideSize(tensor_shape));
+  if (HasAxis(Axis::WIDTH)) {
+    resources->AddInt("width", GetWidthSize(tensor_shape));
+  }
+  if (HasAxis(Axis::HEIGHT)) {
+    resources->AddInt("height", tensor_shape.h);
+  }
+  if (HasAxis(Axis::CHANNELS)) {
+    resources->AddInt("slices", DivideRoundUp(tensor_shape.c, 4));
+    resources->AddInt("channels", tensor_shape.c);
+  }
+  if (HasAxis(Axis::BATCH)) {
+    resources->AddInt("batch", tensor_shape.b);
+  }
+  if (HasAxis(Axis::DEPTH)) {
+    resources->AddInt("depth", tensor_shape.d);
+  }
+}
+
 absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
                                                 const std::string& const_expr,
                                                 std::string* result) const {

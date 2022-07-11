@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -57,6 +58,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   }
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
+
+  void GetGpuResources(const BHWDC& tensor_shape,
+                       GenericGPUResourcesWithValue* resources) const;
 
   absl::Status PerformConstExpr(const GpuInfo& gpu_info,
                                 const std::string& const_expr,

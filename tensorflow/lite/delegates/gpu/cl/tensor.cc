@@ -409,23 +409,7 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
   if (!tensor_desc) {
     return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
   }
-  resources->AddInt("slice_stride", tensor_desc->GetSliceStrideSize(shape_));
-  if (descriptor_.HasAxis(Axis::WIDTH)) {
-    resources->AddInt("width", tensor_desc->GetWidthSize(shape_));
-  }
-  if (descriptor_.HasAxis(Axis::HEIGHT)) {
-    resources->AddInt("height", Height());
-  }
-  if (descriptor_.HasAxis(Axis::CHANNELS)) {
-    resources->AddInt("slices", Slices());
-    resources->AddInt("channels", Channels());
-  }
-  if (descriptor_.HasAxis(Axis::BATCH)) {
-    resources->AddInt("batch", Batch());
-  }
-  if (descriptor_.HasAxis(Axis::DEPTH)) {
-    resources->AddInt("depth", Depth());
-  }
+  tensor_desc->GetGpuResources(shape_, &resources->generic);
 
   if (descriptor_.GetStorageType() == TensorStorageType::BUFFER) {
     resources->buffers.push_back({"buffer", memory_});
