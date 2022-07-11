@@ -71,6 +71,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
     ],

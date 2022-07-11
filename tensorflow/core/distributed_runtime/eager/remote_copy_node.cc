@@ -16,17 +16,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
 
 #include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace eager {
@@ -43,7 +44,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 Status CreateUncachedKernelAndDeviceOp(
     EagerOperation* op, core::RefCountPtr<KernelAndDevice>* kernel) {
   EagerContext& ctx = op->EagerContext();
-  Device* device = absl::get<Device*>(op->Device());
+  Device* device = std::get<Device*>(op->Device());
 
   FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
@@ -105,7 +106,7 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   EagerKernelArgs args(1);
-  Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
+  Device* d = ctx_->CanonicalDevice(std::get<Device*>(op->Device()));
   TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
   CoordinationServiceAgent* coord_agent = nullptr;
   if (ctx_->GetDistributedManager() != nullptr)
