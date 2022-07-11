@@ -3287,6 +3287,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/config:flags",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
@@ -3364,6 +3365,7 @@ filegroup(
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
+        "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/compiler/jit:flags",  # tfe

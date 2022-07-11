@@ -422,6 +422,9 @@ tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
 
+[//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
+tensorflow::fingerprinting::CreateFingerprintDef
+
 
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled

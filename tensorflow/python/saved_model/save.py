@@ -62,6 +62,7 @@ from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import base
@@ -847,7 +848,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     meta_graph_def.saver_def.CopyFrom(saver_def)
 
   # At this point all nodes that can be added to the SavedObjectGraph have been
-  # added, so run the following to validate deserialization depenencies.
+  # added, so run the following to validate deserialization dependencies.
   _dependency_sorted_node_ids(saveable_view)
 
   graph_def = exported_graph.as_graph_def(add_shapes=True)
@@ -1229,6 +1230,7 @@ def save(obj, export_dir, signatures=None, options=None):
   # pylint: enable=line-too-long
   metrics.IncrementWriteApi(_SAVE_V2_LABEL)
   save_and_return_nodes(obj, export_dir, signatures, options)
+
   metrics.IncrementWrite(write_version="2")
 
 
@@ -1294,16 +1296,22 @@ def save_and_return_nodes(obj,
   # as we build up the C++ API.
   pywrap_saved_model.Save(export_dir)
 
+  saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+
+  # Write fingerprint protobuf, if requested.
+  if flags.config().saved_model_fingerprinting.value():
+    fingerprint_path = file_io.join(
+        compat.as_str(export_dir),
+        compat.as_str(constants.FINGERPRINT_FILENAME))
+    fingerprint_proto = fingerprinting.CreateFingerprintDef(
+        saved_model_serialized)
+    file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
+
   path = file_io.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
-
-  # Write fingerprint, if requested.
-  if flags.config().saved_model_fingerprinting.value():
-    # Do nothing for now.
-    pass
 
   # Save debug info, if requested.
   if options.save_debug_info:
