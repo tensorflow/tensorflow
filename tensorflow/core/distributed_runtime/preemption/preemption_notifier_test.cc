@@ -46,7 +46,7 @@ TEST(PreemptNotifierTest, WillBePreemptedAt) {
   // Make sure that preempt time is approximately correct.
   absl::Duration time_diff = preempt_time - start_time;
   // Signal was raised 1 second after start time.
-  EXPECT_GT(time_diff, absl::Seconds(1));
+  EXPECT_GT(time_diff, absl::Seconds(1.0));
   // Listen to signal once per second, so we should catch within 2 seconds.
   EXPECT_LT(time_diff, absl::Seconds(3));
 }

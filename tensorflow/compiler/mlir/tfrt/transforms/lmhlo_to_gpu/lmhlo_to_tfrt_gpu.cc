@@ -32,18 +32,18 @@ namespace tensorflow {
 
 void populateLmhloToTfrtGpuPasses(mlir::OpPassManager &pm) {
   pm.addPass(tensorflow::createConvertLmhloToGpuBranchPass());
-  pm.addPass(tfrt::gpu::CreateStreamifyOpsPass<
-             lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
-             lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
-             lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
-             lmhlo::InfeedOp, lmhlo::OutfeedOp, lmhlo::FftOp,
-             lmhlo_gpu::ConvForwardOp, lmhlo_gpu::ConvBackwardInputOp,
-             lmhlo_gpu::ConvBackwardFilterOp, lmhlo_gpu::ConvForwardFusedOp,
-             lmhlo_gpu::ConvForwardFusedSideInputOp, lmhlo_gpu::GEMMOp,
-             lmhlo_gpu::GEMM_BiasOp, lmhlo_gpu::CholeskyOp,
-             lmhlo_gpu::AllReduceStartOp, lmhlo_gpu::AllReduceDoneOp,
-             mlir::func::CallOp, mlir::memref::LoadOp, tfrt::compiler::CallOp,
-             tfrt::compiler::WhileOp>());
+  pm.addPass(
+      tfrt::gpu::CreateStreamifyOpsPass<
+          lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
+          lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
+          lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
+          lmhlo::InfeedOp, lmhlo::OutfeedOp, lmhlo::FftOp,
+          lmhlo_gpu::ConvForwardOp, lmhlo_gpu::ConvBackwardInputOp,
+          lmhlo_gpu::ConvBackwardFilterOp, lmhlo_gpu::ConvForwardFusedOp,
+          lmhlo_gpu::ConvForwardFusedSideInputOp, lmhlo_gpu::GEMMOp,
+          lmhlo_gpu::CholeskyOp, lmhlo_gpu::AllReduceStartOp,
+          lmhlo_gpu::AllReduceDoneOp, mlir::func::CallOp, mlir::memref::LoadOp,
+          tfrt::compiler::CallOp, tfrt::compiler::WhileOp>());
   pm.addPass(tensorflow::createConvertLmhloToGpuPass());
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::PopulateGpuToTfrtGpuPasses(pm);

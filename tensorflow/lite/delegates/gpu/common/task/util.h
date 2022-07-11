@@ -70,7 +70,7 @@ std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
 std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
                         int vec_size);
 
-std::string GetTypeConvertion(const GpuInfo& gpu_info, DataType src_type,
+std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size);
 
 }  // namespace gpu

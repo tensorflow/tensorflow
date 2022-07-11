@@ -98,7 +98,6 @@ cuda_py_test(
     name = "device_util_test",
     srcs = ["device_util_test.py"],
     python_version = "PY3",
-    tags = ["no_oss_py2"],
     deps = [
         ":combinations",
         ":device_util",
@@ -440,6 +439,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
@@ -448,6 +448,7 @@ py_library(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
     ],
@@ -2286,6 +2287,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "noasan",  # TODO(b/237407459)
         "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],

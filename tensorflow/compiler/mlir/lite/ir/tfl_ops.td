@@ -4838,10 +4838,9 @@ def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
   let arguments = (ins
     TFL_TensorOf<[F32, I32]>:$input,
     TFL_I32Tensor:$segment_ids,
-    I32Attr:$num_segments
+    TFL_I32Tensor:$num_segments
   );
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
-  let hasOptions = 1;
 }
 
 def TFL_YieldOp : Op<TFL_Dialect, "yield",

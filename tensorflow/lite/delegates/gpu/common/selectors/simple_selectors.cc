@@ -77,8 +77,10 @@ std::unique_ptr<GPUOperation> SelectPooling(const Pooling2DAttributes& attr,
 }
 
 std::unique_ptr<GPUOperation> SelectMaxUnpooling(
-    const MaxUnpooling2DAttributes& attr, const OperationDef& op_def) {
-  return std::make_unique<GPUOperation>(CreateMaxUnpooling(op_def, attr));
+    const MaxUnpooling2DAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def) {
+  return std::make_unique<GPUOperation>(
+      CreateMaxUnpooling(gpu_info, op_def, attr));
 }
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,

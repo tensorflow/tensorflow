@@ -6,6 +6,10 @@
 
 *   <DOCUMENT BREAKING CHANGES HERE>
 *   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+*   Causal attention in `keras.layers.Attention` and
+    `keras.layers.AdditiveAttention` is now specified in the `call()` method
+    via the `use_causal_mask` argument (rather than in the constructor),
+    for consistency with other layers.
 *   Some files in `tensorflow/python/training` have been moved to
     `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
     update your imports accordingly, the old files will be removed in Release

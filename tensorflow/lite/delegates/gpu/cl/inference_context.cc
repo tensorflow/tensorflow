@@ -176,7 +176,7 @@ absl::Status GetBufferAsignment(
     const auto& t = gpu_model.tensors.at(usage.first);
     const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size = SizeOf(descriptor.data_type);
+    const size_t element_size = SizeOf(descriptor.GetDataType());
     size_t buffer_size;
     if (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D ||
         descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D) {
@@ -593,7 +593,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       if (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D ||
           t.second.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D) {
         const size_t bytes_per_pixel =
-            SizeOf(t.second.data_type) *
+            SizeOf(t.second.GetDataType()) *
             (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D
                  ? 4
                  : shape.c);

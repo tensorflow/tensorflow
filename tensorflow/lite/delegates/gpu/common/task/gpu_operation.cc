@@ -83,7 +83,7 @@ DataType OperationDef::GetDataType() const {
 }
 
 DataType OperationDef::GetPrimaryDataType() const {
-  return src_tensors[0].data_type;
+  return src_tensors[0].GetDataType();
 }
 TensorStorageType OperationDef::GetPrimaryStorageType() const {
   return src_tensors[0].GetStorageType();

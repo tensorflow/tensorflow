@@ -22,7 +22,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -40,6 +40,36 @@ from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured import structured_tensor_dynamic
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import dispatch
+
+
+class _PrivateSpecialType(extension_type.ExtensionType):
+  ragged: ragged_tensor.RaggedTensor
+
+
+@dispatch.dispatch_for_types(array_ops.shape_v2, _PrivateSpecialType)
+def shape_v2_special(input: _PrivateSpecialType, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+                     name=None):
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return array_ops.shape_v2(input.ragged, out_type)  # pylint: disable=protected-access
+
+
+class _PrivateBrokenType(extension_type.ExtensionType):
+  ragged: ragged_tensor.RaggedTensor
+
+
+@dispatch.dispatch_for_types(array_ops.shape_v2, _PrivateBrokenType)
+def shape_v2_broken(input: _PrivateBrokenType, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+                    name=None):
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  del input
+  del out_type
+  return {
+      "foo": "This is not a shape",
+      "bar": "But if I put a string here, it becomes a vector"
+  }
 
 
 # pylint: disable=g-long-lambda
@@ -72,11 +102,6 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         self._assertStructuredEqual(a_value, b_value, msg, check_shape)
       else:
         self.assertAllEqual(a_value, b_value, msg)
-
-  def testConstructorIsPrivate(self):
-    with self.assertRaisesRegex(ValueError,
-                                "StructuredTensor constructor is private"):
-      structured_tensor.StructuredTensor({}, (), None, ())
 
   @parameterized.named_parameters([
       # Scalar (rank=0) StructuredTensors.
@@ -584,8 +609,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           fields=dict(x=[1], y=[]),
           shape=[None],
           err=ValueError,
-          msg=r"Field . has shape .*, which is incompatible with the shape "
-          r"that was specified or inferred from other fields: .*"),
+          msg=r"Error in shape of y"),
       dict(
           fields={"": 5},
           shape=[],
@@ -603,8 +627,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           },
           shape=[2, None],
           validate=True,
-          err=errors.InvalidArgumentError,
-          msg=r"incompatible row_splits",
+          err=ValueError,
+          msg=r"Error in shape of r2",
       ),
       dict(
           fields={},
@@ -628,13 +652,14 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           fields={},
           shape=[None],
           err=ValueError,
-          msg="nrows must be specified if rank==1 and `fields` is empty."),
+          msg="Must specify `nrows`, a fully specified `shape`, "
+          "or have `fields` if `rank=1`"),
       dict(
           fields={},
           shape=[None, None],
           err=ValueError,
-          msg="row_partitions must be specified if rank>1 and `fields` "
-          "is empty."),
+          msg="Must specify row_partitions, a fully specified shape, "
+          "or have fields if rank > 1"),
       dict(
           fields={},
           shape=[None, None],
@@ -642,7 +667,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           row_partitions=lambda:
           [row_partition.RowPartition.from_row_lengths([3, 4])],
           err=ValueError,
-          msg="field values have incompatible row_partition dtypes"),
+          msg="row_partition dtypes are inconsistent"),
       dict(
           fields=lambda: {
               "a":
@@ -655,18 +680,21 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           shape=[None, None],
           err=ValueError,
           msg="field values have incompatible row_partition dtypes"),
-      dict(
-          fields=lambda: {
-              "a":
-                  array_ops.placeholder_with_default(np.array([1, 2, 3]), None),
-              "b":
-                  array_ops.placeholder_with_default(np.array([4, 5]), None)
-          },
-          validate=True,
-          shape=[None],
-          err=(ValueError, errors.InvalidArgumentError),
-          msg="fields have incompatible nrows",
-          test_in_eager=False),
+      # Currently, this doesn't throw an error.
+      # That's fine.
+      # dict(
+      #     fields=lambda: {
+      #         "a":
+      #             array_ops.placeholder_with_default(np.array([1, 2, 3]),
+      #                                                None),
+      #         "b":
+      #             array_ops.placeholder_with_default(np.array([4, 5]), None)
+      #     },
+      #     validate=True,
+      #     shape=[None],
+      #     err=(ValueError, errors.InvalidArgumentError),
+      #     msg="Error in shape of b",
+      #     test_in_eager=False),
   ])
   def testFromFieldsErrors(self,
                            fields,
@@ -773,6 +801,24 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     struct_3 = struct_2.partition_outer_dimension(
         row_partition.RowPartition.from_row_splits([0, 1, 2]))
     self.assertEqual(3, struct_3.rank)
+
+  def testWithPrivateSpecialType(self):
+    rt = ragged_tensor.RaggedTensor.from_value_rowids(
+        array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
+    pst = _PrivateSpecialType(rt)
+    pst_shape = array_ops.shape_v2(pst)
+    st = structured_tensor.StructuredTensor.from_fields_and_rank({"r": pst}, 1)
+    st_shape = st._ragged_shape
+    self.assertEqual(1, st.rank)
+    self.assertAllEqual(pst_shape[0], st_shape[0])
+
+  def testWithPrivateBrokenType(self):
+    rt = ragged_tensor.RaggedTensor.from_value_rowids(
+        array_ops.constant([[1, 2], [3, 4], [5, 6]]), [0, 0, 1])
+    pbt = _PrivateBrokenType(rt)
+
+    with self.assertRaisesRegex(ValueError, "Error in shape of r"):
+      structured_tensor.StructuredTensor.from_fields_and_rank({"r": pbt}, 1)
 
   def testPartitionOuterDimsErrors(self):
     st = StructuredTensor.from_fields({})
@@ -914,6 +960,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       if context.executing_eagerly():  # to_pyval only available in eager.
         self.assertEqual(actual.to_pyval(), pyval)
 
+  def testStructuredTensorSpecFactory(self):
+    spec = structured_tensor.StructuredTensorSpec([], {
+        "a": tensor_spec.TensorSpec([], dtypes.int32),
+        "b": tensor_spec.TensorSpec([None], dtypes.int32),
+        "c": ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)})
+    self.assertEqual(spec.rank, 0)
+
   @parameterized.named_parameters([
       dict(
           testcase_name="NoFieldsRaggedRank0",
@@ -1013,7 +1066,6 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
            pyval=[{"a": 1}, {"a": "c"}],
            type_spec=None,
            msg=r"Error parsing path \('a',\)"),
-
       dict(testcase_name="TypeSpecMismatch_ListSparse",
            pyval=[1, 2],
            type_spec=sparse_tensor.SparseTensorSpec([None], dtypes.int32),

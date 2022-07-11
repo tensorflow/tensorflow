@@ -36,6 +36,10 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
   // Perform tiling, fusion, vectorization and other transformations.
   pm.addNestedPass<FuncOp>(gml_st::createTilingPass(options.tileSizes));
+  if (options.fuse) {
+    pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
+  }
+  pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 
   if (!options.lowerToLoops) return;
 
@@ -48,6 +52,7 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
   // Convert Linalg + GmlSt to SCF loops.
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
+  pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass());
   pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
 }
 

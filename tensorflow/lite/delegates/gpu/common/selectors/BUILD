@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
         "//tensorflow/lite/delegates/gpu/common/tasks/special:conv_pointwise",
         "//tensorflow/lite/delegates/gpu/common/tasks/special:depthwise_conv_plus_1x1_conv",
         "//tensorflow/lite/delegates/gpu/common/tasks/special:fc_fc_add",

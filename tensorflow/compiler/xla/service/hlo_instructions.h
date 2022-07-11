@@ -983,6 +983,13 @@ class HloCallableInstruction : public HloInstruction {
 
   HloInstruction* called_computation_root() const;
 
+  // Recursively sets all nested called computation to have thread name as
+  // `thread_name`. if `skip_async_thread_name_overwrite` is true, skip
+  // overwrite async instruction and its comptuations thread name overwriting.
+  void RecursivelySetComputationsThreadName(
+      std::optional<std::string> thread_name,
+      bool skip_async_thread_name_overwrite);
+
  protected:
   // Returns the default called computation name.
   virtual std::string default_called_computation_name() const = 0;

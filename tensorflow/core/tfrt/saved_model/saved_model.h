@@ -254,6 +254,14 @@ class SavedModelImpl final : public SavedModel {
       std::vector<tensorflow::Tensor>* outputs) override;
 
  private:
+  // The result of loading signature(s).
+  struct LoadingResult {
+    std::string name;
+    tfrt::BefBuffer bef;
+    tfrt::RCReference<tfrt::BEFFile> bef_file;
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
+  };
+
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
@@ -261,6 +269,18 @@ class SavedModelImpl final : public SavedModel {
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);
+
+  // Given the joined signature, loads the subgraph and returns loading result.
+  tensorflow::StatusOr<
+      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  LoadJoinedSignature(const JoinedSignature& joined_signature)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(loading_result_cache_mu_);
+
+  // Returns the loading result given the signature names.
+  tensorflow::StatusOr<
+      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
+  GetOrCreateLoadingResult(absl::Span<const std::string> names)
+      TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   // Runs `func` with the given inputs, and outputs the result.
   tensorflow::Status RunInternal(const RunOptions& run_options,
@@ -288,6 +308,12 @@ class SavedModelImpl final : public SavedModel {
   // (TpuModelResource) to a general and plugable interface.
   std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource_;
   std::unique_ptr<tfrt::ResourceContext> resource_context_;
+  tensorflow::mutex loading_result_cache_mu_;
+  // For pointer stability of values in `absl::flat_hash_map<>`, additional
+  // `std::unique_ptr<>` is necessary. (See https://abseil.io/tips/136.)
+  absl::flat_hash_map<std::string /*joined_name*/,
+                      std::unique_ptr<LoadingResult>>
+      loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
   std::unique_ptr<GraphExecutor> graph_executor_;
 };
 

@@ -53,6 +53,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1025,11 +1026,15 @@ class CondContext(ControlFlowContext):
         if original_result is None:
           return no_op(), None
         elif not isinstance(original_result, ops.Operation):
+          original_result = variable_utils.convert_variables_to_tensors(
+              original_result)
           original_result = nest.map_structure(
               array_ops.identity, original_result, expand_composites=True)
     if original_result is None:
       return None, None
 
+    original_result = variable_utils.convert_variables_to_tensors(
+        original_result)
     result = nest.map_structure(
         self._BuildCondTensor, original_result, expand_composites=True)
     if not isinstance(result, (list, _basetuple)):
@@ -2189,7 +2194,7 @@ class WhileContext(ControlFlowContext):
     pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
     post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-    if not nest.is_nested_or_composite(body_result):
+    if not nest.is_nested(body_result):
       body_result = [body_result]
     if len(post_summaries) > len(pre_summaries):
       new_summaries = post_summaries[len(pre_summaries):]
@@ -2206,6 +2211,7 @@ class WhileContext(ControlFlowContext):
         body_result = nest.map_structure(
             map_fn, body_result, expand_composites=True)
 
+    body_result = variable_utils.convert_variables_to_tensors(body_result)
     # Compare the structure types of input and output of body.
     # For backwards compatibility, the first layer is forced to a list
     # during this comparison, because inputs are typically lists and
@@ -2698,6 +2704,8 @@ def while_loop(cond,
   if parallel_iterations < 1:
     raise TypeError("'parallel_iterations' must be a positive integer.")
 
+  loop_vars = variable_utils.convert_variables_to_tensors(loop_vars)
+
   # Always enable control flow v2 if building a function, regardless of toggle.
   executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
@@ -2861,12 +2869,12 @@ def with_dependencies(dependencies, output_tensor, name=None):
     with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_composite(output_tensor)
-        if isinstance(output_tensor, ops.Tensor):
-          return _Identity(output_tensor, name=name)
-        else:
+        if isinstance(output_tensor, indexed_slices.IndexedSlices):
           return indexed_slices.IndexedSlices(
               _Identity(output_tensor.values, name=name), output_tensor.indices,
               output_tensor.dense_shape)
+        else:
+          return _Identity(output_tensor, name=name)
 
 
 def _GroupControlDeps(dev, deps, name=None):

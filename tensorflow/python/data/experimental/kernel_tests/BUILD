@@ -465,7 +465,7 @@ tf_py_test(
 
 tf_py_test(
     name = "parse_example_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["parse_example_dataset_test.py"],
     shard_count = 4,
     deps = [

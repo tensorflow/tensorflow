@@ -23,6 +23,7 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
+include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td"
 
 // Base class of all subset types.
 class GMLST_Set<string name> : TypeDef<GmlSt_Dialect, name> { }
@@ -37,7 +38,8 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
   }];
 }
 
-def GMLST_PointType : GMLST_Set<"Point"> {
+def GMLST_PointType : GMLST_Set<"Point">,
+    BuildableType<"$_builder.getType<::mlir::gml_st::PointType>()"> {
   let mnemonic = "point";
   let summary = "Type that represents a point of an index space.";
   let assemblyFormat = "";
@@ -57,10 +59,16 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
     custom<OperandsOrIntegersSizesList>($dynamic_sizes, $static_sizes)
     attr-dict `:` qualified(type($result))
   }];
+  let extraClassDeclaration = [{
+    unsigned getNumDynamicEntriesUpToIdx(unsigned idx);
+    mlir::Value getDynamicSize(unsigned idx);
+  }];
   let hasVerifier = 1;
 }
 
-def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
+def GMLST_PointOp : GMLST_Op<"point", [
+    NoSideEffect,
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
   let arguments = (ins AnySet:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
@@ -76,9 +84,12 @@ def GMLST_PointOp : GMLST_Op<"point", [NoSideEffect]> {
   let hasVerifier = 1;
 }
 
-def GMLST_TileOp : GMLST_Op<"tile", [NoSideEffect, AttrSizedOperandSegments,
+def GMLST_TileOp : GMLST_Op<"tile", [
+    NoSideEffect,
+    AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
   let arguments = (ins GMLST_TileType:$superset,
                        Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
@@ -128,6 +139,26 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
     qualified(type($superset)) `->` qualified(type($result))
   }];
   let hasVerifier = 0;
+}
+
+def GMLST_TransposeTileOp : GMLST_Op<"transpose_tile", [
+    NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
+  let summary = "Transposes a tile.";
+  let description = [{
+    Transposes the argument tile by applying the permutation to the dimensions,
+    offsets and strides of the operand tile.
+  }];
+  let arguments = (ins
+    GMLST_TileType:$superset,
+    DenseI64ArrayAttr:$permutation);
+  let results = (outs GMLST_TileType:$result);
+  let assemblyFormat = [{
+    $superset `,` $permutation attr-dict `:`
+    qualified(type($superset)) `to` qualified(type($result))
+  }];
+  let hasVerifier = 1;
 }
 
 #endif // GML_ST_SET_OPS

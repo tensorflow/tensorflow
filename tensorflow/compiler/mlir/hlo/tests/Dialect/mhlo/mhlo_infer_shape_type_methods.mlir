@@ -150,21 +150,10 @@ func.func @concat(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xindex
 
 // -----
 
-// CHECK-LABEL: func @transpose
-func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xindex> {
-  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
-  %1 = "mhlo_test.get_return_type_components"(%0)
-      : (tensor<2x1x4x3xi32>) -> tensor<2x1x4x3xindex>
-// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [2, 1, 4, 3], element_type0 = i32} : (tensor<2x1x4x3xi32>) -> tensor<2x1x4x3xindex>
-  func.return %1 : tensor<2x1x4x3xindex>
-}
-
-// -----
-
 // CHECK-LABEL: @rng_normal
 func.func @rng_normal(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<7xindex> {
   %0 = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
-  %1 = "mhlo.rng_normal"(%arg0, %arg1, %0) : (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<7xf32>
+  %1 = "mhlo.rng"(%arg0, %arg1, %0) {rng_distribution = #mhlo.rng_distribution<NORMAL>} : (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<7xf32>
   %2 = "mhlo_test.get_return_type_components"(%1)
       : (tensor<7xf32>) -> tensor<7xindex>
 // CHECK: %2 = "mhlo_test.return_type_components"(%1) {dims0 = [7], element_type0 = f32} : (tensor<7xf32>) -> tensor<7xindex>
@@ -176,7 +165,7 @@ func.func @rng_normal(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<7xindex>
 // CHECK-LABEL: func @rng_uniform
 func.func @rng_uniform(%a: tensor<f32>, %b: tensor<f32>) -> tensor<2x3x5xindex> {
   %0 = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  %1 = "mhlo.rng_uniform"(%a, %b, %0) : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  %1 = "mhlo.rng"(%a, %b, %0) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   %2 = "mhlo_test.get_return_type_components"(%1)
       : (tensor<2x3x5xf32>) -> tensor<2x3x5xindex>
 // CHECK: %2 = "mhlo_test.return_type_components"(%1) {dims0 = [2, 3, 5], element_type0 = f32} : (tensor<2x3x5xf32>) -> tensor<2x3x5xindex>

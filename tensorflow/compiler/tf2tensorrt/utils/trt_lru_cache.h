@@ -185,7 +185,6 @@ struct EngineContext {
   // latency. Since its value remains constant, we can cache it.
   size_t device_memory_size_;
 };
-
 // Contains the context required to build the calibration data.
 class CalibrationContext {
  public:

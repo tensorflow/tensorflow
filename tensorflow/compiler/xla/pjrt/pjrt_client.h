@@ -443,11 +443,11 @@ class PjRtClient {
   // the client can issue commands to.
   virtual int addressable_device_count() const = 0;
 
-  // Return all devices in the entire computation, including addressable and
+  // Return all devices known to the client, including addressable and
   // non-addressable devices.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // Return only addressable devices.
+  // Return only addressable devices. The devices are in no particular order.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().

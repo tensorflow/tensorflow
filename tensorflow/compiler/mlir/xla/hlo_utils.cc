@@ -351,7 +351,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClamp;
   } else if (isa<mlir::mhlo::ConcatenateOp, mlir::lmhlo::ConcatenateOp>(op)) {
     return xla::HloOpcode::kConcatenate;
-  } else if (isa<mlir::mhlo::ConvOp, mlir::lmhlo::ConvOp>(op)) {
+  } else if (isa<mlir::mhlo::ConvolutionOp, mlir::lmhlo::ConvolutionOp>(op)) {
     return xla::HloOpcode::kConvolution;
   } else if (isa<mlir::mhlo::SortOp, mlir::lmhlo::SortOp>(op)) {
     return xla::HloOpcode::kSort;
@@ -371,7 +371,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kCeil;
   } else if (isa<mlir::mhlo::ClzOp, mlir::lmhlo::ClzOp>(op)) {
     return xla::HloOpcode::kClz;
-  } else if (isa<mlir::mhlo::CosOp, mlir::lmhlo::CosOp>(op)) {
+  } else if (isa<mlir::mhlo::CosineOp, mlir::lmhlo::CosineOp>(op)) {
     return xla::HloOpcode::kCos;
   } else if (isa<mlir::mhlo::ExpOp, mlir::lmhlo::ExpOp>(op)) {
     return xla::HloOpcode::kExp;
@@ -404,7 +404,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kRsqrt;
   } else if (isa<mlir::mhlo::SignOp, mlir::lmhlo::SignOp>(op)) {
     return xla::HloOpcode::kSign;
-  } else if (isa<mlir::mhlo::SinOp, mlir::lmhlo::SinOp>(op)) {
+  } else if (isa<mlir::mhlo::SineOp, mlir::lmhlo::SineOp>(op)) {
     return xla::HloOpcode::kSin;
   } else if (isa<mlir::mhlo::SqrtOp, mlir::lmhlo::SqrtOp>(op)) {
     return xla::HloOpcode::kSqrt;

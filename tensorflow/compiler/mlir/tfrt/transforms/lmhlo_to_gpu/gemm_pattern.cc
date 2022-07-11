@@ -89,9 +89,6 @@ void MakeBlasGemmCompatible(int64_t& m, int64_t& n, MatrixDescriptor& lhs,
   }
 }
 
-Value GetBias(lmhlo_gpu::GEMMOpAdaptor op) { return nullptr; }
-Value GetBias(lmhlo_gpu::GEMM_BiasOpAdaptor op) { return op.getBias(); }
-
 // Match GEMM auto-tuning, see ComputationTypeFromPrimitive()
 Type MlirComputationType(Type element_type,
                          ConversionPatternRewriter& rewriter) {
@@ -107,8 +104,8 @@ Type MlirComputationType(Type element_type,
 }
 
 // Gets the platform specific Gemm algorithm value.
-template <class GemmOp>
-tfrt::gpu::wrapper::BlasGemmAlgo GetBlasGemmAlgoOrDefault(GemmOp op) {
+tfrt::gpu::wrapper::BlasGemmAlgo GetBlasGemmAlgoOrDefault(
+    lmhlo_gpu::GEMMOp op) {
   if (!op.getAlgorithm().hasValue()) return kBlasGemmDefaultAlgo;
   return {static_cast<int>(op.getAlgorithm().getValue()), kGpuTargetPlatform};
 }
@@ -121,18 +118,14 @@ tfrt::gpu::wrapper::BlasOperation MatrixTransposeToBlasOperation(
 
 // Create all the Ops necessary for the GEMM operation, including the GEMM
 // operation itself.
-template <class GemmOp>
-Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
-                    Value stream, mlir::Type input_type, mlir::Type output_type,
-                    int64_t batch_size, int64_t m, int64_t n, int64_t k,
-                    const MatrixDescriptor& lhs, const MatrixDescriptor& rhs,
-                    const MatrixDescriptor& output, xla::complex128 alpha,
-                    double beta, ConversionPatternRewriter& rewriter) {
+Value CreateTfrtOps(lmhlo_gpu::GEMMOp op, lmhlo_gpu::GEMMOp::Adaptor adaptor,
+                    Value chain, Value stream, mlir::Type input_type,
+                    mlir::Type output_type, int64_t batch_size, int64_t m,
+                    int64_t n, int64_t k, const MatrixDescriptor& lhs,
+                    const MatrixDescriptor& rhs, const MatrixDescriptor& output,
+                    xla::complex128 alpha, double beta,
+                    ConversionPatternRewriter& rewriter) {
   auto loc = op.getLoc();
-  if (auto bias = GetBias(adaptor)) {
-    chain = rewriter.create<tfrt::gpu::MemCopyOp>(loc, adaptor.getOutput(),
-                                                  bias, stream, chain);
-  }
 
   const Type mlir_compute_type = MlirComputationType(output_type, rewriter);
 
@@ -198,16 +191,15 @@ Value CreateTfrtOps(GemmOp op, typename GemmOp::Adaptor adaptor, Value chain,
       .getResult();
 }
 
-template <class GemmOp>
-FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
-                                         typename GemmOp::Adaptor adaptor,
+FailureOr<Value> GemmOpConversionRewrite(lmhlo_gpu::GEMMOp op,
+                                         lmhlo_gpu::GEMMOp::Adaptor adaptor,
                                          Value chain, Value stream,
                                          ConversionPatternRewriter& rewriter) {
   auto get_element_type = [](Value value) {
     return value.getType().cast<mlir::MemRefType>().getElementType();
   };
 
-  if (get_element_type(op.getLhs()) != get_element_type(op.getRhs())) {
+  if (get_element_type(op.getA()) != get_element_type(op.getB())) {
     return rewriter.notifyMatchFailure(op, "Input element type mismatch.");
   }
 
@@ -221,29 +213,26 @@ FailureOr<Value> GemmOpConversionRewrite(GemmOp op,
   int64_t m = config->output_layout.num_rows;
   int64_t n = config->output_layout.num_cols;
   int64_t k = config->lhs_layout.num_cols;
-  MatrixDescriptor lhs = GetMatrixDesc(config->lhs_layout, adaptor.getLhs());
-  MatrixDescriptor rhs = GetMatrixDesc(config->rhs_layout, adaptor.getRhs());
+  MatrixDescriptor lhs = GetMatrixDesc(config->lhs_layout, adaptor.getA());
+  MatrixDescriptor rhs = GetMatrixDesc(config->rhs_layout, adaptor.getB());
   MatrixDescriptor output =
-      GetMatrixDesc(config->output_layout, adaptor.getOutput());
+      GetMatrixDesc(config->output_layout, adaptor.getC());
   int64_t batch_size = config->output_layout.batch_size;
 
   MakeBlasGemmCompatible(m, n, lhs, rhs, output);
 
-  return CreateTfrtOps(op, adaptor, chain, stream,
-                       get_element_type(op.getLhs()),
-                       get_element_type(op.getOutput()), batch_size, m, n, k,
-                       lhs, rhs, output, config->alpha, config->beta, rewriter);
+  return CreateTfrtOps(op, adaptor, chain, stream, get_element_type(op.getA()),
+                       get_element_type(op.getC()), batch_size, m, n, k, lhs,
+                       rhs, output, config->alpha, config->beta, rewriter);
 }
 
-template <class GemmOpType>
 struct GemmRewritePattern
-    : tfrt::gpu::StreamifyOpConversionPattern<GemmOpType> {
-  using typename tfrt::gpu::StreamifyOpConversionPattern<GemmOpType>::OpAdaptor;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo_gpu::GEMMOp> {
   using tfrt::gpu::StreamifyOpConversionPattern<
-      GemmOpType>::StreamifyOpConversionPattern;
+      lmhlo_gpu::GEMMOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
-      GemmOpType op, OpAdaptor adaptor, Value chain, Value stream,
-      ConversionPatternRewriter& rewriter) const override {
+      lmhlo_gpu::GEMMOp op, lmhlo_gpu::GEMMOp::Adaptor adaptor, Value chain,
+      Value stream, ConversionPatternRewriter& rewriter) const override {
     auto result = GemmOpConversionRewrite(op, adaptor, chain, stream, rewriter);
     if (succeeded(result)) rewriter.eraseOp(op);
     return result;
@@ -254,9 +243,7 @@ struct GemmRewritePattern
 
 void populateGemmConversionPattern(RewritePatternSet& patterns,
                                    TypeConverter& converter) {
-  patterns.add<GemmRewritePattern<lmhlo_gpu::GEMMOp>,
-               GemmRewritePattern<lmhlo_gpu::GEMM_BiasOp>>(
-      converter, patterns.getContext());
+  patterns.add<GemmRewritePattern>(converter, patterns.getContext());
 }
 
 }  // namespace tensorflow

@@ -218,10 +218,7 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + select({
-        "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts(),
     deps = [
         ":c_api_types",
     ] + select({

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization_test_util.h"
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -63,6 +64,18 @@ absl::Status MeanStddevNormSeparateBatchesTest(float mean, float diff,
       }
       RETURN_IF_ERROR(
           PointWiseNear(expected_output, dst_tensor.data, tolerance));
+
+      TensorFloat32 dst_tensor_single_step;
+      auto operation_single_step = CreateMeanStdDevNormalization(
+          op_def, env->GetGpuInfo(), src_tensor.shape,
+          /*variance_bias*/ 1.0e-8f, /*two_step*/ false);
+      RETURN_IF_ERROR(
+          env->ExecuteGPUOperation({src_tensor},
+                                   std::make_unique<MeanStdDevNormalization>(
+                                       std::move(operation_single_step)),
+                                   BHWC(1, 1, 2, 4), &dst_tensor_single_step));
+      RETURN_IF_ERROR(PointWiseNear(expected_output,
+                                    dst_tensor_single_step.data, tolerance));
     }
   }
   return absl::OkStatus();
@@ -114,6 +127,19 @@ absl::Status MeanStddevNormalizationAllBatchesTest(
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
       };
       RETURN_IF_ERROR(PointWiseNear(expected_output, dst_tensor.data, eps))
+          << "Failed using precision " << ToString(precision);
+
+      TensorFloat32 dst_tensor_single_step;
+      auto operation_single_step = CreateMeanStdDevNormalization(
+          op_def, env->GetGpuInfo(), src_tensor.shape,
+          /*variance_bias*/ 1.0e-8f, /*two_step*/ false);
+      RETURN_IF_ERROR(
+          env->ExecuteGPUOperation({src_tensor},
+                                   std::make_unique<MeanStdDevNormalization>(
+                                       std::move(operation_single_step)),
+                                   BHWC(9, 1, 1, 4), &dst_tensor_single_step));
+      RETURN_IF_ERROR(
+          PointWiseNear(expected_output, dst_tensor_single_step.data, eps))
           << "Failed using precision " << ToString(precision);
     }
   }
@@ -174,6 +200,21 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
       }
       RETURN_IF_ERROR(PointWiseNear(expected_output, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
+
+      if (precision != CalculationsPrecision::F32) {
+        TensorFloat32 dst_tensor_single_step;
+        auto operation_single_step = CreateMeanStdDevNormalization(
+            op_def, env->GetGpuInfo(), src_tensor.shape,
+            /*variance_bias*/ 1.0e-8f, /*two_step*/ false);
+        RETURN_IF_ERROR(env->ExecuteGPUOperation(
+            {src_tensor},
+            std::make_unique<MeanStdDevNormalization>(
+                std::move(operation_single_step)),
+            BHWC(1, 1, 2, kVectorSize), &dst_tensor_single_step));
+        RETURN_IF_ERROR(
+            PointWiseNear(expected_output, dst_tensor_single_step.data, eps))
+            << "Failed using precision " << ToString(precision);
+      }
     }
   }
   return absl::OkStatus();

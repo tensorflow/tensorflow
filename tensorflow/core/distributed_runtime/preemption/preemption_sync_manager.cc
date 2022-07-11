@@ -121,10 +121,15 @@ Status PreemptionSyncManagerImpl::Initialize(
   preemption_notifier_->WillBePreemptedAtAsync(
       [agent = agent_, task_name](StatusOr<absl::Time> death_time) {
         if (!death_time.ok()) {
-          // This usually happens when the preemption notifier dtor is called
-          // and blocking calls are cancelled.
-          LOG(ERROR) << "Error from preemption notifier: "
-                     << death_time.status();
+          // The preemption notifier invokes callback with Cancelled error when
+          // its being destructed.
+          if (errors::IsCancelled(death_time.status())) {
+            LOG(INFO) << "Preemption sync protocol cancelled by notifier: "
+                      << death_time.status();
+          } else {
+            LOG(ERROR) << "Error from preemption notifier: "
+                       << death_time.status();
+          }
           return;
         }
         // Notify coordination service about preemption notice.

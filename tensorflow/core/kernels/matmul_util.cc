@@ -60,21 +60,19 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     const DataType& dtype) {
   using se::blas::ComputationType;
   static bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
-  bool allow_tf32 = tensor_float_32_execution_enabled();
-  ComputationType f32_type =
-      allow_tf32 ? ComputationType::kTF32AsF32 : ComputationType::kF32;
   switch (dtype) {
     case DT_HALF:
+      return use_f32_for_f16_computation ? ComputationType::kF32
+                                         : ComputationType::kF16;
     case DT_BFLOAT16:
-      return use_f32_for_f16_computation ? f32_type : ComputationType::kF16;
-    case DT_FLOAT:
-      return f32_type;
-    case DT_DOUBLE:
-      return ComputationType::kF64;
+      return ComputationType::kF32;
+    case DT_FLOAT:  // fall-through
     case DT_COMPLEX64:
-      return f32_type;
+      return tensor_float_32_execution_enabled() ? ComputationType::kTF32AsF32
+                                                 : ComputationType::kF32;
+    case DT_DOUBLE:  // fall-through
     case DT_COMPLEX128:
-      return ComputationType::kComplexF64;
+      return ComputationType::kF64;
     default:
       return errors::Internal("Unsupported dtype for Blas Plans.");
   }

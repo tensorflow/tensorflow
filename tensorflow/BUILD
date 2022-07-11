@@ -897,6 +897,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//devtools/python/indexer/...",
         "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
         "//learning/brain/tfrt/...",

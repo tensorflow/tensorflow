@@ -774,9 +774,9 @@ bool GpuInfo::SupportsZeroClampForImages() const {
   } else if (IsApiOpenCl()) {
     return true;
   } else if (IsApiVulkan()) {
-    return true;
+    return false;
   } else if (IsApiOpenGl()) {
-    return opengl_info.IsApiOpenGl32OrAbove();
+    return false;
   } else {
     return false;
   }

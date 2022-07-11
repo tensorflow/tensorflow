@@ -1059,14 +1059,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
           return func_builder
-              ->create<mlir::mhlo::RngUniformOp>(loc, result_type, operands[0],
-                                                 operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(
+                  loc, result_type, operands[0], operands[1], shape,
+                  ::mlir::mhlo::RngDistribution::UNIFORM)
               .getOperation();
 
         case xla::RNG_NORMAL:
           return func_builder
-              ->create<mlir::mhlo::RngNormalOp>(loc, result_type, operands[0],
-                                                operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(loc, result_type, operands[0],
+                                          operands[1], shape,
+                                          ::mlir::mhlo::RngDistribution::NORMAL)
               .getOperation();
 
         default:
@@ -1272,7 +1274,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       return func_builder
-          ->create<mlir::mhlo::ConvOp>(loc, result_type, operands, attributes)
+          ->create<mlir::mhlo::ConvolutionOp>(loc, result_type, operands,
+                                              attributes)
           .getOperation();
     }
 
@@ -1418,7 +1421,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kCeil, CeilOp);
       NO_ATTRIBUTE_CASE(kClamp, ClampOp);
       NO_ATTRIBUTE_CASE(kComplex, ComplexOp);
-      NO_ATTRIBUTE_CASE(kCos, CosOp);
+      NO_ATTRIBUTE_CASE(kCos, CosineOp);
       NO_ATTRIBUTE_CASE(kDivide, DivOp);
       NO_ATTRIBUTE_CASE(kExp, ExpOp);
       NO_ATTRIBUTE_CASE(kExpm1, Expm1Op);
@@ -1452,7 +1455,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
-      NO_ATTRIBUTE_CASE(kSin, SinOp);
+      NO_ATTRIBUTE_CASE(kSin, SineOp);
       NO_ATTRIBUTE_CASE(kSqrt, SqrtOp);
       NO_ATTRIBUTE_CASE(kSubtract, SubOp);
       NO_ATTRIBUTE_CASE(kTanh, TanhOp);

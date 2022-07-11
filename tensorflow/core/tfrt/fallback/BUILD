@@ -81,6 +81,16 @@ cc_library(
     ]),
 )
 
+cc_library(
+    name = "cost_recorder",
+    hdrs = ["cost_recorder.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "op_kernel_runner_test",
     size = "small",

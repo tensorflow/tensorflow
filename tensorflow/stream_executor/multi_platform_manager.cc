@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 
@@ -132,15 +133,15 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithName(
     if(lookup.ok())
       platform = lookup.value();
     else {
-      SE_ASSIGN_OR_RETURN(platform, LookupByNameLocked("rocm"));
+      TF_ASSIGN_OR_RETURN(platform, LookupByNameLocked("rocm"));
     }
   } else {
     if(target == "cuda_only")
       target = "cuda";
-    SE_ASSIGN_OR_RETURN(platform, LookupByNameLocked(target));
+    TF_ASSIGN_OR_RETURN(platform, LookupByNameLocked(target));
   }
   if (initialize_platform && !platform->Initialized()) {
-    SE_RETURN_IF_ERROR(platform->Initialize({}));
+    TF_RETURN_IF_ERROR(platform->Initialize({}));
   }
 
   return platform;
@@ -150,9 +151,9 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithId(
     const Platform::Id& id, bool initialize_platform) {
   absl::MutexLock lock(&mu_);
 
-  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
+  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (initialize_platform && !platform->Initialized()) {
-    SE_RETURN_IF_ERROR(platform->Initialize({}));
+    TF_RETURN_IF_ERROR(platform->Initialize({}));
   }
 
   return platform;
@@ -163,14 +164,14 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithName(
     const std::map<std::string, std::string>& options) {
   absl::MutexLock lock(&mu_);
 
-  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
+  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
   if (platform->Initialized()) {
     return port::Status(
         port::error::FAILED_PRECONDITION,
         absl::StrCat("platform \"", target, "\" is already initialized"));
   }
 
-  SE_RETURN_IF_ERROR(platform->Initialize(options));
+  TF_RETURN_IF_ERROR(platform->Initialize(options));
 
   return platform;
 }
@@ -179,14 +180,14 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
     const Platform::Id& id, const std::map<std::string, std::string>& options) {
   absl::MutexLock lock(&mu_);
 
-  SE_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
+  TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
     return port::Status(
         port::error::FAILED_PRECONDITION,
         absl::StrFormat("platform with id %p is already initialized", id));
   }
 
-  SE_RETURN_IF_ERROR(platform->Initialize(options));
+  TF_RETURN_IF_ERROR(platform->Initialize(options));
 
   return platform;
 }
@@ -212,7 +213,7 @@ MultiPlatformManagerImpl::PlatformsWithFilter(
     Platform* platform = entry.second;
     if (filter(platform)) {
       if (initialize_platform && !platform->Initialized()) {
-        SE_RETURN_IF_ERROR(platform->Initialize({}));
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
       }
       platforms.push_back(platform);
     }

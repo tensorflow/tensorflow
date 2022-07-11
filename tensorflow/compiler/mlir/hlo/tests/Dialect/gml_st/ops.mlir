@@ -13,6 +13,8 @@ func.func @types() {
   %2 = gml_st.point %0 [42] : !gml_st.tile<64> to !gml_st.point
   // CHECK: %{{.*}} = gml_st.tile %[[ARG2]] [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
   %3 = gml_st.tile %1 [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
+  // CHECK: %{{.*}} = gml_st.transpose_tile %[[ARG2]], [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
+  %4 = gml_st.transpose_tile %1, [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
   func.return
 }
 
@@ -309,3 +311,41 @@ func.func @for_loop(%lhs: tensor<8xf32>, %rhs: tensor<8xf32>,
   func.return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @for_loop
+
+func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
+                                    %dst: tensor<?x?x?xf32>) {
+  %bcast = gml_st.dynamic_broadcast_in_dim
+      ins(%arg: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?x?xf32>) {
+        broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>
+      }
+  func.return
+}
+// CHECK-LABEL: func @dynamic_broadcast_in_dim
+
+// -----
+
+func.func @gather(%arg: tensor<100xf32>,
+                  %indices: tensor<42x1xi64>,
+                  %dst: tensor<42xf32>) -> tensor<42xf32> {
+  %gather = gml_st.gather
+      ins(%arg: tensor<100xf32>, %indices: tensor<42x1xi64>)
+      outs(%dst: tensor<42xf32>)
+  func.return %gather : tensor<42xf32>
+}
+// CHECK-LABEL: func @gather
+
+// -----
+
+func.func @scatter(%arg: tensor<3x3xf32>,
+                   %indices: tensor<2x2xi64>,
+                   %updates: tensor<3xf32>,
+                   %dst: tensor<3x3xf32>) -> tensor<3x3xf32> {
+  %scatter = gml_st.scatter
+      ins(%arg: tensor<3x3xf32>,
+          %indices: tensor<2x2xi64>,
+          %updates: tensor<3xf32>)
+      outs(%dst: tensor<3x3xf32>)
+  func.return %scatter : tensor<3x3xf32>
+}
+// CHECK-LABEL: func @scatter

@@ -605,7 +605,7 @@ Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   // Materialize reflection.
   Value reflectionDenom = rewriter.create<mhlo::LogOp>(
       loc,
-      rewriter.create<mhlo::SinOp>(
+      rewriter.create<mhlo::SineOp>(
           loc, rewriter.create<mhlo::MulOp>(
                    loc, getConstantLike(rewriter, loc, M_PI, x), absFrac)));
   Value lgammaReflection = rewriter.create<mhlo::SubOp>(
@@ -779,8 +779,8 @@ Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   //              = digamma(1 - x) - pi * cos(pi * x) / sin(pi * x)
   Value pi = getConstantLike(rewriter, loc, M_PI, x);
   Value piMulReducedX = rewriter.create<mhlo::MulOp>(loc, pi, reducedX);
-  Value cos = rewriter.create<mhlo::CosOp>(loc, piMulReducedX);
-  Value sin = rewriter.create<mhlo::SinOp>(loc, piMulReducedX);
+  Value cos = rewriter.create<mhlo::CosineOp>(loc, piMulReducedX);
+  Value sin = rewriter.create<mhlo::SineOp>(loc, piMulReducedX);
   Value reflection = rewriter.create<mhlo::SubOp>(
       loc, digamma,
       rewriter.create<mhlo::DivOp>(
@@ -1207,8 +1207,8 @@ Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
                      ValueRange operands) {
   TanOp::Adaptor transformed(operands);
   return rewriter.create<mhlo::DivOp>(
-      loc, rewriter.create<mhlo::SinOp>(loc, transformed.operand()),
-      rewriter.create<mhlo::CosOp>(loc, transformed.operand()));
+      loc, rewriter.create<mhlo::SineOp>(loc, transformed.operand()),
+      rewriter.create<mhlo::CosineOp>(loc, transformed.operand()));
 }
 
 struct ConvertTanOp : public OpConversionPattern<TanOp> {

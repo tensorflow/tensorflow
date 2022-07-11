@@ -17,7 +17,9 @@ import collections
 
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import trackable_view
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base
 from tensorflow.python.training import py_checkpoint_reader
 
@@ -75,3 +77,50 @@ class CheckpointView(object):
           all_nodes.append(child.node_id)
           to_visit.append(child.node_id)
     return all_nodes
+
+  def match(self, trackable_object):
+    """Returns all matching trackables between CheckpointView and Trackable.
+
+    Args:
+      trackable_object: `Trackable` root.
+
+    Returns:
+      Dictionary containing all overlapping trackables that maps `node_id` to
+      `Trackable`.
+    """
+    if not isinstance(trackable_object, base.Trackable):
+      raise ValueError(f"Expected a Trackable, got {trackable_object} of type "
+                       "{type(trackable_object)}.")
+
+    overlapping_nodes = {}
+    # Root node is always matched.
+    overlapping_nodes[0] = trackable_object
+
+    # Queue of tuples of node_id and trackable.
+    to_visit = collections.deque([(0, trackable_object)])
+    visited = set()
+    view = trackable_view.TrackableView(trackable_object)
+    while to_visit:
+      current_node_id, current_trackable = to_visit.popleft()
+      trackable_children = view.children(current_trackable)
+      for child_name, child_node_id in self.children(current_node_id).items():
+        if child_node_id in visited or child_node_id == 0:
+          continue
+        if child_name in trackable_children:
+          current_assignment = overlapping_nodes.get(child_node_id)
+          if current_assignment is None:
+            overlapping_nodes[child_node_id] = trackable_children[child_name]
+            to_visit.append((child_node_id, trackable_children[child_name]))
+          else:
+            # The object was already mapped for this checkpoint load, which
+            # means we don't need to do anything besides check that the mapping
+            # is consistent (if the dependency DAG is not a tree then there are
+            # multiple paths to the same object).
+            if current_assignment is not trackable_children[child_name]:
+              logging.warning(
+                  "Inconsistent references when matching the checkpoint into "
+                  "this object graph. The referenced objects are: "
+                  f"({current_assignment} and "
+                  f"{trackable_children[child_name]}).")
+      visited.add(current_node_id)
+    return overlapping_nodes

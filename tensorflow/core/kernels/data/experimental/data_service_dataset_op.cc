@@ -469,7 +469,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Calling GetNext in data service dataset's iterator.";
       mutex_lock l(mu_);
       EnsureThreadsStarted(ctx);
-      Result result;
+      std::shared_ptr<Result> result;
       do {
         while (!ResultReady() && !Finished() && !cancelled_ && status_.ok()) {
           VLOG(3) << "Blocking in GetNext: " << DebugString();
@@ -488,20 +488,24 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(3) << "Returning from GetNext with end_of_sequence";
           return OkStatus();
         }
+        if (!ResultReady()) {
+          return errors::Internal(
+              "Expected a result to be ready, but none were.");
+        }
         result = PopNextResult();
         worker_thread_cv_.notify_one();
-      } while (result.skip);
+      } while (result->skip);
 
-      *end_of_sequence = result.end_of_sequence;
+      *end_of_sequence = result->end_of_sequence;
       if (!*end_of_sequence) {
         VLOG(1) << "Returning the next element from data service dataset's "
-                << "Iterator: task " << result.task_id << ", element "
-                << result.element_index;
+                << "Iterator: task " << result->task_id << ", element "
+                << result->element_index;
         if (StrictRoundRobin()) {
           VLOG(1) << "Consumer " << dataset()->consumer_index_.value()
                   << ": Result " << get_next_index_++;
         }
-        out_tensors->swap(result.element);
+        out_tensors->swap(result->element);
       }
       return OkStatus();
     }
@@ -896,7 +900,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(1) << "Starting worker thread";
       std::shared_ptr<Task> task_to_process;
       while (true) {
-        Result* result;
+        std::shared_ptr<Result> result;
         {
           mutex_lock l(mu_);
           if (task_to_process) {
@@ -922,21 +926,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           ++outstanding_requests_;
           if (StrictRoundRobin()) {
             // Reserve a spot in the results_ queue.
-            results_.emplace();
-            result = &results_.back();
+            results_.push(std::make_shared<Result>());
+            result = results_.back();
+          } else {
+            // The result will be added to results_ when it's ready.
+            result = std::make_shared<Result>();
           }
           VLOG(3) << "Processing task " << task_to_process->info.task_id();
         }
         int64_t deadline_micros = kint64max;
-        Status s;
-        if (StrictRoundRobin()) {
-          s = GetElementTraced(task_to_process.get(), deadline_micros,
-                               /*enqueue_result=*/false, *result);
-        } else {
-          Result r;
-          s = GetElementTraced(task_to_process.get(), deadline_micros,
-                               /*enqueue_result=*/true, r);
-        }
+        Status s =
+            GetElementTraced(task_to_process.get(), deadline_micros,
+                             /*enqueue_result=*/!StrictRoundRobin(), result);
         if (!s.ok()) {
           mutex_lock l(mu_);
           VLOG(1) << "Failed to get element from worker "
@@ -1035,30 +1036,30 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     void ProcessGetElementResponse(bool enqueue_result,
                                    GetElementResult& get_element_result,
-                                   Result& result, Task& task) {
+                                   std::shared_ptr<Result> result, Task& task) {
       mutex_lock l(mu_);
-      result.ready = true;
-      result.end_of_sequence = get_element_result.end_of_sequence;
-      result.skip = get_element_result.skip;
+      result->ready = true;
+      result->end_of_sequence = get_element_result.end_of_sequence;
+      result->skip = get_element_result.skip;
       if (!get_element_result.end_of_sequence && !get_element_result.skip) {
         task.skipped_previous_round = false;
-        result.element = std::move(get_element_result.components);
-        result.element_index = get_element_result.element_index;
-        result.task_id = task.info.task_id();
+        result->element = std::move(get_element_result.components);
+        result->element_index = get_element_result.element_index;
+        result->task_id = task.info.task_id();
       } else if (get_element_result.skip) {
         task.skipped_previous_round = true;
       } else {
         task.end_of_sequence = true;
         finished_tasks_++;
       }
-      if (enqueue_result && !result.end_of_sequence) {
+      if (enqueue_result && !result->end_of_sequence) {
         results_.push(std::move(result));
       }
       get_next_cv_.notify_all();
     }
 
     Status GetElementTraced(Task* task, int64_t deadline_micros,
-                            bool enqueue_result, Result& result)
+                            bool enqueue_result, std::shared_ptr<Result> result)
         TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Getting an element for task id " << task->info.task_id();
       tensorflow::profiler::TraceMe activity(
@@ -1114,7 +1115,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
-                      Result& result) TF_LOCKS_EXCLUDED(mu_) {
+                      std::shared_ptr<Result> result) TF_LOCKS_EXCLUDED(mu_) {
       GetElementResult get_element_result;
       for (int num_retries = 0;; ++num_retries) {
         Status s = TryGetElement(*task, get_element_result);
@@ -1134,9 +1135,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return s;
         }
         if (StrictRoundRobin() && num_retries > 0) {
-          TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, result));
+          TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, *result));
           mutex_lock l(mu_);
-          if (result.skip) {
+          if (result->skip) {
             return OkStatus();
           }
         }
@@ -1155,11 +1156,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     bool ResultReady() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      return !results_.empty() && results_.front().ready;
+      return !results_.empty() && results_.front()->ready;
     }
 
-    Result PopNextResult() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      Result result = std::move(results_.front());
+    std::shared_ptr<Result> PopNextResult() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      std::shared_ptr<Result> result = results_.front();
       results_.pop();
       return result;
     }
@@ -1173,7 +1174,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           "results_ { size: $0 front.ready: $1 } iteration_finished_: $2 "
           "tasks { size: $3 } finished_tasks_: $4 "
           "num_running_worker_threads_: $5",
-          results_.size(), !results_.empty() && results_.front().ready,
+          results_.size(), !results_.empty() && results_.front()->ready,
           iteration_finished_, tasks_.size(), finished_tasks_,
           num_running_worker_threads_);
     }
@@ -1226,7 +1227,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // their `Result::ready` field false until their data has been retrieved
     // from a worker. When not doing round-robin reads, results are only added
     // to the queue after they are ready, to avoid head-of-line blocking.
-    std::queue<Result> results_ TF_GUARDED_BY(mu_);
+    std::queue<std::shared_ptr<Result>> results_ TF_GUARDED_BY(mu_);
 
     bool initialized_ = false;
     // Set once in Initialize().

@@ -788,44 +788,41 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
       auto const config,
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
-  auto set_common_attributes = [&](auto op) -> Operation* {
-    auto arrayref = [](absl::Span<const int64_t> array) {
-      return llvm::ArrayRef<int64_t>{array.data(), array.size()};
-    };
-    auto hlo_dims = config.dot_dimension_numbers();
-    auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
-        builder_.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
-        arrayref(hlo_dims.rhs_batch_dimensions()),
-        arrayref(hlo_dims.lhs_contracting_dimensions()),
-        arrayref(hlo_dims.rhs_contracting_dimensions()));
-    op.setDotDimensionNumbersAttr(mlir_dims);
-    op.setAlphaRealAttr(builder_.getF64FloatAttr(config.alpha_real()));
-    op.setAlphaImagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
-    if (config.algorithm_case() ==
-        xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
-      op.setAlgorithmAttr(
-          builder_.getI64IntegerAttr(config.selected_algorithm()));
-    }
-    op.setPrecisionConfigAttr(
-        xla::ConvertPrecisionConfig(&config.precision_config(), &builder_));
-    return op.getOperation();
+  if (custom_call->operand_count() == 2) {
+    TF_RET_CHECK(config.beta() == 0.);
+  } else if (custom_call->operand_count() != 3) {
+    return xla::InvalidArgument("GEMM custom call should have 2 or 3 operands");
+  }
+
+  // GEMM may have two or three operands. However, in the three operand case,
+  // the third operand is updated in-place, so we treat that as an output here.
+  TF_ASSIGN_OR_RETURN(
+      lmhlo_gpu::GEMMOp op,
+      CreateOpWithoutAttrs<lmhlo_gpu::GEMMOp>(custom_call,
+                                              /*num_operands=*/2));
+
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
   };
 
-  if (custom_call->operand_count() == 2) {
-    TF_ASSIGN_OR_RETURN(auto gemm,
-                        CreateOpWithoutAttrs<lmhlo_gpu::GEMMOp>(custom_call));
-    return set_common_attributes(gemm);
+  auto hlo_dims = config.dot_dimension_numbers();
+  auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
+      builder_.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
+      arrayref(hlo_dims.rhs_batch_dimensions()),
+      arrayref(hlo_dims.lhs_contracting_dimensions()),
+      arrayref(hlo_dims.rhs_contracting_dimensions()));
+  op.setDotDimensionNumbersAttr(mlir_dims);
+  op.setAlphaRealAttr(builder_.getF64FloatAttr(config.alpha_real()));
+  op.setAlphaImagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
+  op.setBetaAttr(builder_.getF64FloatAttr(config.beta()));
+  if (config.algorithm_case() ==
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(
+        builder_.getI64IntegerAttr(config.selected_algorithm()));
   }
-
-  if (custom_call->operand_count() == 3) {
-    TF_ASSIGN_OR_RETURN(
-        auto gemm_bias,
-        CreateOpWithoutAttrs<lmhlo_gpu::GEMM_BiasOp>(custom_call));
-    gemm_bias.setBetaAttr(builder_.getF64FloatAttr(config.beta()));
-    return set_common_attributes(gemm_bias);
-  }
-
-  return xla::InvalidArgument("GEMM custom call should have 2 or 3 operands");
+  op.setPrecisionConfigAttr(
+      xla::ConvertPrecisionConfig(&config.precision_config(), &builder_));
+  return op.getOperation();
 }
 
 static StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(

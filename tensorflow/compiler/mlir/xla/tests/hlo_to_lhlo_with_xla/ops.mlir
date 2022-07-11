@@ -852,8 +852,8 @@ func.func @main(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: tensor<i64
 // -----
 
 // CHECK-LABEL: func @main
-// CHECK: "mhlo.dynamic-update-slice"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
+// CHECK: "mhlo.dynamic_update_slice"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
 func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<4x4xf32> {
-  %0 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
+  %0 = "mhlo.dynamic_update_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<4x4xf32>, tensor<1x4xf32>, tensor<i32>, tensor<i32>) -> tensor<4x4xf32>
   func.return %0 : tensor<4x4xf32>
 }

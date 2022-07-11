@@ -31,6 +31,7 @@ package_group(
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//research/language_modeling/sentence_explorer/ondevice/...",
+        "//learning/brain/research/babelfish/inference/speech_tflite/mlir/...",
     ],
 )
 

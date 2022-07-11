@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
@@ -65,12 +66,13 @@ _CollectiveAllReduceStrategyExperimental = (
     collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimental)
 
 
+# TODO(b/231630416): Create more tests to cover the case that strategy uses
+# different number of GPUs than the number of physical devices.
 def create_test_objects(cluster_spec=None,
                         task_type=None,
                         task_id=None,
                         num_gpus=None,
                         num_tpus=None):
-  sess_config = config_pb2.ConfigProto()
   if num_gpus is None:
     num_gpus = context.num_gpus()
   if num_tpus is None:
@@ -92,9 +94,8 @@ def create_test_objects(cluster_spec=None,
 
   strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
       cluster_resolver=cluster_resolver)
-  sess_config = strategy.update_config_proto(sess_config)
 
-  return strategy, target, sess_config
+  return strategy, target
 
 
 class CollectiveAllReduceStrategyTestBase(
@@ -106,27 +107,45 @@ class CollectiveAllReduceStrategyTestBase(
     CollectiveAllReduceStrategy._collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
-  def _get_test_object(self, task_type, task_id, num_gpus=0, num_tpus=0):
-    strategy, target, session_config = create_test_objects(
+  def _get_test_object(self,
+                       task_type,
+                       task_id,
+                       num_gpus=0,
+                       num_tpus=0,
+                       use_devices_arg=False):
+    strategy, target = create_test_objects(
         cluster_spec=self._cluster_spec,
         task_type=task_type,
         task_id=task_id,
         num_gpus=num_gpus,
         num_tpus=num_tpus)
-    return strategy, target, session_config
+
+    if use_devices_arg:
+      devices = ['GPU:%d' % i for i in range(num_gpus)]
+      # Temporary workaround to manually set the `_extended` field before device
+      # initialization is exposed as a public interface.
+      strategy._extended = CollectiveAllReduceExtended(
+          container_strategy=strategy,
+          cluster_resolver=None,
+          communication_options=collective_util.Options(),
+          devices=devices)
+      # Manually set the field since the workaround bypasses the base
+      # contructor, resulting in the absence of this field.
+      strategy._extended._retrace_functions_for_each_device = (num_gpus > 1)
+
+    return strategy, target
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
-    d, master_target, config = self._get_test_object(task_type, task_id,
-                                                     num_gpus)
+    distribution, master_target = self._get_test_object(task_type, task_id,
+                                                        num_gpus)
     with ops.Graph().as_default(), \
-         self.cached_session(config=config,
-                             target=master_target) as sess, \
-         d.scope():
+         self.cached_session(target=master_target) as sess, \
+         distribution.scope():
       initializer = functools.partial(
           init_ops_v2.GlorotUniform(), (1, 1), dtype=dtypes.float32)
       kernel = variables.Variable(
           initial_value=initializer,
-          name='gpu_%d/kernel' % d.extended._num_devices_per_worker,
+          name='gpu_%d/kernel' % distribution.extended._num_devices_per_worker,
           trainable=True)
 
       def loss_fn(x):
@@ -153,26 +172,27 @@ class CollectiveAllReduceStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.extended.call_for_each_replica(grad_fn, args=[one])
+        g_v = distribution.extended.call_for_each_replica(grad_fn, args=[one])
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.extended.read_var(v)
+          fetched = distribution.extended.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
-            g = d.extended.reduce_to(
+            g = distribution.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
-                d.extended.update(v, update, args=(g,), group=False)):
-              after_list.append(d.extended.read_var(v))
+                distribution.extended.update(v, update, args=(g,),
+                                             group=False)):
+              after_list.append(distribution.extended.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
 
-      if (d.extended._local_device_type == 'GPU'
-          and context.num_gpus() < d.extended._num_devices_per_worker):
+      if (distribution.extended._local_device_type == 'GPU' and
+          context.num_gpus() < distribution.extended._num_devices_per_worker):
         return True
 
       sess.run(variables.global_variables_initializer())
@@ -189,11 +209,10 @@ class CollectiveAllReduceStrategyTestBase(
       self.assertLess(error_after, error_before)
 
   def _test_variable_initialization(self, task_type, task_id, num_gpus):
-    distribution, master_target, config = self._get_test_object(
-        task_type, task_id, num_gpus)
+    distribution, master_target = self._get_test_object(task_type, task_id,
+                                                        num_gpus)
     with ops.Graph().as_default(), \
-         self.cached_session(config=config,
-                             target=master_target) as sess, \
+         self.cached_session(target=master_target) as sess, \
          distribution.scope():
 
       def model_fn():
@@ -223,14 +242,14 @@ class CollectiveAllReduceStrategyTestBase(
                               input_fn,
                               expected_values,
                               test_reinitialize=True,
-                              ignore_order=False):
-    distribution, master_target, config = self._get_test_object(
-        task_type, task_id, num_gpus)
+                              ignore_order=False,
+                              use_devices_arg=False):
+    distribution, master_target = self._get_test_object(
+        task_type, task_id, num_gpus, use_devices_arg=use_devices_arg)
     devices = distribution.extended.worker_devices
 
     with ops.Graph().as_default(), \
-         self.cached_session(config=config,
-                             target=master_target) as sess:
+         self.cached_session(target=master_target) as sess:
       iterator = distribution.make_input_fn_iterator(input_fn)
       sess.run(iterator.initializer)
 
@@ -276,7 +295,7 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def test_num_replicas_in_sync(self):
-    distribution, _, _ = create_test_objects(
+    distribution, _ = create_test_objects(
         cluster_spec=self._cluster_spec,
         task_type='worker',
         task_id=0,
@@ -290,10 +309,8 @@ class DistributedCollectiveAllReduceStrategyTest(
       mode=['graph'],
       prefetch_to_device=[None, True]))
   def test_prefetch_to_device_dataset(self, prefetch_to_device):
-    distribution, _, _ = self._get_test_object(
-        task_type='worker',
-        task_id=0,
-        num_gpus=2)
+    distribution, _ = self._get_test_object(
+        task_type='worker', task_id=0, num_gpus=2)
     if prefetch_to_device is None:
       input_options = None
     else:
@@ -314,10 +331,8 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def test_prefetch_to_host_dataset(self):
-    distribution, _, _ = self._get_test_object(
-        task_type='worker',
-        task_id=0,
-        num_gpus=2)
+    distribution, _ = self._get_test_object(
+        task_type='worker', task_id=0, num_gpus=2)
     input_options = distribute_lib.InputOptions(
         experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
@@ -383,7 +398,7 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def testUpdateConfigProto(self):
-    strategy, _, _ = self._get_test_object(
+    strategy, _ = self._get_test_object(
         task_type='worker', task_id=1, num_gpus=2)
 
     config_proto = config_pb2.ConfigProto(device_filters=['to_be_overridden'])
@@ -435,38 +450,68 @@ class SingleWorkerCollectiveAllReduceStrategy(
     CollectiveAllReduceStrategyTestBase, strategy_test_lib.DistributionTestBase,
     strategy_test_lib.TwoDeviceDistributionTestBase, parameterized.TestCase):
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testStrategyInitializationError(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'cluster_resolver and devices cannot be set at the same time'):
+      _ = collective_all_reduce_strategy.CollectiveAllReduceExtended(
+          container_strategy=None,
+          cluster_resolver=multi_worker_test_base.create_in_process_cluster(
+              num_workers=3, num_ps=0),
+          communication_options=collective_util.Options(),
+          devices=['GPU:0', 'GPU:1'])
+
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
-  def testMinimizeLoss(self, required_gpus):
+      combinations.combine(
+          mode=['graph', 'eager'],
+          required_gpus=[0, 1, 2],
+          use_devices_arg=[True, False]))
+  def testMinimizeLoss(self, required_gpus, use_devices_arg):
     # Collective ops doesn't support strategy with one device.
     if context.executing_eagerly():
-      strategy, _, _ = self._get_test_object(None, None, required_gpus)
+      strategy, _ = self._get_test_object(
+          None, None, required_gpus, use_devices_arg=use_devices_arg)
       self._test_minimize_loss_eager(strategy)
     else:
       self._test_minimize_loss_graph(None, None, required_gpus)
 
   @combinations.generate(
-      combinations.combine(mode=['eager'], required_gpus=[1, 2]))
-  def testNumReplicasInSync(self, required_gpus):
-    strategy, _, _ = self._get_test_object(None, None, required_gpus)
+      combinations.combine(
+          mode=['eager'], required_gpus=[1, 2], use_devices_arg=[True, False]))
+  def testNumReplicasInSync(self, required_gpus, use_devices_arg):
+    strategy, _ = self._get_test_object(
+        None, None, required_gpus, use_devices_arg=use_devices_arg)
     self.assertEqual(required_gpus, strategy.num_replicas_in_sync)
 
   @combinations.generate(
-      combinations.combine(mode=['eager'], required_tpus=[0, 1, 2]))
-  def testMinimizeLossTPU(self, required_tpus):
-    strategy, _, _ = self._get_test_object(None, None, num_tpus=required_tpus)
+      combinations.combine(
+          mode=['eager'],
+          required_tpus=[0, 1, 2],
+          use_devices_arg=[True, False]))
+  def testMinimizeLossTPU(self, required_tpus, use_devices_arg):
+    strategy, _ = self._get_test_object(
+        None, None, num_tpus=required_tpus, use_devices_arg=use_devices_arg)
     self._test_minimize_loss_eager(strategy)
 
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
-  def testCallAndMergeExceptions(self, required_gpus):
-    strategy, _, _ = self._get_test_object(None, None, num_gpus=required_gpus)
+      combinations.combine(
+          mode=['graph', 'eager'],
+          required_gpus=[0, 1, 2],
+          use_devices_arg=[True, False]))
+  def testCallAndMergeExceptions(self, required_gpus, use_devices_arg):
+    strategy, _ = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
     self._test_call_and_merge_exceptions(strategy)
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph'], required_gpus=2, use_dataset=[True, False]))
-  def testMakeInputFnIterator(self, required_gpus, use_dataset):
+          mode=['graph'],
+          required_gpus=2,
+          use_dataset=[True, False],
+          use_devices_arg=[True, False]))
+  def testMakeInputFnIterator(self, required_gpus, use_dataset,
+                              use_devices_arg):
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * required_gpus)
     else:
@@ -494,68 +539,88 @@ class SingleWorkerCollectiveAllReduceStrategy(
         ignore_order=not use_dataset)
 
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
-  def testReduceToCpu(self, required_gpus):
-    strategy, _, _ = self._get_test_object(None, None, required_gpus)
+      combinations.combine(
+          mode=['graph', 'eager'],
+          required_gpus=[0, 1, 2],
+          use_devices_arg=[True, False]))
+  def testReduceToCpu(self, required_gpus, use_devices_arg):
+    strategy, _ = self._get_test_object(
+        None, None, required_gpus, use_devices_arg=use_devices_arg)
     with strategy.scope():
       result = strategy.extended.call_for_each_replica(_replica_id_f32)
       reduced = strategy.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
       expected = sum(range(strategy.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testAllReduceSum(self, required_gpus):
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testAllReduceSum(self, required_gpus, use_devices_arg):
+    distribution, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_all_reduce_sum(distribution)
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testAllReduceSumGradients(self, required_gpus):
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testAllReduceSumGradients(self, required_gpus, use_devices_arg):
+    distribution, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_all_reduce_sum_gradients(distribution)
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testAllReduceSumGradientTape(self, required_gpus):
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testAllReduceSumGradientTape(self, required_gpus, use_devices_arg):
+    distribution, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_all_reduce_sum_gradient_tape(distribution)
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testAllReduceMean(self, required_gpus):
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testAllReduceMean(self, required_gpus, use_devices_arg):
+    distribution, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_all_reduce_mean(distribution)
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testAllReduceMeanGradients(self, required_gpus):
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testAllReduceMeanGradients(self, required_gpus, use_devices_arg):
+    distribution, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_all_reduce_mean_gradients(distribution)
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testAllReduceMeanGradientTape(self, required_gpus):
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testAllReduceMeanGradientTape(self, required_gpus, use_devices_arg):
+    distribution, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_all_reduce_mean_gradient_tape(distribution)
 
-  @combinations.generate(combinations.combine(mode=['graph'], required_gpus=2))
-  def testNumpyDataset(self, required_gpus):
-    strategy, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'], required_gpus=2, use_devices_arg=[True, False]))
+  def testNumpyDataset(self, required_gpus, use_devices_arg):
+    strategy, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
     self._test_numpy_dataset(
-        strategy, session=self.cached_session(config=config, target=target))
+        strategy, session=self.cached_session(target=target))
 
   @combinations.generate(
-      combinations.combine(mode=['eager'], required_gpus=2))
-  def testReplicateDataset(self, required_gpus):
-    strategy, _, _ = self._get_test_object(None, None, num_gpus=required_gpus)
+      combinations.combine(
+          mode=['eager'], required_gpus=2, use_devices_arg=[True, False]))
+  def testReplicateDataset(self, required_gpus, use_devices_arg):
+    strategy, _ = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i, i + 1] for i in range(0, 10, 2)]
     input_fn = self._input_fn_to_test_input_context(
@@ -565,23 +630,32 @@ class SingleWorkerCollectiveAllReduceStrategy(
         expected_input_pipeline_id=0)
     self._test_input_fn_iterable(strategy, input_fn, expected_values)
 
-  @combinations.generate(combinations.combine(mode=['graph']))
-  def testDeepCopy(self):
-    distribution, _, _ = self._get_test_object(None, None)
+  @combinations.generate(
+      combinations.combine(mode=['graph'], use_devices_arg=[True, False]))
+  def testDeepCopy(self, use_devices_arg):
+    distribution, _ = self._get_test_object(
+        None, None, use_devices_arg=use_devices_arg)
     copy.deepcopy(distribution)
 
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
-  def testSummaryForReplicaZeroOnly(self, required_gpus):
-    strategy, target, config = self._get_test_object(
-        None, None, num_gpus=required_gpus)
-    with self.cached_session(config=config, target=target):
+      combinations.combine(
+          mode=['graph', 'eager'],
+          required_gpus=[0, 1, 2],
+          use_devices_arg=[True, False]))
+  def testSummaryForReplicaZeroOnly(self, required_gpus, use_devices_arg):
+    strategy, target = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
+    with self.cached_session(target=target):
       self._test_summary_for_replica_zero_only(strategy)
 
   @combinations.generate(
-      combinations.combine(mode=['graph', 'eager'], required_gpus=[0, 1, 2]))
-  def testTrainableVariables(self, required_gpus):
-    strategy, _, _ = self._get_test_object(None, None, num_gpus=required_gpus)
+      combinations.combine(
+          mode=['graph', 'eager'],
+          required_gpus=[0, 1, 2],
+          use_devices_arg=[True, False]))
+  def testTrainableVariables(self, required_gpus, use_devices_arg):
+    strategy, _ = self._get_test_object(
+        None, None, num_gpus=required_gpus, use_devices_arg=use_devices_arg)
     self._test_trainable_variable(strategy)
 
 
@@ -589,6 +663,10 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['eager'], required_gpus=1))
   def testKeepLogicalDevice(self):
+    gpus = tf_config.list_physical_devices('GPU')
+    if len(gpus) > 1:
+      self.skipTest('Skip logical device test on multi GPUs, since partial GPU '
+                    'virtualization is not permitted.')
     # Cannot change logical device after the context initialization.
     context._reset_context()  # pylint: disable=protected-access
     cluster_spec = multi_worker_test_base.create_cluster_spec(
@@ -597,7 +675,7 @@ class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
         cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
         task_type='worker',
         task_id=0)
-    gpus = tf_config.list_physical_devices('GPU')
+
     logical_gpus = len(gpus) * 2
     for i, device in enumerate(gpus):
       n = (i + 1) * logical_gpus // len(gpus) - i * logical_gpus // len(gpus)

@@ -20,8 +20,11 @@ from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.dtensor.python import api
 from tensorflow.python.eager import context
 from tensorflow.python.platform import remote_utils
+
+_is_multi_client_initialized = False
 
 
 def initialize_multi_client_cluster(job_name: str,
@@ -52,7 +55,25 @@ def initialize_multi_client_cluster(job_name: str,
   Raises:
     RuntimeError: If running inside a tf.function.
   """
+  global _is_multi_client_initialized
   assert context.executing_eagerly()
+
+  if _is_multi_client_initialized:
+    raise ValueError("Multi-client mode has already been initialized.")
+
+  if api.num_clients() <= 1:
+    raise ValueError(
+        "DTENSOR_NUM_CLIENTS must be set greater than 1 for multi-client mode.")
+
+  if not api.jobs() or len(api.jobs()) <= 1:
+    raise ValueError(
+        "DTENSOR_JOBS environment variable is required when using multi-client "
+        "mode to properly set up communications between servers.")
+
+  if len(api.jobs()) != api.num_clients():
+    raise ValueError(
+        "DTENSOR_JOBS environment variable must be configured with the same "
+        "number of items as DTENSOR_NUM_CLIENTS.")
 
   if not collective_leader.startswith("/job:"):
     collective_leader = "/job:" + collective_leader
@@ -85,3 +106,10 @@ def initialize_multi_client_cluster(job_name: str,
   logging.info("Enabling collectives with server_def: %s", server_def)
   context.context().enable_collective_ops(server_def)
   context.ensure_initialized()
+
+  _is_multi_client_initialized = True
+
+
+def is_initialized() -> bool:
+  """Returns whether multi-client mode has been initialized."""
+  return _is_multi_client_initialized

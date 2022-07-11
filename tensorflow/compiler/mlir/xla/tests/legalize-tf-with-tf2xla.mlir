@@ -175,7 +175,7 @@ func.func @dynamic_update_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2x2xi32>, 
   // CHECK-SAME: (tensor<2xi32>) -> tensor<1xi32>
   // CHECK: %[[DIM1:.*]] = "mhlo.reshape"(%[[SLICE1]]) : (tensor<1xi32>) -> tensor<i32>
 
-  // CHECK: "mhlo.dynamic-update-slice"(%[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]])
+  // CHECK: "mhlo.dynamic_update_slice"(%[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]])
 
   %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<3x4xi32>, tensor<2x2xi32>, tensor<2xi32>) -> tensor<3x4xi32>
   func.return %0: tensor<3x4xi32>

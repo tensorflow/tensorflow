@@ -20,10 +20,10 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
@@ -105,13 +105,20 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       (StructuredTensorSpec([1, 2, 3], {}),
-       (tensor_shape.TensorShape([1, 2, 3]), {})),
+       (('_fields', {}),
+        ('_ragged_shape',
+         dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+             [1, 2, 3], num_row_partitions=0, dtype=dtypes.int32)))),
       (StructuredTensorSpec([], {'a': T_1_2}),
-       (tensor_shape.TensorShape([]), {'a': T_1_2})),
+       (('_fields', {'a': T_1_2}),
+        ('_ragged_shape',
+         dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+             [], num_row_partitions=0, dtype=dtypes.int64)))),
       (StructuredTensorSpec([1, 2], {'a': T_1_2, 'b': R_1_N}),
-       (tensor_shape.TensorShape([1, 2]), {'a': T_1_2, 'b': R_1_N})),
-      (StructuredTensorSpec([], {'a': T_1_2}),
-       (tensor_shape.TensorShape([]), {'a': T_1_2})),
+       (('_fields', {'a': T_1_2, 'b': R_1_N}),
+        ('_ragged_shape',
+         dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+             [1, 2], num_row_partitions=1, dtype=dtypes.int64)))),
   ])  # pyformat: disable
   def testSerialize(self, spec, expected):
     serialization = spec._serialize()
@@ -122,13 +129,15 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       (StructuredTensorSpec([1, 2, 3], {}),
-       ({}, NROWS_SPEC, (PARTITION_SPEC, PARTITION_SPEC))),
+       (dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+           [1, 2, 3], num_row_partitions=0, dtype=dtypes.int32),)),
       (StructuredTensorSpec([], {'a': T_1_2}),
-       ({'a': T_1_2}, (), ())),
+       (tensor_spec.TensorSpec(shape=(1, 2), dtype=dtypes.float32, name=None),
+        dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+            [], num_row_partitions=0, dtype=dtypes.int64),)),
       (StructuredTensorSpec([1, 2], {'a': T_1_2, 'b': R_1_N}),
-       ({'a': T_1_2, 'b': R_1_N}, NROWS_SPEC, (PARTITION_SPEC,))),
-      (StructuredTensorSpec([], {'a': T_1_2}),
-       ({'a': T_1_2}, (), ())),
+       (T_1_2, R_1_N, dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
+           [1, 2], num_row_partitions=1, dtype=dtypes.int64))),
   ])  # pyformat: disable
   def testComponentSpecs(self, spec, expected):
     self.assertEqual(spec._component_specs, expected)
@@ -144,7 +153,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
           'fields': dict(
               a=ragged_factory_ops.constant_value([[1.0], [2.0, 3.0]]),
               b=[[4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]),
-          'field_specs': dict(a=R_1_N, b=T_2_3),
+          'field_specs': dict(a=R_2_N, b=T_2_3),
       },
   ])  # pyformat: disable
   def testToFromComponents(self, shape, fields, field_specs):

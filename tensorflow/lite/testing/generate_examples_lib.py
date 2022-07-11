@@ -186,6 +186,7 @@ from tensorflow.lite.testing.op_tests.unfused_gru import make_unfused_gru_tests
 from tensorflow.lite.testing.op_tests.unique import make_unique_tests
 from tensorflow.lite.testing.op_tests.unpack import make_unpack_tests
 from tensorflow.lite.testing.op_tests.unroll_batch_matmul import make_unroll_batch_matmul_tests
+from tensorflow.lite.testing.op_tests.unsorted_segment_prod import make_unsorted_segment_prod_tests
 from tensorflow.lite.testing.op_tests.where import make_where_tests
 from tensorflow.lite.testing.op_tests.where_v2 import make_where_v2_tests
 from tensorflow.lite.testing.op_tests.while_loop import make_while_tests

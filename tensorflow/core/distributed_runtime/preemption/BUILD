@@ -77,9 +77,6 @@ tf_cc_test(
     name = "preemption_notifier_test",
     size = "small",
     srcs = ["preemption_notifier_test.cc"],
-    tags = [
-        "no_windows",  # TODO(b/236272855): Fails on Windows RBE (C++)
-    ],
     deps = [
         ":preemption_notifier",
         "//tensorflow/core:test",

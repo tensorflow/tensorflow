@@ -208,25 +208,16 @@ func.func @batchNormInference_dynamic_shape(
     %x: tensor<?x?x?x?xf32>, %scale: tensor<?xf32>, %offset: tensor<?xf32>,
     %mean: tensor<?xf32>, %variance: tensor<?xf32>)
     -> tensor<?x?x?x?xf32> {
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-  // CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
   // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.000000e-03> : tensor<f32>
-  // CHECK-DAG: %[[DIM:.+]] = tensor.dim %[[VARIANCE]], %[[C0]] : tensor<?xf32>
-  // CHECK-DAG: %[[TO_DIM_TENSOR:.+]] = tensor.from_elements %[[DIM]] : tensor<1xindex>
-  // CHECK-DAG: %[[EPS_BCAST:.+]] =  "mhlo.dynamic_broadcast_in_dim"(%[[EPS]], %[[TO_DIM_TENSOR]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK-DAG: %[[VAR_SHAPE:.+]] = shape.shape_of %[[VARIANCE]] : tensor<?xf32> -> tensor<1xindex>
+  // CHECK-DAG: %[[EPS_BCAST:.+]] =  "mhlo.dynamic_broadcast_in_dim"(%[[EPS]], %[[VAR_SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
   // CHECK-DAG: %[[VARIANCE_EPS:.+]] = mhlo.add %[[VARIANCE]], %[[EPS_BCAST]] : tensor<?xf32>
   // CHECK-DAG: %[[STDDEV:.+]] = mhlo.sqrt %[[VARIANCE_EPS]] : tensor<?xf32>
-  // CHECK-DAG: %[[INPUT_DIM_0:.+]] = tensor.dim %[[X]], %[[C0]] : tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[INPUT_DIM_1:.+]] = tensor.dim %[[X]], %[[C1]] : tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[INPUT_DIM_2:.+]] = tensor.dim %[[X]], %[[C2]] : tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[INPUT_DIM_3:.+]] = tensor.dim %[[X]], %[[C3]] : tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[TO_INPUT_DIM_TENSOR:.+]] = tensor.from_elements %[[INPUT_DIM_0]], %[[INPUT_DIM_1]], %[[INPUT_DIM_2]], %[[INPUT_DIM_3]] : tensor<4xindex>
-  // CHECK-DAG: %[[STDDEV_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[STDDEV]], %[[TO_INPUT_DIM_TENSOR]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[SCALE_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[SCALE]], %[[TO_INPUT_DIM_TENSOR]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[OFFSET_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[OFFSET]], %[[TO_INPUT_DIM_TENSOR]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
-  // CHECK-DAG: %[[MEAN_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[MEAN]], %[[TO_INPUT_DIM_TENSOR]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[X_SHAPE:.+]] = shape.shape_of %[[X]] : tensor<?x?x?x?xf32> -> tensor<4xindex>
+  // CHECK-DAG: %[[STDDEV_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[STDDEV]], %[[X_SHAPE]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[SCALE_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[SCALE]], %[[X_SHAPE]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[OFFSET_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[OFFSET]], %[[X_SHAPE]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[MEAN_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[MEAN]], %[[X_SHAPE]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
   // CHECK-DAG: %[[X_CENTER:.+]] = mhlo.subtract %[[X]], %[[MEAN_BCAST]] : tensor<?x?x?x?xf32>
   // CHECK-DAG: %[[X_SCALED:.+]] = mhlo.multiply %[[X_CENTER]], %[[SCALE_BCAST]] : tensor<?x?x?x?xf32>
   // CHECK-DAG: %[[X_NORMED:.+]] = mhlo.divide %[[X_SCALED]], %[[STDDEV_BCAST]] : tensor<?x?x?x?xf32>
@@ -239,11 +230,45 @@ func.func @batchNormInference_dynamic_shape(
 }
 
 // -----
-// TODO(qingyunqu): complete this testcase
 // CHECK-LABEL: @batchNormTraining_dynamic_shape
+// Validate that dynamic shapes are handled properly.
+// CHECK-SAME: %[[X:[^:[:space:]]+]]
+// CHECK-SAME: %[[SCALE:[^:[:space:]]+]]
+// CHECK-SAME: %[[OFFSET:[^:[:space:]]+]]
 func.func @batchNormTraining_dynamic_shape(
     %x: tensor<?x?x?x?xf32>, %scale: tensor<?xf32>, %offset: tensor<?xf32>)
     -> (tensor<?x?x?x?xf32>, tensor<?xf32>, tensor<?xf32>) {
+  // CHECK-DAG: %[[ZERO:.+]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.001000e-05> : tensor<f32>
+  // CHECK-DAG: %[[SCALE_SHAPE:.+]] = shape.shape_of %[[SCALE]] : tensor<?xf32> -> tensor<1xindex>
+  // CHECK-DAG: %[[EPS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[EPS]], %[[SCALE_SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK-DAG: %[[X_SHAPE:.+]] = shape.shape_of %[[X]] : tensor<?x?x?x?xf32> -> tensor<4xindex>
+  // CHECK-DAG: %[[X_SIZE:.+]] = shape.num_elements %[[X_SHAPE]] : tensor<4xindex> -> index
+  // CHECK-DAG: %[[SCALE_SIZE:.+]] = shape.num_elements %[[SCALE_SHAPE]] : tensor<1xindex> -> index
+  // CHECK-DAG: %[[REDUCE_SIZE:.+]] = shape.div %[[X_SIZE]], %[[SCALE_SIZE]] : index, index -> index
+  // CHECK-DAG: %[[INDEX_CAST:.+]] = arith.index_cast %[[REDUCE_SIZE]] : index to i64
+  // CHECK-DAG: %[[REDUCE_SIZE_TENSOR:.+]] = tensor.from_elements %[[INDEX_CAST]] : tensor<1xi64>
+  // CHECK-DAG: %[[REDUCE_SIZE_TENSOR_FP:.+]] = mhlo.convert(%[[REDUCE_SIZE_TENSOR]]) : (tensor<1xi64>) -> tensor<1xf32>
+  // CHECK-DAG: %[[REDUCE_SIZE_RESHAPE:.+]] = "mhlo.reshape"(%[[REDUCE_SIZE_TENSOR_FP]]) : (tensor<1xf32>) -> tensor<f32>
+  // CHECK-DAG: %[[REDUCE_SIZE_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[REDUCE_SIZE_RESHAPE]], %[[SCALE_SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK-DAG: %[[X_SUM:.+]] = mhlo.reduce(%[[X]] init: %[[ZERO]]) applies mhlo.add across dimensions = [0, 1, 3] : (tensor<?x?x?x?xf32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK-DAG: %[[X2:.+]] = mhlo.multiply %[[X]], %[[X]] : tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[X2_SUM:.+]] = mhlo.reduce(%[[X2]] init: %[[ZERO]]) applies mhlo.add across dimensions = [0, 1, 3] : (tensor<?x?x?x?xf32>, tensor<f32>) -> tensor<?xf32>
+  // CHECK-DAG: %[[EX:.+]] = mhlo.divide %[[X_SUM]], %[[REDUCE_SIZE_BCAST]] : tensor<?xf32>
+  // CHECK-DAG: %[[EX2:.+]] = mhlo.divide %[[X2_SUM]], %[[REDUCE_SIZE_BCAST]] : tensor<?xf32>
+  // CHECK-DAG: %[[EX_2:.+]] = mhlo.multiply %[[EX]], %[[EX]] : tensor<?xf32>
+  // CHECK-DAG: %[[VARX:.+]] = mhlo.subtract %[[EX2]], %[[EX_2]] : tensor<?xf32>
+  // CHECK-DAG: %[[VARX_EPS:.+]] = mhlo.add %[[VARX]], %[[EPS_BCAST]] : tensor<?xf32>
+  // CHECK-DAG: %[[STDX:.+]] = mhlo.sqrt %[[VARX_EPS]] : tensor<?xf32>
+  // CHECK-DAG: %[[EX_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[EX]], %[[X_SHAPE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[X_SUB_EX:.+]] = mhlo.subtract %[[X]], %[[EX_BCAST]] : tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[STDX_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[STDX]], %[[X_SHAPE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[X_CENTOR:.+]] = mhlo.divide %[[X_SUB_EX]], %[[STDX_BCAST]] : tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[SCALE_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[SCALE]], %[[X_SHAPE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[X_SCALED:.+]] = mhlo.multiply %[[X_CENTOR]], %[[SCALE_BCAST]] : tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[OFFSET_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[OFFSET]], %[[X_SHAPE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  // CHECK-DAG: %[[RESULT:.+]] = mhlo.add %[[X_SCALED]], %[[OFFSET_BCAST]] : tensor<?x?x?x?xf32>
+  // CHECK-DAG: return %[[RESULT]], %[[EX]], %[[VARX]] : tensor<?x?x?x?xf32>, tensor<?xf32>, tensor<?xf32>
   %0:3 = "mhlo.batch_norm_training"(%x, %scale, %offset)
       {epsilon = 1.001000e-05 : f32, feature_index = 2 : i64} :
       (tensor<?x?x?x?xf32>, tensor<?xf32>, tensor<?xf32>) -> (tensor<?x?x?x?xf32>, tensor<?xf32>, tensor<?xf32>)

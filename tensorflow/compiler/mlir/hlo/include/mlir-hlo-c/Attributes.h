@@ -289,6 +289,23 @@ MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr);
 
 //
+// RngDistributionAttr.
+//
+// Creates a new RngDistribution attribute with the given 'distribution' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloRngDistributionAttrGet(MlirContext ctx, MlirStringRef distribution);
+
+// Returns true if the given attribute is a RngDistribution attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsARngDistributionAttr(
+    MlirAttribute attr);
+
+// Returns the rng-distribution string associated with RngDistribution
+// attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloRngDistributionAttrGetRngDistribution(MlirAttribute attr);
+
+//
 // RngAlgorithmAttr.
 //
 // Creates a new RngAlgorithm attribute with the given 'algorithm' string

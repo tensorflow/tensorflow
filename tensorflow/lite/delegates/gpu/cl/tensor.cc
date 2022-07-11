@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
@@ -44,7 +45,7 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
       const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
-                               4 * SizeOf(descriptor.data_type);
+                               4 * SizeOf(descriptor.GetDataType());
       cl_int error_code;
       cl_mem memory = clCreateBuffer(context.context(), mem_flags, data_size,
                                      const_cast<void*>(data_ptr), &error_code);
@@ -71,7 +72,7 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
       format.image_channel_data_type =
-          DataTypeToChannelType(descriptor.data_type);
+          DataTypeToChannelType(descriptor.GetDataType());
 
       cl_int error_code;
       cl_mem memory =
@@ -101,7 +102,7 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
       format.image_channel_data_type =
-          DataTypeToChannelType(descriptor.data_type);
+          DataTypeToChannelType(descriptor.GetDataType());
 
       cl_int error_code;
       cl_mem memory =
@@ -132,7 +133,7 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
       cl_image_format format;
       format.image_channel_order = CL_RGBA;
       format.image_channel_data_type =
-          DataTypeToChannelType(descriptor.data_type);
+          DataTypeToChannelType(descriptor.GetDataType());
 
       cl_int error_code;
       cl_mem memory =
@@ -166,10 +167,11 @@ absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
       desc.buffer = nullptr;
 
       cl_image_format format;
-      if (context.IsFloatTexture2DSupported(shape.c, descriptor.data_type)) {
+      if (context.IsFloatTexture2DSupported(shape.c,
+                                            descriptor.GetDataType())) {
         format.image_channel_order = ToChannelOrder(shape.c);
         format.image_channel_data_type =
-            DataTypeToChannelType(descriptor.data_type);
+            DataTypeToChannelType(descriptor.GetDataType());
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "This device doesn't support ", shape.c, "-channel textures."));
@@ -267,7 +269,7 @@ absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
   if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     cl_mem image_memory;
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.data_type,
+        context, memory, descriptor.GetDataType(),
         shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
         &image_memory));
     *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
@@ -284,7 +286,7 @@ absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
   if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     cl_mem image_memory;
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.data_type,
+        context, memory, descriptor.GetDataType(),
         shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
         &image_memory));
     *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
@@ -407,24 +409,7 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
   if (!tensor_desc) {
     return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
   }
-  resources->ints.push_back(
-      {"slice_stride", tensor_desc->GetSliceStrideSize(shape_)});
-  if (descriptor_.HasAxis(Axis::WIDTH)) {
-    resources->ints.push_back({"width", tensor_desc->GetWidthSize(shape_)});
-  }
-  if (descriptor_.HasAxis(Axis::HEIGHT)) {
-    resources->ints.push_back({"height", Height()});
-  }
-  if (descriptor_.HasAxis(Axis::CHANNELS)) {
-    resources->ints.push_back({"slices", Slices()});
-    resources->ints.push_back({"channels", Channels()});
-  }
-  if (descriptor_.HasAxis(Axis::BATCH)) {
-    resources->ints.push_back({"batch", Batch()});
-  }
-  if (descriptor_.HasAxis(Axis::DEPTH)) {
-    resources->ints.push_back({"depth", Depth()});
-  }
+  tensor_desc->GetGpuResources(shape_, &resources->generic);
 
   if (descriptor_.GetStorageType() == TensorStorageType::BUFFER) {
     resources->buffers.push_back({"buffer", memory_});
@@ -433,8 +418,7 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                  TensorStorageType::SINGLE_TEXTURE_2D) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
         tensor_desc->GetUseBufferForWriteOnlyTexture2d()) {
-      resources->ints.push_back(
-          {"aligned_texture_width", aligned_texture_width_});
+      resources->AddInt("aligned_texture_width", aligned_texture_width_);
       resources->buffers.push_back({"buffer", memory_});
     } else {
       cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
@@ -524,7 +508,7 @@ int Tensor::GetAlignedChannels() const {
 }
 
 uint64_t Tensor::GetMemorySizeInBytes() const {
-  const int flt_size = SizeOf(descriptor_.data_type);
+  const int flt_size = SizeOf(descriptor_.GetDataType());
   const int flt4_size = 4 * flt_size;
   switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
@@ -583,7 +567,7 @@ absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
   memory_ = memory.Release();
   if (desc.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        *context, memory_, desc.data_type,
+        *context, memory_, desc.GetDataType(),
         shape_.b * shape_.w * shape_.h * shape_.d * DivideRoundUp(shape_.c, 4),
         &image_buffer_memory_));
   }
@@ -695,7 +679,7 @@ absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
           : 4;
   cl_mem image_memory;
   RETURN_IF_ERROR(CreateImage2DFromBuffer(
-      context, memory, descriptor.data_type, width, height, channels,
+      context, memory, descriptor.GetDataType(), width, height, channels,
       width_pixel_alignment, &image_memory));
   *result = Tensor(memory, false, image_memory, shape, descriptor);
   result->aligned_texture_width_ = AlignByN(width, width_pixel_alignment);

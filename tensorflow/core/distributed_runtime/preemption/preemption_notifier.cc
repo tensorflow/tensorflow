@@ -66,7 +66,7 @@ void SigtermNotifier::StartListenerThread() {
             // 1) Cancel any pending callbacks and blocking WillBePreemptedAt()
             // calls.
             NotifyRegisteredListeners(
-                errors::Cancelled("Preemption notifier is shutting down."));
+                errors::Cancelled("Preemption notifier is being deleted."));
             // 2) Exit listener thread.
             return;
           }

@@ -219,7 +219,8 @@ def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
-def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
+
+def HLO_CosineOp: HLO_UnaryElementwiseOp<"cosine",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Cos operator";
   let description = [{
@@ -228,7 +229,10 @@ def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+
+  let hasCustomHLOConverter = 1;
 }
+
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Exponential operator";
@@ -416,7 +420,8 @@ def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
   }];
   let hasFolder = 1;
 }
-def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
+
+def HLO_SineOp: HLO_UnaryElementwiseOp<"sine",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Sin operator";
   let description = [{
@@ -425,7 +430,9 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasCustomHLOConverter = 1;
 }
+
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Square-root operator";
@@ -1196,7 +1203,7 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic_slice",
   let hasVerifier = 1;
 }
 
-def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
+def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic_update_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
        AllShapesMatch<["operand", "result"]>]> {
   let summary = "Dynamic Update Slice operator";
@@ -1561,7 +1568,7 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
   let hasVerifier = 1;
 }
 
-def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
+def HLO_ConvolutionOp : HLO_Op<"convolution", [NoSideEffect]> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.
@@ -2134,7 +2141,7 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType,
-       InferTensorTypeWithReify]> {
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -2310,53 +2317,35 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
+def HLO_RngOp : HLO_Op<"rng", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
-    following the uniform distribution over the interval `[a,b)`. The parameters
-    and output element type have to be a boolean type, an integral type or a
-    floating point types, and the types have to be consistent.
+    following the given `rng_distribution` with two parameters:
+      `UNIFORM`: the uniform distribution over the interval `[a,b)`. The parameters
+                 and output element type have to be a boolean type, an integral type or a
+                 floating point types, and the types have to be consistent.
 
-    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+                 See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+
+      `NORMAL`: the normal distribution with parameters `mu` (=`a`) and
+                `sigma` (=`b`). The parameters and output shape have to have a
+                floating point elemental type. The parameters furthermore have
+                to be scalar valued.
+
+                See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
     0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$a,
     0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$b,
-    HLO_DimensionTensor:$shape
+    HLO_DimensionTensor:$shape,
+    HLO_RngDistributionAttr:$rng_distribution
   );
 
   let results = (outs HLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    // Returns whether the return types are compatible.
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(::mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
-}
-
-def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElementTypesMatch<["mu", "sigma", "result"]>]> {
-  let summary = "RNG with normal distribution.";
-  let description = [{
-    Constructs an output of a given shape with random numbers generated
-    following the normal distribution with parameters `mu` and `sigma`. The
-    parameters and output shape have to have a floating point elemental type.
-    The parameters furthermore have to be scalar valued.
-
-    See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
-  }];
-  let arguments = (ins
-    0DTensorOf<[HLO_Float]>:$mu,
-    0DTensorOf<[HLO_Float]>:$sigma,
-    HLO_DimensionTensor:$shape
-  );
-
-  let results = (outs HLO_FpTensor:$result);
-
-  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.

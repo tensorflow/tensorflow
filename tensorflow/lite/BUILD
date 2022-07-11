@@ -270,6 +270,7 @@ cc_library(
     name = "tensorflow_profiler_logger_shim",
     srcs = ["tensorflow_profiler_logger_shim.cc"],
     hdrs = ["tensorflow_profiler_logger.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
         ":macros",
@@ -284,6 +285,8 @@ cc_library(
     hdrs = ["tensorflow_profiler_logger.h"],
     copts = tflite_copts_warnings(),
     deps = [
+        ":macros",
+        "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
@@ -539,6 +542,7 @@ cc_library(
         ":simple_memory_arena",
         ":stderr_reporter",
         ":string",
+        ":tensorflow_profiler_logger_shim",
         ":type_to_tflitetype",
         ":util",
         ":version",

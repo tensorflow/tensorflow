@@ -56,10 +56,11 @@ tensorflow::Device* GetDeviceFromFallbackState(
   //
   // The device handling is similar to TF1 code in the below link:
   // http://cs/?q=f:common_runtime%2Fexecutor.cc:692%20package:piper&rcl=351575626
-  if (auto* custom_device = fallback_request_state.custom_device()) {
+  auto* device = kernel_runner.device();
+  if (auto* custom_device = fallback_request_state.custom_device(device)) {
     return custom_device;
   }
-  return kernel_runner.device();
+  return device;
 }
 
 }  // namespace tfd

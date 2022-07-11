@@ -104,8 +104,8 @@ TEST(DumpCrashReproducerTest, Valid) {
   std::string expected_txt_module;
   {
     llvm::raw_string_ostream os(expected_txt_module);
-    os << "// configuration: -pass-pipeline='' -mlir-disable-threading "
-          "-verify-each\n\n";
+    os << "{-# external_resources: { mlir_reproducer: { pipeline: \"\", "
+          "disable_threading: true, verify_each: true } } #-}\n\n";
     module_ref->getOperation()->print(os,
                                       mlir::OpPrintingFlags().useLocalScope());
     os.flush();

@@ -497,6 +497,13 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     });
   });
 
+  // TODO(b/238349654): Remove when XPlane better XPlane Comparison mechanism
+  // exists.
+  aggregated_plane.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kMinDurationPs));
+  aggregated_plane.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kSelfDurationPs));
+
   for (const auto& [line_id, stat_by_event] : stats) {
     XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line_id);
     for (const auto& [event_id, event_stat] : stat_by_event) {
