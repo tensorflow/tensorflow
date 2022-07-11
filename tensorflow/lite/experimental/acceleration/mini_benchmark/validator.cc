@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 
-#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
@@ -28,22 +27,20 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
-#include "tensorflow/lite/stderr_reporter.h"
 
 #ifndef TEMP_FAILURE_RETRY
 #ifdef __ANDROID__
@@ -55,35 +52,6 @@ limitations under the License.
 
 namespace tflite {
 namespace acceleration {
-
-Validator::Validator(const std::string& model_path,
-                     const ComputeSettings* compute_settings)
-    : model_path_(model_path),
-      compute_settings_(compute_settings),
-      delegate_(nullptr, [](TfLiteDelegate*) {}) {}
-
-Validator::Validator(int model_fd, size_t model_offset, size_t model_size,
-                     const ComputeSettings* compute_settings)
-    :
-#ifndef _WIN32
-      model_fd_(dup(model_fd)),
-#else   // _WIN32
-      model_fd_(-1),
-#endif  // !_WIN32
-      model_offset_(model_offset),
-      model_size_(model_size),
-      compute_settings_(compute_settings),
-      delegate_(nullptr, [](TfLiteDelegate*) {}) {
-}
-
-Validator::~Validator() {
-#ifndef _WIN32
-  if (model_fd_ >= 0) {
-    close(model_fd_);
-  }
-#endif  // !_WIN32
-}
-
 namespace {
 std::unique_ptr<tflite::delegates::DelegatePluginInterface> LoadDelegatePlugin(
     const std::string& name, const tflite::TFLiteSettings& tflite_settings) {
@@ -141,35 +109,8 @@ class ValidatorProfiler : public ::tflite::Profiler {
 
 }  // namespace
 
-MinibenchmarkStatus Validator::CheckModel() {
-  if (model_) {
-    // Already done.
-    return kMinibenchmarkSuccess;
-  }
-  if (model_path_.empty() && model_fd_ <= 0) {
-    return kMinibenchmarkPreconditionNotMet;
-  }
-  if (!model_path_.empty()) {
-    model_ = FlatBufferModel::VerifyAndBuildFromFile(model_path_.c_str());
-  } else if (MMAPAllocation::IsSupported()) {
-    auto allocation = std::make_unique<MMAPAllocation>(
-        model_fd_, model_offset_, model_size_, tflite::DefaultErrorReporter());
-    if (!allocation->valid()) {
-      return kMinibenchmarkModelReadFailed;
-    }
-    model_ =
-        FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
-  } else {
-    return kMinibenchmarkUnsupportedPlatform;
-  }
-  if (!model_) {
-    return kMinibenchmarkModelBuildFailed;
-  }
-  return kMinibenchmarkSuccess;
-}
-
 MinibenchmarkStatus Validator::CheckGoldenOutput() {
-  if (!interpreter_) {
+  if (!interpreter_ || !model_loader_->GetModel()) {
     return kMinibenchmarkPreconditionNotMet;
   }
   if (validation_entrypoint_) {
@@ -211,7 +152,8 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
   }
 
   // Create the interpreter to run on CPU.
-  tflite::InterpreterBuilder(*model_, *resolver_)(&golden_interpreter_);
+  tflite::InterpreterBuilder(*model_loader_->GetModel(),
+                             *resolver_)(&golden_interpreter_);
   if (!golden_interpreter_) {
     return kMinibenchmarkInterpreterBuilderFailed;
   }
@@ -291,7 +233,8 @@ MinibenchmarkStatus Validator::LoadDelegate() {
 
 MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
                                                  int* delegated_kernels_out) {
-  if (!delegate_error_out || !delegated_kernels_out) {
+  if (!delegate_error_out || !delegated_kernels_out ||
+      !model_loader_->GetModel()) {
     return kMinibenchmarkPreconditionNotMet;
   }
   *delegate_error_out = 0;
@@ -309,7 +252,7 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
       "validation/decode_jpeg",
       ::tflite::acceleration::decode_jpeg_kernel::Register_DECODE_JPEG(), 1);
 
-  tflite::InterpreterBuilder builder(*model_, *resolver_);
+  tflite::InterpreterBuilder builder(*model_loader_->GetModel(), *resolver_);
   // Add delegate if not running on CPU.
   if (delegate_ != nullptr) {
     builder.AddDelegate(delegate_.get());
@@ -362,13 +305,17 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   if (!results_out) {
     return kMinibenchmarkPreconditionNotMet;
   }
+  if (!model_loader_) {
+    return kMinibenchmarkModelReadFailed;
+  }
+
 #define MB_RETURN_IF_ERROR(s)                 \
   {                                           \
     MinibenchmarkStatus c = (s);              \
     if (c != kMinibenchmarkSuccess) return c; \
   }
 
-  MB_RETURN_IF_ERROR(CheckModel());
+  MB_RETURN_IF_ERROR(model_loader_->Init());
   // The lifetime of the delegate must be at least as long as the lifetime of
   // any Interpreter.
   int64_t delegate_load_start_time_us = ElapsedTimeMicros();

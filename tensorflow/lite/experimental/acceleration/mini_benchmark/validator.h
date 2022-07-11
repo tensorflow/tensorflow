@@ -15,17 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINI_BENCHMARK_VALIDATOR_H_
 
-#include <stddef.h>
-
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model_builder.h"
@@ -41,20 +41,12 @@ namespace acceleration {
 // telemetry from it.
 class Validator {
  public:
-  // Construct Validator for given model path and compute settings. The
+  // Construct Validator for the given model and compute settings. The
   // compute_settings must be valid for the lifetime of the Validator instance.
-  Validator(const std::string& model_path,
-            const ComputeSettings* compute_settings);
-
-  // Construct Validator for given model file descriptor and compute settings.
-  // The model_fd only has to be valid for the duration of the constructor (it's
-  // dup'ed inside). The compute_settings must be valid for the lifetime of the
-  // Validator instance.
-  Validator(int model_fd, size_t model_offset, size_t model_size,
-            const ComputeSettings* compute_settings);
-
-  // Check that the model is valid for validation.
-  MinibenchmarkStatus CheckModel();
+  Validator(std::unique_ptr<ModelLoader> model_loader,
+            const ComputeSettings* compute_settings)
+      : model_loader_(std::move(model_loader)),
+        compute_settings_(compute_settings) {}
 
   // Results from validation.
   struct Results {
@@ -81,8 +73,6 @@ class Validator {
   static int64_t BootTimeMicros();
   static int64_t WallTimeMicros();
 
-  ~Validator();
-
   Validator(Validator&) = delete;
   Validator& operator=(Validator&) = delete;
   Validator(Validator&&) = delete;
@@ -100,9 +90,7 @@ class Validator {
   // Check if the golden output exists. If not, run Model on CPU.
   MinibenchmarkStatus CheckGoldenOutput();
 
-  std::string model_path_;
-  int model_fd_ = -1;
-  size_t model_offset_, model_size_;
+  std::unique_ptr<ModelLoader> model_loader_;
   const ComputeSettings* compute_settings_;
   // Interpreter that runs on CPU.
   std::unique_ptr<Interpreter> golden_interpreter_;
@@ -113,7 +101,8 @@ class Validator {
   // compute_settings_, it may or may not include the default delegate.
   std::unique_ptr<::tflite::MutableOpResolver> resolver_;
   std::unique_ptr<FlatBufferModel> model_;
-  ::tflite::delegates::TfLiteDelegatePtr delegate_;
+  ::tflite::delegates::TfLiteDelegatePtr delegate_ =
+      delegates::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
   std::unique_ptr<tflite::delegates::DelegatePluginInterface> delegate_plugin_;
   Subgraph* validation_entrypoint_ = nullptr;
   Subgraph* main_model_ = nullptr;

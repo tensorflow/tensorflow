@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+
+#include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>
@@ -22,6 +25,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <thread>  // NOLINT: only used on Android, where std::thread is allowed
+#include <utility>
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -37,7 +41,7 @@ namespace tflite {
 namespace acceleration {
 namespace {
 
-MinibenchmarkStatus RunValidator(const std::string& model_path,
+MinibenchmarkStatus RunValidator(absl::string_view model_path,
                                  const std::string& nnapi_sl_path,
                                  TFLiteSettingsT& tflite_settings,
                                  Validator::Results& results) {
@@ -60,22 +64,16 @@ MinibenchmarkStatus RunValidator(const std::string& model_path,
   fbb.Finish(
       CreateComputeSettings(fbb, ExecutionPreference_ANY,
                             CreateTFLiteSettings(fbb, &tflite_settings)));
-  std::unique_ptr<Validator> validator;
-  if (model_path.find("fd:") == 0) {  // NOLINT
-    int model_fd;
-    size_t model_offset, model_size;
-    if (sscanf(model_path.c_str(), "fd:%d:%zu:%zu", &model_fd, &model_offset,
-               &model_size) != 3) {
-      return kMinibenchmarkPreconditionNotMet;
-    }
-    validator = std::make_unique<Validator>(
-        model_fd, model_offset, model_size,
-        flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
-  } else {
-    validator = std::make_unique<Validator>(
-        model_path,
-        flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
+  std::unique_ptr<ModelLoader> model_loader =
+      ModelLoader::CreateFromFdOrPath(model_path);
+  if (!model_loader) {
+    return kMinibenchmarkPreconditionNotMet;
   }
+
+  auto validator = std::make_unique<Validator>(
+      std::move(model_loader),
+      flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
+
   return validator->RunValidation(&results);
 }
 
@@ -87,11 +85,11 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
   if (argc < 6) return 1;
   // argv[1] is the helper binary name
   // argv[2] is the function name
-  std::string model_path = argv[3];
-  std::string storage_path = argv[4];
+  const std::string model_path = argv[3];
+  const std::string storage_path = argv[4];
   // argv[5] is data directory path.
   // argv[6] if present is the NNAPI SL path
-  std::string nnapi_sl_path = argc > 6 ? argv[6] : "";
+  const std::string nnapi_sl_path = argc > 6 ? argv[6] : "";
   FileLock lock(storage_path + ".child_lock");
   if (!lock.TryLock()) {
     return kMinibenchmarkChildProcessAlreadyRunning;

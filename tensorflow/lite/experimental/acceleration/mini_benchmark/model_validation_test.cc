@@ -105,8 +105,9 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     ASSERT_GE(fd, 0);
     struct stat stat_buf = {0};
     ASSERT_EQ(fstat(fd, &stat_buf), 0);
-    auto validator =
-        std::make_unique<Validator>(fd, 0, stat_buf.st_size, settings);
+    auto validator = std::make_unique<Validator>(
+        std::make_unique<ModelLoader>(fd, /*offset=*/0, stat_buf.st_size),
+        settings);
     close(fd);
 
     Validator::Results results;

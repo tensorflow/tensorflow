@@ -454,9 +454,11 @@ cc_library(
     deps = [
         ":call",
         ":decode_jpeg",
+        ":model_loader",
         ":status_codes",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/configuration:delegate_registry",
@@ -471,15 +473,19 @@ cc_library(
     hdrs = ["validator_runner.h"],
     deps = [
         ":fb_storage",
+        ":model_loader",
         ":runner",
         ":status_codes",
         ":validator",
+        "@flatbuffers",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/nnapi/sl:nnapi_support_library",
+        # For NNAPI support library, the headears and source files are defined
+        # as two separate targets. We need to include both targets for NNAPI to
+        # be invoked.
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
-        "@flatbuffers",
     ],
 )
 
@@ -493,17 +499,20 @@ cc_library(
     srcs = ["validator_runner_entrypoint.cc"],
     deps = [
         ":fb_storage",
-        ":runner",
+        ":model_loader",
         ":set_big_core_affinity_h",
         ":status_codes",
         ":validator",
         ":validator_runner",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/nnapi/sl:nnapi_support_library",
-        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        # For NNAPI support library, the headears and source files are defined
+        # as two separate targets. We need to include both targets for NNAPI to
+        # be invoked.
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
 )
 
@@ -709,6 +718,32 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "model_loader",
+    srcs = ["model_loader.cc"],
+    hdrs = ["model_loader.h"],
+    deps = [
+        ":status_codes",
+        "//tensorflow/lite:allocation",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite:stderr_reporter",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "model_loader_test",
+    srcs = ["model_loader_test.cc"],
+    deps = [
+        ":embedded_mobilenet_model",
+        ":mini_benchmark_test_helper",
+        ":model_loader",
+        ":status_codes",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 #
 # Test targets for separate process.
 # Unit tests using cc_test and turned into Android tests with tflite_portable_test_suite().
@@ -770,11 +805,13 @@ cc_binary(
     linkshared = True,
     deps = [
         ":fb_storage",
+        ":model_loader",
         ":runner",
         ":status_codes",
         ":set_big_core_affinity",
         ":validator",
         ":validator_runner",
+        "@com_google_absl//absl/strings",
         "@flatbuffers",
         "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
@@ -844,6 +881,7 @@ cc_test(
         ":embedded_mobilenet_validation_model",
         ":embedded_mobilenet_model",
         ":mini_benchmark_test_helper",
+        ":model_loader",
         ":status_codes",
         ":validator",
         "@com_google_googletest//:gtest_main",
