@@ -165,6 +165,22 @@ const size_t PJRT_Client_AddressableDevices_Args_STRUCT_SIZE = PJRT_STRUCT_SIZE(
 typedef PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  int id;
+  // `device` has the same lifetime as `client`. It is owned by `client`.
+  PJRT_Device* device;  // out
+} PJRT_Client_LookupDevice_Args;
+
+const size_t PJRT_Client_LookupDevice_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_LookupDevice_Args, device);
+
+// Returns a PJRT_Device* with the specified ID as returned by PJRT_Device_Id.
+typedef PJRT_Error* PJRT_Client_LookupDevice(
+    PJRT_Client_LookupDevice_Args* args);
+
 // --------------------------------- Devices -----------------------------------
 
 typedef struct {
@@ -349,6 +365,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_PlatformVersion);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);

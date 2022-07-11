@@ -111,11 +111,7 @@ class PjRtCApiClient : public PjRtClient {
   absl::Span<PjRtDevice* const> devices() const override;
   absl::Span<PjRtDevice* const> addressable_devices() const override;
 
-  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
-    TF_ASSIGN_OR_RETURN(PjRtDevice * wrapped_device,
-                        wrapped_->LookupDevice(device_id));
-    return GetCApiDevice(wrapped_device);
-  }
+  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {

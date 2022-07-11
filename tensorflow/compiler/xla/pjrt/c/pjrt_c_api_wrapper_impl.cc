@@ -36,6 +36,15 @@ std::string StructSizeErrorMsg(absl::string_view struct_name,
                       ". Check installed software versions.");
 }
 
+// Returns C device from wrapped C++ device.
+static PJRT_Device* GetCDevice(const PJRT_Client* client,
+                               const xla::PjRtDevice* device) {
+  auto c_device_map = client->c_device_from_cpp_device;
+  auto iter = c_device_map.find(device);
+  CHECK(iter != c_device_map.end());
+  return iter->second;
+}
+
 // ---------------------------------- Errors -----------------------------------
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
@@ -119,6 +128,16 @@ PJRT_Error* PJRT_Client_AddressableDevices(
       PJRT_Client_AddressableDevices_Args_STRUCT_SIZE, args->struct_size));
   args->num_addressable_devices = args->client->addressable_devices.size();
   args->addressable_devices = args->client->addressable_devices.data();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_LookupDevice_Args",
+      PJRT_Client_LookupDevice_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
+                        args->client->client->LookupDevice(args->id));
+  args->device = GetCDevice(args->client, device);
   return nullptr;
 }
 

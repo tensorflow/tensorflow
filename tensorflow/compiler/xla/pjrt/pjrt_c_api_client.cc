@@ -146,6 +146,18 @@ StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
 
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
+  PJRT_Client_LookupDevice_Args args;
+  args.struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.id = device_id;
+  PJRT_Error* error = c_api_->PJRT_Client_LookupDevice(&args);
+  // TODO(b/236710439)
+  CHECK(error == nullptr);
+  return GetCppDevice(args.device);
+}
+
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
     const PjRtExecutable& executable) const {
   return wrapped_->SerializeExecutable(

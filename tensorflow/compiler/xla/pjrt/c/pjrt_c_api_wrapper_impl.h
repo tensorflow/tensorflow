@@ -35,6 +35,9 @@ struct PJRT_Client {
   // `addressable_devices` contains pointers to the `owned_devices` that the
   // client can issue commands to.
   std::vector<PJRT_Device*> addressable_devices;
+  // Map from wrapped C++ devices to C devices. The values are the same as
+  // `owned_devices`.
+  absl::flat_hash_map<xla::PjRtDevice*, PJRT_Device*> c_device_from_cpp_device;
 };
 
 // PJRT_Devices are owned by their corresponding PJRT_Client.
@@ -73,6 +76,7 @@ PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
 PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
 PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
+PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
