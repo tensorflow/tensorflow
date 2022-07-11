@@ -1748,6 +1748,7 @@ void SetYieldOp::build(
   auto accumulatorCount = llvm::count_if(accumulatorFlags, [](Attribute attr) {
     return attr.cast<BoolAttr>().getValue();
   });
+  (void)accumulatorCount;
   assert(accumulatorCount == accumulatorBuilderFns.size() &&
          "the number of flags set in `accumulatorFlags` attribute should be "
          "equal to the number of `accumulatorBuilderFns`");
