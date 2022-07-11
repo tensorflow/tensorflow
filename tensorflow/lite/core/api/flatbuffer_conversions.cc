@@ -840,15 +840,25 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
     case BuiltinOperator_CALL:
+    case BuiltinOperator_COMPLEX_ABS:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
     case BuiltinOperator_COS:
     case BuiltinOperator_CUSTOM:
+    case BuiltinOperator_DENSIFY:
+    case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
+    case BuiltinOperator_HASHTABLE_FIND:
+    case BuiltinOperator_HASHTABLE_IMPORT:
+    case BuiltinOperator_HASHTABLE_SIZE:
+    case BuiltinOperator_IMAG:
     case BuiltinOperator_MATRIX_DIAG:
     case BuiltinOperator_MATRIX_SET_DIAG:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
     case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU_0_TO_1:
+    case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_SELECT:
     case BuiltinOperator_SELECT_V2:
     case BuiltinOperator_SLICE:
@@ -856,24 +866,15 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
     case BuiltinOperator_RANGE:
+    case BuiltinOperator_RANK:
+    case BuiltinOperator_REAL:
+    case BuiltinOperator_RFFT2D:
+    case BuiltinOperator_SEGMENT_SUM:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_REVERSE_V2:
+    case BuiltinOperator_UNSORTED_SEGMENT_MAX:
     case BuiltinOperator_UNSORTED_SEGMENT_PROD:
     case BuiltinOperator_WHERE:
-    case BuiltinOperator_RANK:
-    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
-    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
-    case BuiltinOperator_SCATTER_ND:
-    case BuiltinOperator_DENSIFY:
-    case BuiltinOperator_SEGMENT_SUM:
-    case BuiltinOperator_RFFT2D:
-    case BuiltinOperator_IMAG:
-    case BuiltinOperator_REAL:
-    case BuiltinOperator_COMPLEX_ABS:
-    case BuiltinOperator_HASHTABLE_FIND:
-    case BuiltinOperator_HASHTABLE_IMPORT:
-    case BuiltinOperator_HASHTABLE_SIZE:
-    case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;

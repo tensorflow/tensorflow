@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -25,7 +26,12 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
-namespace unsorted_segment_prod {
+namespace unsorted_segment {
+
+enum SegmentType {
+  kSegmentMax,
+  kSegmentProd,
+};
 
 static const int kInputDataTensor = 0;
 static const int kInputSegmentIdsTensor = 1;
@@ -80,6 +86,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  data->type == kTfLiteInt32 || data->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, num_segments->type, kTfLiteInt32);
 
   if (IsDynamicTensor(data) || !IsConstantTensor(segment_ids) ||
       !IsConstantTensor(num_segments)) {
@@ -89,7 +96,46 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputTensor(context, data, segment_ids, num_segments, output);
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+template <typename T>
+struct SegmenMax {
+  inline T operator()(const T& a, const T& b) const { return std::max(a, b); }
+  static constexpr T kInitialValue = std::numeric_limits<T>::lowest();
+};
+
+template <typename T>
+struct SegmenProd {
+  inline T operator()(const T& a, const T& b) const { return a * b; }
+  static constexpr T kInitialValue = T(1);
+};
+
+template <typename T>
+TfLiteStatus EvalType(TfLiteContext* context, const RuntimeShape& input_shape,
+                      const T* input_data,
+                      const RuntimeShape& segment_ids_shape,
+                      const int32_t* segment_ids_data,
+                      const RuntimeShape& output_shape, T* output_data,
+                      SegmentType segment_type) {
+  switch (segment_type) {
+    case kSegmentProd:
+      reference_ops::UnsortedSegmentRef<T, SegmenProd>(
+          input_shape, input_data, segment_ids_shape, segment_ids_data,
+          output_shape, output_data);
+      break;
+    case kSegmentMax:
+      reference_ops::UnsortedSegmentRef<T, SegmenMax>(
+          input_shape, input_data, segment_ids_shape, segment_ids_data,
+          output_shape, output_data);
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Not recognized segment type: %d",
+                         segment_type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node,
+                         SegmentType segment_type) {
   const TfLiteTensor* data;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputDataTensor, &data));
@@ -111,34 +157,46 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, GetTensorShape(data).Dims(0),
                     GetTensorShape(segment_ids).Dims(0));
 
-#define TF_LITE_UNSORTED_SEGMENT_PROD(dtype)                            \
-  reference_ops::UnsortedSegmentProd<dtype>(                            \
-      GetTensorShape(data), GetTensorData<dtype>(data),                 \
-      GetTensorShape(segment_ids), GetTensorData<int32_t>(segment_ids), \
-      GetTensorShape(output), GetTensorData<dtype>(output));
+#define TF_LITE_UNSORTED_SEGMENT(dtype)                                        \
+  EvalType<dtype>(context, GetTensorShape(data), GetTensorData<dtype>(data),   \
+                  GetTensorShape(segment_ids),                                 \
+                  GetTensorData<int32_t>(segment_ids), GetTensorShape(output), \
+                  GetTensorData<dtype>(output), segment_type);
   switch (data->type) {
     case kTfLiteInt32:
-      TF_LITE_UNSORTED_SEGMENT_PROD(int32_t);
+      TF_LITE_UNSORTED_SEGMENT(int32_t);
       break;
     case kTfLiteFloat32:
-      TF_LITE_UNSORTED_SEGMENT_PROD(float);
+      TF_LITE_UNSORTED_SEGMENT(float);
       break;
     default:
       TF_LITE_KERNEL_LOG(
-          context, "Currently UnsortedSegmentProd doesn't support type: %s",
+          context, "Currently UnsortedSegment doesn't support data type: %s",
           TfLiteTypeGetName(data->type));
       return kTfLiteError;
   }
-#undef TF_LITE_UNSORTED_SEGMENT_PROD
+#undef TF_LITE_UNSORTED_SEGMENT
   return kTfLiteOk;
 }
 
-}  // namespace unsorted_segment_prod
+TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
+  return EvalGeneric(context, node, kSegmentProd);
+}
+TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
+  return EvalGeneric(context, node, kSegmentMax);
+}
+
+}  // namespace unsorted_segment
 
 TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD() {
-  static TfLiteRegistration r = {nullptr, nullptr,
-                                 unsorted_segment_prod::Prepare,
-                                 unsorted_segment_prod::Eval};
+  static TfLiteRegistration r = {nullptr, nullptr, unsorted_segment::Prepare,
+                                 unsorted_segment::EvalProd};
+  return &r;
+}
+
+TfLiteRegistration* Register_UNSORTED_SEGMENT_MAX() {
+  static TfLiteRegistration r = {nullptr, nullptr, unsorted_segment::Prepare,
+                                 unsorted_segment::EvalMax};
   return &r;
 }
 
