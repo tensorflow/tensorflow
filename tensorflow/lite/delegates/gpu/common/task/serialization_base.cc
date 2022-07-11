@@ -471,32 +471,32 @@ flatbuffers::Offset<data::TensorDescriptor> Encode(
   auto data_fb = builder->CreateVector(desc.GetData());
   data::TensorDescriptorBuilder tensor_builder(*builder);
   tensor_builder.add_base_obj(obj_fb);
-  tensor_builder.add_data_type(ToFB(desc.data_type));
-  tensor_builder.add_storage_type(ToFB(desc.storage_type));
-  tensor_builder.add_layout(ToFB(desc.layout));
+  tensor_builder.add_data_type(ToFB(desc.data_type_));
+  tensor_builder.add_storage_type(ToFB(desc.storage_type_));
+  tensor_builder.add_layout(ToFB(desc.layout_));
   tensor_builder.add_shape(shape_fb);
   tensor_builder.add_data(data_fb);
   tensor_builder.add_use_buffer_for_write_only_2d_texture(
-      desc.use_buffer_for_write_only_2d_texture);
+      desc.use_buffer_for_write_only_2d_texture_);
   tensor_builder.add_use_buffer_for_write_only_image_buffer(
-      desc.use_buffer_for_write_only_image_buffer);
+      desc.use_buffer_for_write_only_image_buffer_);
   return tensor_builder.Finish();
 }
 
 void Decode(const data::TensorDescriptor* fb_desc, TensorDescriptor* desc) {
   Decode(fb_desc->base_obj(), desc);
-  desc->data_type = ToEnum(fb_desc->data_type());
-  desc->storage_type = ToEnum(fb_desc->storage_type());
-  desc->layout = ToEnum(fb_desc->layout());
+  desc->data_type_ = ToEnum(fb_desc->data_type());
+  desc->storage_type_ = ToEnum(fb_desc->storage_type());
+  desc->layout_ = ToEnum(fb_desc->layout());
   desc->SetBHWDCShape(BHWDC(fb_desc->shape()->b(), fb_desc->shape()->h(),
                             fb_desc->shape()->w(), fb_desc->shape()->d(),
                             fb_desc->shape()->c()));
   desc->SetData(
       std::vector<uint8_t>(fb_desc->data()->data(),
                            fb_desc->data()->data() + fb_desc->data()->size()));
-  desc->use_buffer_for_write_only_2d_texture =
+  desc->use_buffer_for_write_only_2d_texture_ =
       fb_desc->use_buffer_for_write_only_2d_texture();
-  desc->use_buffer_for_write_only_image_buffer =
+  desc->use_buffer_for_write_only_image_buffer_ =
       fb_desc->use_buffer_for_write_only_image_buffer();
 }
 
