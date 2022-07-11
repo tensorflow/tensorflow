@@ -13901,7 +13901,7 @@ func EncodeJpegXmpMetadata(value string) EncodeJpegAttr {
 // The attr `format` can be used to override the color format of the encoded
 // output.  Values can be:
 //
-//   - `''`: Use a default format based on the number of channels in the image.
+//   - `”`: Use a default format based on the number of channels in the image.
 //   - `grayscale`: Output a grayscale JPEG image.  The `channels` dimension
 //     of `image` must be 1.
 //   - `rgb`: Output an RGB JPEG image. The `channels` dimension
