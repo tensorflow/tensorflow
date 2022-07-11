@@ -37,7 +37,7 @@ TEST_F(FftTest, SimpleCase1) {
         } {
           "lmhlo.fft"(%arg0, %arg1) {
             fft_length = dense<4> : tensor<1xi64>,
-            fft_type = #mhlo<"fft_type RFFT">
+            fft_type = #mhlo<fft_type RFFT>
           } : (memref<4xf32>, memref<3xcomplex<f32>>) -> ()
           "lmhlo.terminator"() : () -> ()
         }

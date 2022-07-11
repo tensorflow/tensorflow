@@ -1345,7 +1345,7 @@ func.func @mirror_pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   func.return %0#0 : tensor<? x f32>
 
   // CHECK-LABEL: mirror_pad
-  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = #tfl<"mirror_pad_attr SYMMETRIC">} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
+  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = #tfl<mirror_pad_attr SYMMETRIC>} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return
 }
 
@@ -1355,7 +1355,7 @@ func.func @mirror_pad_reflect(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x 
   func.return %0#0 : tensor<? x f32>
 
   // CHECK-LABEL: mirror_pad_reflect
-  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = #tfl<"mirror_pad_attr REFLECT">} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
+  // CHECK:  "tfl.mirror_pad"(%arg0, %arg1) {mode = #tfl<mirror_pad_attr REFLECT>} : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return
 }
 

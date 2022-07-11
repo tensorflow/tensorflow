@@ -60,17 +60,17 @@ func.func @unary_ops_float(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-LABEL: func @compare_int
 func.func @compare_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>) {
   // CHECK-NEXT: %0 = arith.cmpi eq, %arg0, %arg1 : tensor<4xi32>
-  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: %1 = arith.cmpi ne, %arg0, %arg1 : tensor<4xi32>
-  %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: %2 = arith.cmpi slt, %arg0, %arg1 : tensor<4xi32>
-  %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: %3 = arith.cmpi sle, %arg0, %arg1 : tensor<4xi32>
-  %3 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LE">} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %3 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LE>} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: %4 = arith.cmpi sgt, %arg0, %arg1 : tensor<4xi32>
-  %4 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %4 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: %5 = arith.cmpi sge, %arg0, %arg1 : tensor<4xi32>
-  %5 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %5 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GE>} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
   // CHECK-NEXT: return %0, %1, %2, %3, %4, %5 : tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
   func.return %0, %1, %2, %3, %4, %5 : tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
 }
@@ -78,17 +78,17 @@ func.func @compare_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4x
 // CHECK-LABEL: func @compare_float
 func.func @compare_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>,tensor<4xi1>) {
   // CHECK-NEXT: %0 = arith.cmpf oeq, %arg0, %arg1 : tensor<4xf32>
-  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   // CHECK-NEXT: %1 = arith.cmpf une, %arg0, %arg1 : tensor<4xf32>
-  %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   // CHECK-NEXT: %2 = arith.cmpf olt, %arg0, %arg1 : tensor<4xf32>
-  %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %2 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   // CHECK-NEXT: %3 = arith.cmpf ole, %arg0, %arg1 : tensor<4xf32>
-  %3 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LE">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %3 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction LE>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   // CHECK-NEXT: %4 = arith.cmpf ogt, %arg0, %arg1 : tensor<4xf32>
-  %4 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %4 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   // CHECK-NEXT: %5 = arith.cmpf oge, %arg0, %arg1 : tensor<4xf32>
-  %5 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
+  %5 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GE>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   func.return %0, %1, %2, %3, %4, %5: tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>
 }
 

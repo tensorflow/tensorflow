@@ -229,7 +229,7 @@ func.func @conv_forward_fused(%input: memref<8x5x5x1xf32, #map1>,
                rhs_dilate = [1, 1],
                reverse = [0, 0]
              }
-    { activation_mode = #lmhlo_gpu<"activation Relu">,
+    { activation_mode = #lmhlo_gpu<activation Relu>,
       backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 11,
         is_cudnn_frontend = true,
@@ -295,7 +295,7 @@ func.func @conv_forward_fused_with_side_input(
                rhs_dilate = [1, 1],
                reverse = [0, 0]
              }
-     { activation_mode = #lmhlo_gpu<"activation Relu">,
+     { activation_mode = #lmhlo_gpu<activation Relu>,
        backend_config = #lmhlo_gpu.convolution_backend_config<
          algorithm = 0,
          is_cudnn_frontend = true,

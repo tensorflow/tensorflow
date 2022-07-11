@@ -841,7 +841,7 @@ func.func @invalid_collective_permute(%arg0: memref<128x32xf32>, %arg_out: memre
 
 // CHECK-LABEL: func @fft_memrefs
 func.func @fft_memrefs(%arg0: memref<3x9xf32>, %arg_out: memref<3x5xcomplex<f32>>) -> () {
-  "lmhlo.fft"(%arg0, %arg_out) {fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<"fft_type RFFT">} : (memref<3x9xf32>, memref<3x5xcomplex<f32>>) -> ()
+  "lmhlo.fft"(%arg0, %arg_out) {fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>} : (memref<3x9xf32>, memref<3x5xcomplex<f32>>) -> ()
   func.return
 }
 
@@ -920,7 +920,7 @@ func.func @triangular_solve_memrefs(%arg0: memref<4x4xf32>, %arg1: memref<3x4xf3
        {layout_a = dense<[1, 0]> : tensor<2xindex>,
         layout_b = dense<[1, 0]> : tensor<2xindex>,
         layout_output = dense<[1, 0]> : tensor<2xindex>,
-        left_side = true, lower = true, transpose_a = #mhlo<"transpose NO_TRANSPOSE">,
+        left_side = true, lower = true, transpose_a = #mhlo<transpose NO_TRANSPOSE>,
         unit_diagonal = true}
       : (memref<4x4xf32>, memref<3x4xf32>, memref<3x4xf32>) -> ()
   func.return
@@ -1045,7 +1045,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   func.return
@@ -1058,7 +1058,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   func.return
@@ -1071,7 +1071,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   func.return

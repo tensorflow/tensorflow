@@ -119,9 +119,9 @@ func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // CHECK-LABEL: func @compare
 func.func @compare(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xi1> {
   %result = "mhlo.compare"(%lhs, %rhs)
-      {comparison_direction = #mhlo<"comparison_direction EQ">}
+      {comparison_direction = #mhlo<comparison_direction EQ>}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
-  // CHECK: "lmhlo.compare"(%{{.*}}, %{{.*}}, %{{.*}}) {comparison_direction = #mhlo<"comparison_direction EQ">}
+  // CHECK: "lmhlo.compare"(%{{.*}}, %{{.*}}, %{{.*}}) {comparison_direction = #mhlo<comparison_direction EQ>}
   func.return %result : tensor<2x2xi1>
 }
 

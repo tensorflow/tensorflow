@@ -71,7 +71,7 @@ func.func @conv_empty_spatial_dimensions(%arg0: tensor<3x2xf16>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          }
        : (tensor<3x2xf16>, tensor<2x2xf16>) -> tensor<3x2xf16>
   %1 = "mhlo.tuple"(%0) : (tensor<3x2xf16>) -> tuple<tensor<3x2xf16>>
@@ -109,7 +109,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -127,7 +127,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1xf32>, %arg1: tensor<3xf32>)
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1xf32>, tensor<3xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -145,7 +145,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} :
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
 }
@@ -162,7 +162,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -180,7 +180,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -282,7 +282,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 0 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -300,7 +300,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 0 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -318,7 +318,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 2 : i64,
            feature_group_count = 2 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -336,7 +336,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 3 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -354,7 +354,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 2 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x20x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -372,7 +372,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x20x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -390,7 +390,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 3 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x69x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -408,7 +408,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<5x8x8x207xf32>,
          {
            batch_group_count = 2 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<5x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -426,7 +426,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -444,7 +444,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} :
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
 }
@@ -461,7 +461,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} :
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
 }
@@ -478,7 +478,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} :
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
 }
@@ -495,7 +495,7 @@ func.func @invalid_conv_dimensions(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -569,7 +569,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} :
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
        (tensor<1x8x8x207xf32>, tensor<0x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
 }
@@ -586,7 +586,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} :
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
 }
@@ -603,7 +603,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -621,7 +621,7 @@ func.func @invalid_conv_window_attributes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
   func.return %0 : tensor<1x8x8x16xf32>
@@ -641,7 +641,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x16xf32>
   func.return %0 : tensor<1x8x16xf32>
@@ -662,7 +662,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<2x8x8x16xf32>
   func.return %0 : tensor<2x8x8x16xf32>
@@ -683,7 +683,7 @@ func.func @invalid_conv_return_type(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x32xf32>
   func.return %0 : tensor<1x8x8x32xf32>
@@ -706,7 +706,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<?x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<?x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x1x1x1xf32>
   func.return %0 : tensor<1x1x1x1xf32>
@@ -725,7 +725,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x8x8x?xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x?xf32>, tensor<3x3x207x16xf32>) -> tensor<1x1x1x1xf32>
   func.return %0 : tensor<1x1x1x1xf32>
@@ -744,7 +744,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x?x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x?x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x1x1x1xf32>
   func.return %0 : tensor<1x1x1x1xf32>
@@ -763,7 +763,7 @@ func.func @invalid_conv_dynamic_shapes(%arg0: tensor<1x8x8x207xf32>,
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x?x16xf32>) -> tensor<1x1x1x1xf32>
   func.return %0 : tensor<1x1x1x1xf32>
@@ -782,7 +782,7 @@ func.func @check_inferred_type_with_dynamic_input_dims(%arg0: tensor<1x8x8x207xf
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x?xf32>) -> tensor<1x1x1x1xf32>
   func.return %0 : tensor<1x1x1x1xf32>
@@ -801,7 +801,7 @@ func.func @check_inferred_type_with_dynamic_input_dims(%arg0: tensor<1x8x8x207xf
          {
            batch_group_count = 1 : i64,
            feature_group_count = 1 : i64,
-           precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+           precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
          } :
        (tensor<1x8x8x207xf32>, tensor<3x?x207x16xf32>) -> tensor<1x1x1x1xf32>
   func.return %0 : tensor<1x1x1x1xf32>

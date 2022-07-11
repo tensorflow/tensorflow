@@ -136,7 +136,7 @@ func.func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32x
   lmhlo_gpu.conv_forward_fused(%input, %filter, %bias, %output, %scratch)
     dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
-    { activation_mode = #lmhlo_gpu<"activation Relu">,
+    { activation_mode = #lmhlo_gpu<activation Relu>,
       backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 0,
         tensor_ops_enabled = true,
@@ -150,7 +150,7 @@ func.func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32x
       >,
       batch_group_count = 1 : i64,
       feature_group_count = 1 : i64,
-      precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
       result_scale = 1.000000e+00 : f64
   } : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
   func.return
@@ -165,7 +165,7 @@ func.func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref
   lmhlo_gpu.conv_forward_fused_with_side_input(%input, %filter, %bias, %side_input, %output, %scratch)
     dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
-    { activation_mode = #lmhlo_gpu<"activation Relu">,
+    { activation_mode = #lmhlo_gpu<activation Relu>,
       backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 0,
         tensor_ops_enabled = true,
@@ -179,7 +179,7 @@ func.func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref
       >,
       batch_group_count = 1 : i64,
       feature_group_count = 1 : i64,
-      precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
       result_scale = 1.000000e+00 : f64,
       side_input_scale = 1.000000e+00 : f64
   } : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<0xui8>) -> ()

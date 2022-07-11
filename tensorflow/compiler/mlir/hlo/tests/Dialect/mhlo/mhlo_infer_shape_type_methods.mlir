@@ -20,7 +20,7 @@ func.func @select(%pred : tensor<i1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>
 func.func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xindex> {
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<2x?xf32> -> tensor<2xindex>
   // CHECK: return %[[SHAPE]] : tensor<2xindex>
-  %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction NE">}
+  %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction NE>}
       : (tensor<2x?xf32>, tensor<2x?xf32>) -> tensor<2x?xi1>
   %1 = "mhlo_test.reify_return_type_shapes"(%0)
       : (tensor<2x?xi1>) -> tensor<2xindex>
@@ -44,7 +44,7 @@ func.func @select(%pred : tensor<i1>, %a : tensor<2x2xf32>, %b : tensor<2x2xf32>
 
 // CHECK-LABEL: @compare
 func.func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xindex> {
-  %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction NE">}
+  %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction NE>}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   %1 = "mhlo_test.get_return_type_components"(%0)
       : (tensor<2x2xi1>) -> tensor<2x2xindex>
