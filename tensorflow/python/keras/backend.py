@@ -1307,7 +1307,7 @@ def placeholder(shape=None,
       ragged: Boolean, whether the placeholder should have a ragged type.
           In this case, values of 'None' in the 'shape' argument represent
           ragged dimensions. For more information about RaggedTensors, see this
-          [guide](https://www.tensorflow.org/guide/ragged_tensors).
+          [guide](https://www.tensorflow.org/guide/ragged_tensor).
 
   Raises:
       ValueError: If called with sparse = True and ragged = True.
