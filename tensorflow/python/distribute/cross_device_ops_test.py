@@ -1232,7 +1232,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     get_global_mpr(num_processes).run(replica_fn)
 
-  @combinations.generate(combinations.combine(num_processes=2, required_gpus=2))
+  @combinations.generate(combinations.combine(num_processes=1, required_gpus=2))
   def testNcclOrdering(self, num_processes, required_gpus):
 
     if num_processes != required_gpus:
