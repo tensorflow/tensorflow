@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import functools
 import io
 import os
 
@@ -22,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.platform import test
+from tensorflow.python.trackable import base
 from tensorflow.python.trackable import python_state
 
 
@@ -203,6 +205,23 @@ class NumpyStateTests(test.TestCase):
     second_checkpoint.restore(save_path)
     self.assertAllEqual(numpy.zeros([3, 4]), second_checkpoint.numpy_arrays.x)
 
+
+class PythonStateSavebleTests(test.TestCase):
+
+  def testAssertConsumedFailsWithUsedPythonState(self):
+    has_config = base.Trackable()
+    attributes = {
+        "foo_attr": functools.partial(
+            python_state.PythonStringStateSaveable,
+            state_callback=lambda: "",
+            restore_callback=lambda x: None)}
+    has_config._gather_saveables_for_checkpoint = lambda: attributes
+    saved = util.Checkpoint(obj=has_config)
+    save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
+    restored = util.Checkpoint(obj=base.Trackable())
+    status = restored.restore(save_path)
+    with self.assertRaisesRegex(AssertionError, "foo_attr"):
+      status.assert_consumed()
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

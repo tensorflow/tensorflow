@@ -25,6 +25,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import registration
 from tensorflow.python.trackable import base
+from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training.saving import saveable_object as saveable_object_lib
@@ -255,7 +256,7 @@ def _add_attributes_to_object_graph_for_saveable_objects(
           cached_attributes[name] = saveables
 
       for saveable in saveables:
-        if isinstance(saveable, base.PythonStateSaveable):
+        if isinstance(saveable, python_state.PythonStateSaveable):
           if feed_additions is None:
             assert saveables_cache is None
             # If we're not caching saveables, then we're either executing

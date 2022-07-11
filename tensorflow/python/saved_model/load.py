@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import restore
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
@@ -519,8 +520,8 @@ class Loader(object):
       # initialized properly when using common practices (e.g. the ones used by
       # ManagedSession) without further user action.
       for object_id, obj in dict(ckpt.object_by_proto_id).items():
-        position = base.CheckpointPosition(checkpoint=ckpt,
-                                           proto_id=object_id)
+        position = restore.CheckpointPosition(checkpoint=ckpt,
+                                              proto_id=object_id)
         registered_saver = position.get_registered_saver_name()
         if registered_saver:
           raise NotImplementedError(

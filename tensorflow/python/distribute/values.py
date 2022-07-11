@@ -1750,6 +1750,11 @@ class PerWorkerResource():
       return getattr(self.local_resource(), name)
     return super(PerWorkerResource, self).__getattribute__(name)
 
+  def __setattr__(self, name, value):
+    if name not in ("_strategy", "_host_to_resources"):
+      return setattr(self.local_resource(), name, value)
+    return super(PerWorkerResource, self).__setattr__(name, value)
+
   def local_resource(self):
     """Returns the resource on the local worker."""
     current_device = device_util.canonicalize(device_util.current())

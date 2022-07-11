@@ -34,6 +34,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import nest
@@ -425,7 +426,7 @@ def trace_save_restore_functions(saveable_factory, obj):
 
 def validate_saveables_for_saved_model(saveables, obj):
   """Makes sure SaveableObjects are compatible with SavedModel."""
-  if any(isinstance(saveable, trackable.PythonStateSaveable)
+  if any(isinstance(saveable, python_state.PythonStateSaveable)
          for saveable in saveables):
     logging.warn(
         f"Note that object {obj} stores python values into the checkpoint. "

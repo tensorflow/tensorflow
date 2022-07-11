@@ -17,6 +17,7 @@ py_library(
         ":autotrackable",
         ":base",
         ":base_delegate",
+        ":constants",
         ":converter",
         ":data_structures",
         ":layer_utils",
@@ -38,20 +39,13 @@ py_library(
     srcs = ["base.py"],
     srcs_version = "PY3",
     deps = [
-        ":trackable_utils",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
+        ":constants",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:io_ops_gen",
-        "//tensorflow/python:platform",
         "//tensorflow/python:util",
-        "//tensorflow/python/checkpoint:checkpoint_util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/training/saving:saveable_object",
-        "@six_archive//:six",
     ],
 )
 
@@ -62,6 +56,12 @@ tf_py_test(
         ":base",
         "//tensorflow/python:client_testlib",
     ],
+)
+
+py_library(
+    name = "constants",
+    srcs = ["constants.py"],
+    srcs_version = "PY3",
 )
 
 py_library(
@@ -205,6 +205,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/training/saving:saveable_object",
     ],
 )
 
