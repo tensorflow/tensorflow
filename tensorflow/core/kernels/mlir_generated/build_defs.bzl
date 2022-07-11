@@ -402,8 +402,9 @@ def _gen_kernel_library(
                 args = test_args,
                 size = test_size,
                 data = [
-                    ":{op}_{platform}_{type}_{output_type}.mlir".format(
+                    ":{op}_{name}_{platform}_{type}_{output_type}.mlir".format(
                         op = op,
+                        name = name,
                         platform = platform,
                         type = type,
                         output_type = output_type,
