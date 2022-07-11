@@ -388,6 +388,7 @@ def HLO_RoundNearestEvenOp: HLO_UnaryElementwiseOp<"round_nearest_even",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",

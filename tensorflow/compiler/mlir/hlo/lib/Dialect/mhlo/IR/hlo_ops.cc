@@ -5713,6 +5713,14 @@ struct Round {
   }
 };
 
+struct RoundNearestEven {
+  APFloat operator()(const APFloat& f) {
+    APFloat r = f;
+    r.roundToIntegral(llvm::RoundingMode::NearestTiesToEven);
+    return r;
+  }
+};
+
 struct LogicalNot {
   APInt operator()(const APInt& i) {
     return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
@@ -5768,6 +5776,7 @@ struct Sign {
 UNARY_FOLDER(NegOp, std::negate);
 UNARY_FOLDER(SignOp, Sign);
 UNARY_FOLDER_INT(NotOp, LogicalNot);
+UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven);
 UNARY_FOLDER_FLOAT(RoundOp, Round);
 
 #undef UNARY_FOLDER
