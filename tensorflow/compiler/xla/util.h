@@ -446,9 +446,10 @@ constexpr inline int Log2Ceiling(T x) {
   return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
-// Returns the value with every bit except the lower 'width' bits set to zero.
+// Returns `value` with the low `width` bits set and the remaining bits set to
+// zero.
 template <typename T>
-constexpr inline T ClearUpperBits(T value, int width) {
+constexpr inline T KeepLowerBits(T value, int width) {
   return value & LsbMask<T>(width);
 }
 
