@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <queue>
 
@@ -36,6 +37,60 @@ constexpr int64_t Model::kOptimizationPeriodMinMs;
 constexpr int64_t Model::kOptimizationPeriodMaxMs;
 
 namespace {
+
+// This is the number of the latest gap times used to compute the target time
+// for stage based optimization.
+constexpr int32_t kGapTimeWindow = 100;
+// Gap time threshold: any gap time over the this duration will be dropped.
+constexpr uint64_t kGapDurationThresholdUsec = 10000000;  // 10 seconds
+// In outlier computation, points that are larger than `kOutlierSigmas` standard
+// deviations are considered outliers.
+constexpr double kOutlierSigmas = 2.0;
+
+// A class to prune outliers given a set of points. To use it, instantiate an
+// object and call the `GetCleanPoints()` method.
+class OutlierPruner {
+ public:
+  explicit OutlierPruner(const std::vector<uint64_t>& points)
+      : points_(points.begin(), points.end()) {}
+
+  // Returns the remaining points after removing outliers from the original set
+  // of points.
+  std::vector<uint64_t> GetCleanPoints() {
+    if (points_.empty()) {
+      return points_;
+    }
+    // Compute the outlier threshold
+    double mean;
+    double standard_deviation;
+    ComputeMeanAndStandardDeviation(&mean, &standard_deviation);
+    double threshold = mean + standard_deviation * kOutlierSigmas;
+    std::vector<uint64_t> clean_points;
+    for (auto point : points_) {
+      if (static_cast<double>(point) > threshold) {
+        continue;
+      }
+      clean_points.push_back(point);
+    }
+    return clean_points;
+  }
+
+ private:
+  void ComputeMeanAndStandardDeviation(double* mean,
+                                       double* standard_deviation) {
+    uint64_t sum = std::accumulate(points_.begin(), points_.end(), 0);
+    *mean = static_cast<double>(sum) / static_cast<double>(points_.size());
+    double accum = 0.0;
+    for (auto point : points_) {
+      accum += (static_cast<double>(point) - *mean) *
+               (static_cast<double>(point) - *mean);
+    }
+    *standard_deviation = std::sqrt(accum / (points_.size() - 1));
+  }
+
+  // Points to cluster.
+  std::vector<uint64_t> points_;
+};
 
 // A priority queue that holds stage roots where the top of the priority queue
 // is the node with the largest total time.
@@ -348,11 +403,11 @@ class InterleaveMany : public Node {
       return;
     }
     // Here `inherited_input_time + SelfProcessingTimeLocked()` is the average
-    // input time for InterleaveMany node to call one of the
-    // `(num_inputs() - 1)` input nodes (except first input) to return an
-    // element. Regardless of the `block_length` parameter of InterleaveMany
-    // node, the average input time for any of the `(num_inputs() - 1)` input
-    // nodes to be called is computed as:
+    // input time for InterleaveMany node to call one of the `(num_inputs() -
+    // 1)` input nodes (except first input) to return an element. Regardless of
+    // the `block_length` parameter of InterleaveMany node, the average input
+    // time for any of the `(num_inputs() - 1)` input nodes to be called is
+    // computed as:
     double input_time = (inherited_input_time + SelfProcessingTimeLocked()) *
                         static_cast<double>(num_inputs() - 1);
     (*input_times)[long_name()] = input_time;
@@ -468,9 +523,9 @@ class AsyncInterleaveMany : public Node {
       if (inputs_.size() >= 2) {
         auto first_input = inputs_.begin();
         auto second_input = std::next(first_input);
-        // Some interleave datasets have 2 different inputs: the original
-        // input dataset and the generated input datasets when interleave is
-        // iterated, and some do not.
+        // Some interleave datasets have 2 different inputs: the original input
+        // dataset and the generated input datasets when interleave is iterated,
+        // and some do not.
         if ((*first_input)->name() == (*second_input)->name()) {
           parallelism = std::max(inputs_.size(), size_t{1});
         } else {
@@ -523,24 +578,23 @@ class AsyncInterleaveMany : public Node {
       return;
     }
     // Here `inherited_input_time + SelfProcessingTimeLocked()` is the average
-    // input time for AsyncInterleaveMany node to call one of the
-    // `(num_inputs() - 1)` input nodes (except first input) to return an
-    // element. Regardless of the `block_length` parameter of
-    // AsyncInterleaveMany node, the average input time for any of the
-    // `(num_inputs() - 1)` input nodes to be called is computed as:
+    // input time for AsyncInterleaveMany node to call one of the `(num_inputs()
+    // - 1)` input nodes (except first input) to return an element. Regardless
+    // of the `block_length` parameter of AsyncInterleaveMany node, the average
+    // input time for any of the `(num_inputs() - 1)` input nodes to be called
+    // is computed as:
     double input_time = (inherited_input_time + SelfProcessingTimeLocked()) *
                         static_cast<double>(num_inputs() - 1);
     (*input_times)[long_name()] = input_time;
   }
 
   // The output time is the sum of self processing time and expected wait time
-  // from the buffer model estimated using
-  // `ComputeWaitTime(producer_time, consumer_time, parallelism, ...)`, where
-  // `producer_time` is the average output time of inputs comprising the
-  // interleave "cycle" divided by `parallelism`, `consumer_time` is the
-  // `input_time` specified through `input_times` divided by `num_inputs() - 1`,
-  // and if the node has parallelism parameter, then `buffer_size` is derived
-  // from `parallelism`.
+  // from the buffer model estimated using `ComputeWaitTime(producer_time,
+  // consumer_time, parallelism, ...)`, where `producer_time` is the average
+  // output time of inputs comprising the interleave "cycle" divided by
+  // `parallelism`, `consumer_time` is the `input_time` specified through
+  // `input_times` divided by `num_inputs() - 1`, and if the node has
+  // parallelism parameter, then `buffer_size` is derived from `parallelism`.
   void OutputTimeLocked(const NodeValues& input_times,
                         ParameterGradients* gradients, NodeValues* output_times,
                         NodeValues* output_time_gradients) const override
@@ -1002,8 +1056,8 @@ class UnknownRatio : public Node {
  protected:
   double RatioLocked() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     // TODO(wilsin): Consistent with UnknownRatio, current implementation
-    // assumes that the number of input elements consumed per output is the
-    // same across all inputs.
+    // assumes that the number of input elements consumed per output is the same
+    // across all inputs.
     if (num_elements_ == 0 || inputs_.empty() ||
         inputs_.front()->num_elements() == 0) {
       return 0.0;
@@ -1382,17 +1436,17 @@ double Node::ComputeWaitTime(const double& producer_time,
     if (producer_time_derivative) {
       // Note a common error is `*producer_time_derivative = p_buffer_empty`
       // since p=1/(n+1) on the line x=y doesn't imply dp/dy = 0 there. Actually
-      // to compute dp/dy at (y,y), we need to consider
-      // lim_{dy->0} [p(y,y+dy)-p(y,y)] / dy, where p(y,y)=1/(n+1),
-      // p(y,y+dy) = [1 - y/(y+dy)] / [1 - power(y/(y+dy), n+1)].
+      // to compute dp/dy at (y,y), we need to consider lim_{dy->0}
+      // [p(y,y+dy)-p(y,y)] / dy, where p(y,y)=1/(n+1), p(y,y+dy) = [1 -
+      // y/(y+dy)] / [1 - power(y/(y+dy), n+1)].
       *producer_time_derivative = p_buffer_empty - p_buffer_empty_der;
     }
     if (consumer_time_derivative) {
-      // Note a common error is `*consumer_time_derivative = 0` since
-      // p=1/(n+1) on the line x=y doesn't imply dp/dx = 0 there. Actually to
-      // compute dp/dx at (x,x), we need to consider
-      // lim_{dx->0} [p(x+dx,x)-p(x,x)] / dx, where p(x,x)=1/(n+1),
-      // p(x+dx,x) = [1 - (x+dx)/x] / [1 - power((x+dx)/x, n+1)].
+      // Note a common error is `*consumer_time_derivative = 0` since p=1/(n+1)
+      // on the line x=y doesn't imply dp/dx = 0 there. Actually to compute
+      // dp/dx at (x,x), we need to consider lim_{dx->0} [p(x+dx,x)-p(x,x)] /
+      // dx, where p(x,x)=1/(n+1), p(x+dx,x) = [1 - (x+dx)/x] / [1 -
+      // power((x+dx)/x, n+1)].
       *consumer_time_derivative = p_buffer_empty_der;
     }
     if (buffer_size_derivative) {
@@ -1564,8 +1618,8 @@ double Node::TotalBufferedBytes() const {
 double Node::TotalMaximumBufferedBytes() const {
   Node::NodeValues total_bytes;
   tf_shared_lock l(mu_);
-  // Compute total maximum buffered bytes from the leaves of the nodes tree
-  // to the root.
+  // Compute total maximum buffered bytes from the leaves of the nodes tree to
+  // the root.
   for (const auto& node :
        CollectNodesLocked(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
@@ -1652,12 +1706,12 @@ double Node::OutputTimeGradientsForInputs(
 double Node::TotalProcessingTimeForInputs(
     const Node::NodeValues& total_processing_times) {
   // If the number of elements produced by an input is smaller than this
-  // constant, then its processing time is estimated using a weighted average
-  // of the empirical processing time and processing time history.
+  // constant, then its processing time is estimated using a weighted average of
+  // the empirical processing time and processing time history.
   constexpr int kNumElementsThreshold = 30;
 
-  // Identifies the minimum number of input processing times to collect
-  // before the processing time history is used as a prior.
+  // Identifies the minimum number of input processing times to collect before
+  // the processing time history is used as a prior.
   constexpr int kCountThreshold = 30;
 
   double sum = 0;
@@ -2219,8 +2273,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
-    // Exponentially increase the period of running the optimization
-    // until a threshold is reached.
+    // Exponentially increase the period of running the optimization until a
+    // threshold is reached.
     {
       mutex_lock l(mu_);
       optimization_period_ms_ =
@@ -2322,7 +2376,8 @@ void Model::OptimizeHillClimbHelper(
   if (skip_buffer_sizes) {
     constexpr float TEN_MINUTES = 60.0 * 10.0;
     LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
-        << "Skipping buffer_size parameters in HillClimb (message logged every "
+        << "Skipping buffer_size parameters in HillClimb (message logged "
+           "every "
            "10 minutes).";
   }
   // Initialize the parameter values to minimal before tuning.
@@ -2371,15 +2426,36 @@ void Model::OptimizeHillClimbHelper(
   }
   UpdateStateValues(&parameters);
 }
+void Model::RecordIteratorGapTime(uint64_t duration_usec) {
+  mutex_lock l(gap_mu_);
+  // Drop duration if it is too large.
+  if (duration_usec >= kGapDurationThresholdUsec) {
+    return;
+  }
+  gap_times_usec_.push_back(duration_usec);
+  // Keep only the latest `window` gap times. Drop the oldest one.
+  while (gap_times_usec_.size() > kGapTimeWindow) {
+    gap_times_usec_.pop_front();
+  }
+}
 
 double Model::ComputeTargetTimeNsec() {
   tf_shared_lock l(gap_mu_);
-  if (gap_time_count_ == 0) {
+  if (gap_times_usec_.empty()) {
     return 0.0;
   }
-  return (static_cast<double>(gap_time_sum_usec_) /
-          static_cast<double>(gap_time_count_)) *
-         1.0e6;
+  // Remove outliers.
+  std::vector<uint64_t> clean_gap_times_usec =
+      OutlierPruner({gap_times_usec_.begin(), gap_times_usec_.end()})
+          .GetCleanPoints();
+  if (clean_gap_times_usec.empty()) {
+    return 0.0;
+  }
+  // Compute mean after outliers are removed.
+  double sum_gap_time_usec = std::accumulate(clean_gap_times_usec.begin(),
+                                             clean_gap_times_usec.end(), 0);
+  return sum_gap_time_usec / static_cast<double>(clean_gap_times_usec.size()) *
+         1.0e3;
 }
 
 void Model::OptimizeStageBased(std::shared_ptr<Node> snapshot,
@@ -2421,6 +2497,7 @@ void Model::OptimizeStageBasedParallelism(
     // Stop optimization if the critical stage has no `parallelism` parameter or
     // it has reached the max parallelism value.
     if (parallelism_parameter == nullptr ||
+        parallelism_parameter->value >= parallelism_parameter->max ||
         parallelism_parameter->value >= optimization_params.cpu_budget()) {
       break;
     }
@@ -2688,7 +2765,8 @@ void ModelTiming::ComputePipelineRatios(const Node::NodeVector& bfs_nodes) {
   for (const auto& node : bfs_nodes) {
     auto& node_timing = timing_nodes_[node.get()];
     if (!node->autotune()) {
-      // These are inactive nodes marked by parallel interleave transformations.
+      // These are inactive nodes marked by parallel interleave
+      // transformations.
       node_timing.pipeline_ratio = 0.0;
       continue;
     }
@@ -2764,8 +2842,8 @@ void ModelTiming::ComputeAsyncInterleaveManyTotalTime(const Node& node) {
   // ASYNC_INTERLEAVE_MANY node. The "not-ok" check is to allow the code to work
   // with protos saved and restored before that CL.
   if (!deterministic.ok() || deterministic.ValueOrDie() == 1.0) {
-    // If deterministic = true, then the total time is `1/worst input
-    // throughput * cycle_length`, or `max input total time / cycle_length`.
+    // If deterministic = true, then the total time is `1/worst input throughput
+    // * cycle_length`, or `max input total time / cycle_length`.
     input_total_time_nsec = max_input_total_time_nsec * node.Ratio();
   } else if (sum_input_throughput > 0.0) {
     // If deterministic = false, then the total time is

@@ -801,11 +801,11 @@ class Model {
                      OptimizationParams* optimization_params);
 
   // Records gap time between consecutive `GetNext()` calls.
-  void RecordIteratorGapTime(uint64_t duration_usec) {
-    mutex_lock l(gap_mu_);
-    gap_time_sum_usec_ += duration_usec;
-    ++gap_time_count_;
-  }
+  void RecordIteratorGapTime(uint64_t duration_usec);
+
+  // Computes the target time in nsecs to use for `STAGE_BASED` autotune
+  // algorithm.
+  double ComputeTargetTimeNsec();
 
  private:
   // Determines whether optimization should stop given total processing time,
@@ -881,10 +881,6 @@ class Model {
                           const OptimizationParams& optimization_params,
                           CancellationManager* cancellation_manager);
 
-  // Computes the target time in nsecs to use for `STAGE_BASED` autotune
-  // algorithm.
-  double ComputeTargetTimeNsec();
-
   // This is the first part of the stage-based optimization that optimizes
   // tunable parallelism parameters.
   void OptimizeStageBasedParallelism(
@@ -940,9 +936,8 @@ class Model {
   // the time between the completion of the previous `GetNext()` and the start
   // of the next `GetNext()`.
   mutable mutex gap_mu_;
-  // Gap time between consecutive `GetNext()` for a model.
-  uint64_t gap_time_sum_usec_ TF_GUARDED_BY(gap_mu_) = 0;
-  uint64_t gap_time_count_ TF_GUARDED_BY(gap_mu_) = 0;
+  // Stores the latest gap times between consecutive `GetNext()`.
+  std::deque<uint64_t> gap_times_usec_ TF_GUARDED_BY(gap_mu_);
   // The experiment that this job is part of.
   std::string experiment_ = "";
 };

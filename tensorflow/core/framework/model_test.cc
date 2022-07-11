@@ -2453,6 +2453,53 @@ TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages_CpuBudgetExceeded) {
   EXPECT_EQ(3, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
 }
 
+TEST_F(ModelTimingTest, ComputeTargetTime) {
+  model_ = std::make_unique<Model>();
+
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
+  model_ = std::make_unique<Model>();
+
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
+  model_ = std::make_unique<Model>();
+
+  // The window size is 100. Only the last 100 gap times are used to compute the
+  // target time.
+  for (int i = 0; i < 100; ++i) {
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 100; ++i) {
+    model_->RecordIteratorGapTime(10);
+  }
+
+  EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
 }  // namespace
 }  // namespace model
 }  // namespace data
