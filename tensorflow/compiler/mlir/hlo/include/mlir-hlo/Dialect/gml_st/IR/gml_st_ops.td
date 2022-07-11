@@ -252,7 +252,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       Terminator, SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"YieldOp">
   ]> {
   let summary = "Set yield operation";
   let description = [{
@@ -349,23 +349,6 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       return operand.getOperandNumber() % 3 == 2;
     }
   }];
-}
-
-def GMLST_ReturnOp : GMLST_Op<"return", [NoSideEffect, ReturnLike,
-      Terminator, HasParent<"::mlir::gml_st::SetYieldOp">]>,
-    Arguments<(ins AnyType:$value)> {
-  let summary = "Return operation";
-  let description = [{
-    `gml_st.return` is a special terminator operation for `gml_st.set_yield`
-    regions.
-
-    Example:
-
-    ```mlir
-    gml_st.return %f0, %f1 : tensor<f32>, tensor<?xf32>
-    ```
-  }];
-  let assemblyFormat = "attr-dict $value `:` type($value)";
 }
 
 #endif // GML_ST_OPS

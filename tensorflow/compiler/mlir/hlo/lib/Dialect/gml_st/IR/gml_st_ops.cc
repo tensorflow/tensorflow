@@ -1209,7 +1209,15 @@ LogicalResult LoopOp::fold(ArrayRef<Attribute>,
 
 LogicalResult YieldOp::verify() {
   auto *parentOp = getOperation()->getParentOp();
-  auto loopOp = dyn_cast<LoopOp>(parentOp);
+
+  if (auto setYield = dyn_cast<SetYieldOp>(parentOp)) {
+    if (values().size() != 1)
+      return emitOpError(
+          "expected a single argument for the terminator of accumulator "
+          "region");
+    return success();
+  }
+  auto loopOp = cast<LoopOp>(parentOp);
   // Check if output args with tensor types match results types.
   SmallVector<Value, 2> tensorOuts;
   llvm::copy_if(

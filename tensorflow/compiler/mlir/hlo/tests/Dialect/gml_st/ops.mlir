@@ -384,7 +384,7 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
 
     gml_st.set_yield %result_sub into %output[%tile]
       acc (%new, %old: tensor<4xf32>) {
-        gml_st.return %new : tensor<4xf32>
+        gml_st.yield %new : tensor<4xf32>
       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
@@ -393,7 +393,7 @@ func.func @trivial_acc_region(%lhs: tensor<8xf32>,
 // CHECK-LABEL: func @trivial_acc_region
 // CHECK:       gml_st.set_yield %{{.*}} into %{{.*}}[%{{.*}}]
 // CHECK-SAME:    acc (%[[NEW:.*]], %{{.*}}: tensor<4xf32>) {
-// CHECK:           gml_st.return %[[NEW]] : tensor<4xf32>
+// CHECK:           gml_st.yield %[[NEW]] : tensor<4xf32>
 // CHECK:       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
 
 
@@ -439,7 +439,7 @@ func.func @accumulator_region(%lhs: tensor<8xf32>,
           %s = arith.addf %n, %o : f32
           linalg.yield %s : f32
         } -> tensor<4xf32>
-        gml_st.return %sum : tensor<4xf32>
+        gml_st.yield %sum : tensor<4xf32>
       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
   } : tensor<8xf32>
   func.return %sum : tensor<8xf32>
@@ -448,7 +448,7 @@ func.func @accumulator_region(%lhs: tensor<8xf32>,
 // CHECK:       gml_st.set_yield %{{.*}} into %{{.*}}[%{{.*}}]
 // CHECK-SAME:    acc (%{{.*}}, %{{.*}}: tensor<4xf32>) {
 // CHECK:           %[[SUM:.*]] = linalg.generic
-// CHECK:           gml_st.return %[[SUM]] : tensor<4xf32>
+// CHECK:           gml_st.yield %[[SUM]] : tensor<4xf32>
 // CHECK:       } : tensor<4xf32> into tensor<8xf32>[!gml_st.tile<4>]
 
 // -----
@@ -489,7 +489,7 @@ func.func @reduce_tiles(%arg: tensor<8xf32>,
       %out_pt = tensor.extract %out[] : tensor<f32>
       %sum_pt = arith.addf %in_pt, %out_pt : f32
       %sum = tensor.from_elements %sum_pt : tensor<f32>
-      gml_st.return %sum : tensor<f32>
+      gml_st.yield %sum : tensor<f32>
     } : tensor<f32> into tensor<f32>[!gml_st.tile<>]
   } : tensor<f32>
   func.return %sum : tensor<f32>
@@ -521,7 +521,7 @@ func.func @reduce_points(%arg: tensor<8xf32>,
     gml_st.set_yield %arg_sub into %output[%point_out]
       acc (%in, %out: f32) {
       %sum = arith.addf %in, %out : f32
-      gml_st.return %sum : f32
+      gml_st.yield %sum : f32
     } : f32 into tensor<f32>[!gml_st.point]
   } : tensor<f32>
   func.return %sum : tensor<f32>

@@ -316,12 +316,13 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   let hasFolder = 1;
 }
 
-def GMLST_YieldOp : GMLST_Op<"yield", [NoSideEffect, ReturnLike,
-      Terminator, HasParent<"::mlir::gml_st::LoopOp">]>,
+def GMLST_YieldOp : GMLST_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+    HasParent<"::mlir::gml_st::LoopOp, ::mlir::gml_st::SetYieldOp">]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation";
   let description = [{
-    `gml_st.yield` is a special terminator operation for `gml_st.loop` body.
+    `gml_st.yield` is a special terminator operation for `gml_st.loop` body or
+    for accumulator regions of `gml_st.set_yield`.
 
     Example:
 
