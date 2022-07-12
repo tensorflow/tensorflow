@@ -709,7 +709,7 @@ void BuildPytreeSubmodule(py::module& m) {
   pytree.def("tuple", &PyTreeDef::Tuple);
   pytree.def("all_leaves", &PyTreeDef::AllLeaves);
 
-  py::class_<PyTreeDef>(m, "PyTreeDef")
+  py::class_<PyTreeDef>(pytree, "PyTreeDef")
       .def("unflatten",
            static_cast<pybind11::object (PyTreeDef::*)(
                pybind11::iterable leaves) const>(&PyTreeDef::Unflatten))
