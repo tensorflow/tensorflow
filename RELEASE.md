@@ -95,6 +95,8 @@
         STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it
         runs a new algorithm that can get the same performance with lower
         CPU/memory usage.
+    *   Added [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list), a new API for creating
+        `Dataset`s from lists of elements.
 
 *   `tf.distribute`:
 

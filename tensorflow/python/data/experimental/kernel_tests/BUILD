@@ -207,6 +207,28 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "from_list_test",
+    size = "small",
+    srcs = ["from_list_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/experimental/ops:random_access",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "group_by_reducer_test",
     size = "small",
     srcs = ["group_by_reducer_test.py"],

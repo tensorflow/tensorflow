@@ -1486,4 +1486,23 @@ REGISTER_OP("InitializeTableFromDataset")
       return OkStatus();
     });
 
+// - `output_types` is the types of tensors in a single dataset element.
+// - `output_shapes` is the shapes of tensors in a single dataset element.
+// - `output_types` and `output_shapes` are the same size: the number of
+// tensors in a single dataset element, a.k.a. the number of components.
+// - `Tinput_types` is the types of tensors for all dataset elements.
+// `Tinput_types` is equivalent to `output_types` repeated for N total dataset
+// elements.
+REGISTER_OP("ListDataset")
+    .Input("tensors: Tinput_types")
+    .Output("handle: variant")
+    .Attr("Tinput_types: list(type) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
+    .SetDoNotOptimize()
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // namespace tensorflow
