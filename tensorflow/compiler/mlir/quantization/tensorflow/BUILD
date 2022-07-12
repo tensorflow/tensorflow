@@ -71,6 +71,7 @@ td_library(
         "passes/prepare_quantize.td",
         "passes/quantize_composite_functions.td",
         "passes/replace_cast_hacks_with_tf_xla_ops.td",
+        "passes/tf_quant_ops.td",
         "passes/utils.td",
     ],
     compatible_with = get_compatible_with_cloud(),
