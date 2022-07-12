@@ -1202,12 +1202,12 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$indices,
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$updates,
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$updates,
     TFL_1DTensorOf<[I32]>:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$output
   );
 
   let hasVerifier = 1;

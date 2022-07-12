@@ -2976,3 +2976,15 @@ func.func @testGeluWithWrongInputType(%arg0: tensor<?xf32>) -> tensor<?xi32> {
   %0 = "tfl.gelu"(%arg0) {approximate = false}: (tensor<?xf32>) -> tensor<?xi32>
   func.return %0#0 : tensor<?xi32>
 }
+
+// -----
+
+// CHECK-LABEL: scatter_nd_i1
+func.func @scatter_nd_i1(%arg0: tensor<?xi32>, %arg1: tensor<?xi1>, %arg2: tensor<?xi32>) -> tensor<?xi1> {
+  // CHECK: "tfl.scatter_nd"(%arg0, %arg1, %arg2)
+  %0 = "tfl.scatter_nd"(%arg0, %arg1, %arg2): (tensor<?xi32>, tensor<?xi1>, tensor<?xi32>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// -----
+
