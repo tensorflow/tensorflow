@@ -325,6 +325,7 @@ py_library(
     deps = [
         ":_dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
         "//tensorflow/python/types:doc_typealias",
@@ -2044,6 +2045,7 @@ tf_py_test(
         ":test_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],

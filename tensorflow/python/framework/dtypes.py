@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Library of dtypes (Tensor element types)."""
+import abc
+from typing import Type, Sequence, Optional
+
 import numpy as np
 from six.moves import builtins
 
@@ -25,12 +28,22 @@ from tensorflow.python.framework import _dtypes
 from tensorflow.python.types import doc_typealias
 from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import trace
+from tensorflow.core.function import trace_type
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
+class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
+  pass
+
+
 @tf_export("dtypes.DType", "DType")
-class DType(_dtypes.DType):
+class DType(
+    _dtypes.DType,
+    trace.TraceType,
+    trace_type.Serializable,
+    metaclass=DTypeMeta):
   """Represents the type of the elements in a `Tensor`.
 
   `DType`'s are used to specify the output data type for operations which
@@ -176,6 +189,29 @@ class DType(_dtypes.DType):
     return self._type_enum in (other.as_datatype_enum,
                                other.base_dtype.as_datatype_enum)
 
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See tf.types.experimental.TraceType base class."""
+    return self == other
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["DType"]:
+    """See tf.types.experimental.TraceType base class."""
+    return self if all(self == other for other in types) else None
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
+    """Returns the type of proto associated with DType serialization."""
+    return types_pb2.SerializedDType
+
+  @classmethod
+  def experimental_from_proto(cls, proto: types_pb2.SerializedDType) -> "DType":
+    """Returns a Dtype instance based on the serialized proto."""
+    return DType(proto.datatype)
+
+  def experimental_as_proto(self) -> types_pb2.SerializedDType:
+    """Returns a proto representation of the Dtype instance."""
+    return types_pb2.SerializedDType(datatype=self._type_enum)
+
   def __eq__(self, other):
     """Returns True iff this DType refers to the same type as `other`."""
     if other is None:
@@ -202,6 +238,7 @@ class DType(_dtypes.DType):
   def __reduce__(self):
     return as_dtype, (self.name,)
 
+trace_type.register_serializable(DType)
 
 # Define data type range of numpy dtype
 dtype_range = {

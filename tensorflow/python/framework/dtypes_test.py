@@ -14,25 +14,29 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.dtypes."""
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.framework import types_pb2
+# pylint: disable=g-bad-import-order
 from tensorflow.python.framework import _dtypes
+# pylint: enable=g-bad-import-order
+
+from tensorflow.core.framework import types_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 
 def _is_numeric_dtype_enum(datatype_enum):
-  non_numeric_dtypes = [types_pb2.DT_VARIANT,
-                        types_pb2.DT_VARIANT_REF,
-                        types_pb2.DT_INVALID,
-                        types_pb2.DT_RESOURCE,
-                        types_pb2.DT_RESOURCE_REF]
+  non_numeric_dtypes = [
+      types_pb2.DT_VARIANT, types_pb2.DT_VARIANT_REF, types_pb2.DT_INVALID,
+      types_pb2.DT_RESOURCE, types_pb2.DT_RESOURCE_REF
+  ]
   return datatype_enum not in non_numeric_dtypes
 
 
-class TypesTest(test_util.TensorFlowTestCase):
+class TypesTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testAllTypesConstructible(self):
     for datatype_enum in types_pb2.DataType.values():
@@ -337,6 +341,24 @@ class TypesTest(test_util.TensorFlowTestCase):
   def testAsDtypeReturnsInternedVersion(self):
     dt = dtypes.DType(types_pb2.DT_VARIANT)
     self.assertIs(dtypes.as_dtype(dt), dtypes.variant)
+
+  def testDTypeSubtypes(self):
+    self.assertTrue(dtypes.string.is_subtype_of(dtypes.string))
+    self.assertFalse(dtypes.string.is_subtype_of(dtypes.uint32))
+    self.assertTrue(dtypes.uint64.is_subtype_of(dtypes.uint64))
+
+  def testDTypeSupertypes(self):
+    self.assertEqual(dtypes.string,
+                     dtypes.string.most_specific_common_supertype([]))
+    self.assertEqual(
+        dtypes.string,
+        dtypes.string.most_specific_common_supertype([dtypes.string]))
+    self.assertIsNone(
+        dtypes.string.most_specific_common_supertype([dtypes.uint32]))
+
+  @parameterized.parameters(*tuple(dtype for dtype in dtypes.TF_VALUE_DTYPES))
+  def testDTypeSerialization(self, dtype):
+    self.assertEqual(trace_type.deserialize(trace_type.serialize(dtype)), dtype)
 
 
 if __name__ == "__main__":
