@@ -530,3 +530,110 @@ func.func @reduce_points(%arg: tensor<8xf32>,
 // CHECK:       gml_st.set_yield
 // CHECK-SAME:    acc (%{{.*}}, %{{.*}}: f32)
 // CHECK:       } : f32 into tensor<f32>[!gml_st.point]
+
+// -----
+
+#id_1d = affine_map<(d0) -> (d0)>
+#id_2d = affine_map<(d0, d1) -> (d0, d1)>
+#map_1d = affine_map<(d0, d1) -> (d1)>
+
+func.func @column_reduction(%arg: tensor<128x16xf32>,
+                            %out: tensor<16xf32>) -> tensor<16xf32> {
+  %c0 = arith.constant 0 : index
+  %c8 = arith.constant 8 : index
+  %c16 = arith.constant 16 : index
+  %c128 = arith.constant 128 : index
+  %cst = arith.constant 0.000000e+00 : f32
+
+  %arg_space = gml_st.space [128, 16] : !gml_st.tile<128x16>
+  %out_space = gml_st.space [16] : !gml_st.tile<16>
+
+  %sum = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c16) step (%c8, %c8) {
+    %arg_tile = gml_st.tile %arg_space [%i, %j] [8, 8] [1, 1]
+      : !gml_st.tile<128x16> to !gml_st.tile<8x8>
+    %arg_sub = gml_st.materialize %arg[%arg_tile]
+      : tensor<128x16xf32>[!gml_st.tile<8x8>]
+
+    %init = linalg.init_tensor [8] : tensor<8xf32>
+    %fill = linalg.fill ins(%cst : f32)
+                        outs(%init : tensor<8xf32>) -> tensor<8xf32>
+
+    %result_sub = linalg.generic {
+        indexing_maps = [#id_2d, #map_1d],
+        iterator_types = ["reduction", "parallel"]}
+        ins(%arg_sub: tensor<8x8xf32>)
+        outs(%fill : tensor<8xf32>) {
+      ^bb(%a: f32, %o: f32) :
+        %s = arith.addf %a, %o : f32
+        linalg.yield %s : f32
+    } -> tensor<8xf32>
+
+    %out_tile = gml_st.tile %out_space [%j] [8] [1]
+      : !gml_st.tile<16> to !gml_st.tile<8>
+
+    gml_st.set_yield %result_sub into %out[%out_tile]
+        acc (%new, %old: tensor<8xf32>) {
+      %acc = linalg.generic {
+          indexing_maps = [#id_1d, #id_1d],
+          iterator_types = ["parallel"]}
+          ins(%new: tensor<8xf32>)
+          outs(%old : tensor<8xf32>) {
+        ^bb(%n: f32, %o: f32) :
+          %s = arith.addf %n, %o : f32
+          linalg.yield %s : f32
+      } -> tensor<8xf32>
+      gml_st.yield %acc : tensor<8xf32>
+    } : tensor<8xf32> into tensor<16xf32>[!gml_st.tile<8>]
+  } : tensor<16xf32>
+  func.return %sum : tensor<16xf32>
+}
+// CHECK-LABEL: func @column_reduction
+// CHECK:       gml_st.set_yield
+// CHECK-SAME:    acc (%{{.*}}, %{{.*}}: tensor<8xf32>)
+// CHECK:       } : tensor<8xf32> into tensor<16xf32>[!gml_st.tile<8>]
+
+// -----
+
+#id_1d = affine_map<(d0) -> (d0)>
+#id_2d = affine_map<(d0, d1) -> (d0, d1)>
+#map_1d = affine_map<(d0, d1) -> (d1)>
+
+func.func @sequential_column_reduction(%arg: tensor<128x16xf32>,
+                                       %out: tensor<16xf32>) -> tensor<16xf32> {
+  %c0 = arith.constant 0 : index
+  %c8 = arith.constant 8 : index
+  %c16 = arith.constant 16 : index
+  %c128 = arith.constant 128 : index
+
+  %arg_space = gml_st.space [128, 16] : !gml_st.tile<128x16>
+  %out_space = gml_st.space [16] : !gml_st.tile<16>
+
+  %sum = gml_st.for (%i, %j) = (%c0, %c0) to (%c128, %c16) step (%c8, %c8)
+      outs(%out_ = %out : tensor<16xf32>) {
+    %arg_tile = gml_st.tile %arg_space [%i, %j] [8, 8] [1, 1]
+      : !gml_st.tile<128x16> to !gml_st.tile<8x8>
+    %arg_sub = gml_st.materialize %arg[%arg_tile]
+      : tensor<128x16xf32>[!gml_st.tile<8x8>]
+
+    %out_tile = gml_st.tile %out_space [%j] [8] [1]
+      : !gml_st.tile<16> to !gml_st.tile<8>
+    %out_sub = gml_st.materialize %out_[%out_tile]
+      : tensor<16xf32>[!gml_st.tile<8>]
+
+    %result_sub = linalg.generic {
+        indexing_maps = [#id_2d, #map_1d],
+        iterator_types = ["reduction", "parallel"]}
+        ins(%arg_sub: tensor<8x8xf32>)
+        outs(%out_sub : tensor<8xf32>) {
+      ^bb(%a: f32, %o: f32) :
+        %s = arith.addf %a, %o : f32
+        linalg.yield %s : f32
+    } -> tensor<8xf32>
+
+    gml_st.set_yield %result_sub into %out_[%out_tile]
+      : tensor<8xf32> into tensor<16xf32>[!gml_st.tile<8>]
+  } : tensor<16xf32>
+  func.return %sum : tensor<16xf32>
+}
+// CHECK-LABEL: func @sequential_column_reduction
+// CHECK:       gml_st.set_yield
