@@ -27504,6 +27504,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "allow_missing_files"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
