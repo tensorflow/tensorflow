@@ -114,8 +114,9 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void SetError(const Status& error) override;
   Status ActivateWatch(const std::string& key,
                        const std::map<std::string, std::string>&) override;
-  // Returns an error if agent is not running.
-  Status ValidateRunningAgent();
+  // Returns an error if agent is not running. If `allow_disconnected` is true,
+  // returns OK even if the agent is in DISCONNECTED state.
+  Status ValidateRunningAgent(bool allow_disconnected = false);
   void StopHeartbeat();
 
  private:
@@ -689,7 +690,8 @@ Status CoordinationServiceAgentImpl::WaitAtBarrier(
 void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
     const std::string& barrier_id, absl::Duration timeout,
     const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
-  Status agent_running_status = ValidateRunningAgent();
+  Status agent_running_status =
+      ValidateRunningAgent(/*allow_disconnected=*/true);
   if (!agent_running_status.ok()) {
     done(agent_running_status);
     return;
@@ -730,7 +732,8 @@ Status CoordinationServiceAgentImpl::CancelBarrier(
 
 void CoordinationServiceAgentImpl::CancelBarrierAsync(
     const std::string& barrier_id, StatusCallback done) {
-  Status agent_running_status = ValidateRunningAgent();
+  Status agent_running_status =
+      ValidateRunningAgent(/*allow_disconnected=*/true);
   if (!agent_running_status.ok()) {
     done(agent_running_status);
     return;
@@ -747,7 +750,8 @@ void CoordinationServiceAgentImpl::CancelBarrierAsync(
 }
 
 // Returns an error if agent is not running.
-Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
+Status CoordinationServiceAgentImpl::ValidateRunningAgent(
+    bool allow_disconnected) {
   mutex_lock l(state_mu_);
   switch (state_) {
     case State::RUNNING:
@@ -758,6 +762,7 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
           "Agent must be in RUNNING state. It is currently UNINITIALIZED."));
 
     case State::DISCONNECTED:
+      if (allow_disconnected) return OkStatus();
       return MakeCoordinationError(errors::FailedPrecondition(
           "Agent must be in RUNNING state. It is currently DISCONNECTED."));
 
