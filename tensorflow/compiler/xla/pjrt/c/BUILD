@@ -33,7 +33,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
-        # TODO(b/236710439): this indirectly provides absl/log/check.h and can be removed after the issue is resolved
-        "//tensorflow/core/platform:logging",
+        "//tensorflow/compiler/xla:status",
     ],
 )

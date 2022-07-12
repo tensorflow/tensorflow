@@ -28,6 +28,21 @@ limitations under the License.
 
 namespace xla {
 
+// Helper macros
+
+// Return error status if not success and frees the PJRT_Error returned by
+// `expr`.
+#define RETURN_STATUS_IF_ERROR(expr, c_api)                             \
+  do {                                                                  \
+    PJRT_Error* error = (expr);                                         \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
+        error, pjrt::MakeErrorDeleter(c_api));                          \
+    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                \
+      return _status;                                                   \
+    }                                                                   \
+  } while (false)
+
 // ---------------------------------- Client -----------------------------------
 
 PjRtCApiClient::PjRtCApiClient(const PJRT_Api* c_api, PJRT_Client* c_client)
@@ -118,10 +133,8 @@ int PjRtCApiClient::process_index() const {
   process_index_args.struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE;
   process_index_args.priv = nullptr;
   process_index_args.client = c_client_.get();
-  PJRT_Error* error = c_api_->PJRT_Client_ProcessIndex(&process_index_args);
-
-  // TODO(b/236710439)
-  CHECK(error == nullptr);
+  pjrt::LogFatalIfPjrtError(
+      c_api_->PJRT_Client_ProcessIndex(&process_index_args), c_api_);
 
   return process_index_args.process_index;
 }
@@ -431,9 +444,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
-  PJRT_Error* error = c_api->PJRT_Client_Create(&init_args);
-  // TODO(skyewm): handle error
-  CHECK(error == nullptr);
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Create(&init_args), c_api);
   PJRT_Client* c_client = init_args.client;
 
   return std::unique_ptr<PjRtClient>(
