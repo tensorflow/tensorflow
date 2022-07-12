@@ -2106,7 +2106,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
