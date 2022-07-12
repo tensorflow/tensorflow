@@ -21591,6 +21591,37 @@ func LinSpace(scope *Scope, start tf.Output, stop tf.Output, num tf.Output) (out
 	return op.Output(0)
 }
 
+// ListDatasetAttr is an optional argument to ListDataset.
+type ListDatasetAttr func(optionalAttr)
+
+// ListDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ListDatasetMetadata(value string) ListDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
+// Creates a dataset that emits each of `tensors` once.
+func ListDataset(scope *Scope, tensors []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ListDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ListDataset",
+		Input: []tf.Input{
+			tf.OutputList(tensors),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ListDiffAttr is an optional argument to ListDiff.
 type ListDiffAttr func(optionalAttr)
 
