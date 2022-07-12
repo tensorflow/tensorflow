@@ -104,8 +104,11 @@ class ModelTimingPriorityQueue {
     }
     for (auto& root : stage_roots) {
       DCHECK(model_timing.GetTiming(root.get()) != nullptr);
+      const ModelTiming::NodeTiming* root_timing =
+          model_timing.GetTiming(root.get());
       stage_roots_queue_.emplace(
-          model_timing.GetTiming(root.get())->total_time_nsec, root.get());
+          root_timing->total_time_nsec * root_timing->pipeline_ratio,
+          root.get());
     }
   }
 
@@ -122,8 +125,9 @@ class ModelTimingPriorityQueue {
   }
 
   // Push a node together with its total time onto the queue.
-  void Push(Node* node, double total_time_nsec) {
-    stage_roots_queue_.emplace(total_time_nsec, node);
+  void Push(Node* node, const ModelTiming::NodeTiming& node_timing) {
+    stage_roots_queue_.emplace(
+        node_timing.total_time_nsec * node_timing.pipeline_ratio, node);
   }
 
  private:
@@ -2512,9 +2516,8 @@ void Model::OptimizeStageBasedParallelism(
     // Compute the new total time and put the node back in the queue after its
     // parallelism value has been increased by 1.
     model_timing.ComputeNodeTotalTime(*critical_root.second);
-    priority_queue.Push(
-        critical_root.second,
-        model_timing.GetTiming(critical_root.second)->total_time_nsec);
+    priority_queue.Push(critical_root.second,
+                        *model_timing.GetTiming(critical_root.second));
     // Get the next critical stage root.
     critical_root_status = priority_queue.PopSlowestStageRoot();
     if (!critical_root_status.ok()) {

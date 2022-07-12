@@ -2194,7 +2194,7 @@ TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
   EXPECT_DOUBLE_EQ(7.0, node_4->parameter_value(kBufferSize));
 }
 
-TEST_F(ModelTimingTest, OptimizeGreedy_OneStage) {
+TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -2246,13 +2246,13 @@ TEST_F(ModelTimingTest, OptimizeGreedy_OneStage) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 5, 1000, 50,
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
                    &cancellation_manager);
 
   EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
 
-TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages) {
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -2319,7 +2319,7 @@ TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages) {
   EXPECT_EQ(5, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
 }
 
-TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages_RamBudgetExceeded) {
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -2386,7 +2386,7 @@ TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages_RamBudgetExceeded) {
   EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
 }
 
-TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages_CpuBudgetExceeded) {
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_CpuBudgetExceeded) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -2451,6 +2451,64 @@ TEST_F(ModelTimingTest, OptimizeGreedy_TwoStages_CpuBudgetExceeded) {
 
   EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(3, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelBatch"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 2
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(10, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime) {
