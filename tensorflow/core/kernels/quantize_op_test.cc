@@ -14,15 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include <random>
+#include <stdexcept>
 
+#include "gtest/gtest-param-test.h"
+#include "gtest/gtest.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 
 namespace tensorflow {
 
@@ -30,21 +35,37 @@ class QuantizedOpTest : public OpsTestBase {
  protected:
 };
 
+struct TypeParameterizedQuantizeOpTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<DataType> {};
+
 struct ParameterizedQuantizeOpTest : public OpsTestBase,
                                      public ::testing::WithParamInterface<int> {
 };
 
-TEST_F(QuantizedOpTest, QuantizeV2) {
+struct ParamCombinationQuantizeOpTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<std::tuple<DataType, int>> {};
+
+TEST_P(TypeParameterizedQuantizeOpTest, QuantizeV2) {
+  const auto dtype = GetParam();
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("mode", "MIN_FIRST")
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({7}),
-                           {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0});
+  switch (dtype) {
+    case DT_BFLOAT16:
+      AddInputFromList<bfloat16>(TensorShape({7}),
+                                 {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0});
+      break;
+    default:
+      AddInputFromArray<float>(TensorShape({7}),
+                               {0.0, 1.0, 1.25, 1.75, 127.0, 255.0, 500.0});
+  }
   // min_range = 0
   AddInputFromArray<float>(TensorShape({1}), {0});
   // max_range = 255
@@ -56,6 +77,9 @@ TEST_F(QuantizedOpTest, QuantizeV2) {
   test::FillValues<quint8>(&expected, {0, 1, 1, 2, 127, 255, 255});
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
 }
+
+INSTANTIATE_TEST_SUITE_P(All, TypeParameterizedQuantizeOpTest,
+                         ::testing::Values(DT_FLOAT, DT_BFLOAT16));
 
 // Creates a tensor with the specified dims, using values chosen from data,
 // multiplied by (1 + index) along the axis dimension.
@@ -82,10 +106,20 @@ std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
   return out;
 }
 
-TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Quint8Scaled) {
-  const int axis = GetParam();
+std::vector<bfloat16> ConvertFloatToBloat16(const std::vector<float>& data) {
+  std::vector<bfloat16> out(data.size());
+  size_t i = 0;
+  for (auto itr = out.begin(); itr != out.end(); ++itr, ++i) {
+    *itr = bfloat16(data[i]);
+  }
+  return out;
+}
+
+TEST_P(ParamCombinationQuantizeOpTest, QuantizeV2Quint8Scaled) {
+  const auto dtype = std::get<0>(GetParam());
+  const int axis = std::get<1>(GetParam());
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
-                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(dtype))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
@@ -97,10 +131,20 @@ TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Quint8Scaled) {
   int num_slices = (axis == -1) ? 1 : dims[axis];
 
   // Each channel contains the same 8 values multiplied by (channel + 1).
-  AddInputFromArray<float>(
-      TensorShape(dims),
-      ScalePerSliceAlongAxis<float>(
-          dims, axis, {-255.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0, 500.0}));
+  switch (dtype) {
+    case DT_BFLOAT16: {
+      auto data = ScalePerSliceAlongAxis<float>(
+          dims, axis, {-255.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.01, 500.0});
+      AddInputFromArray<bfloat16>(TensorShape(dims),
+                                  ConvertFloatToBloat16(data));
+    } break;
+
+    default:
+      AddInputFromArray<float>(
+          TensorShape(dims),
+          ScalePerSliceAlongAxis<float>(
+              dims, axis, {-255.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0, 500.0}));
+  }
   std::vector<float> min_ranges(num_slices), max_ranges(num_slices);
   for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
     min_ranges[slice_idx] = (slice_idx + 1) * -255.0;
@@ -131,6 +175,11 @@ TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Quint8Scaled) {
   auto output = *GetOutput(0);
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
 }
+
+INSTANTIATE_TEST_SUITE_P(All, ParamCombinationQuantizeOpTest,
+                         ::testing::Combine(::testing::Values(DT_FLOAT,
+                                                              DT_BFLOAT16),
+                                            ::testing::Values(-1, 1, 3)));
 
 TEST_F(QuantizedOpTest, QuantizeV2Quint8ScaledSmallInputRange) {
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
