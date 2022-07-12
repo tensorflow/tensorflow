@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -58,9 +59,9 @@ class GpuFusionRewritePass
 // HLO to GPU pipeline can handle.
 class FusionRewritePattern : public OpRewritePattern<lmhlo::FusionOp> {
  public:
-  explicit FusionRewritePattern(GpuFusionRewritePass& parentPass,
-                                SymbolTable& symbolTable,
-                                PassManager& hloToGpuPipeline);
+  explicit FusionRewritePattern(MLIRContext* ctx,
+                                GpuFusionRewritePass& parentPass,
+                                SymbolTable& symbolTable);
 
  private:
   LogicalResult matchAndRewrite(lmhlo::FusionOp fusionOp,
@@ -89,7 +90,6 @@ class FusionRewritePattern : public OpRewritePattern<lmhlo::FusionOp> {
 
   GpuFusionRewritePass& parentPass;
   SymbolTable& symbolTable;
-  PassManager& hloToGpuPipeline;
   ConversionTarget rewritableTarget = getRewritableTarget(getContext());
 };
 }  // namespace
@@ -107,13 +107,8 @@ void GpuFusionRewritePass::getDependentDialects(
 
 void GpuFusionRewritePass::runOnOperation() {
   SymbolTable symbolTable(getOperation());
-  // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
-  // pipelines. Printing needs to be enabled on the parent pass manager.
-  PassManager passManager(&getContext(), getOperation().getOperationName());
-  // TODO(csigg): don't hardcode block size and elements per thread.
-  createHloToGpuPipeline(passManager, /*tileSizes=*/256, /*unrollFactors=*/{4});
   auto pattern =
-      std::make_unique<FusionRewritePattern>(*this, symbolTable, passManager);
+      std::make_unique<FusionRewritePattern>(&getContext(), *this, symbolTable);
   mlir::FrozenRewritePatternSet patterns({&getContext(), std::move(pattern)});
   auto callback = [&](lmhlo::FusionOp fusion) {
     if (failed(applyOpPatternsAndFold(fusion, patterns)))
@@ -124,14 +119,64 @@ void GpuFusionRewritePass::runOnOperation() {
     return signalPassFailure();
 }
 
-FusionRewritePattern::FusionRewritePattern(GpuFusionRewritePass& parentPass,
-                                           SymbolTable& symbolTable,
-                                           PassManager& hloToGpuPipeline)
-    : OpRewritePattern<lmhlo::FusionOp>::OpRewritePattern(
-          hloToGpuPipeline.getContext()),
+FusionRewritePattern::FusionRewritePattern(MLIRContext* ctx,
+                                           GpuFusionRewritePass& parentPass,
+                                           SymbolTable& symbolTable)
+    : OpRewritePattern<lmhlo::FusionOp>::OpRewritePattern(ctx),
       parentPass(parentPass),
-      symbolTable(symbolTable),
-      hloToGpuPipeline(hloToGpuPipeline) {}
+      symbolTable(symbolTable) {}
+
+// Returns the number of elements each thread should handle for 'type'.
+// The intention is that loads and stores are vectorized later on to this width
+// to maximize memory throughput.
+static int64_t getElementsPerThread(TensorType type) {
+  // Don't vectorize if the number of elements cannot saturate the GPU.
+  // Use a coarse heuristic because we don't know the target GPU here.
+  const int64_t kNumFp32AlusOnV100 = 5376;
+  if (type.getNumElements() < kNumFp32AlusOnV100) return 1;
+
+  // Vectorize so that loads and stores are 128 bits per thread.
+  if (type.getElementType().isIntOrFloat())
+    return 128 / type.getElementType().getIntOrFloatBitWidth();
+
+  return 1;  // Default to no vectorization.
+}
+
+// Returns the number of threads per block to use for 'type', given the number
+// of elements each thread handles. The returned block size is in the [128, 384]
+// range, preferrably close to 256 and evenly dividing the number of threads
+// required to handle all elements in 'type'.
+static int64_t getThreadsPerBlock(TensorType type, int64_t elementsPerThread) {
+  int64_t numThreads =
+      llvm::divideCeil(type.getNumElements(), elementsPerThread);
+
+  // Use a single block for small problems.
+  if (numThreads < 256) return numThreads;
+
+  // Use 256 if that block size evenly divides the problem.
+  if (numThreads % 256 == 0) return 256;
+
+  int64_t elementSizeBits = 32;
+  if (type.getElementType().isIntOrFloat())
+    elementSizeBits = type.getElementType().getIntOrFloatBitWidth();
+  int64_t threadSizeBits = elementSizeBits * elementsPerThread;
+
+  // Search block sizes in the [128, 384] range near 256 with decreasing
+  // power-of-2 factor, down to a multiple of a cache line (assumed to be 1024
+  // bits). Use the first one that evenly divides the problem, which allows the
+  // loop tail to be optimized away.
+  for (int i = 128; i * threadSizeBits >= 1024; i /= 2) {
+    // 2 * i: earlier iterations already handled even multiples of i.
+    for (int blockSize = 256 - i; blockSize >= 128; blockSize -= 2 * i)
+      if (numThreads % blockSize == 0) return blockSize;
+    for (int blockSize = 256 + i; blockSize <= 384; blockSize += 2 * i)
+      if (numThreads % blockSize == 0) return blockSize;
+  }
+
+  // None of the checked block sizes evenly divides the number of required
+  // threads. Use a default of 256 and accept the loop tail.
+  return 256;
+}
 
 LogicalResult FusionRewritePattern::matchAndRewrite(
     lmhlo::FusionOp fusionOp, PatternRewriter& rewriter) const {
@@ -139,6 +184,10 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // we expect lowering to GPU to fail or produce incorrect results.
   if (!isRewritable(fusionOp))
     return rewriter.notifyMatchFailure(fusionOp, "not rewritable");
+
+  auto storeOps = fusionOp.getBody()->getOps<memref::TensorStoreOp>();
+  if (storeOps.empty())
+    return rewriter.notifyMatchFailure(fusionOp, "no memref.tensor_store ops");
 
   // Collect values in fusion region defined above.
   SetVector<Value> captures;
@@ -161,8 +210,16 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
                              funcOp.end(), mapping);
   rewriter.mergeBlocks(&funcOp.back(), &funcOp.front());
 
-  // Run the HLO to GPU pass pipeline.
-  if (failed(parentPass.runPipeline(hloToGpuPipeline, moduleOp)))
+  // Create and run the HLO to GPU pass pipeline.
+  auto resultType = (*storeOps.begin()).tensor().getType().cast<TensorType>();
+  int64_t unrollFactor = getElementsPerThread(resultType);
+  int64_t tileSize = getThreadsPerBlock(resultType, unrollFactor);
+  // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
+  // pipelines. Printing needs to be enabled on the parent pass manager.
+  PassManager passManager(getContext());
+  createHloToGpuPipeline(passManager, {tileSize},
+                         {&unrollFactor, unrollFactor > 1});
+  if (failed(parentPass.runPipeline(passManager, moduleOp)))
     return rewriter.notifyMatchFailure(fusionOp, "failed to run pipeline");
 
   // Clone the (single) gpu module with the device function.
