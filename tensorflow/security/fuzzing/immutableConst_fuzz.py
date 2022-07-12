@@ -13,16 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.raw_ops.ImmutableConst."""
+import sys
 import atheris
 with atheris.instrument_imports():
-  import sys
   from python_fuzzing import FuzzingHelper
   import tensorflow as tf
 
 _DEFAULT_FILENAME = '/tmp/test.txt'
 
 
-@atheris.instrument_func
 def TestOneInput(input_bytes):
   """Test randomized integer fuzzing input for tf.raw_ops.ImmutableConst."""
   fh = FuzzingHelper(input_bytes)
@@ -40,7 +39,7 @@ def TestOneInput(input_bytes):
 
 
 def main():
-  atheris.Setup(sys.argv, TestOneInput, enable_python_coverage=True)
+  atheris.Setup(sys.argv, TestOneInput)
   atheris.Fuzz()
 
 

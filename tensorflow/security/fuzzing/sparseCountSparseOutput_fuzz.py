@@ -13,17 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.raw_ops.SparseCountSparseOutput."""
+import sys
+
 import atheris
 with atheris.instrument_imports():
-  import sys
-  from python_fuzzing import FuzzingHelper
   import tensorflow as tf
 
 
-@atheris.instrument_func
 def TestOneInput(input_bytes):
   """Test randomized integer fuzzing input for tf.raw_ops.SparseCountSparseOutput."""
-  fh = FuzzingHelper(input_bytes)
+  fh = atheris.FuzzedDataProvider(input_bytes)
 
   shape1 = fh.get_int_list(min_length=0, max_length=8, min_int=0, max_int=8)
   shape2 = fh.get_int_list(min_length=0, max_length=8, min_int=0, max_int=8)
@@ -59,7 +58,7 @@ def TestOneInput(input_bytes):
 
 
 def main():
-  atheris.Setup(sys.argv, TestOneInput, enable_python_coverage=True)
+  atheris.Setup(sys.argv, TestOneInput)
   atheris.Fuzz()
 
 

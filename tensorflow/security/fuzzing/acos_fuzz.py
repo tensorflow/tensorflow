@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.raw_ops.Acos."""
+import sys
+
 import atheris
 with atheris.instrument_imports():
-  import sys
   from python_fuzzing import FuzzingHelper
   import tensorflow as tf
 
@@ -33,7 +34,7 @@ def TestOneInput(data):
 
 
 def main():
-  atheris.Setup(sys.argv, TestOneInput, enable_python_coverage=True)
+  atheris.Setup(sys.argv, TestOneInput)
   atheris.Fuzz()
 
 

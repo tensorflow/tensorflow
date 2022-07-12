@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.constant."""
+import sys
+
 import atheris
 with atheris.instrument_imports():
-  import sys
   import tensorflow as tf
 
 
@@ -24,7 +25,7 @@ def TestOneInput(data):
 
 
 def main():
-  atheris.Setup(sys.argv, TestOneInput, enable_python_coverage=True)
+  atheris.Setup(sys.argv, TestOneInput)
   atheris.Fuzz()
 
 

@@ -13,21 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 """This is a Python API fuzzer for tf.raw_ops.RaggedCountSparseOutput."""
+import sys
+
 import atheris
 with atheris.instrument_imports():
-  import sys
-  from python_fuzzing import FuzzingHelper
   import tensorflow as tf
 
 
-@atheris.instrument_func
 def TestOneInput(input_bytes):
   """Test randomized integer/float fuzzing input for tf.raw_ops.RaggedCountSparseOutput."""
-  fh = FuzzingHelper(input_bytes)
+  fh = atheris.FuzzedDataProvider(input_bytes)
 
-  splits = fh.get_int_list()
-  values = fh.get_int_or_float_list()
-  weights = fh.get_int_list()
+  splits = fh.ConsumeIntList(fh.ConsumeInt(), fh.ConsumeInt())
+  values = fh.ConsumeRegularFloatList(fh.ConsumeInt())
+  weights = fh.ConsumeIntList(fh.ConsumeInt(), fh.ConsumeInt())
   try:
     _, _, _, = tf.raw_ops.RaggedCountSparseOutput(
         splits=splits, values=values, weights=weights, binary_output=False)
@@ -36,7 +35,7 @@ def TestOneInput(input_bytes):
 
 
 def main():
-  atheris.Setup(sys.argv, TestOneInput, enable_python_coverage=True)
+  atheris.Setup(sys.argv, TestOneInput)
   atheris.Fuzz()
 
 
