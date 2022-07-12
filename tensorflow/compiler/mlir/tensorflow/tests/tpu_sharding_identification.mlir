@@ -309,7 +309,7 @@ func.func @cluster_func(%arg0: tensor<*xf32>) {
 // CHECK-LABEL: func @maximal_device_variable
 func.func @maximal_device_variable(%arg0: tensor<*x!tf_type.resource<tensor<*xf32>>>) {
    tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<*xf32>>>)
-     {_mirrored_variable_indices = [0], n = 2 : i32} {
+     {_mirrored_variable_indices = [0], _replicated_input_indices = [-1], n = 2 : i32} {
      %0 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<*xf32>>>) -> tensor<*xf32>
      // CHECK:      tf_device.cluster_func
      // CHECK-SAME: input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]

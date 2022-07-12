@@ -59,6 +59,8 @@ constexpr llvm::StringRef kDeviceAttr = "device";
 constexpr llvm::StringRef kNameAttr = "name";
 constexpr llvm::StringRef kNumCoresPerReplicaAttr = "num_cores_per_replica";
 constexpr llvm::StringRef kNumReplicasAttr = "num_replicas";
+constexpr llvm::StringRef kReplicatedInputIndicesAttr =
+    "_replicated_input_indices";
 constexpr llvm::StringRef kMirroredVariableIndicesAttr =
     "_mirrored_variable_indices";
 constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
@@ -376,6 +378,45 @@ tf_device::ClusterOp CreateClusterOp(
   return cluster;
 }
 
+// Sorts `tf.TPUReplicatedInput` ops by `index` attribute. Ops with an `index`
+// of -1 are always after ops with a non negative `index`, and an arbitrary
+// ordering is used as there are no dependencies on their relative ordering. If
+// there are multiple `tf.TPUReplicatedInput` ops with the same non negative
+// index or if indices are less than -1, an error will be returned.
+LogicalResult SortTPUReplicatedInputsByIndex(
+    llvm::ArrayRef<Operation*> inputs,
+    llvm::SmallVectorImpl<Operation*>* sorted_inputs) {
+  llvm::SmallDenseSet<int64_t, 8> unique_indices;
+  for (Operation* input : inputs) {
+    int64_t index = llvm::cast<TF::TPUReplicatedInputOp>(input).index();
+    if (index < -1)
+      return input->emitOpError()
+             << "requires index to be at least -1, but got " << index;
+    if (index == -1) continue;
+    if (!unique_indices.insert(index).second)
+      return input->emitOpError()
+             << "requires indices to be unique, but found multiple '"
+             << input->getName() << "' ops with index " << index;
+  }
+
+  // Sort all TPUReplicatedInputs by `index` attribute to have
+  // TPUReplicatedInputs with indices be added to the `tf_device.replicate` op
+  // deterministically. If `index` attribute is -1, instead move them to the
+  // end.
+  sorted_inputs->assign(inputs.begin(), inputs.end());
+  std::stable_sort(
+      sorted_inputs->begin(), sorted_inputs->end(),
+      [](Operation* l, Operation* r) {
+        int64_t l_index = llvm::cast<TF::TPUReplicatedInputOp>(l).index();
+        int64_t r_index = llvm::cast<TF::TPUReplicatedInputOp>(r).index();
+        if (l_index == -1 && r_index != -1) return false;
+        if (r_index == -1 && l_index != -1) return true;
+        return l_index < r_index;
+      });
+
+  return success();
+}
+
 // Creates a `tf_device.replicate` to represent replication for the cluster, if
 // necessary.
 LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
@@ -388,13 +429,13 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
                                << "' int attribute to be at least 1";
 
   LogicalResult status = success();
-  // Collect all used TPUReplicatedInput ops.
-  llvm::SmallVector<Operation*, 8> replicated_input_ops;
+  // Collect all used TPUReplicatedInput ops and sort by `index`.
+  OpSetVector unique_replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get().getDefiningOp();
         if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(def))
-          replicated_input_ops.push_back(def);
+          unique_replicated_input_ops.insert(def);
         // When model parallelism is used in conjunction with data parallelism
         // for resource inputs, we need to collect the per replica resource
         // inputs from input to `tf.TPUPartitionedInput` ops.
@@ -406,12 +447,22 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
           for (auto operand : pi.inputs()) {
             if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(
                     operand.getDefiningOp()))
-              replicated_input_ops.push_back(operand.getDefiningOp());
+              unique_replicated_input_ops.insert(operand.getDefiningOp());
           }
         }
       });
 
   if (failed(status)) return failure();
+  llvm::SmallVector<Operation*, 8> replicated_input_ops;
+  if (failed(SortTPUReplicatedInputsByIndex(
+          unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
+    return failure();
+
+  // Index attribute value stored on TPUReplicatedInput op. These will be used
+  // later for dynamic padder.
+  llvm::SmallVector<int64_t, 8> replicated_input_indices;
+  llvm::SmallVector<int64_t, 8> packed_input_indices;
+  bool has_replicated_input_index = false;
 
   // Indices of the replicate op's arguments that are mirrored variables.
   llvm::SmallVector<int64_t, 8> mirrored_variable_indices;
@@ -430,32 +481,27 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     int num_inputs = is_packed ? 1 : num_replicas;
     if (num_operands != num_inputs)
       return input->emitOpError() << "requires " << num_inputs << " operands";
+
+    auto tpu_replicated_input = llvm::cast<TF::TPUReplicatedInputOp>(input);
+    int64_t tpu_replicated_input_index = tpu_replicated_input.index();
     if (is_packed) {
       packed_inputs.push_back(input->getOperand(0));
+      packed_input_indices.push_back(tpu_replicated_input_index);
       packed_ops.push_back(input);
     } else {
       replicated_inputs.push_back(
           {input->getOperands(), input->getOperand(0).getType()});
+      replicated_input_indices.push_back(tpu_replicated_input_index);
       replicated_ops.push_back(input);
     }
-  }
+    if (tpu_replicated_input_index != -1) has_replicated_input_index = true;
 
-  // Create `ordered_tpu_replicate_inputs` which constains the final ordered
-  // replicate inputs. All packed arguments are moved to the end of the arg
-  // list.
-  llvm::SmallVector<Operation*, 8> ordered_tpu_replicate_inputs =
-      replicated_ops;
-  ordered_tpu_replicate_inputs.append(packed_ops.begin(), packed_ops.end());
-
-  // Assign `mirrored_variable_indices` based on the ordered replicated inputs.
-  for (const auto& pos_and_input :
-       llvm::enumerate(ordered_tpu_replicate_inputs)) {
-    auto tpu_replicated_input =
-        llvm::cast<TF::TPUReplicatedInputOp>(pos_and_input.value());
-    if (tpu_replicated_input.is_mirrored_variable()) {
+    if (tpu_replicated_input.is_mirrored_variable())
       mirrored_variable_indices.push_back(pos_and_input.index());
-    }
   }
+
+  replicated_input_indices.append(packed_input_indices.begin(),
+                                  packed_input_indices.end());
 
   // Create replicate op.
   OpBuilder builder(cluster);
@@ -463,6 +509,9 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
       cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
       replicated_inputs, packed_inputs, cluster.getResultTypes());
+  if (has_replicated_input_index)
+    replicate_op->setAttr(kReplicatedInputIndicesAttr,
+                          builder.getI64ArrayAttr(replicated_input_indices));
 
   if (!mirrored_variable_indices.empty())
     replicate_op->setAttr(kMirroredVariableIndicesAttr,
@@ -497,6 +546,9 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   // Collect all `tf.TPUPartitionedInput` ops to be moved inside the
   // `tf_device.replicate` later.
   llvm::SmallSet<Operation*, 4> partitioned_inputs;
+  // Update replicated inputs with replicate op block arguments.
+  auto ordered_tpu_replicate_inputs =
+      llvm::concat<Operation*>(replicated_ops, packed_ops);
   for (auto input_and_block_arg :
        llvm::zip(ordered_tpu_replicate_inputs,
                  replicate_op.GetBody().getArguments())) {

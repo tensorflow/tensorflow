@@ -9,7 +9,7 @@ func.func @testReadVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
-    _mirrored_variable_indices = [0],
+    _mirrored_variable_indices = [0], _replicated_input_indices = [-1],
     devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]},
     n = 2 : i32} {
      // CHECK:      %[[RESOURCE_OUT:.*]] = "tf_device.launch"()
@@ -38,7 +38,7 @@ func.func @testReadVariableOpAfterIdentityColocated(%arg0: tensor<*x!tf_type.res
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
-    _mirrored_variable_indices = [0],
+    _mirrored_variable_indices = [0], _replicated_input_indices = [-1],
     devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]},
     n = 2 : i32} {
      // CHECK:      %[[IDENTITY_OUT:.*]] = "tf.Identity"(%[[RI_0]])
@@ -72,7 +72,7 @@ func.func @testAssignVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tenso
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
-    _mirrored_variable_indices = [0],
+    _mirrored_variable_indices = [0], _replicated_input_indices = [-1],
     devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]},
     n = 2 : i32} {
      // CHECK:      %[[VAL_OUT:.*]] = "tf.A"() : () -> tensor<4xf32>
@@ -100,7 +100,7 @@ func.func @testNonTPUDeviceReplicationIgnored(%arg0: tensor<*x!tf_type.resource<
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
-    _mirrored_variable_indices = [0],
+    _mirrored_variable_indices = [0], _replicated_input_indices = [-1],
     devices = {TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:1"]},
     n = 2 : i32} {
      // CHECK:      %[[VAL_OUT:.*]] = "tf.A"() : () -> tensor<4xf32>
