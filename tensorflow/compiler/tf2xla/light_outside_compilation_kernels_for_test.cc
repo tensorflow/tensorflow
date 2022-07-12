@@ -47,8 +47,7 @@ class TestStaticTfOp : public OpKernel {
     // Just pass the value through.
     uint64_t size = input.AllocatedBytes();
     se::DeviceMemoryBase gpu_dst{out_tensor->data(), size};
-    se::Stream* stream =
-        ctx->device()->tensorflow_accelerator_device_info()->stream;
+    se::Stream* stream = ctx->op_device_context()->stream();
 
     stream->ThenMemcpyD2D(
         /*gpu_dst=*/&gpu_dst,

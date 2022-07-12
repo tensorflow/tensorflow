@@ -380,6 +380,15 @@ Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
   return OkStatus();
 }
 
+class FakeDeviceContext : public DeviceContext {
+ public:
+  explicit FakeDeviceContext(se::Stream* stream) { stream_ = stream; }
+  se::Stream* stream() const override { return stream_; }
+
+ private:
+  se::Stream* stream_;
+};
+
 Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
                     int opaque_len) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
@@ -418,11 +427,15 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
                      /*graph_def_version=*/1, &nested_status);
   TF_RETURN_IF_ERROR(nested_status);
 
+  auto device_context =
+      core::RefCountPtr<FakeDeviceContext>(new FakeDeviceContext(stream));
+
   OpKernelContext::Params params;
   params.output_attr_array = allocator_attributes.data();
   params.op_kernel = kernel.get();
   params.device = &device;
   params.ensure_eigen_gpu_device();
+  params.op_device_context = device_context.get();
 
   absl::InlinedVector<TensorValue, 4> inputs;
 
