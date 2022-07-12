@@ -1056,6 +1056,9 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteOpPrepare(GetTFLiteOpName(registration), node_index);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
     const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
     if (op_prepare_status != kTfLiteOk) {
       ReportOpError(&context_, node, registration, node_index,

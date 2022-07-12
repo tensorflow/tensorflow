@@ -23,6 +23,13 @@ limitations under the License.
 
 namespace tflite {
 
+// No-op for the weak symbol. Overridden by a strong symbol in
+// tensorflow_profiler_logger.cc.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
+                                             const int node_index) {}
+
+// No-op for the weak symbol. Overridden by a strong symbol in
+// tensorflow_profiler_logger.cc.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpInvoke(const char* op_name,
                                             const int node_index) {}
 
