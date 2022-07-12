@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
 
 #include <algorithm>
+#include <deque>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -283,7 +284,12 @@ class TfCallbackDevice : public DeviceBase {
  public:
   explicit TfCallbackDevice(se::Stream* stream, void** buffers,
                             const TfCallbackData& callback_data)
-      : DeviceBase(Env::Default()), stream_(stream) {
+      : DeviceBase(Env::Default()),
+        stream_(stream),
+        gpu_allocator_(GPUProcessState::singleton()->GetGPUAllocator(
+            TfDeviceId{stream_->parent()->device_ordinal()})),
+        cpu_allocator_(
+            ProcessState::singleton()->GetCPUAllocator(/*numa_node=*/0)) {
     for (int i = 0; i < callback_data.outputs_size(); ++i) {
       int buffer_num = GetOutputBufferId(i, callback_data);
       VLOG(1) << "Binding output " << i << " to buffer " << buffers[buffer_num];
@@ -298,10 +304,6 @@ class TfCallbackDevice : public DeviceBase {
   }
 
   const string& name() const override { return name_; }
-
-  const WriteIntoXlaBufferAllocator& AllocatorForOutput(int idx) const {
-    return allocators_.at(idx);
-  }
 
   PerOpGpuDevice* MakeGpuDevice() override {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -336,14 +338,24 @@ class TfCallbackDevice : public DeviceBase {
     return &allocators_[attrs.scope_id - 1];
   }
 
-  Allocator* GetAllocator(AllocatorAttributes attrs) override {
-    return &allocator_;
+  Allocator* GetAllocator(AllocatorAttributes attr) override {
+    if (attr.on_host()) {
+      if (attr.gpu_compatible()) {
+        GPUProcessState* ps = GPUProcessState::singleton();
+        return ps->GetGpuHostAllocator(0);
+      } else {
+        return cpu_allocator_;
+      }
+    } else {
+      return gpu_allocator_;
+    }
   }
 
  private:
   std::vector<WriteIntoXlaBufferAllocator> allocators_;
   se::Stream* stream_;  // NOLINT (used under GOOGLE_CUDA)
-  GPUcudaMallocAllocator allocator_{PlatformDeviceId(0)};
+  Allocator* gpu_allocator_;
+  Allocator* cpu_allocator_;
   AcceleratorDeviceInfo accelerator_device_info_;
   std::string name_ = "tf_callback_device";
 };

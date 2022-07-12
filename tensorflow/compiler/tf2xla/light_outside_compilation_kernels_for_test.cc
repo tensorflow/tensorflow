@@ -268,14 +268,24 @@ class TestTfMustBeConstantOp : public OpKernel {
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
 
-    std::vector<float> allocated_host(input.NumElements());
+    Tensor tmp;
+    AllocatorAttributes pinned_alloc_attrs;
+    pinned_alloc_attrs.set_on_host(true);
+    pinned_alloc_attrs.set_gpu_compatible(true);
+    TF_CHECK_OK(ctx->allocate_temp(DataType::DT_FLOAT,
+                                   TensorShape({input.NumElements()}), &tmp,
+                                   pinned_alloc_attrs));
 
-    stream->ThenMemcpy(/*host_dst=*/allocated_host.data(),
-                       se::DeviceMemoryBase{input.data(), allocated_size},
-                       allocated_size);
+    se::DeviceMemoryBase tmp_wrapper{tmp.flat<float>().data(),
+                                     tmp.AllocatedBytes()};
+    stream->ThenMemcpyD2D(&tmp_wrapper,
+                          se::DeviceMemoryBase{input.data(), allocated_size},
+                          allocated_size);
+
+    OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
 
     for (int i = 0; i < input.NumElements(); i++) {
-      allocated_host[i] += constant_to_add;
+      tmp.flat<float>().data()[i] += constant_to_add;
     }
 
     Tensor* out_tensor = nullptr;
@@ -284,9 +294,7 @@ class TestTfMustBeConstantOp : public OpKernel {
     se::DeviceMemoryBase gpu_dst{out_tensor->data(),
                                  static_cast<uint64_t>(allocated_size)};
 
-    stream->ThenMemcpy(
-        /*gpu_dst=*/&gpu_dst, /*host_src=*/allocated_host.data(),
-        /*size=*/allocated_size);
+    stream->ThenMemcpyD2D(&gpu_dst, tmp_wrapper, /*size=*/allocated_size);
   }
 };
 
