@@ -26139,6 +26139,16 @@ func MergeV2CheckpointsDeleteOldDirs(value bool) MergeV2CheckpointsAttr {
 	}
 }
 
+// MergeV2CheckpointsAllowMissingFiles sets the optional allow_missing_files attribute to value.
+//
+// value: see above.
+// If not specified, defaults to false
+func MergeV2CheckpointsAllowMissingFiles(value bool) MergeV2CheckpointsAttr {
+	return func(m optionalAttr) {
+		m["allow_missing_files"] = value
+	}
+}
+
 // V2 format specific: merges the metadata files of sharded checkpoints.  The
 //
 // result is one logical checkpoint, with one physical metadata file and renamed
@@ -26149,6 +26159,10 @@ func MergeV2CheckpointsDeleteOldDirs(value bool) MergeV2CheckpointsAttr {
 // If delete_old_dirs is true, attempts to delete recursively the dirname of each
 // path in the input checkpoint_prefixes.  This is useful when those paths are non
 // user-facing temporary locations.
+//
+// If allow_missing_files is true, merges the checkpoint prefixes as long as
+// at least one file exists. Otherwise, if no files exist, an error will be thrown.
+// The default value for allow_missing_files is false.
 //
 // Arguments:
 //
