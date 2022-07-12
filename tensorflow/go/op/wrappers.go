@@ -55309,6 +55309,71 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	return op.Output(0), op.Output(1)
 }
 
+// Temporary op for experimenting with jax2tf.
+//
+// DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
+// very likely to change. This op will be used only in jax2tf under an
+// experimental flag.
+//
+// This is an experimental op to allow a smooth evolution of jax2tf towards
+// emitting and serializing MHLO directly from JAX. At the moment this op
+// carries a serialized MHLO module, therefore there are no backward-compatibility
+// guarantees, and should not be used for serialization.
+// Eventually, the op will carry a MHLO object, which will have
+// backwards-compatibility guarantees.
+//
+// The serialized module must return a tuple if and only if the Sout is an empty
+// list or a list with more than 1 elements. The length of Tout and Sout must
+// match. This op always returns a tuple of results, even if the module returns
+// a single result.
+//
+// The handling of dynamic shapes is work-in-progress. At the moment, the
+// JAX lowering for dynamic shapes will prepend one dimension parameter to the
+// serialized module for each dimension whose value must be passed in.
+// The "args" correspond to the non-dimension arguments. During compilation
+// we compute the values of the dimension arguments based on the static shapes of
+// the "args". In order to do this, we encode for each dimension argument a
+// specification of how to compute its value, as a string, in the form
+// "<arg_idx>.<axis_idx>".
+// E.g., the specification "2.1" denotes the value args[2].shape[1].
+//
+// Arguments:
+//
+//	args: A list of `Tensor` with possibly different types to be passed as arguments
+//
+// to the HLO module.
+//
+//	module: A serialized computation, a text representation of mlir.Module.
+//	Sout: List of output tensor shapes.
+//	Tout: List of output tensor data types.
+//	dim_args_spec: the specification for the dimension arguments, one for each
+//
+// dimension argument. In absence of dynamic shapes this list is empty.
+func XlaCallModule(scope *Scope, args []tf.Output, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
+	opspec := tf.OpSpec{
+		Type: "XlaCallModule",
+		Input: []tf.Input{
+			tf.OutputList(args),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("XlaCallModule", err)
+		return
+	}
+	return output
+}
+
 // XlaConcatNDAttr is an optional argument to XlaConcatND.
 type XlaConcatNDAttr func(optionalAttr)
 
