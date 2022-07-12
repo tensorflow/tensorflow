@@ -57,7 +57,7 @@ struct TransferReadOfOneDimExpandShape
     auto expand = vector_read.getSource().getDefiningOp<ExpandShapeOp>();
     if (!expand) return failure();
 
-    auto expand_src = expand.src();
+    auto expand_src = expand.getSrc();
     auto expand_src_type = expand.getSrcType();
     auto expand_dst_type = expand.getResultType();
     if (expand_src_type.getRank() != 1 || expand_dst_type.getRank() != 2)

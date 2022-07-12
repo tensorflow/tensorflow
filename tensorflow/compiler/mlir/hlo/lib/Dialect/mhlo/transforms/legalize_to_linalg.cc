@@ -190,8 +190,8 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
     Location loc = op->getLoc();
     auto semiring = b->create<sparse_tensor::UnaryOp>(loc, rtp, values[0]);
     Type itp = values[0].getType();
-    Block* present = b->createBlock(&semiring.presentRegion(), {}, itp, loc);
-    b->setInsertionPointToStart(&semiring.presentRegion().front());
+    Block* present = b->createBlock(&semiring.getPresentRegion(), {}, itp, loc);
+    b->setInsertionPointToStart(&semiring.getPresentRegion().front());
     values[0] = present->getArgument(0);
     return semiring;
   }
@@ -2032,7 +2032,7 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
           if (!operandType.isDynamicDim(dim))
             return rewriter.getIndexAttr(operandType.getDimSize(dim));
           return rewriter.create<tensor::DimOp>(loc, adaptor.operand(), dim)
-              .result();
+              .getResult();
         }));
     // Map interior padding to strides.
     auto strides = llvm::to_vector<4>(

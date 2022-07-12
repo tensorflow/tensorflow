@@ -117,7 +117,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
 
       if (auto tensorCast = dyn_cast<tensor::CastOp>(definingOp)) {
-        auto alias = tensorCast.source();
+        auto alias = tensorCast.getSource();
         if (resultBuffers.insert(alias).second) {
           worklist.push_back(alias);
         }

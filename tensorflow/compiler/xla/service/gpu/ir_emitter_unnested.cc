@@ -568,9 +568,9 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
   auto get_global = mlir::cast<mlir::memref::GetGlobalOp>(op);
   auto module = get_global->getParentOfType<mlir::ModuleOp>();
   auto global = mlir::cast<mlir::memref::GlobalOp>(
-      module.lookupSymbol(get_global.name()));
+      module.lookupSymbol(get_global.getName()));
 
-  auto literal = global.initial_value()->dyn_cast<mlir::DenseElementsAttr>();
+  auto literal = global.getInitialValue()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
 
   const bool should_emit_initializer = literal.getType().getNumElements() <= 1;
@@ -604,14 +604,15 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
   llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
       global_type, /*isConstant=*/should_emit_initializer,
       llvm::GlobalValue::ExternalLinkage,
-      /*Initializer=*/initializer, global.sym_name(),
+      /*Initializer=*/initializer, global.getSymName(),
       /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
       /*AddressSpace=*/0,
       /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   module_->getGlobalList().push_back(global_for_const);
 
-  info.symbol_name.assign(global.sym_name().begin(), global.sym_name().end());
+  info.symbol_name.assign(global.getSymName().begin(),
+                          global.getSymName().end());
 
   info.allocation_index =
       global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
@@ -1556,7 +1557,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   });
 
   region->walk([&](mlir::memref::TensorStoreOp store) {
-    if (store.memref().getParentRegion() != region) {
+    if (store.getMemref().getParentRegion() != region) {
       stores.push_back(store);
     }
   });
@@ -1571,10 +1572,10 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 
   std::vector<mlir::Value> returned_values;
   for (auto store : stores) {
-    Shape shape = GetShape(store.memref());
+    Shape shape = GetShape(store.getMemref());
     output_shapes->push_back(shape);
 
-    returned_values.push_back(store.tensor());
+    returned_values.push_back(store.getTensor());
     store.erase();
   }
 
@@ -3416,11 +3417,11 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Value init_value,
               init_value.getDefiningOp())) {
     auto global_memref =
         mlir::SymbolTable::lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
-            get_global_memref, get_global_memref.nameAttr());
-    if (global_memref.constant() && global_memref.initial_value()) {
+            get_global_memref, get_global_memref.getNameAttr());
+    if (global_memref.getConstant() && global_memref.getInitialValue()) {
       // If the initial value happens to be a constant, generate a specialized
       // thunk.
-      const_init = global_memref.initial_value()
+      const_init = global_memref.getInitialValue()
                        .getValue()
                        .cast<mlir::DenseElementsAttr>();
     }

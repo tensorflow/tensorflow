@@ -232,7 +232,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
 void PrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
   func.walk([&](quant::StatisticsOp stats_op) {
-    stats_op.replaceAllUsesWith(stats_op.arg());
+    stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   });
 }

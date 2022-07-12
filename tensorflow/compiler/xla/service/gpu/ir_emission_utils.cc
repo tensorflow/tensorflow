@@ -579,12 +579,12 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
   }
   if (auto view =
           mlir::dyn_cast_or_null<mlir::memref::ViewOp>(v.getDefiningOp())) {
-    TF_RET_CHECK(view.source().isa<mlir::BlockArgument>());
+    TF_RET_CHECK(view.getSource().isa<mlir::BlockArgument>());
 
     return BufferAllocation::Slice(
         &allocations[GetAllocationIndex(
-            view.source().cast<mlir::BlockArgument>(), constant_name)],
-        mlir::cast<mlir::arith::ConstantOp>(view.byte_shift().getDefiningOp())
+            view.getSource().cast<mlir::BlockArgument>(), constant_name)],
+        mlir::cast<mlir::arith::ConstantOp>(view.getByteShift().getDefiningOp())
             .getValue()
             .cast<mlir::IntegerAttr>()
             .getValue()
@@ -595,10 +595,10 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
           v.getDefiningOp())) {
     auto module = get_global->getParentOfType<mlir::ModuleOp>();
     if (constant_name) {
-      *constant_name = get_global.name().str();
+      *constant_name = get_global.getName().str();
     }
     auto global = mlir::cast<mlir::memref::GlobalOp>(
-        module.lookupSymbol(get_global.name()));
+        module.lookupSymbol(get_global.getName()));
     int64_t index =
         global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
     return BufferAllocation::Slice(&allocations[index], 0,

@@ -267,7 +267,7 @@ void RemoveDeadMemrefCode(func::FuncOp func) {
       for (auto user : alias.getUsers()) {
         if (!(isa<ViewLikeOpInterface>(user) ||
               (isa<memref::CopyOp>(user) &&
-               alias == cast<memref::CopyOp>(user).target()) ||
+               alias == cast<memref::CopyOp>(user).getTarget()) ||
               (isa<linalg::FillOp>(user) &&
                alias == cast<linalg::FillOp>(user).output()))) {
           return;

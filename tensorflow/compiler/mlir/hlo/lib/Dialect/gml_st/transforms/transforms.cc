@@ -155,9 +155,9 @@ Value insertSliceIntoTensor(RewriterBase &b, Location loc,
                             tensor::ExtractSliceOp sliceOp, Value source,
                             Value dest) {
   return b.create<tensor::InsertSliceOp>(
-      loc, sliceOp.source().getType(), source, dest, sliceOp.offsets(),
-      sliceOp.sizes(), sliceOp.strides(), sliceOp.static_offsets(),
-      sliceOp.static_sizes(), sliceOp.static_strides());
+      loc, sliceOp.getSource().getType(), source, dest, sliceOp.getOffsets(),
+      sliceOp.getSizes(), sliceOp.getStrides(), sliceOp.getStaticOffsets(),
+      sliceOp.getStaticSizes(), sliceOp.getStaticStrides());
 }
 
 FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
@@ -228,7 +228,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
       if (auto sliceOp = outputTensor.getDefiningOp<tensor::ExtractSliceOp>()) {
         tensorResults.push_back(insertSliceIntoTensor(rewriter, loc, sliceOp,
                                                       res->getResult(resultIdx),
-                                                      sliceOp.source()));
+                                                      sliceOp.getSource()));
       } else {
         tensorResults.push_back(res->getResult(resultIdx));
       }

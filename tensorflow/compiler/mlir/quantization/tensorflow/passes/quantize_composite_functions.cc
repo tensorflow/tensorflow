@@ -166,7 +166,7 @@ class ReplaceQuantizePattern : public mlir::OpRewritePattern<QuantizeCastOp> {
 
     SmallVector<Type> output_types = {
         output_type.clone(elem_type.getStorageType())};
-    SmallVector<Value> args = {q_op.arg(), scale, zero_point};
+    SmallVector<Value> args = {q_op.getArg(), scale, zero_point};
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kQuantizeFuncName));
 
@@ -190,7 +190,7 @@ class ReplaceDequantizePattern
  private:
   LogicalResult matchAndRewrite(DequantizeCastOp dq_op,
                                 PatternRewriter& rewriter) const override {
-    auto input_type = dq_op.arg().getType().cast<TensorType>();
+    auto input_type = dq_op.getArg().getType().cast<TensorType>();
     auto elem_type = input_type.getElementType().dyn_cast<QuantizedType>();
     const Location loc = dq_op->getLoc();
 
@@ -202,7 +202,7 @@ class ReplaceDequantizePattern
 
     TensorType output_type = input_type.clone(elem_type.getStorageType());
     auto scast_op =
-        rewriter.create<quant::StorageCastOp>(loc, output_type, dq_op.arg());
+        rewriter.create<quant::StorageCastOp>(loc, output_type, dq_op.getArg());
 
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kDequantizeFuncName));
@@ -513,7 +513,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
   LogicalResult matchAndRewrite(QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
-    if (!matchPattern(q_op.arg(), m_Constant(&attr))) {
+    if (!matchPattern(q_op.getArg(), m_Constant(&attr))) {
       return failure();
     }
 
@@ -526,7 +526,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
     Type storage_type =
         tensor_qtype.getElementType().cast<QuantizedType>().getStorageType();
     ShapedType new_type = tensor_qtype.clone(storage_type);
-    Location loc = q_op.arg().getLoc();
+    Location loc = q_op.getArg().getLoc();
     auto const_op = rewriter.create<TF::ConstOp>(loc, new_type, quantized_attr);
     // Add scast op to match quantize -> composition pattern. The added scast
     // is then removed by canonicalization. ([scast - scast] -> [])

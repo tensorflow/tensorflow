@@ -155,13 +155,14 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
 
   LogicalResult matchAndRewrite(tensor::ExtractOp op,
                                 PatternRewriter &rewriter) const override {
-    auto broadcastOp = op.tensor().getDefiningOp<BroadcastOp>();
+    auto broadcastOp = op.getTensor().getDefiningOp<BroadcastOp>();
     if (!broadcastOp) return failure();
 
     // Confirm that there is a constant index. This is required, so we can
     // confirm the DimOp's input will define the resulting broadcasted shape in
     // that dimension.
-    auto index = op.indices().front().getDefiningOp<arith::ConstantIndexOp>();
+    auto index =
+        op.getIndices().front().getDefiningOp<arith::ConstantIndexOp>();
     if (!index) return failure();
     auto idx = index.value();
 

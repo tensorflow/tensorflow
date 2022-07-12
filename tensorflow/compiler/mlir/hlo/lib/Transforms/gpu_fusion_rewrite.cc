@@ -209,14 +209,15 @@ void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
                                               PatternRewriter& rewriter) {
   llvm::SmallDenseMap<Operation*, SmallVector<bool>> writtenOperands;
   funcOp.walk([&](memref::TensorStoreOp storeOp) {
-    auto toTensor = storeOp.tensor().getDefiningOp<bufferization::ToTensorOp>();
+    auto toTensor =
+        storeOp.getTensor().getDefiningOp<bufferization::ToTensorOp>();
     assert(toTensor && "not defined by bufferization.to_tensor");
     for (auto& use : toTensor.getMemref().getUses()) {
       Operation* user = use.getOwner();
       if (isa<gpu::LaunchFuncOp>(user)) {
         writtenOperands.try_emplace(user, user->getNumOperands())
             .first->second[use.getOperandNumber()] = true;
-        use.set(storeOp.memref());
+        use.set(storeOp.getMemref());
       }
     }
     rewriter.eraseOp(storeOp);
@@ -245,7 +246,7 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
       });
   target.addDynamicallyLegalOp<memref::TensorStoreOp>(
       [&](memref::TensorStoreOp op) {
-        return isRewritableType(op.tensor().getType().cast<TensorType>());
+        return isRewritableType(op.getTensor().getType().cast<TensorType>());
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.

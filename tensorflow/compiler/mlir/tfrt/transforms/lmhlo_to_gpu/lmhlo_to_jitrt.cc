@@ -853,7 +853,7 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
     if (func_mapping == cst_args_.end()) return failure();
 
     // Check if the global operation correposponds to the LMHLO constant arg.
-    auto arg = func_mapping->second.find(op.name());
+    auto arg = func_mapping->second.find(op.getName());
     if (arg == func_mapping->second.end()) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);

@@ -220,7 +220,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     for (int i = 0; i < ancestors.size(); i++) {
       replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
                                  new_loops[i].getInductionVar(),
-                                 new_loops.back().region());
+                                 new_loops.back().getRegion());
     }
     return new_loops.front();
   }

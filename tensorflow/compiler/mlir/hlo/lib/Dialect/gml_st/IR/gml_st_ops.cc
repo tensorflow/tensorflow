@@ -784,7 +784,7 @@ static bool isShapePreserving(LoopOp loopOp, int64_t arg) {
     using tensor::InsertSliceOp;
     value = llvm::TypeSwitch<Operation *, Value>(opResult.getOwner())
                 .template Case<InsertSliceOp>(
-                    [&](InsertSliceOp op) { return op.dest(); })
+                    [&](InsertSliceOp op) { return op.getDest(); })
                 .template Case<LoopOp>([&](LoopOp loopOp) {
                   return isShapePreserving(loopOp, opResult.getResultNumber())
                              ? loopOp.outputs()[opResult.getResultNumber()]
@@ -820,7 +820,7 @@ struct DimOfLoopInsOutsFolder : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy dimOp,
                                 PatternRewriter &rewriter) const final {
-    auto src = dimOp.source().template dyn_cast<BlockArgument>();
+    auto src = dimOp.getSource().template dyn_cast<BlockArgument>();
     if (!src) return failure();
     auto loopOp = dyn_cast<LoopOp>(src.getOwner()->getParent()->getParentOp());
     if (!loopOp) return failure();
@@ -835,7 +835,8 @@ struct DimOfLoopInsOutsFolder : public OpRewritePattern<OpTy> {
     auto it1 = llvm::find(inputArgs, src);
     if (it1 != inputArgs.end()) {
       rewriter.updateRootInPlace(dimOp, [&] {
-        dimOp.sourceMutable().assign(loopOp.inputs()[it1 - inputArgs.begin()]);
+        dimOp.getSourceMutable().assign(
+            loopOp.inputs()[it1 - inputArgs.begin()]);
       });
       return success();
     }
@@ -844,7 +845,7 @@ struct DimOfLoopInsOutsFolder : public OpRewritePattern<OpTy> {
     auto it2 = llvm::find(outputArgs, src);
     if (it2 != outputArgs.end()) {
       rewriter.updateRootInPlace(dimOp, [&] {
-        dimOp.sourceMutable().assign(
+        dimOp.getSourceMutable().assign(
             loopOp.outputs()[it2 - outputArgs.begin()]);
       });
       return success();
@@ -879,13 +880,13 @@ struct DimOfLoopResultFolder : public OpRewritePattern<OpTy> {
 
   LogicalResult matchAndRewrite(OpTy dimOp,
                                 PatternRewriter &rewriter) const final {
-    auto loopOp = dimOp.source().template getDefiningOp<LoopOp>();
+    auto loopOp = dimOp.getSource().template getDefiningOp<LoopOp>();
     if (!loopOp) return failure();
-    auto opResult = dimOp.source().template cast<OpResult>();
+    auto opResult = dimOp.getSource().template cast<OpResult>();
     unsigned resultNumber = opResult.getResultNumber();
     if (!isShapePreserving(loopOp, resultNumber)) return failure();
     rewriter.updateRootInPlace(dimOp, [&]() {
-      dimOp.sourceMutable().assign(loopOp.outputs()[resultNumber]);
+      dimOp.getSourceMutable().assign(loopOp.outputs()[resultNumber]);
     });
     return success();
   }
@@ -1052,7 +1053,7 @@ struct TensorCastOfLoopInsOutsFolder : public OpRewritePattern<LoopOp> {
     for (auto arg : args) {
       if (auto cast = arg.getDefiningOp<tensor::CastOp>()) {
         result.ops.push_back(cast);
-        result.updatedArgs.push_back(cast.source());
+        result.updatedArgs.push_back(cast.getSource());
         result.castFound = true;
         continue;
       }
@@ -1123,7 +1124,7 @@ struct TensorCastOfLoopInsOutsFolder : public OpRewritePattern<LoopOp> {
         continue;
       }
       newYieldArgs.push_back(innerBuilder.create<tensor::CastOp>(
-          loc, argCast.source().getType(), bvm.lookup(yieldArg)));
+          loc, argCast.getSource().getType(), bvm.lookup(yieldArg)));
     }
     innerBuilder.create<YieldOp>(loc, newYieldArgs);
     return newResults;
