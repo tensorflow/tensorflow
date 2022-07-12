@@ -98,9 +98,11 @@ Status GetEagerOperationAndNumRetvals(const Operation& operation,
       std::nullopt;
   if (operation.is_function()) {
     if (operation.is_component_function()) {
-      remote_func_params = {operation.id(), operation.func_step_id()};
+      remote_func_params = {operation.id(), /*is_component_function=*/true,
+                            operation.func_step_id()};
     } else {
-      remote_func_params = {operation.id(), std::nullopt};
+      remote_func_params = {operation.id(), /*is_component_function=*/false,
+                            std::nullopt};
     }
   }
   TF_RETURN_IF_ERROR(eager_op->Reset(name, operation.device().c_str(), false,
