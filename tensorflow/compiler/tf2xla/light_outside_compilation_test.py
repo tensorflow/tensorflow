@@ -34,7 +34,8 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
   def assertFilecheck(self, actual, expected):
     """Assert that FileCheck runs successfully."""
-    self.assertTrue(fw.check(actual, expected))
+    if not fw.check(actual, expected):
+      self.fail(f'Got output:\n{actual}\nExpected:\n{expected}')
 
   def test_static_tf_op(self):
     """Test operations with static shapes."""
@@ -165,6 +166,22 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
       expected_output = [j + 5 for j in z]
       self.assertAllClose(compiled_f(z, 5), expected_output)
+
+  def testTighterProvidedBounds(self):
+    """Dynamic bounds are tighter than those deduced by shape inference."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f(x):
+      return test_ops_for_light_outside_compilation.test_dynamic_tf_with_bound(
+          x, max_size=5)
+
+    with context.device('/gpu:0'):
+      z = random_ops.random_normal([10])
+      hlo = compiled_f.experimental_get_compiler_ir(z)()
+      self.assertFilecheck(
+          hlo, r"""
+          CHECK: f32[5]{0} custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
+          """)
 
 
 if __name__ == '__main__':

@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/callback.pb.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/platform/human_readable_json.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
@@ -165,9 +163,9 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
     // bounds: that is the information we will be storing in the callback.
     for (int d = 0; d < output_tensor_shape_proto.dim_size(); ++d) {
       auto* dim = output_tensor_shape_proto.mutable_dim(d);
+      auto it = dimension_bounds.find(d);
 
       if (dim->size() < 0) {
-        auto it = dimension_bounds.find(d);
         if (it == dimension_bounds.end()) {
           return se::port::InternalError(absl::StrCat(
               "Bound for unknown dimension not found for dimension ", d));
@@ -175,6 +173,13 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
         dim->set_size(it->second);
         dynamic_dimensions[d] = true;
         output_description.set_is_dynamically_padded(true);
+      } else {
+        if (it == dimension_bounds.end()) {
+          continue;
+        }
+        if (it->second < dim->size()) {
+          dim->set_size(it->second);
+        }
       }
     }
 

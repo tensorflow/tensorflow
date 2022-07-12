@@ -254,7 +254,6 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:human_readable_json",
         "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/stream_executor/gpu:gpu_stream_header",
