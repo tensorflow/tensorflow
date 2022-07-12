@@ -1044,6 +1044,51 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
 // -------------------------------------------------------------------------- //
 
 namespace {
+
+struct Memset {
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           jitrt::FlatMemrefView dst,
+                           CustomCall::VariantArg constant) const;
+  static Memset Handler() { return Memset(); }
+};
+
+}  // namespace
+
+LogicalResult Memset::operator()(const ServiceExecutableRunOptions* run_options,
+                                 jitrt::FlatMemrefView dst,
+                                 CustomCall::VariantArg constant) const {
+  uint32_t pattern;
+  if (constant.isa<int32_t>())
+    pattern = *constant.get<int32_t>();
+  else if (constant.isa<float>())
+    pattern = reinterpret_cast<uint32_t&>(*constant.get<float>());
+  else
+    return failure();
+
+  se::Stream* stream = run_options->stream();
+
+  if (dst.size_in_bytes % 4 != 0) return failure();
+
+  se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+  stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
+
+  return success();
+}
+
+static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.memset")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::FlatMemrefView>()   // dst
+                             .Arg<CustomCall::VariantArg>()  // constant
+                             .To<RuntimeChecks()>(Memset::Handler())
+                             .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
 struct Fft {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
@@ -1990,6 +2035,7 @@ DirectCustomCallLibrary JitRtGpuCustomCalls() {
   lib.Insert("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
   lib.Insert("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
   lib.Insert("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  lib.Insert("xla.gpu.memset", &MemsetFn);
   lib.Insert("xla.gpu.infeed", &xla::gpu::Infeed);
   lib.Insert("xla.gpu.outfeed", &xla::gpu::Outfeed);
   lib.Insert("xla.gpu.custom_call", &xla::gpu::CustomCall);
