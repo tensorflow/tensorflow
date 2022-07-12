@@ -834,6 +834,11 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
+    # specialization there causing build breakages.  This must be added here
+    # as "defines" so that the header is excluded in all dependent targets.
+    # TODO(b/238649163): remove this once no longer necessary.
+    defines = ["GEMM_KERNEL_H"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -966,6 +971,11 @@ cc_library(
         "eigen_spatial_convolutions-inl.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
+    # specialization there causing build breakages.  This must be added here
+    # as "defines" so that the header is excluded in all dependent targets.
+    # TODO(b/238649163): remove this once no longer necessary.
+    defines = ["GEMM_KERNEL_H"],
     deps = [
         ":eigen_convolution_helpers",
     ],

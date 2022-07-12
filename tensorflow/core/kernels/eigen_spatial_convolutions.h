@@ -16,10 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
 #define TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
 
-// Hack to disable breaking AVX512 special GemmKernel.
-// There is a conflicting specialization there causing build breakages.
-#define GEMM_KERNEL_H disabled
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // Note the following header is used in both TF and TFLite. Particularly, it's
