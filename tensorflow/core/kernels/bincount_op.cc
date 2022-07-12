@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bincount_op.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/determinism.h"
@@ -369,7 +370,8 @@ class SparseBincountOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& indices = ctx->input(0);
-    const auto values = ctx->input(1).flat<Tidx>();
+    const Tensor& values = ctx->input(1);
+    const auto values_flat = values.flat<Tidx>();
     const Tensor& dense_shape = ctx->input(2);
     const Tensor& size_t = ctx->input(3);
     const auto weights = ctx->input(4).flat<T>();
@@ -382,6 +384,9 @@ class SparseBincountOp : public OpKernel {
     OP_REQUIRES(
         ctx, size >= 0,
         errors::InvalidArgument("size (", size, ") must be non-negative"));
+    OP_REQUIRES_OK(
+        ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                 indices, values, dense_shape, /*validate_indices=*/true));
 
     bool is_1d = dense_shape.NumElements() == 1;
 
@@ -394,11 +399,11 @@ class SparseBincountOp : public OpKernel {
       if (binary_output_) {
         OP_REQUIRES_OK(ctx,
                        functor::BincountFunctor<Device, Tidx, T, true>::Compute(
-                           ctx, values, weights, out, size));
+                           ctx, values_flat, weights, out, size));
       } else {
         OP_REQUIRES_OK(
             ctx, functor::BincountFunctor<Device, Tidx, T, false>::Compute(
-                     ctx, values, weights, out, size));
+                     ctx, values_flat, weights, out, size));
       }
     } else {
       const auto shape = dense_shape.flat<int64_t>();
@@ -410,7 +415,7 @@ class SparseBincountOp : public OpKernel {
       const auto indices_mat = indices.matrix<int64_t>();
       for (int64_t i = 0; i < indices_mat.dimension(0); ++i) {
         const int64_t batch = indices_mat(i, 0);
-        const Tidx bin = values(i);
+        const Tidx bin = values_flat(i);
         OP_REQUIRES(
             ctx, batch < out.dimension(0),
             errors::InvalidArgument("Index out of bound. `batch` (", batch,
