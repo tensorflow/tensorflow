@@ -24,8 +24,9 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize",
-    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [
+    NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins AnyShaped:$source, AnySet:$set);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{
@@ -34,9 +35,9 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
   let hasVerifier = 0;
 }
 
-def GMLST_OffsetOp : GMLST_Op<"offset", []> {
+def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
   let summary = [{Returns the offset of a tile in a given dimension}];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let arguments = (ins AnySet:$tile, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
@@ -45,7 +46,7 @@ def GMLST_OffsetOp : GMLST_Op<"offset", []> {
   let hasFolder = 1;
 }
 
-def GMLST_SizeOp : GMLST_Op<"size", []> {
+def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
   let summary = [{Returns the size of a tile in a given dimension}];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
@@ -56,7 +57,7 @@ def GMLST_SizeOp : GMLST_Op<"size", []> {
   let hasFolder = 1;
 }
 
-def GMLST_StrideOp : GMLST_Op<"stride", []> {
+def GMLST_StrideOp : GMLST_Op<"stride", [NoSideEffect]> {
   let summary = [{Returns the stride of a tile in a given dimension}];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);

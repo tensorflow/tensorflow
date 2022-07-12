@@ -27,16 +27,14 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // CHECK-DAG: %[[CED_RES_TILE:.*]] = gml_st.collapse_tile %[[RES_TILE]], [0, 2] : !gml_st.tile<3x4x5> -> !gml_st.tile<3x5>
 
   // Check first dim of the arg tile.
-  // CHECK-DAG: %[[INIT_D0:.*]] = tensor.dim %[[INIT]], %[[C0]] : tensor<?x?x?xf32>
-  // CHECK-DAG: %[[IS_EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0]], %[[INIT_D0]] : index
+  // CHECK-DAG: %[[IS_EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0]], %[[RES_D0]] : index
   // CHECK-DAG: %[[CED_RES_OFFSET_D0:.*]] = gml_st.offset %[[CED_RES_TILE]][%[[C0]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[CED_RES_SIZE_D0:.*]] = gml_st.size %[[CED_RES_TILE]][%[[C0]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[ARG_OFFSET_D0:.*]] = arith.select %[[IS_EXPANDING_D0]], %[[C0]], %[[CED_RES_OFFSET_D0]] : index
   // CHECK-DAG: %[[ARG_SIZE_D0:.*]] = arith.select %[[IS_EXPANDING_D0]], %[[C1]], %[[CED_RES_SIZE_D0]] : index
 
   // Check second dim of the arg tile.
-  // CHECK-DAG: %[[INIT_D2:.*]] = tensor.dim %[[INIT]], %[[C2]] : tensor<?x?x?xf32>
-  // CHECK-DAG: %[[IS_EXPANDING_D1:.*]] = arith.cmpi ne, %[[ARG_D1]], %[[INIT_D2]] : index
+  // CHECK-DAG: %[[IS_EXPANDING_D1:.*]] = arith.cmpi ne, %[[ARG_D1]], %[[RES_D2]] : index
   // CHECK-DAG: %[[CED_RES_OFFSET_D1:.*]] = gml_st.offset %[[CED_RES_TILE]][%[[C1]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[CED_RES_SIZE_D1:.*]] = gml_st.size %[[CED_RES_TILE]][%[[C1]]] : !gml_st.tile<3x5>
   // CHECK-DAG: %[[ARG_OFFSET_D1:.*]] = arith.select %[[IS_EXPANDING_D1]], %[[C0]], %[[CED_RES_OFFSET_D1]] : index
@@ -414,4 +412,82 @@ func.func @fuse_cwise_linalg_generic_at_point(%lhs: tensor<?x?xf32>,
   } -> tensor<?x?xf32>
   %4 = gml_st.materialize %3[%point] : tensor<?x?xf32>[!gml_st.point]
   return %4 : f32
+}
+
+// -----
+
+// CHECK:      @dim_reification_fission
+// CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+func.func @dim_reification_fission(%arg0: tensor<?xf32>) -> index {
+  // CHECK:      %[[C0:.*]] = arith.constant 0
+  // CHECK:      %[[DIM:.*]] = tensor.dim %[[ARG]], %[[C0]]
+  // CHECK:      return %[[DIM]]
+  %c0 = arith.constant 0 : index
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %1 = tensor.extract %0[%c0] : tensor<1xindex>
+  return %1 : index
+}
+
+// -----
+
+// CHECK-LABEL: @dim_reification_materialize
+// CHECK-SAME:  %{{.*}}: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<?x?>
+func.func @dim_reification_materialize(%arg: tensor<?x?xf32>,
+    %tile: !gml_st.tile<?x?>) -> index {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[RES:.*]] = gml_st.size %[[TILE]][%[[C0]]]
+  // CHECK:     return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %0 = gml_st.materialize %arg[%tile] : tensor<?x?xf32>[!gml_st.tile<?x?>]
+  %1 = tensor.dim %0, %c0 : tensor<?x?xf32>
+  return %1 : index
+}
+
+// -----
+
+// CHECK-LABEL: @dim_reification_generic
+// CHECK-SAME:  %{{.*}}: tensor<?x?xf32>, %[[INIT:.*]]: tensor<?x?xf32>, %[[IDX:.*]]: index
+#map = affine_map<(d0, d1) -> (d0, d1)>
+func.func @dim_reification_generic(%arg: tensor<?x?xf32>,
+    %init: tensor<?x?xf32>, %idx: index) -> index {
+  // CHECK-DAG: %[[RES:.*]] = tensor.dim %[[INIT]], %[[IDX]] 
+  // CHECK:     return %[[RES]]
+  %0 = linalg.generic
+      {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]}
+      ins(%arg : tensor<?x?xf32>) outs(%init : tensor<?x?xf32>) {
+  ^bb0(%arg3: f32, %arg4: f32):
+    %2 = math.log %arg3 : f32
+    linalg.yield %2 : f32
+  } -> tensor<?x?xf32>
+  %1 = tensor.dim %0, %idx : tensor<?x?xf32>
+  return %1 : index
+}
+
+// -----
+
+// CHECK-LABEL: @dim_reification_init_tensor
+// CHECK-SAME:  %{{.*}}: index, %[[J:.*]]: index
+func.func @dim_reification_init_tensor(%i: index, %j: index) -> index {
+  // CHECK: return %[[J]]
+  %c1 = arith.constant 1 : index
+  %0 = linalg.init_tensor [%i, %j] : tensor<?x?xf32>
+  %1 = tensor.dim %0, %c1 : tensor<?x?xf32>
+  return %1 : index
+}
+
+// -----
+
+// CHECK-LABEL: @dim_reification_dynamic_broadcast_in_dim
+// CHECK-SAME:  %{{.*}}: tensor<?xf32>, %[[INIT:.*]]: tensor<?x?xf32>
+func.func @dim_reification_dynamic_broadcast_in_dim(%arg: tensor<?xf32>,
+    %init: tensor<?x?xf32>) -> index {
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG: %[[RES:.*]] = tensor.dim %[[INIT]], %[[C1]]
+  // CHECK:     return %[[RES]] : index
+  %c1 = arith.constant 1 : index
+  %0 = gml_st.dynamic_broadcast_in_dim
+      ins(%arg : tensor<?xf32>) outs(%init : tensor<?x?xf32>)
+      {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  %1 = tensor.dim %0, %c1 : tensor<?x?xf32>
+  return %1 : index
 }

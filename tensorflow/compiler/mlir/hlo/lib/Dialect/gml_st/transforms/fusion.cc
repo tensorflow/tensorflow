@@ -21,12 +21,94 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace gml_st {
 namespace {
+
+// TODO(frgossen): Move this to the shape reification pass.
+struct DimOpFissionPattern : public OpRewritePattern<tensor::ExtractOp> {
+  using OpRewritePattern<tensor::ExtractOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp extract,
+                                PatternRewriter& rewriter) const override {
+    auto shapeDef = llvm::dyn_cast_or_null<shape::ShapeOfOp>(
+        extract.tensor().getDefiningOp());
+    if (!shapeDef || extract.indices().size() != 1) return failure();
+    rewriter.replaceOpWithNewOp<tensor::DimOp>(extract, shapeDef.getArg(),
+                                               extract.indices().front());
+    return success();
+  }
+};
+
+// TODO(frgossen): Implement this through the shape reification interface and
+// move this pattern to the shape reification pass.
+struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
+  using OpRewritePattern<tensor::DimOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::DimOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* def = op.source().getDefiningOp();
+    if (!def) return failure();
+
+    // Case MaterializeOp.
+    if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
+      assert(materializeOp->getNumResults() == 1 && "assume single result");
+      Value set = materializeOp.set();
+      if (!set.getType().isa<TileType>()) return failure();
+      rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.index());
+      return success();
+    }
+
+    // Case GenericOp.
+    if (auto genericOp = llvm::dyn_cast<linalg::GenericOp>(def)) {
+      // return failure();
+      if (genericOp.getNumResults() != 1 || !genericOp.hasTensorSemantics()) {
+        return failure();
+      }
+      Value outputOperand = genericOp.getOutputOperand(0)->get();
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, outputOperand, op.index());
+      return success();
+    }
+
+    // Case InitTensorOp.
+    if (auto initTensorOp = llvm::dyn_cast<linalg::InitTensorOp>(def)) {
+      if (auto indexConstantOp = llvm::dyn_cast_or_null<arith::ConstantOp>(
+              op.index().getDefiningOp())) {
+        int64_t idx =
+            indexConstantOp.getValue().dyn_cast<IntegerAttr>().getInt();
+        OpFoldResult dim = initTensorOp.getMixedSizes()[idx];
+        Value dimValue;
+        if (dim.is<Value>()) {
+          dimValue = dim.get<Value>();
+        } else {
+          assert(dim.is<Attribute>() && "expected Value or Attribute");
+          int64_t dimInt = dim.get<Attribute>().cast<IntegerAttr>().getInt();
+          dimValue =
+              rewriter.create<arith::ConstantIndexOp>(op.getLoc(), dimInt);
+        }
+        assert(dimValue);
+        rewriter.replaceOp(op, ValueRange{dimValue});
+        return success();
+      }
+    }
+
+    // Case DynamicBroadcastInDimOp.
+    if (auto bcast = llvm::dyn_cast<DynamicBroadcastInDimOp>(def)) {
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.init(), op.index());
+      return success();
+    }
+
+    return failure();
+  }
+};
 
 struct FusionPattern : public OpRewritePattern<MaterializeOp> {
   using OpRewritePattern<MaterializeOp>::OpRewritePattern;
@@ -54,8 +136,16 @@ class FusionPass : public FusionPassBase<FusionPass> {
 
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
+
+    // Populate patterns.
     RewritePatternSet patterns(ctx);
-    patterns.insert<FusionPattern>(ctx);
+    // clang-format off
+    patterns.insert<
+        DimOpFissionPattern,
+        DimOpReificationPattern,
+        FusionPattern>(ctx);
+    // clang-format on
+
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
