@@ -144,8 +144,7 @@ SaveOpSpecs BuildPerDeviceSave(
         shape_and_slice_specs.push_back({});
         // Generate new prefix based on device_id and save op index, only when
         // we need a new save_op.
-        new_prefixes.push_back(absl::StrCat(prefix, "_device_", device_id,
-                                            "_save_op_", save_op_index));
+        new_prefixes.push_back(absl::StrCat(prefix, "_device_", device_id));
       }
       tensor_indices[save_op_index].push_back(tensor_index);
       shape_and_slice_specs[save_op_index].push_back(specs[save_op_index]);
