@@ -205,6 +205,24 @@ class HloModule {
             MakeUnwrappingIterator(computations_.end())};
   }
 
+  // Similar as above, but return a vector of computations for specified
+  // threads. Empty threads list means all threads are included.
+  std::vector<HloComputation*> computations(
+      const absl::flat_hash_set<absl::string_view>& threads) const {
+    std::vector<HloComputation*> computations;
+    if (threads.empty()) {
+      computations.assign(MakeUnwrappingIterator(computations_.begin()),
+                          MakeUnwrappingIterator(computations_.end()));
+      return computations;
+    }
+    for (auto& computation : computations_) {
+      if (threads.find(computation->thread_name()) != threads.end()) {
+        computations.push_back(computation.get());
+      }
+    }
+    return computations;
+  }
+
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
   HloComputation* GetComputationWithName(absl::string_view name);
@@ -231,16 +249,29 @@ class HloModule {
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::vector<HloComputation*> MakeComputationPostOrder() const;
-
-  // Same as MakeComputationPostOrder() but only returns the computations
-  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder() const {
+    return MakeComputationPostOrder({});
+  }
+  // Similar as above but only returns computations with specified threads.
+  // Empty threads list means all threads are included.
   std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
+  // Same as MakeComputationPostOrder() but only returns the computations that
+  // are on specified threads and are also found in the passed in allowList.
+  // Empty threads list means all threads are included.
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& threads,
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
-  std::vector<HloComputation*> MakeComputationSorted() const;
+  std::vector<HloComputation*> MakeComputationSorted() const {
+    return MakeComputationSorted({});
+  }
+  // Same as above but only for specified threads. Empty threads list means all
+  // threads are included.
+  std::vector<HloComputation*> MakeComputationSorted(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -251,10 +282,22 @@ class HloModule {
   // of the module's non-fusion computations -- that is, it's OK to add or
   // remove computations from a module while iterating over
   // MakeNonfusionComputations().
-  std::vector<HloComputation*> MakeNonfusionComputations() const;
+  std::vector<HloComputation*> MakeNonfusionComputations() const {
+    return MakeNonfusionComputations({});
+  }
+  // Same as above but only for specified threads. Empty threads list means all
+  // threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputations(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
-  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
+    return MakeNonfusionComputationsSorted({});
+  }
+  // Same as above but only for specified threads. Empty threads list means all
+  // threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
 
   HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
