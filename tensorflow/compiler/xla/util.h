@@ -179,8 +179,8 @@ using to_underlying = std::to_underlying;
 #else
 // Helper function which implements C++23's std::to_underlying.
 template <typename T>
-constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
-  return static_cast<absl::underlying_type_t<T>>(value);
+constexpr std::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<std::underlying_type_t<T>>(value);
 }
 #endif
 
