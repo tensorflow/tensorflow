@@ -1283,7 +1283,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
       if (!rnn_plan_wrapper.ok()) {
         return port::StatusOr<CudnnRnnDescriptor>(rnn_plan_wrapper.status());
       } else {
-        rnn_plan = rnn_plan_wrapper.ConsumeValueOrDie();
+        rnn_plan = std::move(rnn_plan_wrapper).value();
         RETURN_IF_CUDNN_ERROR(
             cudnnSetPersistentRNNPlan(rnn_desc.get(), rnn_plan.get()));
       }
@@ -4538,7 +4538,7 @@ port::Status CreateOpRunners(
     }
 
     out_runners->push_back(std::make_unique<CudnnExecutionPlanRunner<Sig>>(
-        runner_or.ConsumeValueOrDie()));
+        std::move(runner_or).value()));
 
     // We will use the first working plan when determinism is required.
     if (RequireCudnnDeterminism()) {
@@ -4635,7 +4635,7 @@ port::Status CudnnSupport::GetConvolveRunners(
         // log errors for anything unexpected?
         continue;
       }
-      out_exec_plans->push_back(runner_or.ConsumeValueOrDie());
+      out_exec_plans->push_back(std::move(runner_or).value());
     }
 
     return ::tensorflow::OkStatus();
@@ -5079,7 +5079,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
         // don't support this conv.
         continue;
       }
-      out_exec_plans->push_back(runner_or.ConsumeValueOrDie());
+      out_exec_plans->push_back(std::move(runner_or).value());
     }
     return ::tensorflow::OkStatus();
   }
@@ -5095,7 +5095,7 @@ port::Status CudnnSupport::GetFusedConvolveRunners(
                         absl::StrCat("Cudnn graph failed to build: ",
                                      op_graph_status.status().ToString()));
   }
-  auto op_graph = op_graph_status.ConsumeValueOrDie();
+  auto op_graph = std::move(op_graph_status).value();
 
   return CreateOpRunners<dnn::FusedConvSignature>(
       stream, cudnn, parent_, cudnn_.get(), std::move(op_graph), kind,
