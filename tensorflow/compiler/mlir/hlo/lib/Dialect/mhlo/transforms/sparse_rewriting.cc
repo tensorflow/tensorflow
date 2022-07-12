@@ -42,7 +42,7 @@ static bool canFuseWithSparseConvert(Operation *op) {
          isa<RealOp>(op) || isa<RoundOp>(op) || isa<SignOp>(op) ||
          isa<SineOp>(op) || isa<SqrtOp>(op) || isa<TanhOp>(op) ||
          isa<AddOp>(op) || isa<DivOp>(op) || isa<MulOp>(op) || isa<RemOp>(op) ||
-         isa<TransposeOp>(op) || isa<SubOp>(op);
+         isa<TransposeOp>(op) || isa<SubtractOp>(op);
 }
 
 /// Fuses a sparse tensor type from a conversion into a mhlo operation

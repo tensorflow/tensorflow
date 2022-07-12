@@ -70,7 +70,7 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 // TODO(b/228291745): Assert that $x and $y have the same shape.
 def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
           (CHLO_BroadcastCompareOp
-           (HLO_AbsOp:$abs (HLO_SubOp $x, $y)),
+           (HLO_AbsOp:$abs (HLO_SubtractOp $x, $y)),
            (CastValueToElementType $result, (HLO_ConstantOp $tolerance), $abs),
            (NullDenseIntElementsAttr),
            HLO_ComparisonDirectionValue<"LT">,
@@ -454,7 +454,7 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
            (HLO_AndOp
             (CHLO_BroadcastCompareOp
              (HLO_NegOp $num_lower_or_m),
-             (HLO_SubOp:$offset
+             (HLO_SubtractOp:$offset
               (createIotaOp<"1"> $op, $input, $num_lower),
               (createIotaOp<"0"> $op, $input, $num_lower)
              ),
@@ -750,7 +750,7 @@ def : Pat<(TF_RandomStandardNormalOp:$old $shape, $seed, $seed2),
 def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (HLO_MulOp
            (HLO_MulOp $r, $l),
-           (HLO_SubOp (HLO_ConstantOp (ConstantSplat<"1"> $l)), $l))>;
+           (HLO_SubtractOp (HLO_ConstantOp (ConstantSplat<"1"> $l)), $l))>;
 
 //===----------------------------------------------------------------------===//
 // Softplus op.

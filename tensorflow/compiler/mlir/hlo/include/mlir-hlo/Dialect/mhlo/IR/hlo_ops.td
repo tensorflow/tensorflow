@@ -644,7 +644,7 @@ def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
   }];
 }
 
-def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
+def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
       [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Subtraction operator";
   let description = [{
@@ -654,6 +654,7 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
   let hasFolder = 1;
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//

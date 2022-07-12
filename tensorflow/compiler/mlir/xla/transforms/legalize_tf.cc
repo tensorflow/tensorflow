@@ -1688,7 +1688,7 @@ class ConvertRollOp : public OpRewritePattern<TF::RollOp> {
     Value zero = b.create<mhlo::ConstantOp>(
         b.getIntegerAttr(getElementTypeOrSelf(offset.getType()), 0));
     SmallVector<Value> slice_begin_indices(input_rank, zero);
-    slice_begin_indices[axis] = b.create<SubOp>(axis_size, offset);
+    slice_begin_indices[axis] = b.create<SubtractOp>(axis_size, offset);
     rewriter.replaceOpWithNewOp<DynamicSliceOp>(
         op, input_ty, concat, slice_begin_indices,
         rewriter.getI64TensorAttr(input_shape));
@@ -1948,7 +1948,7 @@ class ConvertMatrixDiagPartV3Op
     //  subtract m here. This means we start with the superdiagonals and
     //  move downwards towards the subdiagonals. So the start indices will
     //  be decreasing.)
-    Value d = rewriter.create<SubOp>(loc, b_k1, iotaM);
+    Value d = rewriter.create<SubtractOp>(loc, b_k1, iotaM);
     Value neg_d = rewriter.create<NegOp>(loc, d);
 
     // diag_len_d = min(rows + min(d, 0), cols - max(d, 0))
@@ -1957,8 +1957,8 @@ class ConvertMatrixDiagPartV3Op
         loc,
         rewriter.create<AddOp>(loc, b_rows,
                                rewriter.create<MinOp>(loc, d, b_zero)),
-        rewriter.create<SubOp>(loc, b_cols,
-                               rewriter.create<MaxOp>(loc, d, b_zero)));
+        rewriter.create<SubtractOp>(loc, b_cols,
+                                    rewriter.create<MaxOp>(loc, d, b_zero)));
 
     // offset is max_diag_len - diag_len_d if we're padding, 0 otherwise.
     Value cmp;
@@ -1979,13 +1979,13 @@ class ConvertMatrixDiagPartV3Op
     // on alignment.
     Value offset = rewriter.create<SelectOp>(
         loc, b_zero.getType(), cmp,
-        rewriter.create<SubOp>(loc, b_max_diag_len, diag_len_d), b_zero);
+        rewriter.create<SubtractOp>(loc, b_max_diag_len, diag_len_d), b_zero);
 
     // x = max(d, 0) - offset
     // y = max(-d, 0) - offset
-    Value x = rewriter.create<SubOp>(
+    Value x = rewriter.create<SubtractOp>(
         loc, rewriter.create<MaxOp>(loc, d, b_zero), offset);
-    Value y = rewriter.create<SubOp>(
+    Value y = rewriter.create<SubtractOp>(
         loc, rewriter.create<MaxOp>(loc, neg_d, b_zero), offset);
 
     Value n_plus_x = rewriter.create<AddOp>(loc, iotaN, x);
@@ -2273,7 +2273,7 @@ class ConvertFusedBatchNormGradBase
       Value scratch1 = rewriter.create<RsqrtOp>(loc, add_op);
 
       // scratch2 = sum(y_backprop * (x - mean))
-      auto sub_op = rewriter.create<mhlo::SubOp>(
+      auto sub_op = rewriter.create<mhlo::SubtractOp>(
           loc, act,
           Broadcast1DToFeatureDim(loc, act, mean, feature_dim, rewriter));
       auto weighted_grad = rewriter.create<mhlo::MulOp>(loc, grad, sub_op);
@@ -3976,7 +3976,7 @@ class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
     // some conversion to float for the operations.
     //
     // %size = ceil(abs((%limit - %start) / %delta))
-    auto range = rewriter.create<mhlo::SubOp>(op.getLoc(), limit, start);
+    auto range = rewriter.create<mhlo::SubtractOp>(op.getLoc(), limit, start);
     auto abs = rewriter.create<mhlo::AbsOp>(op.getLoc(), range);
 
     // Delta is not necessarily the same type as start and limit.
@@ -4579,8 +4579,8 @@ class ConvertTensorScatterSubOp
     Block *block = builder.createBlock(region);
     Type type = RankedTensorType::get(/*shape=*/{}, element_type);
     block->addArguments({type, type}, SmallVector<Location, 2>(2, loc));
-    auto sub_op = builder.create<SubOp>(loc, block->getArgument(0),
-                                        block->getArgument(1));
+    auto sub_op = builder.create<SubtractOp>(loc, block->getArgument(0),
+                                             block->getArgument(1));
     builder.create<ReturnOp>(loc, sub_op.getResult());
   }
 };
@@ -6673,11 +6673,11 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
         mu, GetI64ElementsAttr({}, builder));
     *beta = builder->create<SelectOp>(loc, sigma_is_zero, alpha, signed_mu);
     *tau = builder->create<DivOp>(
-        loc, builder->create<SubOp>(loc, *beta, alpha), *beta);
+        loc, builder->create<SubtractOp>(loc, *beta, alpha), *beta);
     Value zero_tau = builder->create<BroadcastOp>(
         loc, zero, GetI64ElementsAttr(batch_dims, builder));
     *tau = builder->create<SelectOp>(loc, sigma_is_zero, zero_tau, *tau);
-    Value divisor = builder->create<SubOp>(loc, alpha, *beta);
+    Value divisor = builder->create<SubtractOp>(loc, alpha, *beta);
     divisor =
         builder->create<SelectOp>(loc, sigma_is_zero, batch_size_one, divisor);
 
@@ -6777,7 +6777,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
       auto tau_x_vva = StaticBinaryBroadcast<mhlo::MulOp>(
           loc, tau, vva, GetI64ElementsAttr(batch_dim_indices, builder),
           *builder);
-      a = builder->create<SubOp>(loc, a, tau_x_vva);
+      a = builder->create<SubtractOp>(loc, a, tau_x_vva);
 
       // It is more precise to populate column 'k' explicitly, rather than
       // computing it implicitly by applying the Householder transformation.

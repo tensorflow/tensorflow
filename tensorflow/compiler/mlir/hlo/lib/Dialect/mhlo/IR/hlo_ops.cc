@@ -689,7 +689,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ShiftRightLogicalOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SignOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SineOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp)
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SubOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SubtractOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 
@@ -5963,7 +5963,7 @@ struct Xor {
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(SubOp, std::minus);
+BINARY_FOLDER(SubtractOp, std::minus);
 BINARY_FOLDER(DivOp, Divide);
 BINARY_FOLDER(RemOp, Remainder);
 BINARY_FOLDER(MaxOp, Max);

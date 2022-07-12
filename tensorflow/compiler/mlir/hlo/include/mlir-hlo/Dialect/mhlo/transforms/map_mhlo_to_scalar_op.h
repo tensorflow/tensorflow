@@ -138,7 +138,7 @@ struct MhloToScalarOp<mhlo::RoundOp> {
   using FOp = ::mlir::math::RoundOp;
 };
 template <>
-struct MhloToScalarOp<mhlo::SubOp> {
+struct MhloToScalarOp<mhlo::SubtractOp> {
   using FOp = ::mlir::arith::SubFOp;
   using IOp = ::mlir::arith::SubIOp;
   using UOp = ::mlir::arith::SubIOp;
@@ -314,7 +314,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
         b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
     auto lhsGtZero = b->create<ScalarIOp<CompareOp>>(
         loc, arith::CmpIPredicate::sge, lhs, zeroIntval);
-    auto negVal = b->create<ScalarIOp<mhlo::SubOp>>(loc, zeroIntval, lhs);
+    auto negVal = b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
     return b->create<::mlir::arith::SelectOp>(loc, lhsGtZero, lhs, negVal);
   }
   return nullptr;
@@ -957,7 +957,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NegOp>(Location loc,
     Value lhs = args[0];
     Value zeroIntval =
         b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
-    return b->create<ScalarIOp<mhlo::SubOp>>(loc, zeroIntval, lhs);
+    return b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
   }
   return nullptr;
 }

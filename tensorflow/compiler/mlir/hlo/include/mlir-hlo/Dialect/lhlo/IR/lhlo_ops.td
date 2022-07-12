@@ -496,7 +496,7 @@ def LHLO_ShiftRightLogicalOp : LHLO_BinaryElementwiseOp<"shift_right_logical", L
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
-def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract"> {
+def LHLO_SubtractOp : LHLO_BinaryElementwiseOp<"subtract"> {
   let summary = "Subtraction operator";
   let description = [{
     Returns `lhs - rhs` element-wise.

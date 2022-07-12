@@ -167,7 +167,7 @@ Value materializeErfcApproximationF64ForMagnituteGeOne(
       loc, x, zero, mhlo::ComparisonDirection::LT);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
   Value twoSubErfcApproxClamped =
-      rewriter.create<mhlo::SubOp>(loc, two, erfcApproxClamped);
+      rewriter.create<mhlo::SubtractOp>(loc, two, erfcApproxClamped);
   return rewriter.create<mhlo::SelectOp>(loc, xLtZero, twoSubErfcApproxClamped,
                                          erfcApproxClamped);
 }
@@ -216,7 +216,8 @@ Value materializeErfApproximationF64(ConversionPatternRewriter &rewriter,
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
   Value erfcApprox =
       materializeErfcApproximationF64ForMagnituteGeOne(rewriter, loc, x);
-  Value erfcBasedApprox = rewriter.create<mhlo::SubOp>(loc, one, erfcApprox);
+  Value erfcBasedApprox =
+      rewriter.create<mhlo::SubtractOp>(loc, one, erfcApprox);
 
   // Materialize approximation selection based on argument.
   Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
@@ -242,7 +243,7 @@ Value materializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
   Value erfApprox =
       materializeErfApproximationF64ForMagnituteLeOne(rewriter, loc, x);
-  Value erfBasedApprox = rewriter.create<mhlo::SubOp>(loc, one, erfApprox);
+  Value erfBasedApprox = rewriter.create<mhlo::SubtractOp>(loc, one, erfApprox);
 
   // Materialize approximation selection based on argument.
   Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
@@ -313,7 +314,7 @@ Value materializeErfcApproximationF32ForMagnitudeGeOne(
   Value xLtZero = rewriter.create<mhlo::CompareOp>(
       loc, x, zero, mhlo::ComparisonDirection::LT);
   Value twoSubErfcApprox =
-      rewriter.create<mhlo::SubOp>(loc, two, erfcApproxClamped);
+      rewriter.create<mhlo::SubtractOp>(loc, two, erfcApproxClamped);
   return rewriter.create<mhlo::SelectOp>(loc, xLtZero, twoSubErfcApprox,
                                          erfcApproxClamped);
 }
@@ -387,7 +388,7 @@ Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
   Value erfApprox =
       materializeErfApproximationF32ForMagnitudeLeOne(rewriter, loc, x);
-  Value erfBasedApprox = rewriter.create<mhlo::SubOp>(loc, one, erfApprox);
+  Value erfBasedApprox = rewriter.create<mhlo::SubtractOp>(loc, one, erfApprox);
 
   // Materialize approximation selection based on argument.
   Value absX = rewriter.create<mhlo::AbsOp>(loc, x);
@@ -515,7 +516,7 @@ Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       loc, x, half, mhlo::ComparisonDirection::LT);
   Value negX = rewriter.create<mhlo::NegOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1, x);
-  Value xSubOne = rewriter.create<mhlo::SubOp>(loc, x, one);
+  Value xSubOne = rewriter.create<mhlo::SubtractOp>(loc, x, one);
   Value z = rewriter.create<mhlo::SelectOp>(loc, needToReflect, negX, xSubOne);
 
   // Materialize
@@ -551,7 +552,7 @@ Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   // Therefore, we compute this as
   //   r = (z + 1/2 - t(z) / log(t(z))) * log(t(z)).
   Value tDivLogT = rewriter.create<mhlo::DivOp>(loc, t, logT);
-  Value sum = rewriter.create<mhlo::SubOp>(
+  Value sum = rewriter.create<mhlo::SubtractOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, z, half), tDivLogT);
   Value r = rewriter.create<mhlo::MulOp>(loc, sum, logT);
 
@@ -594,12 +595,12 @@ Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   // Convert values of abs_frac > 0.5 to (1 - abs_frac) to improve precision of
   // pi * abs_frac for values of abs_frac close to 1.
   Value abs = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value absFrac = rewriter.create<mhlo::SubOp>(
+  Value absFrac = rewriter.create<mhlo::SubtractOp>(
       loc, abs, rewriter.create<mhlo::FloorOp>(loc, abs));
   Value reduceAbsFrac = rewriter.create<mhlo::CompareOp>(
       loc, half, absFrac, mhlo::ComparisonDirection::LT);
   absFrac = rewriter.create<mhlo::SelectOp>(
-      loc, reduceAbsFrac, rewriter.create<mhlo::SubOp>(loc, one, absFrac),
+      loc, reduceAbsFrac, rewriter.create<mhlo::SubtractOp>(loc, one, absFrac),
       absFrac);
 
   // Materialize reflection.
@@ -608,9 +609,9 @@ Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
       rewriter.create<mhlo::SineOp>(
           loc, rewriter.create<mhlo::MulOp>(
                    loc, getConstantLike(rewriter, loc, M_PI, x), absFrac)));
-  Value lgammaReflection = rewriter.create<mhlo::SubOp>(
+  Value lgammaReflection = rewriter.create<mhlo::SubtractOp>(
       loc,
-      rewriter.create<mhlo::SubOp>(
+      rewriter.create<mhlo::SubtractOp>(
           loc, getConstantLike(rewriter, loc, std::log(M_PI), x),
           reflectionDenom),
       lgamma);
@@ -677,7 +678,7 @@ Value materializeCoshApproximation(ConversionPatternRewriter &rewriter,
   Value expAdd = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, logOneHalf));
   Value expSub = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<mhlo::SubOp>(loc, logOneHalf, x));
+      loc, rewriter.create<mhlo::SubtractOp>(loc, logOneHalf, x));
   return rewriter.create<mhlo::AddOp>(loc, expAdd, expSub);
 }
 
@@ -715,7 +716,7 @@ Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
       loc, x, half, mhlo::ComparisonDirection::LT);
   Value negX = rewriter.create<mhlo::NegOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1, x);
-  Value xSubOne = rewriter.create<mhlo::SubOp>(loc, x, one);
+  Value xSubOne = rewriter.create<mhlo::SubtractOp>(loc, x, one);
   Value z = rewriter.create<mhlo::SelectOp>(loc, needToReflect, negX, xSubOne);
 
   // Materialize
@@ -729,7 +730,7 @@ Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
     Value coeff = getConstantLike(rewriter, loc, kLanczosCoefficients[i], x);
     Value oneBasedIndex = getConstantLike(rewriter, loc, i + 1, x);
     Value zTerm = rewriter.create<mhlo::AddOp>(loc, z, oneBasedIndex);
-    aPrime = rewriter.create<mhlo::SubOp>(
+    aPrime = rewriter.create<mhlo::SubtractOp>(
         loc, aPrime,
         rewriter.create<mhlo::DivOp>(
             loc, coeff, rewriter.create<mhlo::MulOp>(loc, zTerm, zTerm)));
@@ -757,7 +758,7 @@ Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   Value aPrimeDivA = rewriter.create<mhlo::DivOp>(loc, aPrime, a);
   Value lanczosGammaDivT = rewriter.create<mhlo::DivOp>(
       loc, getConstantLike(rewriter, loc, kLanczosGamma, x), t);
-  Value digamma = rewriter.create<mhlo::SubOp>(
+  Value digamma = rewriter.create<mhlo::SubtractOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, logT, aPrimeDivA),
       lanczosGammaDivT);
 
@@ -781,7 +782,7 @@ Value materializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   Value piMulReducedX = rewriter.create<mhlo::MulOp>(loc, pi, reducedX);
   Value cos = rewriter.create<mhlo::CosineOp>(loc, piMulReducedX);
   Value sin = rewriter.create<mhlo::SineOp>(loc, piMulReducedX);
-  Value reflection = rewriter.create<mhlo::SubOp>(
+  Value reflection = rewriter.create<mhlo::SubtractOp>(
       loc, digamma,
       rewriter.create<mhlo::DivOp>(
           loc, rewriter.create<mhlo::MulOp>(loc, pi, cos), sin));
@@ -840,7 +841,7 @@ Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   a = rewriter.create<mhlo::AddOp>(loc, a, one);
   negPower = rewriter.create<mhlo::PowOp>(loc, a, negX);
   Value oneLikeX = chlo::getConstantLike(rewriter, loc, 1.0, x);
-  Value xMinusOne = rewriter.create<mhlo::SubOp>(loc, x, oneLikeX);
+  Value xMinusOne = rewriter.create<mhlo::SubtractOp>(loc, x, oneLikeX);
   Value negPowerMulA = rewriter.create<mhlo::MulOp>(loc, negPower, a);
   Value negPowerMulADivXMinusOne =
       rewriter.create<mhlo::DivOp>(loc, negPowerMulA, xMinusOne);
@@ -856,9 +857,9 @@ Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
   // Using Horner's rule allows to avoid some NaN's and Infs from happening,
   // resulting in more numerically stable code.
   for (int i = 0; i < 11; ++i) {
-    Value factorLhs = rewriter.create<mhlo::SubOp>(
+    Value factorLhs = rewriter.create<mhlo::SubtractOp>(
         loc, x, chlo::getConstantLike(rewriter, loc, 22 - 2 * i, x));
-    Value factorRhs = rewriter.create<mhlo::SubOp>(
+    Value factorRhs = rewriter.create<mhlo::SubtractOp>(
         loc, x, chlo::getConstantLike(rewriter, loc, 21 - 2 * i, x));
     factor = rewriter.create<mhlo::MulOp>(loc, factorLhs, factorRhs);
     hornerSum = rewriter.create<mhlo::MulOp>(
@@ -957,7 +958,7 @@ Value materializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
   // Handle integer n > 0.
   Value one = getConstantLike(rewriter, loc, 1.0, x);
   Value two = getConstantLike(rewriter, loc, 2.0, x);
-  Value sign = rewriter.create<mhlo::SubOp>(
+  Value sign = rewriter.create<mhlo::SubtractOp>(
       loc,
       rewriter.create<mhlo::MulOp>(loc, two,
                                    rewriter.create<mhlo::RemOp>(loc, n, two)),
@@ -1146,8 +1147,8 @@ Value materializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
   Value expAdd = rewriter.create<mhlo::ExpOp>(
       loc, rewriter.create<mhlo::AddOp>(loc, x, logOneHalf));
   Value expSub = rewriter.create<mhlo::ExpOp>(
-      loc, rewriter.create<mhlo::SubOp>(loc, logOneHalf, x));
-  return rewriter.create<mhlo::SubOp>(loc, expAdd, expSub);
+      loc, rewriter.create<mhlo::SubtractOp>(loc, logOneHalf, x));
+  return rewriter.create<mhlo::SubtractOp>(loc, expAdd, expSub);
 }
 
 // Express `sinh` as

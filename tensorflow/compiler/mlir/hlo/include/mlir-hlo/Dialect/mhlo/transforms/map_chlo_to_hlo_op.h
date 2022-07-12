@@ -72,7 +72,7 @@ void populateForBroadcastingBinaryOp(MLIRContext *context,
   POPULATE_BCAST(BroadcastShiftLeftOp, mhlo::ShiftLeftOp);
   POPULATE_BCAST(BroadcastShiftRightArithmeticOp, mhlo::ShiftRightArithmeticOp);
   POPULATE_BCAST(BroadcastShiftRightLogicalOp, mhlo::ShiftRightLogicalOp);
-  POPULATE_BCAST(BroadcastSubOp, mhlo::SubOp);
+  POPULATE_BCAST(BroadcastSubOp, mhlo::SubtractOp);
   POPULATE_BCAST(BroadcastXorOp, mhlo::XorOp);
   POPULATE_BCAST(BroadcastZetaOp, ZetaOp);
 

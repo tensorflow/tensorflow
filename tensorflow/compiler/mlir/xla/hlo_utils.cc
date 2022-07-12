@@ -309,7 +309,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   } else if (isa<mlir::mhlo::ShiftRightLogicalOp,
                  mlir::lmhlo::ShiftRightLogicalOp>(op)) {
     return xla::HloOpcode::kShiftRightLogical;
-  } else if (isa<mlir::mhlo::SubOp, mlir::lmhlo::SubOp>(op)) {
+  } else if (isa<mlir::mhlo::SubtractOp, mlir::lmhlo::SubtractOp>(op)) {
     return xla::HloOpcode::kSubtract;
   } else if (isa<mlir::mhlo::XorOp, mlir::lmhlo::XorOp>(op)) {
     return xla::HloOpcode::kXor;

@@ -1579,6 +1579,20 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(SubtractOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &lhs, op)))
+    return mlir::failure();
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(*op.getODSOperands(1).begin(), value_map, &rhs, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sub(Unwrap(lhs), Unwrap(rhs));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
   // TODO(atondwal): remove mhlo.trace
   return success();

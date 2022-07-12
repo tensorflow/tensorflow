@@ -150,8 +150,8 @@ class UnfuseBatchNormInferencePattern
 
     // Compute:
     // scale * (input - mean) / stddev + offset
-    Value result = rewriter.create<mhlo::SubOp>(bnOp.getLoc(), bnOp.operand(),
-                                                broadcastMean);
+    Value result = rewriter.create<mhlo::SubtractOp>(
+        bnOp.getLoc(), bnOp.operand(), broadcastMean);
     result =
         rewriter.create<mhlo::MulOp>(bnOp.getLoc(), result, broadcastScale);
     result =
@@ -305,8 +305,8 @@ class UnfuseBatchNormTrainingPattern
     // E^2[X]
     Value meanSquare = rewriter.create<mhlo::MulOp>(bnOp.getLoc(), mean, mean);
     // Var[X]
-    Value var =
-        rewriter.create<mhlo::SubOp>(bnOp.getLoc(), squareMean, meanSquare);
+    Value var = rewriter.create<mhlo::SubtractOp>(bnOp.getLoc(), squareMean,
+                                                  meanSquare);
     // Var[X] + epsilon
     Value varAddEpsilon =
         rewriter.create<mhlo::AddOp>(bnOp.getLoc(), var, epsilon);
@@ -320,7 +320,7 @@ class UnfuseBatchNormTrainingPattern
     // X - E[X]
     Value meanBroadcast = broadcastToFeatureDim(
         bnOp.getLoc(), operandType, mean, shapeValue, featureIndex, rewriter);
-    Value operandMinusMean = rewriter.create<mhlo::SubOp>(
+    Value operandMinusMean = rewriter.create<mhlo::SubtractOp>(
         bnOp.getLoc(), bnOp.operand(), meanBroadcast);
     // (X - E[X]) / Sqrt(Var[X] + epsilon)
     Value sqrtVarBroadcast =

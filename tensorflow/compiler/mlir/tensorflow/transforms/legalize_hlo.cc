@@ -3240,7 +3240,7 @@ using ConvertScatterMaxOp =
 using ConvertScatterMinOp =
     ConvertScatterOp<mhlo::MinOp, TF::TensorScatterMinOp>;
 using ConvertScatterSubOp =
-    ConvertScatterOp<mhlo::SubOp, TF::TensorScatterSubOp>;
+    ConvertScatterOp<mhlo::SubtractOp, TF::TensorScatterSubOp>;
 using ConvertScatterUpdateOp =
     ConvertScatterOp<void, TF::TensorScatterUpdateOp>;
 

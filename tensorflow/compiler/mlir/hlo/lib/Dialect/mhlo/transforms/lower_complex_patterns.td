@@ -26,7 +26,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 // Add and subtraction are elementwise and can be distributed across the real
 // and imaginary components.
-foreach elementwiseOp = [HLO_AddOp, HLO_SubOp] in
+foreach elementwiseOp = [HLO_AddOp, HLO_SubtractOp] in
   def : Pat<(elementwiseOp HLO_ComplexTensor:$lhs,
              HLO_ComplexTensor:$rhs),
             (HLO_ComplexOp
@@ -40,7 +40,7 @@ foreach elementwiseOp = [HLO_AddOp, HLO_SubOp] in
 def : Pat<(HLO_MulOp HLO_ComplexTensor:$lhs,
            HLO_ComplexTensor:$rhs),
           (HLO_ComplexOp
-           (HLO_SubOp
+           (HLO_SubtractOp
             (HLO_MulOp
              (HLO_RealOp:$lhs_real $lhs),
              (HLO_RealOp:$rhs_real $rhs)),
@@ -92,7 +92,7 @@ def : Pat<(HLO_SineOp HLO_ComplexTensor:$val),
               (HLO_DivOp
                 (HLO_MulOp
                   (HLO_CosineOp $real),
-                  (HLO_SubOp $exp, $nexp)), $two))>;
+                  (HLO_SubtractOp $exp, $nexp)), $two))>;
 
 // Can deconstruct cos(a + ib) as follows:
 //   cos(a) * cosh(b) - isin(a) * sinh(b)
@@ -110,7 +110,7 @@ def : Pat<(HLO_CosineOp HLO_ComplexTensor:$val),
               (HLO_DivOp
                 (HLO_MulOp
                   (HLO_SineOp $real),
-                  (HLO_SubOp $nexp, $exp)), $two))>;
+                  (HLO_SubtractOp $nexp, $exp)), $two))>;
 
 // Exponential can be lowered to an exponential on the real component and a
 // sum of sinusoids of the imaginary component, which equates to a normal
