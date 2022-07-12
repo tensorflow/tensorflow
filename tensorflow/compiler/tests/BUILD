@@ -2306,3 +2306,23 @@ tpu_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_xla_py_test(
+    name = "xla_call_module_test",
+    size = "small",
+    srcs = ["xla_call_module_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)

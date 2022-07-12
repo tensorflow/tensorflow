@@ -2219,6 +2219,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Where",
       "While",
       "XlaBroadcastHelper",
+      "XlaCallModule",
       "XlaConcatND",
       "XlaConv",
       "XlaConvV2",

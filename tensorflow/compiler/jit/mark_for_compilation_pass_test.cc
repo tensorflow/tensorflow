@@ -1964,7 +1964,7 @@ TEST(XlaCompilationTest, XLALiteAllowlist) {
     }
   }
   EXPECT_TRUE(unknow_op.empty())
-      << "Someone added support for a new TF opeations inside XLA. They must "
+      << "Someone added support for a new TF operations inside XLA. They must "
          "be included in the XLALite allowlist or denylist:\n"
       << absl::StrJoin(unknow_op, "\n");
 }
