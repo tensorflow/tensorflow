@@ -771,10 +771,7 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   // TODO(intel-tf): enable the fusion for bf16
   bool dtypeU_is_float = HasDataType(node_def, DT_FLOAT, "U");
   bool dtypeT_is_bf16 = HasDataType(node_def, DT_BFLOAT16, "T");
-  if (node_view->GetOp() != "FusedBatchNorm" &&
-      (!dtypeU_is_float || dtypeT_is_bf16)) {
-    return false;
-  }
+  if (node_view->GetOp() != "FusedBatchNorm" && !dtypeU_is_float) return false;
 
   // Check that batch normalization is in inference mode.
   const auto* training_attr = node_view->GetAttr(kIsTraining);
@@ -2024,6 +2021,17 @@ void SetFusedOpAttributes(NodeDef* fused,
                           const absl::Span<const absl::string_view> fused_ops,
                           int num_args = 1, float epsilon = 0.0) {
   auto* attr = fused->mutable_attr();
+  if (fused->op() == kFusedConv2D)
+    SetAttrValue(attr->at("T"), &(*attr)["U"]);  // set to T
+  SetAttrValue(fused_ops, &(*attr)["fused_ops"]);
+  SetAttrValue(num_args, &(*attr)["num_args"]);
+  SetAttrValue(epsilon, &(*attr)["epsilon"]);  // required only for BatchNorm
+}
+void SetFusedOpAttributesFBN(
+    NodeDef* fused, const absl::Span<const absl::string_view> fused_ops,
+    int num_args = 0, float epsilon = 0.0) {
+  auto* attr = fused->mutable_attr();
+  SetAttrValue(DT_FLOAT, &(*attr)["U"]);
   SetAttrValue(fused_ops, &(*attr)["fused_ops"]);
   SetAttrValue(num_args, &(*attr)["num_args"]);
   SetAttrValue(epsilon, &(*attr)["epsilon"]);  // required only for BatchNorm
@@ -2205,8 +2213,8 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   fused_conv2d.add_input(fused_batch_norm.input(4));  // 5: variance
 
   CopyConv2DAttributes(contraction, &fused_conv2d);
-  SetFusedOpAttributes(&fused_conv2d, {"FusedBatchNorm"},
-                       /*num_args=*/4, /*epsilon=*/matched.epsilon);
+  SetFusedOpAttributesFBN(&fused_conv2d, {"FusedBatchNorm"},
+                          /*num_args=*/4, /*epsilon=*/matched.epsilon);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -2248,8 +2256,8 @@ Status AddFusedConv2DNode(RemapperContext* ctx,
   fused_conv2d.add_input(fused_batch_norm.input(4));  // 5: variance
 
   CopyConv2DAttributes(contraction, &fused_conv2d, &activation);
-  SetFusedOpAttributes(&fused_conv2d, {"FusedBatchNorm", activation.op()},
-                       /*num_args=*/4, /*epsilon=*/matched.epsilon);
+  SetFusedOpAttributesFBN(&fused_conv2d, {"FusedBatchNorm", activation.op()},
+                          /*num_args=*/4, /*epsilon=*/matched.epsilon);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;

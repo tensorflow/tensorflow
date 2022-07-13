@@ -113,8 +113,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
 
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
-               const Tinput* bn_scale_data, const Tinput* bn_mean_data,
-               const Tinput* bn_offset_data, const Tinput* bn_rsqrt_data,
+               const float* bn_scale_data, const float* bn_mean_data,
+               const float* bn_offset_data, const float* bn_rsqrt_data,
                std::shared_ptr<stream> fwd_stream, void* sp_data) {
 #ifdef DNNL_AARCH64_USE_ACL
     // When we are using single global cache then in this case we can have
@@ -134,13 +134,13 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
     if (bn_scale_data != nullptr) {
       context_.bn_scale_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)), *fwd_stream);
+          static_cast<void*>(const_cast<float*>(bn_scale_data)), *fwd_stream);
       context_.bn_mean_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)), *fwd_stream);
+          static_cast<void*>(const_cast<float*>(bn_mean_data)), *fwd_stream);
       context_.bn_rsqrt_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)), *fwd_stream);
+          static_cast<void*>(const_cast<float*>(bn_rsqrt_data)), *fwd_stream);
       context_.bn_offset_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)), *fwd_stream);
+          static_cast<void*>(const_cast<float*>(bn_offset_data)), *fwd_stream);
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)), *fwd_stream);
@@ -155,13 +155,13 @@ class MklConvFwdPrimitive : public MklPrimitive {
     }
     if (bn_scale_data != nullptr) {
       context_.bn_scale_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)));
+          static_cast<void*>(const_cast<float*>(bn_scale_data)));
       context_.bn_mean_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)));
+          static_cast<void*>(const_cast<float*>(bn_mean_data)));
       context_.bn_rsqrt_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)));
+          static_cast<void*>(const_cast<float*>(bn_rsqrt_data)));
       context_.bn_offset_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)));
+          static_cast<void*>(const_cast<float*>(bn_offset_data)));
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
@@ -315,13 +315,13 @@ class MklConvFwdPrimitive : public MklPrimitive {
               : MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
 
       context_.bn_scale_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
       context_.bn_mean_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
       context_.bn_rsqrt_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
       context_.bn_offset_md.reset(new memory::desc(
-          {convFwdDims.fuse_bn_dims}, MklDnnType<Tinput>(), fused_bn_arg_fmt));
+          {convFwdDims.fuse_bn_dims}, MklDnnType<float>(), fused_bn_arg_fmt));
     }
 
     // Check if there is any fusions as post-ops
@@ -894,23 +894,23 @@ class MklConvOp : public OpKernel {
       } else if (fuse_bn_) {
         const Tensor& bn_scale_tensor =
             MklGetInput(context, kInputIndex_BN_Scale);
-        Tinput* bn_scale_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_scale_tensor.flat<Tinput>().data()));
+        float* bn_scale_data = static_cast<float*>(
+            const_cast<float*>(bn_scale_tensor.flat<float>().data()));
         const Tensor& bn_mean_tensor =
             MklGetInput(context, kInputIndex_BN_Mean);
-        Tinput* bn_mean_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_mean_tensor.flat<Tinput>().data()));
+        float* bn_mean_data = static_cast<float*>(
+            const_cast<float*>(bn_mean_tensor.flat<float>().data()));
         const Tensor& bn_offset_tensor =
             MklGetInput(context, kInputIndex_BN_Offset);
-        Tinput* bn_offset_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_offset_tensor.flat<Tinput>().data()));
+        float* bn_offset_data = static_cast<float*>(
+            const_cast<float*>(bn_offset_tensor.flat<float>().data()));
 
         Tensor bn_rsqrt_tensor;
         OP_REQUIRES_OK(context,
-                       context->allocate_temp(DataTypeToEnum<Tinput>::v(),
+                       context->allocate_temp(DataTypeToEnum<float>::v(),
                                               fuse_bn_shape, &bn_rsqrt_tensor));
-        Tinput* bn_rsqrt_data = static_cast<Tinput*>(
-            const_cast<Tinput*>(bn_rsqrt_tensor.flat<Tinput>().data()));
+        float* bn_rsqrt_data = static_cast<float*>(
+            const_cast<float*>(bn_rsqrt_tensor.flat<float>().data()));
         this->ComputeBNScale(context, epsilon_, kInputIndex_BN_Variance,
                              bn_rsqrt_data);
         conv_fwd->Execute(src_data, filter_data, nullptr, dst_data,
@@ -1031,7 +1031,7 @@ class MklConvOp : public OpKernel {
   }
 
   virtual void ComputeBNScale(OpKernelContext* context, float epsilon,
-                              int bn_variance_index, Tinput* scale_buf_ptr) {
+                              int bn_variance_index, float* scale_buf_ptr) {
     OP_REQUIRES(
         context, false,
         errors::Unimplemented("Compute BN scale not expected in base class"));
@@ -1389,6 +1389,10 @@ class MklFusedConvOp
                                 leakyrelu_alpha);
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm"}) {
       float epsilon;
+      DataType type_U;
+      OP_REQUIRES_OK(context, context->GetAttr("U", &type_U));
+      OP_REQUIRES(context, type_U == DT_FLOAT,
+                  errors::InvalidArgument("Type U must be float"));
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
@@ -1433,6 +1437,10 @@ class MklFusedConvOp
               "Fused Conv2D must have two extra arguments: bias and add."));
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Relu"}) {
       float epsilon;
+      DataType type_U;
+      OP_REQUIRES_OK(context, context->GetAttr("U", &type_U));
+      OP_REQUIRES(context, type_U == DT_FLOAT,
+                  errors::InvalidArgument("Type U must be float"));
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
@@ -1442,6 +1450,10 @@ class MklFusedConvOp
       this->set_fuse_activation(true, dnnl::algorithm::eltwise_relu);
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Relu6"}) {
       float epsilon;
+      DataType type_U;
+      OP_REQUIRES_OK(context, context->GetAttr("U", &type_U));
+      OP_REQUIRES(context, type_U == DT_FLOAT,
+                  errors::InvalidArgument("Type U must be float"));
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
@@ -1452,6 +1464,10 @@ class MklFusedConvOp
                                 6.0);
     } else if (fused_ops == std::vector<string>{"FusedBatchNorm", "Elu"}) {
       float epsilon;
+      DataType type_U;
+      OP_REQUIRES_OK(context, context->GetAttr("U", &type_U));
+      OP_REQUIRES(context, type_U == DT_FLOAT,
+                  errors::InvalidArgument("Type U must be float"));
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES(
           context, num_args == 4,
@@ -1462,6 +1478,10 @@ class MklFusedConvOp
     } else if (fused_ops ==
                std::vector<string>{"FusedBatchNorm", "LeakyRelu"}) {
       float epsilon, leakyrelu_alpha;
+      DataType type_U;
+      OP_REQUIRES_OK(context, context->GetAttr("U", &type_U));
+      OP_REQUIRES(context, type_U == DT_FLOAT,
+                  errors::InvalidArgument("Type U must be float"));
       OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
       OP_REQUIRES_OK(context,
                      context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
@@ -1522,12 +1542,12 @@ class MklFusedConvOp
   }
 
   void ComputeBNScale(OpKernelContext* context, float epsilon,
-                      int bn_variance_index, Tinput* scale_buf_ptr) override {
+                      int bn_variance_index, float* scale_buf_ptr) override {
     const Tensor& bn_var_tensor = MklGetInput(context, bn_variance_index);
 
-    Eigen::Tensor<Tinput, 1, Eigen::RowMajor> bn_rsqrt =
-        (bn_var_tensor.flat<Tinput>() + static_cast<Tinput>(epsilon)).rsqrt();
-    Tinput* bn_rsqrt_data = bn_rsqrt.data();
+    Eigen::Tensor<float, 1, Eigen::RowMajor> bn_rsqrt =
+        (bn_var_tensor.flat<float>() + static_cast<float>(epsilon)).rsqrt();
+    float* bn_rsqrt_data = bn_rsqrt.data();
     size_t num_elem = bn_var_tensor.shape().dim_size(0);
     for (size_t i = 0; i < num_elem; i++) {
       scale_buf_ptr[i] = bn_rsqrt_data[i];
@@ -2491,6 +2511,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
       Name("_MklNativeFusedConv2D")                                   \
           .Device(DEVICE_CPU)                                         \
           .TypeConstraint<T>("T")                                     \
+          .TypeConstraint("U", {DT_FLOAT, DT_BFLOAT16})               \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),             \
       MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, false, true>);  \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -2498,6 +2519,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
           .Device(DEVICE_CPU)                                         \
           .TypeConstraint<int32>("Tpaddings")                         \
           .TypeConstraint<T>("T")                                     \
+          .TypeConstraint("U", {DT_FLOAT, DT_BFLOAT16})               \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),             \
       MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, true, true>);   \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -2505,6 +2527,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
           .Device(DEVICE_CPU)                                         \
           .TypeConstraint<T>("T")                                     \
           .TypeConstraint<int64_t>("Tpaddings")                       \
+          .TypeConstraint("U", {DT_FLOAT, DT_BFLOAT16})               \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),             \
       MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true, true>);
 
@@ -2539,5 +2562,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
     NoOp);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

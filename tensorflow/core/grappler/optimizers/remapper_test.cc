@@ -1735,6 +1735,91 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   test::ExpectClose(tensors[0], tensors_expected[0], 1e-6, 1e-4);
 }
 
+TEST_F(RemapperTest, FuseConv2DWithBatchNorm_bf16) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+  using ops::Placeholder;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  const int N = 128;
+  const TensorShape in_shape({2, 8, 8, 24});
+  const TensorShape filt_shape({1, 1, 24, N});
+
+  auto input_shape = ops::Placeholder::Shape(in_shape);
+  auto filter_shape = ops::Placeholder::Shape(filt_shape);
+  auto scale_shape = ops::Placeholder::Shape({N});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_BFLOAT16, input_shape);
+
+  auto filter = Placeholder(s.WithOpName("filter"), DT_BFLOAT16, filter_shape);
+
+  std::vector<int> strides = {1, 1, 1, 1};
+  auto conv = ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
+
+  auto scale = Placeholder(s.WithOpName("scale"), DT_FLOAT, scale_shape);
+  auto offset = Placeholder(s.WithOpName("offset"), DT_FLOAT, scale_shape);
+  auto mean = Placeholder(s.WithOpName("mean"), DT_FLOAT, scale_shape);
+  auto variance = Placeholder(s.WithOpName("variance"), DT_FLOAT, scale_shape);
+
+  ops::FusedBatchNormV3::Attrs attrs;
+  attrs = attrs.IsTraining(false);
+  auto batch_norm = ops::FusedBatchNormV3(s.WithOpName("batch_norm"), conv,
+                                          scale, offset, mean, variance, attrs);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), batch_norm.y);
+
+  auto input_t = GenerateTensorWithSetRandom<DT_BFLOAT16>(in_shape);
+  auto filter_t = GenerateTensorWithSetRandom<DT_BFLOAT16>(filt_shape);
+  auto scale_t = GenerateTensorWithSetRandom<DT_FLOAT>({N});
+  auto offset_t = GenerateTensorWithSetRandom<DT_FLOAT>({N});
+  auto mean_t = GenerateTensorWithSetRandom<DT_FLOAT>({N});
+  auto variance_t = GenerateTensorWithSetRandom<DT_FLOAT>({N});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t}, {"filter", filter_t},
+               {"scale", scale_t}, {"offset", offset_t},
+               {"mean", mean_t},   {"variance", variance_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::ON);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "batch_norm") {
+      EXPECT_EQ(node.op(), "_FusedConv2D");
+      EXPECT_EQ(node.attr().at("T").type(), DT_BFLOAT16);
+      ASSERT_GE(node.input_size(), 6);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+
+      EXPECT_EQ(node.attr().at("num_args").i(), 4);
+      EXPECT_EQ(node.input(2), "scale");
+      EXPECT_EQ(node.input(3), "offset");
+      EXPECT_EQ(node.input(4), "mean");
+      EXPECT_EQ(node.input(5), "variance");
+
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      ASSERT_EQ(fused_ops.size(), 1);
+      EXPECT_EQ(fused_ops[0], "FusedBatchNorm");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 1);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectClose(tensors[0], tensors_expected[0], 1e-2, 5e-2);
+}
+
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
   using ops::Placeholder;
 
