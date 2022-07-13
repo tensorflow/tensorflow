@@ -128,7 +128,7 @@ def forward_compatibility_horizon(year, month, day):
   """Context manager for testing forward compatibility of generated graphs.
 
   See [Version
-  compatibility](https://tensorflow.org/guide/version_compat#backward_forward).
+  compatibility](https://www.tensorflow.org/guide/versions#backward_and_partial_forward_compatibility).
 
   To ensure forward compatibility of generated graphs (see `forward_compatible`)
   with older binaries, new features can be gated with:
