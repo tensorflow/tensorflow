@@ -142,8 +142,8 @@ bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 LogicalResult ParallelExecuteOp::verify() {
   ParallelExecuteOp op = *this;
   const auto& regions = op.getOperation()->getRegions();
-  if (regions.size() < 2) {
-    return op.emitOpError() << "must have at least two regions.";
+  if (regions.empty()) {
+    return op.emitOpError() << "must have at least one region.";
   }
 
   int output_index = 0;
@@ -177,7 +177,7 @@ LogicalResult ParallelExecuteOp::verify() {
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
                               int num_regions, TypeRange output_types) {
-  DCHECK_GE(num_regions, 2);
+  DCHECK_GE(num_regions, 1);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
     region->push_back(new Block);
