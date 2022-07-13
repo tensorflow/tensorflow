@@ -118,4 +118,33 @@ def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+// Note: This is an experimental attribute and shouldn't be relied upon for
+// production.
+def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions"> {
+  let mnemonic = "type_extensions";
+
+  // TODO(hinsu): Move sparsity related info here from the standalone
+  // attribute. That will allow composition of bounds and sparsity info.
+  let parameters = (ins
+    ArrayRefParameter<"int64_t">:$bounds
+  );
+
+  let summary = "Attribute that extends tensor type with MHLO type properties.";
+
+  let description = [{
+    This attribute is used to extend MLIR tensor type with MHLO tensor specific
+    properties. These properties aren't modeled in the MLIR type. This
+    attribute is set in the `encoding` field of the tensor type.
+
+    Bounds parameter specifies the maximum runtime dimension size for
+    dimensions with unknown size. If the bound are not known for any of the
+    dimensions, it is set to ShapedType::kDynamicSize. Bound is undefined for
+    static dimensions. Bounds array have the same size as rank of the tensor.
+  }];
+  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
+
+  // TODO(hinsu): Add verification for bounds that it has the same size as rank
+  // of the tensor and static dimensions don't have bounds.
+}
+
 #endif // HLO_OPS_BASE_ATTRS

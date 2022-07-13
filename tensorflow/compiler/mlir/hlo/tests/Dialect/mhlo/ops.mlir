@@ -4329,3 +4329,11 @@ func.func @is_finite_mismatch_return_shape(%arg0: tensor<3xf32>) -> tensor<4xi1>
   %0 = "mhlo.is_finite"(%arg0) {} : (tensor<3xf32>) -> tensor<4xi1>
   func.return %0 : tensor<4xi1>
 }
+
+// -----
+
+func.func @invalid_dimension_attr(%arg0: tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, %arg1: tensor<i32>) -> tensor<*xf32> {
+  // expected-error@+1 {{requires dimension attribute in range [0, 2); found (-1)}}
+  %result = "mhlo.set_dimension_size"(%arg0, %arg1) {dimension = -1 : i64} : (tensor<?x?xf32, #mhlo.type_extensions<bounds = [3, -1]>>, tensor<i32>) -> tensor<*xf32>
+  func.return %result : tensor<*xf32>
+}

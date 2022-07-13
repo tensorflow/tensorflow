@@ -528,7 +528,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect, 
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect,
     SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
@@ -2004,7 +2004,8 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
+def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "SetDimensionSize operator";
   let description = [{
     Sets the dynamic size of operand's given dimension. Pass through the operand
@@ -2019,6 +2020,16 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
     I64Attr:$dimension
   );
   let results = (outs HLO_Tensor);
+
+  let extraClassDeclaration = [{
+    // Method from InferTypeOpInterface interface.
+    // TODO(hinsu): Use MHLO dialect level compatibility that also verifies
+    // that bounds in the encoding attribute are also compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
+
 
   let hasFolder = 1;
   let hasVerifier = 1;
