@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:shape_inference",

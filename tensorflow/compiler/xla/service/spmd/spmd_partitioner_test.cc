@@ -5370,6 +5370,101 @@ ENTRY entry {
                         next_i));
 }
 
+TEST_F(SpmdPartitioningTest,
+       EinsumWindowedNonContractingDimensionsNoCodeMotionWithDependentNodes) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  %lhs = f32[32,24,64,128] parameter(0)
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs = f32[32,39295,64,128] parameter(1)
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
+    sharding={devices=[1,2,1]0,1}
+  %constant = f32[] constant(0)
+  %constant.1 = f32[] constant(2)
+  %constant.2 = f32[] constant(4)
+  %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
+    sharding={devices=[1,2,1]0,1}
+  %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
+    sharding={devices=[1,2,1]0,1}
+  %reduce = f32[32,24] reduce(%multiply, %constant), dimensions={2},
+    to_apply=sum, sharding={devices=[1,2]0,1}
+  %all-reduce = f32[32,24] all-reduce(%reduce),
+    to_apply=sum, sharding={devices=[1,2]0,1}
+  %broadcast.1 = f32[32,24,39295] broadcast(%all-reduce), dimensions={0,1},
+    sharding={devices=[1,2,1]0,1}
+  %subtract = f32[32,24,39295] subtract(%multiply, %broadcast.1),
+    sharding={devices=[1,2,1]0,1}
+  ROOT %reduce.1 = f32[32,24] reduce(%subtract, %constant.2), dimensions={2},
+    to_apply=sum, sharding={devices=[1,2]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  const auto lhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(), op::Reshape(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[32,12,64,128]"));
+  const auto rhs =
+      AllOf(op::Copy(op::DynamicSlice(op::Pad(op::Parameter(1), op::Constant()),
+                                      op::Constant(), op::Reshape(),
+                                      op::Constant(), op::Constant())),
+            op::Shape("f32[32,19648,64,128]"));
+  const auto while_output =
+      AllOf(op::Slice(op::GetTupleElement(op::While(op::Tuple(
+                lhs, rhs, op::Broadcast(), op::Broadcast(), op::Constant())))),
+            op::Shape("f32[32,12,39295]"));
+  // All the multiples, subtracts and reduces should remain in the spmd entry
+  // computation.
+  const auto multiply =
+      AllOf(op::Multiply(while_output, op::Broadcast(op::Constant())),
+            op::Shape("f32[32,12,39295]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Reduce(
+                op::Subtract(multiply, op::Broadcast(op::AllReduce(op::Reduce(
+                                           multiply, op::Constant())))),
+                op::Constant()),
+            op::Shape("f32[32,12]")));
+
+  const auto while_loop =
+      root->operand(0)->operand(0)->operand(0)->operand(0)->operand(0);
+  // Check loop condition.
+  EXPECT_THAT(
+      while_loop->while_condition()->root_instruction(),
+      op::Compare(op::GetTupleElement(op::Parameter(0)), op::Constant()));
+
+  // Check loop body. There is not be any multple, subtract, reduce, etc.
+  // that has been moved into the loop body.
+  const auto next_i =
+      op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto output = op::DynamicUpdateSlice(
+      op::GetTupleElement(op::Parameter(0)),
+      op::Dot(op::GetTupleElement(op::Parameter(0)),
+              op::GetTupleElement(op::Parameter(0))),
+      op::Constant(), op::Constant(), op::Reshape(op::DynamicSlice()));
+
+  EXPECT_THAT(while_loop->while_body()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                        op::Conditional(op::Compare(next_i, op::Constant()),
+                                        op::GetTupleElement(op::Parameter(0)),
+                                        op::GetTupleElement(op::Parameter(0))),
+                        output, op::GetTupleElement(op::Parameter(0)), next_i));
+}
+
 TEST_F(SpmdPartitioningTest, EinsumRHSWindowedNonContractingReduce1) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -5394,15 +5489,64 @@ ENTRY entry {
   %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
     sharding={devices=[1,2,1]0,1}
   %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
-  sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]0,1}
   ROOT %reduce = f32[32,24] reduce(%multiply, %constant), dimensions={2},
     to_apply=sum, sharding={devices=[1,2]0,1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
-                                                            /*num_devices=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  // Involves loop code motion, skips pattern matching.
+
+  const auto root = module->entry_computation()->root_instruction();
+  const auto lhs = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(), op::Reshape(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[32,12,64,128]"));
+  const auto rhs =
+      AllOf(op::Copy(op::DynamicSlice(op::Pad(op::Parameter(1), op::Constant()),
+                                      op::Constant(), op::Reshape(),
+                                      op::Constant(), op::Constant())),
+            op::Shape("f32[32,19648,64,128]"));
+  auto input_subtuple =
+      op::Tuple(op::Constant(), op::Constant(), op::Broadcast(op::Constant()));
+  EXPECT_THAT(
+      root,
+      AllOf(op::GetTupleElement(op::GetTupleElement(op::While(op::Tuple(
+                lhs, rhs, input_subtuple, op::Broadcast(), op::Constant())))),
+            op::Shape("f32[32,12]")));
+
+  const auto while_loop = root->operand(0)->operand(0);
+  // Check loop condition.
+  EXPECT_THAT(
+      while_loop->while_condition()->root_instruction(),
+      op::Compare(op::GetTupleElement(op::Parameter(0)), op::Constant()));
+
+  // Check loop body.
+  const auto next_i =
+      op::Add(op::GetTupleElement(op::Parameter(0)), op::Constant());
+  auto output_tuple = op::Tuple(
+      op::GetTupleElement(op::GetTupleElement(op::Parameter(0))),
+      op::GetTupleElement(op::GetTupleElement(op::Parameter(0))),
+      op::Add(op::Reduce(
+                  op::Select(op::Compare(),
+                             op::Multiply(
+                                 op::Dot(op::GetTupleElement(op::Parameter(0)),
+                                         op::GetTupleElement(op::Parameter(0))),
+                                 op::DynamicSlice()),
+                             op::Broadcast()),
+                  op::GetTupleElement(op::GetTupleElement(op::Parameter(0)))),
+              op::DynamicSlice(
+                  op::GetTupleElement(op::GetTupleElement(op::Parameter(0))),
+                  op::Constant(), op::Constant())));
+
+  EXPECT_THAT(
+      while_loop->while_body()->root_instruction(),
+      op::Tuple(op::GetTupleElement(op::Parameter(0)),
+                op::Conditional(op::Compare(next_i, op::Constant()),
+                                op::GetTupleElement(op::Parameter(0)),
+                                op::GetTupleElement(op::Parameter(0))),
+                output_tuple, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
 TEST_F(SpmdPartitioningTest, UnrollEinsumRHSWindowedNonContractingReduce1) {
