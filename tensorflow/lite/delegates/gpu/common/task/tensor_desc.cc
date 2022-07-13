@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -38,7 +39,7 @@ std::string GetReadImageFromDataType(DataType data_type) {
              data_type == DataType::INT32) {
     return "read_imagei";
   } else if (data_type == DataType::UINT8 || data_type == DataType::UINT16 ||
-             data_type == DataType::UINT32) {
+             data_type == DataType::UINT32 || data_type == DataType::BOOL) {
     return "read_imageui";
   } else {
     return "error";
@@ -55,6 +56,7 @@ DataType ToClTextureType(DataType data_type) {
     case DataType::INT16:
     case DataType::INT8:
       return DataType::INT32;
+    case DataType::BOOL:
     case DataType::UINT16:
     case DataType::UINT8:
       return DataType::UINT32;
@@ -72,7 +74,7 @@ std::string GetWriteImageFromDataType(DataType data_type) {
              data_type == DataType::INT32) {
     return "write_imagei";
   } else if (data_type == DataType::UINT8 || data_type == DataType::UINT16 ||
-             data_type == DataType::UINT32) {
+             data_type == DataType::UINT32 || data_type == DataType::BOOL) {
     return "write_imageui";
   } else {
     return "error";
@@ -1151,6 +1153,9 @@ absl::Status TensorDescriptor::MaybeGetDataTypeFromTemplateArgs(
       return absl::OkStatus();
     } else if (read_type == "uchar") {
       *result = DataType::UINT8;
+      return absl::OkStatus();
+    } else if (read_type == "bool") {
+      *result = DataType::BOOL;
       return absl::OkStatus();
     }
   }
