@@ -485,7 +485,7 @@ struct SetYieldOpInterface
     if (!yieldOp.isDstOperand(opOperand)) return {};
 
     auto loopResult = yieldOp.getTiedOpResult(opOperand);
-    assert(loopResult.has_value() && "didn't find a corresponding loop result");
+    assert(succeeded(loopResult) && "didn't find a corresponding loop result");
     return {*loopResult};
   }
 

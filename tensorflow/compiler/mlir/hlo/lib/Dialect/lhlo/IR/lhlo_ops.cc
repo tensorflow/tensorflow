@@ -77,12 +77,9 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 Attribute LmhloDialect::parseAttribute(DialectAsmParser& parser,
                                        Type type) const {
   StringRef attrTag;
-  if (failed(parser.parseKeyword(&attrTag))) return Attribute();
-  {
-    Attribute attr;
-    auto parseResult = generatedAttributeParser(parser, attrTag, type, attr);
-    if (parseResult.hasValue()) return attr;
-  }
+  Attribute attr;
+  auto parseResult = generatedAttributeParser(parser, &attrTag, type, attr);
+  if (parseResult.hasValue()) return attr;
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
   return Attribute();
 }
