@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -78,6 +79,11 @@ StatusOr<std::string> GetCompilerIr(
     IrExportStage stage, ProcessFunctionLibraryRuntime* pflr,
     absl::string_view func_name, Device* dev, EagerContext* context,
     absl::Span<const TensorHandle* const> inputs_handles) {
+  // TODO(b/238830423): support GetCompilerIr on TFRT TPU device.
+  if (dev->device_type() != DEVICE_CPU &&
+      dev->tensorflow_accelerator_device_info()->stream == nullptr) {
+    return errors::Internal("GetCompilerIr is not supported on this device.");
+  }
   NameAttrList function;
   function.set_name(std::string{func_name});
 
