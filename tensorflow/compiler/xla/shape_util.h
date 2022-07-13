@@ -733,6 +733,11 @@ class ShapeUtil {
   // normalized shape of `b` or the 0-2-1 shape.
   static std::optional<std::vector<int64_t>> FindTranspose021(const Shape& a,
                                                               const Shape& b);
+  // If one or multiple `operand_shapes` are the same 0-2-1 transpose of
+  // `output_shape` in 0-1-2, return the dimensions of the normalized shape.
+  static std::optional<std::vector<int64_t>> FindTranspose021DimsAndParameters(
+      const std::vector<Shape>& operand_shapes, const Shape& output_shape,
+      /*out*/ std::vector<int64_t>* params_012);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.

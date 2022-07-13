@@ -126,6 +126,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -4567,148 +4568,19 @@ void IrEmitterUnnested::EmitHlo021Tile(
       EmitTilingKernel(tiling_scheme, index_type, tile_generator).status());
 }
 
-namespace {
-
-// A recursive function to inspect the users of a parameter to determine
-// whether it's safe for a parameter to participate in a shared-memory
-// transpose.
-//
-// Consider a fusion parameter P for which we might want to use a shmem
-// transpose.  If we do, we use a GPU thread block to preload a tile of P with
-// indices [z, y..y+31, x..x+31] to compute an output tile with the same indices
-// cooperatively, where z, y, x are the indices for the normalized input/output
-// tensor (see the document for FindTranspose021 for the definition of
-// normalized tensor for 0-2-1 transpose). This shmem transpose implementation
-// requires that the computation of the output tile only read elements within
-// the preload tile. If this is not true, we can't use a shmem transpose for P.
-//
-// If the computation of output element [z, y, x] only requires the element of
-// P with the same indices, the shmem transpose implementation can be applied
-// to P safely. This is a sufficient but not necessary condition. We check all
-// the transitive users of P to see if we can find a user that may cause an
-// exception to the situation. If such a user is not found, we conclude that P
-// is safe for shmem transpose.
-//
-// This is trivially true for elementwise operations and some "data-movement"
-// ops like kTuple. However, it's not true for operations that can change the
-// dimensions of the inputs (e.g. pad, slice) and bitcast operation.
-// For example:
-//
-// fused_computation {
-//   param_0 = f32[64,64]{1,0} parameter(0)
-//   ROOT bitcast = f32[64,64]{0,1} bitcast(param_0)
-// }
-// The output element at logical address [0, 63] depends on the input element
-// at logical address [63, 0], which would not be within the shared-memory
-// block.
-//
-// TODO(bixia): In order to extend this for kInput fusion, that is reduction
-// with transpose, we only need to end the use-chain checking with the input of
-// a reduce operations. In this case, the above description on "output" apply
-// to the result of such a use-chain, which provides the input to the reduce
-// operation.
-bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
-  if (mlir::isa<mlir::memref::TensorStoreOp>(op)) {
-    return true;
-  }
-
-  HloOpcode opcode;
-  if (mlir::isa<mlir::bufferization::ToTensorOp>(op)) {
-    opcode = HloOpcode::kParameter;
-  } else {
-    opcode = *MhloToHloOpcode(op);
-  }
-  if (HloInstruction::IsOpElementwise(opcode)) {
-    for (mlir::Value v : op->getResults()) {
-      for (mlir::OpOperand use : v.getUsers()) {
-        if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  switch (opcode) {
-    // Non-elementwise instructions that don't cause the shmem transpose
-    // to be unsafe, including the instructions that don't currently fuse.
-    case HloOpcode::kGetDimensionSize:
-      // The result of the operation doesn't rely on the content of the
-      // tensor. As such, there is no need to further inspect its users.
-      return true;
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kMap:
-    case HloOpcode::kParameter:
-    case HloOpcode::kTuple:
-      for (mlir::Value v : op->getResults()) {
-        for (mlir::OpOperand use : v.getUsers()) {
-          if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
-            return false;
-          }
-        }
-      }
-      return true;
-
-    default:
-      return false;
-  }
-}
-
-// Given a group of input parameters that are 0-2-1 transpose of the outputs of
-// a fusion kernel, returns the input parameters that are safe for the shared
-// memory transpose implementation.
-//
-// When a tile based shared memory transpose is used to implement an input with
-// 0-2-1 transpose, we preload a tile of the input elements
-// [z, y..y+31, x..x+31] to compute the output tile elements of the same
-// indices. Preloading the input tile this way is only safe when the computation
-// of the output tile elements do not need any input element outside the
-// preloaded tile. We inspect all the transitive users of the input parameter
-// up to the fusion root instruction to see if we can find any instruction
-// that can make preloading the input tile unsafe.
-std::vector<int64_t> FilterInputsForShmemTranspose(
-    mlir::lmhlo::FusionOp fusion, std::vector<int64_t> input_ids) {
-  std::vector<mlir::Value> params = ToStdVector(fusion.getFusionParameters());
-
-  std::vector<int64_t> filtered_input_ids;
-  for (int64_t input_id : input_ids) {
-    mlir::Value input = params.at(input_id);
-    if (IsInstructionSafeForShmemTranspose(input.getDefiningOp())) {
-      filtered_input_ids.push_back(input_id);
-    }
-  }
-  return filtered_input_ids;
-}
-
-}  // namespace
 
 StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
     mlir::lmhlo::FusionOp fusion) {
   // If the output_shape is reduced to 021 shape, find all the parameters of
   // the HLO that are in the corresponding 012 shape.
   std::vector<int64_t> params_012;
-  optional<std::vector<int64_t>> reduced_dims_021;
-  for (int64_t operand_idx = 0; operand_idx < fusion.getInputBuffers().size();
-       ++operand_idx) {
-    const Shape& operand_shape =
-        GetShape(fusion.getInputBuffers()[operand_idx]);
-    auto find_transpose_result = ShapeUtil::FindTranspose021(
-        operand_shape, GetShape(fusion.getOutputBuffers()[0]));
-    if (!find_transpose_result.has_value()) {
-      continue;
-    }
-    const std::vector<int64_t>& curr_reduced_dims_021 = *find_transpose_result;
-    if (!reduced_dims_021.has_value()) {
-      reduced_dims_021 = curr_reduced_dims_021;
-    }
-    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
-      // There is more than one possible transpose. Instead of picking one
-      // transpose, we simply give up here.
-      return false;
-    }
-    params_012.push_back(operand_idx);
-  }
-
+  std::vector<Shape> operenad_shapes;
+  absl::c_for_each(fusion.getInputBuffers(), [&](mlir::Value& value) {
+    operenad_shapes.push_back(GetShape(value));
+  });
+  std::optional<std::vector<int64_t>> reduced_dims_021 =
+      ShapeUtil::FindTranspose021DimsAndParameters(
+          operenad_shapes, GetShape(fusion.getOutputBuffers()[0]), &params_012);
   if (!reduced_dims_021.has_value()) {
     return false;
   }

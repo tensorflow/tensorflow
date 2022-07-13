@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 
@@ -663,6 +666,67 @@ bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
          (!reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[1] <=
               WarpSize() * reduction_tiling[1]);
+}
+
+bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
+  if (mlir::isa<mlir::memref::TensorStoreOp>(op)) {
+    return true;
+  }
+
+  HloOpcode opcode;
+  if (mlir::isa<mlir::bufferization::ToTensorOp>(op)) {
+    opcode = HloOpcode::kParameter;
+  } else {
+    opcode = *MhloToHloOpcode(op);
+  }
+  if (HloInstruction::IsOpElementwise(opcode)) {
+    for (mlir::Value v : op->getResults()) {
+      for (mlir::OpOperand use : v.getUsers()) {
+        if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  switch (opcode) {
+    // Non-elementwise instructions that don't cause the shmem transpose
+    // to be unsafe, including the instructions that don't currently fuse.
+    case HloOpcode::kGetDimensionSize:
+      // The result of the operation doesn't rely on the content of the
+      // tensor. As such, there is no need to further inspect its users.
+      return true;
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kMap:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+      for (mlir::Value v : op->getResults()) {
+        for (mlir::OpOperand use : v.getUsers()) {
+          if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
+            return false;
+          }
+        }
+      }
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+std::vector<int64_t> FilterInputsForShmemTranspose(
+    mlir::lmhlo::FusionOp fusion, std::vector<int64_t> input_ids) {
+  std::vector<mlir::Value> params = ToStdVector(fusion.getFusionParameters());
+
+  std::vector<int64_t> filtered_input_ids;
+  for (int64_t input_id : input_ids) {
+    mlir::Value input = params.at(input_id);
+    if (IsInstructionSafeForShmemTranspose(input.getDefiningOp())) {
+      filtered_input_ids.push_back(input_id);
+    }
+  }
+  return filtered_input_ids;
 }
 
 }  // namespace gpu
