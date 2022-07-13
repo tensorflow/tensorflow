@@ -28,6 +28,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -187,6 +188,11 @@ class SummaryTest(test.TestCase):
     expected = sorted('family/outer/family/inner/audio/{}'.format(i)
                       for i in xrange(3))
     self.assertEqual(tags, expected)
+
+  def testAudioSummaryWithInvalidSampleRate(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      invalid_sample_rate = [22000.0, 22000.0]
+      self.evaluate(summary_lib.audio('', [[1.0]], invalid_sample_rate))
 
   @test_util.run_deprecated_v1
   def testTextSummary(self):
