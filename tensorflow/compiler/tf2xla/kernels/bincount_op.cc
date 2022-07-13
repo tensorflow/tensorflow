@@ -80,6 +80,17 @@ class DenseBincountOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, weights_shape_or.status());
 
     auto weights_shape = weights_shape_or.ValueOrDie();
+    OP_REQUIRES(ctx,
+                xla::ShapeUtil::CompatibleIgnoringElementType(weights_shape,
+                                                              input_shape) ||
+                    (weights_shape.dimensions_size() > 0 &&
+                     weights_shape.dimensions(0) == 0),
+                errors::InvalidArgument(
+                    "`weights` must be the same shape as `arr` or a length-0 "
+                    "`Tensor`, in which case it acts as all weights equal to "
+                    "1. Received ",
+                    weights_shape.DebugString()));
+
     auto weights_size = weights_shape.dimensions(0);
     bool has_weights = false;
     if (weights_size) {

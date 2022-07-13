@@ -24,6 +24,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -151,6 +152,31 @@ class BincountTest(test_util.TensorFlowTestCase):
       s = array_ops.placeholder(dtype=dtypes.int32)
       v2 = gen_math_ops.bincount([1, 2, 3, 1, 6, 8], s, [])
       self.assertAllEqual(v2.get_shape().as_list(), [None])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    binary_output = True
+    inp = random_ops.random_uniform(
+        shape=[10, 10],
+        minval=-10000,
+        maxval=10000,
+        dtype=dtypes.int32,
+        seed=-2460)
+    size = random_ops.random_uniform(
+        shape=[], minval=-10000, maxval=10000, dtype=dtypes.int32, seed=-10000)
+    weights = random_ops.random_uniform(
+        shape=[],
+        minval=-10000,
+        maxval=10000,
+        dtype=dtypes.float32,
+        seed=-10000)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=inp,
+              size=size,
+              weights=weights,
+              binary_output=binary_output))
 
 
 class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
