@@ -288,7 +288,6 @@ absl::Status InferenceContext::InitFromGpuModel(
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
     RETURN_IF_ERROR(
         CreateTensor(env->context(),
-                     gpu_model->tensors[external_tensor.first].GetBHWDCShape(),
                      gpu_model->tensors[external_tensor.first],
                      &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
@@ -386,7 +385,6 @@ absl::Status InferenceContext::RestoreDeserialized(
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
       RETURN_IF_ERROR(
           CreateTensor(env->context(),
-                       gpu_model.tensors[external_tensor.first].GetBHWDCShape(),
                        gpu_model.tensors[external_tensor.first],
                        &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
@@ -487,12 +485,8 @@ absl::Status InferenceContext::AllocateVariableTensors(
       if (it == gpu_model.tensors.end()) {
         return absl::InternalError("No variable tensor with this id.");
       }
-      const auto& t = it->second;
-      const auto& shape = t.GetBHWDCShape();
-      const auto& descriptor = t;
-
       RETURN_IF_ERROR(
-          CreateTensor(*context, shape, descriptor,
+          CreateTensor(*context, it->second,
                        &variable_tensors_[value_and_ref_value.second]));
     }
   }
@@ -586,7 +580,6 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
       const auto& shape_5d = gpu_model.tensors.at(t.first).GetBHWDCShape();
-      const auto shape = BHWC(shape_5d.b, shape_5d.h, shape_5d.w, shape_5d.c);
       const int buffer_index = use_offset_assignment
                                    ? tensor_index
                                    : buffer_assignment.object_ids[tensor_index];
@@ -596,21 +589,20 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
             SizeOf(t.second.GetDataType()) *
             (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D
                  ? 4
-                 : shape.c);
+                 : shape_5d.c);
         size_t width_pixel_alignment =
             gpu_info.opencl_info.image_pitch_alignment;
         if (gpu_info.IsAdreno() &&
             width_pixel_alignment % bytes_per_pixel == 0) {
           width_pixel_alignment /= bytes_per_pixel;
         }
-        RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
-            t.second, width_pixel_alignment,
-            &shared_buffer_tensors_[tensor_index]));
+        RETURN_IF_ERROR(CreateTensorSharedImage2DBuffer(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), t.second,
+            width_pixel_alignment, &shared_buffer_tensors_[tensor_index]));
       } else {
-        RETURN_IF_ERROR(CreateSharedTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
-            t.second, &shared_buffer_tensors_[tensor_index]));
+        RETURN_IF_ERROR(CreateTensorShared(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), t.second,
+            &shared_buffer_tensors_[tensor_index]));
       }
       created_tensors[tensor_index] = true;
     }
@@ -663,13 +655,12 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
                         gpu_model.tensors.at(t.first).GetStorageType())) {
         continue;
       }
-      const auto& shape = gpu_model.tensors.at(t.first).GetBHWDCShape();
       const auto id = assignment.object_ids[remap_from_graph_ids[t.first]];
       graph_ids_to_strong_shape_tensors_[t.first] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, shape, t.second,
-                                     &strong_shape_tensors_[id]));
+        RETURN_IF_ERROR(
+            CreateTensor(*context, t.second, &strong_shape_tensors_[id]));
       }
     }
   }
