@@ -69,7 +69,6 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
 
     // Case GenericOp.
     if (auto genericOp = llvm::dyn_cast<linalg::GenericOp>(def)) {
-      // return failure();
       if (genericOp.getNumResults() != 1 || !genericOp.hasTensorSemantics()) {
         return failure();
       }
