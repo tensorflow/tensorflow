@@ -5153,8 +5153,8 @@ OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-// TODO(hinsu): Switch to inferReturnTypeComponents after adding support for
-// the encoding upstream.
+// TODO(b/238903565): Switch to inferReturnTypeComponents after adding support
+// for the encoding upstream.
 LogicalResult SetDimensionSizeOp::inferReturnTypes(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,

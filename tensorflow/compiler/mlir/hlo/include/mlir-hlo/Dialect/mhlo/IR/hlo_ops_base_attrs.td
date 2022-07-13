@@ -123,7 +123,7 @@ def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
 def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions"> {
   let mnemonic = "type_extensions";
 
-  // TODO(hinsu): Move sparsity related info here from the standalone
+  // TODO(b/238903065): Move sparsity related info here from the standalone
   // attribute. That will allow composition of bounds and sparsity info.
   let parameters = (ins
     ArrayRefParameter<"int64_t">:$bounds
