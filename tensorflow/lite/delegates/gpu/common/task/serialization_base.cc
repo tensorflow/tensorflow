@@ -51,6 +51,8 @@ data::AccessType ToFB(AccessType type) {
 
 data::DataType ToFB(DataType type) {
   switch (type) {
+    case DataType::BOOL:
+      return data::DataType::BOOL;
     case DataType::FLOAT16:
       return data::DataType::FLOAT16;
     case DataType::FLOAT32:
@@ -134,6 +136,8 @@ data::Layout ToFB(Layout type) {
 
 DataType ToEnum(data::DataType type) {
   switch (type) {
+    case data::DataType::BOOL:
+      return DataType::BOOL;
     case data::DataType::FLOAT16:
       return DataType::FLOAT16;
     case data::DataType::FLOAT32:
