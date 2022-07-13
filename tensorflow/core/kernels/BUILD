@@ -6870,6 +6870,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:qr_op_complex64.cc",
         "//tensorflow/core/kernels/linalg:qr_op_double.cc",
         "//tensorflow/core/kernels/linalg:qr_op_float.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_half.cc",
     ],
 )
 

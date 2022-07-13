@@ -63,6 +63,7 @@ exports_files([
     "qr_op_complex64.cc",
     "qr_op_double.cc",
     "qr_op_float.cc",
+    "qr_op_half.cc",
     "qr_op_impl.h",
 ])
 
