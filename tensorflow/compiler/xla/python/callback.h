@@ -19,11 +19,13 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
-#include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+
 
 namespace xla {
 

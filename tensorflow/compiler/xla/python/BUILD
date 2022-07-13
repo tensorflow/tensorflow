@@ -4,10 +4,10 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
     "tf_cc_test",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -248,35 +248,58 @@ cc_library(
 )
 
 cc_library(
-    name = "py_client",
+    name = "callback",
     srcs = [
         "callback.cc",
-        "py_buffer.cc",
-        "py_client.cc",
-        "py_executable.cc",
-        "py_values.cc",
-        "sharded_device_array.cc",
-    ] + if_cuda_or_rocm([
-        "py_client_gpu.cc",
-    ]),
+    ],
     hdrs = [
         "callback.h",
-        "py_buffer.h",
-        "py_client.h",
-        "py_executable.h",
-        "py_values.h",
-        "sharded_device_array.h",
-    ] + if_cuda_or_rocm([
-        "py_client_gpu.h",
-    ]),
+    ],
     compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
+    deps = [
+        ":exceptions",
+        "@pybind11",
+        "//tensorflow/compiler/xla/pjrt:transpose",
+        "//tensorflow/compiler/xla/service:custom_call_status",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "py_client",
+    srcs = [
+        "py_buffer.cc",
+        "py_client.cc",
+        "py_executable.cc",
+        "py_values.cc",
+        "sharded_device_array.cc",
+    ],
+    hdrs = [
+        "py_buffer.h",
+        "py_client.h",
+        "py_executable.h",
+        "py_values.h",
+        "sharded_device_array.h",
+    ],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1"
+    ]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1"]
+    ),
     features = ["-use_header_modules"],
     deps = [
+        ":callback",
         ":exceptions",
         ":pprof_profile_builder",
         ":python_ref_manager",
@@ -295,6 +318,7 @@ cc_library(
         "@pybind11",
         "//tensorflow/compiler/xla/pjrt:host_callback",
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -308,11 +332,42 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python/lib/core:numpy_lib",
-    ] + if_cuda([
-        "@local_config_cuda//cuda:cuda_headers",
+    ] + if_cuda_is_configured([
+        ":py_client_gpu",
+    ]) + if_rocm_is_configured([
+        ":py_client_gpu",
     ]),
+)
+
+cc_library(
+    name = "py_client_gpu",
+    srcs = [
+        "py_client_gpu.cc",
+    ],
+    hdrs = [
+        "py_client_gpu.h",
+    ],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    defines = if_cuda_is_configured([
+        "GOOGLE_CUDA=1"
+    ]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1"]
+    ),
+    features = ["-use_header_modules"],
+    deps = [
+        ":callback",
+        ":exceptions",
+        "@pybind11",
+        "@com_google_absl//absl/base",
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:custom_call_status",
+    ],
 )
 
 cc_library(

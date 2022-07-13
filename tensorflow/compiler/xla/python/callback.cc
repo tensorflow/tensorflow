@@ -21,10 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace py = pybind11;
 
