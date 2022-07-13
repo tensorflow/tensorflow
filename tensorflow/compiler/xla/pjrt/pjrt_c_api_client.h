@@ -53,9 +53,7 @@ class PjRtCApiDevice : public PjRtDevice {
     return wrapped_->local_hardware_id();
   }
 
-  absl::string_view device_kind() const override {
-    return wrapped_->device_kind();
-  }
+  absl::string_view device_kind() const override;
 
   std::string DebugString() const override { return wrapped_->DebugString(); }
 

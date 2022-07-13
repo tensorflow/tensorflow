@@ -217,9 +217,10 @@ int PjRtCApiDevice::id() const {
   args.struct_size = PJRT_Device_Id_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.device = device_;
-  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_Id(&args);
-  // TODO(b/236710439): (shahrokhi) handle error
-  CHECK(error == nullptr);
+
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_Id(&args), c_api);
+
   return args.id;
 }
 
@@ -228,9 +229,10 @@ int PjRtCApiDevice::process_index() const {
   args.struct_size = PJRT_Device_ProcessIndex_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.device = device_;
-  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_ProcessIndex(&args);
-  // TODO(b/236710439): (shahrokhi) handle error
-  CHECK(error == nullptr);
+
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_ProcessIndex(&args), c_api);
+
   return args.process_index;
 }
 
@@ -239,10 +241,24 @@ bool PjRtCApiDevice::IsAddressable() const {
   args.struct_size = PJRT_Device_IsAddressable_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.device = device_;
-  PJRT_Error* error = client_->pjrt_c_api()->PJRT_Device_IsAddressable(&args);
-  // TODO(b/236710439): handle error
-  CHECK(error == nullptr);
+
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_IsAddressable(&args), c_api);
+
   return args.is_addressable;
+}
+
+absl::string_view PjRtCApiDevice::device_kind() const {
+  PJRT_Device_Kind_Args args;
+  args.struct_size = PJRT_Device_Kind_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(c_api->PJRT_Device_Kind(&args), c_api);
+
+  absl::string_view device_kind(args.device_kind, args.device_kind_size);
+  return device_kind;
 }
 
 // ------------------------------- Executables ---------------------------------
@@ -444,7 +460,9 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
-  RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Create(&init_args), c_api);
+  PJRT_Error* error = c_api->PJRT_Client_Create(&init_args);
+  // TODO(skyewm): handle error
+  CHECK(error == nullptr);
   PJRT_Client* c_client = init_args.client;
 
   return std::unique_ptr<PjRtClient>(

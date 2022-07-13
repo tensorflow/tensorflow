@@ -168,6 +168,16 @@ PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_Kind_Args", PJRT_Device_Kind_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->device_kind = args->device->device->device_kind().data();
+  args->device_kind_size = args->device->device->device_kind().size();
+  return nullptr;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
