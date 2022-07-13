@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_set_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import sparse_ops
@@ -1264,6 +1265,60 @@ class SetOpsTest(test_util.TensorFlowTestCase):
                      "Expected %s, got %s, at %s." % (expected_set, actual_set,
                                                       last_indices))
     self.assertAllEqual(expected_shape, sparse_tensor_value.dense_shape)
+
+
+  @parameterized.parameters(*_DTYPES)
+  def test_set_union_output_is_sorted(self, dtype):
+    # We don't use any numbers >= 10 so that lexicographical order agrees with
+    # numeric order in this test, for the type dtype == tf.string.
+
+    # [3 7 5 3 1]
+    # [2 6 5 4]
+    # []
+    # [9 8]
+    sp_a = sparse_tensor_lib.SparseTensor(
+        indices=constant_op.constant(
+            [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [1, 0], [1, 1], [1, 2],
+             [1, 3], [3, 0], [3, 1]],
+            dtype=dtypes.int64),
+        values=_constant([3, 7, 5, 3, 1, 2, 6, 5, 4, 9, 8], dtype),
+        dense_shape=constant_op.constant([4, 5], dtype=dtypes.int64))
+
+    # [9 7]
+    # [5 2 0]
+    # [6]
+    # []
+    sp_b = sparse_tensor_lib.SparseTensor(
+        indices=constant_op.constant(
+            [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 0]],
+            dtype=dtypes.int64),
+        values=_constant([9, 7, 5, 2, 0, 6], dtype),
+        dense_shape=constant_op.constant([4, 3], dtype=dtypes.int64))
+    # The union should be
+    # [1 3 5 7 9]
+    # [0 2 4 5 6]
+    # [6]
+    # [8 9]
+    result = sets.set_union(sp_a, sp_b)
+    self.assertAllEqual(result.dense_shape, [4, 5])
+    self.assertAllEqual(result.indices,
+                        [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [1, 0], [1, 1],
+                         [1, 2], [1, 3], [1, 4], [2, 0], [3, 0], [3, 1]])
+    self.assertAllEqual(
+        result.values,
+        _constant([1, 3, 5, 7, 9, 0, 2, 4, 5, 6, 6, 8, 9], dtype))
+
+  def test_raw_ops_setsize_invalid_shape(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Shape must be a 1D tensor"):
+      invalid_shape = 1
+      self.evaluate(
+          gen_set_ops.set_size(
+              set_indices=1,
+              set_values=[1, 1],
+              set_shape=invalid_shape,
+              validate_indices=True,
+              name=""))
 
 
 if __name__ == "__main__":
