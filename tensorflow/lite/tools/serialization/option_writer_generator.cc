@@ -96,7 +96,6 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
                                       "TfLiteVarHandleParams",
-                                      "TfLiteUnsortedSegmentProdParams",
                                       nullptr};
 }  // namespace
 

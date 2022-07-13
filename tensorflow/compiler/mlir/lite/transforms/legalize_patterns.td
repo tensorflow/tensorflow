@@ -224,6 +224,10 @@ def LegalizeUnsortedSegmentProd :
   Pat<(TF_UnsortedSegmentProdOp $data, $segment_ids, $num_segments),
       (TFL_UnsortedSegmentProdOp $data, (CreateTFCastToInt32Op $segment_ids),
         (CreateTFCastToInt32Op $num_segments))>;
+def LegalizeUnsortedSegmentMax :
+  Pat<(TF_UnsortedSegmentMaxOp $data, $segment_ids, $num_segments),
+      (TFL_UnsortedSegmentMaxOp $data, (CreateTFCastToInt32Op $segment_ids),
+        (CreateTFCastToInt32Op $num_segments))>;
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),

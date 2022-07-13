@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-legalize-tf --cse | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tfl-legalize-tf --cse -split-input-file| FileCheck %s --dump-input=fail
 
 func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
@@ -2042,6 +2042,46 @@ func.func @unsorted_segment_prod(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> 
   // CHECK:  [[BCT:%.*]] = "tfl.unsorted_segment_prod"(%arg0, %arg1, %cst) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
   // CHECK:  return [[BCT]] : tensor<8xf32>
 }
+
+
+// -----
+
+func.func @unsorted_segment_max(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>) -> tensor<8xf32> {
+  %num_segments = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.UnsortedSegmentMax"(%arg0, %arg1, %num_segments) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+  // CHECK-LABEL: unsorted_segment_max
+  // CHECK: %[[CST:.*]] = arith.constant dense<8> : tensor<i32>
+  // CHECK: %[[BCT:.*]] = "tfl.unsorted_segment_max"(%arg0, %arg1, %[[CST]]) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
+  // CHECK: return %[[BCT]] : tensor<8xf32>
+}
+
+// -----
+
+func.func @unsorted_segment_max_3arg(%arg0: tensor<5xi32>, %arg1: tensor<5xi32>, %arg2: tensor<i64>) -> tensor<5xi32>{
+  %0 = "tf.UnsortedSegmentMax"(%arg0, %arg1, %arg2) : (tensor<5xi32>, tensor<5xi32>, tensor<i64>) -> tensor<5xi32>
+  func.return %0 : tensor<5xi32>
+  // CHECK-LABEL: unsorted_segment_max_3arg
+  // CHECK: %[[BCT:.*]] = "tfl.cast"(%arg2) : (tensor<i64>) -> tensor<i32>
+  // CHECK: %[[RES:.*]] = "tfl.unsorted_segment_max"(%arg0, %arg1, %[[BCT]]) : (tensor<5xi32>, tensor<5xi32>, tensor<i32>) -> tensor<5xi32>
+  // CHECK: return %[[RES]] : tensor<5xi32>
+}
+
+// -----
+
+func.func @unsorted_segment_max_i64(%arg0: tensor<9xf32>, %arg1: tensor<9xi64>) -> tensor<9xf32> {
+  %num_segments = "tf.Const"() {value = dense<9> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.UnsortedSegmentMax"(%arg0, %arg1, %num_segments) : (tensor<9xf32>, tensor<9xi64>, tensor<i32>) -> tensor<9xf32>
+  func.return %0 : tensor<9xf32>
+  // CHECK-LABEL: unsorted_segment_max_i64
+  // CHECK: %[[CST:.*]] = arith.constant dense<9> : tensor<i32>
+  // CHECK: %[[CAST:.*]] = "tfl.cast"(%arg1) : (tensor<9xi64>) -> tensor<9xi32>
+  // CHECK: %[[RES:.*]] = "tfl.unsorted_segment_max"(%arg0, %[[CAST]], %[[CST]]) : (tensor<9xf32>, tensor<9xi32>, tensor<i32>) -> tensor<9xf32>
+  // CHECK: return %[[RES]] : tensor<9xf32>
+}
+
+// -----
+
 
 func.func @rfft2d(%arg0: tensor<10x20x10x30xf32>, %arg1: tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>> {
   %0 = "tf.RFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xf32>, tensor<2xi32>) -> tensor<10x20x10x30xcomplex<f32>>

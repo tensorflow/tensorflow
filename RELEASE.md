@@ -38,6 +38,7 @@
           * tflite SelectV2 now supports 5D.
           * tf.einsum is supported with multiple unknown shapes.
           * tf.unsortedsegmentprod op is supported.
+          * tf.unsortedsegmentmax op is supported.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
 *   `tf.keras`:
 
