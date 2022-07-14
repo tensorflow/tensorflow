@@ -31,6 +31,32 @@ _COMPUTE_LIBRARY_DEFINES = [
     "ENABLE_NCHW_KERNELS",
 ]
 
+
+cc_library(
+    name = "arm_compute_sve2",
+    srcs = glob(
+        [
+            "src/cpu/kernels/**/sve2/*.cpp",
+            "**/*.h",
+            "**/*.hpp",
+            "**/*.inl",
+        ],
+    ),
+    copts = ["-march=armv8.6-a+sve2"],
+    defines = _COMPUTE_LIBRARY_DEFINES + ["ARM_COMPUTE_ENABLE_SVE2"],
+    includes = [
+        "src/core/NEON/kernels/arm_conv",
+        "src/core/NEON/kernels/arm_gemm",
+        "src/core/NEON/kernels/assembly",
+        "src/core/cpu/kernels/assembly",
+        "src/cpu/kernels/assembly",
+    ],
+    linkopts = ["-lpthread"],
+    deps = ["include"],
+)
+
+
+
 cc_library(
     name = "arm_compute_sve",
     srcs = glob(
@@ -40,20 +66,13 @@ cc_library(
             "src/core/NEON/kernels/arm_conv/depthwise/interleaves/sve_*.cpp",
             "src/core/NEON/kernels/batchnormalization/impl/SVE/*.cpp",
             "src/cpu/kernels/**/sve/*.cpp",
-            "src/cpu/kernels/**/impl/sve/*.cpp",
             "**/*.h",
+            "**/*.hpp",
+            "**/*.inl",
         ],
     ) + [
         "src/core/NEON/kernels/arm_gemm/transform-sve.cpp",
         "src/core/NEON/kernels/arm_gemm/mergeresults-sve.cpp",
-    ],
-    hdrs = glob([
-        "arm_compute/runtime/**/*.h",
-        "arm_compute/runtime/*.h",
-        "arm_compute/core/**/*.h",
-        "**/*.inl",
-    ]) + [
-        "arm_compute_version.embed",
     ],
     copts = ["-march=armv8.2-a+sve"],
     defines = _COMPUTE_LIBRARY_DEFINES,
@@ -86,9 +105,11 @@ cc_library(
             "src/core/NEON/kernels/arm_conv/**/kernels/a64_*/*.cpp",
             "src/core/NEON/kernels/arm_conv/depthwise/*.cpp",
             "src/core/NEON/kernels/arm_conv/depthwise/interleaves/a64_*.cpp",
+            "src/core/NEON/kernels/arm_conv/depthwise/interleaves/generic*.cpp",
             "src/core/NEON/kernels/batchnormalization/impl/NEON/*.cpp",
             "src/cpu/*.cpp",
             "src/cpu/kernels/*.cpp",
+            "src/cpu/kernels/*/generic/*.cpp",
             "src/cpu/operators/**/*.cpp",
             "src/cpu/utils/*.cpp",
             "src/cpu/kernels/internal/*.cpp",
@@ -96,6 +117,8 @@ cc_library(
             "src/cpu/kernels/**/nchw/*.cpp",
             "src/core/NEON/kernels/arm_gemm/*.cpp",
             "**/*.h",
+            "**/*.hpp",
+            "**/*.inl",
         ],
         exclude = [
             "src/core/utils/logging/**",
@@ -110,6 +133,7 @@ cc_library(
         "src/c/operators/AclActivation.cpp",
         "src/core/NEON/kernels/arm_conv/pooling/kernels/cpp_nhwc_1x1_stride_any_depthfirst/generic.cpp",
         "src/core/NEON/kernels/arm_conv/depthwise/interleaves/8b_mla.cpp",
+        "src/core/NEON/kernels/arm_conv/addressing.cpp",
     ],
     hdrs = glob([
         "src/core/NEON/kernels/**/*.h",
@@ -124,16 +148,17 @@ cc_library(
     copts = ["-march=armv8-a"],
     defines = _COMPUTE_LIBRARY_DEFINES,
     includes = [
-        "arm_compute/runtime",
-        "src/core/NEON/kernels/assembly",
-        "src/core/NEON/kernels/convolution/common",
-        "src/core/NEON/kernels/convolution/winograd",
-        "src/core/cpu/kernels/assembly",
-        "src/cpu/kernels/assembly",
+         "arm_compute/runtime",
+         "src/core/NEON/kernels/assembly",
+         "src/core/NEON/kernels/convolution/common",
+         "src/core/NEON/kernels/convolution/winograd",
+         "src/core/cpu/kernels/assembly",
+         "src/cpu/kernels/assembly",
     ],
     linkopts = ["-lpthread"],
     visibility = ["//visibility:public"],
     deps = [
+        "arm_compute_sve2",
         "arm_compute_sve",
         "include",
     ],
