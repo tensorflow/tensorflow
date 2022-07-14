@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 // clang-format off
