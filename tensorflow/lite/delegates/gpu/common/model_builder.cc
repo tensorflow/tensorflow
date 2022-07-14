@@ -1659,7 +1659,6 @@ class ReduceOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(operation_type_);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
 
     const TfLiteReducerParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -1673,6 +1672,31 @@ class ReduceOperationParser : public TFLiteOperationParser {
       attr.dims.insert(axis);
     }
     node->operation.attributes = attr;
+
+    if (!tf_options->keep_dims) {
+      // GPU delegates does not support implicit shapes transformations
+      // adding explicit Reshape
+      const auto& input_tensor = graph->FindInputs(node->id)[0]->tensor;
+      auto reduce_output_shape = input_tensor.shape;
+      for (auto axis : attr.dims) {
+        reduce_output_shape.set(axis, 1);
+      }
+      Node* node_reshape = graph->NewNode();
+      node_reshape->operation.type = ToString(OperationType::RESHAPE);
+      ReshapeAttributes reshape_attr;
+      const TfLiteTensor* output = reader->GetOutputTensor(0);
+      RETURN_IF_ERROR(ExtractTensorShape(*output, &reshape_attr.new_shape));
+      node_reshape->operation.attributes = reshape_attr;
+      Value* reduce_result = graph->NewValue();
+      reduce_result->tensor.type = input_tensor.type;
+      reduce_result->tensor.shape = reduce_output_shape;
+
+      RETURN_IF_ERROR(graph->SetProducer(node->id, reduce_result->id));
+      RETURN_IF_ERROR(graph->AddConsumer(node_reshape->id, reduce_result->id));
+      RETURN_IF_ERROR(reader->AddOutputs(node_reshape));
+    } else {
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+    }
     return absl::OkStatus();
   }
 
