@@ -234,7 +234,8 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   fusionOp->getParentOfType<ModuleOp>()->setAttr(
       gpu::GPUDialect::getContainerModuleAttrName(), rewriter.getUnitAttr());
 
-  // Annotate gpu.launch_func with attribute specifying written operands.
+  // Annotate gpu.launch_func loc and attribute specifying written operands.
+  funcOp->walk([&](gpu::LaunchFuncOp op) { op->setLoc(loc); });
   annotateLaunchFunc(funcOp, rewriter);
 
   // Remove dead allocations that were only used by store_op erased above.
