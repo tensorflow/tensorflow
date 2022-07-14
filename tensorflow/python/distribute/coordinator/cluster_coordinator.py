@@ -1128,7 +1128,7 @@ class ClusterCoordinator(object):
     """Create dataset on each worker.
 
     This creates dataset on workers from the input which can be either a
-    `tf.data.Dataset`, a `tf.distribute.DistributedDataset` or a functino which
+    `tf.data.Dataset`, a `tf.distribute.DistributedDataset` or a function which
     returns a dataset, and returns an object that represents the collection of
     those individual datasets. Calling `iter` on such collection of datasets
     returns a `tf.distribute.experimental.coordinator.PerWorkerValues`, which is
