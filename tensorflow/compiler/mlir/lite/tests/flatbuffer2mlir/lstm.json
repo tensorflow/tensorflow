@@ -5,11 +5,11 @@
 // CHECK-DAG: %[[input_19:.*]] = "quant.stats"({{.*}}) {layerStats = dense<[-2.000000e+00, 4.000000e+00]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
 
 // CHECK: "tfl.unidirectional_sequence_lstm"({{.*}}, %[[input_18]], %[[input_19]], %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}})
-// CHECK-SAME: effective_hidden_scale_intermediate = tensor<!quant.calibrated<f32<-5.000000e-01:5.000000e-01>>>
-// CHECK-SAME: input_to_cell_intermediate = tensor<!quant.calibrated<f32<-4.000000e+00:4.000000e+00>>>
-// CHECK-SAME: input_to_forget_intermediate = tensor<!quant.calibrated<f32<-1.600000e+01:1.600000e+01>>>
-// CHECK-SAME: input_to_input_intermediate = tensor<!quant.calibrated<f32<-3.200000e+01:3.200000e+01>>>
-// CHECK-SAME: input_to_output_intermediate = tensor<!quant.calibrated<f32<-1.000000e+00:1.000000e+00>>>
+// CHECK-SAME: effective_hidden_scale_intermediate = tensor<*x!quant.calibrated<f32<-5.000000e-01:5.000000e-01>>>
+// CHECK-SAME: input_to_cell_intermediate = tensor<*x!quant.calibrated<f32<-4.000000e+00:4.000000e+00>>>
+// CHECK-SAME: input_to_forget_intermediate = tensor<*x!quant.calibrated<f32<-1.600000e+01:1.600000e+01>>>
+// CHECK-SAME: input_to_input_intermediate = tensor<*x!quant.calibrated<f32<-3.200000e+01:3.200000e+01>>>
+// CHECK-SAME: input_to_output_intermediate = tensor<*x!quant.calibrated<f32<-1.000000e+00:1.000000e+00>>>
 
 // Checks if calibrated type is exported back to quantized type.
 // RoundTrip: name: "effective_hidden_scale_intermediate",
