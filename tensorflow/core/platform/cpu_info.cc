@@ -74,6 +74,9 @@ class CPUIDInfo {
   CPUIDInfo()
       : have_adx_(0),
         have_aes_(0),
+        have_amx_bf16_(0),
+        have_amx_int8_(0),
+        have_amx_tile_(0),
         have_avx_(0),
         have_avx2_(0),
         have_avx512f_(0),
@@ -87,6 +90,9 @@ class CPUIDInfo {
         have_avx512ifma_(0),
         have_avx512_4vnniw_(0),
         have_avx512_4fmaps_(0),
+        have_avx512_bf16_(0),
+        have_avx512_vnni_(0),
+        have_avx_vnni_(0),
         have_bmi1_(0),
         have_bmi2_(0),
         have_cmov_(0),
@@ -177,11 +183,12 @@ class CPUIDInfo {
     cpuid->have_f16c_ = have_avx && ((ecx >> 29) & 0x1);
 
     // Get standard level 7 structured extension features (issue CPUID with
-    // eax = 7 and ecx= 0), which is required to check for AVX2 support as
+    // eax = 7 and ecx = 0), which is required to check for AVX2 support as
     // well as other Haswell (and beyond) features.  (See Intel 64 and IA-32
     // Architectures Software Developer's Manual Volume 2A: Instruction Set
     // Reference, A-M CPUID).
     GETCPUID(eax, ebx, ecx, edx, 7, 0);
+    const uint32 kMaxNumSubLeaves = eax;
 
     cpuid->have_adx_ = (ebx >> 19) & 0x1;
     cpuid->have_avx2_ = have_avx && ((ebx >> 5) & 0x1);
@@ -202,6 +209,23 @@ class CPUIDInfo {
     cpuid->have_avx512ifma_ = have_avx512 && ((ebx >> 21) & 0x1);
     cpuid->have_avx512_4vnniw_ = have_avx512 && ((edx >> 2) & 0x1);
     cpuid->have_avx512_4fmaps_ = have_avx512 && ((edx >> 3) & 0x1);
+    cpuid->have_avx512_vnni_ = have_avx512 && ((ecx >> 11) & 0x1);
+
+    // The latest Intel 64 and IA-32 Architectures Software Developer's Manual
+    // Volume 2A (December 2021) does not have information on AMX yet. We use
+    // the information from Xbyak in oneDNN.
+    // https://github.com/oneapi-src/oneDNN/blob/acf8d214cedfe7e24c9446bacc1f9f648c9273f8/src/cpu/x64/xbyak/xbyak_util.h#L536-L538
+    cpuid->have_amx_tile_ = (edx >> 24) & 0x1;
+    cpuid->have_amx_int8_ = (edx >> 25) & 0x1;
+    cpuid->have_amx_bf16_ = (edx >> 22) & 0x1;
+
+    // Get more Structured Extended Feature info by issuing CPUID with
+    // sub-leaf = 1 (eax = 7, ecx = 1)
+    if (kMaxNumSubLeaves >= 1) {
+      GETCPUID(eax, ebx, ecx, edx, 7, 1);
+      cpuid->have_avx_vnni_ = (eax >> 4) & 0x1;
+      cpuid->have_avx512_bf16_ = have_avx512 && ((eax >> 5) & 0x1);
+    }
   }
 
   static bool TestFeature(CPUFeature feature) {
@@ -210,6 +234,9 @@ class CPUIDInfo {
     switch (feature) {
       case ADX:           return cpuid->have_adx_;
       case AES:           return cpuid->have_aes_;
+      case AMX_BF16:      return cpuid->have_amx_bf16_;
+      case AMX_INT8:      return cpuid->have_amx_int8_;
+      case AMX_TILE:      return cpuid->have_amx_tile_;
       case AVX2:          return cpuid->have_avx2_;
       case AVX:           return cpuid->have_avx_;
       case AVX512F:       return cpuid->have_avx512f_;
@@ -223,6 +250,9 @@ class CPUIDInfo {
       case AVX512IFMA:    return cpuid->have_avx512ifma_;
       case AVX512_4VNNIW: return cpuid->have_avx512_4vnniw_;
       case AVX512_4FMAPS: return cpuid->have_avx512_4fmaps_;
+      case AVX512_BF16:   return cpuid->have_avx512_bf16_;
+      case AVX512_VNNI:   return cpuid->have_avx512_vnni_;
+      case AVX_VNNI:      return cpuid->have_avx_vnni_;
       case BMI1:          return cpuid->have_bmi1_;
       case BMI2:          return cpuid->have_bmi2_;
       case CMOV:          return cpuid->have_cmov_;
@@ -259,6 +289,9 @@ class CPUIDInfo {
  private:
   int have_adx_ : 1;
   int have_aes_ : 1;
+  int have_amx_bf16_ : 1;
+  int have_amx_int8_ : 1;
+  int have_amx_tile_ : 1;
   int have_avx_ : 1;
   int have_avx2_ : 1;
   int have_avx512f_ : 1;
@@ -272,6 +305,9 @@ class CPUIDInfo {
   int have_avx512ifma_ : 1;
   int have_avx512_4vnniw_ : 1;
   int have_avx512_4fmaps_ : 1;
+  int have_avx512_bf16_ : 1;
+  int have_avx512_vnni_ : 1;
+  int have_avx_vnni_ : 1;
   int have_bmi1_ : 1;
   int have_bmi2_ : 1;
   int have_cmov_ : 1;

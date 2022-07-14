@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -27,14 +28,15 @@ namespace tf_test {
 std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeVariableTestPass();
 
 // Test pass for applying TF->TF lowering patterns.
-std::unique_ptr<OperationPass<FuncOp>> CreateTestTFLowerTFPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestTFLowerTFPass();
 
 // Test passes for visitor util.
-std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilPass();
-std::unique_ptr<OperationPass<FuncOp>> CreateTestVisitorUtilInterruptPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestVisitorUtilPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTestVisitorUtilInterruptPass();
 
 // Test operation clustering based on user defined policy.
-std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestClusteringPolicyPass();
 
 // Test pass for analyzing side-effect analysis result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass();

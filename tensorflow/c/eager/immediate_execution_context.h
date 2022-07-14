@@ -141,6 +141,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Enables running eager ops as functions.
   virtual void SetRunEagerOpAsFunction(bool enable) = 0;
 
+  // Enables rewriting jit_compile functions.
+  virtual void SetJitCompileRewrite(bool enable) = 0;
+
   // Sets the device placement policy for the current thread.
   virtual void SetThreadLocalDevicePlacementPolicy(
       ContextDevicePlacementPolicy policy) = 0;

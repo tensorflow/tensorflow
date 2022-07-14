@@ -66,6 +66,12 @@ def mlir_convert(
     converter.target_spec.supported_ops = set(
         [tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS])
 
+  if options.enable_dynamic_update_slice:
+    converter._experimental_enable_dynamic_update_slice = True  # pylint: disable=protected-access
+
+  if options.disable_batchmatmul_unfold:
+    converter._experimental_disable_batchmatmul_unfold = True  # pylint: disable=protected-access
+
   if test_params.get("dynamic_range_quantize", False):
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
 

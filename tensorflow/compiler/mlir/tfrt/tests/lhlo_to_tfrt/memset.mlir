@@ -8,7 +8,7 @@
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME:   %arg3: f32
 // CHECK-SAME: ) -> !tfrt.chain
-func @memset(%dst: memref<4x4xf32>, %value: f32) {
+func.func @memset(%dst: memref<4x4xf32>, %value: f32) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 

@@ -30,10 +30,6 @@ from tensorflow.python.ops import variables as variables_lib
 # pylint: disable=protected-access
 
 
-class _DummyResourceDeleter(object):
-  pass
-
-
 class DistributedVariable(resource_variable_ops.BaseResourceVariable):
   """Represents variables that are replicated.
 
@@ -90,7 +86,6 @@ class DistributedVariable(resource_variable_ops.BaseResourceVariable):
           initializer_op=initializer,
           is_initialized_op=None,
           cached_value=None,
-          handle_deleter=_DummyResourceDeleter(),
           caching_device=None,
           is_variables=True)
 
@@ -109,8 +104,14 @@ class DistributedVariable(resource_variable_ops.BaseResourceVariable):
       else:
         handles = [self._packed_handle]
         is_packed = True
-      return tpu_context.get_replicated_var_handle(self._unique_id, handles,
-                                                   is_mirrored, is_packed)
+      common_name = self._handle_name
+      # BaseResourceVariable appends ":0" to the handle name, which makes it not
+      # a valid root scope name.
+      if ":" in common_name:
+        common_name = common_name.split(":")[0]
+      return tpu_context.get_replicated_var_handle(common_name, self._unique_id,
+                                                   handles, is_mirrored,
+                                                   is_packed)
     if self._packed_handle is not None and not context.executing_eagerly():
       return self._packed_handle
     device = device_util.canonicalize(device_util.current())

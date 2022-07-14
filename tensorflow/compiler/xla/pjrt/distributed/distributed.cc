@@ -25,19 +25,22 @@ namespace xla {
 
 StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(
-    std::string address,
-    const DistributedRuntimeServiceImpl::Options& options) {
+    std::string address, const DistributedRuntimeServiceImpl::Options& options,
+    bool use_coordination_service) {
   auto credentials = ::grpc::InsecureServerCredentials();
-  return DistributedRuntimeService::Get(address, credentials, options);
+  return DistributedRuntimeService::Get(address, credentials, options,
+                                        use_coordination_service);
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options) {
+    std::string address, const DistributedRuntimeClient::Options& options,
+    bool use_coordination_service) {
   std::shared_ptr<::grpc::ChannelCredentials> creds =
       ::grpc::InsecureChannelCredentials();
   std::shared_ptr<::grpc::Channel> channel =
       ::grpc::CreateChannel(address, creds);
-  return GetDistributedRuntimeClient(channel, options);
+  return GetDistributedRuntimeClient(channel, options,
+                                     use_coordination_service);
 }
 
 }  // namespace xla

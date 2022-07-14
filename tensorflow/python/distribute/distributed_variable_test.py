@@ -18,7 +18,7 @@ import copy
 import os
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
@@ -47,7 +47,6 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
-from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.types import core
 
 
@@ -380,7 +379,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       _test(lambda: self.assertIs(v.op, v._primary.op), v)
     _test(lambda: self.assertEqual(v.shape, tensor_shape.TensorShape(())), v)
     _test(lambda: self.assertEqual(v.synchronization, synchronization), v)
-    _test(lambda: self.assertTrue(v.trainable, True), v)
+    _test(lambda: self.assertEqual(v.trainable, True), v)
 
     # tf.Variable methods.
     _test(lambda: check_ops.assert_equal_v2(v.assign(1.), 1.), v)

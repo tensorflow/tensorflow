@@ -109,6 +109,7 @@ cc_library(
         ":linux_mips64": COMMON_SRCS + LINUX_SRCS,
         ":linux_riscv64": COMMON_SRCS + LINUX_SRCS,
         ":linux_s390x": COMMON_SRCS + LINUX_SRCS,
+        ":linux_ppc64le": COMMON_SRCS + LINUX_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":macos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
@@ -121,6 +122,7 @@ cc_library(
         ":ios_armv7": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":ios_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":ios_arm64e": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
+        ":ios_sim_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":watchos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":watchos_x86": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":watchos_armv7k": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
@@ -233,6 +235,11 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
+)
+
+config_setting(
     name = "macos_x86_64",
     values = {
         "apple_platform_type": "macos",
@@ -294,6 +301,14 @@ config_setting(
     values = {
         "apple_platform_type": "ios",
         "cpu": "ios_arm64",
+    },
+)
+
+config_setting(
+    name = "ios_sim_arm64",
+    values = {
+        "apple_platform_type": "ios",
+        "cpu": "ios_sim_arm64",
     },
 )
 

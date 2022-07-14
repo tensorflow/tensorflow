@@ -27,7 +27,7 @@ echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} 
 echo ""
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-4.5.2
+ROCM_INSTALL_DIR=/opt/rocm-5.1.0
 if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
 fi
@@ -44,7 +44,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu,-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
+      --test_tag_filters=gpu,-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-tpu,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_TEST_JOBS} \
       --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \

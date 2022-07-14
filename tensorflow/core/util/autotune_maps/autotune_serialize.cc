@@ -90,8 +90,9 @@ Status PopulateConvMap(
     const ConvMapProto &m,
     AutotuneMap<ConvParameters, AutotuneEntry<Op>> *autotune_map) {
   if (m.kv_pairs().size() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
+  std::set<std::string> unmatched_device_ids;
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
@@ -130,9 +131,7 @@ Status PopulateConvMap(
     }
 
     if (device_ids.empty()) {
-      LOG(WARNING) << "No matching devices found for "
-                   << params_proto.device_identifier() << "; existing devices: "
-                   << str_util::Join(device_ids_map, ", ");
+      unmatched_device_ids.insert(params_proto.device_identifier());
     } else {
       devices_matched = true;
     }
@@ -160,13 +159,20 @@ Status PopulateConvMap(
     }
   }
 
+  if (!unmatched_device_ids.empty()) {
+    LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
+                 << str_util::Join(unmatched_device_ids, ", ")
+                 << "; existing devices: "
+                 << str_util::Join(device_ids_map, ", ");
+  }
+
   // When no matching devices are found, populating autotuning map will not
   // happen. Instead of silently reporting an OK status, report an error back.
   if (!devices_matched) {
     return errors::NotFound("No matching devices found for ",
                             str_util::Join(device_ids_map, ", "));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -180,7 +186,7 @@ Status SerializeAutotuneMaps(std::string *output) {
       ConvMapToProto(*FusedConvAutotuneMap::GetInstance());
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   *output = autotune_maps_utils::SerializeProtoDeterministic(proto);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LoadSerializedAutotuneMaps(absl::string_view s) {
@@ -199,7 +205,7 @@ Status LoadSerializedAutotuneMaps(absl::string_view s) {
                                      FusedConvAutotuneMap::GetInstance()));
   // TODO(b/189530096): Populate autotune maps for more ops.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Status::OK();
+  return OkStatus();
 }
 
 void ResetAutotuneMaps() {

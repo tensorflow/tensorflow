@@ -16,28 +16,47 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
 #define TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
 
+#include <functional>
+#include <string>
+
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 
 namespace mlir {
+class PassManager;
+
 namespace tfg {
 
-// This class implements a grappler optimizer wrapping a pipeline of passes
-// implemented with TFG.
-class TfgGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
- public:
-  explicit TfgGrapplerOptimizer(const std::string& pass_pipeline);
+// A function that builds the TFG pass pipeline.
+using TFGPassPipelineBuilder = std::function<void(PassManager& pm)>;
 
-  std::string name() const override {
-    return "tfg_optimizer{" + pass_pipeline_ + "}";
-  };
+// This class implements a Grappler optimizer wrapping a pipeline of passes
+// implemented with TFG.
+class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
+ public:
+  // Constructs a TFG optimizer using the provided pipeline builder. By default,
+  // the optimizer will not use multi-threading. If `num_tfg_threads` is
+  // non-zero, then TFG will use threading with the specified number of threads.
+  explicit TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
+                                unsigned num_tfg_threads = 0);
+  // Explicit destructor to defer instantiation of Impl.
+  ~TFGGrapplerOptimizer() override;
+
+  // Constructs a name for the optimizer using the registered passes.
+  std::string name() const override;
+  // The TFG optimizer requires access to the function library.
   bool UsesFunctionLibrary() const override { return true; }
 
+  // Runs the optimizer on the GraphDef. The optimizer converts the GraphDef to
+  // TFG using the importer, runs the passes on the MLIR, and exports back to
+  // GraphDef. The result is stored in `optimized_graph`.
   tensorflow::Status Optimize(tensorflow::grappler::Cluster* cluster,
                               const tensorflow::grappler::GrapplerItem& item,
                               tensorflow::GraphDef* optimized_graph) override;
 
  private:
-  std::string pass_pipeline_;
+  // Hide the implementation details.
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // end namespace tfg

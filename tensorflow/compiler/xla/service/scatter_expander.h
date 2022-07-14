@@ -49,7 +49,7 @@ class ScatterExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* inst) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* scatter) override;
+  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* inst) override;
 
  private:
   Mode mode_;

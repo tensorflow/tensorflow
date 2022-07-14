@@ -16,6 +16,10 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 
 package(
     default_visibility = [":friends"],
@@ -109,6 +113,29 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "fusion_logical_index_test",
+    srcs = ["fusion_logical_index_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "mlir_fft_test",
+    srcs = ["mlir_fft_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -161,26 +188,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "gpu_spmd_partitioner_test",
-    srcs = ["gpu_spmd_partitioner_test.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:rng_expander",
-        "//tensorflow/compiler/xla/service:sharding_propagation",
-        "//tensorflow/compiler/xla/service/gpu:gpu_spmd_partitioner",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-    ],
-)
-
-tf_cc_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
@@ -203,7 +210,6 @@ tf_cc_test(
     ],
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
-        "no_bef_thunk",  # complex<fp16> tests fail, see b/187959015.
     ],
     deps = [
         ":gpu_codegen_test",
@@ -214,6 +220,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
@@ -240,6 +248,8 @@ tf_cc_test(
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/gpu:gemm_broadcast_folding_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -265,17 +275,13 @@ tf_cc_test(
     srcs = [
         "reduction_degenerate_dim_remover_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
     deps = [
-        ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:reduction_degenerate_dim_remover",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -292,24 +298,19 @@ tf_cc_test(
     srcs = [
         "reduction_layout_normalizer_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
     deps = [
-        ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:reduction_layout_normalizer",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -319,17 +320,13 @@ tf_cc_test(
     srcs = [
         "tree_reduction_rewriter_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
     deps = [
-        ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -338,6 +335,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -400,17 +398,13 @@ tf_cc_test(
     srcs = [
         "reduction_dimension_grouper_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
     deps = [
-        ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:reduction_dimension_grouper",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
@@ -546,7 +540,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = ["no_rocm"] + tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
@@ -642,7 +636,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",
@@ -741,9 +735,12 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler_impl",
     ]),
 )
 
@@ -774,14 +771,23 @@ filegroup(
 tf_cc_test(
     name = "kernel_launch_test",
     srcs = ["kernel_launch_test.cc"],
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "in_place_op_test",
+    srcs = ["in_place_op_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test_main",
     ],
 )
@@ -795,6 +801,7 @@ py_test(
         "no_oss",
         "notap",
         "requires-gpu-nvidia",
+        "requires-net:external",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -91,17 +91,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier  We run algsimp to a fixed point.
-  //
-  // When transposes appear in a fusion node, we can easily adjust the
-  // multi-dimensional index to create the one needed for the operand. This
-  // is not as easy with bitcasts, because we don't have the information
-  // readily available which dimensions are permuted. In addition to that,
-  // if we have a transpose and a reshape next to each other, they will both
-  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-  // bitcast. This leads to having to linearize and then delinearize the
-  // index.
   AlgebraicSimplifierOptions options;
-  options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
@@ -111,7 +101,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
@@ -146,25 +136,29 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
-  // Find the fastest algorithm for GEMMs.
-  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  // Find the fastest algorithm for GEMMs. Skip on Ampere and later as the
+  // algorithm goes unused.
+  if (!stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  }
 
-  // BEF-mode GpuExecutable allocates temp memory, and so the custom-call
-  // implementation for TriangularSolve is not needed.
-#if !BEF_EXECUTABLE
-  // Transform TriangularSolve ops into custom-calls, so we can add temp memory.
-  post_pipeline.AddPass<TriangularSolveRewriter>();
-#endif
+  if (!IsBefEnabled(hlo_module->config())) {
+    // Transform TriangularSolve ops into custom-calls, so we can add temp
+    // memory. XLIR allocates temp memory, and so the custom-call implementation
+    // for TriangularSolve is not needed.
+    post_pipeline.AddPass<TriangularSolveRewriter>();
+  }
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                       const HloInstruction* operand,
+                                       const ShapeIndex& user_index) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
       // NCCL all-reduce can be performed in-place.
@@ -182,7 +176,7 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -200,13 +194,13 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
     auto filename = tensorflow::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
       matched_filename = full_filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
+      VLOG(1) << "RunBackend() - Will load PTX from file: " << full_filename;
       break;
     }
   }
   if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
       matched_filename.empty()) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
   }
 
@@ -243,12 +237,12 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
       });
   if (!xla_gpu_llvm_ir_file.empty() &&
       matched_filename == std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+    VLOG(1) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a LLVM file to load.";
   }
 
   if (matched_filename != std::end(xla_gpu_llvm_ir_file)) {
-    VLOG(0) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
+    VLOG(1) << "RunBackend() - Will load LLVM from file: " << *matched_filename;
     llvm::LLVMContext& context = llvm_module->getContext();
     llvm::SMDiagnostic err;
     std::unique_ptr<llvm::Module> loaded_module =
@@ -364,7 +358,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
+      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),
@@ -420,7 +414,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           // got).
           RecordPtxToCubinDuration(end_usecs - start_usecs);
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
-          VLOG(2) << "Compiled PTX size:" << ptx.size()
+          VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
           if (maybe_cubin.status().code() ==

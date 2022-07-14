@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,7 +64,6 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
     int2 padding, int3 work_group_launch_order) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -78,7 +78,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   if (op_def.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_type = op_def.src_tensors[1].GetDataType();
     desc.element_size = 4;
     desc.memory_type =
         weights_upload_type ==
@@ -189,12 +189,12 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     c += "  int local_id = LOCAL_ID_1 * 8 + LOCAL_ID_0;\n";
   }
   const std::string next_x = "SRC_X + " + pixel_stride;
-  if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+  if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
     c += "  bool in_x0 = SRC_X >= 0 && SRC_X < args.src_tensor.Width();\n";
     c += "  bool in_x1 = " + next_x + " >= 0 && " + next_x +
          " < args.src_tensor.Width();\n";
   }
-  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
     c += "  bool in_y0 = SRC_Y >= 0 && SRC_Y < args.src_tensor.Height();\n";
     c += "  bool in_y1 = SRC_Y + 1 >= 0 && SRC_Y + 1 < "
          "args.src_tensor.Height();\n";
@@ -206,7 +206,8 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
                                          "in_y" + std::to_string(y)};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+      if (src_desc.HasAxis(axis) &&
+          !src_desc.SupportsZeroClamp(axis, gpu_info)) {
         if (!check.empty()) {
           check += " && ";
         }
@@ -216,7 +217,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     return check;
   };
   if (src_desc.IsLinear()) {
-    if (src_desc.ReturnsZeroForNegOneRead()) {
+    if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
       c += "  args.src_tensor.GetAddress(addr_0, SRC_X, SRC_Y, 0);\n";
       c += "  args.src_tensor.GetAddress(addr_1," + next_x + ", SRC_Y, 0);\n";
       c += "  args.src_tensor.GetAddress(addr_2, SRC_X, SRC_Y + 1, 0);\n";
@@ -250,7 +251,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     if (src_desc.IsLinear()) {
       const std::string id = std::to_string(y * 2 + x);
       const std::string addr = "addr_" + std::to_string(y * 2 + x);
-      if (src_desc.ReturnsZeroForNegOneRead()) {
+      if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         return "args.src_tensor.Read(" + addr + "); " + addr + " += dz_" + id +
                ";\n";
       } else {
@@ -392,15 +393,12 @@ std::vector<int> ConvolutionTransposed3x3::GetSpatialWeightsRemap() const {
 
 void ConvolutionTransposed3x3::UploadWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const auto weights_desc = GetWeightsDescription();
   const int flt_count =
-      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
-
-  DataType weights_type = definition_.precision == CalculationsPrecision::F32
-                              ? DataType::FLOAT32
-                              : DataType::FLOAT16;
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
 
   BufferDescriptor desc;
-  desc.element_type = weights_type;
+  desc.element_type = weights_desc.type;
   desc.element_size = 4;
   desc.memory_type =
       weights_upload_type_ ==
@@ -410,11 +408,10 @@ void ConvolutionTransposed3x3::UploadWeights(
   desc.size = flt_count * SizeOf(desc.element_type);
   desc.data.resize(desc.size);
 
-  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
-                   absl::MakeSpan(desc.data));
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
 
   args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 bool IsConvolutionTransposed3x3Supported(
@@ -436,7 +433,7 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 
@@ -460,7 +457,7 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
   desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 

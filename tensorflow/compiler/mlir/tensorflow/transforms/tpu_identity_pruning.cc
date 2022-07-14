@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
@@ -47,24 +48,25 @@ struct TPUIdentityPruning
 };
 
 // Collects all reachable functions (via call ops) from a given region.
-SmallVector<FuncOp, 4> CollectReachableFunctions(Region& region) {
-  llvm::SmallPtrSet<FuncOp, 4> reachable_funcs;
+SmallVector<func::FuncOp, 4> CollectReachableFunctions(Region& region) {
+  llvm::SmallPtrSet<func::FuncOp, 4> reachable_funcs;
 
   auto collect_reachable_funcs =
-      [&reachable_funcs](Region& src, SmallVectorImpl<FuncOp>& funcs_to_visit) {
+      [&reachable_funcs](Region& src,
+                         SmallVectorImpl<func::FuncOp>& funcs_to_visit) {
         src.walk([&reachable_funcs, &funcs_to_visit](CallOpInterface call_op) {
-          auto func = dyn_cast_or_null<FuncOp>(call_op.resolveCallable());
+          auto func = dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable());
           if (func && reachable_funcs.insert(func).second)
             funcs_to_visit.push_back(func);
         });
       };
 
-  SmallVector<FuncOp, 4> funcs_to_visit;
+  SmallVector<func::FuncOp, 4> funcs_to_visit;
   collect_reachable_funcs(region, funcs_to_visit);
 
   while (!funcs_to_visit.empty()) {
-    SmallVector<FuncOp, 4> new_funcs_to_visit;
-    for (FuncOp func_to_visit : funcs_to_visit) {
+    SmallVector<func::FuncOp, 4> new_funcs_to_visit;
+    for (func::FuncOp func_to_visit : funcs_to_visit) {
       if (!func_to_visit.getCallableRegion()) continue;
       collect_reachable_funcs(*func_to_visit.getCallableRegion(),
                               new_funcs_to_visit);
@@ -94,7 +96,7 @@ void TPUIdentityPruning::runOnOperation() {
   for (tf_device::ClusterOp cluster : clusters) {
     RemoveIdentityFromRegion(cluster.body());
     auto reachable_funcs = CollectReachableFunctions(cluster.body());
-    for (FuncOp reachable_func : reachable_funcs)
+    for (func::FuncOp reachable_func : reachable_funcs)
       RemoveIdentityFromRegion(*reachable_func.getCallableRegion());
   }
 }

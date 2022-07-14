@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/server_lib.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
@@ -28,12 +36,14 @@ namespace {
 constexpr char kPortPlaceholder[] = "%port%";
 }
 
-GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol,
-                                       const std::string server_type)
+GrpcDataServerBase::GrpcDataServerBase(
+    int port, const std::string& protocol, const std::string server_type,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
     : requested_port_(port),
       protocol_(protocol),
       server_type_(server_type),
-      bound_port_(port) {}
+      bound_port_(port),
+      server_options_(std::move(options)) {}
 
 Status GrpcDataServerBase::Start() {
   if (stopped_) {
@@ -41,9 +51,14 @@ Status GrpcDataServerBase::Start() {
         "Server cannot be started after it has been stopped.");
   }
   if (started_) {
-    return Status::OK();
+    return OkStatus();
   }
   ::grpc::ServerBuilder builder;
+  for (std::unique_ptr<::grpc::ServerBuilderOption>& option : server_options_) {
+    builder.SetOption(std::move(option));
+  }
+  server_options_.clear();
+
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateServerCredentials(protocol_, &credentials));
@@ -63,7 +78,7 @@ Status GrpcDataServerBase::Start() {
   started_ = true;
   LOG(INFO) << "Started tf.data " << server_type_
             << " running at 0.0.0.0:" << BoundPort();
-  return Status::OK();
+  return OkStatus();
 }
 
 void GrpcDataServerBase::Stop() {
@@ -90,15 +105,17 @@ void GrpcDataServerBase::AddProfilerServiceToBuilder(
 }
 
 DispatchGrpcDataServer::DispatchGrpcDataServer(
-    const experimental::DispatcherConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer"),
+    const experimental::DispatcherConfig& config,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
+    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer",
+                         std::move(options)),
       config_(config) {}
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
 void DispatchGrpcDataServer::AddDataServiceToBuilder(
     ::grpc::ServerBuilder& builder) {
-  service_ = absl::make_unique<GrpcDispatcherImpl>(config_, builder).release();
+  service_ = std::make_unique<GrpcDispatcherImpl>(config_, builder).release();
 }
 
 Status DispatchGrpcDataServer::StartServiceInternal() {
@@ -114,23 +131,32 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
     return grpc_util::WrapError("Failed to get workers", s);
   }
   *num_workers = resp.workers_size();
-  return Status::OK();
+  return OkStatus();
 }
 
-size_t DispatchGrpcDataServer::NumActiveJobs() {
-  return service_->NumActiveJobs();
+size_t DispatchGrpcDataServer::NumActiveIterations() {
+  return service_->NumActiveIterations();
+}
+
+ServerStateExport DispatchGrpcDataServer::ExportState() const {
+  ServerStateExport server_state_export;
+  *server_state_export.mutable_dispatcher_state_export() =
+      service_->ExportState();
+  return server_state_export;
 }
 
 WorkerGrpcDataServer::WorkerGrpcDataServer(
-    const experimental::WorkerConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer"),
+    const experimental::WorkerConfig& config,
+    std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options)
+    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer",
+                         std::move(options)),
       config_(config) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
 void WorkerGrpcDataServer::AddDataServiceToBuilder(
     ::grpc::ServerBuilder& builder) {
-  service_ = absl::make_unique<GrpcWorkerImpl>(config_, builder).release();
+  service_ = std::make_unique<GrpcWorkerImpl>(config_, builder).release();
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
@@ -155,7 +181,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
         /*replace_all=*/false);
   }
   TF_RETURN_IF_ERROR(service_->Start(worker_address, transfer_address));
-  return Status::OK();
+  return OkStatus();
 }
 
 void WorkerGrpcDataServer::StopServiceInternal() { service_->Stop(); }
@@ -169,19 +195,25 @@ Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
     return grpc_util::WrapError("Failed to get tasks", s);
   }
   *num_tasks = resp.tasks_size();
-  return Status::OK();
+  return OkStatus();
+}
+
+ServerStateExport WorkerGrpcDataServer::ExportState() const {
+  ServerStateExport server_state_export;
+  *server_state_export.mutable_worker_state_export() = service_->ExportState();
+  return server_state_export;
 }
 
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
                          std::unique_ptr<DispatchGrpcDataServer>& out_server) {
-  out_server = absl::make_unique<DispatchGrpcDataServer>(config);
-  return Status::OK();
+  out_server = std::make_unique<DispatchGrpcDataServer>(config);
+  return OkStatus();
 }
 
 Status NewWorkerServer(const experimental::WorkerConfig& config,
                        std::unique_ptr<WorkerGrpcDataServer>& out_server) {
-  out_server = absl::make_unique<WorkerGrpcDataServer>(config);
-  return Status::OK();
+  out_server = std::make_unique<WorkerGrpcDataServer>(config);
+  return OkStatus();
 }
 
 }  // namespace data

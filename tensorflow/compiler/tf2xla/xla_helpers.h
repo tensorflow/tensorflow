@@ -187,7 +187,7 @@ struct XlaCompilationResult {
   };
 
   // Information of the collectives encountered during the translation.
-  absl::optional<CollectiveInfo> collective_info;
+  std::optional<CollectiveInfo> collective_info;
 };
 
 // Resolves the device assignment based on CollectiveInfo.
@@ -203,11 +203,6 @@ Status ResolveDeviceAssignment(
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options);
-
-// Generate a message with a definition location based on a provided stack
-// trace, or an empty one if the stack trace is empty.
-std::string DefinitionLocationMsg(
-    const absl::optional<ManagedStackTrace>& stack_trace);
 
 }  // end namespace tensorflow
 

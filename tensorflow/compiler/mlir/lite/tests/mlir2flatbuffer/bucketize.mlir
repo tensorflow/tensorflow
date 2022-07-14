@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<3x2xf32>) -> tensor<3x2xi32> {
+func.func @main(tensor<3x2xf32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<3x2xf32>):
   // CHECK:      {
   // CHECK-NEXT:     version: 3,
@@ -67,5 +67,5 @@ func @main(tensor<3x2xf32>) -> tensor<3x2xi32> {
 
   %0 = "tfl.pseudo_const" () {value = dense<[[-5.0, 10000.0], [150.0, 10.0], [5.0, 100.0]]> : tensor<3x2xf32>} : () -> tensor<3x2xf32> loc("Const")
   %1 = "tfl.bucketize"(%0) {boundaries = [0.0 : f32, 10.0 : f32, 100.0 : f32]} : (tensor<3x2xf32>) -> tensor<3x2xi32> loc("bucketize")
-  return %1 : tensor<3x2xi32>
+  func.return %1 : tensor<3x2xi32>
 }

@@ -5,11 +5,11 @@
 // CHECK-LABEL: func @testArgToRet
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testArgToRet(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
+func.func @testArgToRet(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
   %0 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests supported ops.
@@ -17,84 +17,84 @@ func @testArgToRet(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/tas
 // CHECK-LABEL: func @testIdentityOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testIdentityOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
+func.func @testIdentityOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
   %0 = tf_executor.graph {
     // CHECK:      tf.Identity
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testIdentityNOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, {{%.+}}: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testIdentityNOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64>, tensor<i32>) {
+func.func @testIdentityNOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64>, tensor<i32>) {
   %0:2 = tf_executor.graph {
     // CHECK:      tf.IdentityN
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) : (tensor<i64>, tensor<i32>) -> (tensor<i64>, tensor<i32>)
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // CHECK-LABEL: func @testShapeOp
 // CHECK-SAME: ({{%.+}}: tensor<*xi64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<?xi64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testShapeOp(%arg0: tensor<*xi64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<?xi64> {
+func.func @testShapeOp(%arg0: tensor<*xi64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<?xi64> {
   %0 = tf_executor.graph {
     // CHECK:      tf.Shape
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:2 = tf_executor.island wraps "tf.Shape"(%arg0) : (tensor<*xi64>) -> tensor<?xi64>
     tf_executor.fetch %1#0 : tensor<?xi64>
   }
-  return %0 : tensor<?xi64>
+  func.return %0 : tensor<?xi64>
 }
 
 // CHECK-LABEL: func @testEnterOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testEnterOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
+func.func @testEnterOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
   %0 = tf_executor.graph {
     // CHECK:      tf_executor.Enter
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:2 = tf_executor.Enter %arg0 frame "frame" : tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testExitOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testExitOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
+func.func @testExitOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
   %0 = tf_executor.graph {
     // CHECK:      tf_executor.Exit
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:2 = tf_executor.Exit %arg0 : tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testMergeOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, {{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testMergeOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64>, tensor<i32>) {
+func.func @testMergeOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64>, tensor<i32>) {
   %0:2 = tf_executor.graph {
     // CHECK:      tf_executor.Merge
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:3 = tf_executor.Merge %arg0, %arg1 : tensor<i64>
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // CHECK-LABEL: func @testSwitchOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, {{%.+}}: tensor<i1> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testSwitchOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i1> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) {
+func.func @testSwitchOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i1> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) {
   tf_executor.graph {
     // CHECK:      tf_executor.Switch
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
@@ -108,7 +108,7 @@ func @testSwitchOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/tas
     %3 = tf_executor.ControlTrigger %1#1, %2#1
     tf_executor.fetch %3 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests unsupported op does not have TPU device propagated.
@@ -116,14 +116,14 @@ func @testSwitchOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/tas
 // CHECK-LABEL: func @testUnsupportedOp
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> tensor<i64>
-func @testUnsupportedOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
+func.func @testUnsupportedOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i64> {
   %0 = tf_executor.graph {
     // CHECK:      tf.UnsupportedOp
     // CHECK-NOT:  device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:2 = tf_executor.island wraps "tf.UnsupportedOp"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests empty devices are overwritten.
@@ -131,14 +131,14 @@ func @testUnsupportedOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:
 // CHECK-LABEL: func @testEmptyDeviceOverwritten
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testEmptyDeviceOverwritten(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64> {tf.device = ""}) {
+func.func @testEmptyDeviceOverwritten(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64> {tf.device = ""}) {
   %0 = tf_executor.graph {
     // CHECK:      tf.Identity
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) {device = ""} : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests only devices are propagated when all operands are on the same TPU
@@ -147,20 +147,20 @@ func @testEmptyDeviceOverwritten(%arg0: tensor<i64> {tf.device = "/job:localhost
 // CHECK-LABEL: func @testOperandsNoDevice
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, {{%.+}}: tensor<i32>)
 // CHECK-SAME: -> (tensor<i64>, tensor<i32>)
-func @testOperandsNoDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i32>) -> (tensor<i64>, tensor<i32>) {
+func.func @testOperandsNoDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i32>) -> (tensor<i64>, tensor<i32>) {
   %0:2 = tf_executor.graph {
     // CHECK:      tf.IdentityN
     // CHECK-NOT:  device = "/job:localhost/replica:0/task:0/device:TPU:0"
     %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) : (tensor<i64>, tensor<i32>) -> (tensor<i64>, tensor<i32>)
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // CHECK-LABEL: func @testOperandsDifferentDevice
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, {{%.+}}: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"})
 // CHECK-SAME: -> (tensor<i64>, tensor<i32>)
-func @testOperandsDifferentDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}) -> (tensor<i64>, tensor<i32>) {
+func.func @testOperandsDifferentDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg1: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}) -> (tensor<i64>, tensor<i32>) {
   %0:2 = tf_executor.graph {
     // CHECK:      tf.IdentityN
     // CHECK-NOT:  device = "/job:localhost/replica:0/task:0/device:TPU:0"
@@ -168,7 +168,7 @@ func @testOperandsDifferentDevice(%arg0: tensor<i64> {tf.device = "/job:localhos
     %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) : (tensor<i64>, tensor<i32>) -> (tensor<i64>, tensor<i32>)
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // Tests op with operand on different device does not have its device
@@ -176,43 +176,43 @@ func @testOperandsDifferentDevice(%arg0: tensor<i64> {tf.device = "/job:localhos
 
 // CHECK-LABEL: func @testDifferentOperandAndOpDevice
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
-func @testDifferentOperandAndOpDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) {
+func.func @testDifferentOperandAndOpDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) {
   tf_executor.graph {
     // CHECK:      tf.Identity
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:1"
     %0:2 = tf_executor.island wraps "tf.Identity"(%arg0) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %0#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testDifferentOperandAndResultDevice
 // CHECK-SAME: ({{%.+}}: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"})
 // CHECK-SAME: -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"})
-func @testDifferentOperandAndResultDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}) {
+func.func @testDifferentOperandAndResultDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> (tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"}) {
   %0 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests non TPU devices are not propagated.
 
 // CHECK-LABEL: func @testNonTPUDevice
-func @testNonTPUDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) {
+func.func @testNonTPUDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) {
   tf_executor.graph {
     // CHECK:      tf.Identity
     // CHECK-NOT:  device = "/job:localhost/replica:0/task:0/device:CPU:0"
     %0:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %0#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests control dependencies are ignored for propagating devices.
 
 // CHECK-LABEL: func @testControlDependenciesIgnored
-func @testControlDependenciesIgnored(%arg0: tensor<i64>) {
+func.func @testControlDependenciesIgnored(%arg0: tensor<i64>) {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     // CHECK:      tf.Identity
@@ -220,11 +220,11 @@ func @testControlDependenciesIgnored(%arg0: tensor<i64>) {
     %1:2 = tf_executor.island(%0#1) wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testControlDependenciesMismatchedDevices
-func @testControlDependenciesMismatchedDevices(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) {
+func.func @testControlDependenciesMismatchedDevices(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:1", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     // CHECK:      tf.Identity
@@ -232,13 +232,13 @@ func @testControlDependenciesMismatchedDevices(%arg0: tensor<i64> {tf.device = "
     %1:2 = tf_executor.island(%0#1) wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests LoopCond -> Switch where LoopCond has a different device is ignored.
 
 // CHECK-LABEL: func @testLoopCondSwitchLinkDifferentDevice
-func @testLoopCondSwitchLinkDifferentDevice() {
+func.func @testLoopCondSwitchLinkDifferentDevice() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:CPU:0", value = dense<false> : tensor<i1>} : () -> tensor<i1>
     %1:2 = tf_executor.LoopCond %0#0 : (tensor<i1>) -> (tensor<i1>, !tf_executor.control) {}
@@ -255,14 +255,14 @@ func @testLoopCondSwitchLinkDifferentDevice() {
     %6 = tf_executor.ControlTrigger %4#1, %5#1
     tf_executor.fetch %6 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests tf_executor.NextIteration.Source/tf_executor.NextIteration.Sink has a
 // device when an intermediate op in its loop has a device.
 
 // CHECK-LABEL: func @testNextIterationNoDevice
-func @testNextIterationNoDevice() {
+func.func @testNextIterationNoDevice() {
   tf_executor.graph {
     // CHECK:      tf_executor.NextIteration.Source
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:0"
@@ -278,14 +278,14 @@ func @testNextIterationNoDevice() {
     tf_executor.NextIteration.Sink [%0#1] %2#0 : tensor<i64> {T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests tf_executor.NextIteration with mismatched devices does not propagate
 // either device.
 
 // CHECK-LABEL: func @testNextIterationMismatchedDevices
-func @testNextIterationMismatchedDevices() {
+func.func @testNextIterationMismatchedDevices() {
   tf_executor.graph {
     // CHECK:      tf_executor.NextIteration.Source
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:1"
@@ -297,11 +297,11 @@ func @testNextIterationMismatchedDevices() {
     tf_executor.NextIteration.Sink [%0#1] %1#0 : tensor<i64> {device = "/job:localhost/replica:0/task:0/device:TPU:0", T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testNextIterationMissingSourceDevice
-func @testNextIterationMissingSourceDevice() {
+func.func @testNextIterationMissingSourceDevice() {
   tf_executor.graph {
     // CHECK:      tf_executor.NextIteration.Source
     %0:3 = tf_executor.NextIteration.Source : tensor<i64> {T = "tfdtype$DT_INT64"}
@@ -312,11 +312,11 @@ func @testNextIterationMissingSourceDevice() {
     tf_executor.NextIteration.Sink [%0#1] %1#0 : tensor<i64> {device = "/job:localhost/replica:0/task:0/device:TPU:0", T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testNextIterationMissingSinkDevice
-func @testNextIterationMissingSinkDevice() {
+func.func @testNextIterationMissingSinkDevice() {
   tf_executor.graph {
     // CHECK:      tf_executor.NextIteration.Source
     // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:TPU:1"
@@ -327,13 +327,13 @@ func @testNextIterationMissingSinkDevice() {
     tf_executor.NextIteration.Sink [%0#1] %1#0 : tensor<i64> {T = "tfdtype$DT_INT64"}
     tf_executor.fetch %0#2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // Tests unsupported functions are not modified.
 
 // CHECK-LABEL: func @testMultipleBlockFunc
-func @testMultipleBlockFunc() {
+func.func @testMultipleBlockFunc() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     // CHECK:      tf.Identity
@@ -343,11 +343,11 @@ func @testMultipleBlockFunc() {
   }
   cf.br ^bb1
 ^bb1:
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testMultipleGraphs
-func @testMultipleGraphs() {
+func.func @testMultipleGraphs() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     // CHECK:      tf.Identity
@@ -358,20 +358,20 @@ func @testMultipleGraphs() {
   tf_executor.graph {
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testNoGraph
-func @testNoGraph() -> tensor<i64> {
+func.func @testNoGraph() -> tensor<i64> {
   %0 = "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
   // CHECK:      tf.Identity
   // CHECK-NOT:  device = "/job:localhost/replica:0/task:0/device:TPU:0"
   %1 = "tf.Identity"(%0) : (tensor<i64>) -> tensor<i64>
-  return %1 : tensor<i64>
+  func.return %1 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testMismatchedGraphResults
-func @testMismatchedGraphResults() {
+func.func @testMismatchedGraphResults() {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island wraps "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:TPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     // CHECK:      tf.Identity
@@ -379,5 +379,5 @@ func @testMismatchedGraphResults() {
     %2:2 = tf_executor.island wraps "tf.Identity"(%1#0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %2#0 : tensor<i64>
   }
-  return
+  func.return
 }

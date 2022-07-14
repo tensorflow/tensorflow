@@ -291,14 +291,14 @@ REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(Variant, GPU);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#undef REGISTER_KERNEL
+
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#undef REGISTER_KERNEL
 
 template <typename Device, typename T>
 class OnesLikeOp : public OpKernel {
@@ -337,7 +337,7 @@ REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         OnesLikeOp<CPUDevice, int32>);

@@ -1090,6 +1090,7 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
   def __init__(
       self,
       learning_rate: float,
+      use_gradient_accumulation: bool = True,
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
@@ -1101,6 +1102,9 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
     Args:
       learning_rate: a floating point value. The learning rate.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
       weight_decay_factor: amount of weight decay to apply; None means that the
@@ -1110,13 +1114,6 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
       clip_gradient_min: the minimum value to clip by; None means -infinity.
       clip_gradient_max: the maximum value to clip by; None means +infinity.
     """
-    # Gradient accumulation is generally a no-op for SGD, but if gradient
-    # clipping is enabled, then we must also enable gradient accumulation.
-    # In the other optimizers this up to the user, but we don't give the user
-    # the option to turn gradient accumulation on or off for SGD.
-    use_gradient_accumulation = False
-    if (clip_gradient_min is not None or clip_gradient_max is not None):
-      use_gradient_accumulation = True
     super(StochasticGradientDescentParameters, self).__init__(
         learning_rate=learning_rate,
         use_gradient_accumulation=use_gradient_accumulation,

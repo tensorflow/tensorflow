@@ -30,4 +30,4 @@ message VersionDef {
   // Specific consumer versions which are disallowed (e.g. due to bugs).
   repeated int32 bad_consumers = 3;
 }
-// LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/core/framework/versions.proto)
+// LINT.ThenChange(//tensorflow/core/framework/versions.proto)

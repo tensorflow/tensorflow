@@ -4,5 +4,5 @@ index 000000000..c986ad52a
 --- /dev/null
 +++ b/arm_compute_version.embed
 @@ -0,0 +1,1 @@
-+"arm_compute_version=v21.08 Build options: {} Git hash=b'N/A'"
++"arm_compute_version=v22.02 Build options: {} Git hash=b'8f587de9214dbc3aee4ff4eeb2ede66747769b19'"
 \ No newline at end of file

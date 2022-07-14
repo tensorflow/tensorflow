@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
+#ifndef MLIR_HLO_UTILS_BROADCAST_UTILS_H
+#define MLIR_HLO_UTILS_BROADCAST_UTILS_H
 
 // Utilities relating to implementing HLO broadcasting.
 // Note: This file should not depend on any non-MLIR TensorFlow libraries.
@@ -33,22 +33,22 @@ namespace hlo {
 // legal combination for "numpy" style broadcasting (where 1-dims are prepended
 // to the smaller ranked operand until it is of the same rank as the larger).
 // See: https://docs.scipy.org/doc/numpy/reference/ufuncs.html
-bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
-                                 DenseIntElementsAttr broadcast_dims);
+bool isLegalNumpyRankedBroadcast(Value lhs, Value rhs,
+                                 DenseIntElementsAttr broadcastDims);
 
 // Emits shape dialect ops to compute the result shape for a broadcasting
 // binary/n-ary elementwise op which broadcasts according to "numpy" semantics
 // (see above), returning an extent tensor of the resulting shape. The function
 // should only be used in contexts that ensure both operands to be
 // broadcastable.
-Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
+Value computeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
                                                         Value rhs,
                                                         OpBuilder& builder);
-Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
+Value computeNaryElementwiseBroadcastingResultExtents(Location loc,
                                                       ValueRange operands,
                                                       OpBuilder& builder);
 
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
+#endif  // MLIR_HLO_UTILS_BROADCAST_UTILS_H

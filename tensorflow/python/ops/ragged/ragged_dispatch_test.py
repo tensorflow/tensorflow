@@ -39,11 +39,15 @@ from tensorflow.python.ops.ragged import ragged_dispatch
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_test_ops as test_ops
+from tensorflow.python.ops.ragged.dynamic_ragged_shape import DynamicRaggedShape
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import dispatch
-
+from tensorflow.python.util import nest
 
 # pylint: disable=g-complex-comprehension
+# pylint: disable=g-long-lambda
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -375,6 +379,128 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       result_flat_values = array_ops.reshape(result, [-1])
     self.assertAllEqual(expected_flat_values, result_flat_values)
+
+  @parameterized.parameters(
+      [
+          #=====================================================================
+          # Without broadcasting -- i.e., shapes match exactly.
+          #=====================================================================
+          # Shapes: x:(), y:()
+          {'x': 12,
+           'y': 8},
+          # Shapes: x:(3,), y:(3,)
+          {'x': [7, 8, 9],
+           'y': [1, -2, 3]},
+          # Shapes: x:(2, 2), y:(2, 2)
+          {'x': [[-2, 3], [-3, -4]],
+           'y': [[1, 2], [3, 4]]},
+          # Shapes: x:(2, None), y:(2, None)
+          {'x': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+           'y': ragged_factory_ops.constant_value([[5, 6], [7]])},
+          # Shapes: x:(2, 2, 2), y:(2, 2, 2)
+          {'x': [[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+           'y': [[[9, 3], [3, 4]], [[5, 2], [7, 6]]]},
+          # Shapes: x:(2, None, None), y: (2, None, None)
+          {'x': ragged_factory_ops.constant_value(
+              [[[1, 2], [3], [4]], [[], [5, 7, 8]]]),
+           'y': ragged_factory_ops.constant_value(
+               [[[3, 8], [2], [5]], [[], [1, 9, 8]]])},
+          # Shapes: x:(2, None, 2), y: (2, None, 2)
+          {'x': ragged_factory_ops.constant_value(
+              [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
+              ragged_rank=1),
+           'y': ragged_factory_ops.constant_value(
+               [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
+               ragged_rank=1)},
+          #=====================================================================
+          # With broadcasting
+          #=====================================================================
+          # Shapes: x:(), y:(3,)
+          {'x': 12,                                 # Broadcast () -> (3,)
+           'y': [1, -2, 3]},
+          # Shapes: x:(1,), y:(3,)
+          {'x': [12],                               # Broadcast (1,) -> (3,)
+           'y': [1, -2, 3]},
+          # Shapes: x:(), y:(2, 2)
+          {'x': 12,                                 # Broadcast () -> (2, 2)
+           'y': [[1, 2], [3, 4]]},
+          # Shapes: x:(1,), y:(2, 2)
+          {'x': 12,                                 # Broadcast (1,) -> (2, 2)
+           'y': [[1, 2], [3, 4]]},
+          # Shapes: x:(2, 1), y:(2, 2)
+          {'x': [[10], [20]],                       # Broadcast (2, 1) -> (2, 2)
+           'y': [[1, 2], [3, 4]]},
+          # Shapes: x:(), y:(2, None)
+          {'x': 10,                                 # Broadcast () -> (2, None)
+           'y': ragged_factory_ops.constant_value(
+               [[1, 2], [3]], dtype=np.int32)},
+          #=====================================================================
+          # Keyword Args
+          #=====================================================================
+          {'x': ragged_factory_ops.constant_value(
+              [[[1, 2], [3], [4]], [[], [5, 7, 8]]]),
+           'y': ragged_factory_ops.constant_value(
+               [[[3, 8], [2], [5]], [[], [1, 9, 8]]]),
+           'use_kwargs': {'x': 'x', 'y': 'y'}},
+          {'x': ragged_factory_ops.constant_value(
+              [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
+              ragged_rank=1),
+           'y': ragged_factory_ops.constant_value(
+               [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
+               ragged_rank=1),
+           'use_kwargs': {'x': 'x', 'y': 'y'}},
+          {'x': ragged_factory_ops.constant_value(
+              [[[1, 2]], [[3, 4], [5, 6], [7, 8]]],
+              ragged_rank=1),
+           'y': ragged_factory_ops.constant_value(
+               [[[9, 3]], [[5, 2], [3, 4], [7, 6]]],
+               ragged_rank=1),
+           'use_kwargs': {'y': 'y'}},
+      ] +
+      #=========================================================================
+      # Test each binary op.
+      #=========================================================================
+      [{'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+        'y': ragged_factory_ops.constant_value([[5.0, 1.0], [12.0]]),
+        'op': op}
+       for op in test_ops.BINARY_ASSERT_OPS] +
+      [{'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+        'y': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+        'op': op}
+       for op in test_ops.BINARY_ASSERT_OPS] +
+      [{'x': ragged_factory_ops.constant_value([[5, 1], [12]]),
+        'y': ragged_factory_ops.constant_value([[-2, 3], [-3]]),
+        'op': op}
+       for op in test_ops.BINARY_ASSERT_OPS] +
+      [{'x': ragged_factory_ops.constant_value([[True, True], [False]]),
+        'y': ragged_factory_ops.constant_value([[False, True], [False]]),
+        'op': op}
+       for op in (check_ops.assert_equal_v2, check_ops.assert_none_equal_v2)
+      ])  # pyformat: disable
+  def testBinaryAssertOp(self, x, y, op=check_ops.assert_equal_v2,
+                         **extra_args):
+    """Test the binary assert functions for ragged tensors."""
+
+    def check_binary_assert_pass(assert_op, x, y):
+      assert_passed = True
+      try:
+        result = assert_op(x, y)
+        if result is not None:  # in graph mode
+          with ops.control_dependencies([result]):
+            eval_tensor = array_ops.zeros([])
+          self.evaluate(eval_tensor)
+      except (ValueError, errors.InvalidArgumentError):
+        assert_passed = False
+      return assert_passed
+
+    op_assert_pass = check_binary_assert_pass(op, x, y)
+
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
+    dense_y = y.flat_values if ragged_tensor.is_ragged(y) else y
+    # Run the wrapped op on the converted tensor values, for comparison.
+    expected_assert_pass = check_binary_assert_pass(op, dense_x, dense_y)
+
+    self.assertEqual(op_assert_pass, expected_assert_pass)
 
   @parameterized.parameters(
       [
@@ -908,9 +1034,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(
           op=array_ops.bitcast,
           kwargs={
-              'input': ragged_factory_ops.constant_value([[1, 2], [-1]],
-                                                         dtype=dtypes.int64),
-              'type': dtypes.uint64
+              'input':
+                  ragged_factory_ops.constant_value([[1, 2], [-1]],
+                                                    dtype=dtypes.int64),
+              'type':
+                  dtypes.uint64
           },
           expected=ragged_factory_ops.constant_value([[1, 2], [-1]],
                                                      dtype=dtypes.uint64)),
@@ -925,6 +1053,81 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               ragged_factory_ops.constant_value([[1]]),
               ragged_factory_ops.constant_value([[2, 3, 4]]),
           ]),
+      dict(
+          op=array_ops.reshape,
+          kwargs=lambda: {
+              'tensor': ragged_factory_ops.constant([[1, 2], [3]]),
+              'shape': DynamicRaggedShape.from_lengths([3, (1, 0, 2)]),
+          },
+          expected=[[1], [], [2, 3]]),
+      dict(
+          op=array_ops.reshape,
+          kwargs=lambda: {
+              'tensor': [[1, 2], [3, 4]],
+              'shape': DynamicRaggedShape.from_lengths([3, (1, 0, 3)]),
+          },
+          expected=[[1], [], [2, 3, 4]]),
+      dict(
+          op=array_ops.reshape,
+          kwargs=lambda: {
+              'tensor': ragged_factory_ops.constant([[1, 2], [3]]),
+              'shape': [3],
+          },
+          expected=[1, 2, 3]),
+      dict(
+          op=array_ops.broadcast_to,
+          kwargs=lambda: {
+              'input': 3,
+              'shape': DynamicRaggedShape.from_lengths([3, (1, 0, 2)])
+          },
+          expected=[[3], [], [3, 3]]),
+      dict(
+          op=array_ops.shape,
+          kwargs=lambda: {
+              'input': ragged_factory_ops.constant([(1, 2), (3,)]),
+              'out_type': dtypes.int64
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 1)])),
+      dict(
+          op=array_ops.shape_v2,
+          kwargs=lambda: {
+              'input': ragged_factory_ops.constant([(1, 2), (3,)]),
+              'out_type': dtypes.int64
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 1)])),
+      dict(
+          op=array_ops.broadcast_dynamic_shape,
+          kwargs=lambda: {
+              'shape_x': DynamicRaggedShape.from_lengths([2, (2, 3), 1]),
+              'shape_y': DynamicRaggedShape.from_lengths([5])
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 3), 5])),
+      dict(
+          op=array_ops.broadcast_dynamic_shape,
+          kwargs=lambda: {
+              'shape_x': DynamicRaggedShape.from_lengths([2, (2, 3), 1]),
+              'shape_y': [5],
+          },
+          expected=lambda: DynamicRaggedShape.from_lengths([2, (2, 3), 5])),
+      dict(
+          op=array_ops.ones,
+          kwargs=lambda: {
+              'shape': DynamicRaggedShape.from_lengths([2, (2, 3)]),
+          },
+          expected=[[1.0, 1.0], [1.0, 1.0, 1.0]]),
+      dict(
+          op=array_ops.zeros,
+          kwargs=lambda: {
+              'shape': DynamicRaggedShape.from_lengths([2, (2, 3)]),
+          },
+          expected=[[0.0, 0.0], [0.0, 0.0, 0.0]]),
+      dict(
+          op=array_ops.fill,
+          kwargs=lambda: {
+              'dims': DynamicRaggedShape.from_lengths([2, (2, 3)]),
+              'value': 5
+          },
+          expected=[[5.0, 5.0], [5.0, 5.0, 5.0]]),
   ])
   def testRaggedDispatch(self,
                          op,
@@ -933,6 +1136,15 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                          result_is_list=False,
                          rtol=None,
                          kwargs=None):
+    # For some tests, the inputs/outputs to the function need to be
+    # constructed late, because they contain tensors.
+    if callable(kwargs):
+      kwargs = kwargs()
+    if callable(args):
+      args = args()
+    if callable(expected):
+      expected = expected()
+
     kwargs = kwargs or {}
     if rtol is not None:
       assert_fn = lambda x, y: self.assertAllClose(x, y, rtol=rtol)
@@ -940,7 +1152,9 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       assert_fn = self.assertAllEqual
 
     result = op(*args, **kwargs)
-    if result_is_list:
+    if isinstance(expected, DynamicRaggedShape):
+      self.assertDynamicRaggedShapeEqual(expected, result)
+    elif result_is_list:
       self.assertLen(result, len(expected))
       for (r, e) in zip(result, expected):
         assert_fn(r, e)
@@ -965,11 +1179,10 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           math_ops.tensor_equals(a, c), [[False, True], [False]])
       self.assertAllEqual(
           math_ops.tensor_not_equals(a, c), [[True, False], [True]])
-      self.assertEqual(
-          math_ops.tensor_equals(a, d), False)  # not broadcast-compatible
-      self.assertEqual(
-          math_ops.tensor_not_equals(a, d), True)  # not broadcast-compatible
-
+      self.assertFalse(math_ops.tensor_equals(a, d),
+                       msg='not broadcast-compatible')
+      self.assertTrue(math_ops.tensor_not_equals(a, d),
+                      msg='not broadcast-compatible')
     else:
       # Identity-based equality:
       self.assertAllEqual(math_ops.tensor_equals(a, a), True)
@@ -995,7 +1208,11 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         'bitcast', 'bitwise.bitwise_and', 'bitwise.bitwise_or',
         'bitwise.bitwise_xor', 'bitwise.invert', 'bitwise.left_shift',
         'bitwise.right_shift', 'clip_by_value', 'concat',
-        'debugging.check_numerics', 'cast', 'dtypes.complex',
+        'debugging.assert_equal', 'debugging.assert_near',
+        'debugging.assert_none_equal', 'debugging.assert_greater',
+        'debugging.assert_greater_equal', 'debugging.assert_less',
+        'debugging.assert_less_equal', 'debugging.check_numerics',
+        'cast', 'dtypes.complex',
         'dtypes.saturate_cast', 'expand_dims', 'gather_nd', 'gather',
         'io.decode_base64', 'io.decode_compressed', 'io.encode_base64',
         'math.abs', 'math.acos', 'math.acosh', 'math.add_n', 'math.add',
@@ -1063,6 +1280,14 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         [check_ops.assert_type(x, dtypes.float32)]):
       y = array_ops.identity(x)
     self.assertAllEqual(x, y)
+
+  def assertDynamicRaggedShapeEqual(self, expected, result):
+    self.assertIsInstance(result, DynamicRaggedShape)
+    self.assertTrue(expected._type_spec.is_compatible_with(result))
+    for (e, r) in zip(
+        nest.flatten(expected, expand_composites=True),
+        nest.flatten(result, expand_composites=True)):
+      self.assertAllEqual(e, r)
 
 
 if __name__ == '__main__':

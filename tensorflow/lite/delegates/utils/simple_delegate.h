@@ -62,17 +62,20 @@ class SimpleDelegateKernelInterface {
 };
 
 // Pure Interface that clients should implement.
-// The Interface represents a delegate capabilities and provide factory
-// for SimpleDelegateKernelInterface
+// The Interface represents a delegate's capabilities and provides a factory
+// for SimpleDelegateKernelInterface.
 //
 // Clients should implement the following methods:
 // - IsNodeSupportedByDelegate
 // - Initialize
-// - name
+// - Name
 // - CreateDelegateKernelInterface
+// - DelegateOptions
 class SimpleDelegateInterface {
  public:
-  // Options for configuring a delegate.
+  // Properties of a delegate.  These are used by TfLiteDelegateFactory to
+  // help determine how to partition the graph, i.e. which nodes each delegate
+  // will get applied to.
   struct Options {
     // Maximum number of delegated subgraph, values <=0 means unlimited.
     int max_delegated_partitions = 0;
@@ -106,7 +109,8 @@ class SimpleDelegateInterface {
   virtual std::unique_ptr<SimpleDelegateKernelInterface>
   CreateDelegateKernelInterface() = 0;
 
-  // Returns SimpleDelegateInterface::Options which has the delegate options.
+  // Returns SimpleDelegateInterface::Options which has delegate properties
+  // relevant for graph partitioning.
   virtual SimpleDelegateInterface::Options DelegateOptions() const = 0;
 };
 

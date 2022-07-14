@@ -13,14 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_PASSDETAIL_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_PASSDETAIL_H_
+#ifndef MLIR_HLO_TRANSFORMS_PASSDETAIL_H
+#define MLIR_HLO_TRANSFORMS_PASSDETAIL_H
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
 
-class StandardOpsDialect;
+namespace func {
+class FuncDialect;
+class FuncOp;
+}  // end namespace func
 
 namespace arith {
 class ArithmeticDialect;
@@ -35,4 +41,4 @@ class MemRefDialect;
 
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_PASSDETAIL_H_
+#endif  // MLIR_HLO_TRANSFORMS_PASSDETAIL_H

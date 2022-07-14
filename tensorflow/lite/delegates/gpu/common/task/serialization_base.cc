@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 
 #include <cstdint>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -50,6 +51,8 @@ data::AccessType ToFB(AccessType type) {
 
 data::DataType ToFB(DataType type) {
   switch (type) {
+    case DataType::BOOL:
+      return data::DataType::BOOL;
     case DataType::FLOAT16:
       return data::DataType::FLOAT16;
     case DataType::FLOAT32:
@@ -133,6 +136,8 @@ data::Layout ToFB(Layout type) {
 
 DataType ToEnum(data::DataType type) {
   switch (type) {
+    case data::DataType::BOOL:
+      return DataType::BOOL;
     case data::DataType::FLOAT16:
       return DataType::FLOAT16;
     case data::DataType::FLOAT32:
@@ -363,6 +368,7 @@ flatbuffers::Offset<data::BufferDescriptor> Encode(
       Encode(*static_cast<const GPUObjectDescriptor*>(&desc), builder);
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> attributes_fb;
+  attributes_fb.reserve(desc.attributes.size());
   for (auto& attr : desc.attributes) {
     attributes_fb.push_back(builder->CreateString(attr));
   }
@@ -459,44 +465,42 @@ flatbuffers::Offset<data::TensorDescriptor> Encode(
       Encode(*static_cast<const GPUObjectDescriptor*>(&desc), builder);
 
   data::BHWDCBuilder shape_builder(*builder);
-  shape_builder.add_b(desc.shape.b);
-  shape_builder.add_h(desc.shape.h);
-  shape_builder.add_w(desc.shape.w);
-  shape_builder.add_d(desc.shape.d);
-  shape_builder.add_c(desc.shape.c);
+  shape_builder.add_b(desc.GetBHWDCShape().b);
+  shape_builder.add_h(desc.GetBHWDCShape().h);
+  shape_builder.add_w(desc.GetBHWDCShape().w);
+  shape_builder.add_d(desc.GetBHWDCShape().d);
+  shape_builder.add_c(desc.GetBHWDCShape().c);
   auto shape_fb = shape_builder.Finish();
 
-  auto data_fb = builder->CreateVector(desc.data);
+  auto data_fb = builder->CreateVector(desc.GetData());
   data::TensorDescriptorBuilder tensor_builder(*builder);
   tensor_builder.add_base_obj(obj_fb);
-  tensor_builder.add_data_type(ToFB(desc.data_type));
-  tensor_builder.add_storage_type(ToFB(desc.storage_type));
-  tensor_builder.add_layout(ToFB(desc.layout));
+  tensor_builder.add_data_type(ToFB(desc.data_type_));
+  tensor_builder.add_storage_type(ToFB(desc.storage_type_));
+  tensor_builder.add_layout(ToFB(desc.layout_));
   tensor_builder.add_shape(shape_fb);
   tensor_builder.add_data(data_fb);
   tensor_builder.add_use_buffer_for_write_only_2d_texture(
-      desc.use_buffer_for_write_only_2d_texture);
+      desc.use_buffer_for_write_only_2d_texture_);
   tensor_builder.add_use_buffer_for_write_only_image_buffer(
-      desc.use_buffer_for_write_only_image_buffer);
+      desc.use_buffer_for_write_only_image_buffer_);
   return tensor_builder.Finish();
 }
 
 void Decode(const data::TensorDescriptor* fb_desc, TensorDescriptor* desc) {
   Decode(fb_desc->base_obj(), desc);
-  desc->data_type = ToEnum(fb_desc->data_type());
-  desc->storage_type = ToEnum(fb_desc->storage_type());
-  desc->layout = ToEnum(fb_desc->layout());
-  desc->shape.b = fb_desc->shape()->b();
-  desc->shape.h = fb_desc->shape()->h();
-  desc->shape.w = fb_desc->shape()->w();
-  desc->shape.d = fb_desc->shape()->d();
-  desc->shape.c = fb_desc->shape()->c();
-  desc->data =
+  desc->data_type_ = ToEnum(fb_desc->data_type());
+  desc->storage_type_ = ToEnum(fb_desc->storage_type());
+  desc->layout_ = ToEnum(fb_desc->layout());
+  desc->SetBHWDCShape(BHWDC(fb_desc->shape()->b(), fb_desc->shape()->h(),
+                            fb_desc->shape()->w(), fb_desc->shape()->d(),
+                            fb_desc->shape()->c()));
+  desc->SetData(
       std::vector<uint8_t>(fb_desc->data()->data(),
-                           fb_desc->data()->data() + fb_desc->data()->size());
-  desc->use_buffer_for_write_only_2d_texture =
+                           fb_desc->data()->data() + fb_desc->data()->size()));
+  desc->use_buffer_for_write_only_2d_texture_ =
       fb_desc->use_buffer_for_write_only_2d_texture();
-  desc->use_buffer_for_write_only_image_buffer =
+  desc->use_buffer_for_write_only_image_buffer_ =
       fb_desc->use_buffer_for_write_only_image_buffer();
 }
 
@@ -536,7 +540,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
                     buffer_pair_fb->key()->size());
     BufferDescriptor desc;
     Decode(buffer_pair_fb->value(), &desc);
-    args->AddObject(key, absl::make_unique<BufferDescriptor>(std::move(desc)));
+    args->AddObject(key, std::make_unique<BufferDescriptor>(std::move(desc)));
   }
 
   for (auto texture_pair_fb : *fb_args->texture2d_objects()) {
@@ -545,7 +549,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Texture2DDescriptor desc;
     Decode(texture_pair_fb->value(), &desc);
     args->AddObject(key,
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_linear_objects()) {
@@ -554,7 +558,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     TensorLinearDescriptor desc;
     Decode(tensor_pair_fb->value(), &desc);
     args->AddObject(key,
-                    absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                    std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_objects()) {
@@ -562,7 +566,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
                     tensor_pair_fb->key()->size());
     TensorDescriptor desc;
     Decode(tensor_pair_fb->value(), &desc);
-    args->AddObject(key, absl::make_unique<TensorDescriptor>(std::move(desc)));
+    args->AddObject(key, std::make_unique<TensorDescriptor>(std::move(desc)));
   }
 
   for (auto buffer_pair_fb : *fb_args->buffer_refs()) {
@@ -572,7 +576,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Decode(buffer_pair_fb->value(), &desc);
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
-                       absl::make_unique<BufferDescriptor>(std::move(desc)));
+                       std::make_unique<BufferDescriptor>(std::move(desc)));
   }
 
   for (auto texture_pair_fb : *fb_args->texture2d_refs()) {
@@ -582,7 +586,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Decode(texture_pair_fb->value(), &desc);
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
-                       absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                       std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_linear_refs()) {
@@ -593,7 +597,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     auto access_type = desc.GetAccess();
     args->AddObjectRef(
         key, access_type,
-        absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+        std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   }
 
   for (auto tensor_pair_fb : *fb_args->tensor_refs()) {
@@ -603,7 +607,7 @@ absl::Status Decode(const data::Arguments* fb_args, Arguments* args) {
     Decode(tensor_pair_fb->value(), &desc);
     auto access_type = desc.GetAccess();
     args->AddObjectRef(key, access_type,
-                       absl::make_unique<TensorDescriptor>(std::move(desc)));
+                       std::make_unique<TensorDescriptor>(std::move(desc)));
   }
   return absl::OkStatus();
 }
@@ -858,12 +862,14 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   auto work_groups_count_fb = Encode(op.work_groups_count_, builder);
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> src_names_fb;
+  src_names_fb.reserve(op.src_tensors_names_.size());
   for (auto& name : op.src_tensors_names_) {
     src_names_fb.push_back(builder->CreateString(name));
   }
   auto src_names_fb_vec = builder->CreateVector(src_names_fb);
 
   std::vector<flatbuffers::Offset<flatbuffers::String>> dst_names_fb;
+  dst_names_fb.reserve(op.dst_tensors_names_.size());
   for (auto& name : op.dst_tensors_names_) {
     dst_names_fb.push_back(builder->CreateString(name));
   }

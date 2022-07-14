@@ -159,14 +159,20 @@ port::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDeviceWithPluginConfig(
 
 port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
+  if (config.gpu_stream) {
+    // If the GPU stream was provided, it's not possible to get-or-create a
+    // stream with a required pointer: so we are looking for previously
+    // allocated streams.
+    return executor_cache_.Get(config);
+  }
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = absl::make_unique<StreamExecutor>(
-      this, absl::make_unique<GpuExecutor>(config.plugin_config),
+  auto executor = std::make_unique<StreamExecutor>(
+      this, std::make_unique<GpuExecutor>(config.plugin_config),
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {

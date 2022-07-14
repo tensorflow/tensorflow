@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
+
+#include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
@@ -25,25 +26,19 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
-// TODO(b/210165681): The tests in this file are fragile to HLO op names.
-
-class ReductionLayoutNormalizerTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
-    debug_options.add_xla_disable_hlo_passes("reduction-splitter");
-    debug_options.add_xla_disable_hlo_passes("layout-assignment");
-    debug_options.add_xla_disable_hlo_passes("gpu-tree-reduction-rewriter");
-    return debug_options;
+class ReductionLayoutNormalizerTest : public HloTestBase {
+ public:
+  void CheckReductionLayoutNormalizer(
+      absl::string_view hlo, std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, gpu::ReductionLayoutNormalizer{}, expected);
   }
 };
 
 TEST_F(ReductionLayoutNormalizerTest, LayoutCanonicalizerTest) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithLayoutChange
 
 add {
@@ -61,15 +56,16 @@ ENTRY main {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: f32[4,12,12,16,5]{2,1,3,4,0} reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} {{.+}}, f32[] {{.+}}), dimensions={0,1,2}, to_apply=%add
+  CheckReductionLayoutNormalizer(hlo,
+                                 R"(
+// CHECK:  [[bitcast_0:%[^ ]+]] = f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} bitcast([[arg0_1:%[^ ]+]])
+// CHECK:  [[reduce_2:%[^ ]+]] = f32[4,12,12,16,5]{2,1,3,4,0} reduce([[bitcast_0]], [[constant0_3:%[^ ]+]]), dimensions={0,1,2}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[bitcast_1_5:%[^ ]+]] = f32[4,5,16,12,12]{4,3,2,1,0} bitcast([[reduce_2]])
       )");
 }
 
 TEST_F(ReductionLayoutNormalizerTest, LayoutCanonicalizerTestVariadic) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithLayoutChangeVariadic
 
 
@@ -104,16 +100,24 @@ ENTRY main {
 
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %reduce.1 = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0}) reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.5, u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.4, f32[] %constant0_1, u32[] %constant1_1), dimensions={0,1,2}, to_apply=%argmax
-//
+  CheckReductionLayoutNormalizer(hlo,
+                                 R"(
+// CHECK:  [[arg0_0:%[^ ]+]] = f32[4,5,5,16,12,12,3,3]{2,3,5,4,0,7,6,1} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} bitcast([[arg0_0]])
+// CHECK:  [[idxs_2:%[^ ]+]] = u32[4,5,5,16,12,12,3,3]{2,3,5,4,0,7,6,1} parameter(1)
+// CHECK:  [[bitcast_1_3:%[^ ]+]] = u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} bitcast([[idxs_2]])
+// CHECK:  [[reduce_4:%[^ ]+]] = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0}) reduce([[bitcast_1]], [[bitcast_1_3]], [[constant0_5:%[^ ]+]], [[constant1_6:%[^ ]+]]), dimensions={0,1,2}, to_apply=[[argmax_7:%[^ ]+]]
+// CHECK:  [[get_tuple_element_8:%[^ ]+]] = f32[4,12,12,16,5]{2,1,3,4,0} get-tuple-element([[reduce_4]]), index=0
+// CHECK:  [[bitcast_2_9:%[^ ]+]] = f32[4,5,16,12,12]{4,3,2,1,0} bitcast([[get_tuple_element_8]])
+// CHECK:  [[get_tuple_element_1_10:%[^ ]+]] = u32[4,12,12,16,5]{2,1,3,4,0} get-tuple-element([[reduce_4]]), index=1
+// CHECK:  [[bitcast_3_11:%[^ ]+]] = u32[4,5,16,12,12]{4,3,2,1,0} bitcast([[get_tuple_element_1_10]])
+// CHECK:  ROOT [[tuple_12:%[^ ]+]] = (f32[4,5,16,12,12]{4,3,2,1,0}, u32[4,5,16,12,12]{4,3,2,1,0}) tuple([[bitcast_2_9]], [[bitcast_3_11]])
       )");
 }
 
 TEST_F(ReductionLayoutNormalizerTest,
        LayoutCanonicalizerTestVariadicDifferentLayouts) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithLayoutChangeVariadicDifferent
 
 argmax {
@@ -147,27 +151,17 @@ ENTRY main {
 
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.1: u32[2,3,4,7]) -> u32[7,2,3,4] {
-// CHECK:  %param_0.1 = u32[2,3,4,7]{3,2,1,0} parameter(0)
-// CHECK:  %copy.1 = u32[2,3,4,7]{2,1,0,3} copy(u32[2,3,4,7]{3,2,1,0} %param_0.1)
-// CHECK:  ROOT %bitcast.2 = u32[7,2,3,4]{3,2,1,0} bitcast(u32[2,3,4,7]{2,1,0,3} %copy.1)
-// CHECK: }
-//
-// CHECK: ENTRY %main (arg0: f32[2,3,4,7], idxs: u32[2,3,4,7]) -> (f32[2,3,4], u32[2,3,4]) {
-// CHECK:  %arg0 = f32[2,3,4,7]{2,1,0,3} parameter(0)
-// CHECK:  %bitcast = f32[7,2,3,4]{3,2,1,0} bitcast(f32[2,3,4,7]{2,1,0,3} %arg0)
-// CHECK:  %idxs = u32[2,3,4,7]{3,2,1,0} parameter(1)
-// CHECK:  %fusion = u32[7,2,3,4]{3,2,1,0} fusion(u32[2,3,4,7]{3,2,1,0} %idxs), kind=kLoop, calls=%fused_computation
-// CHECK:  %constant0 = f32[] constant(0)
-// CHECK:  %constant1 = u32[] constant(0)
-// CHECK:  ROOT %reduce0 = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce(f32[7,2,3,4]{3,2,1,0} %bitcast, u32[7,2,3,4]{3,2,1,0} %fusion, f32[] %constant0, u32[] %constant1), dimensions={0}, to_apply=%argmax
-// CHECK: }
+  CheckReductionLayoutNormalizer(hlo,
+                                 R"(
+// CHECK:  [[arg0_0:%[^ ]+]] = f32[2,3,4,7]{2,1,0,3} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[7,2,3,4]{3,2,1,0} bitcast([[arg0_0]])
+// CHECK:  [[idxs_2:%[^ ]+]] = u32[2,3,4,7]{3,2,1,0} parameter(1)
+// CHECK:  [[copy_3:%[^ ]+]] = u32[2,3,4,7]{2,1,0,3} copy([[idxs_2]])
+// CHECK:  [[bitcast_1_4:%[^ ]+]] = u32[7,2,3,4]{3,2,1,0} bitcast([[copy_3]])
+// CHECK:  ROOT [[reduce0_5:%[^ ]+]] = (f32[2,3,4]{2,1,0}, u32[2,3,4]{2,1,0}) reduce([[bitcast_1]], [[bitcast_1_4]], [[constant0_6:%[^ ]+]], [[constant1_7:%[^ ]+]]), dimensions={0}, to_apply=[[argmax_8:%[^ ]+]]
       )");
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

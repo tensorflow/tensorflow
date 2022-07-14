@@ -192,6 +192,13 @@ class XlaOpRegistry {
                                      result);
   }
 
+  static StatusOr<std::vector<int>> CompileTimeConstantInputs(
+      const NodeDef& node_def, const OpDef& op_def) {
+    std::vector<int> out;
+    TF_RETURN_IF_ERROR(CompileTimeConstantInputs(node_def, op_def, &out));
+    return out;
+  }
+
   // Returns (via `result`) the indices of inputs to `op_kernel` that must be
   // compile-time constants.
   //

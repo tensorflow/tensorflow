@@ -20,7 +20,11 @@ cc_library(
         "platform.h",
         "port.h",
     ],
-    deps = ["//tensorflow/core:lib"] + tf_stream_executor_deps("platform", "//tensorflow/stream_executor/platform/"),
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:logging",
+    ] + tf_stream_executor_deps("platform", "//tensorflow/stream_executor/platform/"),
 )
 
 cc_library(

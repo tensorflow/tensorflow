@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -34,10 +35,11 @@ limitations under the License.
 namespace tensorflow {
 using stream_executor::port::StatusOr;
 
-extern const char* const kTPUReplicatedHost;
-extern const char* const kNumCoresPerReplicaAttr;
-extern const char* const kTopologyAttr;
-extern const char* const kDeviceAssignmentAttr;
+inline constexpr absl::string_view kTPUReplicatedHost = "TPU_REPLICATED_HOST";
+inline constexpr absl::string_view kNumCoresPerReplicaAttr =
+    "num_cores_per_replica";
+inline constexpr absl::string_view kTopologyAttr = "topology";
+inline constexpr absl::string_view kDeviceAssignmentAttr = "device_assignment";
 
 // A TPU device for execution alongside its associated host CPU device.
 struct TPUDeviceAndHost {

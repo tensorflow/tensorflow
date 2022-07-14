@@ -323,7 +323,7 @@ class ScatterNdUpdateOp : public OpKernel {
 
 #define REGISTER_SCATTER_ND_KERNEL_INDEX_INT32_GPU(index_type, name)  \
   REGISTER_KERNEL_BUILDER(Name(name)                                  \
-                              .Device(DEVICE_GPU)                     \
+                              .Device(DEVICE_DEFAULT)                 \
                               .TypeConstraint<int32>("T")             \
                               .TypeConstraint<index_type>("Tindices") \
                               .HostMemory("indices")                  \
@@ -344,7 +344,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(index_type, name, \
                                                           op)               \
   REGISTER_KERNEL_BUILDER(Name(name)                                        \
-                              .Device(DEVICE_GPU)                           \
+                              .Device(DEVICE_DEFAULT)                       \
                               .TypeConstraint<int32>("T")                   \
                               .TypeConstraint<index_type>("Tindices")       \
                               .HostMemory("ref")                            \
@@ -356,7 +356,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_NON_ALIASING_UPDATE_KERNEL_INDEX_INT32_GPU( \
     index_type, name, op)                                               \
   REGISTER_KERNEL_BUILDER(Name(name)                                    \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("input")                      \
@@ -378,7 +378,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX_INT32_GPU(index_type, \
                                                                    name, op)   \
   REGISTER_KERNEL_BUILDER(Name(name)                                           \
-                              .Device(DEVICE_GPU)                              \
+                              .Device(DEVICE_DEFAULT)                          \
                               .TypeConstraint<int32>("T")                      \
                               .TypeConstraint<index_type>("Tindices")          \
                               .HostMemory("ref")                               \
@@ -513,7 +513,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterUpdate")                      \
-                              .Device(DEVICE_GPU)                          \
+                              .Device(DEVICE_DEFAULT)                      \
                               .TypeConstraint<int32>("T")                  \
                               .TypeConstraint<index_type>("Tindices")      \
                               .HostMemory("tensor")                        \
@@ -533,7 +533,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_ADD_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterAdd")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -553,7 +553,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_SUB_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterSub")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -573,7 +573,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_MIN_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterMin")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -593,7 +593,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_MAX_INT32_GPU_INDEX_TYPE(index_type) \
   REGISTER_KERNEL_BUILDER(Name("TensorScatterMax")                      \
-                              .Device(DEVICE_GPU)                       \
+                              .Device(DEVICE_DEFAULT)                   \
                               .TypeConstraint<int32>("T")               \
                               .TypeConstraint<index_type>("Tindices")   \
                               .HostMemory("tensor")                     \
@@ -844,7 +844,7 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
   const int64_t safe_slice_dim = (*slice_dim < 1) ? 1 : *slice_dim;
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename Index>
@@ -932,7 +932,7 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   }
   // Block host, since 'host_out' cannot be destructed until the copy is done.
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return Status::OK();
+  return OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -973,7 +973,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
   }
 
   if (shape.num_elements() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (allocate) {
@@ -1025,7 +1025,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace functor
 

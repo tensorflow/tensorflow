@@ -74,21 +74,21 @@ TEST(GpuMultiStream, Basics) {
         auto dummy_buffer,
         client->BufferFromHostBuffer(
             dummy_inputs.data(), S32, dummy_shape.dimensions(),
-            /*byte_strides=*/absl::nullopt,
+            /*byte_strides=*/std::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*on_done_with_host_buffer=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
         client->BufferFromHostBuffer(
             inputs.data(), S32, shape.dimensions(),
-            /*byte_strides=*/absl::nullopt,
+            /*byte_strides=*/std::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*on_done_with_host_buffer=*/nullptr, device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
         client->BufferFromHostBuffer(
             inputs.data(), S32, shape.dimensions(),
-            /*byte_strides=*/absl::nullopt,
+            /*byte_strides=*/std::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*on_done_with_host_buffer=*/nullptr, device));
     // The execution may be enqueued before the transfers complete, requiring
@@ -99,9 +99,10 @@ TEST(GpuMultiStream, Basics) {
         auto out_buffers,
         executable->Execute({{in_buffer0.get(), in_buffer1.get()}}, options));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0][0]->ToLiteral());
+    TF_ASSERT_OK_AND_ASSIGN(auto out_literal,
+                            out_buffers[0][0]->ToLiteralSync());
     LiteralTestUtil::ExpectR1Equal<int32_t>(expected_outputs, *out_literal);
-    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteral());
+    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteralSync());
     LiteralTestUtil::ExpectR1Equal<int32_t>(expected_outputs, *out_literal);
   }
 }

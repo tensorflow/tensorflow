@@ -11,7 +11,6 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//platforms/xla/tests/gpu/...",
         # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/compiler/xla/service/gpu/...",
         "//tensorflow/core/tfrt/...",
@@ -86,9 +85,11 @@ cc_library(
     deps = [
         ":work_queue_interface",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_interface",
+        "//tensorflow/core/tfrt/utils:thread_pool",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",

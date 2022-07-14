@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_SHAPE_COMPONENT_ANALYSIS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_SHAPE_COMPONENT_ANALYSIS_H_
+#ifndef MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
+#define MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -93,11 +93,14 @@ class ShapeComponentAnalysis {
     // Returns true if this symbolic expression is known to be different from
     // `-1`. This is useful for reshapes.
     bool isKnownNotNegativeOne() const;
+    // Returns true if thus symbolic expression is known to be different from
+    // `1`. This is useful for broadcasts.
+    bool isKnownNotOne() const;
     // If this is a reference to a singular symbol, return it.
     Optional<Symbol> singleton() const;
 
     bool operator==(const SymbolicExpr &rhs) const {
-      return expr == expr && symbols == rhs.symbols;
+      return expr == rhs.expr && symbols == rhs.symbols;
     }
     bool operator!=(const SymbolicExpr &rhs) const { return !(*this == rhs); }
 
@@ -134,4 +137,32 @@ class ShapeComponentAnalysis {
 };
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_SHAPE_COMPONENT_ANALYSIS_H_
+namespace llvm {
+
+template <>
+struct DenseMapInfo<mlir::ShapeComponentAnalysis::Symbol> {
+  static inline mlir::ShapeComponentAnalysis::Symbol getEmptyKey() {
+    return {mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
+                getEmptyKey(),
+            llvm::DenseMapInfo<size_t>::getEmptyKey()};
+  }
+  static inline mlir::ShapeComponentAnalysis::Symbol getTombstoneKey() {
+    return {mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
+                getTombstoneKey(),
+            llvm::DenseMapInfo<size_t>::getTombstoneKey()};
+  }
+  static unsigned getHashValue(mlir::ShapeComponentAnalysis::Symbol symbol) {
+    return llvm::hash_combine(
+        mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
+            getHashValue(symbol.source),
+        llvm::DenseMapInfo<size_t>::getHashValue(symbol.index));
+  }
+  static bool isEqual(mlir::ShapeComponentAnalysis::Symbol lhs,
+                      mlir::ShapeComponentAnalysis::Symbol rhs) {
+    return lhs == rhs;
+  }
+};
+
+}  // namespace llvm
+
+#endif  // MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H

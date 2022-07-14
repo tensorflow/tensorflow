@@ -59,7 +59,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -77,7 +77,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -103,7 +103,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {{0, input_graph_node}}, {{1, other_arguments}},
         {{kPredicate, f}, {kTarguments, other_arguments_types_attr}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -135,7 +135,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -143,7 +143,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return Status::OK();
+          return OkStatus();
         }
 
         std::vector<Tensor> result;
@@ -190,7 +190,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                                            static_cast<float>(1));
       }
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -213,7 +213,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                                              filtered_elements_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kDroppedElements), dropped_elements_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -227,7 +227,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                                             &filtered_elements_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kDroppedElements), &dropped_elements_));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

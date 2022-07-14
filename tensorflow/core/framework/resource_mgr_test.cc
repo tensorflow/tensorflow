@@ -71,7 +71,7 @@ string LookupOrCreate(ResourceMgr* rm, const string& container,
   T* r;
   TF_CHECK_OK(rm->LookupOrCreate<T>(container, name, &r, [&label](T** ret) {
     *ret = new T(label);
-    return Status::OK();
+    return OkStatus();
   }));
   const string ret = r->DebugString();
   r->Unref();
@@ -238,7 +238,7 @@ TEST(ResourceMgrTest, CreateOrLookupRaceCondition) {
               Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
               atomic_int += 1;
               *ret = new Resource("label");
-              return Status::OK();
+              return OkStatus();
             }));
         r->Unref();
       });
@@ -263,7 +263,7 @@ Status ComputePolicy(const string& attr_container,
   }
   TF_RETURN_IF_ERROR(cinfo.Init(&rmgr, ndef, use_node_name_as_default));
   *result = cinfo.DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 string Policy(const string& attr_container, const string& attr_shared_name,

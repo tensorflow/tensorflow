@@ -32,8 +32,7 @@ def ragged_unary_elementwise_op(op, x):
   return x.with_values(op(x.values))
 
 
-@dispatch.dispatch_for_binary_elementwise_apis(ragged_tensor.RaggedOrDense,
-                                               ragged_tensor.RaggedOrDense)
+# TODO(martinz): This is deprecated. Delete.
 def ragged_binary_elementwise_op(op, x, y):
   """Binary elementwise api handler for RaggedTensors."""
   x_is_ragged = ragged_tensor.is_ragged(x)

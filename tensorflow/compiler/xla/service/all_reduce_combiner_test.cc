@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -35,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 int64_t kMaxCombineCount = 256;
@@ -56,7 +55,7 @@ int64_t AllReduceCount(const HloModule& module) {
 }
 
 // inputs[i] will be some op producing a shape of size sizes_in_kib[i] which
-// feeds into a a all reduce op in all_reduces[i]. Returns a tuple
+// feeds into all reduce op in all_reduces[i]. Returns a tuple
 // of the all_reduces.
 HloInstruction* MakeCrossReplicaReductions(
     std::vector<int64_t> sizes_in_kib, std::vector<HloComputation*> reductions,

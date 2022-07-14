@@ -35,12 +35,12 @@ from tensorflow.python.platform import test
 FrameSummary = collections.namedtuple(
     "StackFrame", ["filename", "lineno", "name", "line"])
 
-# TODO(feyu): convert the tests to use def_function.function, when appropriate.
+# TODO(feyu): convert tests to tf function from graph when appropriate.
 
 
-def _make_frame_with_filename(op, idx, filename):
+def _make_frame_with_filename(tb, idx, filename):
   """Return a copy of an existing stack frame with a new filename."""
-  frame = op._traceback[idx]
+  frame = tb[idx]
   return FrameSummary(
       filename,
       frame.lineno,
@@ -48,26 +48,26 @@ def _make_frame_with_filename(op, idx, filename):
       frame.line)
 
 
-def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,
+def _modify_op_stack_with_filenames(tb, num_user_frames, user_filename,
                                     num_inner_tf_frames):
-  """Replace op._traceback with a new traceback using special filenames."""
+  """Replace traceback with a new traceback using special filenames."""
   tf_filename = error_interpolation._FRAMEWORK_PATH_PREFIXES[0] + "%d.py"
   user_filename = os.path.join("%d", "my_favorite_file.py")
 
   num_requested_frames = num_user_frames + num_inner_tf_frames
-  num_actual_frames = len(op._traceback)
+  num_actual_frames = len(tb)
   num_outer_frames = num_actual_frames - num_requested_frames
   assert num_requested_frames <= num_actual_frames, "Too few real frames."
 
   # The op's traceback has outermost frame at index 0.
   stack = []
   for idx in range(0, num_outer_frames):
-    stack.append(op._traceback[idx])
+    stack.append(tb[idx])
   for idx in range(len(stack), len(stack) + num_user_frames):
-    stack.append(_make_frame_with_filename(op, idx, user_filename % idx))
+    stack.append(_make_frame_with_filename(tb, idx, user_filename % idx))
   for idx in range(len(stack), len(stack) + num_inner_tf_frames):
-    stack.append(_make_frame_with_filename(op, idx, tf_filename % idx))
-  op._traceback = stack
+    stack.append(_make_frame_with_filename(tb, idx, tf_filename % idx))
+  return stack
 
 
 class ComputeDeviceSummaryFromOpTest(test.TestCase):
@@ -156,10 +156,21 @@ class CreateGraphDebugInfoDefTest(test.TestCase):
       global_op = constant_op.constant(0, name="Global").op
       op1 = constant_op.constant(1, name="One").op
       op2 = constant_op.constant(2, name="Two").op
-      non_traceback_op = constant_op.constant(3, name="NonTraceback").op
-      # Ensure op without traceback does not fail
-      del non_traceback_op._traceback
       # pyformat: enable
+
+      # Ensure op without traceback does not fail
+      node_def_copy = type(op1.node_def)()
+      node_def_copy.CopyFrom(op1.node_def)
+      node_def_copy.name = "NonTraceback"
+      c_op = ops._create_c_op(
+          ops.get_default_graph(),
+          node_def=node_def_copy,
+          inputs=[],
+          control_inputs=[],
+          extract_traceback=False)
+
+      non_traceback_op = ops.Operation._from_c_op(c_op, ops.get_default_graph())
+      self.assertIsNone(non_traceback_op.traceback)
 
       export_ops = [("", global_op), ("func1", op1), ("func2", op2),
                     ("func2", non_traceback_op)]
@@ -181,6 +192,8 @@ class CreateGraphDebugInfoDefTest(test.TestCase):
       op2_flc = self._getFirstStackTraceForFile(graph_debug_info, "Two@func2",
                                                 this_file_index)
 
+      self.assertNotIn("NonTraceback@func2", graph_debug_info.traces)
+
       global_line = global_flc.line
       self.assertEqual(op1_flc.line, global_line + 1, "op1 not on next line")
       self.assertEqual(op2_flc.line, global_line + 2, "op2 not on next line")
@@ -192,31 +205,27 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     with ops.Graph().as_default():
       local_op = constant_op.constant(42).op
       user_filename = "hope.py"
-      _modify_op_stack_with_filenames(
-          local_op,
+      modified_tb = _modify_op_stack_with_filenames(
+          local_op.traceback,
           num_user_frames=3,
           user_filename=user_filename,
           num_inner_tf_frames=5)
-      idx = error_interpolation._find_index_of_defining_frame(
-          local_op._traceback)
+      idx = error_interpolation._find_index_of_defining_frame(modified_tb)
       # Expected frame is 6th from the end because there are 5 inner frames with
       # TF filenames.
-      expected_frame = len(local_op._traceback) - 6
+      expected_frame = len(modified_tb) - 6
       self.assertEqual(expected_frame, idx)
 
   def testFindIndexOfDefiningFrameForOpReturnsZeroOnError(self):
     with ops.Graph().as_default():
       local_op = constant_op.constant(43).op
-      # Truncate stack to known length.
-      local_op._traceback = local_op._traceback[:7]
       # Ensure all frames look like TF frames.
-      _modify_op_stack_with_filenames(
-          local_op,
+      modified_tb = _modify_op_stack_with_filenames(
+          local_op.traceback[:7],  # Truncate stack to known length.
           num_user_frames=0,
           user_filename="user_file.py",
           num_inner_tf_frames=7)
-      idx = error_interpolation._find_index_of_defining_frame(
-          local_op._traceback)
+      idx = error_interpolation._find_index_of_defining_frame(modified_tb)
       self.assertEqual(0, idx)
 
   def testNothingToDo(self):

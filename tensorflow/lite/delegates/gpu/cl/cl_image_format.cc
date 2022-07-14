@@ -36,6 +36,7 @@ cl_channel_order ToChannelOrder(int num_channels) {
 
 cl_channel_type DataTypeToChannelType(DataType type, bool normalized) {
   switch (type) {
+    case DataType::BOOL:
     case DataType::FLOAT32:
       return CL_FLOAT;
     case DataType::FLOAT16:

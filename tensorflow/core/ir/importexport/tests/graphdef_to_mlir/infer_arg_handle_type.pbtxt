@@ -1,0 +1,140 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+# CHECK: tensor<*xf32>
+# CHECK: tensor<*x!tf_type.resource>
+# CHECK: tensor<*x!tf_type.resource>
+# CHECK: tensor<*xf32>
+# CHECK: tensor<*x!tf_type.resource>
+
+node {
+  name: "arg0"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "arg1"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "arg2"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_handle_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 4
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+}
+node {
+  name: "arg3"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 3
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 8
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "arg4"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 4
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 4
+    }
+  }
+}

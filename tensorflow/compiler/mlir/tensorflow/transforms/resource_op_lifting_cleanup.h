@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_RESOURCE_OP_LIFTING_CLEANUP_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_RESOURCE_OP_LIFTING_CLEANUP_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -38,7 +39,7 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 LogicalResult CleanupAndCanonicalizeForResourceOpLifting(ModuleOp module);
-LogicalResult CleanupAndCanonicalizeForResourceOpLifting(FuncOp func);
+LogicalResult CleanupAndCanonicalizeForResourceOpLifting(func::FuncOp func);
 
 }  // namespace TF
 }  // namespace mlir

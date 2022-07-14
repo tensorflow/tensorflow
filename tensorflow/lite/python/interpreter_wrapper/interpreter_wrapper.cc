@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
@@ -98,8 +99,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   ::tflite::python::ImportNumpy();
 
   std::unique_ptr<Interpreter> interpreter;
-  InterpreterBuilder builder(*model, resolver);
-  if (preserve_all_tensors) builder.PreserveAllTensorsExperimental();
+  InterpreterOptions options;
+  options.SetPreserveAllTensors(preserve_all_tensors);
+  InterpreterBuilder builder(*model, resolver, &options);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
@@ -207,14 +209,13 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   std::unique_ptr<tflite::MutableOpResolver> resolver;
   switch (op_resolver_id) {
     case kBuiltinOpResolver:
-      resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
       break;
     case kBuiltinRefOpResolver:
-      resolver =
-          absl::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
       break;
     case kBuiltinOpResolverWithoutDefaultDelegates:
-      resolver = absl::make_unique<
+      resolver = std::make_unique<
           tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
       break;
     default:

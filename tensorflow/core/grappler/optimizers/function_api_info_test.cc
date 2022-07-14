@@ -109,7 +109,7 @@ bool CheckEquivImpl(const FunctionLibraryApiInfo& lib_api_info,
   std::vector<string> other_impl;
   Status status =
       lib_api_info.GetEquivalentImplementations(func_name, &other_impl);
-  EXPECT_EQ(status, Status::OK());
+  EXPECT_EQ(status, OkStatus());
   const std::unordered_set<string> actual(other_impl.begin(), other_impl.end());
   const std::unordered_set<string> expected(expected_other.begin(),
                                             expected_other.end());

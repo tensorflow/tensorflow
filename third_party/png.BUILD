@@ -61,7 +61,7 @@ genrule(
     name = "snappy_stubs_public_h",
     srcs = ["scripts/pnglibconf.h.prebuilt"],
     outs = ["pnglibconf.h"],
-    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12b0/' $< >$@",
+    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12c0/' $< >$@",
 )
 
 config_setting(

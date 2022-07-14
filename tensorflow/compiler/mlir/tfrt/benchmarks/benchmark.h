@@ -46,17 +46,11 @@ using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::Type;
 
-// The name of the default host device for running fallback kernels.
-ABSL_CONST_INIT extern const char* const kDefaultHostDeviceName;
-
 // Constants to make shape specification more readable.
 // kStaticDim refers to the static shape in IR taken from ARGS of the benchmark.
 ABSL_CONST_INIT extern const bool kStaticDim;
 // kDynamicDim refers to the dynamic shape `?` in IR.
 ABSL_CONST_INIT extern const bool kDynamicDim;
-
-std::unique_ptr<HostContext> CreateSingleThreadedHostContext();
-std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads);
 
 // Generate random Eigen Tensor of the given dimensions:
 //   (rand<T>() + offset) * scale
@@ -104,13 +98,11 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
 template <typename T, int rank>
 MemrefDesc TensorToMemrefDesc(Eigen::Tensor<T, rank, Eigen::RowMajor>& tensor) {
   tfrt::TensorShape shape(tensor.dimensions().values);
-  MemrefDesc desc;
-  desc.dtype = tfrt::GetDType<T>();
-  desc.data = tensor.data();
-  desc.offset = 0;
-  shape.GetDimensions(&desc.sizes);
-  shape.GetStrides(&desc.strides);
-  return desc;
+  return MemrefDesc(shape.GetRank(), tfrt::GetDType<T>(), tensor.data(), 0,
+                    [&](auto sizes, auto strides) {
+                      shape.GetDimensions(sizes);
+                      shape.GetStrides(strides);
+                    });
 }
 
 // Converts Tensorflow Tensor to Memref descriptor.

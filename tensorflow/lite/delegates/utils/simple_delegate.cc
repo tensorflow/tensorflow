@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -29,7 +30,7 @@ namespace tflite {
 namespace {
 TfLiteRegistration GetDelegateKernelRegistration(
     SimpleDelegateInterface* delegate) {
-  TfLiteRegistration kernel_registration;
+  TfLiteRegistration kernel_registration{};
   kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
   kernel_registration.custom_name = delegate->Name();

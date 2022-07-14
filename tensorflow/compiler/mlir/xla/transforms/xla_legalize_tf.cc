@@ -26,15 +26,14 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
@@ -53,8 +52,8 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
     prefer_tf2xla_ = prefer_tf2xla;
-    use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
-    if (tf2xla_fallback_device_type.hasValue()) {
+    use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
+    if (tf2xla_fallback_device_type.has_value()) {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
     }
   }
@@ -284,8 +283,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
-    chlo::PopulateDecomposeChloPatterns(context, &patterns);
-    chlo::PopulateChloBroadcastingPatterns(context, &patterns);
+    chlo::populateDecomposeChloPatterns(context, &patterns);
+    chlo::populateChloBroadcastingPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is
   // canonicalized to plain HLO constant if statically shaped. Add the
@@ -294,20 +293,20 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   ConversionTarget target(*context);
   if (legalize_chlo) {
-    target.addIllegalDialect<chlo::HloClientDialect>();
+    target.addIllegalDialect<chlo::ChloDialect>();
   } else {
-    target.addLegalDialect<chlo::HloClientDialect>();
+    target.addLegalDialect<chlo::ChloDialect>();
   }
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<CallOp>();
+  target.addLegalOp<func::CallOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -338,7 +337,7 @@ void LegalizeTF::runOnOperation() {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
     llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,

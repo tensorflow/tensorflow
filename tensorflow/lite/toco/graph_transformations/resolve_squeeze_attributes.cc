@@ -31,7 +31,7 @@ namespace toco {
   *modified = false;
   auto* squeeze_op = model->operators[op_index].get();
   if (squeeze_op->type != OperatorType::kSqueeze) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   DCHECK_EQ(squeeze_op->inputs.size(), 1);
   DCHECK_EQ(squeeze_op->outputs.size(), 1);
@@ -46,10 +46,10 @@ namespace toco {
           LogName(*squeeze_op));
 
       *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

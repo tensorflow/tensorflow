@@ -57,7 +57,7 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
     int64_t cost_per_unit =
         kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
     thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -86,7 +86,7 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
     int64_t cost_per_unit =
         kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
     thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
-    return Status::OK();
+    return OkStatus();
   }
 };
 }  // namespace functor

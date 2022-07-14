@@ -56,7 +56,10 @@ std::vector<Flag> HexagonDelegateProvider::CreateFlags(
       CreateFlag<bool>("use_hexagon", params, "Use Hexagon delegate"),
       CreateFlag<std::string>(
           "hexagon_lib_path", params,
-          "The library path for the underlying Hexagon libraries."),
+          "The library path for the underlying Hexagon libraries. The library "
+          "path ONLY for the libhexagon_nn_skel*.so files. For "
+          "libhexagon_interface.so, it needs to be on a system library search "
+          "path such as LD_LIBRARY_PATH."),
       CreateFlag<bool>("hexagon_profiling", params,
                        "Enables Hexagon profiling")};
   return flags;

@@ -94,7 +94,7 @@ Status DemangleDataType(absl::string_view str, DataType* proto) {
   if (!DataType_Parse(std::string(pbtxt), proto)) {
     return FailedPrecondition("Could not parse TFDataType mangled proto");
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace mangling_util

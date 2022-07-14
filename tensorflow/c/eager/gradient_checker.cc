@@ -65,7 +65,7 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   // If the output is a scalar, then return the scalar output
   if (num_dims_out == 0) {
     outputs[0] = model_out.release();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Else, reduce sum the output to get a scalar
@@ -85,7 +85,7 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   // Reduce sum the output on all dimensions.
   TF_RETURN_IF_ERROR(ops::Sum(ctx, model_out.get(), sum_dims.get(), &outputs[0],
                               /*keep_dims=*/false, "sum_output"));
-  return Status::OK();
+  return OkStatus();
 }
 // ========================= End Helper Functions==============================
 
@@ -198,7 +198,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   TF_RETURN_IF_ERROR(TestTensorHandleWithDims<float, TF_FLOAT>(
       ctx, dtheta_approx.data(), theta_dims.data(), num_dims, numerical_grad));
   TF_DeleteTensor(theta_tensor);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gradients

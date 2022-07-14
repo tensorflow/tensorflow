@@ -61,6 +61,10 @@ class DeviceHostAllocator : public SubAllocator {
 
   bool SupportsCoalescing() const override { return false; }
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kHostPinned;
+  }
+
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
   const int numa_node_;

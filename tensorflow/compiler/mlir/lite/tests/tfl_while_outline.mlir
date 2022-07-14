@@ -7,7 +7,7 @@
 // RUN: diff %t1 %t2
 
 // CHECK-LABEL: func @while
-func @while() -> tensor<1xf32>
+func.func @while() -> tensor<1xf32>
     attributes {tf.entry_function = {outputs = "result"}} {
   %cst = arith.constant dense<1> : tensor<i32> loc("dec")
   %cst0 = arith.constant dense<5> : tensor<i32> loc("N")
@@ -28,7 +28,7 @@ func @while() -> tensor<1xf32>
       %2 = tfl.add %arg3, %arg3 {fused_activation_function = "NONE"} : tensor<*xf32>
       "tfl.yield"(%1, %2) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
-  return %0#1 : tensor<1xf32>
+  func.return %0#1 : tensor<1xf32>
 }
 // CHECK-LABEL: func private @WhileOp_cond(
 // CHECK: tfl.greater
@@ -40,7 +40,7 @@ func @while() -> tensor<1xf32>
 
 // CHECK-LABEL: func @while2
 // Verify that while body//cond with implicitly captured values result in changing while operands/results.
-func @while2(%cst : tensor<i32>) -> tensor<1xf32> attributes {tf.entry_function = {outputs = "result"}} {
+func.func @while2(%cst : tensor<i32>) -> tensor<1xf32> attributes {tf.entry_function = {outputs = "result"}} {
   %cst_0 = arith.constant dense<5> : tensor<i32>
   %cst_1 = arith.constant dense<3.000000e+00> : tensor<1xf32>
   // Verifies 3 operands post outlining.
@@ -49,30 +49,30 @@ func @while2(%cst : tensor<i32>) -> tensor<1xf32> attributes {tf.entry_function 
   ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>):
     // CHECK: call @WhileOp_cond
     // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
-    %1 = call @WhileOp_cond(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> tensor<i1>
+    %1 = func.call @WhileOp_cond(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>):
     // CHECK: call @WhileOp_body
     // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
-    %1:3 = call @WhileOp_body(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+    %1:3 = func.call @WhileOp_body(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
   // CHECK: (tensor<i32>, tensor<1xf32>, tensor<i32>) ->
   // CHECK-SAME: (tensor<i32>, tensor<1xf32>, tensor<i32>)
-  return %0#1 : tensor<1xf32>
+  func.return %0#1 : tensor<1xf32>
 }
 
-func private @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> tensor<i1> {
+func.func private @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> tensor<i1> {
   %cst = arith.constant dense<0> : tensor<i32>
   %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
-func private @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>) {
+func.func private @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>) {
   %0 = "tfl.sub"(%arg0, %arg2) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
-  return %0, %1, %arg2 : tensor<*xi32>, tensor<*xf32>, tensor<i32>
+  func.return %0, %1, %arg2 : tensor<*xi32>, tensor<*xf32>, tensor<i32>
 }
 
 // CHECK-LABEL: func private @WhileOp_cond(
@@ -83,7 +83,7 @@ func private @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: te
 
 // -----
 
-func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x2xf32> attributes {tf.entry_function = {inputs = "Placeholder", outputs = "rnn/transpose_1"}} {
+func.func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x2xf32> attributes {tf.entry_function = {inputs = "Placeholder", outputs = "rnn/transpose_1"}} {
   %cst = arith.constant dense<0.000000e+00> : tensor<4x2xf32>
   %cst_0 = arith.constant dense<0.000000e+00> : tensor<8xf32>
   %cst_1 = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
@@ -140,7 +140,7 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
   %2 = "tfl.shape"(%1#2) : (tensor<*xf32>) -> tensor<?xi32>
   %3 = "tfl.reshape"(%1#2, %2) : (tensor<*xf32>, tensor<?xi32>) -> tensor<?x4x2xf32>
   %4 = "tfl.transpose"(%3, %cst_1) : (tensor<?x4x2xf32>, tensor<3xi32>) -> tensor<4x?x2xf32>
-  return %4 : tensor<4x?x2xf32>
+  func.return %4 : tensor<4x?x2xf32>
 }
 
 // CHECK-LABEL:   func @rnn(
@@ -169,7 +169,7 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
 // -----
 
 // CHECK-LABEL: func @whileDifferentResultShapes
-func @whileDifferentResultShapes(%arg0: tensor<i32>) -> tensor<?xf32>
+func.func @whileDifferentResultShapes(%arg0: tensor<i32>) -> tensor<?xf32>
     attributes {tf.entry_function = {outputs = "result"}} {
   %cst0 = arith.constant dense<5> : tensor<i32> loc("N")
   %cst1 = arith.constant dense<3.0> : tensor<1xf32> loc("val")
@@ -188,12 +188,12 @@ func @whileDifferentResultShapes(%arg0: tensor<i32>) -> tensor<?xf32>
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<?xf32>) loc("WhileOp")
 
   // CHECK: (tensor<i32>, tensor<1xf32>, tensor<i32>) -> (tensor<i32>, tensor<?xf32>, tensor<i32>)
-  return %0#1 : tensor<?xf32>
+  func.return %0#1 : tensor<?xf32>
 }
 
 // -----
 
-func @unsupportedCast(%arg0: tensor<4x4x3xf32>) -> tensor<*xf32> {
+func.func @unsupportedCast(%arg0: tensor<4x4x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<0.000000e+00> : tensor<4x2xf32>
   %cst_0 = arith.constant dense<0.000000e+00> : tensor<4x4x3xf64>
   %cst_1 = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
@@ -212,7 +212,7 @@ func @unsupportedCast(%arg0: tensor<4x4x3xf32>) -> tensor<*xf32> {
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<*xf32>, %arg4: tensor<4x2xf32>, %arg5: tensor<4x2xf64>, %arg6: tensor<*xf64>):
     "tfl.yield"(%arg1, %arg2, %arg3, %arg4, %arg5, %cst_0) : (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<4x4x3xf64>) -> ()
   }) {is_stateless = true} : (tensor<i32>, tensor<i32>, tensor<4x4x2xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<4x4x3xf64>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf64>, tensor<*xf32>)
-  return %1#2 : tensor<*xf32>
+  func.return %1#2 : tensor<*xf32>
 }
 
 // CHECK-LABEL:  func @unsupportedCast(

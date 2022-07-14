@@ -144,7 +144,6 @@ def gen_op_bindings(name):
         name = name + "_ops",
         dso = [":" + name + "_ops.so"],
         kernels = [":" + name + "_ops_cc"],
-        visibility = ["//visibility:public"],
         deps = [
             ":gen_" + name + "_ops",
         ],

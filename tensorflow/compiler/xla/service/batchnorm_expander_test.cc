@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -156,6 +155,20 @@ ENTRY entry {
     ASSERT_TRUE(device);
     EXPECT_EQ(*device, 1);
   }
+}
+
+TEST_F(BatchNormExpanderTest, Execution) {
+  const char* module_str = R"(
+HloModule module
+ENTRY entry {
+  %param.0 = f32[8,4] parameter(0)
+  %param.1 = f32[4] parameter(1)
+  %param.2 = f32[4] parameter(2)
+  ROOT %batch-norm-training = (f32[8,4], f32[4], f32[4])
+    batch-norm-training(f32[8,4] %param.0, f32[4] %param.1, f32[4] %param.2),
+    epsilon=0.001, feature_index=1, sharding={maximal device=1}
+})";
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
 }
 
 }  // namespace

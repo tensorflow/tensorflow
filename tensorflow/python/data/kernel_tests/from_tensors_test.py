@@ -24,6 +24,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -329,6 +330,18 @@ class FromTensorsRandomAccessTest(test_base.DatasetTestBase,
       combinations.times(test_base.default_test_combinations()))
   def testBasic(self):
     dataset = dataset_ops.Dataset.from_tensors(range(4))
+    self.assertAllEqual(self.evaluate(random_access.at(dataset, 0)), range(4))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, 1))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testWithOptions(self):
+    dataset = dataset_ops.Dataset.from_tensors(range(4))
+    options = options_lib.Options()
+    options.experimental_optimization.map_and_batch_fusion = True
+    dataset = dataset.with_options(options)
+
     self.assertAllEqual(self.evaluate(random_access.at(dataset, 0)), range(4))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(random_access.at(dataset, 1))

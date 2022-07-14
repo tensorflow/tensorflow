@@ -115,6 +115,14 @@ class LinearOperatorLowerTriangularTest(
         tril, is_non_singular=True)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    tril = variables_module.Variable([[1., 0.], [0., 1.]])
+    operator = linalg_lib.LinearOperatorLowerTriangular(
+        tril, is_non_singular=True)
+    with self.cached_session() as sess:
+      sess.run([tril.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(LinearOperatorLowerTriangularTest)

@@ -83,12 +83,12 @@ def scalar(name, tensor, collections=None, family=None):
   context available, and if so will forward this call to that writer instead. A
   "suitable" writer context means that the writer is set as the default writer,
   and there is an associated non-empty value for `step` (see
-  `tf.summary.SummaryWriter.as_default`, or alternatively
-  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
-  here will be passed to the TF2 implementation of `tf.summary.scalar`, and the
-  return value will be an empty bytestring tensor, to avoid duplicate summary
-  writing. This forwarding is best-effort and not all arguments will be
-  preserved.
+  `tf.summary.SummaryWriter.as_default`, `tf.summary.experimental.set_step` or
+  alternatively `tf.compat.v1.train.create_global_step`). For the forwarded
+  call, the arguments here will be passed to the TF2 implementation of
+  `tf.summary.scalar`, and the return value will be an empty bytestring tensor,
+  to avoid duplicate summary writing. This forwarding is best-effort and not all
+  arguments will be preserved.
 
   To migrate to TF2, please use `tf.summary.scalar` instead. Please check
   [Migrating tf.summary usage to
@@ -189,12 +189,12 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   context available, and if so will forward this call to that writer instead. A
   "suitable" writer context means that the writer is set as the default writer,
   and there is an associated non-empty value for `step` (see
-  `tf.summary.SummaryWriter.as_default`, or alternatively
-  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
-  here will be passed to the TF2 implementation of `tf.summary.image`, and the
-  return value will be an empty bytestring tensor, to avoid duplicate summary
-  writing. This forwarding is best-effort and not all arguments will be
-  preserved. Additionally:
+  `tf.summary.SummaryWriter.as_default`, `tf.summary.experimental.set_step` or
+  alternatively `tf.compat.v1.train.create_global_step`). For the forwarded
+  call, the arguments here will be passed to the TF2 implementation of
+  `tf.summary.image`, and the return value will be an empty bytestring tensor,
+  to avoid duplicate summary writing. This forwarding is best-effort and not all
+  arguments will be preserved. Additionally:
 
   *  The TF2 op does not do any of the normalization steps described above.
      Rather than rescaling data that's outside the expected range, it simply
@@ -289,12 +289,12 @@ def histogram(name, values, collections=None, family=None):
   context available, and if so will forward this call to that writer instead. A
   "suitable" writer context means that the writer is set as the default writer,
   and there is an associated non-empty value for `step` (see
-  `tf.summary.SummaryWriter.as_default`, or alternatively
-  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
-  here will be passed to the TF2 implementation of `tf.summary.histogram`, and
-  the return value will be an empty bytestring tensor, to avoid duplicate
-  summary writing. This forwarding is best-effort and not all arguments will be
-  preserved.
+  `tf.summary.SummaryWriter.as_default`, `tf.summary.experimental.set_step` or
+  alternatively `tf.compat.v1.train.create_global_step`). For the forwarded
+  call, the arguments here will be passed to the TF2 implementation of
+  `tf.summary.histogram`, and the return value will be an empty bytestring
+  tensor, to avoid duplicate summary writing. This forwarding is best-effort and
+  not all arguments will be preserved.
 
   To migrate to TF2, please use `tf.summary.histogram` instead. Please check
   [Migrating tf.summary usage to
@@ -387,12 +387,12 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
   context available, and if so will forward this call to that writer instead. A
   "suitable" writer context means that the writer is set as the default writer,
   and there is an associated non-empty value for `step` (see
-  `tf.summary.SummaryWriter.as_default`, or alternatively
-  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
-  here will be passed to the TF2 implementation of `tf.summary.audio`, and the
-  return value will be an empty bytestring tensor, to avoid duplicate summary
-  writing. This forwarding is best-effort and not all arguments will be
-  preserved. Additionally:
+  `tf.summary.SummaryWriter.as_default`, `tf.summary.experimental.set_step` or
+  alternatively `tf.compat.v1.train.create_global_step`). For the forwarded
+  call, the arguments here will be passed to the TF2 implementation of
+  `tf.summary.audio`, and the return value will be an empty bytestring tensor,
+  to avoid duplicate summary writing. This forwarding is best-effort and not all
+  arguments will be preserved. Additionally:
 
   * The TF2 op just outputs the data under a single tag that contains multiple
     samples, rather than multiple tags (i.e. no "/0" or "/1" suffixes).
@@ -499,12 +499,12 @@ def text(name, tensor, collections=None):
   context available, and if so will forward this call to that writer instead. A
   "suitable" writer context means that the writer is set as the default writer,
   and there is an associated non-empty value for `step` (see
-  `tf.summary.SummaryWriter.as_default`, or alternatively
-  `tf.summary.experimental.set_step`). For the forwarded call, the arguments
-  here will be passed to the TF2 implementation of `tf.summary.text`, and the
-  return value will be an empty bytestring tensor, to avoid duplicate summary
-  writing. This forwarding is best-effort and not all arguments will be
-  preserved.
+  `tf.summary.SummaryWriter.as_default`, `tf.summary.experimental.set_step` or
+  alternatively `tf.compat.v1.train.create_global_step`). For the forwarded
+  call, the arguments here will be passed to the TF2 implementation of
+  `tf.summary.text`, and the return value will be an empty bytestring tensor, to
+  avoid duplicate summary writing. This forwarding is best-effort and not all
+  arguments will be preserved.
 
   To migrate to TF2, please use `tf.summary.text` instead. Please check
   [Migrating tf.summary usage to
@@ -817,7 +817,8 @@ def _should_invoke_v2_op():
   met, v2 op will be invoked:
   - The outermost context is eager mode.
   - A default TF2 summary writer is present.
-  - A step is set for the writer (using `tf.summary.experimental.set_step` or
+  - A step is set for the writer (using `tf.summary.SummaryWriter.as_default`,
+    `tf.summary.experimental.set_step` or
     `tf.compat.v1.train.create_global_step`).
 
   Returns:
@@ -837,7 +838,8 @@ def _should_invoke_v2_op():
     warnings.warn(
         'Cannot activate TF2 compatibility support for TF1 summary ops: '
         'global step not set. To set step for summary writer, '
-        'use `tf.summary.experimental.set_step()` or '
+        'use `tf.summary.SummaryWriter.as_default(step=_)`, '
+        '`tf.summary.experimental.set_step()` or '
         '`tf.compat.v1.train.create_global_step()`.')
     return False
   return True

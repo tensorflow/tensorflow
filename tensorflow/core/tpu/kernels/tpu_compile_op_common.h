@@ -123,6 +123,15 @@ class TpuCompileOpKernelCommon {
       const tpu::TpuCompilationCacheKey& key,
       TpuProgramGroupInterface* tpu_program_group);
 
+  Status CompileLocallyAndFillHostCacheInternal(
+      FunctionLibraryRuntime* flib_runtime,
+      const SessionMetadata* session_metadata,
+      const TpuMeshStateInterface* mesh_state,
+      const std::vector<TensorShape>& dynamic_shapes,
+      const OpInputList& guaranteed_constants,
+      const tpu::TpuCompilationCacheKey& key,
+      TpuProgramGroupInterface* tpu_program_group);
+
   // Lookup from persistent compilation cache and populate both host cache and
   // persistent cache.
   virtual Status LookupPersistentCompilationCacheAndFillCaches(

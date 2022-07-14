@@ -29,7 +29,7 @@ function run_build () {
   export TF_NEED_CUDA=0
   export PYTHON_BIN_PATH=$(which python3.7)
   yes "" | $PYTHON_BIN_PATH configure.py
-  tag_filters="-no_oss,-no_oss_py2,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v1only"
+  tag_filters="-no_oss,-gpu,-tpu,-benchmark-test,-nomac,-no_mac,-v1only"
 
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
@@ -40,6 +40,7 @@ function run_build () {
   "${BAZEL_WRAPPER_PATH}" \
     test \
     --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+    --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
     --nodistinct_host_configuration \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \

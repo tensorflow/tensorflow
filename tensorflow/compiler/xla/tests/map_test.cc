@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -56,7 +58,7 @@ class MapTest : public ClientLibraryTestBase {
     Add(x, one);
     auto computation_status = mapped_builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   XlaComputation CreateMax() {
@@ -66,7 +68,7 @@ class MapTest : public ClientLibraryTestBase {
     Max(lhs, rhs);
     auto computation_status = b.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   // Creates a computation that accepts an F32 and returns T(1) (ignoring the
@@ -78,7 +80,7 @@ class MapTest : public ClientLibraryTestBase {
     ConstantR0<T>(&mapped_builder, 1);
     auto computation_status = mapped_builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   // Creates a function that multiplies its scalar argument by the constant 2.0
@@ -93,7 +95,7 @@ class MapTest : public ClientLibraryTestBase {
     Mul(x, two);
     auto computation_status = mapped_builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   // Creates a function that adds its scalar argument with the constant 1.0 and
@@ -112,7 +114,7 @@ class MapTest : public ClientLibraryTestBase {
     Mul(x, adder_to_one);
     auto computation_status = mapped_builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   // Creates a function that takes a single parameter and calls map with
@@ -130,7 +132,7 @@ class MapTest : public ClientLibraryTestBase {
     Add(map, constant_n);
     auto computation_status = builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   // Creates a binary function with signature (F32, F32) -> Pred
@@ -142,7 +144,7 @@ class MapTest : public ClientLibraryTestBase {
     Gt(x, y);
     auto computation_status = b.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 
   // Creates a function that adds three scalar arguments
@@ -161,7 +163,7 @@ class MapTest : public ClientLibraryTestBase {
     Add(xy, z);
     auto computation_status = mapped_builder.Build();
     TF_CHECK_OK(computation_status.status());
-    return computation_status.ConsumeValueOrDie();
+    return std::move(computation_status).value();
   }
 };
 
@@ -170,7 +172,7 @@ TEST_F(MapTest, MapEachElemPlusOneR0) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR0<float>(42.0);
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {});
@@ -184,7 +186,7 @@ XLA_TEST_F(MapTest, MapEachElemPlusOneR1S0) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {0});
@@ -199,7 +201,7 @@ TEST_F(MapTest, MapEachElemPlusOneR1S4) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {0});
@@ -213,7 +215,7 @@ TEST_F(MapTest, MapEachF32ElementToS32Constant) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateScalarOne<int32_t>(), {0});
@@ -226,7 +228,7 @@ TEST_F(MapTest, MapEachF32ElementToU32Constant) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateScalarOne<uint32_t>(), {0});
@@ -240,7 +242,7 @@ TEST_F(MapTest, MapEachElemLongerChainR1) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.6f, -5.1f, 0.1f, 0.2f, 999.0f, 255.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOneTimesItself(), {0});
@@ -256,7 +258,7 @@ XLA_TEST_F(MapTest, MapMultipleMapsR1S0) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto map1 = Map(&builder, {param}, CreateAdderToOne(), {0});
@@ -273,7 +275,7 @@ TEST_F(MapTest, MapMultipleMapsR1S4) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto map1 = Map(&builder, {param}, CreateAdderToOne(), {0});
@@ -289,7 +291,7 @@ TEST_F(MapTest, MapEachElemPlusOneR2) {
   Literal param0_literal = LiteralUtil::CreateR2<float>(
       {{13.25f, 14.0f}, {-7.1f, -7.2f}, {-8.8f, 8.8f}});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {0, 1});
@@ -324,7 +326,7 @@ XLA_TEST_F(MapTest, ComplexNestedMaps) {
   Add(embed4_map_lhs, embed4_map_rhs);
   auto embed4_status = embed4_builder.Build();
   ASSERT_IS_OK(embed4_status.status());
-  auto embed4 = embed4_status.ConsumeValueOrDie();
+  auto embed4 = std::move(embed4_status).value();
 
   auto embed5 = CreateMapPlusN(embed2, 6.0);
 
@@ -344,11 +346,11 @@ TEST_F(MapTest, MapBinaryAdder) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -367,12 +369,12 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
   Literal param0_literal = LiteralUtil::CreateR2WithLayout(
       {{1, 2}, {3, 4}}, LayoutUtil::MakeLayout({1, 0}));
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Literal param1_literal = LiteralUtil::CreateR2WithLayout(
       {{10, 20}, {30, 40}}, LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -393,12 +395,12 @@ XLA_TEST_F(MapTest, AddR3_3x0x2) {
   Literal param0_literal =
       LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   Literal param1_literal =
       LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -415,15 +417,15 @@ TEST_F(MapTest, MapTernaryAdder) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
   Literal param2_literal =
       LiteralUtil::CreateR1<float>({-10.0f, -100.0f, -900.0f, -400.0f});
   std::unique_ptr<GlobalData> param2_data =
-      client_->TransferToServer(param2_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param2_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -454,7 +456,7 @@ TEST_F(MapTest, NestedBinaryMap) {
     Map(&b, {x, Mul(x, x)}, CreateMax(), {});
     auto computation_status = b.Build();
     ASSERT_IS_OK(computation_status.status());
-    max_with_square = computation_status.ConsumeValueOrDie();
+    max_with_square = std::move(computation_status).value();
   }
   XlaBuilder b(TestName());
   auto input = ConstantR1<float>(&b, {0.1f, 0.5f, -0.5f, 1.0f, 2.0f});
@@ -477,11 +479,11 @@ TEST_F(MapTest, MapOperationWithBuildError) {
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -492,6 +494,31 @@ TEST_F(MapTest, MapOperationWithBuildError) {
   EXPECT_THAT(computation_status.status().ToString(),
               ::testing::HasSubstr("error from: ErrorAdd: Binary op add with "
                                    "different element types: f32[] and u16[]"));
+}
+
+class MapHloTest : public HloTestBase {};
+
+// TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
+XLA_TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
+  absl::string_view hlo_string = R"(
+  HloModule MapMixedInputTypes
+
+  add {
+    op0 = f32[] parameter(0)
+    op1 = s32[] parameter(1)
+    cop1 = f32[] convert(op1)
+    ROOT result = f32[] add(op0, cop1)
+  }
+
+  ENTRY main {
+    in0 = f32[10,3] parameter(0)
+    in1 = s32[10,3] parameter(1)
+
+    ROOT out = f32[10,3] map(in0, in1), to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all
@@ -515,9 +542,9 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
   Literal param0_literal = LiteralUtil::CreateR0<float>(2.0f);
   Literal param1_literal = LiteralUtil::CreateR0<float>(5.0f);
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -542,9 +569,9 @@ TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
   Literal param0_literal = LiteralUtil::CreateR0<float>(2.0f);
   Literal param1_literal = LiteralUtil::CreateR0<float>(5.0f);
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
   std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -566,7 +593,7 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
 
   Literal param0_literal = LiteralUtil::CreateR0<float>(10.0f);
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param0}, square, {});

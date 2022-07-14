@@ -19,12 +19,15 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -61,6 +64,9 @@ class HloModule;
 // f(y), f(z)].)
 class HloComputation {
  public:
+  // Used by instructions_.
+  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
+
   // Builder class for HloComputation.
   class Builder {
    public:
@@ -91,7 +97,7 @@ class HloComputation {
       for (const auto& instruction : instructions_) {
         TF_RETURN_IF_ERROR(func(instruction.get()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     HloInstruction* last_added_instruction() const {
@@ -236,6 +242,18 @@ class HloComputation {
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
+  // Returns a Cord representation of the computation.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord(const HloPrintOptions& options) const;
+
+  // Overload which accepts an order to emit the instructions in.
+  absl::Cord ToCord(
+      const HloPrintOptions& options,
+      absl::Span<const HloInstruction* const> instruction_order) const;
+
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
@@ -310,6 +328,25 @@ class HloComputation {
       absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
+  // Creates a call instruction containing the given instructions.  Instructions
+  // must be in reverse topological order (root of the called computation
+  // first). Replaces all uses of the original root instruction with the call
+  // instruction. The original instructions are removed if they have no uses
+  // after creating the call (this is necessarily true for at least the root).
+  HloInstruction* CreateCallInstruction(
+      absl::Span<HloInstruction* const> instructions_to_call);
+
+  // Creates an async start/done instruction pair where instruction is wrapped
+  // inside an asynchronous computation. The context shapes are appended to the
+  // output tuple of the asynchronous start which is backend specific. Returns
+  // the async done instruction. The new async start instruction is the operand
+  // of the async done instruction so that can be accessed using that. If
+  // present, `async_thread_name` will be attached to the async-start
+  // instruction as well as wrapped computations.
+  StatusOr<HloInstruction*> CreateAsyncInstructions(
+      HloInstruction* instruction, absl::Span<const Shape> context_shapes,
+      absl::string_view async_thread_name = HloInstruction::kMainThreadName);
+
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
@@ -340,7 +377,8 @@ class HloComputation {
   // Return whether `*this` and `other` are functionally equivalent.
   bool Equal(const HloComputation& other, bool is_layout_sensitive) const {
     return EqualInternal(other, is_layout_sensitive,
-                         /*ignore_channel_id_values=*/false);
+                         /*ignore_channel_id_values=*/false,
+                         /*ignore_thread=*/false);
   }
 
   // Same as Equal() but ignores channel ID value mismatches on instructions, as
@@ -349,12 +387,23 @@ class HloComputation {
   bool EqualIgnoringChannelIdValues(const HloComputation& other,
                                     bool is_layout_sensitive) const {
     return EqualInternal(other, is_layout_sensitive,
-                         /*ignore_channel_id_values=*/true);
+                         /*ignore_channel_id_values=*/true,
+                         /*ignore_thread=*/false);
+  }
+
+  bool EqualIgnoringThread(const HloComputation& other,
+                           bool is_layout_sensitive,
+                           bool ignore_channel_id_values) const {
+    return EqualInternal(other, is_layout_sensitive, ignore_channel_id_values,
+                         /*ignore_thread=*/true);
   }
 
   // Return whether `*this` and `other` are functionally equivalent.
   bool operator==(const HloComputation& other) const {
     return Equal(other, true);
+  }
+  bool operator!=(const HloComputation& other) const {
+    return !(*this == other);
   }
 
   // Replaces old instruction with newly created instruction. Removes old
@@ -432,6 +481,7 @@ class HloComputation {
   // Like Clone(), but if an instruction is present in replacement_map, we use
   // the map's value to replace that instruction in the cloned computation.
   //
+  // If replacements is nullptr, don't perform replacement.
   // If replacements maps a key to nullptr, we remove that instruction from the
   // new computation.  If an element of `replacements` references an instruction
   // that's not already in the computation, it's cloned and added to the new
@@ -443,9 +493,8 @@ class HloComputation {
   // All relevant instructions are cloned, *including* unique_ptr in the
   // `replacements` map.
   std::unique_ptr<HloComputation> CloneWithReplacements(
-      absl::flat_hash_map<const HloInstruction*,
-                          std::unique_ptr<HloInstruction>>
-          replacements,
+      const absl::flat_hash_map<const HloInstruction*,
+                                std::unique_ptr<HloInstruction>>* replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
       HloCloneContext* context = nullptr, const std::string& suffix = "clone",
       const HloInstruction* new_root = nullptr);
@@ -509,6 +558,7 @@ class HloComputation {
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    CHECK(!IsCustomCallComputation() && !IsAsyncComputation());
     fusion_instruction_ = fusion_instruction;
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
@@ -522,8 +572,42 @@ class HloComputation {
     return custom_call_instruction_;
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation());
     custom_call_instruction_ = custom_call_instruction;
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
+  }
+
+  // Returns if this computation is an async computation.
+  bool IsAsyncComputation() const { return !async_instructions_.empty(); }
+
+  // Returns the owning async instruction. It's empty if this is not an async
+  // computation.
+  const std::vector<HloInstruction*>& AsyncInstructions() const {
+    return async_instructions_;
+  }
+
+  std::vector<HloInstruction*>& AsyncInstructions() {
+    return async_instructions_;
+  }
+
+  void AddAsyncInstruction(HloInstruction* async_instruction) {
+    CHECK(async_instruction != nullptr)
+        << "Nullptr shouldn't be added as commputation's async instruction. ";
+    CHECK(!IsFusionComputation() && !IsCustomCallComputation());
+    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart ||
+          async_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+          async_instruction->opcode() == HloOpcode::kAsyncDone);
+    async_instructions_.push_back(async_instruction);
+  }
+
+  void RemoveAsyncInstruction(HloInstruction* async_instruction) {
+    if (async_instruction == nullptr) {
+      return;
+    }
+    async_instructions_.erase(
+        std::remove(async_instructions_.begin(), async_instructions_.end(),
+                    async_instruction),
+        async_instructions_.end());
   }
 
   // Returns if this computation is invoked by an Hlo instruction.
@@ -548,6 +632,16 @@ class HloComputation {
 
   int64_t unique_id() const { return unique_id_; }
 
+  void SetThreadName(absl::string_view thread_name) {
+    thread_name_ = std::string(thread_name);
+  }
+
+  absl::string_view thread_name() const { return thread_name_; }
+  // Returns true of this computation is annotated on "main" thread.
+  bool IsMainThread() const {
+    return thread_name_ == HloInstruction::kMainThreadName;
+  }
+
   // Deallocate instructions that are marked by "RemoveInstruction". The two
   // stage clean up process is designed such that HloPass can have stable
   // internal pointers to HloInstructions while we create and remove
@@ -569,14 +663,13 @@ class HloComputation {
 
   // Internal helper for comparison with different options.
   bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
-                     bool ignore_channel_id_values) const;
+                     bool ignore_channel_id_values, bool ignore_thread) const;
 
-  // Fuses HLOs in instructions_to_fuse into fusion_instruction.
-  //
-  // Pre-condition: fusion_instruction's opcode is kFusion.
-  void FuseInstructionsInto(
-      absl::Span<HloInstruction* const> instructions_to_fuse,
-      HloInstruction* fusion_instruction);
+  // Appends (fuses) HLOs in instructions_to_append into the called computation
+  // of the caller.
+  void AppendInstructionsIntoCalledComputation(
+      absl::Span<HloInstruction* const> instructions_to_append,
+      HloInstruction* caller);
 
   // Internal helper for recursive copying of an instruction. Creates and
   // returns a deep copy of the given instruction.
@@ -591,9 +684,10 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
-      std::vector<HloInstruction*>* post_order, HloInstruction* root,
-      absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
+      HloInstruction* root,
+      HloComputation::ChannelDependencyGroup& channel_dependencies,
+      absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+      std::vector<HloInstruction*>& post_order) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 
@@ -621,8 +715,16 @@ class HloComputation {
   // null.
   HloInstruction* custom_call_instruction_;
 
-  // Determines whether this computation is a custom-call computation. A
+  // Determines whether this computation is a custom-call computation.
   bool is_custom_call_computation_;
+
+  // If this computation is an async computation, this field points to the
+  // corresponding async instructions (if live) that call this computation.
+  // Otherwise, this is empty.
+  std::vector<HloInstruction*> async_instructions_;
+
+  // Thread name of this computation. By default, it's main thread.
+  std::string thread_name_ = HloInstruction::kMainThreadName;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;
@@ -630,7 +732,6 @@ class HloComputation {
   // Store instructions in std::list as they can be added and removed
   // arbitrarily and we want a stable iteration order. Keep a map from
   // instruction pointer to location in the list for fast lookup.
-  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
   absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;
@@ -691,7 +792,7 @@ Status HloComputation::AcceptOrdered(
     visited.insert(instruction);
   }
   TF_RETURN_IF_ERROR(visitor->FinishVisit(root_instruction()));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Explicit instantiations.

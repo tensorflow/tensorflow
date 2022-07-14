@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -426,9 +427,52 @@ absl::Status Arguments::Compile(
     const GpuInfo& gpu_info,
     const std::map<std::string, std::string>& linkables, std::string* code) {
   RETURN_IF_ERROR(AddObjectsScalarArgs(gpu_info));
+  RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, code));
   RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, linkables, code));
   GetActiveArguments(*code);
   RETURN_IF_ERROR(ResolveKernelGlobalSpaceBuffers(gpu_info, code));
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::ResolveConstExprPass(const GpuInfo& gpu_info,
+                                             std::string* code) const {
+  std::string result;
+  size_t position = 0;
+  size_t next_position = code->find(kArgsPrefix);
+  while (next_position != std::string::npos) {
+    size_t arg_pos = next_position;
+    next_position += strlen(kArgsPrefix);
+    std::string object_name = GetNextWord(*code, next_position);
+    if (next_position + object_name.size() > code->size() - 2) {
+      next_position = code->find(kArgsPrefix, next_position);
+      continue;
+    }
+    char next0 = (*code)[next_position + object_name.size()];
+    char next1 = (*code)[next_position + object_name.size() + 1];
+    if (next0 == ':' && next1 == ':') {
+      next_position += object_name.size() + 2;
+      std::string const_expr_name = GetNextWord(*code, next_position);
+      next_position += const_expr_name.size();
+      std::string patch;
+      RETURN_IF_ERROR(
+          ResolveConstExpr(gpu_info, object_name, const_expr_name, &patch));
+      code->replace(arg_pos, next_position - arg_pos, patch);
+      position = arg_pos + patch.size();
+    } else {
+      position = arg_pos + strlen(kArgsPrefix);
+    }
+    next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::ResolveConstExpr(const GpuInfo& gpu_info,
+                                         const std::string& object_name,
+                                         const std::string& const_expr,
+                                         std::string* result) const {
+  tflite::gpu::GPUObjectDescriptor* desc_ptr;
+  RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
+  RETURN_IF_ERROR(desc_ptr->PerformConstExpr(gpu_info, const_expr, result));
   return absl::OkStatus();
 }
 
@@ -492,7 +536,7 @@ absl::Status Arguments::ResolveSelector(
   RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
   auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
+  if (tensor_desc && !linkables.empty() && selector == "Write") {
     auto it = linkables.find(object_name);
     if (it != linkables.end()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
@@ -510,10 +554,8 @@ absl::Status Arguments::ResolveSelector(
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
+      RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
       RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));
-      if (selector == "Linking") {
-        return absl::OkStatus();
-      }
     }
   }
   std::string patch;

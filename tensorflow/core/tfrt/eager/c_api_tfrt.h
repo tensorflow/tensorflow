@@ -150,7 +150,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   tensorflow::Status AsyncWait() override {
     TF_RETURN_IF_ERROR(GetEagerContext()->AsyncWait());
     GetHostContext()->Quiesce();
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   tensorflow::Status AddFunctionDef(
@@ -194,6 +194,12 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     // TODO(tfrt-devs): Move this flag to a common place that can be shared
     // by current TF and TFRT.
     GetEagerContext()->SetRunEagerOpAsFunction(enable);
+  }
+
+  void SetJitCompileRewrite(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetJitCompileRewrite(enable);
   }
 
   tensorflow::EagerExecutor& Executor() override {

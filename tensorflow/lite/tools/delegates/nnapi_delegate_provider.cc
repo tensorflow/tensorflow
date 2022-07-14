@@ -28,18 +28,19 @@ namespace {
 
 using nnapi::NnApiSupportLibrary;
 
-// StatefulNnApiDelegate that takes ownership of NnApiSupportLibrary instance
-// passed to the constructor.
+// StatefulNnApiDelegate that holds onto an NnApiSupportLibrary instance
+// passed to the constructor for later destruction.
+// Note that the support library must outlive the delegate.
 class NnApiSupportLibraryDelegate : public StatefulNnApiDelegate {
  public:
-  // The constructed object takes ownership of the nnapi_sl.
   NnApiSupportLibraryDelegate(const NnApiSupportLibrary* nnapi_sl,
                               Options options)
       : StatefulNnApiDelegate(nnapi_sl->getFL5(), options),
         nnapi_sl_(nnapi_sl) {}
+  const NnApiSupportLibrary* get_nnapi_sl() const { return nnapi_sl_; }
 
  private:
-  std::unique_ptr<const NnApiSupportLibrary> nnapi_sl_;
+  const NnApiSupportLibrary* const nnapi_sl_;
 };
 
 }  // namespace
@@ -260,7 +261,11 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       return TfLiteDelegatePtr(
           new NnApiSupportLibraryDelegate(nnapi_impl.release(), options),
           [](TfLiteDelegate* delegate) {
-            delete reinterpret_cast<NnApiSupportLibraryDelegate*>(delegate);
+            NnApiSupportLibraryDelegate* sl_delegate =
+                reinterpret_cast<NnApiSupportLibraryDelegate*>(delegate);
+            const NnApiSupportLibrary* sl = sl_delegate->get_nnapi_sl();
+            delete sl_delegate;
+            delete sl;
           });
     }
   } else if (!params.Get<std::string>("nnapi_accelerator_name").empty()) {

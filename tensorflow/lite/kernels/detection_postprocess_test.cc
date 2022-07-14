@@ -158,7 +158,7 @@ TEST(DetectionPostprocessOpTest, FloatTest) {
   //   0.0, 10.0, 1.0, 11.0,
   //   0.0, 10.1, 1.0, 11.1,
   //   0.0, 100.0, 1.0, 101.0}
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -214,7 +214,7 @@ TEST(DetectionPostprocessOpTest, FloatTestWithDegeneratedBox) {
   // NOTE: this is used instead of `m.Invoke()` to make sure the entire test
   // gets aborted if an error occurs (which does not happen when e.g. ASSERT_EQ
   // is used in such a helper function).
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // num_detections
   std::vector<int> output_shape4 = m.GetOutputShape4();
   EXPECT_THAT(output_shape4, ElementsAre(1));
@@ -281,7 +281,7 @@ TEST(DetectionPostprocessOpTest, QuantizedTest) {
       0.5, 100.5, 1.0, 1.0   // anchor #6
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input3(), inputs3[0]);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -343,7 +343,7 @@ TEST(DetectionPostprocessOpTest, MaxClass2Test) {
   //   0.0, 10.0, 1.0, 11.0,
   //   0.0, 10.1, 1.0, 11.1,
   //   0.0, 100.0, 1.0, 101.0}
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -500,7 +500,7 @@ TEST(DetectionPostprocessOpTest, FloatTestFastNMS) {
   //   0.0, 10.0, 1.0, 11.0,
   //   0.0, 10.1, 1.0, 11.1,
   //   0.0, 100.0, 1.0, 101.0}
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -559,7 +559,7 @@ TEST(DetectionPostprocessOpTest, QuantizedTestFastNMS) {
       0.5, 100.5, 1.0, 1.0   // anchor #6
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input3(), inputs3[0]);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -652,7 +652,7 @@ TEST_P(DetectionPostprocessOpRegularTest, RegularNMS) {
   } else {
     m.SetInput3<float>(inputs3);
   }
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -730,7 +730,7 @@ TEST(DetectionPostprocessOpTest, FloatTestwithNoBackgroundClassAndNoKeypoints) {
       0.5, 100.5, 1.0, 1.0   // anchor #6
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -786,7 +786,7 @@ TEST(DetectionPostprocessOpTest, FloatTestwithBackgroundClassAndKeypoints) {
       0.5, 100.5, 1.0, 1.0   // anchor #6
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -845,7 +845,7 @@ TEST(DetectionPostprocessOpTest,
       0.5, 100.5, 1.0, 1.0   // anchor #6
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input3(), inputs3[0]);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -900,7 +900,7 @@ TEST(DetectionPostprocessOpTest, FloatTestwithNoBackgroundClassAndKeypoints) {
       0.5, 100.5, 1.0, 1.0   // anchor #6
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();
@@ -962,7 +962,7 @@ TEST(DetectionPostprocessOpTest,
       0.5, 100.5, 1.0, 1.0   // anchor #6
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input3(), inputs3[0]);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // detection_boxes
   // in center-size
   std::vector<int> output_shape1 = m.GetOutputShape1();

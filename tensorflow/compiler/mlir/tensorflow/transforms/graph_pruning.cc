@@ -56,7 +56,7 @@ class GraphPruningPass
 // feeds/fetches/targets we should not attempt to prune. The best approximation
 // here is to check if the graph is of the "main" function and does not have the
 // "tf.entry_function" attribute defined.
-bool CanPruneGraph(FuncOp func) {
+bool CanPruneGraph(func::FuncOp func) {
   return func.getName() != "main" ||
          func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
 }
@@ -186,7 +186,7 @@ void GraphPruningPass::PruneGraph(GraphOp graph) {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFExecutorGraphPruningPass(
     llvm::ArrayRef<std::string> ops_to_preserve) {
   return std::make_unique<GraphPruningPass>(ops_to_preserve);
 }

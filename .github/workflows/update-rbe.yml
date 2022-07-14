@@ -1,0 +1,70 @@
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+
+# This Workflow updates tensorflow/tools/toolchains/remote_config/configs.bzl
+# to reference the most recent versions of the SIG Build Docker images.
+name: Update RBE Configs
+on:
+  workflow_dispatch:
+
+jobs:
+  rbe:
+    name: Update RBE Configs
+    runs-on: ubuntu-latest
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Update the RBE Configs
+      run: |
+        function map() {
+          # The "digest" that allows us to pull an image is not the digest as
+          # returned by the API, but a sha256sum of the entire chunk of image
+          # metadata. gcr.io helpfully includes it in the header of the response
+          # as docker-content-digest: sha256:[digest]. Note we use egrep to
+          # match exactly sha256:<hash> because curl may include a ^M symbol at
+          # the end of the line.
+          # See https://cloud.google.com/architecture/using-container-images#exploring_image_manifests_digests_and_tags
+          digest=$(curl -s --head "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | egrep -o "sha256:[[:alnum:]]*")
+          # Find the line matching the regex "sigbuild-r2.9" (with quotes) and
+          # replace just the digest portion in it
+          sed -i"" "/\"$1\"/ s/sha256:[[:alnum:]]*/$digest/g" tensorflow/tools/toolchains/remote_config/configs.bzl
+        }
+        # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
+        # This is a mapping of name_container_map keys under sigbuild_tf_configs
+        # to tag names on gcr.io/tensorflow-sigs/build.
+        map sigbuild-r2.9 2.9-python3.9
+        map sigbuild-r2.9-python3.7 2.9-python3.7
+        map sigbuild-r2.9-python3.8 2.9-python3.8
+        map sigbuild-r2.9-python3.9 2.9-python3.9
+        map sigbuild-r2.9-python3.10 2.9-python3.10
+        map sigbuild-r2.10 2.10-python3.9
+        map sigbuild-r2.10-python3.7 2.10-python3.7
+        map sigbuild-r2.10-python3.8 2.10-python3.8
+        map sigbuild-r2.10-python3.9 2.10-python3.9
+        map sigbuild-r2.10-python3.10 2.10-python3.10
+    - name: Create Pull Request with changes
+      uses: peter-evans/create-pull-request@v3
+      with:
+        title: Update the RBE images to the latest container versions
+        committer: TensorFlow Release Automation <jenkins@tensorflow.org>
+        token: ${{ secrets.JENKINS_TOKEN }}
+        reviewers: angerson,mihaimaruseac,learning-to-play,nitins17
+        body: |
+          This PR was created by a GitHub Actions workflow to update all the SIG Build-based RBE containers to the most recent containers. See:
+
+          - https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
+          - https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml

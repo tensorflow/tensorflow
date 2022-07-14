@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -24,7 +24,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
+void ConvertTFLQuantOpsToMlirQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
@@ -54,13 +54,13 @@ void ConvertTFLQuantOpsToMlirQuantOps(FuncOp func) {
   });
 }
 
-void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
+void ConvertMlirQuantOpsToTFLQuantOps(func::FuncOp func) {
   OpBuilder b(func);
   func.walk([&](Operation* op) {
     b.setInsertionPoint(op);
     if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(op)) {
       auto dcast = b.create<DequantizeOp>(dq.getLoc(), dq.getResult().getType(),
-                                          dq.arg());
+                                          dq.getArg());
       dq.getResult().replaceAllUsesWith(dcast);
       if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {
         dcast->setAttr(mlir::quant::kVolatileOpAttrName, extra_attr);
@@ -68,7 +68,7 @@ void ConvertMlirQuantOpsToTFLQuantOps(FuncOp func) {
       dq.erase();
     } else if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(op)) {
       auto out_type = q.getResult().getType();
-      auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.arg(),
+      auto qcast = b.create<QuantizeOp>(q.getLoc(), out_type, q.getArg(),
                                         TypeAttr::get(out_type));
       q.getResult().replaceAllUsesWith(qcast);
       if (auto extra_attr = op->getAttr(mlir::quant::kVolatileOpAttrName)) {

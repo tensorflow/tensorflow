@@ -21,6 +21,7 @@ from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.distribute import multi_process_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
 _WORKER_SHUTDOWN_QUIET_PERIOD_MS = 100
@@ -30,9 +31,10 @@ _WORKER_SHUTDOWN_QUIET_PERIOD_MS = 100
 class _RemoteWorkerProcess(multi_process_lib.Process):
   """Runs a worker server in a new process to simulate a remote worker."""
 
-  def __init__(self, dispatcher_address, worker_tags, pipe_writer):
+  def __init__(self, dispatcher_address, port, worker_tags, pipe_writer):
     super(_RemoteWorkerProcess, self).__init__()
     self._dispatcher_address = dispatcher_address
+    self._port = port
     self._worker_tags = worker_tags
     self._pipe_writer = pipe_writer
 
@@ -43,6 +45,7 @@ class _RemoteWorkerProcess(multi_process_lib.Process):
     self._worker = data_service_test_base.TestWorker(
         self._dispatcher_address,
         _WORKER_SHUTDOWN_QUIET_PERIOD_MS,
+        port=self._port,
         worker_tags=self._worker_tags)
     self._worker.start()
     self._pipe_writer.send(self._worker.worker_address())
@@ -79,6 +82,8 @@ class MultiProcessCluster(object):
     self._start_remote_workers(num_remote_workers, worker_tags)
 
   def _start_dispatcher(self, worker_addresses, port=0):
+    if port == 0:
+      port = test_util.pick_unused_port()
     self._dispatcher = server_lib.DispatchServer(
         service_config_pb2.DispatcherConfig(
             port=port,
@@ -104,15 +109,19 @@ class MultiProcessCluster(object):
     worker = data_service_test_base.TestWorker(
         self.dispatcher_address(),
         _WORKER_SHUTDOWN_QUIET_PERIOD_MS,
+        port=test_util.pick_unused_port(),
         worker_tags=worker_tags)
     worker.start()
     self._local_workers.append(worker)
 
   def start_remote_worker(self, worker_tags=None):
+    """Runs a tf.data service worker in a remote process."""
+
     pipe_reader, pipe_writer = multi_process_lib.multiprocessing.Pipe(
         duplex=False)
     worker_process = _RemoteWorkerProcess(
         self.dispatcher_address(),
+        port=test_util.pick_unused_port(),
         worker_tags=worker_tags,
         pipe_writer=pipe_writer)
     worker_process.start()
@@ -138,13 +147,13 @@ class MultiProcessCluster(object):
     return [worker.worker_address() for worker in self._local_workers]
 
   def remote_worker_addresses(self):
-    return [worker[0] for worker in self._remote_workers]
+    return [worker_address for (worker_address, _) in self._remote_workers]
 
   def _stop(self):
     for worker in self._local_workers:
       worker.stop()
-    for worker in self._remote_workers:
-      worker[1].terminate()
+    for (_, worker_process) in self._remote_workers:
+      worker_process.kill()
     self._dispatcher._stop()
 
   def __del__(self):

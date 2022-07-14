@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -66,19 +66,19 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
     return;
   }
 
-  auto return_op = dyn_cast<ReturnOp>(body.getTerminator());
+  auto return_op = dyn_cast<func::ReturnOp>(body.getTerminator());
   if (!return_op) {
     LLVM_DEBUG(llvm::dbgs() << "Expect function to end with return\n");
     return;
   }
   // Build GraphOp.
   OpBuilder builder(&body, body.begin());
-  auto graph_op =
-      builder.create<tf_executor::GraphOp>(loc, func.getType().getResults());
+  auto graph_op = builder.create<tf_executor::GraphOp>(
+      loc, func.getFunctionType().getResults());
   graph_op.body().push_back(new Block);
   builder.setInsertionPointToEnd(&graph_op.GetBody());
   auto island = builder.create<tf_executor::IslandOp>(
-      loc, func.getType().getResults(),
+      loc, func.getFunctionType().getResults(),
       tf_executor::ControlType::get(&getContext()), ArrayRef<Value>());
   // Create Fetch.
   ValueRange to_fetch = island.getResults();
@@ -99,7 +99,7 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass() {
   return std::make_unique<FunctionalToExecutorDialectConversion>();
 }

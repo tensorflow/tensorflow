@@ -58,7 +58,7 @@ class CpuExternalConstantsTest : public CpuCodegenTest {
 TEST_F(CpuExternalConstantsTest, Basic) {
   TestWithArray(/*rows=*/1024, /*cols=*/1024, R"(
 CHECK-NOT: @constant_global_0 = external unnamed_addr constant [1024 x [1024 x float]], align 16
-CHECK: @0 = private unnamed_addr constant [4194304 x i8] {{.*}}, align 16
+CHECK: @constant = private unnamed_addr constant [4194304 x i8] {{.*}}, align 16
 )");
 }
 
@@ -67,7 +67,7 @@ TEST_F(CpuExternalConstantsTest, BasicNegative) {
   // to externalize it.
   TestWithArray(/*rows=*/4, /*cols=*/4, R"(
 CHECK-NOT: @constant_global_0 = external unnamed_addr constant [16 x float]
-CHECK: @0 = private unnamed_addr constant [64 x i8] {{.*}}, align 16
+CHECK: @constant = private unnamed_addr constant [64 x i8] {{.*}}, align 16
 )");
 }
 }  // namespace

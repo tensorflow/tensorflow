@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 
+#include <utility>
+
 #include "absl/functional/bind_front.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
@@ -94,6 +96,10 @@ static Status PadConv(HloCustomCallInstruction* conv,
       {new_result_shape, ShapeUtil::MakeShape(U8, {0})});
   auto* new_conv =
       add(conv->CloneWithNewOperands(new_conv_shape, new_operands));
+
+  // Clone conv's name to new_conv.  This is safe because we're going to remove
+  // conv below.
+  new_conv->SetAndSanitizeName(conv->name());
 
   VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
           << new_conv->ToString();
@@ -316,9 +322,9 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   // The input/kernel/output might already be vectorized (i.e. cudnn layout
   // NCHW_VECT_C).  If so, we pad the features dim so that
   // size(features_dim) * size(vect_dim) is a multiple of pad_to.
-  absl::optional<int64_t> input_vect_dim;
-  absl::optional<int64_t> kernel_vect_dim;
-  absl::optional<int64_t> result_vect_dim;
+  std::optional<int64_t> input_vect_dim;
+  std::optional<int64_t> kernel_vect_dim;
+  std::optional<int64_t> result_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, result_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, result_shape);
 

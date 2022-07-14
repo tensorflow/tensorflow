@@ -28,19 +28,12 @@ namespace gpu {
 // emitted will be executed by multiple threads in parallel. Therefore, each
 // thread instance of the loop iterates over part of the array, and they
 // collectively iterates over the entire array.
-class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
+class ParallelLoopEmitter {
  public:
   // `launch_dimensions` specify the number of threads and blocks to
   // parallelize the loop on.  `launch_config` specify some detail on
   // how to parallelize.
-  ParallelLoopEmitter(BodyEmitter body_emitter, const Shape& shape,
-                      const LaunchDimensions& launch_dimensions,
-                      llvm::IRBuilder<>* b,
-                      LaunchDimensionsConfig launch_config = {});
-  // Constructs a ParallelLoopEmitter from an element generator that generates
-  // each element of the given target array.
-  ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
-                      const llvm_ir::IrArray& target_array,
+  ParallelLoopEmitter(llvm_ir::BodyEmitter body_emitter, const Shape& shape,
                       const LaunchDimensions& launch_dimensions,
                       llvm::IRBuilder<>* b,
                       LaunchDimensionsConfig launch_config = {});
@@ -58,19 +51,48 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
-  ~ParallelLoopEmitter() override = default;
 
   std::vector<llvm_ir::IrArray::Index> EmitIndexAndSetExitBasicBlock(
       absl::string_view loop_name, llvm::Type* index_type,
-      llvm::Value* base_index) override;
+      llvm::Value* base_index);
+
+  // This is similar to EmitIndexAndSetExitBasicBlock except that we
+  // change the mapping of threads to output buffer index such that adjacent
+  // threads write to logically adjacent index in output buffer instead of
+  // physically adjacent index.
+  std::vector<llvm_ir::IrArray::Index> EmitLogicalIndexAndSetExitBasicBlock(
+      absl::string_view loop_name, llvm::Type* index_type,
+      llvm::Value* base_index);
 
   Status EmitLoop(absl::string_view loop_name = "",
                   llvm::Type* index_type = nullptr);
 
  private:
+  struct LinearBaseAndThreadIdx {
+    llvm::Value* linear_base;
+    llvm::Value* thread_idx;
+  };
+
+  LinearBaseAndThreadIdx EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
+                                                    llvm::Value* base_index);
+  Status EmitSerialLoop(absl::string_view loop_name, llvm::Type* index_type,
+                        llvm::Value* base_indvar = nullptr);
+
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;
   const LaunchDimensionsConfig launch_config_;
+
+  // An IR emitter that generates the loop body.
+  llvm_ir::BodyEmitter body_emitter_;
+
+  // The shape that the emitted loop iterates through.
+  Shape shape_;
+
+  // Points to the exit block of the emitted loop. If the given shape is
+  // scalar, no loops are emitted and exit_bb_ is nullptr in that case.
+  llvm::BasicBlock* exit_bb_;
+
+  llvm::IRBuilder<>* b_;
 };
 
 }  // namespace gpu

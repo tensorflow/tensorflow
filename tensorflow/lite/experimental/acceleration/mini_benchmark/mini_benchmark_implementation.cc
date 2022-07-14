@@ -32,8 +32,6 @@ limitations under the License.
 namespace tflite {
 namespace acceleration {
 
-using ::tflite::nnapi::NnApiSupportLibrary;
-
 // This class is used to store the results of a GetBestAcceleration and
 // information on the events used to take the decision.
 // The class is thread-compatible as MiniBenchmark.
@@ -287,11 +285,12 @@ class MiniBenchmarkImpl : public MiniBenchmark {
     }
 
     const std::string local_event_fp = LocalEventStorageFileName(settings);
-    best_acceleration_selector_.reset(new MemoizedBestAccelerationSelector(
-        *settings_, model_namespace, model_id, local_event_fp));
+    best_acceleration_selector_ =
+        std::make_unique<MemoizedBestAccelerationSelector>(
+            *settings_, model_namespace, model_id, local_event_fp);
 
-    storage_.reset(new FlatbufferStorage<MiniBenchmarkEvent>(
-        local_event_fp, tflite::DefaultErrorReporter()));
+    storage_ = std::make_unique<FlatbufferStorage<MiniBenchmarkEvent>>(
+        local_event_fp, tflite::DefaultErrorReporter());
     storage_->Read();
     for (int i = storage_->Count() - 1; i >= 0; i--) {
       auto* event = storage_->Get(i);
@@ -460,7 +459,11 @@ class MiniBenchmarkImpl : public MiniBenchmark {
     *nnapi_sl = nullptr;
     const auto& settings_to_test = *settings_->settings_to_test();
     for (const auto* setting_to_test : settings_to_test) {
-      if (setting_to_test->nnapi_settings()) {
+      // Check that there are not two different NNAPI-with-SL configurations
+      // with different support library instances.
+      if (setting_to_test->delegate() == Delegate_NNAPI &&
+          setting_to_test->nnapi_settings() &&
+          setting_to_test->nnapi_settings()->support_library_handle()) {
         const NnApiSLDriverImplFL5* curr_nnapi_sl_handle =
             reinterpret_cast<const NnApiSLDriverImplFL5*>(
                 setting_to_test->nnapi_settings()->support_library_handle());

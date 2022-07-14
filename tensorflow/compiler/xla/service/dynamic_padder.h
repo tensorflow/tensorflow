@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PADDER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PADDER_H_
 
+#include <functional>
+
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -66,6 +68,10 @@ struct DynamicPadderOptions {
   // If `slice_dynamic_output` is true, insert 'slice_to_dynamic' ops to all
   // outputs that are inferred to be dynamic.
   bool slice_dynamic_output = true;
+
+  // Assertion generator for shape checks, only used if shape check mode is
+  // "runtime".
+  DynamicDimensionInference::AssertionGenerator assertion_generator;
 
   // If set to true, pessimisticly assumes runtime shape checks may fail and
   // returns a compile-time error.

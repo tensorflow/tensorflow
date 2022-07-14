@@ -16,10 +16,10 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -38,8 +39,12 @@ CreateOpCodeTableImpl(flatbuffers::FlatBufferBuilder* fbb,
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
   for (const auto& it : *opcodes) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
-    codes.push_back(CreateOperatorCodeDirect(
-        *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = it.builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
+    codes.push_back(
+        CreateOperatorCodeDirect(*fbb, static_cast<BuiltinOperator>(it.builtin),
+                                 custom_name, op_version));
   }
   return fbb->template CreateVector<flatbuffers::Offset<OperatorCode>>(codes);
 }
@@ -299,6 +304,7 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -338,7 +344,7 @@ TfLiteStatus SubgraphWriter::RegisterCustomWriter(
 TfLiteStatus SubgraphWriter::CheckInputOutput(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const std::vector<int>& execution_plan) {
-  absl::flat_hash_set<int> known_tensors(inputs.begin(), inputs.end());
+  std::unordered_set<int> known_tensors(inputs.begin(), inputs.end());
   known_tensors.insert(subgraph_->variables().begin(),
                        subgraph_->variables().end());
   // Scan execution plan and confirm input tensors are known before each node
@@ -447,6 +453,7 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
+  subgraphs_as_vector.reserve(subgraph_writers_.size());
   for (auto& subgraph_writer : subgraph_writers_) {
     subgraphs_as_vector.push_back(subgraph_writer.PopulateAndGetOffset(
         &builder, subgraph_writer.subgraph_->GetName()));
@@ -462,6 +469,7 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -486,6 +494,14 @@ TfLiteStatus ModelWriter::SetCustomInputOutput(
     const std::vector<int>& outputs, const std::vector<int>& execution_plan) {
   return subgraph_writers_[subgraph_index].SetCustomInputOutput(inputs, outputs,
                                                                 execution_plan);
+}
+
+TfLiteStatus ModelWriter::RegisterCustomWriter(const std::string& custom_name,
+                                               CustomWriter custom_writer) {
+  for (auto& subgraph_writer : subgraph_writers_) {
+    subgraph_writer.RegisterCustomWriter(custom_name, custom_writer);
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

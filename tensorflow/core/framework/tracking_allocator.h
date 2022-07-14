@@ -68,6 +68,10 @@ class TrackingAllocator : public Allocator {
   absl::optional<AllocatorStats> GetStats() override;
   bool ClearStats() override;
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return allocator_->GetMemoryType();
+  }
+
   // If the underlying allocator tracks allocation sizes, this returns
   // a tuple where the first value is the total number of bytes
   // allocated through this wrapper, the second value is the high

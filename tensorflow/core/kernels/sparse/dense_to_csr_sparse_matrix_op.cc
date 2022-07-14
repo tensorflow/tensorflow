@@ -349,7 +349,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       convert_to_csr();
     } else {
       // Launch the GPU kernel to count nnz entries, then call convert_to_csr.
-      c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+      c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
           stream, convert_to_csr);
     }
   }

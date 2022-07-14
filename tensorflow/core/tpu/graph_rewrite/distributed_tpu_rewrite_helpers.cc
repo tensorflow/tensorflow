@@ -88,7 +88,7 @@ Status DistributedTPURewriteHelpers::GetSystemDevice(
                                    (*system_device)->name(),
                                    " as a device spec.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -142,7 +142,7 @@ Status DistributedTPURewriteHelpers::GetHostSystemDevices(
               auto j_name = j->parsed_name();
               return i_name.task < j_name.task;
             });
-  return Status::OK();
+  return OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -193,7 +193,7 @@ Status DistributedTPURewriteHelpers::GetTPUDevices(
     }
     tpu_devices->push_back(std::move(host_tpu_devices));
   }
-  return Status::OK();
+  return OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -249,7 +249,7 @@ Status DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
                               input_dependencies, output_dependencies, graph));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

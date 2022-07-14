@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 
+#include <string>
+
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 

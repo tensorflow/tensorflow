@@ -1,7 +1,9 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_mobile",
+    "if_not_mobile",
     "tf_cc_test",
-    "tf_features_nolayering_check_if_android_or_ios",
+    "tf_features_nolayering_check_if_ios",
     "tf_opts_nortti_if_android",
     "tf_opts_nortti_if_lite_protos",
 )
@@ -35,25 +37,19 @@ cc_library(
     srcs = ["buffer_map.cc"],
     hdrs = ["buffer_map.h"],
     copts = tf_opts_nortti_if_lite_protos(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":util",
         ":buffer_map_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels/internal:compatibility",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/c:c_api_internal",
-            "//tensorflow/core:framework",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:framework",
+    ]),
 )
 
 cc_library(
@@ -61,26 +57,20 @@ cc_library(
     srcs = ["buffer_map_util.cc"],
     hdrs = ["buffer_map_util.h"],
     copts = tf_opts_nortti_if_lite_protos(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/resource",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/c:c_api_internal",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core/platform:status",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+    ]),
 )
 
 tf_cc_test(
@@ -89,9 +79,12 @@ tf_cc_test(
     srcs = ["buffer_map_test.cc"],
     deps = [
         ":buffer_map",
+        ":buffer_map_util",
+        "//tensorflow/core:framework",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -158,7 +151,7 @@ cc_library(
         "delegate.h",
     ],
     copts = tflite_copts() + tf_opts_nortti_if_android(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -178,20 +171,14 @@ cc_library(
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core/common_runtime/eager:context",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core:framework",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:framework",
+    ]),
     alwayslink = 1,
 )
 
@@ -216,7 +203,7 @@ cc_library(
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
     copts = tf_opts_nortti_if_android(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
@@ -229,22 +216,16 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:util",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core/common_runtime/eager:context",
-            "//tensorflow/core/common_runtime/eager:core",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all_cc",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ]),
 )
 
 tf_cc_test(
@@ -271,22 +252,16 @@ tf_cc_test(
 cc_library(
     name = "subgraph_resource",
     hdrs = ["subgraph_resource.h"],
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:cc_api",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ]),
 )
 
 tf_cc_test(
@@ -329,7 +304,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
     visibility = ["//visibility:public"],
     deps = [
@@ -338,20 +313,14 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite:string_util",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/c:c_api_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:framework",
-            "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+    ]),
 )
 
 tf_cc_test(
@@ -382,19 +351,13 @@ cc_library(
         "allowlisted_flex_ops_internal.h",
     ],
     compatible_with = get_compatible_with_cloud(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     visibility = internal_visibility_allowlist(),
-    deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-        ],
-    }),
+    deps = if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+    ]),
 )
 
 tf_cc_test(
@@ -403,22 +366,16 @@ tf_cc_test(
     srcs = [
         "allowlisted_flex_ops_test.cc",
     ],
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":delegate",
         ":allowlisted_flex_ops_lib",
         "@com_google_googletest//:gtest_main",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+    ]),
 )
 
 # Alias to support selective build of image ops.
@@ -437,7 +394,7 @@ cc_library(
     name = "tflite_subgraph_execute",
     srcs = ["tflite_subgraph_execute.cc"],
     copts = tf_opts_nortti_if_android(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":buffer_map_util",
         ":subgraph_resource",
@@ -451,17 +408,11 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ]),
     alwayslink = 1,
 )

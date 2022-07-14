@@ -19,7 +19,7 @@ package_group(
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
-exports_files(glob(["g3doc/*.md"]))
+exports_files(glob(["g3doc/*.md"] + ["g3doc/_includes/tf_passes.md"]))
 
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -93,7 +94,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
     ],
 )
 
@@ -104,7 +105,7 @@ cc_library(
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
-        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:QuantOps",
         # Link jit lib to link JIT devices required to run
         # xla-legalize-tf-with-tf2xla pass.
@@ -156,9 +157,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:ShapeDialect",
     ],
     alwayslink = 1,
 )
@@ -242,7 +243,7 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
@@ -265,6 +266,7 @@ tf_cc_test(
     srcs = ["mlir_graph_optimization_pass_test.cc"],
     deps = [
         ":mlir_graph_optimization_pass",
+        "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:IR",

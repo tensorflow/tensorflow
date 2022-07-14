@@ -88,7 +88,7 @@ class TransposePlan {
   static StatusOr<std::unique_ptr<TransposePlan>> Create(
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
-      absl::variant<Tiling, Striding> input_layout = Tiling{},
+      std::variant<Tiling, Striding> input_layout = Tiling{},
       Tiling output_tiling = Tiling{},
       Transformation transformation = Transformation::kNone,
       int num_threads = 1);
@@ -263,7 +263,7 @@ class TransposePlanCache {
   StatusOr<std::shared_ptr<TransposePlan>> GetOrCreate(
       size_t elem_size_in_bytes, absl::Span<int64_t const> dims,
       absl::Span<int64_t const> permutation,
-      absl::variant<TransposePlan::Tiling, TransposePlan::Striding>
+      std::variant<TransposePlan::Tiling, TransposePlan::Striding>
           input_layout = TransposePlan::Tiling{},
       TransposePlan::Tiling output_tiling = TransposePlan::Tiling{},
       TransposePlan::Transformation transformation =

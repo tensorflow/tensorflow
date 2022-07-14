@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
-#include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
@@ -250,7 +249,7 @@ tensorflow::Status RunInitializers(
     host->Await(results);
 
     if (auto* error = results[0]->GetErrorIfPresent()) {
-      return tensorflow::errors::Internal(error->message);
+      return CreateTfErrorStatus(*error);
     }
   }
 
@@ -260,38 +259,7 @@ tensorflow::Status RunInitializers(
   TF_RETURN_IF_ERROR(
       RunRuntimeInitializer(exec_ctx, bef_file, "_tfrt_resource_init"));
 
-  return tensorflow::Status::OK();
-}
-
-// The created `SessionOptions` contains the Grappler configs.
-static tensorflow::SessionOptions CreateSessionOptions(
-    const SavedModel::Options& options) {
-  tensorflow::SessionOptions session_options;
-  auto& config = session_options.config;
-
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_disable_meta_optimizer(
-          !options.graph_execution_options.compile_options.enable_grappler);
-
-  // The following configs are constant.
-
-  // Avoid grappler logic that lowers to v1 control flow.
-  config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
-  // Do not skip grappler optimization even for small graphs.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::OFF);
-
-  return session_options;
+  return OkStatus();
 }
 
 std::vector<std::string> FindNamesForValidSignatures(
@@ -335,7 +303,8 @@ std::vector<std::string> FindNamesForValidSignatures(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions) {
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    bool enable_tfrt_gpu) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
     signature_names = FindNamesForValidSignatures(meta_graph_def);
@@ -353,7 +322,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
   TF_ASSIGN_OR_RETURN(auto import_input,
                       TfrtSavedModelMLIRImportInput::Create(
                           fallback_state, &meta_graph_def, /*debug_info=*/{},
-                          run_placer_grappler_on_functions));
+                          run_placer_grappler_on_functions, enable_tfrt_gpu));
 
   TF_ASSIGN_OR_RETURN(
       auto module,
@@ -402,7 +371,7 @@ tensorflow::Status InitSavedModel(
                       *options.graph_execution_options.runtime,
                       resource_context, fallback_state));
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -478,6 +447,15 @@ void GetSignaturesFromSignatureDef(
   }
 }
 
+void UpdateCompileOptions(SavedModel::Options& options) {
+  // Disable DecomposeResourceOpsPass for now, as DecomposeResourceGather does
+  // not work well with GPU (b/232819415).
+  if (options.graph_execution_options.enable_tfrt_gpu) {
+    options.graph_execution_options.compile_options.decompose_resource_ops =
+        false;
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
@@ -486,21 +464,9 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
   LOG(INFO) << "TFRT loading v1 savedmodel: " << saved_model_dir;
   tfrt::metrics::AddTFRTVersionMetric();
 
-  if (options.graph_execution_options.compile_options.tpu_target ==
-      tensorflow::TfrtTpuInfraTarget::kBridgeFallback) {
-    auto s = tfrt::CheckTpuMlirBridgeCompatibility(meta_graph_def);
-    if (!s.ok()) {
-      LOG(INFO)
-          << "TFRT detected Bridge unsupported feature, using TF fallback";
-      options.graph_execution_options.compile_options.tpu_target =
-          tensorflow::TfrtTpuInfraTarget::kTfFallback;
-    } else {
-      options.graph_execution_options.compile_options.tpu_target =
-          tensorflow::TfrtTpuInfraTarget::kTpurt;
-    }
-  }
-  LOG(INFO) << "TFRT Savedmodel use TPU target "
-            << options.graph_execution_options.compile_options.tpu_target;
+  UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
+                                       meta_graph_def.graph_def());
+  UpdateCompileOptions(options);
 
   auto statusor_saved_model =
       [&]() -> tensorflow::StatusOr<std::unique_ptr<SavedModel>> {
@@ -508,7 +474,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 1: Import saved model from a proto to an MLIR module.
     auto import_start_time = absl::Now();
-    auto session_options = CreateSessionOptions(options);
+    auto session_options =
+        CreateDefaultSessionOptions(options.graph_execution_options);
     // Set optimize_for_static_graph to true since we won't extend the graph
     // later. If optimize_for_static_graph is set to false, FallbackState will
     // keep an extra unused copy of the graph, which unnecessarily consumes
@@ -520,15 +487,16 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // without applying placer or grappler, it is OK for now because it's only
     // used for captured functions in certain tf.data ops
     const auto& fdef_lib = meta_graph_def.graph_def().library();
-    TF_ASSIGN_OR_RETURN(auto fallback_state,
-                        FallbackState::Create(session_options, fdef_lib));
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        auto fallback_state, FallbackState::Create(session_options, fdef_lib));
+    ASSIGN_OR_RETURN_IN_IMPORT(
         auto mlir_module,
         ImportSavedModel(
             &context, meta_graph_def, *fallback_state,
             std::string(saved_model_dir),
             /*import_user_signatures=*/!options.enable_lazy_loading,
-            options.graph_execution_options.run_placer_grappler_on_functions));
+            options.graph_execution_options.run_placer_grappler_on_functions,
+            options.graph_execution_options.enable_tfrt_gpu));
 
     auto import_duration = absl::Now() - import_start_time;
     saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
@@ -538,7 +506,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
     auto compile_start_time = absl::Now();
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN_IN_COMPILE(
         auto initializers_and_signatures,
         GetInitializersAndSignatures(mlir_module.get(), saved_model_dir));
     // If lazy loading is enabled, the user signatures are not exported via MLIR
@@ -549,7 +517,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
                                     meta_graph_def.signature_def(), options);
     }
     tfrt::BefBuffer bef;
-    TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
+    RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
         options.graph_execution_options.compile_options, mlir_module.get(),
         &bef));
 
@@ -561,17 +529,17 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
 
     // Step 3: Initialize runtime states using special BEF functions.
     auto init_start_time = absl::Now();
-    TF_ASSIGN_OR_RETURN(auto bef_file,
-                        tfrt::CreateBefFileFromBefBuffer(
-                            *options.graph_execution_options.runtime, bef));
+    ASSIGN_OR_RETURN_IN_INIT(
+        auto bef_file, tfrt::CreateBefFileFromBefBuffer(
+                           *options.graph_execution_options.runtime, bef));
 
     auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
     auto resource_context = CreateResourceContext(
         *options.graph_execution_options.runtime, tpu_model_resource.get(),
         options.graph_execution_options.compile_options.tpu_target);
-    TF_RETURN_IF_ERROR(InitSavedModel(initializers_and_signatures,
-                                      bef_file.get(), options,
-                                      resource_context.get(), *fallback_state));
+    RETURN_IF_ERROR_IN_INIT(
+        InitSavedModel(initializers_and_signatures, bef_file.get(), options,
+                       resource_context.get(), *fallback_state));
 
     auto init_duration = absl::Now() - init_start_time;
     saved_model_init_time_seconds->GetCell(std::string(saved_model_dir))
@@ -579,8 +547,8 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     LOG(INFO) << "TFRT finished initializing savedmodel. Took "
               << absl::ToInt64Milliseconds(init_duration) << " ms.";
 
-    TF_ASSIGN_OR_RETURN(
-        auto graph_executor,
+    ASSIGN_OR_RETURN_WITH_STAGE_INFO(
+        "graph_executor creation", auto graph_executor,
         GraphExecutor::Create(options.graph_execution_options, *fallback_state,
                               tpu_model_resource.get(),
                               std::move(*meta_graph_def.mutable_graph_def())));
@@ -598,7 +566,7 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     *status = statusor_saved_model.status();
     return nullptr;
   }
-  *status = tensorflow::Status::OK();
+  *status = OkStatus();
   return std::move(statusor_saved_model).ValueOrDie();
 }
 
@@ -663,7 +631,7 @@ tensorflow::Status IsInputSpecsCorrect(
         << " input shape is wrong, expected : " << expected_input_spec.shape
         << ", actual: " << inputs[i].shape();
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -760,8 +728,10 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     // order as `input_tensors`.
     const auto& signature = signatures_.at(signature_name);
     const auto& input_names = signature.input_names;
-    TF_RETURN_IF_ERROR(
-        IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    if (run_options.validate_input_specs) {
+      TF_RETURN_IF_ERROR(
+          IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    }
     DCHECK(signature.captures.empty());
 
     TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())
@@ -828,7 +798,7 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     cur += len;
     DCHECK_LE(std::distance(flat_outputs.begin(), cur), flat_outputs.size());
   }
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
 tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
@@ -956,10 +926,10 @@ StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 1: Import the combined subgraph from proto to an MLIR module.
   mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ImportSubgraph(&context, joined_signature.input_nodes,
-                                     joined_signature.output_nodes,
-                                     joined_signature.target_nodes));
+  ASSIGN_OR_RETURN_IN_IMPORT(
+      auto module, ImportSubgraph(&context, joined_signature.input_nodes,
+                                  joined_signature.output_nodes,
+                                  joined_signature.target_nodes));
 
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
@@ -968,16 +938,16 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       runtime(), tpu_model_resource_.get(),
       options_.graph_execution_options.compile_options.tpu_target);
 
-  TF_RETURN_IF_ERROR(tensorflow::ConvertTfMlirToBef(
+  RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),
       &loading_result->bef));
 
   // Step 3: Initialize runtime states using special BEF functions.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN_IN_INIT(
       loading_result->bef_file,
       tfrt::CreateBefFileFromBefBuffer(
           *options_.graph_execution_options.runtime, loading_result->bef));
-  TF_RETURN_IF_ERROR(RunInitializers(
+  RETURN_IF_ERROR_IN_INIT(RunInitializers(
       /*initializers_and_signatures=*/{},
       options_.graph_execution_options.model_metadata,
       loading_result->bef_file.get(), *options_.graph_execution_options.runtime,

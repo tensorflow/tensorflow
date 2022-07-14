@@ -21,9 +21,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -47,7 +47,7 @@ namespace {
 
 class BufferReuseAnalysis {
  public:
-  explicit BufferReuseAnalysis(FuncOp f) { build(f); }
+  explicit BufferReuseAnalysis(func::FuncOp f) { build(f); }
 
   static constexpr int32_t kIndexAmbiguous = -1;
 
@@ -64,20 +64,20 @@ class BufferReuseAnalysis {
   }
 
  private:
-  void build(FuncOp &f) {
+  void build(func::FuncOp &f) {
     BufferViewFlowAnalysis aliases(f);
     find_output_indices(f, aliases);
     find_reuse_candiates(f, aliases);
   }
 
-  void find_output_indices(FuncOp &f, BufferViewFlowAnalysis &aliases) {
+  void find_output_indices(func::FuncOp &f, BufferViewFlowAnalysis &aliases) {
     f.walk([&](memref::AllocOp alloc_op) {
       int32_t output_index = kIndexAmbiguous;
       int count_return_uses = 0;
       auto buffer_aliases = aliases.resolve(alloc_op.getResult());
       for (Value alias : buffer_aliases) {
         for (auto &use : alias.getUses()) {
-          if (isa<ReturnOp>(use.getOwner())) {
+          if (isa<func::ReturnOp>(use.getOwner())) {
             int32_t index = use.getOperandNumber();
             if (count_return_uses++ == 0)
               output_index = index;
@@ -90,7 +90,7 @@ class BufferReuseAnalysis {
     });
   }
 
-  void find_reuse_candiates(FuncOp &f, BufferViewFlowAnalysis &aliases) {
+  void find_reuse_candiates(func::FuncOp &f, BufferViewFlowAnalysis &aliases) {
     Liveness liveness(f);
     f.walk([&](Block *block) {
       find_reuse_candiates(block, aliases, liveness.getLiveness(block),
@@ -173,7 +173,7 @@ class BufferReuseAnalysis {
     return first_use;
   }
 
-  std::vector<Value> get_buffer_arguments(FuncOp &f) {
+  std::vector<Value> get_buffer_arguments(func::FuncOp &f) {
     std::vector<Value> buffer_arguments;
     for (BlockArgument arg : f.getArguments()) {
       if (arg.getType().isa<BaseMemRefType>()) buffer_arguments.push_back(arg);
@@ -263,7 +263,7 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateBufferReusePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

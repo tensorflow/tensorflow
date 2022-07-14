@@ -88,9 +88,9 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     In explicit batch mode the whole graph is converted using a single engine.
     """
     if run_params.dynamic_shape:
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
     else:
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
 
 class StaticInputTest(TrtModeTestBase):

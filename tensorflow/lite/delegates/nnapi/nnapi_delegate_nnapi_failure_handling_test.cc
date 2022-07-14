@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -61,7 +62,8 @@ class AddSubOpsAcceleratedModel : public MultiOpModel {
       : MultiOpModel() {
     StatefulNnApiDelegate::Options options;
     options.accelerator_name = accelerator_name.c_str();
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options);
     SetDelegate(stateful_delegate_.get());
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);
@@ -127,7 +129,7 @@ TEST_F(NnApiFailureHandlingTest, DelegateShouldFailImmediatelyIfUnableToAddOp) {
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   m.PopulateTensor<float>(m.input3(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(add_op_invocation_count, 1);
 }

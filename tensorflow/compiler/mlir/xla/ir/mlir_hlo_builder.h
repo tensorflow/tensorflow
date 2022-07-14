@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -46,7 +47,7 @@ class MlirHloBuilder : public XlaBuilder {
  public:
   // Constructs builder for the given function. New operations are added to the
   // beginning of the function, if it is non empty and has a block.
-  explicit MlirHloBuilder(mlir::FuncOp func)
+  explicit MlirHloBuilder(mlir::func::FuncOp func)
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
         loc_(builder_.getUnknownLoc()) {}
@@ -134,12 +135,12 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> CustomCallInternal(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape, const std::string& opaque,
-      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
-      const Literal* literal, absl::optional<Window> window,
-      absl::optional<ConvolutionDimensionNumbers> dnums,
+      const Literal* literal, std::optional<Window> window,
+      std::optional<ConvolutionDimensionNumbers> dnums,
       CustomCallSchedule schedule, CustomCallApiVersion api_version) override;
 
   StatusOr<XlaOp> ReduceInternal(
@@ -184,8 +185,8 @@ class MlirHloBuilder : public XlaBuilder {
       absl::Span<const int64_t> slice_sizes, bool indices_are_sorted) override;
 
   StatusOr<XlaOp> ScatterInternal(
-      const Shape& shape, XlaOp input, XlaOp scatter_indices, XlaOp updates,
-      const XlaComputation& update_computation,
+      const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
+      absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
       const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
       bool unique_indices) override;
 

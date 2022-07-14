@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-parallel-execute-to-islands | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @testEmptyRegions
-func @testEmptyRegions() {
+func.func @testEmptyRegions() {
   tf_executor.graph {
     tf_executor.island() {
       "tf_device.parallel_execute"() ({
@@ -13,7 +13,7 @@ func @testEmptyRegions() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      [[ISLAND_0_CTRL:%.+]] = tf_executor.island {
@@ -25,7 +25,7 @@ func @testEmptyRegions() {
 
 // CHECK-LABEL: func @testDataOperandsAndResults
 // CHECK-SAME: ([[ARG_0:%.+]]: tensor<i1>)
-func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
+func.func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
   %0:2 = tf_executor.graph {
     %1:2 = tf_executor.island {
       %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
@@ -43,7 +43,7 @@ func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
     }
     tf_executor.fetch %3#0, %3#1 : tensor<i1>, tensor<i32>
   }
-  return
+  func.return
 }
 
 // CHECK:      [[INPUT_A:%.+]], {{%.+}} = tf_executor.island {
@@ -59,7 +59,7 @@ func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
 
 
 // CHECK-LABEL: func @testControlOperands
-func @testControlOperands() {
+func.func @testControlOperands() {
   %0:2 = tf_executor.graph {
     %1 = tf_executor.island {
       tf_executor.yield
@@ -76,7 +76,7 @@ func @testControlOperands() {
     }
     tf_executor.fetch %2#0, %2#1 : tensor<i1>, tensor<i32>
   }
-  return
+  func.return
 }
 
 // CHECK:      [[INPUT_CTRL:%.+]] = tf_executor.island {
@@ -90,7 +90,7 @@ func @testControlOperands() {
 
 
 // CHECK-LABEL: func @testControlResults
-func @testControlResults() {
+func.func @testControlResults() {
   tf_executor.graph {
     %0:3 = tf_executor.island {
       %1:2 = "tf_device.parallel_execute"() ({
@@ -107,7 +107,7 @@ func @testControlResults() {
     }
     tf_executor.fetch %3 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK:      {{%.+}}, [[ISLAND_0_CTRL:%.+]] = tf_executor.island {
@@ -122,7 +122,7 @@ func @testControlResults() {
 
 
 // CHECK-LABEL: func @testSomeRegionNoUsers
-func @testSomeRegionNoUsers() {
+func.func @testSomeRegionNoUsers() {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.island {
       %2:2 = "tf_device.parallel_execute"() ({
@@ -136,7 +136,7 @@ func @testSomeRegionNoUsers() {
     }
     tf_executor.fetch %1#0 : tensor<i1>
   }
-  return
+  func.return
 }
 
 // CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
@@ -146,3 +146,35 @@ func @testSomeRegionNoUsers() {
 // CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"()
 // CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
 // CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]], [[ISLAND_1_CTRL]] :
+
+// -----
+
+// Tests a ParallelExecute with a single region.
+
+// CHECK-LABEL: func @testSingleton
+// CHECK-SAME: ([[ARG_0:%.+]]: tensor<i1>)
+func.func @testSingleton(%arg0 : tensor<i1>) {
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.island {
+      %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %2 : tensor<i1>
+    }
+    %3:2 = tf_executor.island() {
+      %4 = "tf_device.parallel_execute"() ({
+        %5 = "tf.opB"(%1#0) : (tensor<i1>) -> tensor<i1>
+        tf_device.return %5 : tensor<i1>
+      }) {} : () -> tensor<i1>
+      tf_executor.yield %4 : tensor<i1>
+    }
+    tf_executor.fetch %3#0 : tensor<i1>
+  }
+  func.return
+}
+
+// CHECK:      [[INPUT_A:%.+]], {{%.+}} = tf_executor.island {
+// CHECK-NEXT:   [[OP_A_OUTPUT:%.+]] = "tf.opA"([[ARG_0]])
+// CHECK-NEXT:   tf_executor.yield [[OP_A_OUTPUT]] :
+// CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {
+// CHECK-NEXT:   [[OP_B_OUTPUT:%.+]] = "tf.opB"([[INPUT_A]])
+// CHECK:        tf_executor.yield [[OP_B_OUTPUT]] :
+// CHECK:      tf_executor.fetch [[ISLAND_0_OUTPUT]] :

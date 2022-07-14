@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_DEPTHWISE_CONV_3X3_STRIDE_H2_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_DEPTHWISE_CONV_3X3_STRIDE_H2_H_
 
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -96,14 +98,14 @@ void DepthWiseConv3x3StrideH2::UploadWeightsAndBiases(
     desc.size = float4_size * elements_count;
     desc.data = std::move(data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.size = int2(texture_width, texture_height);
     desc.data = std::move(data);
     args_.AddObject("weights",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 

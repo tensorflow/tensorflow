@@ -49,7 +49,7 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
                                TypeIndex::Make<T>());
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates a ref-counting resource handle for the given resource, where the
@@ -61,7 +61,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
   TF_RETURN_IF_ERROR(
       mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(b/198162355): Merge this class with ResourceOpKernel.

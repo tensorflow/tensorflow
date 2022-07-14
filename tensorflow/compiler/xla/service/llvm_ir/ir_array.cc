@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
+#include <optional>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "llvm/IR/Constants.h"
@@ -89,9 +91,12 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
     // linear is in bounds.
     auto* quot = b->CreateUDiv(linear, divisor, "quot");
     if (i < layout.minor_to_major_size() - 1) {
+      llvm::Value* casted_dynamic_dim =
+          b->CreateIntCast(dynamic_dims[dimension], quot->getType(),
+                           /*isSigned=*/true);
       (*multidim)[dimension] =
-          b->CreateURem(quot, dynamic_dims[dimension], "dim_value");
-      divisor = b->CreateMul(divisor, dynamic_dims[dimension], "divisor");
+          b->CreateURem(quot, casted_dynamic_dim, "dim_value");
+      divisor = b->CreateMul(divisor, casted_dynamic_dim, "divisor");
     } else {
       (*multidim)[dimension] = quot;
     }
@@ -176,13 +181,16 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       << " should have a layout.";
 }
 
-IrArray::IrArray(llvm::Value* base_ptr, Shape shape)
-    : base_ptr_(base_ptr), shape_(std::move(shape)) {
+IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
+    : base_ptr_(base_ptr),
+      pointee_type_(pointee_type),
+      shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
+  CHECK(llvm::cast<llvm::PointerType>(base_ptr_->getType())
+            ->isOpaqueOrPointeeTypeMatches(pointee_type));
   int depth = 0;
-  element_type_ =
-      llvm::cast<llvm::PointerType>(base_ptr_->getType())->getElementType();
+  element_type_ = pointee_type;
   while (llvm::ArrayType* array_type =
              llvm::dyn_cast<llvm::ArrayType>(element_type_)) {
     element_type_ = array_type->getElementType();
@@ -211,14 +219,10 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   CHECK_EQ(multidim_.size(), output_shape.rank());
   std::vector<llvm::Value*> source_multidim_index(
       input_shape.rank(), llvm::UndefValue::get(index_type_));
-  auto trivial_reshape =
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape, output_shape);
-  if (std::get<0>(trivial_reshape)) {
-    // The 1-sized dimensions which only appear in 'input_shape'.
-    auto deleted_dims_indices = std::get<1>(trivial_reshape);
-    // The 1-sized dimensions which only appear in 'output_shape'.
-    auto inserted_dims_indices = std::get<2>(trivial_reshape);
 
+  if (std::optional<ShapeUtil::ShapeEqualityDescriptor> trivial_reshape =
+          ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape,
+                                                       output_shape)) {
     // This is a two-way merge of 'deleted_dims_indices' with indexing into
     // 'source_multidim_index', and a two-way merge of 'inserted_dims_indices'
     // with indexing into 'multidim_'. When we find a dimension in
@@ -227,11 +231,12 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // indices that appear in 'inserted_dims_indices').
     for (int64_t i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
          ++i) {
-      if (j == deleted_dims_indices.size() || deleted_dims_indices[j] > i) {
+      if (j == trivial_reshape->deleted_dimensions.size() ||
+          trivial_reshape->deleted_dimensions[j] > i) {
         // This is a dimension that was preserved. Take the matching value from
         // multidim_.
-        while (l < inserted_dims_indices.size() &&
-               inserted_dims_indices[l] == k) {
+        while (l < trivial_reshape->inserted_dimensions.size() &&
+               trivial_reshape->inserted_dimensions[l] == k) {
           // Skip 1-sized dimensions.
           ++k;
           ++l;
@@ -507,8 +512,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
-  return b->CreateInBoundsGEP(base_ptr_->getType()->getPointerElementType(),
-                              base_ptr_, gep_indices,
+  return b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
                               llvm_ir::AsStringRef(name));
 }
 
@@ -531,8 +535,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* element_address =
       EmitArrayElementAddress(index, b, name, use_linear_index);
   llvm::LoadInst* load =
-      b->CreateLoad(element_address->getType()->getPointerElementType(),
-                    element_address, llvm_ir::AsStringRef(name));
+      b->CreateLoad(element_type_, element_address, llvm_ir::AsStringRef(name));
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
@@ -551,7 +554,8 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   IrArray new_irarray(
-      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_shape);
+      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_ir_type,
+      new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
 }

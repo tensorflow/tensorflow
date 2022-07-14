@@ -86,7 +86,7 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   if (!TensorShapeUtils::IsScalar(default_value.shape())) {
     return errors::InvalidArgument("default_value should be a scalar.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace

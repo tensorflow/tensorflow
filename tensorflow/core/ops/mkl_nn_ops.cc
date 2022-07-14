@@ -116,6 +116,7 @@ REGISTER_OP("_MklNativeFusedConv3D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .Attr("fused_ops: list(string) = []")
     .Attr("epsilon: float = 0.0001")
     .Attr("leakyrelu_alpha: float = 0.2")
@@ -138,6 +139,7 @@ REGISTER_OP("_FusedConv3D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .Attr("fused_ops: list(string) = []")
     .Attr("epsilon: float = 0.0001")
     .Attr("leakyrelu_alpha: float = 0.2")
@@ -1776,6 +1778,18 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklFusedMish")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {bfloat16, float}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+oneDNN version of the Mish operator. Uses oneDNN APIs to implement Mish operator.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is expected
+to invoke these operators.
 )doc");
 
 REGISTER_OP("_MklFusedBatchMatMulV2")

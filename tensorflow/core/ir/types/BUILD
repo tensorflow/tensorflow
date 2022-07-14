@@ -57,6 +57,14 @@ gentbl_cc_library(
             ["-gen-attrdef-defs"],
             "attributes.cc.inc",
         ),
+        (
+            ["-gen-enum-decls"],
+            "attributes_enum.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "attributes_enum.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "attributes.td",

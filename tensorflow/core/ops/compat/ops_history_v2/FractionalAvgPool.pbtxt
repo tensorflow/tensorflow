@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "FractionalAvgPool"
   input_arg {
     name: "value"

@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CHOLESKY_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CHOLESKY_THUNK_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -54,13 +54,6 @@ class CholeskyThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  template <typename T>
-  Status DoPotrfBatched(const ExecuteParams& params, GpuSolverContext* context);
-
-  template <typename T>
-  Status DoPotrfUnbatched(const ExecuteParams& params,
-                          GpuSolverContext* context);
-
   se::GpuAsmOpts asm_opts_;
   se::blas::UpperLower uplo_;
 
@@ -72,6 +65,17 @@ class CholeskyThunk : public Thunk {
   const int64_t batch_size_;
   const int64_t n_;
 };
+
+struct CholeskyParams {
+  int64_t n;
+  int64_t batch_size;
+  se::blas::UpperLower uplo;
+  se::DeviceMemoryBase a_buffer;
+  se::DeviceMemoryBase workspace_buffer;
+  se::DeviceMemoryBase info_buffer;
+};
+Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
+                   CholeskyParams* params, se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

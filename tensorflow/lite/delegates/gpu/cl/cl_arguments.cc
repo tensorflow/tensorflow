@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -106,7 +108,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     Buffer gpu_buffer;
     RETURN_IF_ERROR(
         gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, context));
-    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
+    *result = std::make_unique<Buffer>(std::move(gpu_buffer));
     return absl::OkStatus();
   }
 
@@ -115,7 +117,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     Texture2D gpu_texture;
     RETURN_IF_ERROR(
         gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
-    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
+    *result = std::make_unique<Texture2D>(std::move(gpu_texture));
     return absl::OkStatus();
   }
 
@@ -124,7 +126,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     LinearStorage gpu_storage;
     RETURN_IF_ERROR(
         gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, context));
-    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    *result = std::make_unique<LinearStorage>(std::move(gpu_storage));
     return absl::OkStatus();
   }
 
@@ -132,7 +134,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
   if (tensor_desc) {
     Tensor gpu_tensor;
     RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, context));
-    *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
+    *result = std::make_unique<Tensor>(std::move(gpu_tensor));
     return absl::OkStatus();
   }
 
@@ -452,10 +454,10 @@ absl::Status CLArguments::SetObjectRef(const std::string& name,
 
 absl::Status CLArguments::SetGPUResources(
     const std::string& name, const GPUResourcesWithValue& resources) {
-  for (const auto& r : resources.ints) {
+  for (const auto& r : resources.generic.ints) {
     RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
   }
-  for (const auto& r : resources.floats) {
+  for (const auto& r : resources.generic.floats) {
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {

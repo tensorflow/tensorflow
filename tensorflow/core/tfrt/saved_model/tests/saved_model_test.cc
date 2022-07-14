@@ -512,7 +512,8 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       "tensorflow/core/tfrt/saved_model/tests/toy_v1");
 
-  auto runtime = tensorflow::tfrt_stub::Runtime::Create();
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/4);
 
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_native_ops = false;
@@ -796,6 +797,7 @@ TEST_P(SavedModelPowTest, Pow) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.enable_grappler_function_optimizer = true;
   options.graph_execution_options.run_placer_grappler_on_functions =
       GetParam().run_placer_grappler_on_functions;
 

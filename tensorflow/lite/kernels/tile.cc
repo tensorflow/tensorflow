@@ -73,9 +73,9 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
           MultiplyShapeDims<int64_t>(*input->dims, multipliers,
                                      num_dimensions));
     default:
-      context->ReportError(
-          context, "Multipliers of type '%s' are not supported by tile.",
-          TfLiteTypeGetName(multipliers->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Multipliers of type '%s' are not supported by tile.",
+                         TfLiteTypeGetName(multipliers->type));
       return kTfLiteError;
   }
 }
@@ -233,9 +233,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, GetInputSafe(context, node, kInputMultipliers, &multipliers));
   // Only int32 and int64 multipliers type is supported.
   if (multipliers->type != kTfLiteInt32 && multipliers->type != kTfLiteInt64) {
-    context->ReportError(context,
-                         "Multipliers of type '%s' are not supported by tile.",
-                         TfLiteTypeGetName(multipliers->type));
+    TF_LITE_KERNEL_LOG(context,
+                       "Multipliers of type '%s' are not supported by tile.",
+                       TfLiteTypeGetName(multipliers->type));
     return kTfLiteError;
   }
 
@@ -290,8 +290,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       Tile<bool>(*(input->dims), input, multipliers, output);
       break;
     default:
-      context->ReportError(context, "Type '%s' is not supported by tile.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by tile.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

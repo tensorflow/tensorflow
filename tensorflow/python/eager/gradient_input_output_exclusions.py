@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,15 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Script to generate inputs/outputs exclusion lists for GradientTape.
+"""Code to generate inputs/outputs exclusion lists for GradientTape."""
 
-To use this script:
-
-bazel run tensorflow/python/eager:gradient_input_output_exclusions -- \
-  $PWD/tensorflow/python/eager/pywrap_gradient_exclusions.cc
-"""
-
-import argparse
 import sys
 
 import gast
@@ -364,15 +356,3 @@ def get_contents():
   contents += get_function("OpGradientUnusedOutputIndices",
                            get_entries("outputs"))
   return contents
-
-
-def main(output_file):
-  with open(output_file, "w") as fp:
-    fp.write(get_contents())
-
-
-if __name__ == "__main__":
-  arg_parser = argparse.ArgumentParser()
-  arg_parser.add_argument("output", metavar="O", type=str, help="Output file.")
-  args = arg_parser.parse_args()
-  main(args.output)

@@ -1362,6 +1362,41 @@ class TensorArraySpec(type_spec.TypeSpec):
     self._dynamic_size = dynamic_size
     self._infer_shape = infer_shape
 
+  def is_subtype_of(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, TensorArraySpec) and
+            self._dtype == other._dtype and
+            self._dynamic_size == other._dynamic_size)
+
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    # pylint: disable=protected-access
+    if not all(isinstance(other, TensorArraySpec) for other in others):
+      return False
+
+    common_shape = self._element_shape.most_specific_common_supertype(
+        other._element_shape for other in others)
+    if common_shape is None:
+      return None
+
+    if not all(self._dtype == other._dtype for other in others):
+      return None
+
+    if not all(self._dynamic_size == other._dynamic_size for other in others):
+      return None
+
+    infer_shape = self._infer_shape and all(
+        other._infer_shape for other in others)
+
+    return TensorArraySpec(common_shape, self._dtype, self._dynamic_size,
+                           infer_shape)
+
   def is_compatible_with(self, other):
     # pylint: disable=protected-access
     if not isinstance(other, type_spec.TypeSpec):
@@ -1372,15 +1407,6 @@ class TensorArraySpec(type_spec.TypeSpec):
             self._dtype.is_compatible_with(other._dtype) and
             self._element_shape.is_compatible_with(other._element_shape) and
             self._dynamic_size == other._dynamic_size)
-
-  def most_specific_compatible_type(self, other):
-    # pylint: disable=protected-access
-    if not self.is_compatible_with(other):
-      raise ValueError(f"Type `{self}` is not compatible with `{other}`.")
-    infer_shape = self._infer_shape and other._infer_shape
-    return TensorArraySpec(
-        self._element_shape.most_specific_compatible_shape(
-            other._element_shape), self._dtype, self._dynamic_size, infer_shape)
 
   def _serialize(self):
     return (self._element_shape, self._dtype, self._dynamic_size,

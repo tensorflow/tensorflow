@@ -29,6 +29,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -89,6 +90,18 @@ class MapFnTest(test.TestCase):
           fn_output_signature=ragged_tensor.RaggedTensorSpec([None], rt.dtype))
       self.assertAllEqual([[2, 3], [4]], result)
       self.assertEqual([2, None], result.shape.as_list())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMapVariable(self):
+    v = resource_variable_ops.ResourceVariable([1, 2])
+    self.evaluate(v.initializer)
+
+    def loop_fn(x):
+      return x + 1
+
+    result = map_fn.map_fn(loop_fn, v)
+    expected_result = [2, 3]
+    self.assertAllEqual(result, expected_result)
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):

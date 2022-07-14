@@ -36,10 +36,6 @@ namespace tensorflow {
 // encapsulate subgraphs pass.
 extern const char* const kXlaClusterAttr;
 
-// The attribute that marks nodes in a cluster to be placed outside the xla
-// compilation by the encapsulate subgraphs pass.
-extern const char* const kXlaOutsideCompilationAttr;
-
 // The attribute that marks certain inputs to a Node as required to be a
 // constant at compile time.  If this attribute is present then the
 // CompileTimeConstantInput information in the corresponding XlaOpKernel is
@@ -65,7 +61,7 @@ StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
 
 // Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
 // otherwise returns nullopt.
-absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
+std::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
 
 // Removes `node_def` its XLA cluster (by clearing its _XlaCluster attribute).
 void RemoveFromXlaCluster(NodeDef* node_def);

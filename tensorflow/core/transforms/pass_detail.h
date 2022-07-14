@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
 namespace tfg {

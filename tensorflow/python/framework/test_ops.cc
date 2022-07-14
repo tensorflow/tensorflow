@@ -38,7 +38,7 @@ REGISTER_OP("KernelLabelRequired")
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &out));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("GraphDefVersion")
@@ -306,7 +306,7 @@ class MakeWeakResourceHandleOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_CPU),
                         MakeWeakResourceHandleOp);
-REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_DEFAULT),
                         MakeWeakResourceHandleOp);
 
 class TestAttrOp : public OpKernel {

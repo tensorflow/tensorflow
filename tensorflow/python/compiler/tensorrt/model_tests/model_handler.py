@@ -22,7 +22,6 @@ import tempfile
 import time
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Union
 
-from absl import logging
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
@@ -37,6 +36,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import signature_constants

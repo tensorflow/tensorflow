@@ -64,8 +64,8 @@ class ReshapeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["reshape-%d" % i for i in range(7)] +
-                         ["reshape-%d/shape" % i for i in range(7)]
+        "TRTEngineOp_000": ["reshape-%d" % i for i in range(7)] +
+                           ["reshape-%d/shape" % i for i in range(7)]
     }
 
   def ShouldRunTest(self, run_params):
@@ -91,7 +91,7 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "transpose-1", "transpose-1/perm", "transposeback",
             "transposeback/perm"
         ]

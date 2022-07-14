@@ -18,10 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {

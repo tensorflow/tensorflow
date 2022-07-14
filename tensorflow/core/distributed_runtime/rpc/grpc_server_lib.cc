@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -170,7 +171,7 @@ Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
                             "\" was not defined in cluster");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcServer::Init(const GrpcServerOptions& opts) {
@@ -337,7 +338,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   LocalMaster::Register(target(), master_impl_.get(),
                         config.operation_timeout_in_ms());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
@@ -360,7 +361,7 @@ Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
     }
     TF_RETURN_IF_ERROR(channel_spec->AddHostPortsJob(job.name(), host_ports));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
@@ -402,7 +403,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   }
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
       channel_cache, grpc_worker_env(), worker_impl(), name_prefix);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GrpcServer::Start() {
@@ -435,11 +436,11 @@ Status GrpcServer::Start() {
 
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
-      return Status::OK();
+      return OkStatus();
     }
     case STARTED:
       LOG(INFO) << "Server already started (target: " << target() << ")";
-      return Status::OK();
+      return OkStatus();
     case STOPPED:
       return errors::FailedPrecondition("Server has stopped.");
     default:
@@ -482,7 +483,7 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =
       worker_env_.collective_executor_mgr.get();
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(haoyuzhang): Remove this method once we have a mechanism to directly set
@@ -492,7 +493,20 @@ Status GrpcServer::SetCoordinationServiceAgentInstance(
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceAgentInstance(agent);
-  return Status::OK();
+  return OkStatus();
+}
+
+Status GrpcServer::StopCoordinationService() {
+  // Note: the sequence of events is important here.
+  // 1. Agent must be torn down before the service as it needs to notify the
+  // service.
+  // 2. Remove RPC handlers' access to agent/service first before destructing
+  // them within the session manager to prevent data races.
+  TF_RETURN_IF_ERROR(SetCoordinationServiceAgentInstance(nullptr));
+  worker_env()->session_mgr->TeardownCoordinationServiceAgent();
+  coordination_service_->Shutdown();
+  worker_env()->session_mgr->TeardownCoordinationService();
+  return OkStatus();
 }
 
 Status GrpcServer::Stop() {
@@ -500,13 +514,13 @@ Status GrpcServer::Stop() {
   switch (state_) {
     case NEW:
       state_ = STOPPED;
-      return Status::OK();
+      return OkStatus();
     case STARTED:
       return errors::Unimplemented(
           "Clean shutdown is not currently implemented");
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
-      return Status::OK();
+      return OkStatus();
     default:
       LOG(FATAL);
   }
@@ -518,7 +532,7 @@ Status GrpcServer::Join() {
     case NEW:
       // Prevent the server from being started subsequently.
       state_ = STOPPED;
-      return Status::OK();
+      return OkStatus();
     case STARTED:
     case STOPPED:
       master_thread_.reset();
@@ -527,7 +541,7 @@ Status GrpcServer::Join() {
       for (auto& thread : extra_service_threads_) {
         thread.reset();
       }
-      return Status::OK();
+      return OkStatus();
     default:
       LOG(FATAL);
   }
@@ -567,7 +581,7 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
     return s;
   }
   *out_server = std::move(ret);
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -585,7 +599,7 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
     return s;
   }
   out_server->reset(dynamic_cast<GrpcServer*>(server.release()));
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

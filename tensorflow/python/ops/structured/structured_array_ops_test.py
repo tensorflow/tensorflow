@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +28,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import row_partition
+from tensorflow.python.ops.ragged.dynamic_ragged_shape import DynamicRaggedShape
 from tensorflow.python.ops.structured import structured_array_ops
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
@@ -263,6 +263,22 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
 
     actual2 = array_ops.size_v2(st, out_type=dtype)
     self.assertAllEqual(actual2, expected)
+
+  def test_shape_v2(self):
+    rt = ragged_tensor.RaggedTensor.from_row_lengths(["a", "b", "c"], [1, 2])
+    st = StructuredTensor.from_fields_and_rank({"r": rt}, rank=2)
+    actual = array_ops.shape_v2(st, out_type=dtypes.int64)
+    actual_static_lengths = actual.static_lengths()
+    self.assertAllEqual([2, (1, 2)], actual_static_lengths)
+
+  def test_shape(self):
+    rt = ragged_tensor.RaggedTensor.from_row_lengths(["a", "b", "c"], [1, 2])
+    st = StructuredTensor.from_fields_and_rank({"r": rt}, rank=2)
+    actual = array_ops.shape(st, out_type=dtypes.int64).static_lengths()
+    actual_v2 = array_ops.shape_v2(st, out_type=dtypes.int64).static_lengths()
+    expected = [2, (1, 2)]
+    self.assertAllEqual(expected, actual)
+    self.assertAllEqual(expected, actual_v2)
 
   @parameterized.named_parameters([
       dict(
@@ -920,14 +936,19 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
     result = structured_array_ops._structured_tensor_like(foo)
     self.assertAllEqual([{}, {}, {}, {}], result)
 
+  # Note that we have to be careful about whether the indices are int32
+  # or int64.
   def testStructuredTensorArrayRankOneUnknownShape(self):
     """Fully test structured_tensor_array_like."""
     @def_function.function
     def my_fun(my_shape):
       my_zeros = array_ops.zeros(my_shape)
       return structured_array_ops._structured_tensor_like(my_zeros)
+
     result = my_fun(array_ops.constant(4))
-    self.assertAllEqual([{}, {}, {}, {}], result)
+    shape = DynamicRaggedShape._from_inner_shape([4], dtype=dtypes.int32)
+    expected = StructuredTensor.from_shape(shape)
+    self.assertAllEqual(expected, result)
 
   def testStructuredTensorArrayRankTwoUnknownShape(self):
     """Fully test structured_tensor_array_like."""

@@ -61,25 +61,6 @@ struct ConstantKey {
   int64_t domain;
 };
 
-template <bool kIsLayoutSensitive>
-struct IotaKey {
-  template <typename H>
-  friend H AbslHashValue(H h, const IotaKey<kIsLayoutSensitive>& key) {
-    h = H::combine(std::move(h), key.domain, key.hlo->iota_dimension());
-    return Shape::Hash<H, kIsLayoutSensitive>(std::move(h), key.hlo->shape());
-  }
-  friend bool operator==(const IotaKey<kIsLayoutSensitive>& lhs,
-                         const IotaKey<kIsLayoutSensitive>& rhs) {
-    return lhs.domain == rhs.domain &&
-           (kIsLayoutSensitive ? Shape::Equal()
-                               : Shape::Equal().IgnoreLayout())(
-               lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->iota_dimension() == rhs.hlo->iota_dimension();
-  }
-  HloIotaInstruction* hlo;
-  int64_t domain;
-};
-
 // Find and combine identical constants. Constants are identical if they have
 // the same type and value.
 //
@@ -92,7 +73,6 @@ StatusOr<bool> CombineConstants(HloComputation* computation) {
   // equivalent instructions. This avoids extreme quadratic behavior with many
   // scalar constants.
   absl::flat_hash_set<ConstantKey<kIsLayoutSensitive>> constants;
-  absl::flat_hash_set<IotaKey<kIsLayoutSensitive>> iotas;
   int64_t combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -106,13 +86,6 @@ StatusOr<bool> CombineConstants(HloComputation* computation) {
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
       auto insert_result = constants.insert(ConstantKey<kIsLayoutSensitive>{
           constant_inst, domain_map->GetDomainId(instruction)});
-      if (!insert_result.second) {
-        match = insert_result.first->hlo;
-      }
-    }
-    if (auto* iota_inst = DynCast<HloIotaInstruction>(instruction)) {
-      auto insert_result = iotas.insert(IotaKey<kIsLayoutSensitive>{
-          iota_inst, domain_map->GetDomainId(instruction)});
       if (!insert_result.second) {
         match = insert_result.first->hlo;
       }
@@ -148,9 +121,31 @@ struct CseKey {
       }
       return H::combine(std::move(h), window_dims.size());
     };
-    for (auto operand : instruction->operands()) {
-      h = H::combine(std::move(h), operand->unique_id());
+
+    // Hash operands, ignoring operand order on commutative ops.
+    if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
+      CHECK_EQ(instruction->operand_count(), 2);
+      auto id0 = instruction->operand(0)->unique_id();
+      if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
+        id0 = 0;
+      }
+      auto id1 = instruction->operand(1)->unique_id();
+      if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
+        id1 = 0;
+      }
+      if (id0 > id1) {
+        std::swap(id0, id1);
+      }
+      h = H::combine(std::move(h), id0, id1);
+    } else {
+      for (auto operand : instruction->operands()) {
+        if (operand->opcode() == HloOpcode::kIota) {
+          continue;
+        }
+        h = H::combine(std::move(h), operand->unique_id());
+      }
     }
+
     for (auto c : instruction->called_computations()) {
       h = H::combine(std::move(h), c->root_instruction()->opcode());
     }
@@ -215,15 +210,26 @@ struct CseKey {
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
 
-  const std::function<bool(const HloInstruction*, const HloInstruction*)>
-      eq_instructions = std::equal_to<const HloInstruction*>();
+  const auto eq_instructions = [&](const HloInstruction* a,
+                                   const HloInstruction* b) {
+    if (a == b) {
+      return true;
+    }
+    if (a->opcode() != b->opcode() || a->opcode() != HloOpcode::kIota) {
+      return false;
+    }
+    return a->dimensions(0) == b->dimensions(0) &&
+           (is_layout_sensitive_
+                ? ShapeUtil::Equal(a->shape(), b->shape())
+                : ShapeUtil::Compatible(a->shape(), b->shape()));
+  };
   const std::function<bool(const HloComputation*, const HloComputation*)>
       eq_computations = [](const HloComputation* lhs,
                            const HloComputation* rhs) { return *lhs == *rhs; };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
-    return lhs.hlo->Identical(*rhs.hlo, eq_instructions, eq_computations,
-                              is_layout_sensitive_);
+    return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_);
   };
 
   for (auto* computation : module->computations()) {
@@ -261,9 +267,27 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         HloInstruction* equivalent_instruction = pair.first->hlo;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        TF_RETURN_IF_ERROR(
+            computation->RemoveInstructionAndUnusedOperands(instruction));
         changed = true;
         continue;
+      }
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        HloInstruction* a = instruction->mutable_operand(i);
+        if (a->opcode() != HloOpcode::kIota) {
+          continue;
+        }
+        for (int64_t j = i + 1; j < instruction->operand_count(); ++j) {
+          HloInstruction* b = instruction->mutable_operand(j);
+          if (a == b || !eq_instructions(a, b)) {
+            continue;
+          }
+          TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+          changed = true;
+          if (b->IsDead()) {
+            TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          }
+        }
       }
     }
   }

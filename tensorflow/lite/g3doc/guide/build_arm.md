@@ -29,7 +29,7 @@ page available for this.
 
 If you have a Bazel project or if you want to use TF ops, you'd better use Bazel
 build system. You'll use the integrated
-[ARM GCC 8.3 toolchains](https://github.com/tensorflow/toolchains/tree/master/toolchains/embedded/arm-linux)
+[ARM GCC 8.3 toolchains](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/toolchains/embedded/arm-linux)
 with Bazel to build an ARM32/64 shared library.
 
 | Target Architecture | Bazel Configuration     | Compatible Devices         |

@@ -1,7 +1,7 @@
 // RUN: tf-opt -split-input-file -loop-invariant-code-motion %s | FileCheck %s
 
 // CHECK: while_1([[ARG0:%[^ :]*]]: tensor<i32>, [[ARG1:%[^ :]*]]: tensor<1xf32>)
-func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+func.func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // CHECK: [[CST:%[^ ]*]] = arith.constant dense<1> : tensor<i32>
   // CHECK: "tf.WhileRegion"([[ARG0]], [[ARG1]])
   // CHECK: (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)
@@ -22,14 +22,13 @@ func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
       "tf.Yield"(%1, %2) : (tensor<*xi32>, tensor<*xf32>) -> ()
     }
   ) {is_stateless = false} : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
-  return %0#1 : tensor<1xf32>
+  func.return %0#1 : tensor<1xf32>
 }
 
 // -----
 
-// Test WhileRegionOp::isDefinedOutsideOfLoop
 // CHECK-LABEL: testWhileRegionisDefinedOutsideOfLoop
-func @testWhileRegionisDefinedOutsideOfLoop(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<4xf32> {
+func.func @testWhileRegionisDefinedOutsideOfLoop(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<4xf32> {
   %a = "tf.Neg"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
   %b = "tf.Abs"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
   // Verify that the Div and Mul are hoisted out of the body
@@ -65,5 +64,5 @@ func @testWhileRegionisDefinedOutsideOfLoop(%arg0 : tensor<4xf32>, %arg1 : tenso
     }
   ) { is_stateless = false } : (tensor<4xf32>, tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
 
-  return %0#0 : tensor<4xf32>
+  func.return %0#0 : tensor<4xf32>
 }

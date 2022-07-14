@@ -60,7 +60,7 @@ std::string GetPaddingCode(const OperationDef& op_def,
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT4 result = INIT_FLT4(0.0);\n";
+  c += "  args.src_tensor::type result = args.src_tensor::zero_value;\n";
   c += "  int s_x = X - args.prepended_x;\n";
   c += "  int s_y = Y - args.prepended_y;\n";
   if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
@@ -90,8 +90,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
              "0, "
              "args.src_tensor.Channels() - "
              "1);\n";
-        c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
-        c += "    result" + s + " = SELECT_BY_INDEX_FROM_FLT4(t, s_z % 4);\n";
+        c += "    args.src_tensor.ReadPerChannel(result" + s +
+             ", s_x, s_y, s_z);\n";
         c += "  }\n";
       }
     }
@@ -119,8 +119,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
         c += "    int channel = start_channel + " + std::to_string(i) + ";\n";
         c += "    int s_z = channel - args.prepended_z;\n";
         c += "    if (s_z >= 0 && s_z < args.src_tensor.Channels()) {\n";
-        c += "      FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
-        c += "      result" + s + " = SELECT_BY_INDEX_FROM_FLT4(t, s_z % 4);\n";
+        c += "      args.src_tensor.ReadPerChannel(result" + s +
+             ", s_x, s_y, s_z);\n";
         c += "    }\n";
         c += "    }\n";
       }

@@ -271,8 +271,9 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       checkForAnomalies(context, abnormal_detected_host_flat);
       done();
     };
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, std::move(check_cb));
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, std::move(check_cb));
   }
 
  protected:

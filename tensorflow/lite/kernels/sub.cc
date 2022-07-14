@@ -458,7 +458,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
                                output);
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "output type %d is not supported, requires float|uint8|int32 types.",
         output->type);

@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -42,9 +44,8 @@ TEST(CApiSimple, Smoke) {
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);
 
-  // The options/model can be deleted immediately after interpreter creation.
+  // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
 
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterGetInputTensorCount(interpreter), 1);
@@ -100,6 +101,7 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(output[1], 9.f);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, QuantizationParams) {
@@ -109,8 +111,6 @@ TEST(CApiSimple, QuantizationParams) {
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, nullptr);
   ASSERT_NE(interpreter, nullptr);
-
-  TfLiteModelDelete(model);
 
   const std::array<int, 1> input_dims = {2};
   ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
@@ -160,6 +160,7 @@ TEST(CApiSimple, QuantizationParams) {
   EXPECT_EQ(dequantizedOutput1, 0.035298f);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, Delegate) {
@@ -183,9 +184,9 @@ TEST(CApiSimple, Delegate) {
 
   // Subsequent execution should behave properly (the delegate is a no-op).
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, DelegateFails) {
@@ -224,9 +225,8 @@ TEST(CApiSimple, ErrorReporter) {
       &reporter);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
-  // The options/model can be deleted immediately after interpreter creation.
+  // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
 
   // Invoke the interpreter before tensor allocation.
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteError);
@@ -237,6 +237,7 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, ValidModel) {
@@ -271,6 +272,193 @@ TEST(CApiSimple, InvalidModel) {
 TEST(CApiSimple, InvalidModelFromFile) {
   TfLiteModel* model = TfLiteModelCreateFromFile("invalid/path/foo.tflite");
   ASSERT_EQ(model, nullptr);
+}
+
+TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
+                             TfLiteOpaqueNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
+                          TfLiteOpaqueNode* node) {
+  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+  size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
+  void* data_ptr = TfLiteOpaqueTensorData(input);
+  float input_value;
+  memcpy(&input_value, data_ptr, input_bytes);
+
+  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
+  float output_value = std::sinh(input_value);
+  TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
+  return kTfLiteOk;
+}
+
+TEST(CApiSimple, CustomOpSupport) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate("Sinh", 1);
+  TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
+  TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  TfLiteInterpreterOptionsDelete(options);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  float input_value = 1.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, std::sinh(1.0f));
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteRegistrationExternalDelete(reg);
+}
+
+const TfLiteRegistration* find_builtin_op_add(void* user_data,
+                                              TfLiteBuiltinOperator op,
+                                              int version) {
+  static TfLiteRegistration registration{/*init=*/nullptr,
+                                         /*free=*/nullptr,
+                                         /*prepare=*/nullptr,
+                                         /*invoke=*/nullptr,
+                                         /*profiling_string=*/nullptr,
+                                         /*builtin_code=*/kTfLiteBuiltinAdd,
+                                         /*custom_name=*/nullptr,
+                                         /*version=*/1};
+  if (op == kTfLiteBuiltinAdd && version == 1) {
+    return &registration;
+  }
+  return nullptr;
+}
+
+const TfLiteRegistration* find_custom_op_sinh(void* user_data, const char* op,
+                                              int version) {
+  static TfLiteRegistration registration{/*init=*/nullptr,
+                                         /*free=*/nullptr,
+                                         /*prepare=*/nullptr,
+                                         /*invoke=*/nullptr,
+                                         /*profiling_string=*/nullptr,
+                                         /*builtin_code=*/kTfLiteBuiltinCustom,
+                                         /*custom_name=*/"Sinh",
+                                         /*version=*/1};
+  if (strcmp(op, "Sinh") == 0 && version == 1) {
+    return &registration;
+  }
+  return nullptr;
+}
+
+TEST(CApiSimple, CallbackOpResolver) {
+  tflite::internal::CallbackOpResolver resolver;
+  struct TfLiteOpResolverCallbacks callbacks {};
+  callbacks.find_builtin_op = find_builtin_op_add;
+  callbacks.find_custom_op = find_custom_op_sinh;
+
+  resolver.SetCallbacks(callbacks);
+  auto reg_add = resolver.FindOp(
+      static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinAdd), 1);
+  ASSERT_NE(reg_add, nullptr);
+  EXPECT_EQ(reg_add->builtin_code, kTfLiteBuiltinAdd);
+  EXPECT_EQ(reg_add->version, 1);
+  EXPECT_EQ(reg_add->registration_external, nullptr);
+
+  EXPECT_EQ(
+      resolver.FindOp(
+          static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinConv2d), 1),
+      nullptr);
+
+  auto reg_sinh = resolver.FindOp("Sinh", 1);
+  ASSERT_NE(reg_sinh, nullptr);
+  EXPECT_EQ(reg_sinh->builtin_code, kTfLiteBuiltinCustom);
+  EXPECT_EQ(reg_sinh->custom_name, "Sinh");
+  EXPECT_EQ(reg_sinh->version, 1);
+  EXPECT_EQ(reg_sinh->registration_external, nullptr);
+
+  EXPECT_EQ(resolver.FindOp("Cosh", 1), nullptr);
+}
+
+const TfLiteRegistration_V1* dummy_find_builtin_op_v1(void* user_data,
+                                                      TfLiteBuiltinOperator op,
+                                                      int version) {
+  static TfLiteRegistration_V1 registration_v1{
+      nullptr, nullptr,           nullptr, nullptr,
+      nullptr, kTfLiteBuiltinAdd, nullptr, 1};
+  if (op == kTfLiteBuiltinAdd) {
+    return &registration_v1;
+  }
+  return nullptr;
+}
+
+const TfLiteRegistration_V1* dummy_find_custom_op_v1(void* user_data,
+                                                     const char* op,
+                                                     int version) {
+  static TfLiteRegistration_V1 registration_v1{
+      nullptr, nullptr, nullptr, nullptr, nullptr, kTfLiteBuiltinCustom,
+      "Sinh",  1};
+  if (strcmp(op, "Sinh") == 0) {
+    return &registration_v1;
+  }
+  return nullptr;
+}
+
+TEST(CApiSimple, CallbackOpResolver_V1) {
+  tflite::internal::CallbackOpResolver resolver;
+  struct TfLiteOpResolverCallbacks callbacks {};
+  callbacks.find_builtin_op_v1 = dummy_find_builtin_op_v1;
+  callbacks.find_custom_op_v1 = dummy_find_custom_op_v1;
+
+  resolver.SetCallbacks(callbacks);
+  auto reg_add = resolver.FindOp(
+      static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinAdd), 1);
+  ASSERT_NE(reg_add, nullptr);
+  EXPECT_EQ(reg_add->builtin_code, kTfLiteBuiltinAdd);
+  EXPECT_EQ(reg_add->version, 1);
+  EXPECT_EQ(reg_add->registration_external, nullptr);
+
+  EXPECT_EQ(
+      resolver.FindOp(
+          static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinConv2d), 1),
+      nullptr);
+
+  // Query kTfLiteBuiltinAdd multiple times to check if caching logic works.
+  for (int i = 0; i < 10; ++i) {
+    auto reg_add = resolver.FindOp(
+        static_cast<::tflite::BuiltinOperator>(kTfLiteBuiltinAdd), 1);
+    ASSERT_NE(reg_add, nullptr);
+    EXPECT_EQ(reg_add->builtin_code, kTfLiteBuiltinAdd);
+    EXPECT_EQ(reg_add->version, 1);
+    EXPECT_EQ(reg_add->registration_external, nullptr);
+  }
+
+  auto reg_sinh = resolver.FindOp("Sinh", 1);
+  ASSERT_NE(reg_sinh, nullptr);
+  EXPECT_EQ(reg_sinh->builtin_code, kTfLiteBuiltinCustom);
+  EXPECT_EQ(reg_sinh->custom_name, "Sinh");
+  EXPECT_EQ(reg_sinh->version, 1);
+  EXPECT_EQ(reg_sinh->registration_external, nullptr);
+
+  EXPECT_EQ(resolver.FindOp("Cosh", 1), nullptr);
+
+  // Query "Sinh" multiple times to check if caching logic works.
+  for (int i = 0; i < 10; ++i) {
+    auto reg_sinh = resolver.FindOp("Sinh", 1);
+    ASSERT_NE(reg_sinh, nullptr);
+    EXPECT_EQ(reg_sinh->builtin_code, kTfLiteBuiltinCustom);
+    EXPECT_EQ(reg_sinh->custom_name, "Sinh");
+    EXPECT_EQ(reg_sinh->version, 1);
+    EXPECT_EQ(reg_sinh->registration_external, nullptr);
+  }
 }
 
 }  // namespace

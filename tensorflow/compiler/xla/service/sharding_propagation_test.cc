@@ -1909,7 +1909,7 @@ ENTRY %entry {
     auto sharding = ParseSharding(
                         "{{replicated metadata={op_name=\"b\"}}, "
                         "{devices=[2,1]0,1 metadata={op_name=\"c\"}}}")
-                        .ConsumeValueOrDie();
+                        .value();
     body_root->set_sharding(sharding);
     while_is_sharded(module.get(), sharding.WithoutMetadata(),
                      {{CreateMetadata("b")}, {CreateMetadata("c")}});
@@ -1921,12 +1921,11 @@ ENTRY %entry {
     auto acc_1 = FindInstruction(module.get(), "acc.1");
     EXPECT_NE(nullptr, acc_1);
     acc_1->set_sharding(
-        ParseSharding("{devices=[2,1]0,1 metadata={op_name=\"b\"}}")
-            .ConsumeValueOrDie());
+        ParseSharding("{devices=[2,1]0,1 metadata={op_name=\"b\"}}").value());
 
     while_is_sharded(
         module.get(),
-        ParseSharding("{{replicated}, {devices=[2,1]0,1}}").ConsumeValueOrDie(),
+        ParseSharding("{{replicated}, {devices=[2,1]0,1}}").value(),
         {{}, {CreateMetadata("b")}});
   }
   {
@@ -1938,17 +1937,17 @@ ENTRY %entry {
     acc_1->set_sharding(
         ParseSharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate "
                       "metadata={op_name=\"b\"}}")
-            .ConsumeValueOrDie());
+            .value());
     auto p0 = FindInstruction(module.get(), "p0");
     p0->set_sharding(
         ParseSharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate "
                       "metadata={op_name=\"c\"}}")
-            .ConsumeValueOrDie());
+            .value());
 
     while_is_sharded(module.get(),
                      ParseSharding("{{replicated}, "
                                    "{devices=[2,2]0,1,2,3}}")
-                         .ConsumeValueOrDie(),
+                         .value(),
                      {{}, {CreateMetadata("c"), CreateMetadata("b")}});
   }
 }
@@ -1995,8 +1994,8 @@ ENTRY %entry {
   // The change happens before the fixpt loop
   EXPECT_EQ(changed,
             !GetParam().propagate_metadata && !GetParam().clear_metadata);
-  auto sharding = ParseSharding("{{maximal device=1}, {maximal device=1}}")
-                      .ConsumeValueOrDie();
+  auto sharding =
+      ParseSharding("{{maximal device=1}, {maximal device=1}}").value();
   auto while_instr = FindInstruction(module.get(), "while");
   ASSERT_NE(nullptr, while_instr);
   std::vector<const HloInstruction*> instructions{
@@ -5612,6 +5611,48 @@ ENTRY %entry {
   EXPECT_THAT(to_auto, op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7}"));
 }
 
+TEST_F(ShardingPropagationTest, RefineUnspecifiedDimsWithManualConversion2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3,8] parameter(0)
+  %copy = f32[6,3,8] copy(%param0)
+  %annotate1 = f32[6,3,8] custom-call(%copy), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[2,1,1,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %to_manual = f32[3,3,8] custom-call(%annotate1),
+    custom_call_target="SPMDFullToShardShape",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[1,1,1,4,2]0,2,1,3,4,6,5,7 last_tile_dims={replicated,manual}}
+  %annotate2 = f32[3,3,8] custom-call(%to_manual), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[1,1,1,4,2]0,2,1,3,4,6,5,7 last_tile_dims={replicated,manual}}
+  %annotate3 = f32[3,3,8] custom-call(%annotate2), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[1,1,1,4,2]0,2,1,3,4,6,5,7 last_tile_dims={replicated,manual}}
+  %to_auto = f32[6,3,8] custom-call(%annotate3),
+    custom_call_target="SPMDShardToFullShape",
+    backend_config="unspecified_dims=[1,2]",
+    sharding={devices=[2,1,1,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  %copy.2 = f32[6,3,8] copy(%to_auto),
+    sharding={devices=[1,2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy.3 = f32[6,3,8] copy(%copy.2)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* copy = FindInstruction(module.get(), "copy");
+  ASSERT_NE(copy, nullptr);
+  EXPECT_THAT(
+      copy, op::Sharding(
+                "{devices=[2,2,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
 TEST_F(ShardingPropagationTest, DoNotRefineUnspecifiedDimsOnManual) {
   const char* const hlo_string = R"(
 HloModule module
@@ -5657,6 +5698,32 @@ ENTRY %reshape {
       instruction,
       op::Sharding(
           "{devices=[1,1,1,1,2,2]0,2,1,3 last_tile_dims={manual,replicated}}"));
+}
+
+TEST_F(ShardingPropagationTest, X64Combine) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[102,192,192] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3}
+  %param1 = f32[102,192,192] parameter(1),
+    sharding={devices=[1,2,2]0,1,2,3}
+  %custom-call = f64[102,192,192] custom-call(f32[102,192,192] %param0, f32[102,192,192] %param1), custom_call_target="X64Combine"
+  ROOT %copy = f64[102,192,192] copy(%custom-call),
+    sharding={devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(
+      instruction,
+      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
 }
 
 TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {
@@ -5785,6 +5852,87 @@ ENTRY %entry {
       FindInstruction(module.get(), "p2.copy");
 
   EXPECT_THAT(convert_instr, op::Sharding("{devices=[4,1]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, CSEPreventionOnly) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[] parameter(0), sharding={replicated}
+  %br = f32[4] broadcast(%param0), dimensions={}
+  %add = f32[4] add(%br, %br)
+  %annotate = f32[4] custom-call(%add), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={replicated}
+  ROOT %copy = f32[4] copy(%annotate), sharding={devices=[4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/false,
+                          /*cse_prevention_only=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* br = FindInstruction(module.get(), "br");
+  EXPECT_THAT(br, op::Sharding("{devices=[4]0,1,2,3}"));
+  EXPECT_THAT(br->sharding(), ShardingMetadata({CreateMetadata(
+                                  "_sharding_propagation_cse_prevention")}));
+  EXPECT_THAT(FindInstruction(module.get(), "annotate"),
+              AllOf(op::Sharding("{replicated}"), op::CustomCall()));
+  EXPECT_FALSE(FindInstruction(module.get(), "add")->has_sharding());
+}
+
+TEST_F(ShardingPropagationTest, RemoveCSEPrevention) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[] parameter(0), sharding={replicated}
+  %br = f32[4] broadcast(%param0), dimensions={},
+    sharding={devices=[4]0,1,2,3 metadata={op_name="_sharding_propagation_cse_prevention"}}
+  %add = f32[4] add(%br, %br)
+  %annotate = f32[4] custom-call(%add), custom_call_target="Sharding",
+    backend_config="unspecified_dims=[0]", sharding={replicated}
+  ROOT %copy = f32[4] copy(%annotate), sharding={devices=[4]3,2,1,0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  // Test that the CSE prevention sharding is replaced with the new sharding.
+  EXPECT_THAT(FindInstruction(module.get(), "br"),
+              op::Sharding("{devices=[4]3,2,1,0}"));
+  EXPECT_THAT(FindInstruction(module.get(), "add"),
+              op::Sharding("{devices=[4]3,2,1,0}"));
+}
+
+TEST_F(ShardingPropagationTest, ReshapeTrivialDimPartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[8,128] parameter(0), sharding={replicated}
+  %c = f32[8,128] copy(%param0)
+  %rsp = f32[8,1,128] reshape(%c),
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7}
+  ROOT %copy = f32[8,1,128] copy(%rsp),
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "c"),
+      op::Sharding("{devices=[1,4,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
 }
 
 }  // namespace

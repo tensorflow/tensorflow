@@ -75,15 +75,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.BitwiseAnd`
 *   `raw_ops.BitwiseOr`
 *   `raw_ops.BitwiseXor`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesBucketize`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesCreateQuantileStreamResource`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesFlushQuantileSummaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesMakeQuantileSummaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceAddSummaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceDeserialize`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceFlush`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceGetBucketBoundaries`
-*   (only internal, removed in OSS) `raw_ops.BoostedTreesQuantileStreamResourceHandleOp`
 *   `raw_ops.BroadcastArgs`
 *   `raw_ops.BroadcastGradientArgs`
 *   `raw_ops.BroadcastTo`
@@ -243,7 +234,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.IRFFT`
 *   `raw_ops.IRFFT2D`
 *   `raw_ops.IRFFT3D`
-*   (only internal, removed in OSS) `raw_ops.IsBoostedTreesQuantileStreamResourceInitialized`
 *   `raw_ops.IsFinite`
 *   `raw_ops.IsNan`
 *   `raw_ops.IsVariableInitialized`
@@ -725,11 +715,13 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.UniqueWithCounts`
 *   `raw_ops.UniqueWithCountsV2`
 *   `raw_ops.Unpack`
+*   `raw_ops.UnsortedSegmentJoin`
 *   `raw_ops.UnsortedSegmentMax`
 *   `raw_ops.UnsortedSegmentMin`
 *   `raw_ops.UnsortedSegmentProd`
 *   `raw_ops.UnsortedSegmentSum`
 *   `raw_ops.UnwrapDatasetVariant`
+*   `raw_ops.UpperBound`
 *   `raw_ops.VarHandleOp`
 *   `raw_ops.Variable`
 *   `raw_ops.VariableShape`
@@ -854,7 +846,7 @@ filegroup(
 )
 ```
 
-In order to find the relvant operator kernel source file under the
+In order to find the relevant operator kernel source file under the
 `tensorflow/core/kernels` directory, you can search the source code location,
 which contains the following kernel declaration with the operator name:
 

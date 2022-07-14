@@ -576,7 +576,8 @@ def get_module_docstring(module_name, package, api_name):
     if docsrc.docstring_module_name:
       docstring_module_name = docsrc.docstring_module_name
 
-  docstring_module_name = package + '.' + docstring_module_name
+  if package != 'keras':
+    docstring_module_name = package + '.' + docstring_module_name
   if (docstring_module_name in sys.modules and
       sys.modules[docstring_module_name].__doc__):
     return sys.modules[docstring_module_name].__doc__

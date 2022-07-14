@@ -246,12 +246,26 @@ message ComputationStats {
   double transcendental_count = 2;
 }
 
-// The type optimization profiles in use.
+// The type optimization profiles in use for Op-level optimizations.
 enum ProfileType {
   INVALID = 0;
   WINDOW = 1;
   FLAG = 2;
   INTEGER = 3;
+}
+
+// The source of the optimization profile.
+enum ProfileSource {
+  PROFILE_SOURCE_UNKNOWN_SOURCE = 0;
+  PROFILE_SOURCE_EMBEDDED = 1;
+  PROFILE_SOURCE_REMOTE = 2;
+}
+
+// The compilation event that triggered the use of the profile.
+enum CompilationEvent {
+  COMPILATION_EVENT_UNKNOWN_EVENT = 0;
+  COMPILATION_EVENT_FIRST_COMPILATION = 1;
+  COMPILATION_EVENT_RECOMPILATION = 2;
 }
 
 // Symbolization metadata for HLO Instructions.
@@ -278,7 +292,8 @@ message OpMetadata {
   string source_file = 3;
   int32 source_line = 4;
 
-  repeated ProfileType profile_type = 5;
+  // Deprecated, use [ProfileInfo][profile_type] instead.
+  repeated ProfileType profile_type = 5 [deprecated = true];
 
   // HloPassMetadata.pass_id of the pass that created this HLO instruction
   // object. Should never be copied between HLO instructions. Zero if unset and
@@ -296,6 +311,28 @@ message OpMetadata {
   // The size of the working set, i.e., the amount of memory, used by the
   // instruction in a compiler-managed fast device memory.
   int64 size_of_memory_working_set_in_bytes = 9;
+
+  // Information about the optimization profile that this operation contains.
+  message ProfileInfo {
+    // The type of optimization profiles that this operation contains.
+    repeated ProfileType profile_type = 1;
+    // Speedup of tuned config compared to default config.
+    // TODO(b/203817882) Set the relative_speedup.
+    double relative_speedup = 2;
+    // The source of the optimization profiles that this operation contains.
+    ProfileSource profile_source = 3;
+    // The compilation event that triggered the use of the profiles.
+    CompilationEvent compilation_event = 4;
+  }
+
+  // Profile information for the Op.
+  ProfileInfo profile_info = 10;
+
+  // Information about the replaced operation. We store the HLO canonical text,
+  // which contains canonicalized instruction name, operand shape, and full
+  // bodies of the subcomputations besides the HLO itself. This is set
+  // independently of other fields.
+  string replaced_op = 11;
 }
 
 // Profile data from the execution of a computation.

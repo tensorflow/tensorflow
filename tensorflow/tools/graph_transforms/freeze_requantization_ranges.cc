@@ -95,7 +95,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
         name_string.substr(0, name_string.size() - print_suffix.size()));
     records->push_back({name, min, max});
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Uses the observed min/max values for requantization captured in a log file to

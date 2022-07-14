@@ -53,16 +53,17 @@ Tensor Constant(T v, TensorShape shape) {
 
 class MergeV2CheckpointsOpTest : public OpsTestBase {
  protected:
-  void MakeOp(bool delete_old_dirs) {
+  void MakeOp(bool delete_old_dirs, bool allow_missing_files) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "MergeV2Checkpoints")
                      .Input(FakeInput())  // checkpoint_prefixes
                      .Input(FakeInput())  // destination_prefix
                      .Attr("delete_old_dirs", delete_old_dirs)
+                     .Attr("allow_missing_files", allow_missing_files)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
 
-  void RunMergeTest(bool delete_old_dirs) {
+  void RunMergeTest(bool delete_old_dirs, bool allow_missing_files) {
     // Writes two checkpoints.
     const std::vector<string> prefixes = {
         io::JoinPath(testing::TmpDir(), "worker0/ckpt0"),
@@ -71,14 +72,17 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     // In a different directory, to exercise "delete_old_dirs".
     const string& kMergedPrefix = prefixes[2];
 
-    WriteCheckpoint(prefixes[0], {"tensor0"},
-                    {Constant<float>(0, TensorShape({10}))});
+    // Only write this particular checkpoint if we do not allow missing files.
+    if (!allow_missing_files) {
+      WriteCheckpoint(prefixes[0], {"tensor0"},
+                      {Constant<float>(0, TensorShape({10}))});
+    }
+
     WriteCheckpoint(prefixes[1], {"tensor1", "tensor2"},
                     {Constant<int64_t>(1, TensorShape({1, 16, 18})),
                      Constant<bool>(true, TensorShape({}))});
-
     // Now merges.
-    MakeOp(delete_old_dirs);
+    MakeOp(delete_old_dirs, allow_missing_files);
     // Add checkpoint_prefixes.
     AddInput<tstring>(TensorShape({2}),
                       [&prefixes](int i) -> tstring { return prefixes[i]; });
@@ -92,13 +96,16 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     BundleReader reader(Env::Default(), kMergedPrefix);
     TF_EXPECT_OK(reader.status());
 
-    // We expect to find all saved tensors.
-    {
-      Tensor val0;
-      TF_EXPECT_OK(reader.Lookup("tensor0", &val0));
-      test::ExpectTensorEqual<float>(Constant<float>(0, TensorShape({10})),
-                                     val0);
+    if (!allow_missing_files) {
+      // We expect this only when all checkpoint files must exist.
+      {
+        Tensor val0;
+        TF_EXPECT_OK(reader.Lookup("tensor0", &val0));
+        test::ExpectTensorEqual<float>(Constant<float>(0, TensorShape({10})),
+                                       val0);
+      }
     }
+    // We expect to find all saved tensors.
     {
       Tensor val1;
       TF_EXPECT_OK(reader.Lookup("tensor1", &val1));
@@ -114,6 +121,8 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
 
     // Exercises "delete_old_dirs".
     for (int i = 0; i < 2; ++i) {
+      // If we allow missing files, the first checkpoint file did not exist.
+      if (allow_missing_files && i == 0) continue;
       int directory_found =
           Env::Default()->IsDirectory(string(io::Dirname(prefixes[i]))).code();
       if (delete_old_dirs) {
@@ -125,12 +134,23 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
   }
 };
 
-TEST_F(MergeV2CheckpointsOpTest, MergeNoDelete) {
-  RunMergeTest(false /* don't delete old dirs */);
+TEST_F(MergeV2CheckpointsOpTest, MergeNoDeleteNoMissingFiles) {
+  RunMergeTest(false /* don't delete old dirs */,
+               false /* don't allow missing files */);
 }
 
-TEST_F(MergeV2CheckpointsOpTest, MergeAndDelete) {
-  RunMergeTest(true /* delete old dirs */);
+TEST_F(MergeV2CheckpointsOpTest, MergeAndDeleteNoMissingFiles) {
+  RunMergeTest(true /* delete old dirs */,
+               false /* don't allow missing files */);
+}
+
+TEST_F(MergeV2CheckpointsOpTest, MergeNoDeleteWithMissingFiles) {
+  RunMergeTest(false /* don't delete old dirs */,
+               true /* allow missing files */);
+}
+
+TEST_F(MergeV2CheckpointsOpTest, MergeAndDeleteWithMissingFiles) {
+  RunMergeTest(true /* delete old dirs */, true /* allow missing files */);
 }
 
 }  // namespace

@@ -121,7 +121,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
         (this->is_weight_const_) ? memory::format_tag::any : weight_format,
-        memory::format_tag::nc);
+        memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
 #ifdef DNNL_AARCH64_USE_ACL
@@ -258,9 +258,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
       MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_prim, ctx);
+
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           cpu_stream);
+                           scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

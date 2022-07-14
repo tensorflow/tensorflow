@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -107,6 +108,11 @@ class HloModuleConfig {
     return &(*entry_computation_layout_);
   }
 
+  // Clears the entry computation layout.
+  void clear_entry_computation_layout() {
+    entry_computation_layout_ = std::nullopt;
+  }
+
   // Returns whether to enable HLO-level profiling.
   bool hlo_profiling_enabled() const {
     return debug_options_.xla_hlo_profile();
@@ -148,6 +154,37 @@ class HloModuleConfig {
     use_spmd_partitioning_ = use_spmd_partitioning;
   }
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
+
+  void set_use_auto_spmd_partitioning(bool use_auto_spmd_partitioning) {
+    use_auto_spmd_partitioning_ = use_auto_spmd_partitioning;
+    if (use_auto_spmd_partitioning) {
+      // TODO(yuemmawang) Remove this warning once auto sharding is thoroughly
+      // tested with fleetwide models.
+      LOG(WARNING) << "Warning: Using auto_spmd_partitioning. It is "
+                      "experimental and may "
+                      "contain bugs!";
+      LOG(INFO) << "Overwriting use_spmd_partitioning to true, because "
+                   "use_auto_spmd_partitioning is true.";
+      set_use_spmd_partitioning(true);
+    }
+  }
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
+    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return auto_spmd_partitioning_mesh_shape_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
+    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return auto_spmd_partitioning_mesh_ids_;
+  }
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
@@ -236,11 +273,12 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
-  const std::vector<std::vector<int64_t>>& dot_config() const {
+  const absl::flat_hash_map<std::string, std::vector<int64_t>>& dot_config()
+      const {
     return dot_config_;
   }
 
-  std::vector<std::vector<int64_t>>* mutable_dot_config() {
+  absl::flat_hash_map<std::string, std::vector<int64_t>>* mutable_dot_config() {
     return &dot_config_;
   }
 
@@ -300,10 +338,18 @@ class HloModuleConfig {
     analysis_allowance_map_[pass_name] = allowance;
   }
 
+  PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return matrix_unit_operand_precision_;
+  }
+  void set_matrix_unit_operand_precision(
+      PrecisionConfig::Precision matrix_unit_operand_precision) {
+    matrix_unit_operand_precision_ = matrix_unit_operand_precision;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  absl::optional<ComputationLayout> entry_computation_layout_;
+  std::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
   uint64_t seed_ = 0;
@@ -324,6 +370,14 @@ class HloModuleConfig {
   // needs to partition the module.
   bool use_spmd_partitioning_ = false;
 
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning_ = false;
+
+  // Mesh shape and mesh ids used by auto spmd partitioning.
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
+
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
   bool deduplicate_hlo_ = false;
@@ -337,7 +391,7 @@ class HloModuleConfig {
   DebugOptions debug_options_;
 
   // Compile-time known device assignment.
-  absl::optional<DeviceAssignment> static_device_assignment_;
+  std::optional<DeviceAssignment> static_device_assignment_;
 
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 
@@ -356,9 +410,8 @@ class HloModuleConfig {
   std::vector<std::vector<bool>> fusion_config_;
 
   // Custom dot canonicalization configuration, where dot_config_[v] control
-  // how to convert dot operation v (sorted topologically and by computation) to
-  // convolution.
-  std::vector<std::vector<int64_t>> dot_config_;
+  // how to convert dot operation named 'v' to convolution.
+  absl::flat_hash_map<std::string, std::vector<int64_t>> dot_config_;
 
   // Layout configuration, where layout_config_[v][i] controls the layout
   // decision i of operation v.
@@ -395,6 +448,9 @@ class HloModuleConfig {
   // Each Hlo analysis is allowed at least a constant number of
   // abstract cost units, before it is considered for early termination.
   absl::flat_hash_map<absl::string_view, int64_t> analysis_allowance_map_;
+
+  PrecisionConfig::Precision matrix_unit_operand_precision_ =
+      PrecisionConfig::DEFAULT;
 };
 
 }  // namespace xla

@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_utils.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace sparse_utils {
@@ -140,6 +144,80 @@ bool ContainsEmptyRows(const std::vector<Tindices>& row_start_indices) {
   return false;
 }
 
+namespace {
+
+// Ensures indices, values, shape are all of the proper ranks and are
+// compatible.
+Status ValidateSparseTensorShape(const Tensor& indices, const Tensor& values,
+                                 const Tensor& shape) {
+  // Indices must be a matrix, and values/shape must be a vector.
+  if (!TensorShapeUtils::IsMatrix(indices.shape())) {
+    return errors::InvalidArgument("Sparse indices must be rank 2 but is rank ",
+                                   indices.shape().dim_sizes().size());
+  }
+  if (!TensorShapeUtils::IsVector(values.shape())) {
+    return errors::InvalidArgument("Sparse values must be rank 1 but is rank ",
+                                   values.shape().dims());
+  }
+  if (!TensorShapeUtils::IsVector(shape.shape())) {
+    return errors::InvalidArgument("Sparse shape must be rank 1 but is rank ",
+                                   shape.shape().dims());
+  }
+  // Indices shape must be compatible with the values vector and dense shape.
+  int64_t nnz = indices.dim_size(0);
+  int64_t ndims = indices.dim_size(1);
+  if (values.dim_size(0) != nnz) {
+    return errors::InvalidArgument("Number of elements in indices (", nnz,
+                                   ") and values (", values.dim_size(0),
+                                   ") do not match");
+  }
+  if (shape.NumElements() != ndims) {
+    return errors::InvalidArgument("Index rank (", ndims, ") and shape rank (",
+                                   shape.NumElements(), ") do not match");
+  }
+
+  return Status::OK();
+}
+
+// Ensures all sparse indices are within correct bounds.
+template <typename Tindices>
+Status ValidateSparseTensorIndices(const Tensor& indices, const Tensor& shape) {
+  // Ensure no index is out-of-bounds.
+  const auto indices_mat = indices.flat_inner_dims<Tindices>();
+  const auto shape_vec = shape.flat<Tindices>();
+  int64_t nnz = indices.dim_size(0);
+  int64_t ndims = indices.dim_size(1);
+
+  for (int64_t i = 0; i < nnz; ++i) {
+    for (int64_t dim = 0; dim < ndims; ++dim) {
+      const Tindices idx = indices_mat(i, dim);
+      if (TF_PREDICT_FALSE(idx < 0 || idx >= shape_vec(dim))) {
+        string index_str = strings::StrCat("indices[", i, ", :] = [");
+        for (int64_t dim = 0; dim < ndims; ++dim) {
+          strings::StrAppend(&index_str, indices_mat(i, dim),
+                             dim < ndims - 1 ? ", " : "]");
+        }
+        return errors::InvalidArgument("Sparse index tuple ", index_str,
+                                       " is out of bounds");
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+template <typename Tindices>
+Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
+                            const Tensor& shape, bool validate_indices) {
+  TF_RETURN_IF_ERROR(ValidateSparseTensorShape(indices, values, shape));
+  if (validate_indices) {
+    return ValidateSparseTensorIndices<Tindices>(indices, shape);
+  }
+  return Status::OK();
+}
+
 #define REGISTER_SPARSE_UTIL_FUNCTIONS(TypeIndex)                           \
   template TypeIndex FindNextDenseRowStartIndex<TypeIndex>(                 \
       const TypeIndex sparse_index_begin,                                   \
@@ -151,7 +229,10 @@ bool ContainsEmptyRows(const std::vector<Tindices>& row_start_indices) {
       const std::vector<TypeIndex>& row_start_indices);                     \
   template std::vector<TypeIndex> ParseRowStartIndices<TypeIndex>(          \
       const tensorflow::Tensor& tensor,                                     \
-      const TypeIndex num_nonzero_entries_in_sparse_mat);
+      const TypeIndex num_nonzero_entries_in_sparse_mat);                   \
+  template Status ValidateSparseTensor<TypeIndex>(                          \
+      const Tensor& indices, const Tensor& values, const Tensor& shape,     \
+      bool validate_indices)
 
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int64);

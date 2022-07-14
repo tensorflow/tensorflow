@@ -156,7 +156,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
         VLOG(1) << "Skipping rendezvous re-initialization.";
-        return Status::OK();
+        return OkStatus();
       }
       Status s = errors::Internal(
           "Double init! Worker names would have changed from: ",
@@ -170,7 +170,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   for (auto& call : deferred_calls) {
     RecvLocalAsyncInternal(call.parsed, std::move(call.done));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
@@ -228,7 +228,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
         "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
         sess->worker_name());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void BaseRemoteRendezvous::SameWorkerRecvDone(
@@ -243,7 +243,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
     *out = in;
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 

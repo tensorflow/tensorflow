@@ -56,9 +56,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define INIT_INT2v2(v0, v1) (int2)(v0, v1)\n";
   result += "#define INIT_INT4v4(v0, v1, v2, v3) (int4)(v0, v1, v2, v3)\n";
   result += "#define CONVERT_TO_INT4(value) convert_int4(value)\n";
-  result +=
-      "#define SELECT_BY_INDEX_FROM_FLT4(value, index) (FLT[4]){(value).x, "
-      "(value).y, (value).z, (value).w}[index]\n";
   switch (precision) {
     case CalculationsPrecision::F32:
       result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
@@ -118,6 +115,18 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
       result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";
       break;
   }
+  result += "#define bool2 uchar2\n";
+  result += "#define bool3 uchar3\n";
+  result += "#define bool4 uchar4\n";
+  result +=
+      "#define convert_bool2(value) (convert_uchar2((value) != 0) & (uchar2) "
+      "1)\n";
+  result +=
+      "#define convert_bool3(value) (convert_uchar3((value) != 0) & (uchar3) "
+      "1)\n";
+  result +=
+      "#define convert_bool4(value) (convert_uchar4((value) != 0) & (uchar4) "
+      "1)\n";
   return result;
 }
 }  // namespace

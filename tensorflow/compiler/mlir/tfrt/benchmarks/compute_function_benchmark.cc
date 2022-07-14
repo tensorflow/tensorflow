@@ -19,7 +19,7 @@ namespace tensorflow {
 namespace {
 
 static const char* const mlir_input13 = R"(
-func @compute(%arg0: tensor<?x18xf32>,
+func.func @compute(%arg0: tensor<?x18xf32>,
               %arg1: tensor<18xf32>,
               %arg2: tensor<18xf32>,
               %arg3: tensor<18x300xf32>,
@@ -62,7 +62,7 @@ func @compute(%arg0: tensor<?x18xf32>,
          : (tensor<?x300xf32>, tensor<300x1xf32>) -> tensor<?x1xf32>
     %14 = "tf.BiasAdd"(%13, %arg12) {data_format = "NHWC"}
          : (tensor<?x1xf32>, tensor<1xf32>) -> tensor<?x1xf32>
-    return %14 : tensor<?x1xf32>
+    func.return %14 : tensor<?x1xf32>
   }
 )";
 
@@ -87,7 +87,7 @@ static llvm::SmallVector<InputTensorSpec> Inputs13() {
 BM_Jitrt(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
 
 static const char* const mlir_fresh0 = R"(
-  func @compute(%arg0: tensor<i64>) -> tensor<i64> {
+  func.func @compute(%arg0: tensor<i64>) -> tensor<i64> {
     %cst = "tf.Const"()
          {value = dense<8> : tensor<i64>,
           device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -110,7 +110,7 @@ static const char* const mlir_fresh0 = R"(
     %5 = "tf.Maximum"(%cst, %4)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<i64>, tensor<i64>) -> tensor<i64>
-    return %5 : tensor<i64>
+    func.return %5 : tensor<i64>
   }
 )";
 
@@ -126,7 +126,7 @@ BM(Jitrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 BM(Tfrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 
 static const char* const mlir_fresh1 = R"(
-  func @compute(%arg0: tensor<?x?x?xf32>,
+  func.func @compute(%arg0: tensor<?x?x?xf32>,
                 %arg1: tensor<?x?x1xf32>,
                 %arg2: tensor<?x1x?xf32>) -> tensor<?x?x?xf32> {
     %cst = "tf.Const"()
@@ -142,7 +142,7 @@ static const char* const mlir_fresh1 = R"(
     %2 = "tf.Transpose"(%1, %cst)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-    return %2 : tensor<?x?x?xf32>
+    func.return %2 : tensor<?x?x?xf32>
   }
 )";
 
@@ -159,7 +159,7 @@ BM(JitrtV(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 BM(Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 
 static const char* const mlir_fresh2 = R"(
-  func @compute(%arg0: tensor<?x?xf32>,
+  func.func @compute(%arg0: tensor<?x?xf32>,
                 %arg1: tensor<?x128xf32>,
                 %arg2: tensor<?x?xf32>,
                 %arg3: tensor<*xf32> {jitrt.constraint = "rank"})
@@ -187,7 +187,7 @@ static const char* const mlir_fresh2 = R"(
     %5 = "tf.AddV2"(%0, %4)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x128xf32>, tensor<?x?xf32>) -> tensor<?x128xf32>
-    return %5 : tensor<?x128xf32>
+    func.return %5 : tensor<?x128xf32>
   }
 )";
 
@@ -205,7 +205,7 @@ BM(JitrtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 BM(Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 
 static const char* const mlir_factorized0 = R"(
-  func @compute(%arg0: tensor<?x10xf32>) -> tensor<?x10xf32> {
+  func.func @compute(%arg0: tensor<?x10xf32>) -> tensor<?x10xf32> {
     %cst = "tf.Const"()
           {value = dense<1.000000e+00> : tensor<f32>,
            device = "/job:localhost/replica:0/task:0/device:CPU:0"}
@@ -245,7 +245,7 @@ static const char* const mlir_factorized0 = R"(
     %8 = "tf.Mul"(%7, %6)
           {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
           : (tensor<?x10xf32>, tensor<?x10xf32>) -> tensor<?x10xf32>
-    return %8 : tensor<?x10xf32>
+    func.return %8 : tensor<?x10xf32>
   }
 )";
 
@@ -260,7 +260,7 @@ BM(JitrtV(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
 BM(Tfrt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
 
 static const char* const mlir_factorized1 = R"(
-  func @compute(%arg0: tensor<?x50xf32>,
+  func.func @compute(%arg0: tensor<?x50xf32>,
                 %arg1: tensor<50xf32>) -> tensor<?x50xf32> {
     %0 = "tf.BiasAdd"(%arg0, %arg1)
          {data_format = "NHWC",
@@ -269,7 +269,7 @@ static const char* const mlir_factorized1 = R"(
     %1 = "tf.Relu"(%0)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x50xf32>) -> tensor<?x50xf32>
-    return %1 : tensor<?x50xf32>
+    func.return %1 : tensor<?x50xf32>
   }
 )";
 
@@ -285,7 +285,7 @@ BM(JitrtV(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
 BM(Tfrt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
 
 static const char* const mlir_factorized2 = R"(
-  func @compute(%arg0: tensor<?x50x1x5xf32>,
+  func.func @compute(%arg0: tensor<?x50x1x5xf32>,
                 %arg1: tensor<5xf32>) -> tensor<?x50x1x5xf32> {
     %0 = "tf.BiasAdd"(%arg0, %arg1)
          {data_format = "NHWC",
@@ -294,7 +294,7 @@ static const char* const mlir_factorized2 = R"(
     %1 = "tf.Relu"(%0)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x50x1x5xf32>) -> tensor<?x50x1x5xf32>
-    return %1 : tensor<?x50x1x5xf32>
+    func.return %1 : tensor<?x50x1x5xf32>
   }
 )";
 
@@ -310,7 +310,7 @@ BM(JitrtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 BM(Tfrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 
 static const char* const mlir_factorized3 = R"(
-  func @compute(%arg0: tensor<?x1xf32>,
+  func.func @compute(%arg0: tensor<?x1xf32>,
                 %arg1: tensor<1xf32>,
                 %arg2: tensor<?x1xf32>,
                 %arg3: tensor<1xf32>) -> tensor<?x1xf32> {
@@ -335,7 +335,7 @@ static const char* const mlir_factorized3 = R"(
     %4 = "tf.Sigmoid"(%3)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
          : (tensor<?x1xf32>) -> tensor<?x1xf32>
-    return %4 : tensor<?x1xf32>
+    func.return %4 : tensor<?x1xf32>
   }
 )";
 
@@ -353,7 +353,7 @@ BM(JitrtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 BM(Tfrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 
 static const char* const mlir_factorized4 = R"(
-func @compute(%arg0: tensor<94367x1xf32>,
+func.func @compute(%arg0: tensor<94367x1xf32>,
               %arg1: tensor<94367x105xf32>) -> tensor<94367x105xf32> {
     %cst = "tf.Const"()
          {value = dense<2.400000e+01> : tensor<f32>,
@@ -371,7 +371,7 @@ func @compute(%arg0: tensor<94367x1xf32>,
     %3 = "tf.RealDiv"(%2, %1)
          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
         : (tensor<94367x105xf32>, tensor<94367x1xf32>) -> tensor<94367x105xf32>
-    return %3 : tensor<94367x105xf32>
+    func.return %3 : tensor<94367x105xf32>
   }
 )";
 
@@ -387,7 +387,7 @@ BM(JitrtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 BM(Tfrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 
 static const char* const mlir_hitcat0 = R"(
-func @compute(%arg0: tensor<474xf32>,
+func.func @compute(%arg0: tensor<474xf32>,
               %arg1: tensor<474xf32>,
               %arg2: tensor<474xf32>,
               %arg3: tensor<474xf32>,
@@ -443,7 +443,7 @@ func @compute(%arg0: tensor<474xf32>,
     %12 = "tf.Mul"(%11, %arg7)
           {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
           : (tensor<474xf32>, tensor<474x474xf32>) -> tensor<474x474xf32>
-    return %11, %12 : tensor<474xf32>, tensor<474x474xf32>
+    func.return %11, %12 : tensor<474xf32>, tensor<474x474xf32>
   }
 )";
 

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorArrayConcatV2"
   input_arg {
     name: "handle"

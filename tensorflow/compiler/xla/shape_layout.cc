@@ -29,7 +29,7 @@ Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
                            ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
@@ -39,7 +39,7 @@ Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
                            ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
-  return Status::OK();
+  return OkStatus();
 }
 
 void ShapeLayout::SetToDefaultLayout() {
@@ -98,7 +98,6 @@ void ShapeLayout::ResetLayout(const Layout& layout) {
 
 void ShapeLayout::ResetLayout(const Layout& layout,
                               ShapeIndexView shape_index) {
-  CHECK(shape_.IsTuple());
   *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
       layout;
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));

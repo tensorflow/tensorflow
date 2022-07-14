@@ -53,14 +53,8 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 }
 
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    llvm::StringRef input) {
-  llvm::Optional<mlir::lmhlo_gpu::Activation> activation =
-      mlir::lmhlo_gpu::symbolizeActivation(input);
-  if (!activation) {
-    return InternalError("Unexpected activation");
-  }
-
-  switch (activation.getValue()) {
+    mlir::lmhlo_gpu::Activation activation) {
+  switch (activation) {
     case mlir::lmhlo_gpu::Activation::None:
       return stream_executor::dnn::kNone;
     case mlir::lmhlo_gpu::Activation::Sigmoid:
@@ -111,7 +105,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 // and source-target pairs are defined in HLO.
 StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
-  if (!optional_attr.hasValue())
+  if (!optional_attr.has_value())
     return std::vector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
@@ -178,6 +172,8 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
       return xla::CustomCallApiVersion::API_VERSION_ORIGINAL;
     case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
       return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED;
     default:
       return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
                              api_version);

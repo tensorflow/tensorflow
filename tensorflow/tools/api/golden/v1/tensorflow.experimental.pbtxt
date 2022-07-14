@@ -5,6 +5,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
   }
   member {
+    name: "DynamicRaggedShape"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
     name: "ExtensionType"
     mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
   }
@@ -14,6 +18,10 @@ tf_module {
   }
   member {
     name: "Optional"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RowPartition"
     mtype: "<type \'type\'>"
   }
   member_method {
@@ -30,6 +38,10 @@ tf_module {
   }
   member_method {
     name: "dispatch_for_binary_elementwise_apis"
+    argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_binary_elementwise_assert_apis"
     argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

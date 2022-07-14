@@ -172,15 +172,25 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
 
     case BuiltinOperator_CONV_2D: {
+      const Tensor* input_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(0));
       const Tensor* filter_tensor =
           subgraph->tensors()->Get(op->inputs()->Get(1));
       const QuantizationParameters* filter_quant =
           filter_tensor->quantization();
-      int num_channels = filter_tensor->shape()->Get(0);
+      int num_filters = filter_tensor->shape()->Get(0);
       if (filter_quant && filter_quant->scale() &&
           filter_quant->scale()->Length() &&
-          filter_quant->scale()->Length() == num_channels) {
+          filter_quant->scale()->Length() == num_filters) {
         op_sig.ext_options.conv_2d.is_per_channel_quantized = true;
+      }
+      if (input_tensor->shape()->size()) {
+        int num_input_channels = input_tensor->shape()->Get(3);
+        int num_filter_input_channels = filter_tensor->shape()->Get(3);
+        op_sig.ext_options.conv_2d.is_grouped_convolution =
+            num_input_channels != num_filter_input_channels;
+      } else {
+        op_sig.ext_options.conv_2d.is_grouped_convolution = false;
       }
     } break;
 

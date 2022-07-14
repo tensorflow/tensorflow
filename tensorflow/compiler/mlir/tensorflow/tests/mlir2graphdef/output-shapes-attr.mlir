@@ -1,11 +1,11 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main(%arg0: tensor<10xi32>) -> tensor<10xi32>
+func.func @main(%arg0: tensor<10xi32>) -> tensor<10xi32>
 attributes {tf.entry_function = {inputs = "input0", outputs = "output0"}} {
   %graph = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<10xi32>
   }
-  return %graph : tensor<10xi32>
+  func.return %graph : tensor<10xi32>
 }
 
 // CHECK:      node {
@@ -37,20 +37,20 @@ attributes {tf.entry_function = {inputs = "input0", outputs = "output0"}} {
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
 
-func private @simple_callee(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+func.func private @simple_callee(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %graph = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<2xi32>
   }
-  return %graph#0 : tensor<2xi32>
+  func.return %graph#0 : tensor<2xi32>
 }
 
 // Test with a TPUPartitionedCallOp that is not inlined.
-func @dont_inline_tpu_partitioned_call(%arg0: tensor<2xi32> {tf._user_specified_name = "inputs_0"}, %arg1: tensor<2xi32> {tf._user_specified_name = "inputs_1"}) -> tensor<2xi32> {
+func.func @dont_inline_tpu_partitioned_call(%arg0: tensor<2xi32> {tf._user_specified_name = "inputs_0"}, %arg1: tensor<2xi32> {tf._user_specified_name = "inputs_1"}) -> tensor<2xi32> {
   %graph = tf_executor.graph {
     %result:2 = tf_executor.island wraps "tf.TPUPartitionedCall"(%arg0, %arg1) {config = "", config_proto = "", executor_type = "", f = @simple_callee} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
     tf_executor.fetch %result#0 : tensor<2xi32>
   }
-  return %graph : tensor<2xi32>
+  func.return %graph : tensor<2xi32>
 }
 
 // CHECK:       library {

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_DUMMY_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_DUMMY_OP_BUILDER_H_
 
+#include <string>
+
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"

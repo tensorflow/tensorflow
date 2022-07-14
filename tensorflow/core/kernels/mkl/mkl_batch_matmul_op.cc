@@ -143,8 +143,9 @@ class BatchMatMulMkl : public OpKernel {
     // For matmul, the previous approach (PR #47775) of using Tensor addresses
     // does not work, as the addresses are re-used in matmul with different data
     // The counter  ensure we still benefit from caching via SetMklMatmul().
-    static int counter = 1;
-    params->aarch64_counter = counter++;
+    params->aarch64_counter =
+        MklMatMulPrimitiveFactory<float, Tlhs, Trhs,
+                                  Toutput>::IncrementCounter();
 #endif
     this->ExtendMklMatMulParams(ctx, *params);
 
@@ -153,6 +154,8 @@ class BatchMatMulMkl : public OpKernel {
         MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
             *params, false /* value for do_not_cache */);
 
+    UserScratchPad<unsigned char> scratch_pad;
+    scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     MklDnnThreadPool eigen_tp(ctx);
@@ -172,11 +175,11 @@ class BatchMatMulMkl : public OpKernel {
       }
       matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
                            rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
-                           mul_data, add_data);
+                           scratch_pad.Get(), mul_data, add_data);
     } else {
       matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
-                           rhs.flat<Trhs>().data(),
-                           out->flat<Toutput>().data());
+                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
+                           scratch_pad.Get());
     }
   }
 

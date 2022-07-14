@@ -68,6 +68,9 @@ static void SetConstOp(const string& name, std::initializer_list<int64_t> dims,
       case DT_HALF:
         tensor.flat<Eigen::half>()(i) = Eigen::half(i / 10.0f);
         break;
+      case DT_BFLOAT16:
+        tensor.flat<bfloat16>()(i) = bfloat16(i / 10.0f);
+        break;
       default:
         LOG(FATAL) << "Unknown data type " << data_type;
     }
@@ -110,8 +113,9 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
                          bool use_gpu, DataType data_type,
                          const string& label) {
   if (!IsGoogleCudaEnabled() && use_gpu) {
-    state.SetLabel(
-        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
     return;
   }
   state.SetLabel(label);
@@ -510,7 +514,7 @@ enum DEPTHWISE_CONV_OP {
 };
 
 }  // namespace
-
+template <typename T>
 static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
                                   int rows, int cols, int in_depth,
                                   int depth_multiplier, int out_depth,
@@ -518,9 +522,11 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
                                   DEPTHWISE_CONV_OP op, int num_threads,
                                   int stride, Padding padding, bool use_gpu,
                                   const string& label) {
+  return;
   if (!IsGoogleCudaEnabled() && use_gpu) {
-    state.SetLabel(
-        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
     return;
   }
   state.SetLabel(label);
@@ -563,14 +569,13 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
               (stride * stride);
   }
 
-  // FIXME
-  SetConstOp("input", {batch, rows, cols, in_depth}, DT_FLOAT,
-             graph.add_node());
+  DataType dtype = DataTypeToEnum<T>::value;
+  SetConstOp("input", {batch, rows, cols, in_depth}, dtype, graph.add_node());
   SetConstOp("depthwise_filter",
-             {filter_rows, filter_cols, in_depth, depth_multiplier}, DT_FLOAT,
+             {filter_rows, filter_cols, in_depth, depth_multiplier}, dtype,
              graph.add_node());
-  SetConstOp("output_backprop", {batch, out_rows, out_cols, out_depth},
-             DT_FLOAT, graph.add_node());
+  SetConstOp("output_backprop", {batch, out_rows, out_cols, out_depth}, dtype,
+             graph.add_node());
   SetConstSizesOp("input_sizes",
                   std::vector<int32>({batch, rows, cols, in_depth}),
                   graph.add_node());
@@ -584,8 +589,8 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
   switch (op) {
     case DEPTHWISE_CONV_OP_FWD:
       TF_CHECK_OK(NodeDefBuilder("depthwise_conv2d", "DepthwiseConv2dNative")
-                      .Input("input", 0, DT_FLOAT)
-                      .Input("depthwise_filter", 0, DT_FLOAT)
+                      .Input("input", 0, dtype)
+                      .Input("depthwise_filter", 0, dtype)
                       .Attr("strides", {1, stride, stride, 1})
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
@@ -594,8 +599,8 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
       TF_CHECK_OK(NodeDefBuilder("depthwise_conv2d_backprop_input",
                                  "DepthwiseConv2dNativeBackpropInput")
                       .Input("input_sizes", 0, DT_INT32)
-                      .Input("depthwise_filter", 0, DT_FLOAT)
-                      .Input("output_backprop", 0, DT_FLOAT)
+                      .Input("depthwise_filter", 0, dtype)
+                      .Input("output_backprop", 0, dtype)
                       .Attr("strides", {1, stride, stride, 1})
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
@@ -603,9 +608,9 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
     case DEPTHWISE_CONV_OP_BACKPROP_FILTER:
       TF_CHECK_OK(NodeDefBuilder("depthwise_conv2d_backprop_filter",
                                  "DepthwiseConv2dNativeBackpropFilter")
-                      .Input("input", 0, DT_FLOAT)
+                      .Input("input", 0, dtype)
                       .Input("filter_sizes", 0, DT_INT32)
-                      .Input("output_backprop", 0, DT_FLOAT)
+                      .Input("output_backprop", 0, dtype)
                       .Attr("strides", {1, stride, stride, 1})
                       .Attr("padding", padding == VALID ? "VALID" : "SAME")
                       .Finalize(conv));
@@ -634,125 +639,135 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
 // PAD: padding
 
 #define BM_ConvFloatDepthwiseFwd(BS, R, C, ID, DM, OD, KR, KC, STR, PAD,    \
-                                 LABEL)                                     \
-  static void BM_ConvFloatDepthwiseFwdCPU1_##LABEL(                         \
+                                 LABEL, TYPE)                               \
+  static void BM_ConvFloatDepthwiseFwdCPU1_##LABEL##_##TYPE(                \
       ::testing::benchmark::State& state) {                                 \
-    BM_ConvFloatDepthwise(                                                  \
+    BM_ConvFloatDepthwise<TYPE>(                                            \
         state, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 1, STR, \
         PAD, false,                                                         \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));         \
   }                                                                         \
-  static void BM_ConvFloatDepthwiseFwdCPU4_##LABEL(                         \
+  static void BM_ConvFloatDepthwiseFwdCPU4_##LABEL##_##TYPE(                \
       ::testing::benchmark::State& state) {                                 \
-    BM_ConvFloatDepthwise(                                                  \
+    BM_ConvFloatDepthwise<TYPE>(                                            \
         state, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 4, STR, \
         PAD, false,                                                         \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));         \
   }                                                                         \
-  static void BM_ConvFloatDepthwiseFwdGPU_##LABEL(                          \
+  static void BM_ConvFloatDepthwiseFwdGPU_##LABEL##_##TYPE(                 \
       ::testing::benchmark::State& state) {                                 \
-    BM_ConvFloatDepthwise(                                                  \
+    BM_ConvFloatDepthwise<TYPE>(                                            \
         state, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_FWD, 1, STR, \
         PAD, true,                                                          \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_", \
                         KR, "_", KC, "_", STR, "_", PAD, "_gpu"));          \
   }                                                                         \
-  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU1_##LABEL)->UseRealTime();           \
-  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU4_##LABEL)->UseRealTime();           \
-  BENCHMARK(BM_ConvFloatDepthwiseFwdGPU_##LABEL)->UseRealTime();
+  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU1_##LABEL##_##TYPE)->UseRealTime();  \
+  BENCHMARK(BM_ConvFloatDepthwiseFwdCPU4_##LABEL##_##TYPE)->UseRealTime();  \
+  BENCHMARK(BM_ConvFloatDepthwiseFwdGPU_##LABEL##_##TYPE)->UseRealTime();
 
 // The configurations below are mostly from mobilenet models.
-BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0);
-BM_ConvFloatDepthwiseFwd(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1);
-BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2);
-BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3);
-BM_ConvFloatDepthwiseFwd(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4);
-BM_ConvFloatDepthwiseFwd(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5);
-BM_ConvFloatDepthwiseFwd(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
-// Benchmarks with different stride and padding options.
-BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7);
-BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
-BM_ConvFloatDepthwiseFwd(1, 100, 100, 72, 1, 72, 3, 3, 1, SAME, conv9);
-BM_ConvFloatDepthwiseFwd(1, 100, 100, 72, 1, 72, 5, 5, 1, SAME, conv10);
+#define BM_ConvFloatDepthwiseFwd_ALL(T)                                       \
+  BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0, T);  \
+  BM_ConvFloatDepthwiseFwd(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1, T); \
+  BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2, T); \
+  BM_ConvFloatDepthwiseFwd(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3, T); \
+  BM_ConvFloatDepthwiseFwd(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4, T); \
+  BM_ConvFloatDepthwiseFwd(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5, T); \
+  BM_ConvFloatDepthwiseFwd(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6, T); \
+  /* Benchmarks with different stride and padding options.*/                  \
+  BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7, T);  \
+  BM_ConvFloatDepthwiseFwd(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8, T); \
+  BM_ConvFloatDepthwiseFwd(1, 100, 100, 72, 1, 72, 3, 3, 1, SAME, conv9, T);  \
+  BM_ConvFloatDepthwiseFwd(1, 100, 100, 72, 1, 72, 5, 5, 1, SAME, conv10, T);
 
-#define BM_ConvFloatDepthwiseBk(BS, R, C, ID, DM, OD, KR, KC, STR, PAD, LABEL) \
-  static void BM_ConvFloatDepthwiseBkInCPU1_##LABEL(                           \
+BM_ConvFloatDepthwiseFwd_ALL(float)
+// Todo: add bfloat16 later?
+
+#define BM_ConvFloatDepthwiseBk(BS, R, C, ID, DM, OD, KR, KC, STR, PAD, LABEL, \
+                                TYPE)                                          \
+  static void BM_ConvFloatDepthwiseBkInCPU1_##LABEL##_##TYPE(                  \
       ::testing::benchmark::State& state) {                                    \
-    BM_ConvFloatDepthwise(                                                     \
+    BM_ConvFloatDepthwise<TYPE>(                                               \
         state, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_BACKPROP_INPUT, \
         1, STR, PAD, false,                                                    \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));            \
   }                                                                            \
-  static void BM_ConvFloatDepthwiseBkInCPU4_##LABEL(                           \
+  static void BM_ConvFloatDepthwiseBkInCPU4_##LABEL##_##TYPE(                  \
       ::testing::benchmark::State& state) {                                    \
-    BM_ConvFloatDepthwise(                                                     \
+    BM_ConvFloatDepthwise<TYPE>(                                               \
         state, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_BACKPROP_INPUT, \
         4, STR, PAD, false,                                                    \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));            \
   }                                                                            \
-  static void BM_ConvFloatDepthwiseBkInGPU_##LABEL(                            \
+  static void BM_ConvFloatDepthwiseBkInGPU_##LABEL##_##TYPE(                   \
       ::testing::benchmark::State& state) {                                    \
-    BM_ConvFloatDepthwise(                                                     \
+    BM_ConvFloatDepthwise<TYPE>(                                               \
         state, BS, R, C, ID, DM, OD, KR, KC, DEPTHWISE_CONV_OP_BACKPROP_INPUT, \
         4, STR, PAD, true,                                                     \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_gpu"));             \
   }                                                                            \
-  static void BM_ConvFloatDepthwiseBkFilterCPU1_##LABEL(                       \
+  static void BM_ConvFloatDepthwiseBkFilterCPU1_##LABEL##_##TYPE(              \
       ::testing::benchmark::State& state) {                                    \
-    BM_ConvFloatDepthwise(                                                     \
+    BM_ConvFloatDepthwise<TYPE>(                                               \
         state, BS, R, C, ID, DM, OD, KR, KC,                                   \
         DEPTHWISE_CONV_OP_BACKPROP_FILTER, 1, STR, PAD, false,                 \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu1"));            \
   }                                                                            \
-  static void BM_ConvFloatDepthwiseBkFilterCPU4_##LABEL(                       \
+  static void BM_ConvFloatDepthwiseBkFilterCPU4_##LABEL##_##TYPE(              \
       ::testing::benchmark::State& state) {                                    \
-    BM_ConvFloatDepthwise(                                                     \
+    BM_ConvFloatDepthwise<TYPE>(                                               \
         state, BS, R, C, ID, DM, OD, KR, KC,                                   \
         DEPTHWISE_CONV_OP_BACKPROP_FILTER, 4, STR, PAD, false,                 \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_cpu4"));            \
   }                                                                            \
-  static void BM_ConvFloatDepthwiseBkFilterGPU_##LABEL(                        \
+  static void BM_ConvFloatDepthwiseBkFilterGPU_##LABEL##_##TYPE(               \
       ::testing::benchmark::State& state) {                                    \
-    BM_ConvFloatDepthwise(                                                     \
+    BM_ConvFloatDepthwise<TYPE>(                                               \
         state, BS, R, C, ID, DM, OD, KR, KC,                                   \
         DEPTHWISE_CONV_OP_BACKPROP_FILTER, 4, STR, PAD, true,                  \
         strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", DM, "_", OD, "_",    \
                         KR, "_", KC, "_", STR, "_", PAD, "_gpu"));             \
   }                                                                            \
-  BENCHMARK(BM_ConvFloatDepthwiseBkInCPU1_##LABEL)->UseRealTime();             \
-  BENCHMARK(BM_ConvFloatDepthwiseBkInCPU4_##LABEL)->UseRealTime();             \
-  BENCHMARK(BM_ConvFloatDepthwiseBkInGPU_##LABEL)->UseRealTime();              \
-  BENCHMARK(BM_ConvFloatDepthwiseBkFilterCPU1_##LABEL)->UseRealTime();         \
-  BENCHMARK(BM_ConvFloatDepthwiseBkFilterCPU4_##LABEL)->UseRealTime();         \
-  BENCHMARK(BM_ConvFloatDepthwiseBkFilterGPU_##LABEL)
+  BENCHMARK(BM_ConvFloatDepthwiseBkInCPU1_##LABEL##_##TYPE)->UseRealTime();    \
+  BENCHMARK(BM_ConvFloatDepthwiseBkInCPU4_##LABEL##_##TYPE)->UseRealTime();    \
+  BENCHMARK(BM_ConvFloatDepthwiseBkFilterCPU1_##LABEL##_##TYPE)                \
+      ->UseRealTime();                                                         \
+  BENCHMARK(BM_ConvFloatDepthwiseBkFilterCPU4_##LABEL##_##TYPE)                \
+      ->UseRealTime();                                                         \
+  BENCHMARK(BM_ConvFloatDepthwiseBkInGPU_##LABEL##_##TYPE)->UseRealTime();     \
+  BENCHMARK(BM_ConvFloatDepthwiseBkFilterGPU_##LABEL##_##TYPE)
 
 // The configurations below are mostly from mobilenet models.
-BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1);
-BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2);
-BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3);
-BM_ConvFloatDepthwiseBk(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4);
-BM_ConvFloatDepthwiseBk(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5);
-BM_ConvFloatDepthwiseBk(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6);
-// Benchmarks with different stride and padding options, varying depth
-// multiplier.
-BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8);
+#define BM_ConvFloatDepthwiseBk_All(T)                                        \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv0, T);   \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 64, 1, 64, 3, 3, 1, SAME, conv1, T);  \
+  BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 1, SAME, conv2, T);  \
+  BM_ConvFloatDepthwiseBk(32, 56, 56, 128, 1, 128, 3, 3, 2, SAME, conv3, T);  \
+  BM_ConvFloatDepthwiseBk(32, 28, 28, 128, 1, 128, 3, 3, 1, SAME, conv4, T);  \
+  BM_ConvFloatDepthwiseBk(32, 14, 14, 512, 1, 512, 3, 3, 1, SAME, conv5, T);  \
+  BM_ConvFloatDepthwiseBk(32, 7, 7, 1024, 1, 1024, 3, 3, 1, SAME, conv6, T);  \
+  /* Benchmarks with different stride and padding options, varying depth      \
+  multiplier.*/                                                               \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, SAME, conv7, T);   \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 2, VALID, conv8, T);  \
+  /* Vary depth multiplier.*/                                                 \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 1, 24, 24, 3, 3, 1, SAME, conv9, T);  \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 2, 12, 24, 3, 3, 1, SAME, conv10, T); \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv11, T);  \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 8, 3, 24, 3, 3, 1, SAME, conv12, T);  \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 12, 2, 24, 3, 3, 1, SAME, conv13, T); \
+  BM_ConvFloatDepthwiseBk(32, 112, 112, 24, 1, 24, 3, 3, 1, SAME, conv14, T);
 
-// Vary depth multiplier.
-BM_ConvFloatDepthwiseBk(32, 112, 112, 1, 24, 24, 3, 3, 1, SAME, conv9);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 2, 12, 24, 3, 3, 1, SAME, conv10);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 3, 8, 24, 3, 3, 1, SAME, conv11);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 8, 3, 24, 3, 3, 1, SAME, conv12);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 12, 2, 24, 3, 3, 1, SAME, conv13);
-BM_ConvFloatDepthwiseBk(32, 112, 112, 24, 1, 24, 3, 3, 1, SAME, conv14);
+    BM_ConvFloatDepthwiseBk_All(float);
+BM_ConvFloatDepthwiseBk_All(bfloat16);
 
 static void BM_LRNFloat(::testing::benchmark::State& state, int depth, int cols,
                         int rows, int batch_size, int range, int num_threads,
@@ -1124,6 +1139,13 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
                          int rows, int cols, int depth, int kernel_rows,
                          int kernel_cols, int stride, Padding padding,
                          int num_threads, bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   int64_t out_height, out_width, pad_rows, pad_cols;
@@ -1352,6 +1374,13 @@ static void BM_ImageNetSoftmaxFwd(::testing::benchmark::State& state,
                                   int batch_size, int node_depth,
                                   int num_threads, bool use_gpu,
                                   const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({batch_size, node_depth}));
@@ -1398,6 +1427,14 @@ BM_ImageNetSoftmaxFwd(8192, 32768, 1, true, "softmax128");
 
 static void BM_TopK(::testing::benchmark::State& state, int rows, int cols,
                     int k, int num_threads, bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+  state.SetLabel(label);
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({rows, cols}));

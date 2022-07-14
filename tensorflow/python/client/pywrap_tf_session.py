@@ -21,6 +21,9 @@ from tensorflow.python.client._pywrap_tf_session import _TF_SetTarget
 from tensorflow.python.client._pywrap_tf_session import _TF_SetConfig
 from tensorflow.python.client._pywrap_tf_session import _TF_NewSessionOptions
 
+# Register pybind11 type caster for StackTraceWrapper/AbstractStackTrace
+from tensorflow.python.util import tf_stack
+
 # Convert versions to strings for Python2 and keep api_compatibility_test green.
 # We can remove this hack once we remove Python2 presubmits. pybind11 can only
 # return unicode for Python2 even with py::str.

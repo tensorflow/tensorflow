@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
@@ -122,7 +123,7 @@ struct DetensorizeLinalgPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDetensorizeLinalgPass() {
   return std::make_unique<DetensorizeLinalgPass>();
 }

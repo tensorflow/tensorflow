@@ -16,12 +16,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_UTILS_BRIDGE_GRAPH_ANALYSIS_H_
 
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tfrt {
 
 inline tensorflow::Status CheckTpuMlirBridgeCompatibility(
-    const tensorflow::MetaGraphDef& meta_graph_def) {
+    const tensorflow::GraphDef& graph_def) {
   return tensorflow::Status::OK();
 }
 

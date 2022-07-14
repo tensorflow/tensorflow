@@ -29,9 +29,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -145,9 +145,9 @@ Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
-  if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type,
-                                      value.cast<FlatSymbolRefAttr>());
+  if (func::ConstantOp::isBuildableWith(value, type))
+    return builder.create<func::ConstantOp>(loc, type,
+                                            value.cast<FlatSymbolRefAttr>());
   return nullptr;
 }
 
@@ -211,7 +211,7 @@ LogicalResult TFRFuncOp::verify() {
   // at the end?
   int first_tensor = -1, last_tensor = -1, first_tensor_list = -1,
       last_tensor_list = -1, first_attr = -1;
-  for (auto arg : llvm::enumerate(func.getType().getInputs())) {
+  for (auto arg : llvm::enumerate(func.getFunctionType().getInputs())) {
     Type arg_type = arg.value();
 
     if (auto tensor = arg_type.dyn_cast<TFRTensorType>()) {
@@ -290,7 +290,7 @@ LogicalResult TFRFuncOp::verify() {
   int undefined_input_attrs_number = undefined_attrs.size();
   bool seen_tensor_list = false, has_tensor_list_order_error = false,
        has_multiple_tensor_lists_error = false;
-  for (auto result_type : func.getType().getResults()) {
+  for (auto result_type : func.getFunctionType().getResults()) {
     if (auto tensor = result_type.dyn_cast<TFRTensorType>()) {
       if (seen_tensor_list) {
         has_tensor_list_order_error = true;
@@ -353,19 +353,17 @@ LogicalResult TFRFuncOp::verify() {
   return success();
 }
 
-static ParseResult ParseFuncOp(OpAsmParser &parser, OperationState *result) {
+ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   auto build_func_type =
       [](Builder &builder, ArrayRef<Type> arg_types, ArrayRef<Type> results,
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(arg_types, results); };
   return function_interface_impl::parseFunctionOp(
-      parser, *result, /*allowVariadic=*/false, build_func_type);
+      parser, result, /*allowVariadic=*/false, build_func_type);
 }
 
-static void PrintFuncOp(OpAsmPrinter &p, TFRFuncOp op) {
-  FunctionType fn_type = op.getType();
-  function_interface_impl::printFunctionOp(
-      p, op, fn_type.getInputs(), /*isVariadic=*/false, fn_type.getResults());
+void TFRFuncOp::print(OpAsmPrinter &p) {
+  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
 }
 
 }  // namespace TFR
@@ -913,7 +911,7 @@ Region *TFRFuncOp::getCallableRegion() {
 
 // CallableOpInterface
 ArrayRef<Type> TFRFuncOp::getCallableResults() {
-  return getType().getResults();
+  return getFunctionType().getResults();
 }
 
 //===----------------------------------------------------------------------===//

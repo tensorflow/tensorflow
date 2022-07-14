@@ -63,7 +63,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
                                        int64_t memory_space) const {
   bool modified = false;
   const HloValue& value = dataflow_analysis_->GetUniqueValueAt(
-      callee_instruction, index.ToShapeIndex());
+      callee_instruction, ShapeIndex(index));
 
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;
@@ -100,7 +100,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     }
   }
 
-  for (const HloUse& use : value.uses()) {
+  for (const HloUse& use : value.GetUses()) {
     // For fusion uses, propagate the memory space to the fusion parameter.
     if (use.instruction->opcode() == HloOpcode::kFusion) {
       modified |= Propagate(

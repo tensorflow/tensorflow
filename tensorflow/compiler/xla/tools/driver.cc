@@ -57,7 +57,7 @@ Run with an environment variable VERBOSE set to see logging.
 struct XlaCustomCallStatus {
   // If 'failed' is true then 'message' is present; otherwise it is absent.
   // (The 'bool' followed by 'std::string' is ABI-compatible with
-  // 'absl::optional<std::string>').
+  // 'std::optional<std::string>').
   bool failed;
   std::string message;
   // To account for extra struct padding at the end.
@@ -353,9 +353,9 @@ template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
 void FillIntT(void* buffer, int num_elements) {
   std::mt19937 generator(kSeed);
   T* casted = static_cast<T*>(buffer);
-  std::uniform_int_distribution<T> distr(kLowerBound, kUpperBound);
+  std::uniform_int_distribution<> distr(kLowerBound, kUpperBound);
   for (int i = 0; i < num_elements; i++) {
-    casted[i] = distr(generator);
+    casted[i] = static_cast<T>(distr(generator));
   }
 }
 

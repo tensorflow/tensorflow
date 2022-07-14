@@ -44,7 +44,7 @@ namespace xla {
 template <typename K>
 StatusOr<bool> CombineInstructionsByKey(
     HloComputation* computation,
-    const std::function<absl::optional<K>(const HloInstruction*)>& key_fn,
+    const std::function<std::optional<K>(const HloInstruction*)>& key_fn,
     const std::function<Status(absl::Span<HloInstruction* const>)>& combine_fn,
     int64_t combine_threshold_bytes, int64_t combine_threshold_count) {
   // Cache keys for each instruction and build sets of instructions with the
@@ -53,7 +53,7 @@ StatusOr<bool> CombineInstructionsByKey(
   absl::flat_hash_map<K, absl::flat_hash_set<HloInstruction*>> groups;
 
   for (HloInstruction* instruction : computation->instructions()) {
-    absl::optional<K> key = key_fn(instruction);
+    std::optional<K> key = key_fn(instruction);
     if (key) {
       keys.insert({instruction, *key});
       groups[*key].insert(instruction);

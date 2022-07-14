@@ -16,10 +16,10 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -43,13 +43,15 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  context.loadDialect<mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
   std::string s;
   llvm::raw_string_ostream os(s);
-  module->print(os);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo();
+  module->print(os, flags);
   return s;
 }
 
@@ -58,11 +60,11 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
                                                       bool return_tuple) {
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module;
-  context.loadDialect<mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::HloClientDialect>();
+  context.loadDialect<mlir::chlo::ChloDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  module = mlir::parseSourceString(
+  module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module.data(), mlir_module.size()), &context);
   if (!module) {
     return diagnostic_handler.ConsumeStatus();

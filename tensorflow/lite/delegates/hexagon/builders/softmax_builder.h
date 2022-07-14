@@ -34,7 +34,7 @@ class SoftmaxOpBuilder : public OpBuilder {
   TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
                                TfLiteContext* context) override;
 
-  ~SoftmaxOpBuilder();
+  ~SoftmaxOpBuilder() override;
 
  private:
   TensorID node_output_;

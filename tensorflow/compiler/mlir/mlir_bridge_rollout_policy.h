@@ -55,7 +55,7 @@ enum class MlirBridgeRolloutPolicy {
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
-    absl::optional<tensorflow::ConfigProto> config_proto,
+    std::optional<tensorflow::ConfigProto> config_proto,
     bool uses_uninitialized_resource_args, bool record_stats = false);
 
 static inline MlirBridgeRolloutPolicy GetMlirBridge2ndPhaseRolloutPolicy(

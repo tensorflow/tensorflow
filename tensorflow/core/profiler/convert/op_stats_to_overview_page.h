@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -60,6 +61,9 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
     const RunEnvironment& run_environment);
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats);
+
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
+                                          const XSpace& xspace);
 
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);

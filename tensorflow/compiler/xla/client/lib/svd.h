@@ -34,7 +34,7 @@ struct SVDResult {
   // i].
   XlaOp d;
   // The columns of V are the right-singular vectors. e.g.,
-  // V[..., :, :]_T * U[..., :, :] = I.
+  // V[..., :, :]_T * V[..., :, :] = I.
   XlaOp v;
 };
 

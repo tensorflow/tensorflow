@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LHLO_TO_HLO_OP_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LHLO_TO_HLO_OP_H_
+#ifndef MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LHLO_TO_HLO_OP_H
+#define MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LHLO_TO_HLO_OP_H
 
 #include <type_traits>
 
@@ -45,14 +45,14 @@ MAP_LHLO_TO_HLO(BitcastConvertOp);
 MAP_LHLO_TO_HLO(BroadcastInDimOp);
 MAP_LHLO_TO_HLO(CeilOp);
 MAP_LHLO_TO_HLO(ClampOp);
-MAP_LHLO_TO_HLO(ConstOp);
+MAP_LHLO_TO_HLO(ConstantOp);
 MAP_LHLO_TO_HLO(CompareOp);
 MAP_LHLO_TO_HLO(ComplexOp);
 MAP_LHLO_TO_HLO(ConcatenateOp);
-MAP_LHLO_TO_HLO(ConvOp);
+MAP_LHLO_TO_HLO(ConvolutionOp);
 MAP_LHLO_TO_HLO(ConvertOp);
 MAP_LHLO_TO_HLO(CopyOp);
-MAP_LHLO_TO_HLO(CosOp);
+MAP_LHLO_TO_HLO(CosineOp);
 MAP_LHLO_TO_HLO(CustomCallOp);
 MAP_LHLO_TO_HLO(DivOp);
 MAP_LHLO_TO_HLO(DotOp);
@@ -89,10 +89,10 @@ MAP_LHLO_TO_HLO(ShiftLeftOp);
 MAP_LHLO_TO_HLO(ShiftRightArithmeticOp);
 MAP_LHLO_TO_HLO(ShiftRightLogicalOp);
 MAP_LHLO_TO_HLO(SignOp);
-MAP_LHLO_TO_HLO(SinOp);
+MAP_LHLO_TO_HLO(SineOp);
 MAP_LHLO_TO_HLO(SliceOp);
 MAP_LHLO_TO_HLO(SqrtOp);
-MAP_LHLO_TO_HLO(SubOp);
+MAP_LHLO_TO_HLO(SubtractOp);
 MAP_LHLO_TO_HLO(TanhOp);
 MAP_LHLO_TO_HLO(TransposeOp);
 MAP_LHLO_TO_HLO(XorOp);
@@ -102,4 +102,4 @@ MAP_LHLO_TO_HLO(XorOp);
 }  // namespace lmhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LHLO_TO_HLO_OP_H_
+#endif  // MLIR_HLO_DIALECT_LHLO_TRANSFORMS_MAP_LHLO_TO_HLO_OP_H

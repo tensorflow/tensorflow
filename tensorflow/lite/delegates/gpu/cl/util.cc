@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -150,6 +152,12 @@ std::string CLErrorCodeToString(cl_int error_code) {
       return "Invalid device queue";
     case CL_INVALID_GL_SHAREGROUP_REFERENCE_KHR:
       return "Invalid GL sharegroup reference KHR";
+    case CL_INVALID_COMMAND_BUFFER_KHR:
+      return "Invalid command buffer KHR";
+    case CL_INVALID_SYNC_POINT_WAIT_LIST_KHR:
+      return "Invalid sync point wait list KHR";
+    case CL_INCOMPATIBLE_COMMAND_QUEUE_KHR:
+      return "Incompatible command queue KHR";
 
     default:
       return absl::StrCat("Unknown OpenCL error code - ", error_code);

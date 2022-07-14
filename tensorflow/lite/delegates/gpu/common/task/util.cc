@@ -16,12 +16,64 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 #include <cfloat>
+#include <string>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
+                              DataType dst_type, int vec_size) {
+  if (src_type == dst_type) {
+    return "";
+  }
+  bool need_explicit_conversion = true;
+  switch (dst_type) {
+    case DataType::BOOL:
+    case DataType::FLOAT32:
+    case DataType::FLOAT16:
+      if (gpu_info.IsGlslSupportsExplicitFp16()) {
+        if (src_type == dst_type) {
+          need_explicit_conversion = false;
+        }
+      } else {
+        if (src_type == DataType::FLOAT32 || src_type == DataType::FLOAT16) {
+          need_explicit_conversion = false;
+        }
+      }
+      break;
+    case DataType::INT32:
+    case DataType::INT16:
+    case DataType::INT8:
+      if (src_type == DataType::INT32 || src_type == DataType::INT16 ||
+          src_type == DataType::INT8) {
+        need_explicit_conversion = false;
+      }
+      break;
+    case DataType::UINT32:
+    case DataType::UINT16:
+    case DataType::UINT8:
+      if (src_type == DataType::UINT32 || src_type == DataType::UINT16 ||
+          src_type == DataType::UINT8) {
+        need_explicit_conversion = false;
+      }
+      break;
+    default:
+      break;
+  }
+  if (need_explicit_conversion) {
+    return ToGlslShaderDataType(
+        dst_type, vec_size,
+        /*add_precision*/ false,
+        /*explicit_fp16*/ gpu_info.IsGlslSupportsExplicitFp16());
+  } else {
+    return "";
+  }
+}
+}  // namespace
 
 std::string MemoryTypeToCLType(MemoryType type) {
   switch (type) {
@@ -159,6 +211,66 @@ int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size) {
   work_groups_count.y = DivideRoundUp(grid_size.y, work_group_size.y);
   work_groups_count.z = DivideRoundUp(grid_size.z, work_group_size.z);
   return work_groups_count;
+}
+
+std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type,
+                               int vec_size) {
+  if (gpu_info.IsApiOpenCl()) {
+    return ToCLDataType(data_type, vec_size);
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, vec_size);
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, vec_size, true,
+                                gpu_info.IsGlslSupportsExplicitFp16());
+  } else {
+    return "";
+  }
+}
+
+std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
+                         int vec_size) {
+  if (gpu_info.IsApiOpenCl()) {
+    return "(" + ToCLDataType(data_type, vec_size) + ")(0)";
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, vec_size) + "(0)";
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, vec_size, false,
+                                gpu_info.IsGlslSupportsExplicitFp16()) +
+           "(0)";
+  } else {
+    return "";
+  }
+}
+
+std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
+                        int vec_size) {
+  if (gpu_info.IsApiOpenCl()) {
+    return "(" + ToCLDataType(data_type, vec_size) + ")(1)";
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, vec_size) + "(1)";
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, vec_size, false,
+                                gpu_info.IsGlslSupportsExplicitFp16()) +
+           "(1)";
+  } else {
+    return "";
+  }
+}
+
+std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
+                              DataType dst_type, int vec_size) {
+  if (src_type != dst_type) {
+    if (gpu_info.IsApiOpenCl()) {
+      return "convert_" + ToCLDataType(dst_type, vec_size);
+    } else if (gpu_info.IsApiMetal()) {
+      return dst_type == DataType::BOOL
+                 ? "convert_" + ToMetalDataType(dst_type, vec_size)
+                 : ToMetalDataType(dst_type, vec_size);
+    } else if (gpu_info.IsGlsl()) {
+      return GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+    }
+  }
+  return "";
 }
 
 }  // namespace gpu

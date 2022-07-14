@@ -1,0 +1,24 @@
+path: "tensorflow.tpu.experimental.embedding.TPUEmbeddingForServing"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_for_serving.TPUEmbeddingForServing\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_base.TPUEmbeddingBase\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "embedding_tables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "embedding_lookup"
+    argspec: "args=[\'self\', \'features\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

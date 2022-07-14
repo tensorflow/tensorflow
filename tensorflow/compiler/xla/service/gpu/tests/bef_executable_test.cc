@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
 // This test suite should be run with
-// --//third_party/tensorflow/compiler/xla/service/gpu:enable_bef_executable=true
+// '--test_env=XLA_FLAGS=--xla_gpu_bef_executable'
 // to test the BEF-mode GpuExecutable.
 
 namespace xla {
@@ -80,7 +80,7 @@ XLA_TEST_F(ClientLibraryTestBase, DISABLED_GemmBiasOnly) {
       [&](const Array2D<Eigen::half>& data) -> std::unique_ptr<GlobalData> {
     Literal literal = LiteralUtil::CreateR2FromArray2DWithLayout(
         data, LayoutUtil::MakeLayout({1, 0}));
-    return client_->TransferToServer(literal).ConsumeValueOrDie();
+    return client_->TransferToServer(literal).value();
   };
   auto dot_lhs_handle = transfer_to_server(*dot_lhs_data);
   auto dot_rhs_handle = transfer_to_server(*dot_rhs_data);

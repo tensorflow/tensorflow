@@ -70,12 +70,11 @@ void TFOp::setAssignedDevice(StringAttr device) {
 }
 
 StringAttr TFOp::tpuReplicate() {
-  return op_->getAttrOfType<StringAttr>(
-      getDialect()->getTfgTpuReplicateAttrIdentifier());
+  return op_->getAttrOfType<StringAttr>("_tpu_replicate");
 }
 
 void TFOp::setTpuReplicate(StringAttr tpu_replicate) {
-  op_->setAttr(getDialect()->getTfgTpuReplicateAttrIdentifier(), tpu_replicate);
+  op_->setAttr("_tpu_replicate", tpu_replicate);
 }
 
 }  // namespace tfg

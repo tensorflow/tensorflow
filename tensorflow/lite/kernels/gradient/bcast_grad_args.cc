@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements the TensorFlow Lite's broadcast gradient argument
 // operator.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -132,7 +133,7 @@ TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) {
   std::array<bool, 2> prev_is_one = {false, false};
   std::array<bool, 2> current_is_one = {false, false};
   bool set_one = false;
-  // indicies of gradient reduction of each input.
+  // indices of gradient reduction of each input.
   std::vector<int64_t> grad_reduce_idx[2];
 
   for (int j = 0; j < largest_rank; ++j) {

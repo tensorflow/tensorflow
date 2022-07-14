@@ -34,10 +34,6 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
 
 StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   HloInstruction* top_tuple = nullptr;
-  if (tuple->parent()->root_instruction() == tuple &&
-      tuple->parent()->HasSideEffect()) {
-    return false;
-  }
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);

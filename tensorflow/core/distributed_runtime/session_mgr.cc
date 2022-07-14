@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
@@ -61,8 +62,11 @@ std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
 
 Status SessionMgr::CreateSession(const std::string& session,
                                  const ServerDef& server_def,
-                                 bool isolate_session_state) {
-  return CreateSession(session, server_def, {}, isolate_session_state);
+                                 bool isolate_session_state,
+                                 StatusCallback coordination_error_callback) {
+  return CreateSession(session, server_def, {}, isolate_session_state,
+                       /*master_task=*/"",
+                       /*master_incarnation=*/0, coordination_error_callback);
 }
 
 Status SessionMgr::CreateSession(
@@ -70,10 +74,10 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state) {
-  return CreateSession(
-      session, server_def, cluster_device_attributes, isolate_session_state,
-      /*master_task=*/"",
-      /*master_incarnation=*/0, /*coordination_service_config=*/{});
+  return CreateSession(session, server_def, cluster_device_attributes,
+                       isolate_session_state,
+                       /*master_task=*/"",
+                       /*master_incarnation=*/0);
 }
 
 Status SessionMgr::CreateSession(
@@ -81,8 +85,7 @@ Status SessionMgr::CreateSession(
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state, std::string master_task,
-    int64_t master_incarnation,
-    const CoordinationServiceConfig& coordination_service_config) {
+    int64_t master_incarnation, StatusCallback coordination_error_callback) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -194,6 +197,8 @@ Status SessionMgr::CreateSession(
 
   // If configured, enable coordination service and agent in the first worker
   // session.
+  const CoordinationServiceConfig& coordination_service_config =
+      server_def.default_session_config().experimental().coordination_config();
   if (!coordination_service_config.service_type().empty() &&
       coordination_service_agent_ == nullptr) {
     std::unique_ptr<CoordinationClientCache> client_cache;
@@ -211,11 +216,11 @@ Status SessionMgr::CreateSession(
     coordination_service_agent_ = CreateCoordinationServiceAgent();
     TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
         worker_env_->env, server_def, std::move(agent_cache),
-        /*error_fn=*/[](Status s) {
-          LOG(ERROR) << "Coordination agent is set to error: " << s;
-        }));
+        std::move(coordination_error_callback)));
+    activity_watcher::MaybeEnableMultiWorkersWatching(
+        coordination_service_agent_.get());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
@@ -282,7 +287,7 @@ Status SessionMgr::UpdateSession(
   TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(added_remote_devices), removed_remote_devices));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::DeleteSession(const std::string& session) {
@@ -291,7 +296,7 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   if (it != sessions_.end()) {
     sessions_.erase(it);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSessionLocked(
@@ -314,7 +319,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
       *out_session = it->second;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSession(
@@ -403,5 +408,13 @@ void SessionMgr::ClearLogs() {
       }
     }
   }
+}
+
+void SessionMgr::TeardownCoordinationService() {
+  coordination_service_ = nullptr;
+}
+
+void SessionMgr::TeardownCoordinationServiceAgent() {
+  coordination_service_agent_ = nullptr;
 }
 }  // namespace tensorflow

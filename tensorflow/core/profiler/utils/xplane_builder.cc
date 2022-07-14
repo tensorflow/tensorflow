@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -80,6 +81,16 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(std::string&& name) {
   return metadata;
 }
 
+std::vector<XEventMetadata*> XPlaneBuilder::GetOrCreateEventsMetadata(
+    const std::vector<absl::string_view>& names) {
+  std::vector<XEventMetadata*> metadata;
+  metadata.reserve(names.size());
+  for (absl::string_view name : names) {
+    metadata.push_back(GetOrCreateEventMetadata(name));
+  }
+  return metadata;
+}
+
 XEventMetadata* XPlaneBuilder::GetEventMetadata(absl::string_view name) const {
   auto result = event_metadata_by_name_.find(name);
   if (result == event_metadata_by_name_.end()) return nullptr;
@@ -96,6 +107,12 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64_t metadata_id) {
   XStatMetadata& metadata = (*plane_->mutable_stat_metadata())[metadata_id];
   metadata.set_id(metadata_id);
   return &metadata;
+}
+
+const XStatMetadata* XPlaneBuilder::GetStatMetadata(int64_t metadata_id) const {
+  auto result = plane_->stat_metadata().find(metadata_id);
+  if (result == plane_->stat_metadata().end()) return nullptr;
+  return &(result->second);
 }
 
 XStatMetadata* XPlaneBuilder::CreateStatMetadata() {

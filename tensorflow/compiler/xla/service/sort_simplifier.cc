@@ -67,17 +67,17 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   }
 
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> new_shapes;
+  std::vector<const Shape*> new_shapes;
   for (int64_t i = 0; i < sort->operand_count(); ++i) {
     if (used_indices.contains(i)) {
       operands.push_back(sort->mutable_operand(i));
-      new_shapes.push_back(sort->operand(i)->shape());
+      new_shapes.push_back(&sort->operand(i)->shape());
     }
   }
 
   Shape new_sort_shape = new_shapes.size() == 1
-                             ? new_shapes[0]
-                             : ShapeUtil::MakeTupleShape(new_shapes);
+                             ? *new_shapes[0]
+                             : ShapeUtil::MakeTupleShapeWithPtrs(new_shapes);
   HloInstruction* new_sort = computation->AddInstruction(
       sort->CloneWithNewOperands(new_sort_shape, operands));
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
@@ -104,7 +104,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
   }
   HloModule* module = sort->GetModule();
   HloComputation* new_compare = module->AddEmbeddedComputation(
-      comparator->CloneWithReplacements(std::move(replacements)));
+      comparator->CloneWithReplacements(&replacements));
   new_sort->set_to_apply(new_compare);
 
   // Map from original get-tuple-element tuple index to new HLO instruction
@@ -116,7 +116,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
       if (used_indices.count(i)) {
         result_map[i] =
             computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-                new_shapes[new_index], new_sort, new_index));
+                *new_shapes[new_index], new_sort, new_index));
         ++new_index;
       }
     }

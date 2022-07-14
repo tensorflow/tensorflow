@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_DETAIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TFJS_TRANSFORMS_PASSES_DETAIL_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {

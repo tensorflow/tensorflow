@@ -80,7 +80,7 @@ struct PyCall {
 };
 
 bool IsCPUDevice(const Device* d) {
-  return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
+  return d == nullptr || d->tensorflow_accelerator_device_info() == nullptr;
 }
 
 // Givens the 'call', prepares the token and inputs as a python tuple
@@ -120,7 +120,7 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
   }
   *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
   CHECK(*tuple);
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsSingleNone(PyObject* obj) {
@@ -158,7 +158,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   Device* actual_device = handle->device();
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
-  if (expected_device == actual_device) return Status::OK();
+  if (expected_device == actual_device) return OkStatus();
   const string& expected_device_name = expected_device->attributes().name();
   if (actual_device == nullptr) {
     if (!IsCPUDevice(expected_device)) {
@@ -167,7 +167,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
           expected_device_name,
           ", but is actually backed by local host memory. This is a bug.");
     }
-    return Status::OK();
+    return OkStatus();
   }
   // NOTE(ebrevdo): Here we could try comparing "actual_device_name"
   // (actual_device->attributes()->name()) to expected_device_name and ensure
@@ -179,7 +179,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   // able to perform a proper comparison.  Furthermore, we can't check
   // IsCPUDevice(actual_device) because the kernel's device may indeed be a
   // GPU device (the python interpreter doesn't use it, however).
-  return Status::OK();
+  return OkStatus();
 }
 
 // Calls the registered py function through the trampoline.
@@ -212,7 +212,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   // Invokes the trampoline.
   PyObject* result = PyEval_CallObject(trampoline, args);
   Py_DECREF(args);
-  Status s = Status::OK();
+  Status s = OkStatus();
   if (result == nullptr) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||

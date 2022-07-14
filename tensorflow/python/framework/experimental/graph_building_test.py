@@ -16,7 +16,7 @@
 
 import timeit
 
-from tensorflow.python.eager import context
+from tensorflow.core.config import flags
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -63,7 +63,7 @@ class GraphBuildingBenchmark(test.Benchmark):
     num_iters = 10
     duration = self._computeAddOpDuration(num_ops, num_iters)
     name = "BenchmarkAddOp"
-    if context.graph_building_optimization_enabled():
+    if flags.config().graph_building_optimization.value():
       name += "WithGraphBuildingOptimization"
     self.report_benchmark(
         name=name,
@@ -76,7 +76,7 @@ class GraphBuildingBenchmark(test.Benchmark):
     num_iters = 10
     duration = self._computeReadVariableOpDuration(num_ops, num_iters)
     name = "BenchmarkReadVariableOp"
-    if context.graph_building_optimization_enabled():
+    if flags.config().graph_building_optimization.value():
       name += "WithGraphBuildingOptimization"
     self.report_benchmark(
         name=name,

@@ -154,6 +154,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
@@ -840,6 +841,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

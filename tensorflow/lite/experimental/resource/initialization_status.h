@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_INITIALIZATION_STATUS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_INITIALIZATION_STATUS_H_
 
+#include <memory>
+#include <unordered_map>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 

@@ -85,7 +85,7 @@ TYPED_TEST(RandomStandardNormalTest, TestOutput) {
   for (const auto dynamic : {false, true}) {
     tflite::RandomStandardNormalOpModel m(
         {1000, 50, 5}, {tflite::GetTTEnum<Type>(), {}}, dynamic);
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     auto output = m.GetOutput<Type>();
     EXPECT_EQ(output.size(), 1000 * 50 * 5);
 
@@ -114,7 +114,7 @@ TYPED_TEST(RandomStandardNormalTest, TestOutputDistributionRange) {
   const std::vector<Type> output_data(1000 * 50 * 5,
                                       std::numeric_limits<Type>::infinity());
   m.PopulateTensor(m.output(), output_data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput<Type>();
   EXPECT_EQ(output.size(), 1000 * 50 * 5);
   double sum = 0;

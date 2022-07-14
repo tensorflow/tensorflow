@@ -15,14 +15,11 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
+#ifndef MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
+#define MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h"
-#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -37,19 +34,12 @@ namespace mlir {
 class OpBuilder;
 }  // namespace mlir
 
-namespace mlir {
-namespace lmhlo_gpu {
-
-class LmhloGpuDialect : public Dialect {
- public:
-  explicit LmhloGpuDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "lmhlo_gpu"; }
-};
-
-}  // namespace lmhlo_gpu
-}  // end namespace mlir
-
+// Include order below matters.
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_dialect.h.inc"
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc"
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H_
+#endif  // MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H

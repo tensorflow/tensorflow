@@ -281,6 +281,12 @@ class OpDefBuilderWrapper {
     return *this;
   }
 
+  OpDefBuilderWrapper& SetReverseTypeFn(int input_number,
+                                        ForwardTypeInferenceFn fn) {
+    builder_.SetReverseTypeFn(input_number, std::move(fn));
+    return *this;
+  }
+
   const ::tensorflow::OpDefBuilder& builder() const { return builder_; }
 
   InitOnStartupMarker operator()();

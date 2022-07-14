@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
 
 namespace tensorflow {
 namespace profiler {

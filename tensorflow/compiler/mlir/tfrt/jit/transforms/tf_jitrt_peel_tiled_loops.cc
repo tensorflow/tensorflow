@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -30,23 +32,23 @@ namespace {
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
-constexpr llvm::StringRef kWasPeeledAttr = "PeelTiledLoopsPeeledAttr";
+constexpr llvm::StringRef kWasPeeledAttr = "PeelStLoopsPeeledAttr";
 
-struct PeelTiledLoop
-    : public mlir::OpRewritePattern<mlir::linalg::TiledLoopOp> {
-  using mlir::OpRewritePattern<mlir::linalg::TiledLoopOp>::OpRewritePattern;
+using mlir::gml_st::LoopOp;
+
+struct PeelGmlStLoop : public mlir::OpRewritePattern<LoopOp> {
+  using mlir::OpRewritePattern<LoopOp>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::linalg::TiledLoopOp loop,
-      mlir::PatternRewriter &rewriter) const override {
+      LoopOp loop, mlir::PatternRewriter &rewriter) const override {
     if (loop->hasAttr(kWasPeeledAttr)) return mlir::failure();
     auto true_attr = mlir::BoolAttr::get(rewriter.getContext(), true);
     loop->setAttr(kWasPeeledAttr, true_attr);
     for (int peeled_idx = loop.getNumLoops() - 1; peeled_idx >= 0;
          peeled_idx--) {
-      mlir::linalg::TiledLoopOp peel;
+      LoopOp peel;
       // Mark the new loop if one was created
-      if (mlir::linalg::peelAndCanonicalizeTiledLoop(rewriter, loop, peeled_idx,
+      if (mlir::gml_st::peelAndCanonicalizeGmlStLoop(rewriter, loop, peeled_idx,
                                                      peel)
               .succeeded())
         peel->setAttr(kWasPeeledAttr, true_attr);
@@ -56,8 +58,6 @@ struct PeelTiledLoop
 };
 
 struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {}
-
   void runOnOperation() override {
     auto func_op = getOperation();
 
@@ -65,17 +65,17 @@ struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
     // situation.
     // TODO(tpopp): See if this is still necessary in the integrated version.
     mlir::RewritePatternSet canonicalizations(func_op.getContext());
-    mlir::linalg::TiledLoopOp::getCanonicalizationPatterns(
-        canonicalizations, func_op.getContext());
+    LoopOp::getCanonicalizationPatterns(canonicalizations,
+                                        func_op.getContext());
     mlir::linalg::populateLinalgTilingCanonicalizationPatterns(
         canonicalizations);
     (void)applyPatternsAndFoldGreedily(func_op, std::move(canonicalizations));
 
     mlir::RewritePatternSet loop_peeling(func_op.getContext());
-    loop_peeling.insert<PeelTiledLoop>(func_op.getContext());
+    loop_peeling.add<PeelGmlStLoop>(func_op.getContext());
     (void)applyPatternsAndFoldGreedily(func_op, std::move(loop_peeling));
 
-    func_op->walk([&](mlir::linalg::TiledLoopOp op) {
+    func_op->walk([&](LoopOp op) {
       if (op->hasAttr(kWasPeeledAttr)) op->removeAttr(kWasPeeledAttr);
     });
   }
@@ -83,7 +83,8 @@ struct PeelTiledLoopsPass : public PeelTiledLoopsBase<PeelTiledLoopsPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreatePeelTiledLoopsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreatePeelTiledLoopsPass() {
   return std::make_unique<PeelTiledLoopsPass>();
 }
 }  // namespace tensorflow

@@ -133,7 +133,7 @@ def InvokeHipcc(argv, log=False):
   undefines = GetOptionValue(argv, 'U')
   undefines = ''.join([' -U' + define for define in undefines])
   std_options = GetOptionValue(argv, 'std')
-  hipcc_allowed_std_options = ["c++11", "c++14"]
+  hipcc_allowed_std_options = ["c++11", "c++14", "c++17"]
   std_options = ''.join([' -std=' + define
       for define in std_options if define in hipcc_allowed_std_options])
 
@@ -167,6 +167,8 @@ def InvokeHipcc(argv, log=False):
   # Also we need to retain warning about uninitialised shared variable as
   # warning only, even when -Werror option is specified.
   hipccopts += ' --include=hip/hip_runtime.h '
+  # Force C++17 dialect (note, everything in just one string!)
+  hipccopts += ' --std=c++17 '
   # Use -fno-gpu-rdc by default for early GPU kernel finalization
   # This flag would trigger GPU kernels be generated at compile time, instead
   # of link time. This allows the default host compiler (gcc) be used as the
@@ -238,6 +240,7 @@ def main():
     gpu_linker_flags.append('-Wl,-rpath=' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-l' + HIP_RUNTIME_LIBRARY)
     gpu_linker_flags.append("-lrt")
+    gpu_linker_flags.append("-lstdc++")
 
     if VERBOSE: print(' '.join([CPU_COMPILER] + gpu_linker_flags))
     return subprocess.call([CPU_COMPILER] + gpu_linker_flags)

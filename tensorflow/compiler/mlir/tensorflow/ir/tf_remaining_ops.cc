@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -54,7 +54,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -98,21 +98,21 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
            << status.error_message();
   }
 
-  FuncOp func = module_for_func->lookupSymbol<FuncOp>("host_func");
+  func::FuncOp func = module_for_func->lookupSymbol<func::FuncOp>("host_func");
   if (!func)
     return op.emitError()
            << "serialized module in attribute 'host_mlir_module' does not "
               "contain 'host_func' function.";
 
-  if (op->getNumOperands() != func.getType().getNumInputs())
+  if (op->getNumOperands() != func.getFunctionType().getNumInputs())
     return op.emitError()
-           << "'host_func' has " << func.getType().getNumInputs()
+           << "'host_func' has " << func.getFunctionType().getNumInputs()
            << " inputs and '_XlaHostComputeMlir' has " << op->getNumOperands()
            << " operands.  Number of operands/inputs should be the same.";
 
-  if (op->getNumResults() != func.getType().getNumResults())
+  if (op->getNumResults() != func.getFunctionType().getNumResults())
     return op.emitError() << "'host_func' has "
-                          << func.getType().getNumResults()
+                          << func.getFunctionType().getNumResults()
                           << " results and '_XlaHostComputeMlir' has "
                           << op->getNumResults()
                           << " results.  Number of results should be the same.";
@@ -120,13 +120,13 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+func::FuncOp _XlaHostComputeMlirOp::GetHostFunc(
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
-  return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+  return (*mlir_module)->lookupSymbol<func::FuncOp>("host_func");
 }
 
 //===----------------------------------------------------------------------===//
@@ -143,6 +143,36 @@ std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
 
 std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
   return key().str();
+}
+
+namespace {
+std::string GetRendezvousKey(const std::string& send_device,
+                             const uint64_t send_device_incarnation,
+                             const std::string& recv_device,
+                             const std::string& tensor_name) {
+  return absl::StrCat(send_device, ";", send_device_incarnation, ";",
+                      recv_device, ";", tensor_name);
+}
+}  // namespace
+
+std::string _HostRecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _HostSendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _RecvOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
+}
+
+std::string _SendOp::GetResourceInstanceStr() {
+  return GetRendezvousKey(send_device().str(), send_device_incarnation(),
+                          recv_device().str(), tensor_name().str());
 }
 
 }  // namespace TF

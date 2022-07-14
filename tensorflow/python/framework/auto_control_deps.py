@@ -50,6 +50,7 @@ ASYNC_STATEFUL_OPS = frozenset((
     # in order to avoid being pruned.
     "Recv",
     "CollectiveInitializeCommunicator",
+    "CollectiveAssignGroupV2",
 ))
 
 LEGACY_RANDOM_OPS = frozenset((

@@ -26,6 +26,12 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
                                        mlir::StringRef entry_function_name,
                                        llvm::ArrayRef<int64_t> buffer_sizes);
 
+// Runs the lowering pipeline to convert the given LMHLO module to a JitRt
+// module, with a Gpu runtime custom calls to drive the device code execution.
+Status ConvertLmhloToJitRt(mlir::ModuleOp module,
+                           mlir::StringRef entry_function_name,
+                           llvm::ArrayRef<int64_t> buffer_sizes);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_PASS_UTILS_H_

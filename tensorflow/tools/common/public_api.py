@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,6 +41,15 @@ class PublicAPIVisitor(object):
         'tf': [
             'compiler',
             'core',
+            # TODO(scottzhu): See b/227410870 for more details. Currently
+            # dtensor API is exposed under tf.experimental.dtensor, but in the
+            # meantime, we have tensorflow/dtensor directory which will be treat
+            # as a python package. We want to avoid step into the
+            # tensorflow/dtensor directory when visit the API.
+            # When the tf.dtensor becomes the public API, it will actually pick
+            # up from tf.compat.v2.dtensor as priority and hide the
+            # tensorflow/dtensor package.
+            'dtensor',
             'python',
         ],
         # Some implementations have this internal module that we shouldn't

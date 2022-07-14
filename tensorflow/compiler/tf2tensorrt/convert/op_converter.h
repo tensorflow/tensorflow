@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/weights.h"
-#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {

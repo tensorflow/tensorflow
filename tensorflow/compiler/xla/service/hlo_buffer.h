@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_value.h"
@@ -83,8 +84,8 @@ class HloBuffer {
     return a->id() == b->id();
   }
 
-  HloBuffer(Id id, absl::Span<const HloValue* const> values)
-      : id_(id), values_(values.begin(), values.end()) {}
+  HloBuffer(Id id, std::vector<const HloValue*> values)
+      : id_(id), values_(std::move(values)) {}
 
   // Return the unique identifier for this HloBuffer.
   Id id() const { return id_; }

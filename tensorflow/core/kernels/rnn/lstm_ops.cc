@@ -416,6 +416,65 @@ class LSTMBlockCellOp : public OpKernel {
 
     const Device& device = ctx->eigen_device<Device>();
 
+    // Sanity check that each of the tensors have the required NDIMS.
+    OP_REQUIRES(ctx, x_tensor->dims() == 2,
+                errors::InvalidArgument("x_tensor must be rank 2 but is rank ",
+                                        x_tensor->dims(), "."));
+    OP_REQUIRES(
+        ctx, cs_prev_tensor->dims() == 2,
+        errors::InvalidArgument("cs_prev_tensor must be rank 2 but is rank ",
+                                cs_prev_tensor->dims(), "."));
+    OP_REQUIRES(
+        ctx, h_prev_tensor->dims() == 2,
+        errors::InvalidArgument("h_prev_tensor must be rank 2 but is rank ",
+                                h_prev_tensor->dims(), "."));
+    OP_REQUIRES(ctx, w_tensor->dims() == 2,
+                errors::InvalidArgument("w_tensor must be rank 2 but is rank ",
+                                        w_tensor->dims(), "."));
+    OP_REQUIRES(
+        ctx, wci_tensor->dims() == 1,
+        errors::InvalidArgument("wci_tensor must be rank 1 but is rank ",
+                                wci_tensor->dims(), "."));
+    OP_REQUIRES(
+        ctx, wcf_tensor->dims() == 1,
+        errors::InvalidArgument("wcf_tensor must be rank 1 but is rank ",
+                                wci_tensor->dims(), "."));
+    OP_REQUIRES(
+        ctx, wco_tensor->dims() == 1,
+        errors::InvalidArgument("wco_tensor must be rank 1 but is rank ",
+                                wco_tensor->dims(), "."));
+    OP_REQUIRES(ctx, b_tensor->dims() == 1,
+                errors::InvalidArgument("b_tensor must be rank 1 but is rank ",
+                                        b_tensor->dims(), "."));
+    OP_REQUIRES(ctx, xh_tensor.dims() == 2,
+                errors::InvalidArgument("xh_tensor must be rank 2 but is rank ",
+                                        xh_tensor.dims(), "."));
+    OP_REQUIRES(ctx, i_tensor->dims() == 2,
+                errors::InvalidArgument("i_tensor must be rank 2 but is rank ",
+                                        i_tensor->dims(), "."));
+    OP_REQUIRES(ctx, cs_tensor->dims() == 2,
+                errors::InvalidArgument("cs_tensor must be rank 2 but is rank ",
+                                        cs_tensor->dims(), "."));
+    OP_REQUIRES(ctx, f_tensor->dims() == 2,
+                errors::InvalidArgument("f_tensor must be rank 2 but is rank ",
+                                        f_tensor->dims(), "."));
+    OP_REQUIRES(ctx, o_tensor->dims() == 2,
+                errors::InvalidArgument("o_tensor must be rank 2 but is rank ",
+                                        o_tensor->dims(), "."));
+    OP_REQUIRES(ctx, ci_tensor->dims() == 2,
+                errors::InvalidArgument("ci_tensor must be rank 2 but is rank ",
+                                        ci_tensor->dims(), "."));
+    OP_REQUIRES(ctx, co_tensor->dims() == 2,
+                errors::InvalidArgument("co_tensor must be rank 2 but is rank ",
+                                        co_tensor->dims(), "."));
+    OP_REQUIRES(
+        ctx, gates_tensor.dims() == 2,
+        errors::InvalidArgument("gates_tensor must be rank 2 but is rank ",
+                                gates_tensor.dims(), "."));
+    OP_REQUIRES(ctx, h_tensor->dims() == 2,
+                errors::InvalidArgument("h_tensor must be rank 2 but is rank ",
+                                        h_tensor->dims(), "."));
+
     functor::LSTMBlockCellFprop<Device, T, USE_CUBLAS, gate_layout>(
         batch_size, input_size, cell_size)(
         ctx, device, forget_bias_, cell_clip_, use_peephole_,

@@ -174,13 +174,13 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
     OP_REQUIRES(ctx,
                 input_min_tensor.dims() == 0 || input_min_tensor.dims() == 1,
                 errors::InvalidArgument(
-                    "Input min tensor must have dimension 1. Recieved ",
+                    "Input min tensor must have dimension 0 or 1. Received ",
                     input_min_tensor.dims(), "."));
     const Tensor& input_max_tensor = ctx->input(3);
     OP_REQUIRES(ctx,
                 input_max_tensor.dims() == 0 || input_max_tensor.dims() == 1,
                 errors::InvalidArgument(
-                    "Input max tensor must have dimension 1. Recieved ",
+                    "Input max tensor must have dimension 0 or 1. Received ",
                     input_max_tensor.dims(), "."));
     if (axis_ != -1) {
       OP_REQUIRES(
@@ -203,6 +203,12 @@ class QuantizeAndDequantizeV4GradientOp : public OpKernel {
                    ctx->allocate_output(2, min_max_shape, &input_max_backprop));
 
     if (axis_ == -1) {
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(input_min_tensor.shape()),
+                  errors::InvalidArgument(
+                      "input_min must be a scalar if axis is unspecified"));
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(input_max_tensor.shape()),
+                  errors::InvalidArgument(
+                      "input_max must be a scalar if axis is unspecified"));
       functor::QuantizeAndDequantizeOneScaleGradientFunctor<Device, T> f;
       f(ctx->eigen_device<Device>(), gradient.template flat<T>(),
         input.template flat<T>(), input_min_tensor.scalar<T>(),

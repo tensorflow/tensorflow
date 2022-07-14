@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -47,7 +47,6 @@ namespace jax {
 // - `sharding`, which specifies how to shard the inputs.
 // - `mesh_mapping`, which specifies how to map shards to devices.
 //
-
 // The 3 following structs define how to shard one dimension of an ndarry.
 //
 // `NoSharding` (`None` in Python) means no sharding.
@@ -104,7 +103,7 @@ H AbslHashValue(H h, const Unstacked& key) {
   return h;
 }
 
-using AvalDimSharding = absl::variant<NoSharding, Chunked, Unstacked>;
+using AvalDimSharding = std::variant<NoSharding, Chunked, Unstacked>;
 
 // Assigns sharded axes to mesh dimensions.
 //
@@ -144,10 +143,33 @@ H AbslHashValue(H h, const Replicated& key) {
   return h;
 }
 
-using MeshDimAssignment = absl::variant<ShardedAxis, Replicated>;
+using MeshDimAssignment = std::variant<ShardedAxis, Replicated>;
 
 // Describes how each axis is sharded (if it is), and how it's mapped to the
 // devices mesh. See Jax pxla.py for the documentation.
+//
+// ShardingSpec is shared across pmap, pjit and xpmap. For pmap, an input
+// `sharding`  is composed of `NoSharding` and at most one `Unstacked`.
+// If `axis_size=None`, at least one the inputs has a dimension associated to
+// `Unstacked`.
+//
+// Examples:
+//
+// 1. For pmap, with a tensor of shape [8, 2, 2], to unstack along the first
+//    dimension into [8] devices:
+//
+//    sharding = [Unstacked(8), NoSharding, NoSharding]
+//    mesh_mapping = [ShardedAxis(0)]
+//
+// 2. With an input array of shape [6], that we want to chunk into [2, 3]
+//    Assuming an device mesh [3, 4, 2] of devices, we will have:
+//
+//    sharding = [Chunked([2, 3])]
+//    mesh_mapping = [ShardedAxis(1), Replicated, ShardedAxis(0)]
+//
+//    In particular, in the above example, the ShardedAxis refers to indices
+//    of the sharded shape [2, 3]. (only the `Chunked` sharding can produce more
+//    than one dimension).
 class ShardingSpec {
  public:
   ShardingSpec(std::vector<AvalDimSharding> sharding,
@@ -224,16 +246,16 @@ class ShardedDeviceArray {
 
   bool is_deleted() const { return is_deleted_; }
   bool weak_type() const { return weak_type_; }
-  absl::optional<pybind11::list> device_buffers() const {
+  std::optional<pybind11::list> device_buffers() const {
     return device_buffers_;
   }
   pybind11::object aval() const { return aval_; }
   pybind11::object indices() const { return indices_; }
 
-  absl::optional<pybind11::object> npy_value() const { return npy_value_; }
+  std::optional<pybind11::object> npy_value() const { return npy_value_; }
   void set_npy_value(pybind11::object npy_value) { npy_value_ = npy_value; }
 
-  absl::optional<pybind11::object> one_replica_buffer_indices() const {
+  std::optional<pybind11::object> one_replica_buffer_indices() const {
     return one_replica_buffer_indices_;
   }
   void set_one_replica_buffer_indices(pybind11::object obj) {
@@ -303,18 +325,18 @@ class ShardedDeviceArray {
   // The buffers containing the data for this array. Each buffer is the same
   // shape and on a different device. Buffers are in row-major order, with
   // replication treated as an extra innermost dimension.
-  absl::optional<pybind11::list> device_buffers_;
+  std::optional<pybind11::list> device_buffers_;
 
-  absl::optional<pybind11::object> npy_value_ = absl::nullopt;
-  absl::optional<pybind11::object> one_replica_buffer_indices_ = absl::nullopt;
+  std::optional<pybind11::object> npy_value_ = std::nullopt;
+  std::optional<pybind11::object> one_replica_buffer_indices_ = std::nullopt;
 
   // The device_buffers as a C++ object. As this is what we consume from C++
   // and this is also what we generate from C++, cache the result so that
   // we don't have to perform casts.
   // TODO(jblespiau): Make this the default, and have `device_buffers_` the
   // the optional Python value if it's accessed from Python.
-  absl::optional<std::vector<xla::PjRtBuffer*>> cpp_device_buffers_ =
-      absl::nullopt;
+  std::optional<std::vector<xla::PjRtBuffer*>> cpp_device_buffers_ =
+      std::nullopt;
 
   // The weak_type to prevent accessing the "aval_.weak_type" attribute which
   // is significantly slower.

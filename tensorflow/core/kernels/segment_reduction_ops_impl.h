@@ -27,8 +27,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include <vector>
-
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -336,8 +334,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, create_and_check_output);
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -355,24 +354,77 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   typename TTypes<Index>::ConstFlat segment_ids,
                   typename TTypes<T, 2>::ConstTensor data,
                   typename TTypes<T, 2>::Tensor output) {
-    output.setConstant(InitialValueF()());
+    auto cpu_device = ctx->eigen_cpu_device();
+    output.device(cpu_device) = output.constant(InitialValueF()());
     if (data.size() == 0) {
       return;
     }
+
+    // This functor will reduce `N` rows input to `num_segments` rows output.
     const int64_t N = segment_ids.dimension(0);
     const int64_t num_segments = output.dimension(0);
+    const int64_t inner_dim = data.dimension(1);
     ReductionF reduction;
+
+    // `num_real_segment` counts the rows actually reduced from input,
+    // the rows with negative segment index will be excluded.
+    // It will be used for cost model.
+    int64_t num_real_segment = N;
+    // `num_reductions` counts the rows actually reduced in output,
+    // the rows only filled with InitialValueF() will be excluded.
+    int64_t num_reductions = 0;
+    // `row_counter` records how many input rows will be reduced in each
+    // output row, the row only fills with InitialValueF() will keep 0.
+    // Length of non-zero elements is `num_reductions`.
+    std::vector<Index> row_counter(num_segments, 0);
+
     for (int64_t i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
       if (j < 0) {
+        --num_real_segment;
         continue;
       }
       OP_REQUIRES(ctx, FastBoundsCheck(j, num_segments),
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
                       " = ", j, " is out of range [0, ", num_segments, ")"));
-      reduction(data.template chip<0>(i), output.template chip<0>(j));
+      if (row_counter[j] == 0) num_reductions++;
+      row_counter[j]++;
     }
+
+    // Nothing to reduce. All output values equal to `InitialValueF()`.
+    if (num_reductions == 0) return;
+
+    // Parallelize by `num_segments`. It's simple, efficient and safe
+    // (no data dependency):
+    //
+    //   input   segment_ids                 num_segments  operation
+    //   | a0 |  | 0 |            worker 1:  |0|           f(a0, a1)
+    //   | b0 |  | 1 |            worker 2:  |1|           f(b0, b1)
+    // N | c0 |  | 2 |       -->  worker 3:  |2|           f(c0)
+    //   | b1 |  | 1 |
+    //   | a1 |  | 0 |
+    //
+    // TODO(intel-tf): Balance workload in `row_counter` to make parallelism
+    //                 more efficient.
+    auto reductionWorker = [&](int64_t begin, int64_t end) -> void {
+      for (int64_t i = 0; i < N; i++) {
+        Index j = internal::SubtleMustCopy(segment_ids(i));
+        // If `j` is in work scope of this worker, do the reduction.
+        if (j >= begin && j < end) {
+          reduction(data.template chip<0>(i), output.template chip<0>(j));
+        }
+      }
+    };
+
+    // Reduction functors includes Sum, Max, Min, etc. Simply consider it
+    // will cost 5 cycles per operation.
+    const int64_t kAverTaskSize = num_real_segment / num_segments;
+    const int64_t compute_cycles = 5 * inner_dim * kAverTaskSize;
+    const int64_t input_bytes = sizeof(T) * inner_dim * kAverTaskSize;
+    const int64_t output_bytes = sizeof(T) * inner_dim * kAverTaskSize;
+    const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
+    cpu_device.parallelFor(num_segments, cost, reductionWorker);
   }
 };
 
@@ -895,8 +947,9 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
           errors::Internal(type_string() +
                            ": failed to copy last_segment_id from device"),
           done);
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, create_and_check_output);
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, create_and_check_output);
     }
   }
 

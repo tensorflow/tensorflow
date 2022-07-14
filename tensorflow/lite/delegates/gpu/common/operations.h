@@ -39,12 +39,14 @@ enum class OperationType {
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
+  CAST,
   CONCAT,
   CONSTANT,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
   COPY,
   COS,
+  CUMSUM,
   DENSIFY,
   DEPTHWISE_CONVOLUTION,
   DEPTH_TO_SPACE,
@@ -73,6 +75,7 @@ enum class OperationType {
   MUL,
   NEG,
   NOT_EQUAL,
+  ONE_HOT,
   PAD,
   POOLING_2D,
   POW,
@@ -88,6 +91,7 @@ enum class OperationType {
   RESHAPE,
   RESIZE,
   RSQRT,
+  SELECT_V2,
   SIGMOID,
   SIN,
   SLICE,
@@ -564,7 +568,7 @@ struct ElementwiseAttributes {
   TensorOrScalar param;
   // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
   // true when runtime tensor is B(on second position). this is important for
-  // ops that non commutative, for example substract.
+  // ops that non commutative, for example subtract.
   bool runtime_tensor_is_second = false;
 };
 
@@ -613,6 +617,20 @@ struct QuantizeAndDequantizeAttributes {
 };
 
 struct GatherAttributes {
+  Axis axis = Axis::UNKNOWN;
+};
+
+struct OneHotAttributes {
+  float on_value = 1;
+  float off_value = 0;
+};
+
+struct SelectV2Attributes {
+  bool broadcast_true = false;
+  bool broadcast_false = false;
+};
+
+struct CumsumAttributes {
   Axis axis = Axis::UNKNOWN;
 };
 

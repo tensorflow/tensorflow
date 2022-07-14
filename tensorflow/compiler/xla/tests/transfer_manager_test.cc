@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -349,6 +350,44 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
 
   EXPECT_TRUE(LiteralTestUtil::Equal(literal1, result1));
   EXPECT_TRUE(LiteralTestUtil::Equal(literal2, result2));
+}
+
+XLA_TEST_F(TransferManagerTest, TransferDynamicShape) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
+
+  Literal literal(s);
+  literal.SetDynamicSize(/*dim_index=*/0, /*shape_index=*/{1},
+                         /*size=*/1048574);
+  literal.SetDynamicSize(/*dim_index=*/0, /*shape_index=*/{2},
+                         /*size=*/1048575);
+  ASSERT_IS_OK(MutableBorrowingLiteral(&literal, /*view_root=*/{0})
+                   .Populate<int64_t>(
+                       [](absl::Span<const int64_t> indices) { return 42; }));
+  ASSERT_IS_OK(MutableBorrowingLiteral(&literal, /*view_root=*/{1})
+                   .Populate<int32_t>([](absl::Span<const int64_t> indices) {
+                     return indices[0] + indices[1];
+                   }));
+  ASSERT_IS_OK(MutableBorrowingLiteral(&literal, /*view_root=*/{2})
+                   .Populate<float>([](absl::Span<const int64_t> indices) {
+                     return indices[0] + indices[1];
+                   }));
+
+  // Round trip `literal` through device.
+  ScopedShapedBuffer device_buffer = AllocateDeviceBuffer(literal.shape());
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+
+  // LiteralTestUtil::Equal doesn't compare dynamic shapes, so we need to check
+  // them ourselves.
+  EXPECT_EQ(literal.GetDynamicSize(/*dim_index=*/0, /*shape_index=*/{1}),
+            result.GetDynamicSize(0, {1}));
+  EXPECT_EQ(literal.GetDynamicSize(/*dim_index=*/0, /*shape_index=*/{2}),
+            result.GetDynamicSize(0, {2}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
 }
 
 class TransferDeviceToHostBenchmark : public TransferManagerTest {

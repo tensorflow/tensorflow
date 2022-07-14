@@ -30,24 +30,24 @@ namespace mhlo {
 
 namespace {
 
-Type convertInteger(IntegerType int_type) {
-  return IntegerType::get(int_type.getContext(),
-                          int_type.getIntOrFloatBitWidth());
+Type convertInteger(IntegerType intType) {
+  return IntegerType::get(intType.getContext(),
+                          intType.getIntOrFloatBitWidth());
 }
 
-Type convertShapedType(ShapedType shaped_type) {
-  if (auto int_type = shaped_type.getElementType().dyn_cast<IntegerType>())
-    return shaped_type.clone(convertInteger(int_type));
-  return shaped_type;
+Type convertShapedType(ShapedType shapedType) {
+  if (auto intType = shapedType.getElementType().dyn_cast<IntegerType>())
+    return shapedType.clone(convertInteger(intType));
+  return shapedType;
 }
 
 llvm::Optional<Value> materializeCastFromIllegal(OpBuilder& builder, Type type,
                                                  ValueRange inputs,
                                                  Location loc) {
-  Type from_type = getElementTypeOrSelf(inputs[0].getType());
-  Type to_type = getElementTypeOrSelf(type);
-  if ((!from_type.isSignedInteger() && !from_type.isUnsignedInteger()) ||
-      !to_type.isSignlessInteger())
+  Type fromType = getElementTypeOrSelf(inputs[0].getType());
+  Type toType = getElementTypeOrSelf(type);
+  if ((!fromType.isSignedInteger() && !fromType.isUnsignedInteger()) ||
+      !toType.isSignlessInteger())
     return llvm::None;
   // Use unrealized conversion casts to do signful->signless conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
@@ -57,10 +57,10 @@ llvm::Optional<Value> materializeCastFromIllegal(OpBuilder& builder, Type type,
 llvm::Optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
                                                ValueRange inputs,
                                                Location loc) {
-  Type from_type = getElementTypeOrSelf(inputs[0].getType());
-  Type to_type = getElementTypeOrSelf(type);
-  if (!from_type.isSignlessInteger() ||
-      (!to_type.isSignedInteger() && !to_type.isUnsignedInteger()))
+  Type fromType = getElementTypeOrSelf(inputs[0].getType());
+  Type toType = getElementTypeOrSelf(type);
+  if (!fromType.isSignlessInteger() ||
+      (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
     return llvm::None;
   // Use unrealized conversion casts to do signless->signful conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])

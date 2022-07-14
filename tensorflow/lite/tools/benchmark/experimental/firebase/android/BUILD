@@ -17,6 +17,7 @@ android_binary(
     ]),
     custom_package = "org.tensorflow.lite.benchmark.firebase",
     manifest = "AndroidManifest.xml",
+    multidex = "native",
     # In some platforms we don't have an Android SDK/NDK and this target
     # can't be built. We need to prevent the build system from trying to
     # use the target in that case.

@@ -241,6 +241,11 @@ class TransferManager {
   virtual StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
+  // For the given shape, chooses a layout for infeed. The returned shape
+  // has the same dimensions as the original shape, and only the layout is
+  // changed.
+  virtual Shape ChooseGoodInfeedLayout(const Shape& shape) const;
+
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
 
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host

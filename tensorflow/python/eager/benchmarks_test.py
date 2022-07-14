@@ -470,7 +470,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                                             num_iters,
                                             execution_mode=None):
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def defun_matmul(m):
       return math_ops.matmul(m, m)
 

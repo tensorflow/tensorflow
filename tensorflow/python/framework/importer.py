@@ -496,8 +496,9 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
   with graph._mutation_lock():  # pylint: disable=protected-access
     with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
       try:
-        results = c_api.TF_GraphImportGraphDefWithResults(
-            graph._c_graph, serialized, options)  # pylint: disable=protected-access
+        with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+          results = c_api.TF_GraphImportGraphDefWithResults(
+              c_graph, serialized, options)
         results = c_api_util.ScopedTFImportGraphDefResults(results)
       except errors.InvalidArgumentError as e:
         # Convert to ValueError for backwards compatibility.

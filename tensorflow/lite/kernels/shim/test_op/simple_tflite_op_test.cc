@@ -91,7 +91,7 @@ TEST(SimpleOpModel, OutputSize_5_N_2) {
   // Run the op
   SimpleOpModel m(/*op_options=*/builder.GetBuffer(), input_types, input_shapes,
                   input0, input1, output_types);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Assertions
   EXPECT_THAT(m.GetOutput<int>(0), testing::ElementsAre(0, 1, 2, 3, 4));
   EXPECT_THAT(m.GetOutput<float>(1),
@@ -123,7 +123,7 @@ TEST(SimpleOpModel, OutputSize_3_N_0) {
   // Run the op
   SimpleOpModel m(/*op_options=*/builder.GetBuffer(), input_types, input_shapes,
                   input0, input1, output_types);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Assertions
   EXPECT_THAT(m.GetOutput<int>(0), testing::ElementsAre(0, 1, 2, 3, 4));
   EXPECT_THAT(m.GetOutput<float>(1), testing::ElementsAre(0, 0.5, 1.0));

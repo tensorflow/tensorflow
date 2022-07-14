@@ -67,7 +67,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
   Args:
     variable: A Variable.
     value: A tensor with the same shape as 'variable'.
-    decay: A float Tensor or float value.  The moving average decay.
+    decay: A float `Tensor` or float value. The moving average decay.
     zero_debias: A python bool. If true, assume the variable is 0-initialized
       and unbias it, as in (Kingma et al., 2015). See docstring in
         `_zero_debias` for more details.
@@ -128,7 +128,7 @@ def weighted_moving_average(value,
 
   Args:
     value: A numeric `Tensor`.
-    decay: A float `Tensor` or float value.  The moving average decay.
+    decay: A float `Tensor` or float value. The moving average decay.
     weight:  `Tensor` that keeps the current value of a weight. Shape should be
       able to multiply `value`.
     truediv:  Boolean, if `True`, dividing by `moving_average(weight)` is
@@ -306,10 +306,11 @@ class ExponentialMovingAverage(object):
   file.
 
   The moving averages are computed using exponential decay.  You specify the
-  decay value when creating the `ExponentialMovingAverage` object.  The shadow
-  variables are initialized with the same initial values as the trained
-  variables.  When you run `apply` to maintain the moving averages, each
-  shadow variable is updated with the formula:
+  decay value (as a scalar float value, `Tensor`, or `Variable`) when creating
+  the `ExponentialMovingAverage` object.  The shadow variables are initialized
+  with the same initial values as the trained variables.  When you run `apply`
+  to update the moving averages, each shadow variable is updated with the
+  formula:
 
     `shadow_variable -= (1 - decay) * (shadow_variable - variable)`
 
@@ -321,6 +322,10 @@ class ExponentialMovingAverage(object):
 
   Reasonable values for `decay` are close to 1.0, typically in the
   multiple-nines range: 0.999, 0.9999, etc.
+
+  To have fine-grained control over the value of the decay parameter during
+  training, pass a scalar `tf.Variable` as the `decay` value to the constructor,
+  and update the variable as needed.
 
   Example usage when creating a training model:
 
@@ -464,7 +469,7 @@ class ExponentialMovingAverage(object):
       `min(decay, (1 + num_updates) / (10 + num_updates))`
 
     Args:
-      decay: Float.  The decay to use.
+      decay: A scalar float value, `Tensor`, or `Variable`. The decay parameter.
       num_updates: Optional count of number of updates applied to variables.
       zero_debias: If `True`, zero debias moving-averages that are initialized
         with tensors. (Note: moving averages may not be initialized with

@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <random>
 
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"

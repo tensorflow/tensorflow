@@ -122,11 +122,19 @@ port::StatusOr<void*> GetCudnnDsoHandle() {
 }
 
 port::StatusOr<void*> GetNvInferDsoHandle() {
+#if defined(PLATFORM_WINDOWS)
+  return GetDsoHandle("nvinfer", "");
+#else
   return GetDsoHandle("nvinfer", GetTensorRTVersion());
+#endif
 }
 
 port::StatusOr<void*> GetNvInferPluginDsoHandle() {
+#if defined(PLATFORM_WINDOWS)
+  return GetDsoHandle("nvinfer_plugin", "");
+#else
   return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
+#endif
 }
 
 port::StatusOr<void*> GetRocblasDsoHandle() {

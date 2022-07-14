@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -45,11 +45,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/side_effect_util.h"
 
 namespace mlir {
+
+using func::FuncOp;
+
 namespace mhlo {
 
 namespace {
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+// TPU core that sends to and receives from host.
+constexpr int64_t kShardingTpuCore = 0;
 
 // A pass that legalizes TF/XLA communication ops, propagate their respective
 // tokens (for ordering), and rewrite their respective functions and control
@@ -78,11 +83,11 @@ LogicalResult GetControlFlowAncestors(
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
   Block* block = op->getBlock();
   Operation* parent = block->getParentOp();
-  while (block && parent && !isa<FuncOp>(parent)) {
+  while (block && parent && !isa<func::FuncOp>(parent)) {
     if (!IsControlFlowOp(parent))
       return op->emitOpError()
              << "expects ancestor(s) to be of ['" << IfOp::getOperationName()
-             << "', '" << FuncOp::getOperationName() << "']";
+             << "', '" << func::FuncOp::getOperationName() << "']";
 
     if (!llvm::hasSingleElement(block->getParent()->getBlocks()))
       return op->emitOpError() << "expects single block region ancestor(s)";
@@ -100,7 +105,7 @@ LogicalResult GetControlFlowAncestors(
 // `control_flow_blocks` will be populated with control flow op ancestors for
 // every communication op.
 LogicalResult FindCommunicationOps(
-    FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    func::FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks,
     bool& has_communication_ops) {
   auto result = func.walk([&](Operation* op) {
@@ -119,10 +124,10 @@ LogicalResult FindCommunicationOps(
 // (transitively), and an optional clone of itself. If `clone` is set, function
 // calls to `original` will be replaced with `clone`.
 struct FuncToRewrite {
-  FuncOp original;
+  func::FuncOp original;
   llvm::SmallPtrSet<Operation*, 4> control_flow_ops;
   llvm::SmallPtrSet<Block*, 4> control_flow_blocks;
-  FuncOp clone;
+  func::FuncOp clone;
 };
 
 // Finds all functions that need to be rewritten with communication ops and
@@ -131,8 +136,8 @@ LogicalResult GetFunctionsToRewrite(
     ModuleOp module,
     llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
   // Find functions containing communication ops.
-  SmallVector<FuncOp, 4> funcs_to_visit;
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  SmallVector<func::FuncOp, 4> funcs_to_visit;
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     FuncToRewrite func_to_rewrite{/*original=*/func, /*control_flow_ops=*/{},
                                   /*control_flow_blocks=*/{},
                                   /*clone=*/nullptr};
@@ -149,15 +154,16 @@ LogicalResult GetFunctionsToRewrite(
 
   // Find functions that call functions with communication ops, transitively.
   while (!funcs_to_visit.empty()) {
-    SmallVector<FuncOp, 4> new_funcs_to_visit;
-    for (FuncOp& func : funcs_to_visit) {
+    SmallVector<func::FuncOp, 4> new_funcs_to_visit;
+    for (func::FuncOp& func : funcs_to_visit) {
       auto uses = func.getSymbolUses(module);
       if (!uses) continue;
       for (auto& use : *uses) {
-        // Only `mlir::CallOp` is supported as this requires knowing how to
-        // rewrite arguments and results to a function.
-        if (!isa<mlir::CallOp>(use.getUser())) continue;
-        auto caller_parent_func = use.getUser()->getParentOfType<FuncOp>();
+        // Only `mlir::func::CallOp` is supported as this requires knowing how
+        // to rewrite arguments and results to a function.
+        if (!isa<mlir::func::CallOp>(use.getUser())) continue;
+        auto caller_parent_func =
+            use.getUser()->getParentOfType<func::FuncOp>();
         if (!caller_parent_func) continue;
 
         FuncToRewrite func_to_rewrite{/*original=*/caller_parent_func,
@@ -203,10 +209,11 @@ LogicalResult GetFunctionsToRewrite(
   return success();
 }
 
-// Assigns op sharding to an op for a given device core.
-void SetOpSharding(Operation* op, int64_t tpu_core) {
+// Assigns op sharding to full tensor on `kShardingTpuCore`.
+void SetOpSharding(Operation* op) {
   std::string sharding_serialized =
-      ::xla::sharding_builder::AssignDevice(tpu_core).SerializeAsString();
+      ::xla::sharding_builder::AssignDevice(kShardingTpuCore)
+          .SerializeAsString();
   op->setAttr(kShardingAttr,
               StringAttr::get(op->getContext(), sharding_serialized));
 }
@@ -250,16 +257,14 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
-// Creates a `mhlo.send` op for sending value `operand`. If `tpu_core` is set,
-// op sharding for the respective device will be set.
+// Creates a `mhlo.send` op for sending value `operand`.
 Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value operand, StringRef key, size_t index,
-                   const Optional<int64_t>& tpu_core, Value token,
+                   Value operand, StringRef key, size_t index, Value token,
                    StringRef host_handler_name) {
   // type 2 == DEVICE_TO_HOST
-  auto channel_handle = ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id++),
-      /*type=*/builder.getI64IntegerAttr(2), builder.getContext());
+  auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
+                                               /*handle=*/channel_id++,
+                                               /*type=*/2);
   auto send = builder.create<SendOp>(
       loc, token.getType(), operand, token, channel_handle,
       /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -267,21 +272,19 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   SetFrontendAttributes(send, index, key, operand.getType(),
                         /*device_to_host=*/true, host_handler_name);
 
-  if (tpu_core) SetOpSharding(send, *tpu_core);
+  SetOpSharding(send);
 
   return send.getResult();
 }
 
-// Creates a `mhlo.recv` op for receiving a value. If `tpu_core` is set, op
-// sharding for the respective device will be set.
+// Creates a `mhlo.recv` op for receiving a value.
 Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value result, StringRef key, size_t index,
-                   const Optional<int64_t>& tpu_core, Value token,
+                   Value result, StringRef key, size_t index, Value token,
                    StringRef host_handler_name) {
   // type 3 == HOST_TO_DEVICE
-  auto channel_handle = ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id++),
-      /*type=*/builder.getI64IntegerAttr(3), builder.getContext());
+  auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
+                                               /*handle=*/channel_id++,
+                                               /*type=*/3);
   auto result_type = result.getType();
   SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
   auto recv =
@@ -291,7 +294,7 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   SetFrontendAttributes(recv, index, key, result_type,
                         /*device_to_host=*/false, host_handler_name);
 
-  if (tpu_core) SetOpSharding(recv, *tpu_core);
+  SetOpSharding(recv);
 
   result.replaceAllUsesWith(recv.getResult(0));
 
@@ -322,24 +325,21 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
                            Value token) {
   builder.setInsertionPoint(host_compute);
   Location loc = host_compute.getLoc();
-  int64_t tpu_core = host_compute.tpu_coreAttr().getInt();
 
   SmallVector<Value, 4> send_tokens;
   for (auto operand : llvm::enumerate(host_compute.inputs())) {
-    auto send_token =
-        CreateSendOp(builder, channel_id, loc, operand.value(),
-                     host_compute.send_key(), operand.index(), tpu_core, token,
-                     xla::kXlaHostTransferTfRendezvousHandlerName);
+    auto send_token = CreateSendOp(
+        builder, channel_id, loc, operand.value(), host_compute.send_key(),
+        operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     send_tokens.push_back(send_token);
   }
   token = CreateSinkToken(builder, loc, send_tokens, token);
 
   SmallVector<Value, 4> recv_tokens;
   for (auto result : llvm::enumerate(host_compute.outputs())) {
-    auto recv_token =
-        CreateRecvOp(builder, channel_id, loc, result.value(),
-                     host_compute.recv_key(), result.index(), tpu_core, token,
-                     xla::kXlaHostTransferTfRendezvousHandlerName);
+    auto recv_token = CreateRecvOp(
+        builder, channel_id, loc, result.value(), host_compute.recv_key(),
+        result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     recv_tokens.push_back(recv_token);
   }
   token = CreateSinkToken(builder, loc, recv_tokens, token);
@@ -354,7 +354,7 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(send_to_host);
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
                        send_to_host.input(), send_to_host.key(),
-                       /*index=*/0, /*tpu_core=*/llvm::None, token,
+                       /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
   send_to_host.erase();
@@ -367,24 +367,24 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(recv_from_host);
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
                        recv_from_host.output(), recv_from_host.key(),
-                       /*index=*/0, /*tpu_core=*/llvm::None, token,
+                       /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
   recv_from_host.erase();
   return token;
 }
 
-// Replaces a `mlir::CallOp` with one that has an extra `!mhlo.token` operand
-// and `!mhlo.token` result. If `new_symbol` is set, the new call will be
-// updated to call the `new_symbol` instead.
-Value RewriteCallOp(OpBuilder& builder, CallOp call,
+// Replaces a `mlir::func::CallOp` with one that has an extra `!mhlo.token`
+// operand and `!mhlo.token` result. If `new_symbol` is set, the new call will
+// be updated to call the `new_symbol` instead.
+Value RewriteCallOp(OpBuilder& builder, func::CallOp call,
                     const Optional<StringRef>& new_symbol, Value token) {
   builder.setInsertionPoint(call);
   auto new_operands = llvm::to_vector(call.getArgOperands());
   new_operands.push_back(token);
   auto new_result_types = llvm::to_vector(call.getResultTypes());
   new_result_types.push_back(token.getType());
-  auto new_call = builder.create<CallOp>(
+  auto new_call = builder.create<func::CallOp>(
       call.getLoc(), new_result_types,
       new_symbol ? *new_symbol : call.getCallee(), new_operands);
 
@@ -759,10 +759,12 @@ bool ProcessRegionWhileOp(
   }
 
   if (*region_idx < region_while.getNumRegions()) {
-    SmallVector<Type> arg_types;
-    for (auto arg : region_while.arg()) arg_types.push_back(arg.getType());
-    RewriteControlFlowOpRegion(builder, region_while, *region_idx, arg_types,
-                               ops_to_visit, control_flow_blocks, token);
+    SmallVector<Type> operand_types;
+    for (auto operand : region_while.operand())
+      operand_types.push_back(operand.getType());
+    RewriteControlFlowOpRegion(builder, region_while, *region_idx,
+                               operand_types, ops_to_visit, control_flow_blocks,
+                               token);
     return true;
   }
 
@@ -771,7 +773,8 @@ bool ProcessRegionWhileOp(
 
 // Updates function type based on current function body block arguments and
 // terminator operand types.
-void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
+void UpdateFunctionType(OpBuilder& builder, func::FuncOp func,
+                        Block& func_body) {
   auto new_argument_types = llvm::to_vector(func_body.getArgumentTypes());
   auto new_result_types =
       llvm::to_vector(func_body.getTerminator()->getOperandTypes());
@@ -781,12 +784,12 @@ void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
 
 // Replaces a function terminator `return` with another `return` that has an
 // extra `mhlo.token` operand.
-void RewriteFunctionTerminator(OpBuilder& builder, mlir::ReturnOp terminator,
-                               Value token) {
+void RewriteFunctionTerminator(OpBuilder& builder,
+                               mlir::func::ReturnOp terminator, Value token) {
   auto new_results = llvm::to_vector(terminator.getOperands());
   new_results.push_back(token);
   builder.setInsertionPoint(terminator);
-  builder.create<mlir::ReturnOp>(terminator.getLoc(), new_results);
+  builder.create<mlir::func::ReturnOp>(terminator.getLoc(), new_results);
   terminator.erase();
 }
 
@@ -837,12 +840,12 @@ LogicalResult RewriteFunction(
       token = RewriteSendToHostOp(builder, channel_id, send_to_host, token);
     } else if (auto recv_from_host = dyn_cast<TF::XlaRecvFromHostOp>(curr_op)) {
       token = RewriteRecvFromHostOp(builder, channel_id, recv_from_host, token);
-    } else if (auto call = dyn_cast<mlir::CallOp>(curr_op)) {
-      // Only `mlir::CallOp` is supported as this requires knowing how to
+    } else if (auto call = dyn_cast<mlir::func::CallOp>(curr_op)) {
+      // Only `mlir::func::CallOp` is supported as this requires knowing how to
       // rewrite arguments and results to a function.
       auto it = funcs.find(call.getCallee());
       if (it != funcs.end()) {
-        FuncOp clone = it->getSecond().clone;
+        func::FuncOp clone = it->getSecond().clone;
         Optional<StringRef> symbol_name =
             clone ? Optional<StringRef>(clone.getName()) : llvm::None;
         // If the function being called is to be cloned, update the call to also
@@ -877,7 +880,7 @@ LogicalResult RewriteFunction(
       // There is no next op after the control flow op terminator, simply let
       // stack have one less element.
       continue;
-    } else if (auto func_terminator = dyn_cast<mlir::ReturnOp>(curr_op)) {
+    } else if (auto func_terminator = dyn_cast<mlir::func::ReturnOp>(curr_op)) {
       if (rewrite_block)
         RewriteFunctionTerminator(builder, func_terminator, token);
 
@@ -899,7 +902,7 @@ LogicalResult RewriteFunction(
 bool IsFunctionCallWithCommunication(
     Operation* op,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
-  if (auto call = dyn_cast<mlir::CallOp>(op))
+  if (auto call = dyn_cast<mlir::func::CallOp>(op))
     return funcs_to_rewrite.count(call.getCallee());
 
   return false;
@@ -908,7 +911,7 @@ bool IsFunctionCallWithCommunication(
 // Collects all control flow op ancestors of communication ops or function calls
 // with communication ops (transitively).
 void GetCommunicationControlFlowOps(
-    FuncOp func,
+    func::FuncOp func,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite,
     llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
@@ -934,7 +937,7 @@ void LegalizeTFCommunication::runOnOperation() {
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {
     const auto& func_to_rewrite = func_and_name.getSecond();
-    FuncOp func = func_to_rewrite.original;
+    func::FuncOp func = func_to_rewrite.original;
     if (failed(RewriteFunction(builder, channel_id, module, func,
                                funcs_to_rewrite,
                                func_to_rewrite.control_flow_ops,
@@ -942,7 +945,7 @@ void LegalizeTFCommunication::runOnOperation() {
                                /*is_clone=*/false)))
       return signalPassFailure();
 
-    FuncOp clone = func_and_name.getSecond().clone;
+    func::FuncOp clone = func_and_name.getSecond().clone;
     if (!clone) continue;
     llvm::SmallPtrSet<Operation*, 4> clone_control_flow_ops;
     llvm::SmallPtrSet<Block*, 4> clone_control_flow_blocks;

@@ -154,6 +154,18 @@ struct GPUResources {
   }
 };
 
+struct GenericGPUResourcesWithValue {
+  std::vector<std::pair<std::string, int>> ints;
+  std::vector<std::pair<std::string, float>> floats;
+
+  void AddFloat(const std::string& name, float value) {
+    floats.push_back({name, value});
+  }
+  void AddInt(const std::string& name, int value) {
+    ints.push_back({name, value});
+  }
+};
+
 class GPUObjectDescriptor {
  public:
   GPUObjectDescriptor() = default;
@@ -167,7 +179,8 @@ class GPUObjectDescriptor {
     state_vars_[key] = value;
   }
 
-  virtual absl::Status PerformConstExpr(const std::string& const_expr,
+  virtual absl::Status PerformConstExpr(const tflite::gpu::GpuInfo& gpu_info,
+                                        const std::string& const_expr,
                                         std::string* result) const {
     return absl::UnimplementedError(
         "No implementation of perform const expression");

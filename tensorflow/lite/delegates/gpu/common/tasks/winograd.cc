@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,7 +49,8 @@ void VectorToKernelBufferDesc(const std::vector<float>& data,
     }
   }
 }
-std::string GetKernelWinograd4x4To36(const OperationDef& op_def) {
+std::string GetKernelWinograd4x4To36(const GpuInfo& gpu_info,
+                                     const OperationDef& op_def) {
   std::string c;
   const auto src_desc = op_def.src_tensors[0];
   c += R"(
@@ -73,7 +75,7 @@ MAIN_FUNCTION($0) {
     const std::string s_y = std::to_string(y);
     c += "  {\n";
     c += "    int coord_y = Y + " + s_y + " + args.padding_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool in_y = coord_y >= 0 && coord_y < "
            "args.src_tensor.Height();\n";
       c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
@@ -86,18 +88,18 @@ MAIN_FUNCTION($0) {
       const std::string s_x = std::to_string(x);
       c += "    {\n";
       c += "      int coord_x = X + " + s_x + " + args.padding_x;\n";
-      if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         c += "      bool in_x = coord_x >= 0 && coord_x < "
              "args.src_tensor.Width();\n";
         c += "      coord_x = clamp(coord_x, 0, args.src_tensor.Width()-1);\n";
       }
       std::string multiplier;
-      if (!src_desc.SupportsZeroClamp(Axis::WIDTH) &&
-          !src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
+          !src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         multiplier = " * INIT_FLT(in_y && in_x)";
-      } else if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+      } else if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
         multiplier = " * INIT_FLT(in_x)";
-      } else if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      } else if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         multiplier = " * INIT_FLT(in_y)";
       }
       if (src_desc.IsLinear()) {
@@ -124,36 +126,7 @@ MAIN_FUNCTION($0) {
     c += "  }\n";
   }
 
-  const auto dst_desc = op_def.dst_tensors[0];
-
-  if (dst_desc.IsLinear()) {
-    c += R"(
-  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
-  args.dst_tensor.GetAddress(dst_adress, dst_x, 0, S);
-  for (int y = 0; y < 6; ++y) {
-    FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(7) * I[y][1] + args.Bt.Read(8) * I[y][2] + args.Bt.Read(9) * I[y][3] + args.Bt.Read(10) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(13) * I[y][1] + args.Bt.Read(14) * I[y][2] + args.Bt.Read(15) * I[y][3] + args.Bt.Read(16) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(19) * I[y][1] + args.Bt.Read(20) * I[y][2] + args.Bt.Read(21) * I[y][3] + args.Bt.Read(22) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(25) * I[y][1] + args.Bt.Read(26) * I[y][2] + args.Bt.Read(27) * I[y][3] + args.Bt.Read(28) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(31) * I[y][1] + args.Bt.Read(33) * I[y][3] + I[y][5];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-  }
-}
-)";
-  } else {
-    c += R"(
+  c += R"(
   int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
   for (int y = 0; y < 6; ++y) {
     FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
@@ -171,7 +144,6 @@ MAIN_FUNCTION($0) {
   }
 }
 )";
-  }
   return c;
 }
 
@@ -275,9 +247,10 @@ absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
 }
 
 Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
-                                      const Padding2D& padding) {
+                                      const Padding2D& padding,
+                                      const GpuInfo& gpu_info) {
   Winograd4x4To36 desc(definition, padding);
-  desc.code_ = GetKernelWinograd4x4To36(definition);
+  desc.code_ = GetKernelWinograd4x4To36(gpu_info, definition);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -291,7 +264,7 @@ Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
   VectorToKernelBufferDesc(BtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "Bt", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "Bt", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(8, 4, 1);
   return desc;
@@ -352,8 +325,9 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       read_statement = "args.src_tensor.Read(xc" + xs + ", yc, DST_Z)";
     }
     std::string multiplier;
-    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
-      if (!(src_desc.IsLinear() && src_desc.ReturnsZeroForNegOneRead())) {
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
+      if (!(src_desc.IsLinear() &&
+            src_desc.ReturnsZeroForNegOneRead(gpu_info))) {
         multiplier = " * m" + xs + "_x";
       }
     }
@@ -362,7 +336,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   for (int x = 0; x < 6; ++x) {
     const std::string xs = std::to_string(x);
     c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
-    if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+    if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
            " < args.src_tensor.Width());\n";
       c += "  FLT m" + xs + "_x = INIT_FLT(inx" + xs + ");\n";
@@ -372,7 +346,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     if (src_desc.IsLinear()) {
       c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
            ", 0, DST_Z);\n";
-      if (src_desc.ReturnsZeroForNegOneRead()) {
+      if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         c += "  src_a_" + xs +
              " = select(-args.src_tensor.Width() * args.src_tensor.Height(), "
              "src_a_" +
@@ -385,7 +359,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   if (manual_unroll) {
     c += "  {\n";
     c += "    int yc = tile_y + args.padding_y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
@@ -404,7 +378,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       const std::string ys = std::to_string(y);
       c += "  {\n";
       c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
-      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+      if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
         c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
         c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
@@ -429,7 +403,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     c += "  I5 = INIT_FLT4(0.0f);\n";
     c += "  for (int y = 0; y < 6; ++y) {\n";
     c += "    int yc = tile_y + args.padding_y + y;\n";
-    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
       c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
@@ -501,12 +475,12 @@ void Winograd4x4To36TileX6::UploadBt() {
   desc.element_type = definition_.GetDataType();
   desc.UploadLinearData(bt_aligned);
   args_.AddObject("bt_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(bt_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("Bt",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd4x4To36TileX6::SelectBestWorkGroup(
@@ -581,14 +555,14 @@ Winograd36To4x4 CreateWinograd36To4x4(
   bias_desc.storage_type = LinearStorageType::BUFFER;
   bias_desc.element_type = definition.GetDataType();
   bias_desc.UploadLinearData(biases);
-  desc.args_.AddObject("biases", absl::make_unique<TensorLinearDescriptor>(
-                                     std::move(bias_desc)));
+  desc.args_.AddObject(
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(bias_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(AtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "At", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "At", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(32, 1, 1);
   return desc;
@@ -726,12 +700,12 @@ void Winograd36To4x4Tile4x1::UploadAt() {
   desc.element_type = definition_.GetDataType();
   desc.UploadLinearData(at_aligned);
   args_.AddObject("at_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(at_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("At",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd36To4x4Tile4x1::SelectBestWorkGroup(
@@ -785,7 +759,7 @@ Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(biases);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   result.UploadAt();
   return result;
 }

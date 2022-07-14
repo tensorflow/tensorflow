@@ -30,6 +30,11 @@ class HloConstantFolding : public HloModulePass {
   // Run constant folding operations on the given module. Returns whether the
   // module was changed (constant expressions folded).
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  // Number of slow constant-folds we've encountered.  Used for firing
+  // SlowOperationAlarms.
+  static std::atomic<int64_t> slow_op_counter_;
 };
 
 }  // namespace xla

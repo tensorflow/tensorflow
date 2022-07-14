@@ -2,15 +2,15 @@
 // RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline='default-pipeline=''' | FileCheck %s --check-prefix=INLINE
 // RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline | FileCheck %s --check-prefix=CANON
 
-func @while_main(%arg0: tensor<?x256x256xf32>) -> (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "Identity,Identity_1,Identity_2"}} {
+func.func @while_main(%arg0: tensor<?x256x256xf32>) -> (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "Identity,Identity_1,Identity_2"}} {
   %cst = arith.constant dense<1.000000e+00> : tensor<256x256xf32>
   %cst_0 = arith.constant dense<0> : tensor<i32>
   %cst_1 = arith.constant dense<-1> : tensor<i32>
   %0:5 = "tf.While"(%cst_0, %cst_1, %cst_0, %cst, %arg0) {body = @while_body_11_frozen0, cond = @while_cond_10_frozen0, device = "", is_stateless = true} : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>)
-  return %0#2, %0#3, %0#4 : tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>
+  func.return %0#2, %0#3, %0#4 : tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>
 }
 
-func @while_body_11_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xf32>, tensor<*xf32>) {
+func.func @while_body_11_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xf32>, tensor<*xf32>) {
   %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
   %cst_0 = arith.constant dense<0> : tensor<i32>
   %cst_1 = arith.constant dense<-1> : tensor<i32>
@@ -24,13 +24,13 @@ func @while_body_11_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: t
   %6 = "tf.MatMul"(%1, %5) {transpose_a = false, transpose_b = true} : (tensor<?x?xf32>, tensor<*xf32>) -> tensor<?x?xf32>
   %7 = "tf.AddV2"(%arg4, %6) {T = f32, device = ""} : (tensor<*xf32>, tensor<?x?xf32>) -> tensor<*xf32>
   %8 = "tf.AddV2"(%arg0, %cst_2) {T = i32, device = ""} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-  return %8, %arg1, %0, %arg3, %7 : tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xf32>, tensor<*xf32>
+  func.return %8, %arg1, %0, %arg3, %7 : tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xf32>, tensor<*xf32>
 }
 
-func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> tensor<*xi1> {
+func.func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: tensor<*xi32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> tensor<*xi1> {
   %cst = arith.constant dense<10> : tensor<i32>
   %0 = "tf.Less"(%arg2, %cst) {T = i32, device = ""} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
-  return %0 : tensor<*xi1>
+  func.return %0 : tensor<*xi1>
 }
 
 // CHECK: tfl.while

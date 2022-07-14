@@ -85,7 +85,7 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
           shape.DebugString());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Checks that the TensorArray 'resource' has been initialized, and has type
@@ -107,14 +107,14 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
         " but op has dtype ", DataTypeString(dtype), ".");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetTensorArrayShape(const XlaResource* resource,
                            xla::XlaBuilder* builder, TensorShape* shape) {
   *shape = resource->shape();
   shape->InsertDim(0, resource->max_array_size());
-  return Status::OK();
+  return OkStatus();
 }
 
 // Like XlaBuilder::DynamicUpdateSlice, but adds 'update' to the

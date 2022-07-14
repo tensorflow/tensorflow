@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
-def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
+def NonScalarRankedType : Type<And<[Neg<HasAnyRankOfPred<[0]>>, HasRankPred]>,
+                         "Non scalar type">;
+
+def HasSingleElement: Constraint<CPred<"($0.size() == 1)">>;
+
+def EmptyList: NativeCodeCall<"llvm::SmallVector<mlir::Value>{}">;
 
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
 // element type as `$1`. The op created will use location of `$0`.
@@ -343,8 +348,7 @@ def DecomposeResourceGather : Pat<
 // Pattern to decompose tf.ResourceScatterAdd into tf.ReadVariable,
 // tf.TensorScatterAdd, and tf.AssignVariable.
 def DecomposeResourceScatterAdd : Pat<
-  (TF_ResourceScatterAddOp:$src_op
-    $resource, $indices, NonScalarType:$updates),
+  (TF_ResourceScatterAddOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterAddOp
@@ -358,10 +362,8 @@ def DecomposeResourceScatterAdd : Pat<
 
 // Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
 // tf.TensorScatterUpdate, and tf.AssignVariable.
-// TODO(b/178725329): Support scalar `updates` during decomposition.
 def DecomposeResourceScatterUpdate : Pat<
-  (TF_ResourceScatterUpdateOp:$src_op
-    $resource, $indices, NonScalarType:$updates),
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
   (TF_AssignVariableOp
     $resource,
     (TF_TensorScatterUpdateOp
@@ -607,4 +609,19 @@ def DecomposeResourceApplyProximalAdagrad :
      (TF_AssignVariableOp $var_resource, $var_new, (CreateConstBoolAttrFalse)),
      (TF_AssignVariableOp $accum_resource, $accum_new, (CreateConstBoolAttrFalse))
    ]
+   >;
+
+def DecomposeCollectiveReduceV2 :
+  Pattern<
+    (TF_CollectiveReduceV2Op:$src_op
+       $input, $group_size, $group_key, $instance_key, $ordering_token,
+       $merge_op, $final_op, $communication_hint, $timeout_seconds,
+       $max_subdivs_per_device
+    ),
+    [(TF_CollectiveReduceV2Op
+       $input, $group_size, $group_key, $instance_key, (EmptyList),
+       $merge_op, $final_op, $communication_hint, $timeout_seconds,
+       $max_subdivs_per_device
+    )],
+    [(HasSingleElement $ordering_token)]
    >;

@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 
+#include <utility>
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 
 namespace mlir {
 namespace gml_st {
@@ -151,9 +155,9 @@ Value insertSliceIntoTensor(RewriterBase &b, Location loc,
                             tensor::ExtractSliceOp sliceOp, Value source,
                             Value dest) {
   return b.create<tensor::InsertSliceOp>(
-      loc, sliceOp.source().getType(), source, dest, sliceOp.offsets(),
-      sliceOp.sizes(), sliceOp.strides(), sliceOp.static_offsets(),
-      sliceOp.static_sizes(), sliceOp.static_strides());
+      loc, sliceOp.getSource().getType(), source, dest, sliceOp.getOffsets(),
+      sliceOp.getSizes(), sliceOp.getStrides(), sliceOp.getStaticOffsets(),
+      sliceOp.getStaticSizes(), sliceOp.getStaticStrides());
 }
 
 FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
@@ -193,7 +197,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
   LinalgOp res = op;
   SmallVector<Value, 4> ivs, tensorResults;
   auto tiledLoopBodyBuilder =
-      [&](OpBuilder &builder, Location loc, ValueRange localIvs,
+      [&](OpBuilder & /*builder*/, Location loc, ValueRange localIvs,
           ValueRange operandValuesToUse) -> scf::ValueVector {
     ivs.assign(localIvs.begin(), localIvs.end());
 
@@ -206,7 +210,8 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
     auto sizeBounds =
         applyMapToValues(b, loc, shapeSizesToLoopsMap, allShapeSizes);
     SmallVector<Value, 4> tiledOperands =
-        makeTiledShapes(b, loc, op, valuesToTile, ivs, tileSizes, sizeBounds);
+        makeTiledShapes(b, loc, op, valuesToTile, ivs, tileSizes, sizeBounds,
+                        /*omitPartialTileCheck=*/false);
 
     SmallVector<Type, 4> resultTensorTypes;
     for (OpOperand *opOperand : op.getOutputTensorOperands())
@@ -223,7 +228,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
       if (auto sliceOp = outputTensor.getDefiningOp<tensor::ExtractSliceOp>()) {
         tensorResults.push_back(insertSliceIntoTensor(rewriter, loc, sliceOp,
                                                       res->getResult(resultIdx),
-                                                      sliceOp.source()));
+                                                      sliceOp.getSource()));
       } else {
         tensorResults.push_back(res->getResult(resultIdx));
       }

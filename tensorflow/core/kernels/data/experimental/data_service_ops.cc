@@ -18,7 +18,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/numbers.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -77,7 +79,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   params.external_state_policy = external_state_policy_;
   SerializationContext serialization_ctx(params);
   DatasetDef dataset_def;
-  Status s = AsGraphDef(ctx, dataset, std::move(serialization_ctx),
+  Status s = AsGraphDef(dataset, std::move(serialization_ctx),
                         dataset_def.mutable_graph());
   if (!s.ok()) {
     OP_REQUIRES_OK(
@@ -107,7 +109,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   metadata.set_cardinality(dataset->Cardinality());
 
   DataServiceDispatcherClient client(address, protocol);
-  int64_t dataset_id;
+  std::string dataset_id;
   int64_t deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
@@ -119,10 +121,15 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
                strings::StrCat("register dataset with dispatcher at ", address),
                deadline_micros));
 
+  int64_t dataset_id_int;
+  OP_REQUIRES(ctx, absl::SimpleAtoi(dataset_id, &dataset_id_int),
+              errors::InvalidArgument("Failed to parse dataset ID: ",
+                                      dataset_id, ". Expect integers."));
+
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
   auto output_dataset_id = output->tensor<int64_t, 0>();
-  output_dataset_id() = dataset_id;
+  output_dataset_id() = dataset_id_int;
 }
 
 REGISTER_KERNEL_BUILDER(Name("RegisterDataset").Device(DEVICE_CPU),

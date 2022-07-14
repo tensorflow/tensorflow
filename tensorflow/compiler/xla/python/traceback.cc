@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -157,7 +158,7 @@ void BuildTracebackSubmodule(py::module& m) {
       "code_addr2line",
       [](py::handle code, int lasti) {
         if (!PyCode_Check(code.ptr())) {
-          throw std::runtime_error("code argument must be a code object");
+          throw xla::XlaRuntimeError("code argument must be a code object");
         }
         return PyCode_Addr2Line(reinterpret_cast<PyCodeObject*>(code.ptr()),
                                 lasti);
@@ -170,12 +171,12 @@ void BuildTracebackSubmodule(py::module& m) {
       "replace_thread_exc_traceback",
       [](py::object tb) {
         if (!tb.is_none() && !PyTraceBack_Check(tb.ptr())) {
-          throw std::runtime_error(
+          throw xla::XlaRuntimeError(
               "argument must be a traceback object or None");
         }
         PyThreadState* thread_state = PyThreadState_Get();
         if (!thread_state->exc_info->exc_traceback) {
-          throw std::runtime_error(
+          throw xla::XlaRuntimeError(
               "Current thread does not have an active "
               "exception traceback");
         }

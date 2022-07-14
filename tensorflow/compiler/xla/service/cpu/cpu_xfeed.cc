@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_xfeed.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 
@@ -109,7 +109,7 @@ Status TransferBufferToInfeed(int device_ordinal, int64_t size,
       cpu::runtime::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Shape> TransferBuffersFromOutfeedInternal(
@@ -132,7 +132,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
     VLOG(2)
         << "Enqueueing outfeed buffer (for the device to populate) of length "
         << size_32 << "B";
-    buffers.push_back(absl::make_unique<CpuOutfeedBuffer>(b.first, size_32));
+    buffers.push_back(std::make_unique<CpuOutfeedBuffer>(b.first, size_32));
   }
 
   std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;
@@ -195,11 +195,11 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   // infeed manager.
   std::vector<cpu::runtime::XfeedBuffer*> buffers;
   buffers.reserve(ShapeUtil::TupleElementCount(shape));
-  auto cleanup = tensorflow::gtl::MakeCleanup([&buffers]() {
+  absl::Cleanup cleanup = [&buffers]() {
     for (cpu::runtime::XfeedBuffer* b : buffers) {
       b->Done(Cancelled("Failed to infeed buffer to device."));
     }
-  });
+  };
 
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
@@ -215,8 +215,8 @@ Status TransferLiteralToInfeedOnCpu(int device_ordinal,
       cpu::runtime::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
-  cleanup.release();
-  return Status::OK();
+  std::move(cleanup).Cancel();
+  return OkStatus();
 }
 
 Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
@@ -240,7 +240,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
     TF_RET_CHECK(size == cpu::runtime::GetByteSizeRequirement(received_shape,
                                                               sizeof(void*)));
     *literal.mutable_shape_do_not_use() = received_shape;
-    return Status::OK();
+    return OkStatus();
   }
 
   if (ShapeUtil::IsNestedTuple(literal.shape())) {
@@ -270,7 +270,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
       cpu::runtime::GetByteSizeRequirement(received_shape, sizeof(void*)));
 
   TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadDynamicShapesOnCpu(
@@ -283,12 +283,12 @@ Status ReadDynamicShapesOnCpu(
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return Status::OK();
+          return OkStatus();
         }
         void* memory = buffer->opaque();
 
@@ -306,12 +306,12 @@ Status ReadDynamicShapesOnCpu(
         for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
           device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
         }
-        return Status::OK();
+        return OkStatus();
       }));
   device_shape->clear_dynamic_dimensions();
 
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace xla

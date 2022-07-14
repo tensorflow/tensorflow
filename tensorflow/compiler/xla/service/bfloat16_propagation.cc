@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -96,30 +96,26 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
     }
   }
 
-  auto aliases_changed_root_buffer =
-      [this, &changed_root_buffers](const HloInstruction* inst) {
-        bool aliasing = false;
-        ShapeUtil::ForEachSubshape(
-            inst->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-              if (aliasing) {
-                // Skip if aliasing is already found.
-                return;
-              }
-              // Only F32 buffers are considered for changing to BF16 in this
-              // pass.
-              if (subshape.element_type() != F32) {
-                return;
-              }
-              for (const HloValue* value :
-                   dataflow_->GetValueSet(inst, index).values()) {
-                if (ContainsKey(changed_root_buffers, value)) {
-                  aliasing = true;
-                  break;
-                }
-              }
-            });
-        return aliasing;
-      };
+  auto aliases_changed_root_buffer = [this, &changed_root_buffers](
+                                         const HloInstruction* inst) {
+    bool aliasing = false;
+    ShapeUtil::ForEachSubshape(inst->shape(), [&](const Shape& subshape,
+                                                  const ShapeIndex& index) {
+      if (aliasing) {
+        // Skip if aliasing is already found.
+        return;
+      }
+      // Only F32 buffers are considered for changing to BF16 in this
+      // pass.
+      if (subshape.element_type() != F32) {
+        return;
+      }
+
+      aliasing = absl::c_any_of(dataflow_->GetValueSet(inst, index).values(),
+                                IsValueIn(changed_root_buffers));
+    });
+    return aliasing;
+  };
 
   for (auto inst :
        fusion->fused_instructions_computation()->MakeInstructionPostOrder()) {
@@ -253,7 +249,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     if (value->shape().element_type() == BF16) {
       continue;
     }
-    for (const HloUse& use : value->uses()) {
+    for (const HloUse& use : value->GetUses()) {
       if (!ContainsKey(instructions_visited_in_backward_pass_,
                        use.instruction)) {
         // We don't know yet whether use.instruction will consume BF16 since it
@@ -368,19 +364,19 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   // output shape of a fusion or while before propagating inside its
   // computations.
   bool postpone_processing_called_computations = false;
-  auto cleaner = tensorflow::gtl::MakeCleanup(
-      [this, hlo, &postpone_processing_called_computations] {
-        if (!postpone_processing_called_computations) {
-          if (hlo->opcode() == HloOpcode::kFusion) {
-            DetermineFusionComputationPrecision(hlo);
-          } else if (hlo->opcode() == HloOpcode::kWhile) {
-            DetermineWhileComputationsPrecision(hlo);
-          } else if (hlo->opcode() == HloOpcode::kConditional) {
-            DetermineConditionalComputationsPrecision(hlo);
-          }
-        }
-        instructions_visited_in_backward_pass_.insert(hlo);
-      });
+  absl::Cleanup cleaner = [this, hlo,
+                           &postpone_processing_called_computations] {
+    if (!postpone_processing_called_computations) {
+      if (hlo->opcode() == HloOpcode::kFusion) {
+        DetermineFusionComputationPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kWhile) {
+        DetermineWhileComputationsPrecision(hlo);
+      } else if (hlo->opcode() == HloOpcode::kConditional) {
+        DetermineConditionalComputationsPrecision(hlo);
+      }
+    }
+    instructions_visited_in_backward_pass_.insert(hlo);
+  };
 
   if (hlo->opcode() == HloOpcode::kWhile &&
       (caller_counts_[hlo->while_condition()] > 1 ||
@@ -463,34 +459,33 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
 
 void BFloat16Propagation::AdjustCalledComputationParameters(
     HloInstruction* hlo) {
-  auto adjust_computation =
-      [this, hlo](HloComputation* computation,
-                  absl::Span<HloInstruction* const> operands) {
-        // Adjust parameters.
-        CHECK_EQ(operands.size(), computation->num_parameters());
-        for (int64_t i = 0; i < operands.size(); ++i) {
-          auto parameter = computation->parameter_instruction(i);
-          ShapeUtil::ForEachSubshape(
-              parameter->shape(),
-              [this, i, hlo, &operands, parameter](const Shape& /* subshape */,
-                                                   const ShapeIndex& index) {
-                if (!ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
-                  return;
-                }
-                PrimitiveType operand_type =
-                    OutputTypeAfterChange(operands[i], index);
-                if (OutputTypeAfterChange(parameter, index) == operand_type) {
-                  return;
-                }
-                AddToOrRemoveFromBF16ChangeSet(parameter, index, operand_type);
-                VLOG(2) << "Called computation parameter "
-                        << parameter->ToString() << " at shape index " << index
-                        << " adjusted to "
-                        << (operand_type == BF16 ? "BF16" : "F32")
-                        << " to match operand in HLO " << hlo->ToString();
-              });
-        }
-      };
+  auto adjust_computation = [this, hlo](
+                                HloComputation* computation,
+                                absl::Span<HloInstruction* const> operands) {
+    // Adjust parameters.
+    CHECK_EQ(operands.size(), computation->num_parameters());
+    for (int64_t i = 0; i < operands.size(); ++i) {
+      auto parameter = computation->parameter_instruction(i);
+      ShapeUtil::ForEachSubshape(
+          parameter->shape(),
+          [this, i, hlo, &operands, parameter](const Shape& /* subshape */,
+                                               const ShapeIndex& index) {
+            if (!ShapeUtil::IsLeafIndex(parameter->shape(), index)) {
+              return;
+            }
+            PrimitiveType operand_type =
+                OutputTypeAfterChange(operands[i], index);
+            if (OutputTypeAfterChange(parameter, index) == operand_type) {
+              return;
+            }
+            AddToOrRemoveFromBF16ChangeSet(parameter, index, operand_type);
+            VLOG(2) << "Called computation parameter " << parameter->ToString()
+                    << " at shape index " << index << " adjusted to "
+                    << (operand_type == BF16 ? "BF16" : "F32")
+                    << " to match operand in HLO " << hlo->ToString();
+          });
+    }
+  };
 
   switch (hlo->opcode()) {
     case HloOpcode::kFusion:
@@ -606,11 +601,12 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
         for (const auto& operand_and_output_index :
              HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo)) {
           if (operand_and_output_index.second == index) {
-            const HloUse& operand = operand_and_output_index.first;
+            const HloOperandIndex& operand_index =
+                operand_and_output_index.first;
             for (const auto* value :
                  dataflow_
-                     ->GetValueSet(hlo->operand(operand.operand_number),
-                                   operand.operand_index)
+                     ->GetValueSet(hlo->operand(operand_index.operand_number),
+                                   operand_index.operand_index)
                      .values()) {
               auto value_type = ValueTypeAfterChange(value);
               if (value_type == BF16) {
@@ -768,7 +764,7 @@ Status BFloat16Propagation::ResolveInconsistentFusions(HloModule* module) {
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
@@ -798,7 +794,7 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
@@ -818,7 +814,7 @@ Status BFloat16Propagation::SkipNoopConversions(HloModule* module) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -959,7 +955,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
-    return Status::OK();
+    return OkStatus();
   };
 
   if (!changed_) {

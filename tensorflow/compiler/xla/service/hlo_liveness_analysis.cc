@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_liveness_analysis.h"
 
 #include <deque>
+#include <functional>
+#include <memory>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -41,9 +41,8 @@ using Workset = absl::flat_hash_set<const HloInstruction*>;
 
 void AddToWorklist(const HloInstruction* instruction, Worklist* worklist,
                    Workset* workset) {
-  if (!workset->contains(instruction)) {
+  if (workset->insert(instruction).second) {
     worklist->push_back(instruction);
-    workset->insert(instruction);
     VLOG(3) << "ADD instruction: " << instruction->name();
   }
 }
@@ -67,18 +66,17 @@ void MarkLiveAtIndex(const HloInstruction* instruction,
                      const ShapeIndex& shape_index,
                      HloLivenessAnalysis::HloIndexMap* live_index_map,
                      Worklist* worklist, Workset* workset) {
-  auto it = live_index_map->find(instruction);
-  if (it == live_index_map->end()) {
-    auto it_added = live_index_map->emplace(
-        std::piecewise_construct, std::forward_as_tuple(instruction),
-        std::forward_as_tuple(instruction->shape(), /*init_value=*/false));
-    it = it_added.first;
+  std::unique_ptr<ShapeTree<bool>>& liveness = (*live_index_map)[instruction];
+  if (liveness == nullptr) {
+    liveness = std::make_unique<ShapeTree<bool>>(instruction->shape(),
+                                                 /*init_value=*/false);
   }
-  if (it->second.element(shape_index) == false) {
+  bool& alive = *liveness->mutable_element(shape_index);
+  if (!alive) {
     AddToWorklist(instruction, worklist, workset);
-    *it->second.mutable_element(shape_index) = true;
+    alive = true;
     VLOG(3) << "MARK instruction: " << instruction->name()
-            << " shape_index: " << shape_index.ToString();
+            << " shape_index: " << shape_index;
   }
 }
 
@@ -87,23 +85,21 @@ void MarkLiveAtAllIndices(const HloInstruction* instruction,
                           HloLivenessAnalysis::HloIndexMap* live_index_map,
                           Worklist* worklist, Workset* workset) {
   bool add_to_worklist = false;
-  auto it = live_index_map->find(instruction);
-  if (it == live_index_map->end()) {
-    live_index_map->emplace(
-        std::piecewise_construct, std::forward_as_tuple(instruction),
-        std::forward_as_tuple(instruction->shape(), /*init_value=*/true));
+
+  std::unique_ptr<ShapeTree<bool>>& liveness = (*live_index_map)[instruction];
+  if (liveness == nullptr) {
+    liveness = std::make_unique<ShapeTree<bool>>(instruction->shape(),
+                                                 /*init_value=*/true);
     add_to_worklist = true;
   } else {
-    ShapeUtil::ForEachSubshape(
-        instruction->shape(),
-        [&](const Shape& sub_shape, const ShapeIndex& shape_index) {
-          if (it->second.element(shape_index) == false) {
-            add_to_worklist = true;
-            *it->second.mutable_element(shape_index) = true;
-            VLOG(3) << "MARK instruction: " << instruction->name()
-                    << " shape_index: " << shape_index.ToString();
-          }
-        });
+    for (auto& entry : *liveness) {
+      if (!entry.second) {
+        add_to_worklist = true;
+        entry.second = true;
+        VLOG(3) << "MARK instruction: " << instruction->name()
+                << " shape_index: " << entry.first;
+      }
+    }
   }
   if (add_to_worklist) {
     AddToWorklist(instruction, worklist, workset);
@@ -122,7 +118,7 @@ void PropagateLivenessThroughTuple(
   CHECK_EQ(instruction->opcode(), HloOpcode::kTuple);
   for (int64_t operand_index = 0; operand_index < instruction->operand_count();
        ++operand_index) {
-    const ShapeTree<bool>& index_tree = FindOrDie(*live_index_map, instruction);
+    const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
     ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
       if (shape_index.empty() || shape_index[0] != operand_index) {
         return;
@@ -152,7 +148,7 @@ void PropagateLivenessThroughGTE(
   // Mark operand top-level index.
   MarkLiveAtIndex(instruction->operand(0), {}, live_index_map, worklist,
                   workset);
-  const ShapeTree<bool>& index_tree = FindOrDie(*live_index_map, instruction);
+  const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
   // Propagate live shape indices along GTE -> Tuple edge.
   ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
     ShapeIndex operand_shape_index(shape_index);
@@ -171,7 +167,7 @@ void PropagateLivenessThroughWhile(
     HloLivenessAnalysis::HloIndexMap* live_index_map, Worklist* worklist,
     Workset* workset) {
   CHECK_EQ(instruction->opcode(), HloOpcode::kWhile);
-  const ShapeTree<bool>& index_tree = FindOrDie(*live_index_map, instruction);
+  const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
 
   ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
     // Propagate liveness to while body computation root instruction.
@@ -202,8 +198,7 @@ void PropagateLivenessToParameterCallers(
     for (const CallSite& callsite : call_graph_node.caller_callsites()) {
       if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
         auto* xla_while = callsite.instruction();
-        const ShapeTree<bool>& index_tree =
-            FindOrDie(*live_index_map, instruction);
+        const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
         ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
           // Propagate liveness to while result{shape_index}
           MarkLiveAtIndex(xla_while, shape_index, live_index_map, worklist,
@@ -256,7 +251,7 @@ void PropagateLivenessThroughControlFlow(
               // If 'instruction' is a parameter, propagate live shape indices
               // to the associated callsite's argument shape indices.
               const ShapeTree<bool>& index_tree =
-                  FindOrDie(*live_index_map, instruction);
+                  *live_index_map->at(instruction);
               ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
                 MarkLiveAtIndex(caller->operand(operand_index), shape_index,
                                 live_index_map, worklist, workset);
@@ -334,10 +329,8 @@ void HloLivenessAnalysis::RunAnalysis() {
 
 bool HloLivenessAnalysis::IsLive(const HloInstruction* instruction,
                                  const ShapeIndex& shape_index) const {
-  if (ContainsKey(live_index_map_, instruction)) {
-    return FindOrDie(live_index_map_, instruction).element(shape_index);
-  }
-  return false;
+  auto it = live_index_map_.find(instruction);
+  return (it != live_index_map_.end()) && it->second->element(shape_index);
 }
 
 /* static */

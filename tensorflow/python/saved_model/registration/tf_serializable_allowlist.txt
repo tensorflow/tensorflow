@@ -1,3 +1,5 @@
 # Please enter your registered saver names, separated by new lines.
+# These names are not the same as the exported tf API symbols.
 
 tf.StaticHashTable
+tf.TrackableConstant

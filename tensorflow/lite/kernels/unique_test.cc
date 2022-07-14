@@ -56,7 +56,7 @@ TEST(UniqueOpModelTest, OneElement) {
   UniqueOpModel<float, int32_t> model({TensorType_FLOAT32, {1}},
                                       TensorType_FLOAT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input_tensor_id(), {5});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
   EXPECT_THAT(model.GetIndexesOutput(), ElementsAreArray({0}));
 }
@@ -66,7 +66,7 @@ TEST(UniqueOpModelTest, MultipleElements_AllUnique) {
                                       TensorType_FLOAT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input_tensor_id(),
                               {5, 2, 3, 51, 6, 72, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5, 2, 3, 51, 6, 72, 7, 8}));
   EXPECT_THAT(model.GetIndexesOutput(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7}));
@@ -76,7 +76,7 @@ TEST(UniqueOpModelTest, MultipleElements_AllDuplicates) {
   UniqueOpModel<float, int32_t> model({TensorType_FLOAT32, {7}},
                                       TensorType_FLOAT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input_tensor_id(), {5, 5, 5, 5, 5, 5, 5});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
   EXPECT_THAT(model.GetIndexesOutput(),
               ElementsAreArray({0, 0, 0, 0, 0, 0, 0}));
@@ -86,7 +86,7 @@ TEST(UniqueOpModelTest, MultipleElements_SomeDuplicates) {
   UniqueOpModel<float, int32_t> model({TensorType_FLOAT32, {7}},
                                       TensorType_FLOAT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input_tensor_id(), {2, 3, 5, 7, 2, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({2, 3, 5, 7}));
   EXPECT_THAT(model.GetIndexesOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 3, 1}));
@@ -97,7 +97,7 @@ TEST(UniqueOpModelTest, MultipleElements_RepeatedDuplicates) {
                                       TensorType_FLOAT32, TensorType_INT32);
   model.PopulateTensor<float>(model.input_tensor_id(),
                               {-1, -1, -2, -2, -3, -3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({-1, -2, -3}));
   EXPECT_THAT(model.GetIndexesOutput(), ElementsAreArray({0, 0, 1, 1, 2, 2}));
 }
@@ -106,7 +106,7 @@ TEST(UniqueOpModelTest, MultipleElements_SomeDuplicates_IndexInt64) {
   UniqueOpModel<float, int64_t> model({TensorType_FLOAT32, {7}},
                                       TensorType_FLOAT32, TensorType_INT64);
   model.PopulateTensor<float>(model.input_tensor_id(), {2, 3, 5, 7, 2, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({2, 3, 5, 7}));
   EXPECT_THAT(model.GetIndexesOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 3, 1}));

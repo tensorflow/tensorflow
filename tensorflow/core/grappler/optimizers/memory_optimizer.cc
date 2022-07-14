@@ -794,7 +794,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   (*swap_out_node->mutable_attr())["T"].set_type(input_type);
   *swap_pair = std::make_pair(swap_out_node, swap_in_node);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 struct SwapInfo {
@@ -1313,7 +1313,7 @@ Status FindAssignNodesToRelax(const GraphDef& graph,
   }
   if (!found_send && devices.size() == 1) {
     nodes_to_relax->insert(assign_nodes.begin(), assign_nodes.end());
-    return Status::OK();
+    return OkStatus();
   }
 
   GraphTopologyView graph_view;
@@ -1373,7 +1373,7 @@ Status FindAssignNodesToRelax(const GraphDef& graph,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -1439,7 +1439,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   optimized_graph->Swap(&optimized_item.graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

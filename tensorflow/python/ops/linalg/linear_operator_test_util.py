@@ -195,11 +195,46 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
     # To skip "test_foo", add "foo" to this list.
     return []
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    # Subclasses should over-ride if they want to add optional tests.
+    # To add "test_foo", add "foo" to this list.
+    return []
+
   def assertRaisesError(self, msg):
     """assertRaisesRegexp or OpError, depending on context.executing_eagerly."""
     if context.executing_eagerly():
       return self.assertRaisesRegexp(Exception, msg)
     return self.assertRaisesOpError(msg)
+
+  def check_convert_variables_to_tensors(self, operator):
+    """Checks that internal Variables are correctly converted to Tensors."""
+    self.assertIsInstance(operator, composite_tensor.CompositeTensor)
+    tensor_operator = composite_tensor.convert_variables_to_tensors(operator)
+    self.assertIs(type(operator), type(tensor_operator))
+    self.assertEmpty(tensor_operator.variables)
+    self._check_tensors_equal_variables(operator, tensor_operator)
+
+  def _check_tensors_equal_variables(self, obj, tensor_obj):
+    """Checks that Variables in `obj` have equivalent Tensors in `tensor_obj."""
+    if isinstance(obj, variables.Variable):
+      self.assertAllClose(ops.convert_to_tensor(obj),
+                          ops.convert_to_tensor(tensor_obj))
+    elif isinstance(obj, composite_tensor.CompositeTensor):
+      params = getattr(obj, "parameters", {})
+      tensor_params = getattr(tensor_obj, "parameters", {})
+      self.assertAllEqual(params.keys(), tensor_params.keys())
+      self._check_tensors_equal_variables(params, tensor_params)
+    elif nest.is_mapping(obj):
+      for k, v in obj.items():
+        self._check_tensors_equal_variables(v, tensor_obj[k])
+    elif nest.is_nested(obj):
+      for x, y in zip(obj, tensor_obj):
+        self._check_tensors_equal_variables(x, y)
+    else:
+      # We only check Tensor, CompositeTensor, and nested structure parameters.
+      pass
 
   def check_tape_safe(self, operator, skip_options=None):
     """Check gradients are not None w.r.t. operator.variables.
@@ -275,6 +310,30 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
 # pylint:disable=missing-docstring
 
 
+def _test_slicing(use_placeholder, shapes_info, dtype):
+  def test_slicing(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator, mat = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      batch_shape = shapes_info.shape[:-2]
+      # Don't bother slicing for uninteresting batch shapes.
+      if not batch_shape or batch_shape[0] <= 1:
+        return
+
+      slices = [slice(1, -1)]
+      if len(batch_shape) > 1:
+        # Slice out the last member.
+        slices += [..., slice(0, 1)]
+      sliced_operator = operator[slices]
+      matrix_slices = slices + [slice(None), slice(None)]
+      sliced_matrix = mat[matrix_slices]
+      sliced_op_dense = sliced_operator.to_dense()
+      op_dense_v, mat_v = sess.run([sliced_op_dense, sliced_matrix])
+      self.assertAC(op_dense_v, mat_v)
+  return test_slicing
+
+
 def _test_to_dense(use_placeholder, shapes_info, dtype):
   def test_to_dense(self):
     with self.session(graph=ops.Graph()) as sess:
@@ -319,6 +378,44 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
           [op_log_abs_det, mat_log_abs_det])
       self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
   return test_log_abs_det
+
+
+def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
+  """op_a.matmul(op_b), in the case where the same type is returned."""
+  def test_operator_matmul_with_same_type(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator_a, mat_a = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      operator_b, mat_b = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+
+      mat_matmul = math_ops.matmul(mat_a, mat_b)
+      op_matmul = operator_a.matmul(operator_b)
+      mat_matmul_v, op_matmul_v = sess.run([mat_matmul, op_matmul.to_dense()])
+
+      self.assertIsInstance(op_matmul, operator_a.__class__)
+      self.assertAC(mat_matmul_v, op_matmul_v)
+  return test_operator_matmul_with_same_type
+
+
+def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
+  """op_a.solve(op_b), in the case where the same type is returned."""
+  def test_operator_solve_with_same_type(self):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator_a, mat_a = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      operator_b, mat_b = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+
+      mat_solve = linear_operator_util.matrix_solve_with_broadcast(mat_a, mat_b)
+      op_solve = operator_a.solve(operator_b)
+      mat_solve_v, op_solve_v = sess.run([mat_solve, op_solve.to_dense()])
+
+      self.assertIsInstance(op_solve, operator_a.__class__)
+      self.assertAC(mat_solve_v, op_solve_v)
+  return test_operator_solve_with_same_type
 
 
 def _test_matmul_base(
@@ -749,6 +846,7 @@ def _test_composite_tensor(use_placeholder, shapes_info, dtype):
 
       # Ensure that the `TypeSpec` can be encoded.
       nested_structure_coder.encode_structure(operator._type_spec)  # pylint: disable=protected-access
+
   return test_composite_tensor
 
 
@@ -795,7 +893,9 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
 def add_tests(test_cls):
   """Add tests for LinearOperator methods."""
   test_name_dict = {
+      # All test classes should be added here.
       "add_to_tensor": _test_add_to_tensor,
+      "adjoint": _test_adjoint,
       "cholesky": _test_cholesky,
       "cond": _test_cond,
       "composite_tensor": _test_composite_tensor,
@@ -804,23 +904,38 @@ def add_tests(test_cls):
       "eigvalsh": _test_eigvalsh,
       "inverse": _test_inverse,
       "log_abs_det": _test_log_abs_det,
+      "operator_matmul_with_same_type": _test_operator_matmul_with_same_type,
+      "operator_solve_with_same_type": _test_operator_solve_with_same_type,
       "matmul": _test_matmul,
       "matmul_with_broadcast": _test_matmul_with_broadcast,
       "saved_model": _test_saved_model,
+      "slicing": _test_slicing,
       "solve": _test_solve,
       "solve_with_broadcast": _test_solve_with_broadcast,
       "to_dense": _test_to_dense,
       "trace": _test_trace,
   }
+  optional_tests = [
+      # Test classes need to explicitly add these to cls.optional_tests.
+      "operator_matmul_with_same_type",
+      "operator_solve_with_same_type",
+  ]
   tests_with_adjoint_args = [
       "matmul",
       "matmul_with_broadcast",
       "solve",
       "solve_with_broadcast",
   ]
+  if set(test_cls.skip_these_tests()).intersection(test_cls.optional_tests()):
+    raise ValueError(
+        "Test class {test_cls} had intersecting 'skip_these_tests' "
+        f"{test_cls.skip_these_tests()} and 'optional_tests' "
+        f"{test_cls.optional_tests()}.")
 
   for name, test_template_fn in test_name_dict.items():
     if name in test_cls.skip_these_tests():
+      continue
+    if name in optional_tests and name not in test_cls.optional_tests():
       continue
 
     for dtype, use_placeholder, shape_info in itertools.product(
@@ -932,7 +1047,7 @@ class NonSquareLinearOperatorDerivedClassTest(
         "solve",
         "solve_with_broadcast",
         "det",
-        "log_abs_det"
+        "log_abs_det",
     ]
 
   @staticmethod

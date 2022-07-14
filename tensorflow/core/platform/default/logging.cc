@@ -576,4 +576,6 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 #endif  // PLATFORM_POSIX_ANDROID
 }
 
+void UpdateLogVerbosityIfDefined(const char* env_var) {}
+
 }  // namespace tensorflow

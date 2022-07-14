@@ -32,11 +32,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
+                          bool is_conv2d);
+
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64_t default_value_in_bytes);
+
+// Call the Dnn workspace limit from TF_CUDNN_WORKSPACE_LIMIT_IN_MB or default.
+int64 GetDnnWorkspaceLimitOrDefault();
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
@@ -185,8 +191,9 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
                         AllocateScratchOrFallback<se::dnn::ConvOp::Signature>(
                             scratch_allocator, primary, no_scratch_fallback));
     auto& runner = *std::get<const se::dnn::ConvRunner*>(runner_and_scratch);
-    return runner(stream, in_ptr, filter_ptr, out_ptr,
-                  std::get<se::DeviceMemoryBase>(runner_and_scratch), nullptr);
+    return runner(stream, nullptr,
+                  std::get<se::DeviceMemoryBase>(runner_and_scratch), in_ptr,
+                  filter_ptr, out_ptr);
   } else {
     return stream->ConvolveWithAlgorithm(
         kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc, out_ptr,

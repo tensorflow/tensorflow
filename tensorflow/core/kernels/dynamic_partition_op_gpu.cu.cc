@@ -315,7 +315,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
       done();
     };
 
-    c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+    c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
         stream, wrapped_callback);
   }
 

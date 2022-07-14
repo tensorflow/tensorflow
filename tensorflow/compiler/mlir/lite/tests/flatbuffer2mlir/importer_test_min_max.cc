@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
   auto buffer = file_or_err->get();
   auto maybe_module =
       mlir::InjectStatsToFullyConnected(buffer->getBuffer().str());
-  if (!maybe_module.hasValue()) {
+  if (!maybe_module.has_value()) {
     return 1;
   }
   flatbuffers::FlatBufferBuilder builder;

@@ -13,6 +13,3 @@
 # limitations under the License.
 # ==============================================================================
 """Keras' Distribution Strategy library."""
-
-# pylint: disable=unused-import
-from tensorflow.python.keras.distribute import sidecar_evaluator

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 
 #include "grpcpp/server_context.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
@@ -34,7 +35,13 @@ GrpcDispatcherImpl::GrpcDispatcherImpl(
 
 Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
 
-size_t GrpcDispatcherImpl::NumActiveJobs() { return impl_.NumActiveJobs(); }
+size_t GrpcDispatcherImpl::NumActiveIterations() {
+  return impl_.NumActiveIterations();
+}
+
+DispatcherStateExport GrpcDispatcherImpl::ExportState() const {
+  return impl_.ExportState();
+}
 
 #define HANDLER(method)                                                   \
   grpc::Status GrpcDispatcherImpl::method(ServerContext* context,         \
@@ -48,9 +55,10 @@ HANDLER(GetDatasetDef);
 HANDLER(GetSplit);
 HANDLER(GetVersion);
 HANDLER(GetOrRegisterDataset);
-HANDLER(ReleaseJobClient);
+HANDLER(ReleaseIterationClient);
 HANDLER(MaybeRemoveTask);
 HANDLER(GetOrCreateJob);
+HANDLER(GetOrCreateIteration);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
 HANDLER(GetDataServiceMetadata);

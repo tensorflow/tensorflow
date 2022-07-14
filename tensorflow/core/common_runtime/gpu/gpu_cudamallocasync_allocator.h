@@ -93,6 +93,10 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   static int GetInstantiatedCountTestOnly() { return number_instantiated_; }
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kDevice;
+  }
+
  private:
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   se::StreamExecutor* stream_exec_;  // Not owned.

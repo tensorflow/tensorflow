@@ -31,6 +31,7 @@ import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.eager import def_function
@@ -376,9 +377,15 @@ def scan_meta_graph_def(meta_graph_def):
           meta_graph_def.meta_info_def.tags)
 
 
-def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
-                                   input_tensor_key_feed_dict, outdir,
-                                   overwrite_flag, worker=None, init_tpu=False,
+def run_saved_model_with_feed_dict(saved_model_dir,
+                                   tag_set,
+                                   signature_def_key,
+                                   input_tensor_key_feed_dict,
+                                   outdir,
+                                   overwrite_flag,
+                                   worker=None,
+                                   init_tpu=False,
+                                   use_tfrt=False,
                                    tf_debug=False):
   """Runs SavedModel and fetch all outputs.
 
@@ -401,6 +408,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
         specification is a bns or gRPC path.
     init_tpu: If true, the TPU system will be initialized after the session
         is created.
+    use_tfrt: If true, TFRT session will be used.
     tf_debug: A boolean flag to use TensorFlow Debugger (TFDBG) to observe the
         intermediate Tensor values and runtime GraphDefs while running the
         SavedModel.
@@ -441,7 +449,12 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
       for tensor_key in output_tensor_keys_sorted
   ]
 
-  with session.Session(worker, graph=ops_lib.Graph()) as sess:
+  config = None
+  if use_tfrt:
+    logging.info('Using TFRT session.')
+    config = config_pb2.ConfigProto(
+        experimental=config_pb2.ConfigProto.Experimental(use_tfrt=True))
+  with session.Session(worker, graph=ops_lib.Graph(), config=config) as sess:
     if init_tpu:
       print('Initializing TPU System ...')
       # This is needed for freshly started worker, or if the job
@@ -671,7 +684,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   tensor_key_feed_dict = {}
 
   inputs = preprocess_inputs_arg_string(inputs_str)
-  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str, safe=False)
+  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str)
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
@@ -761,10 +774,17 @@ def run(args):
         'required')
   tensor_key_feed_dict = load_inputs_from_input_arg_string(
       args.inputs, args.input_exprs, args.input_examples)
-  run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
-                                 tensor_key_feed_dict, args.outdir,
-                                 args.overwrite, worker=args.worker,
-                                 init_tpu=args.init_tpu, tf_debug=args.tf_debug)
+  run_saved_model_with_feed_dict(
+      args.dir,
+      args.tag_set,
+      args.signature_def,
+      tensor_key_feed_dict,
+      args.outdir,
+      args.overwrite,
+      worker=args.worker,
+      init_tpu=args.init_tpu,
+      use_tfrt=args.use_tfrt,
+      tf_debug=args.tf_debug)
 
 
 def scan(args):
@@ -998,6 +1018,11 @@ def add_run_subparser(subparsers):
       default=None,
       help='if specified, tpu.initialize_system will be called on the Session. '
            'This option should be only used if the worker is a TPU job.')
+  parser_run.add_argument(
+      '--use_tfrt',
+      action='store_true',
+      default=None,
+      help='if specified, TFRT session will be used, instead of TF1 session.')
   parser_run.set_defaults(func=run)
 
 

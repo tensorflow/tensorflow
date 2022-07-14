@@ -35,18 +35,17 @@ TfLiteStatus SplitOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   const int axis_tensor_id = inputs->data[0];
   const auto& axis = context->tensors[axis_tensor_id];
   if (axis.allocation_type != kTfLiteMmapRo) {
-    context->ReportError(context,
-                         "Axis tensor doesn't have correct allocation type: %s",
-                         axis.name);
+    TF_LITE_KERNEL_LOG(context,
+                       "Axis tensor doesn't have correct allocation type: %s",
+                       axis.name);
     return kTfLiteError;
   }
+  int axis_value = axis.data.i32[0];
+  if (axis_value < 0) axis_value += input_tensor.dims->size;
   // We pad Hexagon tensor dimensions with 1 if dims.size < 4.
   // (4 - input_tensor.dims->size) helps maps the input axis value in such
   // cases.
-  int axis_value = axis.data.i32[0] + (4 - input_tensor.dims->size);
-  if (axis_value < 0) {
-    axis_value += input_tensor.dims->size;
-  }
+  axis_value += (4 - input_tensor.dims->size);
   auto* input_axis_const = graph_builder_->AddConstNodeWithData(
       kScalarShape, reinterpret_cast<char*>(&axis_value), sizeof(int));
   AddInput(TensorID(input_axis_const->GetID(), 0));

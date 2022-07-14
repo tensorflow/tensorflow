@@ -12,8 +12,8 @@ package(
 
 cc_library(
     name = "Pass",
-    srcs = ["toposort_pass.cc"],
-    hdrs = ["toposort_pass.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/transforms:PassDetail",

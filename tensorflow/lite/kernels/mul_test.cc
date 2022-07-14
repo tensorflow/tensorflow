@@ -96,7 +96,7 @@ TEST(FloatMulOpTest, NoActivation) {
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
 }
@@ -107,7 +107,7 @@ TEST(FloatMulOpTest, ActivationRELU_N1_TO_1) {
       {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU_N1_TO_1);
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 1.0})));
 }
@@ -121,7 +121,7 @@ TEST(FloatMulOpTest, VariousInputShapes) {
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4, 1.21, 0.2})))
@@ -138,7 +138,7 @@ TEST(FloatMulOpTest, WithScalarBroadcast) {
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
     m.PopulateTensor<float>(m.input2(), {0.1});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-0.2, 0.02, 0.07, 0.08, 0.11, 0.2})))
@@ -156,7 +156,7 @@ TEST(FloatMulOpTest, WithBroadcast) {
     m.PopulateTensor<float>(m.input1(),
                             {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0, 1.1, 0.8});
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.4});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear(
                     {-0.2, 0.04, 0.21, 0.32, 0.11, 0.4, 0.33, 0.32})))
@@ -190,7 +190,7 @@ TEST(FloatMulOpTest, MixedBroadcast) {
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
     model_fixture.PopulateTensor<float>(model_fixture.input2(),
                                         {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    model_fixture.Invoke();
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
 
     EXPECT_THAT(model_fixture.GetOutput(),
                 ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
@@ -206,7 +206,7 @@ TEST(FloatMulOpTest, MixedBroadcast) {
     model_fixture.PopulateTensor<float>(
         model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    model_fixture.Invoke();
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
     EXPECT_THAT(model_fixture.GetOutput(),
                 ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
         << "With shape number " << i;
@@ -222,7 +222,7 @@ TEST(FloatMulOpTest, WithBroadcast2Elements) {
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.07, 0.16})))
         << "With shape number " << i;
@@ -234,7 +234,7 @@ TEST(FloatMulOpTest, ScalarAndOneElement) {
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
   m.PopulateTensor<float>(m.input1(), {0.8});
   m.PopulateTensor<float>(m.input2(), {0.5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({0.4})));
 }
 
@@ -244,7 +244,7 @@ TEST(IntegerMulOpTest, NoActivation) {
                       ActivationFunctionType_NONE);
   m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
   m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
 }
 
@@ -254,7 +254,7 @@ TEST(IntegerMulOpTest, ActivationRELU_N1_TO_1) {
                       ActivationFunctionType_RELU_N1_TO_1);
   m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
   m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
 }
 
@@ -267,7 +267,7 @@ TEST(IntegerMulOpTest, VariousInputShapes) {
                         {TensorType_INT32, {}}, ActivationFunctionType_NONE);
     m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
     m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5, 11, 1});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40, 121, 20}))
         << "With shape number " << i;
   }
@@ -282,7 +282,7 @@ TEST(IntegerMulOpTest, WithBroadcast) {
                         {TensorType_INT32, {}}, ActivationFunctionType_NONE);
     m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
     m.PopulateTensor<int32_t>(m.input2(), {1});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray(ArrayFloatNear({-20, 2, 7, 8, 11, 20})))
         << "With shape number " << i;
@@ -297,7 +297,7 @@ void NoActivation() {
                         ActivationFunctionType_NONE);
   m.QuantizeAndPopulate<integer_dtype>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
   m.QuantizeAndPopulate<integer_dtype>(m.input2(), {0.6, 0.4, 0.9, 0.8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
               ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
                                               kQuantizedTolerance)));
@@ -313,7 +313,7 @@ void NoActivationLargeMultiplier() {
                         ActivationFunctionType_NONE);
   m.QuantizeAndPopulate<integer_dtype>(m.input1(), {-4, 2, 3, 1});
   m.QuantizeAndPopulate<integer_dtype>(m.input2(), {-1, -3, 4, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Note the large tolerance. This computation is inherently inaccurate.
   const float kTolerance = 1.4f;
   EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
@@ -339,7 +339,7 @@ TEST(QuantizedMulOpTest, NoActivationInt16) {
                         ActivationFunctionType_NONE);
   m.QuantizeAndPopulate<int16_t>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
   m.QuantizeAndPopulate<int16_t>(m.input2(), {0.6, 0.4, 0.9, 0.8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutputInt16(),
               ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
                                               kQuantizedToleranceInt16)));
@@ -355,7 +355,7 @@ TEST(QuantizedMulOpTest, NoActivationInt16Scaled) {
   m.QuantizeAndPopulate<int16_t>(m.input1(), {-1.8, 0.2, 0.9, 1.7, 0.1, -1.95});
   m.QuantizeAndPopulate<int16_t>(m.input2(),
                                  {3.6, -3.4, 3.9, 0.8, -1.0, -3.95});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   const float kQuantizedToleranceInt16Scaled =
       6.0 * kQuantizedStepInt16 + kQuantizedStepInt16 * kQuantizedStepInt16;
@@ -378,7 +378,7 @@ void NoActivationInt16With8BitOutput() {
                         ActivationFunctionType_NONE);
   m.QuantizeAndPopulate<int16_t>(m.input1(), {-0.8, 0.2, 0.9, 0.7});
   m.QuantizeAndPopulate<int16_t>(m.input2(), {0.6, 0.4, 0.9, 0.8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
               ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
                                               kQuantizedTolerance)));
@@ -417,7 +417,7 @@ void WithBroadcast() {
       m.QuantizeAndPopulate<integer_dtype>(m.input1(),
                                            {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
       m.QuantizeAndPopulate<integer_dtype>(m.input2(), {0.1});
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
       EXPECT_THAT(
           m.GetDequantizedOutput<integer_dtype>(),
           ElementsAreArray(ArrayFloatNear({-0.2, 0.02, 0.07, 0.08, 0.11, 0.2},
@@ -456,7 +456,7 @@ void QuantizedWithMixedBroadcast() {
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
     model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input2(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    model_fixture.Invoke();
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         model_fixture.GetDequantizedOutput<integer_dtype>(),
         ElementsAreArray(ArrayFloatNear(test_outputs[i], kQuantizedTolerance)))
@@ -473,7 +473,7 @@ void QuantizedWithMixedBroadcast() {
     model_fixture.QuantizeAndPopulate<integer_dtype>(
         model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    model_fixture.Invoke();
+    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         model_fixture.GetDequantizedOutput<integer_dtype>(),
         ElementsAreArray(ArrayFloatNear(test_outputs[i], kQuantizedTolerance)))

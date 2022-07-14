@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
@@ -40,14 +41,14 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(
     TFGraphDialect* tfgDialect);
 
 // Converts a shape from MLIR to a TensorFlow tensor shape proto.
-void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
+void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
                                tensorflow::TensorShapeProto* output_shape);
 
 // Converts an MLIR type to a TensorFlow tensor shape.
 tensorflow::PartialTensorShape ConvertTypeToTensorShape(const Type& type);
 
 // Converts a TensorFlow shape attribute to an MLIR shape attribute.
-tensorflow::StatusOr<Attribute> ConvertTensorShapeProto(
+tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const tensorflow::TensorShapeProto& shape, MLIRContext* context);
 
 // Fill in the contents of TensorShapeProto for the given shape.

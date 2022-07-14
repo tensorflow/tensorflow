@@ -14,6 +14,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_optimization_pass.h"
 
+#include <memory>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
@@ -24,20 +26,20 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/utils/functions.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stacktrace.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
-// TODO(sami): Remove VLOG messages once the code matures
 using absl::AsciiStrToUpper;
 using absl::StrAppend;
 using absl::StrCat;
@@ -73,7 +75,8 @@ StatusOr<bool> ShouldConvertFunction(const grappler::GrapplerItem& item) {
 
 // Converts function conversion attributes to conversion parameters.
 Status UpdateFunctionSpecificConversionParams(
-    ConversionParams& cp, const tensorflow::AttrSlice& attr) {
+    TRTOptimizationPass::ConversionParams& cp,
+    const tensorflow::AttrSlice& attr) {
   auto get_size_attr = [](const AttrSlice& attr, absl::string_view name,
                           size_t* dst) -> Status {
     int tmp = 0;
@@ -95,7 +98,7 @@ Status UpdateFunctionSpecificConversionParams(
       TrtPrecisionModeFromName(precision_mode, &cp.precision_mode));
   TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_minimum_segment_size",
                                  &cp.minimum_segment_size));
-  TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_is_dyn_op", &cp.is_dyn_op));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attr, "_tftrt_is_dyn_op", &cp.is_dynamic_op));
   TF_RETURN_IF_ERROR(
       GetNodeAttr(attr, "_tftrt_max_cached_engines", &cp.max_cached_engines));
   TF_RETURN_IF_ERROR(
@@ -111,156 +114,52 @@ Status UpdateFunctionSpecificConversionParams(
                                  &cp.allow_build_at_runtime));
   return Status::OK();
 }
-
 }  // namespace
 
 Status TRTOptimizationPass::Init(
     const RewriterConfig_CustomGraphOptimizer* config) {
-  VLOG(1) << "Called INIT for " << name_ << " with config = " << config;
   if (config == nullptr) {
     return Status::OK();
   }
-  VLOG(1) << "config = " << config->DebugString();
   const auto params = config->parameter_map();
   if (params.count("minimum_segment_size")) {
-    minimum_segment_size_ = params.at("minimum_segment_size").i();
+    params_.minimum_segment_size = params.at("minimum_segment_size").i();
   }
   if (params.count("max_batch_size")) {
-    maximum_batch_size_ = params.at("max_batch_size").i();
+    params_.max_batch_size = params.at("max_batch_size").i();
   }
   if (params.count("is_dynamic_op")) {
-    is_dynamic_op_ = params.at("is_dynamic_op").b();
+    params_.is_dynamic_op = params.at("is_dynamic_op").b();
   }
   if (params.count("maximum_cached_engines")) {
-    max_cached_batches_ = params.at("maximum_cached_engines").i();
+    params_.max_cached_engines = params.at("maximum_cached_engines").i();
   }
   if (params.count("max_workspace_size_bytes")) {
-    max_workspace_size_bytes_ = params.at("max_workspace_size_bytes").i();
+    params_.max_workspace_size_bytes =
+        params.at("max_workspace_size_bytes").i();
   }
   if (params.count("precision_mode")) {
     TF_RETURN_IF_ERROR(TrtPrecisionModeFromName(
-        AsciiStrToUpper(params.at("precision_mode").s()), &precision_mode_));
+        AsciiStrToUpper(params.at("precision_mode").s()),
+        &params_.precision_mode));
   }
   if (params.count("use_calibration")) {
-    use_calibration_ = params.at("use_calibration").b();
+    params_.use_calibration = params.at("use_calibration").b();
   }
   if (params.count("trt_logger")) {
-    trt_logger_name_ = params.at("trt_logger").s();
+    params_.trt_logger_name = params.at("trt_logger").s();
   }
   if (params.count("allow_build_at_runtime")) {
-    allow_build_at_runtime_ = params.at("allow_build_at_runtime").b();
+    params_.allow_build_at_runtime = params.at("allow_build_at_runtime").b();
   }
   if (params.count("use_implicit_batch")) {
-    use_implicit_batch_ = params.at("use_implicit_batch").b();
+    params_.use_implicit_batch = params.at("use_implicit_batch").b();
   }
   if (params.count("profile_strategy")) {
     TF_RETURN_IF_ERROR(ProfileStrategyFromName(
-        params.at("profile_strategy").s(), &profile_strategy_));
+        params.at("profile_strategy").s(), &params_.profile_strategy));
   }
   return Status::OK();
-}
-
-void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
-                                         const grappler::GrapplerItem& item) {
-  LOG(INFO) << "Cluster = " << cluster;
-  string offset("  ");
-  string offset2 = StrCat(offset, offset);
-  string offset3 = StrCat(offset2, offset);
-  string offset4 = StrCat(offset2, offset2);
-
-  if (cluster) {
-    LOG(INFO) << offset << "type             = " << cluster->type();
-    LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
-    const auto dev_names = cluster->GetDeviceNames();
-    if (!dev_names.empty()) {
-      LOG(INFO) << offset << " Device names:";
-      for (const auto& s : dev_names) {
-        LOG(INFO) << offset2 << s;
-      }
-    }
-    std::unordered_map<string, uint64> peak_mem;
-    auto status = cluster->GetPeakMemoryUsage(&peak_mem);
-    if (status == Status::OK()) {
-      LOG(INFO) << offset << "Peak Memory Usage :";
-      for (const auto& s : peak_mem) {
-        LOG(INFO) << offset2 << s.first << " = " << s.second;
-      }
-    }
-
-    const auto dev_props = cluster->GetDevices();
-    if (!dev_props.empty()) {
-      LOG(INFO) << offset << "Device properties:";
-      for (const auto& k : dev_props) {
-        LOG(INFO) << offset2 << k.first;
-        const auto& dt = k.second;
-        LOG(INFO) << offset3 << "type          = " << dt.type();
-        LOG(INFO) << offset3 << "vendor        = " << dt.vendor();
-        LOG(INFO) << offset3 << "model         = " << dt.model();
-        LOG(INFO) << offset3 << "frequency     = " << dt.frequency();
-        LOG(INFO) << offset3 << "num cores     = " << dt.num_cores();
-        LOG(INFO) << offset3 << "num registers = " << dt.num_registers();
-        LOG(INFO) << offset3 << "L1 cache size = " << dt.l1_cache_size();
-        LOG(INFO) << offset3 << "L2 cache size = " << dt.l2_cache_size();
-        LOG(INFO) << offset3 << "L3 cache size = " << dt.l3_cache_size();
-        LOG(INFO) << offset3 << "SHMem per SMP = "
-                  << dt.shared_memory_size_per_multiprocessor();
-        LOG(INFO) << offset3 << "memory size   = " << dt.memory_size();
-        LOG(INFO) << offset3 << "bandwidth     = " << dt.bandwidth();
-        if (dt.environment_size()) {
-          LOG(INFO) << offset3 << "environment   :";
-          for (const auto& e : dt.environment()) {
-            LOG(INFO) << offset4 << e.first << " = " << e.second;
-          }
-        }
-      }
-    }
-
-    if (cluster->GetDeviceSet()) {
-      for (const auto dev : cluster->GetDeviceSet()->devices()) {
-        LOG(INFO) << "Device name= " << dev->name() << "Pased name= "
-                  << DeviceNameUtils::ParsedNameToString(dev->parsed_name());
-      }
-    }
-  }
-
-  LOG(INFO) << "item: " << item.id;
-  if (!item.feed.empty()) {
-    LOG(INFO) << offset << "Feeds  :";
-    for (const auto& f : item.feed) {
-      const auto& shape = f.second.shape();
-      LOG(INFO) << offset2 << f.first << " = shaped " << shape.DebugString();
-    }
-  } else {
-    LOG(INFO) << offset << "No Feeds";
-  }
-  if (!item.fetch.empty()) {
-    LOG(INFO) << offset << "Fetches  :";
-    for (const auto& f : item.fetch) {
-      LOG(INFO) << offset2 << f;
-    }
-  } else {
-    LOG(INFO) << offset << "No Fetches";
-  }
-
-  if (!item.init_ops.empty()) {
-    LOG(INFO) << offset << "init ops  :";
-    for (const auto& f : item.init_ops) {
-      LOG(INFO) << offset2 << f;
-    }
-  } else {
-    LOG(INFO) << offset << "No init ops";
-  }
-  LOG(INFO) << "Save Op = " << item.save_op;
-  LOG(INFO) << "Restore Op = " << item.restore_op;
-  LOG(INFO) << "save_restore_loc_tensor = " << item.save_restore_loc_tensor;
-  if (!item.keep_ops.empty()) {
-    LOG(INFO) << offset << "keep ops  :";
-    for (const auto& f : item.keep_ops) {
-      LOG(INFO) << offset2 << f;
-    }
-  } else {
-    LOG(INFO) << offset << "No keep ops";
-  }
 }
 
 static bool ExplicitPrecisionModePolicy() {
@@ -275,38 +174,37 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   TF_ASSIGN_OR_RETURN(bool do_function_conversion, ShouldConvertFunction(item));
   // Optimizing the main graph(identified with `item.id == "tf_graph"`) with
   // `minimim_segment_size == -1` indicates skipping main graph conversion.
-  if ((minimum_segment_size_ == -1 && item.id == "tf_graph") ||
+  if ((params_.minimum_segment_size == -1 && item.id == "tf_graph") ||
       (item.id != "tf_graph" && !do_function_conversion)) {
     VLOG(1) << "Not optimizing this grappler item: " << item.id;
     *optimized_graph = item.graph;
     return Status::OK();
   }
-  if (VLOG_IS_ON(3)) {
-    LOG(INFO) << CurrentStackTrace();
-    PrintDebugInfo(cluster, item);
-  }
 
-  if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
+  if (params_.use_calibration &&
+      params_.precision_mode != TrtPrecisionMode::INT8) {
     LOG(WARNING) << "Calibration with FP32 or FP16 is not implemented. "
                  << "Falling back to use_calibration = False."
                  << "Note that the default value of use_calibration is True.";
-    use_calibration_ = false;
+    params_.use_calibration = false;
   }
 
-  const bool use_explicit_precision = ShouldUseExplicitPrecision(item.graph);
-  if (use_explicit_precision) {
+  params_.use_explicit_precision = ShouldUseExplicitPrecision(item.graph);
+  if (params_.use_explicit_precision) {
     LOG(INFO) << "[TF-TRT] Using explicit QDQ mode";
-    if (precision_mode_ != TrtPrecisionMode::INT8 || use_calibration_) {
+    if (params_.precision_mode != TrtPrecisionMode::INT8 ||
+        params_.use_calibration) {
       LOG(WARNING)
           << "Explicit precision mode with calibration or FP32/FP16 mode is "
              "not supported."
           << " Setting precision mode to INT8 and calibration to false.";
-      precision_mode_ = TrtPrecisionMode::INT8;
-      use_calibration_ = false;
+      params_.precision_mode = TrtPrecisionMode::INT8;
+      params_.use_calibration = false;
     }
-  } else {
-    LOG(INFO) << "[TF-TRT] not using explicit QDQ mode";
   }
+
+  // Create a copy of the graph to optimize.
+  grappler::GrapplerItem optimized_item(item);
 
   std::vector<string> nodes_to_preserve;
   const auto& old_nodes_to_preserve = item.NodesToPreserve();
@@ -327,49 +225,18 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     nodes_to_preserve.push_back(s);
   }
 
-  ConversionParams cp;
-  cp.grappler_item = &item;
-  cp.input_output_names = &nodes_to_preserve;
-  cp.trt_logger_name = trt_logger_name_;
-  cp.max_batch_size = maximum_batch_size_;
-  cp.max_workspace_size_bytes = max_workspace_size_bytes_;
-  cp.output_graph_def = optimized_graph;
-  cp.precision_mode = precision_mode_;
-  cp.minimum_segment_size = minimum_segment_size_;
-  cp.is_dyn_op = is_dynamic_op_;
-  cp.max_cached_engines = max_cached_batches_;
-  cp.use_calibration = use_calibration_;
-  cp.use_implicit_batch = use_implicit_batch_;
-  cp.profile_strategy = profile_strategy_;
-  cp.allow_build_at_runtime = allow_build_at_runtime_;
-  cp.use_explicit_precision = use_explicit_precision;
-
   if (item.id != "tf_graph" && do_function_conversion) {
     const grappler::GrapplerFunctionItem& func_item =
         tensorflow::down_cast<const grappler::GrapplerFunctionItem&>(item);
     TF_RETURN_IF_ERROR(
-        UpdateFunctionSpecificConversionParams(cp, func_item.func_attr()));
-    assert(cp.minimum_segment_size > 0);
+        UpdateFunctionSpecificConversionParams(params_, func_item.func_attr()));
   }
 
-  auto status = ConvertAfterShapes(cp, cluster);
-  VLOG(1) << "Returning from " << name_;
-  return status;
+  return ConvertGraph(params_, optimized_item, nodes_to_preserve, cluster,
+                      optimized_graph);
 }
 
-class VerboseCustomGraphOptimizerRegistrar
-    : public grappler::CustomGraphOptimizerRegistrar {
- public:
-  VerboseCustomGraphOptimizerRegistrar(
-      const grappler::CustomGraphOptimizerRegistry::Creator& cr,
-      const string& name)
-      : grappler::CustomGraphOptimizerRegistrar(cr, name) {
-    VLOG(1) << "Constructing a CustomOptimizationPass registration object for "
-            << name;
-  }
-};
-
-static VerboseCustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
+static grappler::CustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
     []() {
       VLOG(1)
           << "Instantiating CustomOptimizationPass object TensorRTOptimizer";

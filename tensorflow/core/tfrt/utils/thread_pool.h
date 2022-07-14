@@ -35,7 +35,9 @@ class TfThreadPool : public thread::ThreadPoolInterface {
     underlying_threadpool_.ScheduleWithHint(std::move(fn), start, end);
   }
 
-  void Cancel() override {}
+  void Cancel() override {
+    underlying_threadpool_.AsEigenThreadPool()->Cancel();
+  }
 
   int NumThreads() const override {
     return underlying_threadpool_.NumThreads();

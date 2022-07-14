@@ -23,7 +23,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -63,7 +62,7 @@ class CpuGpuFusionTest : public HloTestBase {
   template <typename T, int Arity>
   void TestElementwise2D(
       HloOpcode opcode,
-      absl::optional<ComparisonDirection> direction = absl::nullopt) {
+      std::optional<ComparisonDirection> direction = std::nullopt) {
     // Create a variable for comparisons since they require the direction.
     bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];
@@ -858,26 +857,23 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   auto x = Mul(param0, param1);
   Add(x, param2);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Transfer literals to device.
   auto param0_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param0_dim0, param0_dim1);
   ScopedShapedBuffer buffer0 =
-      client->LiteralToShapedBuffer(param0_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param0_literal, device_ordinal).value();
 
   auto param1_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param1_dim0, param1_dim1);
   ScopedShapedBuffer buffer1 =
-      client->LiteralToShapedBuffer(param1_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param1_literal, device_ordinal).value();
 
   auto param2_literal =
       LiteralUtil::CreateR2F32Linspace(1.0, 2.0, param2_dim0, param2_dim1);
   ScopedShapedBuffer buffer2 =
-      client->LiteralToShapedBuffer(param2_literal, device_ordinal)
-          .ConsumeValueOrDie();
+      client->LiteralToShapedBuffer(param2_literal, device_ordinal).value();
 
   // Build executable.
   auto executables =
@@ -886,7 +882,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
                     {&buffer0.on_host_shape(), &buffer1.on_host_shape(),
                      &buffer2.on_host_shape()},
                     ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+          .value();
   auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);

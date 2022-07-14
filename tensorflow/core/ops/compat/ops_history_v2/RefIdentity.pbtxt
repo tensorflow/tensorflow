@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RefIdentity"
   input_arg {
     name: "input"

@@ -93,7 +93,7 @@ class MultiplexDenseOp : public OpKernel {
 // The TF_CALL_ALL_TYPES macro registers the op for all types appropriate for
 // the target platform. See go/tf-custom-ops-guide
 #define REGISTER_KERNELS(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("Examples>MultiplexDense")       \
+  REGISTER_KERNEL_BUILDER(Name("Examples1>MultiplexDense")      \
                               .Device(::tensorflow::DEVICE_CPU) \
                               .TypeConstraint<type>("T"),       \
                           MultiplexDenseOp<type>)

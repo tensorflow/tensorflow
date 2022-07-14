@@ -163,9 +163,9 @@ absl::string_view TpuExecutable::fingerprint() const {
 
 StatusOr<std::string> TpuExecutable::Serialize() const {
   SE_ExecutableSerializationHandle* handle = nullptr;
-  auto cleanup = absl::MakeCleanup([&handle]() {
+  absl::Cleanup cleanup = [&handle]() {
     ExecutorApiFn()->TpuExecutableSerialize_FreeHandleFn(handle);
-  });
+  };
   StatusHelper status;
   ExecutorApiFn()->TpuExecutable_SerializeFn(se_executable_, &handle,
                                              status.c_status);
@@ -201,8 +201,9 @@ StatusOr<std::unique_ptr<TpuExecutable>> TpuExecutable::Deserialize(
   }
   XLA_HloModule c_module =
       ExecutorApiFn()->TpuExecutable_HloModuleFn(se_executable);
-  auto cleanup_c_module =
-      absl::MakeCleanup([&c_module]() { ApiConverter::Destroy(&c_module); });
+  absl::Cleanup cleanup_c_module = [&c_module]() {
+    ApiConverter::Destroy(&c_module);
+  };
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       ApiConverter::FromC(c_module));
   return absl::make_unique<TpuExecutable>(se_executable, std::move(hlo_module));

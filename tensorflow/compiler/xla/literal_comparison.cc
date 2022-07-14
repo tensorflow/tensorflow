@@ -182,7 +182,7 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
     if (mismatched) {
       mismatched->Set<bool>(multi_index, !result);
     }
-    return result ? Status::OK()
+    return result ? OkStatus()
                   : MakeErrorStatus<NativeT>(expected_value, actual_value,
                                              multi_index);
   }
@@ -348,9 +348,11 @@ class NearComparator {
     CompareLiterals();
 
     if (num_mismatches_ == 0) {
-      return Status::OK();
+      return OkStatus();
     } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
-      miscompare_callback_(expected_, actual_, mismatches_, shape_index_);
+      miscompare_callback_(
+          expected_, actual_, mismatches_, shape_index_,
+          ErrorBuckets(abs_error_buckets_, rel_error_buckets_));
     }
     return InvalidArgument("%s", ErrorMessage());
   }
@@ -757,7 +759,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case TOKEN:
         // Tokens have no on-device representation and are trivially equal.
-        return Status::OK();
+        return OkStatus();
       default:
         LOG(FATAL) << "Unsupported primitive type: "
                    << PrimitiveType_Name(expected.shape().element_type());
@@ -765,7 +767,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 
     if (!result.ok() && miscompare_callback) {
       miscompare_callback(expected, actual, LiteralSlice(miscompared),
-                          shape_index);
+                          shape_index, ErrorBuckets());
     }
   }
 
@@ -777,7 +779,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 // currently being compared.
 Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ShapeIndex& shape_index, const ErrorSpec& error,
-                  absl::optional<bool> detailed_message,
+                  std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
 
@@ -910,7 +912,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
     }
   }
   // Non-array, non-tuple shapes are trivially equivalent.
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -940,7 +942,7 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, absl::optional<bool> detailed_message,
+            const ErrorSpec& error, std::optional<bool> detailed_message,
             const MiscompareCallback& miscompare_callback) {
   VLOG(1) << "Expected literal:";
   XLA_VLOG_LINES(1, expected.ToString());

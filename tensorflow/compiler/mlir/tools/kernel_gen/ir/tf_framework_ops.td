@@ -39,6 +39,7 @@ def TFFramework_Dialect : Dialect {
     static constexpr size_t kAllocationAlignment = 16;
   }];
 
+  let useDefaultTypePrinterParser = 1;
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
@@ -63,9 +64,7 @@ def TFFramework_JITCallableType : DialectType<TFFramework_Dialect, CPred<
 
 // Base class for TF Framework dialect ops.
 class TFFramework_Op<string mnemonic, list<Trait> traits = []> :
-    Op<TFFramework_Dialect, mnemonic, traits> {
-  let verifier = "return Verify<$cppClass>(*this);";
-}
+    Op<TFFramework_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // TFAllocOp
@@ -117,6 +116,8 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc", [
   let assemblyFormat = [{
     `(` $ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -303,7 +304,10 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
-    AttrSizedOperandSegments]> {
+    AttrSizedOperandSegments,
+    MemoryEffects<[MemAlloc<DefaultResource>]>,
+    DeclareOpInterfaceMethods<AllocationOpInterface,
+        ["buildDealloc", "buildClone"]>]> {
   let summary = "Executes a JIT-compiled function through the TF framework";
   let description = [{
     The op takes an optional TF context, so that it can be added at a later
@@ -321,17 +325,12 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
     Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$operands
   );
   let results = (outs
-    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$results
-  );
-
-  let builders = [
-    OpBuilder<(ins "Optional<Value>":$ctx, "Value":$callable,
-        "ValueRange":$operands)>
-  ];
+    Res<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]> , "",
+        [MemAlloc<DefaultResource>]>:$result);
 
   let assemblyFormat = [{
     (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
-        `:` type($operands) `->` type($results)
+        `:` type($operands) `->` type($result)
   }];
 }
 

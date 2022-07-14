@@ -49,7 +49,7 @@ namespace {
 // and the same reduction operation.
 Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " CRS ops";
 
@@ -60,7 +60,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   // Create a single bigger AllReduce of the operands of the smaller
   // AllReduces.
   std::vector<HloInstruction*> operands;
-  std::vector<Shape> operand_shapes;
+  std::vector<const Shape*> operand_shapes;
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
     VLOG(1) << "Set element: " << hlo->ToString();
@@ -73,7 +73,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
     TF_RET_CHECK(hlo->shape().IsArray());
     for (HloInstruction* operand : hlo->operands()) {
       operands.push_back(operand);
-      operand_shapes.push_back(operand->shape());
+      operand_shapes.push_back(&operand->shape());
     }
   }
 
@@ -81,7 +81,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   // AllReduce ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateAllReduce(
-      ShapeUtil::MakeTupleShape(operand_shapes), operands, reduction,
+      ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands, reduction,
       to_combine.front()->replica_groups(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloAllReduceInstruction>(to_combine.front())
@@ -102,7 +102,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -132,9 +132,9 @@ StatusOr<bool> AllReduceCombiner::Run(HloModule* module) {
 
     auto key_fn =
         [&domain_map](
-            const HloInstruction* instruction) -> absl::optional<AllReduceKey> {
+            const HloInstruction* instruction) -> std::optional<AllReduceKey> {
       if (instruction->opcode() != HloOpcode::kAllReduce) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       return GetAllReduceKey(instruction, domain_map.get());
     };

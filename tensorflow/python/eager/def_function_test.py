@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from six.moves import range
 
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.checkpoint.checkpoint import Checkpoint
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
@@ -49,7 +50,6 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training.tracking.util import Checkpoint
 
 
 def undecorated_function(x):
@@ -948,7 +948,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         autograph=autograph,
         experimental_implements=implements,
         experimental_autograph_options=autograph_options,
-        experimental_relax_shapes=relax_shapes,
+        reduce_retracing=relax_shapes,
         jit_compile=compile_)
 
     if override_function:
@@ -964,7 +964,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._reduce_retracing)
     self.assertEqual(compile_, cloned._jit_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
@@ -1030,7 +1030,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         autograph=autograph,
         experimental_implements=implements,
         experimental_autograph_options=autograph_options,
-        experimental_relax_shapes=relax_shapes,
+        reduce_retracing=relax_shapes,
     )
 
     cloned = pickle.loads(pickle.dumps(func))
@@ -1040,7 +1040,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._reduce_retracing)
 
     x = array_ops.ones([])
     self.assertEqual(self.evaluate(cloned(x)), self.evaluate(func(x)))

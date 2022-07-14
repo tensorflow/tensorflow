@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 
 #include <fstream>
+#include <string>
 
 #include "tensorflow/lite/tools/logging.h"
 
@@ -23,14 +24,14 @@ namespace tflite {
 namespace benchmark {
 
 ProfilingListener::ProfilingListener(
-    Interpreter* interpreter, uint32_t max_num_entries,
-    const std::string& csv_file_path,
+    Interpreter* interpreter, uint32_t max_num_initial_entries,
+    bool allow_dynamic_buffer_increase, const std::string& csv_file_path,
     std::shared_ptr<profiling::ProfileSummaryFormatter> summarizer_formatter)
     : run_summarizer_(summarizer_formatter),
       init_summarizer_(summarizer_formatter),
       csv_file_path_(csv_file_path),
       interpreter_(interpreter),
-      profiler_(max_num_entries) {
+      profiler_(max_num_initial_entries, allow_dynamic_buffer_increase) {
   TFLITE_TOOLS_CHECK(interpreter);
   interpreter_->SetProfiler(&profiler_);
 

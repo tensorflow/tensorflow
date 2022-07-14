@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_COMPILER_FUNCTOR_H_
 
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -39,7 +44,9 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
       LLVMCompiler::ModuleHook pre_optimization_hook = nullptr,
       LLVMCompiler::ModuleHook post_optimization_hook = nullptr,
       std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook =
-          nullptr)
+          nullptr,
+      bool dfsan_enabled = false,
+      const std::vector<std::string>& dfsan_abi_list_files = {})
       : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
         target_machine_(target_machine),
         opt_level_(opt_level),
@@ -48,7 +55,9 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
         fast_math_flags_(fast_math_flags),
         pre_optimization_hook_(std::move(pre_optimization_hook)),
         post_optimization_hook_(std::move(post_optimization_hook)),
-        post_codegen_hook_(std::move(post_codegen_hook)) {}
+        post_codegen_hook_(std::move(post_codegen_hook)),
+        dfsan_enabled_(dfsan_enabled),
+        dfsan_abi_list_files_(dfsan_abi_list_files) {}
 
   // Compile a Module to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
@@ -72,6 +81,8 @@ class CompilerFunctor : public llvm::orc::IRCompileLayer::IRCompiler {
   LLVMCompiler::ModuleHook pre_optimization_hook_;
   LLVMCompiler::ModuleHook post_optimization_hook_;
   std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook_;
+  const bool dfsan_enabled_ = false;
+  const std::vector<std::string> dfsan_abi_list_files_;
 };
 
 }  // namespace cpu

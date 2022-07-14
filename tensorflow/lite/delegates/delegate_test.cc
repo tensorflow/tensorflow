@@ -852,7 +852,8 @@ INSTANTIATE_TEST_SUITE_P(
 class TestDelegateWithDynamicTensors : public ::testing::Test {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
+    interpreter_ =
+        test_utils::TestDelegation::NewInterpreterWithDefaultDelegates();
 
     interpreter_->AddTensors(3);
     interpreter_->SetInputs({0});
@@ -996,7 +997,8 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
 class TestReleaseDynamicTensorWithDelegate : public ::testing::Test {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
+    interpreter_ =
+        test_utils::TestDelegation::NewInterpreterWithDefaultDelegates();
 
     interpreter_->AddTensors(3);
     interpreter_->SetInputs({0});
@@ -1079,7 +1081,9 @@ TEST_F(TestReleaseDynamicTensorWithDelegate, ShapePropagation_FlagNotSet) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_NE(interpreter_->tensor(1)->data.raw, nullptr);
 
-  interpreter_->EnsureDynamicTensorsAreReleased();
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased();
+  interpreter_->ApplyOptions(&options);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->tensor(1)->data.raw, nullptr);
@@ -1102,8 +1106,8 @@ TEST_F(TestFP16Delegation, NullDelegate) {
 }
 
 TEST_P(TestFP16Delegation, DelegationWorks) {
-  delegate_ = std::unique_ptr<FP16Delegate>(
-      new FP16Delegate(/**num_delegated_subsets**/ GetParam()));
+  delegate_ = std::make_unique<FP16Delegate>(
+      /**num_delegated_subsets**/ GetParam());
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
@@ -1113,8 +1117,8 @@ TEST_P(TestFP16Delegation, DelegationWorks) {
 }
 
 TEST_P(TestFP16Delegation, DelegatePrepareFails) {
-  delegate_ = std::unique_ptr<FP16Delegate>(new FP16Delegate(
-      /**num_delegated_subsets**/ GetParam(), /**fail_node_prepare**/ true));
+  delegate_ = std::make_unique<FP16Delegate>(
+      /**num_delegated_subsets**/ GetParam(), /**fail_node_prepare**/ true);
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteDelegateError);

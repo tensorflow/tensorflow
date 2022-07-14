@@ -2,11 +2,12 @@
 # TensorFlow Lite Java API.
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
+load("//tensorflow/lite:build_def.bzl", "tflite_jni_linkopts", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_library_with_tflite", "cc_library_with_tflite", "java_library_with_tflite", "java_test_with_tflite", "jni_binary_with_tflite")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_android_library")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni", "aar_without_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -92,7 +93,6 @@ filegroup(
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
-        "src/main/java/org/tensorflow/lite/XnnpackDelegate.java",
         "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
         "src/main/java/org/tensorflow/lite/package-info.java",
         "//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src",
@@ -133,6 +133,7 @@ aar_with_jni(
         "//tensorflow/lite/c:c_api_experimental.h",
         # TODO(b/175298345): Clean up and if possible remove common.h here.
         "//tensorflow/lite/c:common.h",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate_c_api.h",
     ],
 )
 
@@ -264,6 +265,11 @@ tflite_flex_android_library(
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu",
+    # Note that we need to directly includes all the
+    # required Java source files directly in "srcs" rather than
+    # depending on them via "deps"/"exports"; this is needed when
+    # building the AAR file since the current AAR building process
+    # doesn't include the transitive Java dependencies.
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
     manifest = "AndroidManifest.xml",
@@ -271,7 +277,6 @@ android_library(
     deps = [
         ":tensorflowlite_java",
         ":tensorflowlite_native_gpu",
-        "@org_checkerframework_qual",
     ],
 )
 
@@ -295,6 +300,19 @@ android_library(
     deps = [
         "@org_checkerframework_qual",
     ],
+)
+
+# EXPERIMENTAL: Android target for GPU acceleration, EXCLUDING NATIVE CODE dependencies.
+#  Note that this library contains *only* the GPU delegate and its Java wrapper; clients must also
+# include the core `tensorflowlite` runtime.
+# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+android_library(
+    name = "tensorflowlite_gpu_java",
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
+    manifest = "AndroidManifestGpu.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [":tensorflowlite_java"],
 )
 
 #-----------------------------------------------------------------------------
@@ -609,6 +627,32 @@ java_test_with_tflite(
 )
 
 java_test_with_tflite(
+    name = "NnApiDelegateNativeTest",
+    size = "small",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/NnApiDelegateNativeTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
+    data = [
+        "src/testdata/add.bin",
+    ],
+    tags = ["no_mac"],
+    test_class = "org.tensorflow.lite.NnApiDelegateNativeTest",
+    tflite_jni_binaries = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tensorflowlite_javalib",
+        "//third_party/java/mockito",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+java_test_with_tflite(
     name = "NnApiDelegateTest",
     size = "small",
     srcs = [
@@ -809,9 +853,9 @@ cc_library_with_tflite(
     tflite_jni_binaries = ["//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "tensorflowlite_native_gpu",
-    srcs = ["libtensorflowlite_gpu_jni.so"],
+    tflite_jni_binaries = ["libtensorflowlite_gpu_jni.so"],
     visibility = ["//visibility:private"],
 )
 
@@ -833,7 +877,6 @@ jni_binary_with_tflite(
         # allows bundling of the C lib w/ AAR distribution.
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
 )
 
@@ -859,11 +902,20 @@ jni_binary_with_tflite(
 # Unlike libtensorflowlite_jni.so, this will NOT get loaded automatically by
 # TensorFlowLite.init(); instead this library should be explicitly loaded by the
 # client code, using System.LoadLibrary, before TensorFlowLite.init() is called.
-tflite_jni_binary(
+jni_binary_with_tflite(
     name = "libtensorflowlite_gpu_jni.so",
     linkopts = tflite_jni_linkopts() + tflite_linkopts_no_undefined(),
     linkscript = ":gpu_version_script.lds",
-    deps = [
+    tflite_deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
     ],
+)
+
+#-----------------------------------------------------------------------------
+# bzl_library targets.
+
+bzl_library(
+    name = "aar_with_jni_bzl",
+    srcs = ["aar_with_jni.bzl"],
+    visibility = ["//tensorflow/lite:__subpackages__"],
 )

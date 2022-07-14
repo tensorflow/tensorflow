@@ -60,7 +60,7 @@
 // CHECK-NEXT:  signature_defs: [ ]
 // CHECK-NEXT:}
 
-func @main(%arg0: tensor<4xf32>, %arg1: tensor<4x!quant.uniform<u8:f32, 0.1>>) -> tensor<4xf32> {
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4x!quant.uniform<u8:f32, 0.1>>) -> tensor<4xf32> {
   "tfl.NumericVerify"(%arg1, %arg0) {tolerance = 0.1 : f32} : (tensor<4x!quant.uniform<u8:f32, 0.1>>, tensor<4xf32>) -> (tensor<4xf32>)
-  return %arg0 : tensor<4xf32>
+  func.return %arg0 : tensor<4xf32>
 }

@@ -36,6 +36,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
@@ -536,6 +537,10 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertNotAllEqual([20] * 3, j)
 
     with self.assertRaisesRegex(
+        AssertionError, r"two values are equal at all elements. $"):
+      self.assertNotAllEqual([120], k)
+
+    with self.assertRaisesRegex(
         AssertionError, r"two values are equal at all elements.*extra message"):
       self.assertNotAllEqual([120], k, msg="extra message")
 
@@ -780,6 +785,12 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertEqual(a, b)
       self.assertEqual(a_np_rand, b_np_rand)
       self.assertAllEqual(a_rand, b_rand)
+
+  def testIndexedSlices(self):
+    with context.eager_mode():
+      self.evaluate(
+          indexed_slices.IndexedSlices(
+              constant_op.constant(1.0), constant_op.constant(0.0)))
 
   @test_util.run_in_graph_and_eager_modes
   def test_callable_evaluate(self):

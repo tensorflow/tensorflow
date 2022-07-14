@@ -38,7 +38,7 @@ Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,
-    absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr) {
+    std::optional<se::DeviceMemoryBase> cross_program_prefetch_addr) {
   SE_DeviceMemoryBase* arguments_bases = nullptr;
   if (!arguments.empty()) {
     arguments_bases = new SE_DeviceMemoryBase[arguments.size()];

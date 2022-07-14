@@ -87,10 +87,10 @@ class XlaExpression {
 
   // Return a constant value associated with this expression. Always set for
   // constants, might be set for resources.
-  absl::optional<Tensor> constant_value() const {
+  std::optional<Tensor> constant_value() const {
     if (kind_ == Kind::kResource && resource_->IsOverwritten()) {
       // The constant is no longer available if the value was overwritten.
-      return absl::nullopt;
+      return std::nullopt;
     }
     return constant_value_;
   }
@@ -101,7 +101,7 @@ class XlaExpression {
   }
 
   // Return the bound of the expression, if available.
-  absl::optional<Tensor> value_bound() const { return value_bound_; }
+  std::optional<Tensor> value_bound() const { return value_bound_; }
 
   // Set the dynamism of the expression, indicating whether or not each value in
   // this expression is dynamic.
@@ -110,7 +110,7 @@ class XlaExpression {
   }
 
   // Return the dynamism of the expression, if available.
-  absl::optional<Tensor> value_dynamism() const { return value_dynamism_; }
+  std::optional<Tensor> value_dynamism() const { return value_dynamism_; }
 
   XlaResource* resource() const { return resource_; }
 
@@ -125,7 +125,7 @@ class XlaExpression {
   // constant, returns the value as a host-memory Tensor. Returns an empty
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
-  StatusOr<absl::optional<Tensor>> ResolveConstant(
+  StatusOr<std::optional<Tensor>> ResolveConstant(
       xla::Client* client, bool dynamic_dimension_is_minus_one = false,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue) const;
 
@@ -155,13 +155,13 @@ class XlaExpression {
   xla::XlaOp handle_;
 
   // The value of the constant, if available.
-  absl::optional<Tensor> constant_value_;
+  std::optional<Tensor> constant_value_;
 
   // The bound of the expression, if available.
-  absl::optional<Tensor> value_bound_;
+  std::optional<Tensor> value_bound_;
 
   // Indicate whether each value inside a tensor is dynamic or not.
-  absl::optional<Tensor> value_dynamism_;
+  std::optional<Tensor> value_dynamism_;
 
   // The resource, if kind_ == kResource. Not owned.
   XlaResource* resource_ = nullptr;

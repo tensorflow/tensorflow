@@ -207,6 +207,12 @@ bool StreamExecutor::UnloadModule(ModuleHandle module_handle) {
   return implementation_->UnloadModule(module_handle);
 }
 
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+StreamExecutor::CreateOrShareConstant(Stream* stream,
+                                      const std::vector<uint8_t>& content) {
+  return implementation_->CreateOrShareConstant(stream, std::move(content));
+}
+
 void StreamExecutor::Deallocate(DeviceMemoryBase* mem) {
   VLOG(1) << "Called StreamExecutor::Deallocate(mem=" << mem->opaque()
           << ") mem->size()=" << mem->size() << StackTraceIfVLOG10();
@@ -356,36 +362,12 @@ bool StreamExecutor::GetRnnAlgorithms(
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(
-    std::vector<blas::AlgorithmType>* out_algorithms) {
+    Stream* stream, std::vector<blas::AlgorithmType>* out_algorithms) {
   blas::BlasSupport* blas_support = AsBlas();
   if (!blas_support) {
     return false;
   }
-  return blas_support->GetBlasGemmAlgorithms(out_algorithms);
-}
-
-port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
-StreamExecutor::CreateBlasLtMatmulPlan(
-    const blas::BlasLtMatmulPlanParams& params) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the blas implementation.");
-  }
-  return blas_support->CreateBlasLtMatmulPlan(params);
-}
-
-port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
-StreamExecutor::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan* plan,
-                                          size_t max_workspace_size,
-                                          int max_algorithm_count) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the blas implementation.");
-  }
-  return blas_support->GetBlasLtMatmulAlgorithms(plan, max_workspace_size,
-                                                 max_algorithm_count);
+  return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
@@ -792,6 +774,14 @@ bool StreamExecutor::AllocateStream(Stream* stream) {
 }
 
 void StreamExecutor::DeallocateStream(Stream* stream) {
+  dnn::DnnSupport* dnn;
+  {
+    absl::MutexLock lock(&mu_);
+    dnn = dnn_.get();
+  }
+  if (dnn) {
+    dnn->NotifyStreamDestroyed(stream);
+  }
   implementation_->DeallocateStream(stream);
   CHECK_GE(live_stream_count_.fetch_sub(1), 0)
       << "live stream count should not dip below zero";
@@ -819,8 +809,7 @@ bool StreamExecutor::StopTimer(Stream* stream, Timer* timer) {
 
 std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
     const {
-  auto desc_status = implementation_->CreateDeviceDescription();
-  return desc_status.ConsumeValueOrDie();
+  return implementation_->CreateDeviceDescription().value();
 }
 
 bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
@@ -881,7 +870,7 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener* listener) {
   return true;
 }
 
-absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 
@@ -946,7 +935,7 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                   mem.opaque(), device_ordinal);
     executor->Deallocate(&mem);
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::StatusOr<StreamExecutor*>

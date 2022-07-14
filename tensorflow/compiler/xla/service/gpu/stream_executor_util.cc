@@ -15,22 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
+#include <memory>
 #include <random>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/subprocess.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
@@ -183,7 +178,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX,
                                             FilterLayout::kOutputInputYX,
                                             DataLayout::kBatchDepthYX)
-          .ConsumeValueOrDie();
+          .value();
 
   // NCHW4 and NCHW32 have the same Layout; we disambiguate them below.
   Layout nchw_vect_input, nchw_vect_filter, nchw_vect_output;
@@ -191,14 +186,14 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX4,
                                             FilterLayout::kOutputInputYX4,
                                             DataLayout::kBatchDepthYX4)
-          .ConsumeValueOrDie();
+          .value();
 
   Layout nhwc_input, nhwc_filter, nhwc_output;
   std::tie(nhwc_input, nhwc_filter, nhwc_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchYXDepth,
                                             FilterLayout::kOutputYXInput,
                                             DataLayout::kBatchYXDepth)
-          .ConsumeValueOrDie();
+          .value();
 
   DataLayout input_layout;
   if (LayoutUtil::Equal(input.layout(), nchw_input)) {
@@ -283,20 +278,20 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // When D is the set of dimensions in a ConvolutionDimensionNumbers, this finds
 // the dimension number that corresponds to the vectorized-features dimension in
 // the convolution.
-static absl::optional<int64_t> FindVectorizedDim(int64_t rank, int64_t d0,
-                                                 int64_t d1,
-                                                 absl::Span<const int64_t> ds) {
+static std::optional<int64_t> FindVectorizedDim(int64_t rank, int64_t d0,
+                                                int64_t d1,
+                                                absl::Span<const int64_t> ds) {
   for (int64_t i = 0; i < rank; i++) {
     if (i == d0 || i == d1 || absl::c_linear_search(ds, i)) {
       continue;
     }
     return i;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
-           absl::optional<int64_t>>
+std::tuple<std::optional<int64_t>, std::optional<int64_t>,
+           std::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output) {
@@ -344,19 +339,38 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = absl::make_unique<se::KernelBase>(stream_exec);
+  auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
+}
+
+template <int n>
+static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
+    absl::Span<const se::DeviceMemoryBase> args) {
+  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
+  for (const se::DeviceMemoryBase& buf : args) {
+    kernel_args->add_device_memory_argument(buf);
+  }
+  return kernel_args;
 }
 
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
   static constexpr int kKernelArgsLimit = 1024;
-  auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (const se::DeviceMemoryBase& buf : args) {
-    kernel_args->add_device_memory_argument(buf);
+  std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
+  // The KernelArgsArray structure requires at a minimum 48 * args.size()
+  // bytes. It can be expensive to allocate, say, 48KiB, so we add
+  // specializations for smaller sizes. 64 arguments are likely to fit in a
+  // 4KiB page.
+  if (args.size() <= 64) {
+    kernel_args = MakeKernelArgs<64>(args);
+  } else if (args.size() <= 256) {
+    kernel_args = MakeKernelArgs<256>(args);
+  } else {
+    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args);
   }
+
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dims.block_counts();
   return stream->parent()->Launch(
@@ -448,6 +462,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
     case xla::F64:
     case xla::C128:
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
+    case xla::PRED:
+      // Using S8 for PRED initialization, as vector<bool> has different
+      // semantics and cannot be used as a buffer.
     case xla::S8:
       return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
     case xla::S32:

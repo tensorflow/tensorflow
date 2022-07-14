@@ -28,27 +28,26 @@ namespace tensorflow {
 namespace {
 
 struct CholeskyRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo_gpu::CholeskyOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo_gpu::CholeskyOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo_gpu::CholeskyOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo_gpu::CholeskyOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo_gpu::CholeskyOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
     Location loc = op->getLoc();
     chain = rewriter.create<tfrt::gpu::MemCopyOp>(
-        loc, adaptor.output(), adaptor.input(), stream, chain);
+        loc, adaptor.getOutput(), adaptor.getInput(), stream, chain);
 
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     auto handle = rewriter.create<tfrt::gpu::SolverCreateOp>(loc, context);
 
-    cublasFillMode_t fill_mode =
-        op.is_lower() ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
+    auto fill_mode = op.getIsLower() ? kBlasFillModeLower : kBlasFillModeUpper;
 
     mlir::Type element_type =
-        op.input().getType().cast<mlir::MemRefType>().getElementType();
-    auto data_type = MlirTypeToCudaDataType(element_type);
+        op.getInput().getType().cast<mlir::MemRefType>().getElementType();
+    auto data_type = MlirTypeToBlasDataType(element_type);
 
-    const xla::Shape shape = xla::gpu::GetShape(op.input());
+    const xla::Shape shape = xla::gpu::GetShape(op.getInput());
     int rank = shape.dimensions_size();
     assert(rank >= 2);
     auto n = rewriter.create<tfrt::compiler::ConstantI32Op>(
@@ -61,8 +60,8 @@ struct CholeskyRewritePattern
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, batch_size);
 
     chain = rewriter.create<tfrt::gpu::SolverPotrfBatchOp>(
-        loc, handle, stream, fill_mode, n, data_type, adaptor.output(), n,
-        adaptor.info(), batch, chain);
+        loc, handle, stream, fill_mode, n, data_type, adaptor.getOutput(), n,
+        adaptor.getInfo(), batch, chain);
     rewriter.eraseOp(op);
     return chain;
   }

@@ -901,5 +901,21 @@ TEST_F(KernelUtilTest, IsMobilePlatform) {
 #endif
 }
 
+TEST_F(KernelUtilTest, HasUnspecifiedDimension) {
+  TfLiteTensor tensor;
+  TfLiteIntArray* shape_sig = TfLiteIntArrayCreate(3);
+  shape_sig->data[0] = 1;
+  shape_sig->data[1] = -1;
+  shape_sig->data[2] = 3;
+  tensor.dims_signature = shape_sig;
+
+  EXPECT_TRUE(HasUnspecifiedDimension(&tensor));
+
+  shape_sig->data[1] = 2;
+  EXPECT_FALSE(HasUnspecifiedDimension(&tensor));
+
+  TfLiteIntArrayFree(shape_sig);
+}
+
 }  // namespace
 }  // namespace tflite

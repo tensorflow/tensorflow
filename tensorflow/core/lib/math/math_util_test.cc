@@ -336,5 +336,23 @@ TEST(MathUtil, IPowEdgeCases) {
   // pow(+∞, exp) returns +0 for any negative exp
 }
 
+TEST(MathUtil, Sign) {
+  EXPECT_EQ(MathUtil::Sign(1), 1);
+  EXPECT_EQ(MathUtil::Sign(0), 0);
+  EXPECT_EQ(MathUtil::Sign(-1), -1);
+
+  EXPECT_EQ(MathUtil::Sign(0.0f), 0.0f);
+  EXPECT_EQ(MathUtil::Sign(1.0f), 1.0f);
+  EXPECT_EQ(MathUtil::Sign(-1.0f), -1.0f);
+
+  EXPECT_EQ(MathUtil::Sign(std::numeric_limits<float>::infinity()), 1.0f);
+  EXPECT_EQ(MathUtil::Sign(-std::numeric_limits<float>::infinity()), -1.0f);
+
+  EXPECT_TRUE(
+      std::isnan(MathUtil::Sign(std::numeric_limits<float>::quiet_NaN())));
+  EXPECT_TRUE(
+      std::isnan(MathUtil::Sign(-std::numeric_limits<float>::quiet_NaN())));
+}
+
 }  // namespace
 }  // namespace tensorflow

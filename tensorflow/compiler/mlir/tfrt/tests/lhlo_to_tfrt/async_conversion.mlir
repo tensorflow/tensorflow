@@ -7,7 +7,7 @@
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @async(%memref: memref<4x4xf32>) {
+func.func @async(%memref: memref<4x4xf32>) {
   // CHECK-NOT: cast
   // CHECK: %[[ctx:.*]] = tfrt_gpu.stream.get_context %arg1
   // CHECK: %[[e0:.*]] = tfrt_gpu.event.create %[[ctx]]
@@ -38,6 +38,7 @@ func @async(%memref: memref<4x4xf32>) {
       >,
       alpha_real = 0.5,
       alpha_imag = 0.0,
+      beta = 0.0,
       batch_size = 1,
       lhs_stride = 16,
       rhs_stride = 16
@@ -73,6 +74,7 @@ func @async(%memref: memref<4x4xf32>) {
       >,
       alpha_real = 0.5,
       alpha_imag = 0.0,
+      beta = 0.0,
       batch_size = 1,
       lhs_stride = 16,
       rhs_stride = 16
@@ -98,6 +100,7 @@ func @async(%memref: memref<4x4xf32>) {
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16

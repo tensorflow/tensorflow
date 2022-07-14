@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
+func.func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
 ^bb0(%arg0: tensor<1x224x224x3xf32>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
@@ -99,5 +99,5 @@ func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   %2 = "tfl.dequantize"(%1) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x3x3x3xf32>
   %3 = "tfl.depthwise_conv_2d"(%arg0, %2, %0) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
 
-  return %3 : tensor<1x112x112x32xf32>
+  func.return %3 : tensor<1x112x112x32xf32>
 }

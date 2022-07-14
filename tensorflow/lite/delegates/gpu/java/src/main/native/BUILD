@@ -3,13 +3,14 @@
 # TensorFlow Lite GPU delegate Java API using the TensorFlow Lite CC library.
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "native",
     srcs = ["gpu_delegate_jni.cc"],
     copts = tflite_copts(),
@@ -23,6 +24,9 @@ cc_library(
     tags = [
         "manual",
         "notap",
+    ],
+    tflite_deps = [
+        "//tensorflow/lite/java/src/main/native:jni_utils",
     ],
     deps = [
         "//tensorflow/lite/delegates/gpu:delegate",

@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 
 namespace mlir {
@@ -36,7 +36,8 @@ TEST(TFTypesDialect, TestFuncAttrSubElement) {
   MLIRContext context;
   context.allowUnregisteredDialects();
   context.getOrLoadDialect<tf_type::TFTypeDialect>();
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   Operation &test_op = module->front();
 
   Builder b(&context);

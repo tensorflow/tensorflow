@@ -272,6 +272,18 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
             core_details_map.at(1000 + kDefaultGpuLocalCoreId).hostname());
 }
 
+TEST(ConvertXPlaneToOpStats, RunEnvironmentExtractedFromTpuPlane) {
+  XSpace xspace;
+  for (int i : {0, 1, 2, 3}) {
+    GetOrCreateTpuXPlane(&xspace, i, "TPU V4");
+  }
+
+  OpStats op_stats = ConvertXSpaceToOpStats(xspace, OpStatsOptions());
+
+  EXPECT_EQ(op_stats.run_environment().device_type(), "TPU V4");
+  EXPECT_EQ(op_stats.run_environment().device_core_count(), 4);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

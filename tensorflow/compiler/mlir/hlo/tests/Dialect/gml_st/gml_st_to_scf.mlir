@@ -4,7 +4,7 @@
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
 
-func @loop(%A: memref<192x192xf32>,
+func.func @loop(%A: memref<192x192xf32>,
                  %B: memref<192x192xf32>,
                  %C: memref<192x192xf32>) {
   %cst = arith.constant 0.000000e+00 : f32
@@ -24,13 +24,13 @@ func @loop(%A: memref<192x192xf32>,
       : memref<192x192xf32> to memref<192x?xf32, #map1>
     %4 = memref.subview %C_[%i, %j] [%0, %2] [1, 1]
       : memref<192x192xf32> to memref<?x?xf32, #map1>
-    linalg.fill(%cst, %4) : f32, memref<?x?xf32, #map1>
+    linalg.fill ins(%cst : f32) outs(%4 : memref<?x?xf32, #map1>)
     linalg.matmul ins(%1, %3 : memref<?x192xf32, #map1>,
                                memref<192x?xf32, #map1>)
                   outs(%4 : memref<?x?xf32, #map1>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop
@@ -50,7 +50,34 @@ func @loop(%A: memref<192x192xf32>,
 
 // -----
 
-func @loop_reduction(%A: memref<192x192xf32>,
+
+func.func @parallel(%A: memref<192x192xf32>) {
+  %cst = arith.constant 0.000000e+00 : f32
+  %c24 = arith.constant 24 : index
+  %c16 = arith.constant 16 : index
+  %c0 = arith.constant 0 : index
+  %c192 = arith.constant 192 : index
+
+  gml_st.parallel (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16) {
+    linalg.fill ins(%cst : f32) outs(%A : memref<192x192xf32>)
+    gml_st.set_yield
+  }
+  func.return
+}
+
+// CHECK-LABEL: @parallel
+// CHECK-SAME:  %[[A:.*]]: memref<192x192xf32>
+// CHECK-DAG:   %[[C24:.*]] = arith.constant 24 : index
+// CHECK-DAG:   %[[C16:.*]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C192:.*]] = arith.constant 192 : index
+// CHECK:       scf.parallel (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
+// CHECK-SAME:      to (%[[C192]], %[[C192]]) step (%[[C24]], %[[C16]]) {
+// CHECK:         linalg.fill
+
+// -----
+
+func.func @loop_reduction(%A: memref<192x192xf32>,
                            %B: memref<192x192xf32>,
                            %C: memref<f32>) {
    %c24 = arith.constant 24 : index
@@ -63,10 +90,10 @@ func @loop_reduction(%A: memref<192x192xf32>,
       ins (%A_ = %A: memref<192x192xf32>, %B_ = %B:  memref<192x192xf32>)
       outs (%C_ = %C: memref<f32>)
       iterators["reduction", "reduction"] {
-    linalg.fill(%cst, %A_) : f32, memref<192x192xf32>
+    linalg.fill ins(%cst : f32) outs(%A_ : memref<192x192xf32>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_reduction
@@ -80,10 +107,35 @@ func @loop_reduction(%A: memref<192x192xf32>,
 
 // -----
 
+func.func @for(%A: memref<192x192xf32>) {
+   %c24 = arith.constant 24 : index
+   %c16 = arith.constant 16 : index
+   %c0 = arith.constant 0 : index
+   %c192 = arith.constant 192 : index
+   %cst = arith.constant 0.000000e+00 : f32
+
+  gml_st.for (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16) {
+    linalg.fill ins(%cst : f32) outs(%A : memref<192x192xf32>)
+    gml_st.set_yield
+  }
+  func.return
+}
+
+// CHECK-LABEL: @for
+// CHECK-DAG:   %[[C24:.*]] = arith.constant 24 : index
+// CHECK-DAG:   %[[C16:.*]] = arith.constant 16 : index
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C192:.*]] = arith.constant 192 : index
+// CHECK:       scf.for %{{.*}} = %[[C0]] to %[[C192]] step %[[C24]]
+// CHECK:         scf.for %{{.*}} = %[[C0]] to %[[C192]] step %[[C16]]
+// CHECK:           linalg.fill
+
+// -----
+
 #strided_1d = affine_map<(d0)[s0] -> (d0 + s0)>
 #strided_2d = affine_map<(d0, d1)[s0] -> (d0 * 8 + s0 + d1)>
 
-func @loop_row_reduction(%A: memref<10x8xf32>,
+func.func @loop_row_reduction(%A: memref<10x8xf32>,
                                %B: memref<8xf32>) {
    %c0 = arith.constant 0 : index
    %c2 = arith.constant 2 : index
@@ -112,7 +164,7 @@ func @loop_row_reduction(%A: memref<10x8xf32>,
       }
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_row_reduction
@@ -135,7 +187,7 @@ func @loop_row_reduction(%A: memref<10x8xf32>,
 #strided_1d = affine_map<(d0)[s0] -> (d0 + s0)>
 #strided_2d = affine_map<(d0, d1)[s0] -> (d0 * 8 + s0 + d1)>
 
-func @loop_col_reduction(%A: memref<10x8xf32>,
+func.func @loop_col_reduction(%A: memref<10x8xf32>,
                                %B: memref<10xf32>) {
    %c0 = arith.constant 0 : index
    %c2 = arith.constant 2 : index
@@ -164,7 +216,7 @@ func @loop_col_reduction(%A: memref<10x8xf32>,
       }
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_col_reduction

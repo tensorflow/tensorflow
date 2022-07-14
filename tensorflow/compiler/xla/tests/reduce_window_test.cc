@@ -18,7 +18,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -125,11 +124,11 @@ XLA_TEST_P(ReduceWindowTest, R0ReduceWindow) {
   const auto input =
       CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(42.0), &builder_);
   const auto init =
-      CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(1.0), &builder_);
+      CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(0.0), &builder_);
   ReduceWindow(input, init, CreateScalarAddComputation(FloatType(), &builder_),
                /*window_dimensions=*/{},
                /*window_strides=*/{}, Padding::kSame);
-  ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateR0<float>(43.0), {},
+  ComputeAndCompareLiteral(&builder_, LiteralUtil::CreateR0<float>(42.0), {},
                            ErrorSpec(0.00001));
 }
 
@@ -1678,7 +1677,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowIdentityNoPadding) {
@@ -1698,7 +1697,7 @@ ENTRY reduce-window-identity {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS32) {
@@ -1717,7 +1716,7 @@ ENTRY %reduce-window (parameter.0: s32[81,8], parameter.1: s32[]) -> s32[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowS64) {
@@ -1736,7 +1735,7 @@ ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(HloTestBase, ReduceWindowF16) {
@@ -1755,7 +1754,7 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 }
 
 )";
-  EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+  EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
 XLA_TEST_F(ReduceWindowTextTest, R4OnlyDilation) {

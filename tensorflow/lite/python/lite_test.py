@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -2218,6 +2217,9 @@ class FromSavedModelTest(TestModels):
 
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
+    self.skipTest(
+        'b/221093690: The debug info is not from self._createSavedModel(), '
+        'but from saved_model.loader_impl().')
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     converter.convert()

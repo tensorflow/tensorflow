@@ -51,15 +51,13 @@ py_test(
     srcs = ["tf_doctest.py"],
     args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module + keras_module)],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
-        "manual",  # b/215770086
-        "no_oss_py2",
         "no_pip",
         "no_rocm",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
-        "notap",  # b/215770086
         "notsan",
     ],
     deps = [
@@ -106,7 +104,6 @@ py_test(
     main = "tf_doctest.py",
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "no_rocm",
         "no_windows",  # numpy prints differently on windows.
@@ -130,7 +127,6 @@ py_test(
     srcs = ["tf_doctest_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss_py2",
         "no_pip",
         "noasan",
         "nomsan",
@@ -194,6 +190,7 @@ py_test(
     ],
     deps = [
         ":generate2_lib",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
@@ -223,10 +220,20 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base_dir_oss",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/util:tf_export",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_binary(
+    name = "build_cc_api_headers",
+    srcs = ["build_cc_api_headers.py"],
+    deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],

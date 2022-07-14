@@ -71,25 +71,28 @@ class Profiler {
   // is useful when 'event_metadata's are not available when the event begins
   // or when one wants to overwrite the 'event_metadata's set at the beginning.
   virtual void EndEvent(uint32_t event_handle, int64_t event_metadata1,
-                        int64_t event_metadata2) {}
+                        int64_t event_metadata2) {
+    // By default discards the metadata.
+    EndEvent(event_handle);
+  }
   // Signals an end to the specified profile event.
   virtual void EndEvent(uint32_t event_handle) = 0;
 
   // Appends an event of type 'event_type' with 'tag' and 'event_metadata'
-  // which started at 'start' and ended at 'end'
+  // which ran for elapsed_time.
   // Note:
-  // In cases were ProfileSimmarizer and tensorflow::StatsCalculator are used
+  // In cases were ProfileSummarizer and tensorflow::StatsCalculator are used
   // they assume the value is in "usec", if in any case subclasses
   // didn't put usec, then the values are not meaningful.
-  // TODO karimnosseir: Revisit and make the function more clear.
-  void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                uint64_t end, int64_t event_metadata) {
-    AddEvent(tag, event_type, start, end, event_metadata,
+  // TODO(karimnosseir): karimnosseir: Revisit and make the function more clear.
+  void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                int64_t event_metadata) {
+    AddEvent(tag, event_type, elapsed_time, event_metadata,
              /*event_metadata2*/ 0);
   }
 
-  virtual void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                        uint64_t end, int64_t event_metadata1,
+  virtual void AddEvent(const char* tag, EventType event_type,
+                        uint64_t elapsed_time, int64_t event_metadata1,
                         int64_t event_metadata2) {}
 
  protected:
@@ -138,12 +141,17 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
-class ScopedRuntimeInstrumentationProfile : public ScopedProfile {
+// Similar to ScopedProfile but has extra event metadata for EndEvent.
+class ScopedRuntimeInstrumentationProfile {
  public:
   ScopedRuntimeInstrumentationProfile(Profiler* profiler, const char* tag)
-      : ScopedProfile(
-            profiler, tag,
-            Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, -1) {}
+      : profiler_(profiler), event_handle_(0) {
+    if (profiler) {
+      event_handle_ = profiler_->BeginEvent(
+          tag, Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT,
+          /*event_metadata=*/-1);
+    }
+  }
 
   void set_runtime_status(int64_t delegate_status, int64_t interpreter_status) {
     if (profiler_) {
@@ -159,8 +167,10 @@ class ScopedRuntimeInstrumentationProfile : public ScopedProfile {
   }
 
  private:
-  int64_t delegate_status_;
-  int64_t interpreter_status_;
+  Profiler* profiler_ = nullptr;
+  uint32_t event_handle_ = 0;
+  int64_t delegate_status_ = 0;
+  int64_t interpreter_status_ = 0;
 };
 
 }  // namespace tflite

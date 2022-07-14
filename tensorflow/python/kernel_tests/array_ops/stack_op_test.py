@@ -288,6 +288,16 @@ class StackOpTest(test.TestCase):
             c = array_ops.stack(xs)
             self.assertAllEqual(self.evaluate(c), data)
 
+  def testZeroDimUnmatch(self):
+    # Test case for GitHub issue 53300.
+    # Error message is `Shapes of all inputs must match` in eager mode,
+    # and `Shapes ...` in graph mode. Below is to capture both:
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                r"Shapes"):
+      with self.session():
+        t = [array_ops.zeros([0, 3]), array_ops.zeros([1, 3])]
+        self.evaluate(array_ops.stack(t))
+
 
 class AutomaticStackingTest(test.TestCase):
 

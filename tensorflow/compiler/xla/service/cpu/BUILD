@@ -1,8 +1,5 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
-
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
@@ -10,12 +7,17 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts", "tf_xla_acl_copts")
+load(
+    "//third_party/compute_library:build_defs.bzl",
+    "acl_deps",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [":friends"],
@@ -44,6 +46,14 @@ cc_library(
     hdrs = ["test_target_triple_helper.h"],
     deps = [
         "//tensorflow/core:test",
+    ],
+)
+
+# When using mlir based HloLowering, the following utils will sometimes be needed to define used symbols.
+cc_library(
+    name = "runtime_mlir_utils",
+    deps = [
+        "@llvm-project//mlir:mlir_c_runner_utils",
     ],
 )
 
@@ -115,6 +125,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -183,25 +194,61 @@ cc_library(
         ":target_machine_features",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithmeticToLLVM",
+        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:BufferizationToMemRef",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
+        "//tensorflow/compiler/mlir/hlo:lower_index_cast",
+        "//tensorflow/compiler/mlir/hlo:shape_simplification",
+        "//tensorflow/compiler/mlir/xla:xla_framework",
+        "//tensorflow/compiler/mlir/xla:xla_passes",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:TensorToLinalg",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:ShapeToStandard",
+        "@llvm-project//mlir:ShapeTransforms",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:VectorDialect",
+        "@llvm-project//mlir:VectorToSCF",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
+        "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
         "//tensorflow/compiler/xla/service:all_to_all_decomposer",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
+        "//tensorflow/compiler/xla/service:broadcast_canonicalizer",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:reshape_decomposer",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/compiler/xla/service:result_caster",
-        "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:map_inliner",
-        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:result_caster",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
+        "//tensorflow/compiler/xla/service:sharding_propagation",
+        "//tensorflow/compiler/xla/service:sharding_remover",
+        "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_to_select",
@@ -209,8 +256,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:scatter_expander",
         "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
+        "//tensorflow/compiler/xla/service:reduce_decomposer",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:operand_upcaster",
+        "//tensorflow/compiler/xla/service:optimization_barrier_expander",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -262,6 +311,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "@llvm-project//llvm:Core",
@@ -296,33 +348,37 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
+    copts = tf_xla_acl_copts(),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
         ":orc_jit_memory_mapper",
-        ":runtime_custom_call_status",
-        ":runtime_fp16",
-        ":runtime_pow",
         ":runtime_conv2d",
+        ":runtime_conv2d_acl",
         ":runtime_conv2d_mkl",
         ":runtime_conv3d",
+        ":runtime_custom_call_status",
         ":runtime_fft",
         ":runtime_fork_join",
+        ":runtime_fp16",
         ":runtime_key_value_sort",
-        ":runtime_topk",
         ":runtime_matmul",
+        ":runtime_matmul_acl",
         ":runtime_matmul_mkl",
+        ":runtime_pow",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_conv3d",
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
+        ":runtime_topk",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",  # fixdeps: keep
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",  # fixdeps: keep
+        "@llvm-project//mlir:mlir_c_runner_utils",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -447,6 +503,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/math:math_util",
         "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -543,6 +600,7 @@ cc_library(
     hdrs = [
         "dot_op_emitter.h",
     ],
+    copts = tf_xla_acl_copts(),
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -566,8 +624,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:ArithmeticUtils",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
     ],
@@ -610,6 +669,7 @@ cc_library(
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",
+        "@llvm-project//llvm:Instrumentation",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:OrcJIT",
@@ -653,7 +713,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -800,6 +859,43 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_matmul_acl",
+    srcs = ["runtime_matmul_acl.cc"],
+    hdrs = ["runtime_matmul_acl.h"],
+    copts = tf_xla_acl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_lightweight_check",
+        ":runtime_matmul",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:logging",
+    ] + acl_deps(),
+)
+
+cc_library(
+    name = "runtime_conv2d_acl",
+    srcs = [
+        "runtime_conv2d_acl.cc",
+    ],
+    hdrs = ["runtime_conv2d_acl.h"],
+    copts = tf_xla_acl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_conv2d",
+        ":runtime_single_threaded_conv2d",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+        "//tensorflow/core/platform:logging",
+    ] + acl_deps(),
+)
+
+cc_library(
     name = "runtime_single_threaded_conv2d",
     srcs = [
         "runtime_conv_impl.h",
@@ -859,7 +955,7 @@ cc_library(
     name = "runtime_single_threaded_matmul_impl",
     srcs = ["runtime_single_threaded_matmul.cc"],
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     linkstatic = 1,
     visibility = ["//visibility:private"],
@@ -872,7 +968,7 @@ cc_library(
 cc_library(
     name = "runtime_single_threaded_matmul",
     hdrs = ["runtime_single_threaded_matmul.h"],
-    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -885,7 +981,7 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_nomkl",
-    compatible_with = get_compatible_with_cloud() + get_compatible_with_portable(),
+    compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -945,6 +1041,7 @@ tf_cc_test(
     tags = ["optonly"],
     deps = [
         ":cpu_runtime",
+        ":runtime_custom_call_status",
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
@@ -953,7 +1050,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
-        "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
@@ -1200,7 +1296,6 @@ cc_library(
     name = "cpu_options",
     srcs = ["cpu_options.cc"],
     hdrs = ["cpu_options.h"],
-    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib",
@@ -1281,10 +1376,11 @@ cc_library(
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:Linker",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:CFGTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",

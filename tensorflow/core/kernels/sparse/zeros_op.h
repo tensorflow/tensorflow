@@ -74,7 +74,7 @@ struct CSRSparseMatrixZeros {
         dtype, dense_shape_t, batch_ptr_t, csr_row_ptr_t, coo_col_ind_t,
         csr_values_t, matrix));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

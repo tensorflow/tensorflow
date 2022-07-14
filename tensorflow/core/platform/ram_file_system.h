@@ -50,7 +50,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
 
   Status Name(StringPiece* result) const override {
     *result = name_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
@@ -71,24 +71,24 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     if (left < n) {
       return errors::OutOfRange("");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Append(StringPiece data) override {
     data_->append(data.data(), data.size());
-    return Status::OK();
+    return OkStatus();
   }
 
 #if defined(TF_CORD_SUPPORT)
   Status Append(const absl::Cord& cord) override {
     data_->append(cord.char_begin(), cord.char_end());
-    return Status::OK();
+    return OkStatus();
   }
 #endif
 
-  Status Close() override { return Status::OK(); }
-  Status Flush() override { return Status::OK(); }
-  Status Sync() override { return Status::OK(); }
+  Status Close() override { return OkStatus(); }
+  Status Flush() override { return OkStatus(); }
+  Status Sync() override { return OkStatus(); }
 
   Status Tell(int64_t* position) override {
     *position = -1;
@@ -119,7 +119,7 @@ class RamFileSystem : public FileSystem {
     }
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status NewWritableFile(const std::string& fname_, TransactionToken* token,
@@ -135,7 +135,7 @@ class RamFileSystem : public FileSystem {
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status NewAppendableFile(const std::string& fname_, TransactionToken* token,
@@ -151,7 +151,7 @@ class RamFileSystem : public FileSystem {
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status NewReadOnlyMemoryRegionFromFile(
@@ -183,7 +183,7 @@ class RamFileSystem : public FileSystem {
       ++it;
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetMatchingPaths(const std::string& pattern_, TransactionToken* token,
@@ -197,7 +197,7 @@ class RamFileSystem : public FileSystem {
         results->push_back("ram://" + it->first);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Stat(const std::string& fname_, TransactionToken* token,
@@ -214,13 +214,13 @@ class RamFileSystem : public FileSystem {
       stat->is_directory = false;
       stat->length = fs_[fname]->size();
       stat->mtime_nsec = 0;
-      return Status::OK();
+      return OkStatus();
     }
 
     stat->is_directory = true;
     stat->length = 0;
     stat->mtime_nsec = 0;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DeleteFile(const std::string& fname_,
@@ -230,7 +230,7 @@ class RamFileSystem : public FileSystem {
 
     if (fs_.find(fname) != fs_.end()) {
       fs_.erase(fname);
-      return Status::OK();
+      return OkStatus();
     }
 
     return errors::NotFound("");
@@ -248,7 +248,7 @@ class RamFileSystem : public FileSystem {
     }
 
     fs_[dirname] = nullptr;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RecursivelyCreateDir(const std::string& dirname_,
@@ -281,7 +281,7 @@ class RamFileSystem : public FileSystem {
     }
     fs_.erase(dirname);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetFileSize(const std::string& fname_, TransactionToken* token,
@@ -294,7 +294,7 @@ class RamFileSystem : public FileSystem {
         return errors::InvalidArgument("Not a file");
       }
       *file_size = fs_[fname]->size();
-      return Status::OK();
+      return OkStatus();
     }
     return errors::NotFound("");
   }
@@ -308,7 +308,7 @@ class RamFileSystem : public FileSystem {
     if (fs_.find(src) != fs_.end()) {
       fs_[target] = fs_[src];
       fs_.erase(fs_.find(src));
-      return Status::OK();
+      return OkStatus();
     }
     return errors::NotFound("");
   }

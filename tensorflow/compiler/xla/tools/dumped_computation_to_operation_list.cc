@@ -18,6 +18,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -52,7 +53,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
     std::cout << absl::StrFormat("%s :: (%s) -> %s :: %s\n",
                                  HloOpcodeString(hlo->opcode()), params,
                                  ShapeUtil::HumanString(hlo->shape()), path_);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -73,10 +74,10 @@ void RealMain(absl::Span<char* const> args) {
               computation_status.status().ToString().c_str());
       continue;
     }
-    XlaComputation computation = computation_status.ConsumeValueOrDie();
+    XlaComputation computation = std::move(computation_status).value();
 
     std::unique_ptr<ProgramShape> program_shape =
-        client->GetComputationShape(computation).ConsumeValueOrDie();
+        client->GetComputationShape(computation).value();
 
     std::vector<const Shape*> layouts;
     layouts.reserve(program_shape->parameters_size());
@@ -88,7 +89,7 @@ void RealMain(absl::Span<char* const> args) {
     build_options.set_result_layout(program_shape->result());
     auto executables =
         local_service->CompileExecutables(computation, layouts, build_options)
-            .ConsumeValueOrDie();
+            .value();
     CHECK_EQ(executables.size(), 1);
     const HloModule& module = executables[0]->module();
 

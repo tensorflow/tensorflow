@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <utility>
+
 #include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -46,7 +48,7 @@ Status ConvertFunctionToBef(
         "Failed to convert function to mlir for function ", function_name.str(),
         ". Error: ", expected_module.status().error_message());
 
-  auto module = expected_module.ConsumeValueOrDie();
+  auto module = std::move(expected_module).value();
 
   // Attach devices to the MLIR module.
   if (!devices.empty()) {
@@ -114,7 +116,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   // TODO(b/187991150): Consider only decomposing read-only resource variable
   // ops.
-  pass_options.decompose_resource_ops = true;
+  pass_options.decompose_resource_ops = options.decompose_resource_ops;
   pass_options.enable_optimizer = options.enable_optimizer;
   pass_options.enable_native_ops = options.enable_native_ops;
   pass_options.target_tpurt =
@@ -124,6 +126,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
+  pass_options.enable_while_parallel_iterations =
+      options.enable_while_parallel_iterations;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;
   pass_options.auto_fusion_min_cluster_size =
       options.auto_fusion_min_cluster_size;
@@ -149,7 +153,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 
   bef_buffer->shrink_to_fit();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

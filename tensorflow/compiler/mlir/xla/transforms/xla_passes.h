@@ -18,19 +18,22 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 
 namespace mlir {
 
+namespace func {
 class FuncOp;
+}  // namespace func
 template <typename T>
 class OperationPass;
 
 namespace mhlo {
 
 // Prepare module for export to XLA HLO protos/instruction.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareForExport();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareForExport();
 
 // Wrap function with XLA:CPU's C interface.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOutlineWithXLAFrameworkPass();

@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/functional_ops.h"
+#include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/while_loop.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -37,7 +42,9 @@ using ::testing::ElementsAre;
 using ::testing::EqualsProto;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
+using ::testing::NotNull;
 using ::testing::Pair;
+using ::testing::SizeIs;
 using ::testing::proto::IgnoringFieldPaths;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
@@ -344,13 +351,15 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -361,11 +370,11 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"c"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   GraphDef expected;
   {
@@ -409,9 +418,9 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
     TF_ASSERT_OK(scope.ToGraphDef(&expected));
   }
 
-  CompareGraphs(expected, optimized_graph);
+  CompareGraphs(expected, optimized_graph_def);
   CompareFunctions(expected.library().function(0),
-                   optimized_graph.library().function(0));
+                   optimized_graph_def.library().function(0));
 }
 
 TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
@@ -462,13 +471,15 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -479,11 +490,11 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"c"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   GraphDef expected;
   {
@@ -544,8 +555,9 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
 
   // Since `Pow3` is called by `Add1Pow3`, it is optimized.
   CompareFunctions(expected.library().function(1),
-                   optimized_graph.library().function(1));
-  ASSERT_EQ("Pow3", optimized_graph.library().function(1).signature().name());
+                   optimized_graph_def.library().function(1));
+  ASSERT_EQ("Pow3",
+            optimized_graph_def.library().function(1).signature().name());
 }
 
 TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
@@ -583,13 +595,15 @@ TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -600,17 +614,17 @@ TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"c"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   // The optimized graph remains the same as the original one, because the
   // function used by `If` op is not optimized.
-  CompareGraphs(graphdef, optimized_graph);
+  CompareGraphs(graphdef, optimized_graph_def);
   CompareFunctions(graphdef.library().function(0),
-                   optimized_graph.library().function(0));
+                   optimized_graph_def.library().function(0));
 }
 
 TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
@@ -652,13 +666,15 @@ TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
     TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
   }
 
-  auto statusor_fallback_state =
-      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib);
-  TF_ASSERT_OK(statusor_fallback_state.status());
-  auto statusor_graph_execution_state = TfrtGraphExecutionState::Create(
-      graphdef, *statusor_fallback_state.ValueOrDie(), true);
-  TF_ASSERT_OK(statusor_graph_execution_state.status());
-  auto& graph_execution_state = *statusor_graph_execution_state.ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -669,16 +685,309 @@ TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
   graph_import_config.inputs["a"] = array_info;
   graph_import_config.outputs = {"d"};
 
-  auto statusor_optimized_graph =
-      graph_execution_state.CreateOptimizedGraph(graph_import_config);
-  TF_ASSERT_OK(statusor_optimized_graph.status());
-  GraphDef optimized_graph;
-  statusor_optimized_graph.ValueOrDie().graph->ToGraphDef(&optimized_graph);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+  GraphDef optimized_graph_def;
+  optimized_graph.graph->ToGraphDef(&optimized_graph_def);
 
   // Both `If` and `PartitionedCall` ops use the function, so the function
   // remains unoptimized.
   CompareFunctions(graphdef.library().function(0),
-                   optimized_graph.library().function(0));
+                   optimized_graph_def.library().function(0));
+}
+
+class ExtendGraphTest : public grappler::GrapplerTest {};
+
+TEST_F(ExtendGraphTest, ExtendGraph) {
+  GraphDef graphdef;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 0.0f, {10, 10});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          tensorflow::tfrt_stub::FallbackState::Create({}, {}));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
+
+  GraphDef extension;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output b = ops::Const(scope.WithOpName("b"), 0.0f, {10, 10});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&extension));
+  }
+
+  TF_ASSERT_OK(graph_execution_state->Extend(extension));
+
+  GraphDef expected;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 0.0f, {10, 10});
+
+    Output b = ops::Const(scope.WithOpName("b"), 0.0f, {10, 10});
+
+    TF_ASSERT_OK(scope.ToGraphDef(&expected));
+  }
+
+  ASSERT_NE(graph_execution_state->original_graph_def(), nullptr);
+  CompareGraphs(expected, *graph_execution_state->original_graph_def());
+}
+
+// An auxiliary struct to verify the graph after partitioning and inserting
+// transfer ops.
+struct GraphInfo {
+  NodeDef* input_node = nullptr;
+  NodeDef* output_node = nullptr;
+  NodeDef* stateful_partitioned_call_node = nullptr;
+  std::vector<NodeDef*> partitioned_call_nodes;
+  std::vector<FunctionDef> fdefs;
+};
+
+class InsertTransferOpsTest : public grappler::GrapplerTest {
+ protected:
+  void SetUp() override {
+    SessionOptions options;
+    auto* device_count = options.config.mutable_device_count();
+    device_count->insert({"CPU", 2});
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_ASSERT_OK(DeviceFactory::AddDevices(options, "/job:a/replica:0/task:0",
+                                           &devices));
+    device0_ = devices[0].get();
+    device1_ = devices[1].get();
+
+    fallback_state_ =
+        std::make_unique<FallbackState>(options, std::move(devices), fdef_lib_);
+  }
+
+  GraphInfo GetGraphInfo(const std::string& input, const std::string& output,
+                         GraphDef& graphdef) {
+    GraphInfo graph_info;
+    for (NodeDef& node : *graphdef.mutable_node()) {
+      if (node.op() == "PartitionedCall") {
+        graph_info.partitioned_call_nodes.push_back(&node);
+      } else if (node.op() == "StatefulPartitionedCall") {
+        graph_info.stateful_partitioned_call_node = &node;
+      } else if (node.name() == input) {
+        graph_info.input_node = &node;
+      } else if (node.name() == output) {
+        graph_info.output_node = &node;
+      }
+    }
+
+    // Find the corresponding function called by the PartitionedCall nodes.
+    absl::flat_hash_map<std::string, FunctionDef> func_name_to_func;
+    for (const FunctionDef& fdef : graphdef.library().function()) {
+      func_name_to_func[fdef.signature().name()] = fdef;
+    }
+    for (NodeDef* node : graph_info.partitioned_call_nodes) {
+      CHECK(node->attr().contains("f"));
+      CHECK(func_name_to_func.contains(node->attr().at("f").func().name()));
+      const FunctionDef& fdef =
+          func_name_to_func.at(node->attr().at("f").func().name());
+      graph_info.fdefs.push_back(fdef);
+    }
+    return graph_info;
+  }
+
+  std::unique_ptr<FallbackState> fallback_state_;
+  Device* device0_ = nullptr;  // Not owned.
+  Device* device1_ = nullptr;  // Not owned.
+  tensorflow::FunctionDefLibrary fdef_lib_;
+};
+
+TEST_F(InsertTransferOpsTest, InsertTransferOps) {
+  GraphDef graphdef;
+  {
+    Scope scope = Scope::NewRootScope();
+    Scope scope1 = scope.WithDevice(device0_->name());
+    Scope scope2 = scope.WithDevice(device1_->name());
+
+    // A graph whose nodes are on different devices.
+    // a(Const, on device0) -> b(Abs, on device1) -> c(Identity, on device0)
+    Output a = ops::Const(scope1.WithOpName("a"), 2.0, {1, 1});
+    Output b = ops::Abs(scope2.WithOpName("b"), a);
+    Output c = ops::Identity(scope1.WithOpName("c"), b);
+
+    // Before partitioning, there is no send/recv nodes.
+    int send_count = 0, recv_count = 0;
+    for (const auto* op : scope.graph()->op_nodes()) {
+      if (op->IsSend())
+        ++send_count;
+      else if (op->IsRecv())
+        ++recv_count;
+    }
+    ASSERT_EQ(scope.graph()->num_op_nodes(), 3);
+    ASSERT_EQ(send_count, 0);
+    ASSERT_EQ(recv_count, 0);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+  }
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+  options.enable_tfrt_gpu = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state_));
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"c"};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+
+  GraphDef new_graphdef;
+  optimized_graph.graph->ToGraphDef(&new_graphdef);
+
+  GraphInfo graph_info =
+      GetGraphInfo(/*input=*/"a", /*output=*/"c", new_graphdef);
+
+  ASSERT_THAT(graph_info.input_node, NotNull());
+  ASSERT_THAT(graph_info.output_node, NotNull());
+  ASSERT_THAT(graph_info.partitioned_call_nodes, SizeIs(2));
+  ASSERT_THAT(graph_info.stateful_partitioned_call_node, NotNull());
+
+  // Verify that each partition contains a _Send op and a _Recv op.
+  for (const FunctionDef& fdef : graph_info.fdefs) {
+    int send_count = 0, recv_count = 0;
+    for (const NodeDef& node : fdef.node_def()) {
+      if (node.op() == "_Send")
+        ++send_count;
+      else if (node.op() == "_Recv")
+        ++recv_count;
+    }
+    EXPECT_EQ(send_count, 1);
+    EXPECT_EQ(recv_count, 1);
+  }
+}
+
+TEST_F(InsertTransferOpsTest, InsertTransferOpsWithFunctionInlining) {
+  GraphDef graphdef;
+  {
+    Scope scope = Scope::NewRootScope();
+    Scope scope1 = scope.WithDevice(device0_->name());
+    Scope scope2 = scope.WithDevice(device1_->name());
+
+    // A graph whose nodes are on different devices.
+    // a(Const, on device0) -> b(PartitionedCall) -> c(Identity, on device0)
+    // where PartitionedCall invokes a function with two nodes assigned to
+    // different devices.
+    const Tensor kThree = test::AsScalar<float>(3.0);
+    auto fdef = tensorflow::FunctionDefHelper::Create(
+        "_Pow3", {"x: float"}, {"y: float"}, {},
+        {// The two nodes in the function are assigned to different devices.
+         {{"three"},
+          "Const",
+          {},
+          {{"dtype", DT_FLOAT}, {"value", kThree}},
+          /*dep=*/{},
+          device0_->name()},
+         {{"pow3"},
+          "Pow",
+          {"x", "three:output:0"},
+          {{"T", DT_FLOAT}},
+          /*dep=*/{},
+          device1_->name()}},
+        {{"y", "pow3:z:0"}});
+
+    tensorflow::FunctionDefLibrary fdef_lib;
+    *fdef_lib.add_function() = fdef;
+    TF_ASSERT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+
+    Output a = ops::Const<float>(scope1.WithOpName("a"), 2.0, {1, 1});
+
+    std::vector<tensorflow::Output> inputs = {a};
+    std::vector<tensorflow::DataType> output_dtypes = {
+        fdef.signature().output_arg(0).type()};
+    tensorflow::NameAttrList func_attr;
+    func_attr.set_name(fdef.signature().name());
+    auto pcall = ops::PartitionedCall(scope2, inputs, output_dtypes, func_attr);
+    Output b = pcall.output.front();
+
+    Output c = ops::Identity(scope1.WithOpName("c"), b);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graphdef));
+
+    // Before partitioning, there is no send/recv nodes.
+    int partitioned_call_count = 0, mul_count = 0, send_count = 0,
+        recv_count = 0;
+    for (const auto* op : scope.graph()->op_nodes()) {
+      if (op->IsPartitionedCall())
+        ++partitioned_call_count;
+      else if (op->IsSend())
+        ++send_count;
+      else if (op->IsRecv())
+        ++recv_count;
+      else if (op->type_string() == "Mul")
+        ++mul_count;
+    }
+    ASSERT_EQ(partitioned_call_count, 1);
+    ASSERT_EQ(send_count, 0);
+    ASSERT_EQ(recv_count, 0);
+    ASSERT_EQ(mul_count, 0);
+  }
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
+  options.enable_tfrt_gpu = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state_));
+
+  tensorflow::GraphImportConfig graph_import_config;
+  graph_import_config.prune_unused_nodes = true;
+  graph_import_config.enable_shape_inference = false;
+  tensorflow::ArrayInfo array_info;
+  array_info.imported_dtype = DT_FLOAT;
+  array_info.shape.set_unknown_rank(true);
+  graph_import_config.inputs["a"] = array_info;
+  graph_import_config.outputs = {"c"};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimized_graph,
+      graph_execution_state->CreateOptimizedGraph(graph_import_config));
+
+  GraphDef new_graphdef;
+  optimized_graph.graph->ToGraphDef(&new_graphdef);
+
+  GraphInfo graph_info =
+      GetGraphInfo(/*input=*/"a", /*output=*/"c", new_graphdef);
+
+  ASSERT_THAT(graph_info.input_node, NotNull());
+  ASSERT_THAT(graph_info.output_node, NotNull());
+  ASSERT_THAT(graph_info.partitioned_call_nodes, SizeIs(2));
+  ASSERT_THAT(graph_info.stateful_partitioned_call_node, NotNull());
+
+  // Verify that each partition contains a _Send op and a _Recv op.
+  for (const FunctionDef& fdef : graph_info.fdefs) {
+    int send_count = 0, recv_count = 0;
+    for (const NodeDef& node : fdef.node_def()) {
+      if (node.op() == "_Send")
+        ++send_count;
+      else if (node.op() == "_Recv")
+        ++recv_count;
+    }
+    EXPECT_EQ(send_count, 1);
+    EXPECT_EQ(recv_count, 1);
+  }
 }
 
 }  // namespace

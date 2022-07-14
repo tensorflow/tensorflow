@@ -60,7 +60,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, Allocator* allocator)
         : Device(nullptr, attr), allocator_(allocator) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return allocator_; }
 
    private:
@@ -71,7 +71,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(3);  // a non-default value
   attr.set_incarnation(random::New64());
-  return absl::make_unique<FakeDevice>(attr, allocator);
+  return std::make_unique<FakeDevice>(attr, allocator);
 }
 
 static int64_t kStepId = 123;
@@ -104,7 +104,7 @@ class FakeWorker : public TestWorkerInterface {
     for (const auto& da : dev_attr) {
       *response->add_device_attributes() = da;
     }
-    done(Status::OK());
+    done(OkStatus());
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -202,7 +202,7 @@ class FakeCache : public TestWorkerCache {
     for (const auto& it : resp.device_attributes()) {
       if (it.name() == device) {
         *locality = it.locality();
-        done(Status::OK());
+        done(OkStatus());
         return;
       }
     }
@@ -343,7 +343,8 @@ class CollRMADistTest
   void MaybeSetGPUDevice(Device* dst_device) {
     if (std::get<TEST_PARAM_DEVICE_TYPE>(GetParam()) ==
         TEST_PARAM_DEVICE_TYPE_GPU) {
-      dst_device->set_tensorflow_gpu_device_info(&gpu_device_info_);
+      dst_device->set_tensorflow_accelerator_device_info(
+          &accelerator_device_info_);
     }
   }
 
@@ -358,14 +359,14 @@ class CollRMADistTest
   mutex mu_;
   int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
-  Tensor expected_value_;
-  Tensor large_response_;
-  Tensor to_tensor_;
   CallOptions opts_;
   DeviceLocality device_locality_;
   AllocatorAttributes alloc_attr_;
   FakeAllocator fake_allocator_;
-  DeviceBase::GpuDeviceInfo gpu_device_info_;
+  DeviceBase::AcceleratorDeviceInfo accelerator_device_info_;
+  Tensor expected_value_;
+  Tensor large_response_;
+  Tensor to_tensor_;
 };
 
 TEST_P(CollRMADistTest, ProdFirstOK) {

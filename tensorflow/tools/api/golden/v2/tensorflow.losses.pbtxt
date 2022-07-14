@@ -98,7 +98,7 @@ tf_module {
   }
   member_method {
     name: "binary_focal_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'2.0\', \'False\', \'0.0\', \'-1\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'apply_class_balancing\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\'], "
   }
   member_method {
     name: "categorical_crossentropy"

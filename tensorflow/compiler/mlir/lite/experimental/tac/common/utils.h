@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_UTILS_H_
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
@@ -31,7 +31,7 @@ namespace tac {
 // 'op' is null.
 inline bool IsNonConstOp(Operation* op) {
   if (!op) return false;
-  if (llvm::isa<arith::ConstantOp, mlir::ConstantOp>(op)) return false;
+  if (llvm::isa<arith::ConstantOp, mlir::func::ConstantOp>(op)) return false;
   if (op->hasTrait<OpTrait::ConstantLike>()) return false;
   if (llvm::isa<TFL::ConstOp, TFL::QConstOp>(op)) return false;
   return true;

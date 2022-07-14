@@ -53,6 +53,10 @@ static StatusOr<bool> DoConditionalToSelect(HloInstruction* conditional) {
           conditional->false_computation()));
   conditional->SetupDerivedInstruction(else_call_op);
   HloInstruction* condition = conditional->mutable_operand(0);
+  if (else_call_op->shape().IsTuple()) {
+    VLOG(1) << "Not transforming tuples to 'select'";
+    return false;
+  }
   TF_ASSIGN_OR_RETURN(
       HloInstruction * select_op,
       MakeSelectHlo(condition, if_call_op, else_call_op, conditional));
@@ -70,7 +74,7 @@ StatusOr<bool> ConditionalToSelect::Run(HloModule* module) {
       call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
         std::vector<HloInstruction*> ToInline;
         if (node.context() != CallContext::kEmbedded) {
-          return Status::OK();
+          return OkStatus();
         }
         for (const CallSite& callsite : node.callsites()) {
           if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
@@ -81,7 +85,7 @@ StatusOr<bool> ConditionalToSelect::Run(HloModule* module) {
             did_mutate |= result;
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
   return did_mutate;
 }

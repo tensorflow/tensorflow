@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
@@ -98,8 +101,8 @@ bool IsOpenCLTensor(const ObjectDef& def) {
 }
 
 absl::Status GetOpenCLMemory(const TensorObject& obj, cl_mem* memory) {
-  auto texture = absl::get_if<OpenClTexture>(&obj);
-  auto buffer = absl::get_if<OpenClBuffer>(&obj);
+  auto texture = std::get_if<OpenClTexture>(&obj);
+  auto buffer = std::get_if<OpenClBuffer>(&obj);
   if (texture && texture->memobj) {
     *memory = texture->memobj;
   } else if (buffer && buffer->memobj) {
@@ -120,22 +123,24 @@ class TensorToTensorConverter : public OpenClConverterImpl {
   absl::Status Init(const TensorObjectDef& input_def,
                     const TensorObjectDef& output_def,
                     Environment* environment) final {
-    src_tensor_descriptor_.layout = Layout::BHWC;
-    src_tensor_descriptor_.storage_type = ToTensorStorageType(
-        input_def.object_def.object_type, input_def.object_def.data_layout);
-    src_tensor_descriptor_.data_type = input_def.object_def.data_type;
+    src_tensor_descriptor_ =
+        TensorDescriptor(input_def.object_def.data_type,
+                         ToTensorStorageType(input_def.object_def.object_type,
+                                             input_def.object_def.data_layout),
+                         Layout::BHWC);
     Arguments args;
     args.AddObjectRef(
         "src_tensor", AccessType::READ,
-        absl::make_unique<TensorDescriptor>(src_tensor_descriptor_));
+        std::make_unique<TensorDescriptor>(src_tensor_descriptor_));
 
-    dst_tensor_descriptor_.layout = Layout::BHWC;
-    dst_tensor_descriptor_.storage_type = ToTensorStorageType(
-        output_def.object_def.object_type, output_def.object_def.data_layout);
-    dst_tensor_descriptor_.data_type = output_def.object_def.data_type;
+    dst_tensor_descriptor_ =
+        TensorDescriptor(output_def.object_def.data_type,
+                         ToTensorStorageType(output_def.object_def.object_type,
+                                             output_def.object_def.data_layout),
+                         Layout::BHWC);
     args.AddObjectRef(
         "dst_tensor", AccessType::WRITE,
-        absl::make_unique<TensorDescriptor>(dst_tensor_descriptor_));
+        std::make_unique<TensorDescriptor>(dst_tensor_descriptor_));
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
@@ -212,12 +217,11 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
                     Environment* environment) final {
     TensorStorageType src_tensor_type = ToTensorStorageType(
         input_def.object_def.object_type, input_def.object_def.data_layout);
-    tensor_descriptor_.layout = Layout::BHWC;
-    tensor_descriptor_.storage_type = src_tensor_type;
-    tensor_descriptor_.data_type = input_def.object_def.data_type;
+    tensor_descriptor_ = TensorDescriptor(input_def.object_def.data_type,
+                                          src_tensor_type, Layout::BHWC);
     Arguments args;
     args.AddObjectRef("tensor", AccessType::READ,
-                      absl::make_unique<TensorDescriptor>(tensor_descriptor_));
+                      std::make_unique<TensorDescriptor>(tensor_descriptor_));
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
@@ -268,7 +272,7 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto output = absl::get_if<OpenClBuffer>(&output_obj);
+    auto output = std::get_if<OpenClBuffer>(&output_obj);
     if (!output || !output->memobj) {
       return absl::InvalidArgumentError(
           "Missing output in tensor_to_bhwc converter");
@@ -312,12 +316,11 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
 
     TensorStorageType dst_tensor_type = ToTensorStorageType(
         output_def.object_def.object_type, output_def.object_def.data_layout);
-    tensor_descriptor_.layout = Layout::BHWC;
-    tensor_descriptor_.storage_type = dst_tensor_type;
-    tensor_descriptor_.data_type = output_def.object_def.data_type;
+    tensor_descriptor_ = TensorDescriptor(output_def.object_def.data_type,
+                                          dst_tensor_type, Layout::BHWC);
     Arguments args;
     args.AddObjectRef("tensor", AccessType::WRITE,
-                      absl::make_unique<TensorDescriptor>(tensor_descriptor_));
+                      std::make_unique<TensorDescriptor>(tensor_descriptor_));
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
@@ -365,7 +368,7 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto input = absl::get_if<OpenClBuffer>(&input_obj);
+    auto input = std::get_if<OpenClBuffer>(&input_obj);
     if (!input || !input->memobj) {
       return absl::InvalidArgumentError(
           "Missing input in bhwc_to_tensor converter");
@@ -431,13 +434,13 @@ class TrivialCopier : public OpenClConverterImpl {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto texture_input = absl::get_if<OpenClTexture>(&input_obj);
-    auto texture_output = absl::get_if<OpenClTexture>(&output_obj);
+    auto texture_input = std::get_if<OpenClTexture>(&input_obj);
+    auto texture_output = std::get_if<OpenClTexture>(&output_obj);
     if (texture_input && texture_output) {
       return Copy(*texture_input, *texture_output);
     }
-    auto buffer_input = absl::get_if<OpenClBuffer>(&input_obj);
-    auto buffer_output = absl::get_if<OpenClBuffer>(&output_obj);
+    auto buffer_input = std::get_if<OpenClBuffer>(&input_obj);
+    auto buffer_output = std::get_if<OpenClBuffer>(&output_obj);
     if (buffer_input && buffer_output) {
       return Copy(*buffer_input, *buffer_output);
     }
@@ -495,29 +498,29 @@ class CpuCopier : public OpenClConverterImpl {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto cpu_input = absl::get_if<CpuMemory>(&input_obj);
-    auto cpu_output = absl::get_if<CpuMemory>(&output_obj);
+    auto cpu_input = std::get_if<CpuMemory>(&input_obj);
+    auto cpu_output = std::get_if<CpuMemory>(&output_obj);
     if (cpu_input) {
-      auto texture_output = absl::get_if<OpenClTexture>(&output_obj);
+      auto texture_output = std::get_if<OpenClTexture>(&output_obj);
       if (texture_output) {
         return queue_->EnqueueWriteImage(
             texture_output->memobj, int3(region_[0], region_[1], region_[2]),
             cpu_input->data, async_);
       }
-      auto buffer_output = absl::get_if<OpenClBuffer>(&output_obj);
+      auto buffer_output = std::get_if<OpenClBuffer>(&output_obj);
       if (buffer_output) {
         return queue_->EnqueueWriteBuffer(buffer_output->memobj,
                                           cpu_input->size_bytes,
                                           cpu_input->data, async_);
       }
     } else if (cpu_output) {
-      auto texture_input = absl::get_if<OpenClTexture>(&input_obj);
+      auto texture_input = std::get_if<OpenClTexture>(&input_obj);
       if (texture_input) {
         return queue_->EnqueueReadImage(
             texture_input->memobj, int3(region_[0], region_[1], region_[2]),
             cpu_output->data, async_);
       }
-      auto buffer_input = absl::get_if<OpenClBuffer>(&input_obj);
+      auto buffer_input = std::get_if<OpenClBuffer>(&input_obj);
       if (buffer_input) {
         return queue_->EnqueueReadBuffer(buffer_input->memobj,
                                          cpu_output->size_bytes,
@@ -556,17 +559,17 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
     if (TrivialCopier::IsSupported(input_def, output_def)) {
-      impl = absl::make_unique<TrivialCopier>();
+      impl = std::make_unique<TrivialCopier>();
     } else if (TensorToTensorConverter::IsSupported(input_def, output_def)) {
-      impl = absl::make_unique<TensorToTensorConverter>();
+      impl = std::make_unique<TensorToTensorConverter>();
     } else if (CpuCopier::IsSupported(input_def, output_def)) {
-      impl = absl::make_unique<CpuCopier>(/*asynchronous*/ true);
+      impl = std::make_unique<CpuCopier>(/*asynchronous*/ true);
     } else if (TensorToBHWCBufferConverter::IsSupported(input_def,
                                                         output_def)) {
-      impl = absl::make_unique<TensorToBHWCBufferConverter>();
+      impl = std::make_unique<TensorToBHWCBufferConverter>();
     } else if (BHWCBufferToTensorConverter::IsSupported(input_def,
                                                         output_def)) {
-      impl = absl::make_unique<BHWCBufferToTensorConverter>();
+      impl = std::make_unique<BHWCBufferToTensorConverter>();
     } else {
       return absl::UnimplementedError("Unsupported conversion");
     }
@@ -583,7 +586,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
 
 std::unique_ptr<TensorObjectConverterBuilder> NewConverterBuilder(
     Environment* environment) {
-  return absl::make_unique<OpenClTensorConverterBuilder>(environment);
+  return std::make_unique<OpenClTensorConverterBuilder>(environment);
 }
 
 }  // namespace cl

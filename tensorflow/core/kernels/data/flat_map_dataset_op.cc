@@ -45,6 +45,7 @@ namespace data {
 /* static */ constexpr const char* const FlatMapDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const FlatMapDatasetOp::kOutputShapes;
 
+constexpr char kCycleLength[] = "cycle_length";
 constexpr char kElementIndex[] = "element_index";
 constexpr char kInputsSize[] = "inputs_size";
 constexpr char kInputs[] = "inputs";
@@ -70,7 +71,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -86,7 +87,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -115,7 +116,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         {std::make_pair(kFunc, f),
          std::make_pair(kTarguments, other_arguments_types_attr)},  // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -138,7 +139,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       do {
         if (!input_impl_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
         if (current_element_iterator_) {
           // We are currently processing a mapped element, so try to get the
@@ -149,7 +150,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
-            return Status::OK();
+            return OkStatus();
           }
 
           // We have reached the end of the current element, so maybe move on
@@ -163,7 +164,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             input_impl_->GetNext(ctx, &inputs_, end_of_sequence));
         if (*end_of_sequence) {
           input_impl_.reset();
-          return Status::OK();
+          return OkStatus();
         }
 
         TF_RETURN_IF_ERROR(
@@ -178,7 +179,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       while (*num_skipped < num_to_skip) {
         if (!input_impl_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
         if (!current_element_iterator_) {
           // Get the next element from the input dataset.
@@ -188,7 +189,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           if (*end_of_sequence) {
             input_impl_.reset();
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(
               BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
@@ -206,13 +207,15 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         }
       }
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeInterleaveManyNode(std::move(args));
+      return model::MakeInterleaveManyNode(
+          std::move(args),
+          {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -239,7 +242,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -283,7 +286,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
               RestoreInput(ctx, reader, current_element_iterator_));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

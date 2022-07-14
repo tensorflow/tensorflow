@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -95,10 +97,10 @@ Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -120,7 +122,8 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningOpRef<ModuleOp>(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   // Register extra TF ops passed as OpDef.
@@ -149,7 +152,7 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 // on the translated_result using quant_specs and saving the final output in
 // result.
 Status ApplyDynamicRangeQuantizationFromOldQuantizer(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     std::string translated_result, std::string* result) {
   flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
   const uint8_t* buffer =
@@ -171,15 +174,15 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
 
   bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
   if (::tflite::optimize::QuantizeWeights(
-          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme) !=
-      kTfLiteOk) {
+          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
+          ::tflite::optimize::QuantizerType::OLD_QUANTIZER) != kTfLiteOk) {
     return errors::InvalidArgument("Quantize weights transformation failed.");
   }
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
   *result =
       string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -224,7 +227,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Freeze variables if a session is provided.
-  if (session.hasValue()) {
+  if (session.has_value()) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
     if (failed(mlir::tf_saved_model::FreezeVariables(module,
                                                      session.getValue()))) {
@@ -271,7 +274,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  const mlir::TFL::QuantizationSpecs& quant_specs = pass_config.quant_specs;
+  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;
@@ -305,7 +308,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   if (mlir::failed(module.verifyInvariants())) {
     return tensorflow::errors::Unknown("Final module is invalid");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
@@ -324,7 +327,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         input_filename, tags, exported_names, context,
         /*unconditionally_use_set_output_shapes=*/true);
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else if (saved_model_version == 1) {
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
@@ -334,7 +337,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
         enable_variable_lifting, saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

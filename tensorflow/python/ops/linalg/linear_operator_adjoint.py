@@ -229,3 +229,7 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operator",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operator": 0}

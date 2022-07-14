@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OperationSupport.h"
@@ -167,7 +167,7 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
   ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
   rewriter->setInsertionPointToStart(block);
 
-  FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   mlir::Value in_chain = func_op.getArgument(0);
   auto get_op_handler_op = rewriter->create<tfrt::corert::GetOpHandler>(
       block->getParent()->getLoc(), op_handler_type(), in_chain,
@@ -178,7 +178,7 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
 
 mlir::Value CoreRTConverter::GetDistributedContext(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   auto iter = distributed_context_by_func_.find(func_op.getOperation());
   if (iter != distributed_context_by_func_.end()) {
     return iter->second;
@@ -195,7 +195,7 @@ mlir::Value CoreRTConverter::GetDistributedContext(
 
 mlir::Value CoreRTConverter::GetRemoteChainManager(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   auto iter = remote_chain_mgr_by_func_.find(func_op.getOperation());
   if (iter != remote_chain_mgr_by_func_.end()) {
     return iter->second;
@@ -216,10 +216,10 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
 
 mlir::Value CoreRTConverter::GetLocalSideEffectChain(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  auto func_op = op->getParentOfType<mlir::FuncOp>();
+  auto func_op = op->getParentOfType<mlir::func::FuncOp>();
 
   llvm::SmallVector<mlir::Operation *, 4> predecessors;
-  if (llvm::isa<mlir::ReturnOp>(op)) {
+  if (llvm::isa<mlir::func::ReturnOp>(op)) {
     auto sinks = side_effect_analysis_.ControlSinks();
     predecessors.assign(sinks.begin(), sinks.end());
   } else {
@@ -253,7 +253,7 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
 mlir::Value CoreRTConverter::GetTaskHandle(
     mlir::Operation *op, StringRef task_name,
     mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   llvm::StringMap<mlir::Value> &task_handle_by_name =
       task_handles_by_func_[func_op.getOperation()];
   auto iter = task_handle_by_name.find(task_name);

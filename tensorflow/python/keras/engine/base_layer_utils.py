@@ -32,7 +32,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.training.tracking import base as tracking
+from tensorflow.python.trackable import base as tracking
 from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export

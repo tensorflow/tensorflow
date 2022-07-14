@@ -17,18 +17,20 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
-#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
 namespace gpu {
 
 namespace {
 std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
+                                        const GpuInfo& gpu_info,
                                         bool stride_correction,
                                         GPUOperation* op) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -67,10 +69,6 @@ std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
   for (int i = 1; i < dst_coords.size(); ++i) {
     dst_coord += ", " + dst_coords[i];
   }
-
-  const bool manual_clamp =
-      op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER ||
-      op_def.src_tensors[0].storage_type == TensorStorageType::IMAGE_BUFFER;
 
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
@@ -120,12 +118,13 @@ std::string GetAveragePoolingKernelCode(const OperationDef& op_def,
   }
   c += "      bool outside = outside_y || x_c < 0 || x_c >= "
        "args.src_tensor.Width();\n";
-  if (manual_clamp) {
+  if (op_def.src_tensors[0].SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
+      op_def.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
+    c += "      r += args.src_tensor.Read<float>(" + src_coord + ");\n";
+  } else {
     c += "     r += !outside ? args.src_tensor.Read<float>(" + src_coord +
          ") : "
          "INIT_FLOAT4(0.0f);\n";
-  } else {
-    c += "      r += args.src_tensor.Read<float>(" + src_coord + ");\n";
   }
   c += "        window_size += !outside ? 1.0 : 0.0;\n";
   c += "    }\n";
@@ -209,7 +208,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "  } \n";
   c += "  FLT4 maximum = INIT_FLT4(-10000.0f);\n";
   if (output_indices) {
-    c += "  FLT4 indexes = INIT_FLT4(0.0f);\n";
+    c += "  int4 indexes = INIT_INT4v4(0, 0, 0, 0);\n";
   }
   if (stride_correction) {
     c += "  int xs = " +
@@ -244,12 +243,10 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "      FLT4 src = args.src_tensor.Read(" + src_coord + ");\n";
   if (output_indices) {
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-      c +=
-          "      FLT index_counter = INIT_FLT((ky * args.kernel_size_x + kx) * "
-          "args.kernel_size_z + kz) + INIT_FLT(0.1f);\n";
+      c += "      int index_counter = (ky * args.kernel_size_x + kx) * "
+           "args.kernel_size_z + kz;\n";
     } else {
-      c += "      FLT index_counter = INIT_FLT(ky * args.kernel_size_x + kx) + "
-           "INIT_FLT(0.1f);\n";
+      c += "      int index_counter = ky * args.kernel_size_x + kx;\n";
     }
     c += "      if (src.x > maximum.x) {\n";
     c += "        indexes.x = index_counter;\n";
@@ -277,7 +274,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "  }\n";
   c += "  args.dst_tensor.Write(maximum, " + dst_coord + ");\n";
   if (output_indices) {
-    c += "  args.dst_indices.Write(indexes, " + dst_coord + ");\n";
+    c += "  args.dst_indices.Write<int>(indexes, " + dst_coord + ");\n";
   }
   c += "}\n";
 
@@ -286,6 +283,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
 }  // namespace
 
 GPUOperation CreatePooling(const OperationDef& definition,
+                           const GpuInfo& gpu_info,
                            const Pooling2DAttributes& attr) {
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.kernel.w);
@@ -297,7 +295,8 @@ GPUOperation CreatePooling(const OperationDef& definition,
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;
   if (attr.type == PoolingType::AVERAGE) {
-    op.code_ = GetAveragePoolingKernelCode(definition, stride_correction, &op);
+    op.code_ = GetAveragePoolingKernelCode(definition, gpu_info,
+                                           stride_correction, &op);
   } else if (attr.type == PoolingType::MAX) {
     op.code_ = GetMaxPoolingKernelCode(definition, stride_correction,
                                        attr.output_indices, &op);
@@ -307,6 +306,7 @@ GPUOperation CreatePooling(const OperationDef& definition,
 }
 
 GPUOperation CreatePooling(const OperationDef& definition,
+                           const GpuInfo& gpu_info,
                            const Pooling3DAttributes& attr) {
   GPUOperation op(definition);
   op.args_.AddInt("kernel_size_x", attr.kernel.w);
@@ -321,7 +321,8 @@ GPUOperation CreatePooling(const OperationDef& definition,
   const bool stride_correction =
       definition.IsBatchSupported() && attr.strides.w != 1;
   if (attr.type == PoolingType::AVERAGE) {
-    op.code_ = GetAveragePoolingKernelCode(definition, stride_correction, &op);
+    op.code_ = GetAveragePoolingKernelCode(definition, gpu_info,
+                                           stride_correction, &op);
   } else if (attr.type == PoolingType::MAX) {
     op.code_ = GetMaxPoolingKernelCode(definition, stride_correction,
                                        attr.output_indices, &op);

@@ -31,7 +31,7 @@ class StatusHelper {
 
   static tensorflow::Status FromC(TF_Status* const c_status) {
     if (tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     } else {
       return tensorflow::Status(
           tensorflow::error::Code(

@@ -146,7 +146,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);
-    return Status::OK();
+    return OkStatus();
   };
 
   if (launch_dimensions != nullptr) {
@@ -218,13 +218,13 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
 
   // Create element generators for update and start_indices.
   TF_ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
-                      fused_emitter->GetGenerator(update));
+                      fused_emitter->GetGenerator(*update));
 
   IndexGenerator start_indices_generator =
       [&](int64_t index) -> StatusOr<llvm::Value*> {
     TF_ASSIGN_OR_RETURN(
         ElementGenerator element_generator,
-        fused_emitter->GetGenerator(dynamic_update_slice->operand(2 + index)));
+        fused_emitter->GetGenerator(*dynamic_update_slice->operand(2 + index)));
     return element_generator(IrArray::Index(b->getInt64Ty()));
   };
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());

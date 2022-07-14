@@ -40,7 +40,7 @@ namespace gpu {
 // compiler is allowed to create.
 class CustomCallThunk : public Thunk {
  public:
-  using OptionalSlice = ::absl::optional<BufferAllocation::Slice>;
+  using OptionalSlice = ::std::optional<BufferAllocation::Slice>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   using Stream = stream_executor::gpu::GpuStreamHandle;

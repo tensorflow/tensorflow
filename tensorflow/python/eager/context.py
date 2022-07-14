@@ -81,25 +81,9 @@ is_tfrt_enabled = tfrt_utils.enabled
 _RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
                                               "1") == "1"
 
-# This flag and associated environment var are transient and will eventually be
-# removed.
-# TODO(b/214312827): remove this once the python flag apis are finalized.
-_GRAPH_BUILDING_OPTIMIZATION = os.getenv(
-    "TF_FLAG_GRAPH_BUILDING_OPTIMIZATION") == "1"
-
-
-def enable_graph_building_optimization():
-  global _GRAPH_BUILDING_OPTIMIZATION
-  _GRAPH_BUILDING_OPTIMIZATION = True
-
-
-def graph_building_optimization_enabled():
-  return _GRAPH_BUILDING_OPTIMIZATION
-
-
-def disable_graph_building_optimization():
-  global _GRAPH_BUILDING_OPTIMIZATION
-  _GRAPH_BUILDING_OPTIMIZATION = False
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
 
 
 # This method should only be called after the context has beein initialized.
@@ -129,6 +113,33 @@ def run_eager_op_as_function_enabled():
   if context_safe() is not None:
     return context_safe().run_eager_op_as_function
   return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+
+
+# This method should only be called after the context has beein initialized.
+def enable_jit_compile_rewrite():
+  """Run jit_compile functions through rewrite pass.
+
+  This runs jit_compile functions through all of the multidevice function
+  rewrite passes.
+  """
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = True
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_jit_compile_rewrite():
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = False
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = False
+
+
+def jit_compile_rewrite_enabled():
+  if context_safe() is not None:
+    return context_safe().jit_compile_rewrite
+  return _JIT_COMPILE_REWRITE_ENABLED
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -313,8 +324,9 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration",
-                           ["memory_limit", "experimental_priority"])):
+    collections.namedtuple("LogicalDeviceConfiguration", [
+        "memory_limit", "experimental_priority", "experimental_device_ordinal"
+    ])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -331,11 +343,20 @@ class LogicalDeviceConfiguration(
       Lower values have higher priorities and 0 is the default.
       Within a physical GPU, the GPU scheduler will prioritize ops on virtual
       devices with higher priority. Currently only supported for Nvidia GPUs.
+    experimental_device_ordinal: (optional) Ordinal number to order the virtual
+    device.
+      LogicalDevice with lower ordinal number will receive a lower device id.
+      Physical device id and location in the list is used to break ties.
+      Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None, experimental_priority=None):
+  def __new__(cls,
+              memory_limit=None,
+              experimental_priority=None,
+              experimental_device_ordinal=0):
     return super(LogicalDeviceConfiguration,
-                 cls).__new__(cls, memory_limit, experimental_priority)
+                 cls).__new__(cls, memory_limit, experimental_priority,
+                              experimental_device_ordinal)
 
 
 @tf_export("config.PhysicalDevice")
@@ -475,6 +496,7 @@ class Context(object):
     self._use_tfrt = is_tfrt_enabled()
     self._use_tfrt_distributed_runtime = None
     self._run_eager_op_as_function = run_eager_op_as_function_enabled()
+    self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -486,6 +508,7 @@ class Context(object):
     self._device_lock = threading.Lock()
     self._physical_devices = None
     self._physical_device_to_index = None
+    self._pluggable_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -594,6 +617,8 @@ class Context(object):
               opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
             opts, self._run_eager_op_as_function)
+        pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
+            opts, self._jit_compile_rewrite)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -1139,6 +1164,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
       config.graph_options.rewrite_options.min_graph_nodes = nodes
@@ -1190,7 +1216,13 @@ class Context(object):
     virtual_devices = []
     gpu_index = -1
     memory_growths = set()
-    for dev in self.list_physical_devices("GPU"):
+    gpu_devices = self.list_physical_devices("GPU")
+    pluggable_devices = self._pluggable_devices
+    compatible_devices = gpu_devices
+    for dev in pluggable_devices:
+      if dev not in gpu_devices:
+        compatible_devices.append(dev)
+    for dev in compatible_devices:
       gpu_index += 1
 
       if dev not in self._visible_device_list:
@@ -1202,9 +1234,11 @@ class Context(object):
 
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
+        device_ordinals = []
         device_limits = []
         priority = []
         for virt_dev in vdevs:
+          device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1215,7 +1249,9 @@ class Context(object):
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits, priority=priority))
+                memory_limit_mb=device_limits,
+                priority=priority,
+                device_ordinal=device_ordinals))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1416,10 +1452,19 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
+      # We maintain a seperate list just so we can check whether the device in
+      # _physical_devices is a PluggableDevice.
+      pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+      self._pluggable_devices = [
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in pluggable_devs
+      ]
 
       self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
+          d: None
+          for d in self._physical_devices
+          if d.device_type == "GPU" or d in self._pluggable_devices
       }
 
     # Import device settings that may have been passed into the constructor
@@ -1609,8 +1654,9 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
-    if dev.device_type != "GPU":
-      raise ValueError("Cannot set memory growth on non-GPU devices")
+    if dev.device_type != "GPU" and dev not in self._pluggable_devices:
+      raise ValueError(
+          "Cannot set memory growth on non-GPU and non-Pluggable devices")
 
     if self._memory_growth_map.get(dev) == enable:
       return
@@ -1644,6 +1690,9 @@ class Context(object):
                            "currently not supported")
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
+                           " devices is currently not supported")
+        if vdev.experimental_device_ordinal != 0:
+          raise ValueError("Setting experimental_device_ordinal on CPU virtual "
                            " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:
@@ -1766,6 +1815,7 @@ class Context(object):
     rewriter_toggle("auto_mixed_precision")
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
+    rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:
       options["min_graph_nodes"] = rewrite_options.min_graph_nodes
@@ -1845,6 +1895,16 @@ class Context(object):
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
     self._run_eager_op_as_function = enable
+
+  @property
+  def jit_compile_rewrite(self):
+    return self._jit_compile_rewrite
+
+  @jit_compile_rewrite.setter
+  def jit_compile_rewrite(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetJitCompileRewrite(self._handle, enable)
+    self._jit_compile_rewrite = enable
 
   @property
   def device_policy(self):

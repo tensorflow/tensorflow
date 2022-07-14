@@ -577,9 +577,12 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
 
     class Wrapper(object):
 
+      def __init__(self):
+        self.a = np.array([b"foo", b"bar", b"baz"])
+
       @property
       def __array_interface__(self):
-        return np.array([b"foo", b"bar", b"baz"]).__array_interface__
+        return self.a.__array_interface__
 
     t = tensor_util.make_tensor_proto(Wrapper(), shape=[1, 3])
     self.assertProtoEquals("""

@@ -46,7 +46,7 @@ Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

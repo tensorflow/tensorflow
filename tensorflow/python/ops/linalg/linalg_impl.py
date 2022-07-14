@@ -852,7 +852,7 @@ def pinv(a, rcond=None, validate_args=False, name=None):
   a = tf.constant([[1.,  0.4,  0.5],
                    [0.4, 0.2,  0.25],
                    [0.5, 0.25, 0.35]])
-  tf.matmul(tf.linalg..pinv(a), a)
+  tf.matmul(tf.linalg.pinv(a), a)
   # ==> array([[1., 0., 0.],
                [0., 1., 0.],
                [0., 0., 1.]], dtype=float32)
@@ -860,7 +860,7 @@ def pinv(a, rcond=None, validate_args=False, name=None):
   a = tf.constant([[1.,  0.4,  0.5,  1.],
                    [0.4, 0.2,  0.25, 2.],
                    [0.5, 0.25, 0.35, 3.]])
-  tf.matmul(tf.linalg..pinv(a), a)
+  tf.matmul(tf.linalg.pinv(a), a)
   # ==> array([[ 0.76,  0.37,  0.21, -0.02],
                [ 0.37,  0.43, -0.33,  0.02],
                [ 0.21, -0.33,  0.81,  0.01],
