@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
+#include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -93,8 +93,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       HloModule* module, int64_t max_outstanding_async_copies = -1,
       int64_t max_prefetch_interval = 10, int64_t min_prefetch_interval = 2,
       std::optional<Options> options = std::nullopt) {
-    MemorySpaceAssignmentUtils::HoistParameters(*module);
-    MemorySpaceAssignmentUtils::HoistConstantOperations(*module);
+    InstructionHoister instruction_hoister;
+    TF_CHECK_OK(instruction_hoister.Run(module).status());
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
     return AssignMemorySpace(module, max_outstanding_async_copies,
