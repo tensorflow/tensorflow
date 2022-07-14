@@ -205,9 +205,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -215,7 +213,7 @@ tf_py_test(
     name = "python_state_test",
     srcs = ["python_state_test.py"],
     deps = [
-        ":base",
+        ":python_state",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/checkpoint",
