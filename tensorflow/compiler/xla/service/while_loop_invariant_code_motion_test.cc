@@ -628,5 +628,48 @@ TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
   EXPECT_FALSE(simplified_loop);
 }
 
+const char* const kAfterAllTestCase = R"(
+HloModule ModuleWithWhile
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+body {
+  p_body = (f32[]) parameter(0)
+  constant = f32[] constant(1.0)
+  after-all = token[] after-all(constant)
+  tupled = (f32[], token[]) tuple(constant, after-all)
+  iota = f32[1024, 1024] iota(), iota_dimension=0
+  gte = f32[] get-tuple-element(p_body), index=0
+  ROOT root = (f32[]) tuple(gte)
+}
+
+condition {
+  p_cond = (f32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param = f32[] parameter(0)
+  while_init = (f32[]) tuple(param)
+  ROOT while = (f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistingAfterAll) {
+  auto m = ParseAndReturnVerifiedModule(kAfterAllTestCase).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
+                                   /*hoist_non_constants=*/true,
+                                   /*hoist_size_inflation_ratio=*/1.0)
+          .Run(m.get()));
+
+  ASSERT_FALSE(simplified_loop);
+}
+
 }  // namespace
 }  // namespace xla
