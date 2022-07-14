@@ -274,6 +274,16 @@ PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args) {
 
 // ---------------------------------- Buffers ----------------------------------
 
+PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
+    PJRT_Buffer_OnDeviceSizeInBytes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_OnDeviceSizeInBytes_Args",
+      PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->on_device_size_in_bytes,
+                        args->buffer->buffer->GetOnDeviceSizeInBytes());
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Buffer_Delete_Args", PJRT_Buffer_Delete_Args_STRUCT_SIZE,

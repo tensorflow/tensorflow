@@ -299,9 +299,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped_->ToLiteral(literal);
   }
 
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
-    return wrapped_->GetOnDeviceSizeInBytes();
-  }
+  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
   PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
                                    int64_t transfer_size) override {

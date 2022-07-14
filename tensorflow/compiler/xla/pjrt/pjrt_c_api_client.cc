@@ -415,6 +415,19 @@ PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
 
 PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
 
+StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
+  PJRT_Buffer_OnDeviceSizeInBytes_Args args;
+  args.struct_size = PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  RETURN_STATUS_IF_ERROR(
+      client_->pjrt_c_api()->PJRT_Buffer_OnDeviceSizeInBytes(&args),
+      client_->pjrt_c_api());
+
+  return args.on_device_size_in_bytes;
+}
+
 void PjRtCApiBuffer::Delete() {
   PJRT_Buffer_Delete_Args args;
   args.struct_size = PJRT_Buffer_Delete_Args_STRUCT_SIZE;
