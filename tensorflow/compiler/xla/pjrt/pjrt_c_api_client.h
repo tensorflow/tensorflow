@@ -360,6 +360,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return wrapped;
   }
 
+  const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
+
  private:
   PjRtCApiClient* client_;
   PJRT_Buffer* buffer_;
