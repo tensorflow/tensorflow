@@ -52,6 +52,7 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   pm.addNestedPass<FuncOp>(createConvertLinalgToParallelLoopsPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
   // Loops -> GPU
+  pm.addNestedPass<FuncOp>(createCollapseParallelLoopsTo1DPass());
   pm.addNestedPass<FuncOp>(createTileLoopsPass(tileSizes, unrollFactors));
   pm.addNestedPass<FuncOp>(createGpuMapParallelLoopsPass());
   pm.addNestedPass<FuncOp>(createLoopInvariantCodeMotionPass());

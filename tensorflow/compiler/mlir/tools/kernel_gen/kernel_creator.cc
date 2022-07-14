@@ -107,25 +107,6 @@ bool IsSmallAlloc(Value alloc) {
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
-struct CollapseParallelLoopsTo1D
-    : public mlir::PassWrapper<CollapseParallelLoopsTo1D,
-                               mlir::OperationPass<FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CollapseParallelLoopsTo1D)
-
-  void runOnOperation() override {
-    getOperation().walk([&](ParallelOp op) {
-      unsigned num_loops = op.getNumLoops();
-      if (num_loops == 1) return;
-      std::vector<unsigned> combinedLoops;
-      combinedLoops.reserve(num_loops);
-      for (unsigned i = 0; i < num_loops; ++i) {
-        combinedLoops.push_back(i);
-      }
-      mlir::collapseParallelLoops(op, {combinedLoops});
-    });
-  }
-};
-
 Status LowerTFToJITInvocation(mlir::ModuleOp module,
                               llvm::ArrayRef<int64_t> tile_sizes,
                               llvm::ArrayRef<int64_t> unroll_factors,
@@ -254,7 +235,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
     pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
     // Collapse and tile parallel loops for GPU only. Collapsing shouldn't
     // provide benefits to CPU and tiling is handled by vectorization.
-    pm.addNestedPass<FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
+    pm.addNestedPass<FuncOp>(mlir::createCollapseParallelLoopsTo1DPass());
     pm.addNestedPass<FuncOp>(
         mlir::createTileLoopsPass(tile_sizes, unroll_factors));
   }
