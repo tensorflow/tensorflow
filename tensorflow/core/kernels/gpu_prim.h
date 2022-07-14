@@ -80,11 +80,29 @@ struct NumericTraits<tensorflow::bfloat16>
 }  // namespace cub
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hipcub/hipcub.hpp"
+#include "rocm/rocm_config.h"
 namespace gpuprim = ::hipcub;
 
 // Required for sorting Eigen::half and bfloat16.
 namespace rocprim {
 namespace detail {
+#if (TF_ROCM_VERSION >= 50200)
+template <>
+struct float_bit_mask<Eigen::half> {
+  static constexpr uint16_t sign_bit = 0x8000;
+  static constexpr uint16_t exponent = 0x7C00;
+  static constexpr uint16_t mantissa = 0x03FF;
+  using bit_type = uint16_t;
+};
+
+template <>
+struct float_bit_mask<Eigen::bfloat16> {
+  static constexpr uint16_t sign_bit = 0x8000;
+  static constexpr uint16_t exponent = 0x7F80;
+  static constexpr uint16_t mantissa = 0x007F;
+  using bit_type = uint16_t;
+};
+#endif
 template <>
 struct radix_key_codec_base<Eigen::half>
     : radix_key_codec_floating<Eigen::half, uint16_t> {};
