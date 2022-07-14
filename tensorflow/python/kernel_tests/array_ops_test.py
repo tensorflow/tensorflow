@@ -1959,6 +1959,37 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
                 side=side,
                 out_type=dtype), array_ops.zeros([2, 0], dtype))
 
+  def testZeroInputSize(self):
+    dtype = dtypes.int32
+    for side in ("left", "right"):
+      with self.subTest(side=side):
+        self.assertAllEqual(
+            array_ops.searchsorted(
+                array_ops.ones([2, 0]),
+                array_ops.ones([2, 3]),
+                side=side,
+                out_type=dtype), array_ops.zeros([2, 3], dtype))
+
+  def testInt64(self):
+
+    @def_function.function
+    def g():
+      x = random_ops.random_normal(shape=[int(1e10)])
+      y = array_ops.ones(shape=[int(1e10)])
+      return array_ops.searchsorted(x, y, out_type=dtypes.int64)
+
+    _ = g.get_concrete_function()
+
+  def testInt64UnspecifiedOutType(self):
+
+    @def_function.function
+    def g():
+      x = random_ops.random_normal(shape=[int(1e10)])
+      y = array_ops.ones(shape=[int(1e10)])
+      return array_ops.searchsorted(x, y)
+
+    _ = g.get_concrete_function()
+
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):
 
