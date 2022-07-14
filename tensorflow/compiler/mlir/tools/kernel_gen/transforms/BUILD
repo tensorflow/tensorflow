@@ -188,7 +188,6 @@ cc_library(
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
         "tf_to_jit_invocations.cc",
-        "vectorization_pass.cc",
     ],
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_cloud(),

@@ -213,14 +213,10 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
       ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   if (cpu_codegen) {
     pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateVectorizationPass());
-    pm.addNestedPass<FuncOp>(
         mlir::bufferization::createBufferLoopHoistingPass());
     pm.addNestedPass<FuncOp>(mlir::createShapeSimplification());
     pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
     pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateVectorizationCleanupPass());
     pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   }
   // Transform the Linalg ops inside of the loop nest into parallel loops.
