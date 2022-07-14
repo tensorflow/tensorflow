@@ -178,6 +178,7 @@ TfLiteRegistration* Register_UNIQUE();
 TfLiteRegistration* Register_UNPACK();
 TfLiteRegistration* Register_UNSORTED_SEGMENT_MAX();
 TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM();
 TfLiteRegistration* Register_VAR_HANDLE();
 TfLiteRegistration* Register_WHERE();
 TfLiteRegistration* Register_WHILE();

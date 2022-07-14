@@ -393,6 +393,7 @@ enum BuiltinOperator : int32 {
   RELU_0_TO_1 = 152,
   UNSORTED_SEGMENT_PROD = 153,
   UNSORTED_SEGMENT_MAX = 154,
+  UNSORTED_SEGMENT_SUM = 155,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -516,7 +517,8 @@ union BuiltinOptions {
   GeluOptions,
   DynamicUpdateSliceOptions,
   UnsortedSegmentProdOptions,
-  UnsortedSegmentMaxOptions
+  UnsortedSegmentMaxOptions,
+  UnsortedSegmentSumOptions
 }
 
 // LINT.IfChange
@@ -1131,7 +1133,10 @@ table DynamicUpdateSliceOptions {
 table UnsortedSegmentProdOptions {
 }
 
-table UnsortedSegmentMaxOptions{
+table UnsortedSegmentMaxOptions {
+}
+
+table UnsortedSegmentSumOptions {
 }
 
 

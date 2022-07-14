@@ -173,6 +173,7 @@ TfLiteRegistration* Register_GELU();
 TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE();
 TfLiteRegistration* Register_UNSORTED_SEGMENT_PROD();
 TfLiteRegistration* Register_UNSORTED_SEGMENT_MAX();
+TfLiteRegistration* Register_UNSORTED_SEGMENT_SUM();
 
 namespace {
 

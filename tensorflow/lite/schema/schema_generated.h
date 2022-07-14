@@ -530,6 +530,10 @@ struct UnsortedSegmentMaxOptions;
 struct UnsortedSegmentMaxOptionsBuilder;
 struct UnsortedSegmentMaxOptionsT;
 
+struct UnsortedSegmentSumOptions;
+struct UnsortedSegmentSumOptionsBuilder;
+struct UnsortedSegmentSumOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
@@ -1039,11 +1043,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_RELU_0_TO_1 = 152,
   BuiltinOperator_UNSORTED_SEGMENT_PROD = 153,
   BuiltinOperator_UNSORTED_SEGMENT_MAX = 154,
+  BuiltinOperator_UNSORTED_SEGMENT_SUM = 155,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_UNSORTED_SEGMENT_MAX
+  BuiltinOperator_MAX = BuiltinOperator_UNSORTED_SEGMENT_SUM
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[155] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[156] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1199,13 +1204,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[155] {
     BuiltinOperator_DYNAMIC_UPDATE_SLICE,
     BuiltinOperator_RELU_0_TO_1,
     BuiltinOperator_UNSORTED_SEGMENT_PROD,
-    BuiltinOperator_UNSORTED_SEGMENT_MAX
+    BuiltinOperator_UNSORTED_SEGMENT_MAX,
+    BuiltinOperator_UNSORTED_SEGMENT_SUM
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[156] = {
+  static const char * const names[157] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1361,13 +1367,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "RELU_0_TO_1",
     "UNSORTED_SEGMENT_PROD",
     "UNSORTED_SEGMENT_MAX",
+    "UNSORTED_SEGMENT_SUM",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_UNSORTED_SEGMENT_MAX)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_UNSORTED_SEGMENT_SUM)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1493,11 +1500,12 @@ enum BuiltinOptions : uint8_t {
   BuiltinOptions_DynamicUpdateSliceOptions = 117,
   BuiltinOptions_UnsortedSegmentProdOptions = 118,
   BuiltinOptions_UnsortedSegmentMaxOptions = 119,
+  BuiltinOptions_UnsortedSegmentSumOptions = 120,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_UnsortedSegmentMaxOptions
+  BuiltinOptions_MAX = BuiltinOptions_UnsortedSegmentSumOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[120] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[121] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1618,13 +1626,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[120] {
     BuiltinOptions_GeluOptions,
     BuiltinOptions_DynamicUpdateSliceOptions,
     BuiltinOptions_UnsortedSegmentProdOptions,
-    BuiltinOptions_UnsortedSegmentMaxOptions
+    BuiltinOptions_UnsortedSegmentMaxOptions,
+    BuiltinOptions_UnsortedSegmentSumOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[121] = {
+  static const char * const names[122] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1745,13 +1754,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "DynamicUpdateSliceOptions",
     "UnsortedSegmentProdOptions",
     "UnsortedSegmentMaxOptions",
+    "UnsortedSegmentSumOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_UnsortedSegmentMaxOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_UnsortedSegmentSumOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2236,6 +2246,10 @@ template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentMaxOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentMaxOptions;
 };
 
+template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentSumOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentSumOptions;
+};
+
 template<typename T> struct BuiltinOptionsUnionTraits {
   static const BuiltinOptions enum_value = BuiltinOptions_NONE;
 };
@@ -2714,6 +2728,10 @@ template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentProdOptionsT>
 
 template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentMaxOptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentMaxOptions;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentSumOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentSumOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -3697,6 +3715,14 @@ struct BuiltinOptionsUnion {
   const tflite::UnsortedSegmentMaxOptionsT *AsUnsortedSegmentMaxOptions() const {
     return type == BuiltinOptions_UnsortedSegmentMaxOptions ?
       reinterpret_cast<const tflite::UnsortedSegmentMaxOptionsT *>(value) : nullptr;
+  }
+  tflite::UnsortedSegmentSumOptionsT *AsUnsortedSegmentSumOptions() {
+    return type == BuiltinOptions_UnsortedSegmentSumOptions ?
+      reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(value) : nullptr;
+  }
+  const tflite::UnsortedSegmentSumOptionsT *AsUnsortedSegmentSumOptions() const {
+    return type == BuiltinOptions_UnsortedSegmentSumOptions ?
+      reinterpret_cast<const tflite::UnsortedSegmentSumOptionsT *>(value) : nullptr;
   }
 };
 
@@ -11170,6 +11196,45 @@ inline flatbuffers::Offset<UnsortedSegmentMaxOptions> CreateUnsortedSegmentMaxOp
 
 flatbuffers::Offset<UnsortedSegmentMaxOptions> CreateUnsortedSegmentMaxOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentMaxOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct UnsortedSegmentSumOptionsT : public flatbuffers::NativeTable {
+  typedef UnsortedSegmentSumOptions TableType;
+};
+
+struct UnsortedSegmentSumOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UnsortedSegmentSumOptionsT NativeTableType;
+  typedef UnsortedSegmentSumOptionsBuilder Builder;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  UnsortedSegmentSumOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UnsortedSegmentSumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UnsortedSegmentSumOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentSumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UnsortedSegmentSumOptionsBuilder {
+  typedef UnsortedSegmentSumOptions Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit UnsortedSegmentSumOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<UnsortedSegmentSumOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UnsortedSegmentSumOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UnsortedSegmentSumOptions> CreateUnsortedSegmentSumOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  UnsortedSegmentSumOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UnsortedSegmentSumOptions> CreateUnsortedSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code = 0;
@@ -11669,6 +11734,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const tflite::UnsortedSegmentMaxOptions *builtin_options_as_UnsortedSegmentMaxOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentMaxOptions ? static_cast<const tflite::UnsortedSegmentMaxOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::UnsortedSegmentSumOptions *builtin_options_as_UnsortedSegmentSumOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentSumOptions ? static_cast<const tflite::UnsortedSegmentSumOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -12180,6 +12248,10 @@ template<> inline const tflite::UnsortedSegmentProdOptions *Operator::builtin_op
 
 template<> inline const tflite::UnsortedSegmentMaxOptions *Operator::builtin_options_as<tflite::UnsortedSegmentMaxOptions>() const {
   return builtin_options_as_UnsortedSegmentMaxOptions();
+}
+
+template<> inline const tflite::UnsortedSegmentSumOptions *Operator::builtin_options_as<tflite::UnsortedSegmentSumOptions>() const {
+  return builtin_options_as_UnsortedSegmentSumOptions();
 }
 
 struct OperatorBuilder {
@@ -16381,6 +16453,29 @@ inline flatbuffers::Offset<UnsortedSegmentMaxOptions> CreateUnsortedSegmentMaxOp
       _fbb);
 }
 
+inline UnsortedSegmentSumOptionsT *UnsortedSegmentSumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<UnsortedSegmentSumOptionsT>(new UnsortedSegmentSumOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void UnsortedSegmentSumOptions::UnPackTo(UnsortedSegmentSumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<UnsortedSegmentSumOptions> UnsortedSegmentSumOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentSumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUnsortedSegmentSumOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UnsortedSegmentSumOptions> CreateUnsortedSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnsortedSegmentSumOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateUnsortedSegmentSumOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorCodeT>(new OperatorCodeT());
   UnPackTo(_o.get(), _resolver);
@@ -17400,6 +17495,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMaxOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_UnsortedSegmentSumOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -17895,6 +17994,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMaxOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_UnsortedSegmentSumOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -18378,6 +18481,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentMaxOptionsT *>(value);
       return CreateUnsortedSegmentMaxOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_UnsortedSegmentSumOptions: {
+      auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptionsT *>(value);
+      return CreateUnsortedSegmentSumOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -18858,6 +18965,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) : 
     }
     case BuiltinOptions_UnsortedSegmentMaxOptions: {
       value = new tflite::UnsortedSegmentMaxOptionsT(*reinterpret_cast<tflite::UnsortedSegmentMaxOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_UnsortedSegmentSumOptions: {
+      value = new tflite::UnsortedSegmentSumOptionsT(*reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(u.value));
       break;
     }
     default:
@@ -19459,6 +19570,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_UnsortedSegmentMaxOptions: {
       auto ptr = reinterpret_cast<tflite::UnsortedSegmentMaxOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_UnsortedSegmentSumOptions: {
+      auto ptr = reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(value);
       delete ptr;
       break;
     }

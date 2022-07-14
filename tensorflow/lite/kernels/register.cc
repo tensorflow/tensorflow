@@ -347,6 +347,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_UNSORTED_SEGMENT_PROD());
   AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_MAX,
              Register_UNSORTED_SEGMENT_MAX());
+  AddBuiltin(BuiltinOperator_UNSORTED_SEGMENT_SUM,
+             Register_UNSORTED_SEGMENT_SUM());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
