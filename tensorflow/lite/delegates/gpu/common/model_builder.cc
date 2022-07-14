@@ -1023,11 +1023,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       // TODO(b/166831113): Support the same inputs for operations.
       if (input0 == input1) {
         if (operation_type_ == OperationType::MUL) {
-          // replace MUL(A, A) with POW(A, 2.0)
-          node->operation.type = ToString(OperationType::POW);
-          ElementwiseAttributes attr;
-          attr.param = 2.0f;
-          node->operation.attributes = std::move(attr);
+          // replace MUL(A, A) with SQUARE(A)
+          node->operation.type = ToString(OperationType::SQUARE);
           RETURN_IF_ERROR(reader->AddInput(node, 0));
         } else if (operation_type_ == OperationType::ADD) {
           // replace ADD(A, A) with MUL(A, 2.0)
