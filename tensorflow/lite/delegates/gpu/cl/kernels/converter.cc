@@ -184,15 +184,11 @@ class TensorToTensorConverter : public OpenClConverterImpl {
     RETURN_IF_ERROR(GetOpenCLMemory(output_obj, &out_memory));
 
     Tensor src_tensor;
-    TensorDescriptor descriptor_with_shape = src_tensor_descriptor_;
-    descriptor_with_shape.SetBHWCShape(shape_);
-    RETURN_IF_ERROR(CreateTensorShared(*context_, in_memory,
-                                       descriptor_with_shape, &src_tensor));
+    RETURN_IF_ERROR(CreateSharedTensor(*context_, in_memory, shape_,
+                                       src_tensor_descriptor_, &src_tensor));
     Tensor dst_tensor;
-    descriptor_with_shape = dst_tensor_descriptor_;
-    descriptor_with_shape.SetBHWCShape(shape_);
-    RETURN_IF_ERROR(CreateTensorShared(*context_, out_memory,
-                                       descriptor_with_shape, &dst_tensor));
+    RETURN_IF_ERROR(CreateSharedTensor(*context_, out_memory, shape_,
+                                       dst_tensor_descriptor_, &dst_tensor));
     RETURN_IF_ERROR(cl_args_.SetObjectRef("src_tensor", &src_tensor));
     RETURN_IF_ERROR(cl_args_.SetObjectRef("dst_tensor", &dst_tensor));
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
@@ -285,10 +281,8 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
     cl_mem in_memory;
     RETURN_IF_ERROR(GetOpenCLMemory(input_obj, &in_memory));
     Tensor tensor;
-    TensorDescriptor descriptor_with_shape = tensor_descriptor_;
-    descriptor_with_shape.SetBHWCShape(shape_);
-    RETURN_IF_ERROR(CreateTensorShared(*context_, in_memory,
-                                       descriptor_with_shape, &tensor));
+    RETURN_IF_ERROR(CreateSharedTensor(*context_, in_memory, shape_,
+                                       tensor_descriptor_, &tensor));
     return DispatchKernel(output->memobj, &tensor);
   }
 };
@@ -382,10 +376,8 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     cl_mem out_memory;
     RETURN_IF_ERROR(GetOpenCLMemory(output_obj, &out_memory));
     Tensor tensor;
-    TensorDescriptor descriptor_with_shape = tensor_descriptor_;
-    descriptor_with_shape.SetBHWCShape(shape_);
-    RETURN_IF_ERROR(CreateTensorShared(*context_, out_memory,
-                                       descriptor_with_shape, &tensor));
+    RETURN_IF_ERROR(CreateSharedTensor(*context_, out_memory, shape_,
+                                       tensor_descriptor_, &tensor));
     return DispatchKernel(input->memobj, &tensor);
   }
 };

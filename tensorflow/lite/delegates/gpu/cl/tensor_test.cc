@@ -63,9 +63,7 @@ absl::Status TensorBHWCTest(const BHWC& shape,
   }
 
   Tensor tensor;
-  TensorDescriptor descriptor_with_shape = descriptor;
-  descriptor_with_shape.SetBHWCShape(shape);
-  RETURN_IF_ERROR(CreateTensor(env->context(), descriptor_with_shape, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
@@ -129,9 +127,7 @@ absl::Status TensorBHWDCTest(const BHWDC& shape,
   }
 
   Tensor tensor;
-  TensorDescriptor descriptor_with_shape = descriptor;
-  descriptor_with_shape.SetBHWDCShape(shape);
-  RETURN_IF_ERROR(CreateTensor(env->context(), descriptor_with_shape, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 

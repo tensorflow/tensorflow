@@ -33,10 +33,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-absl::Status AllocateTensorMemory(const CLContext& context,
+absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
                                   const TensorDescriptor& descriptor,
                                   const void* data_ptr, CLMemory* result) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
   const int slices = DivideRoundUp(shape.c, 4);
   cl_mem_flags mem_flags = CL_MEM_READ_WRITE;
   if (data_ptr) {
@@ -256,6 +255,47 @@ absl::Status CreateImage2DFromBuffer(const CLContext& context, cl_mem memory,
   }
   return absl::OkStatus();
 }
+
+absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
+                          const TensorDescriptor& descriptor, cl_mem memory,
+                          Tensor* result) {
+  const bool memory_owner = memory == nullptr;
+  if (memory_owner) {
+    CLMemory mem;
+    RETURN_IF_ERROR(
+        AllocateTensorMemory(context, shape, descriptor, nullptr, &mem));
+    memory = mem.Release();
+  }
+  if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.GetDataType(),
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
+  } else {
+    *result = Tensor(memory, memory_owner, shape, descriptor);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                cl_mem memory, Tensor* result) {
+  const bool memory_owner = false;
+  if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.GetDataType(),
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
+  } else {
+    *result = Tensor(memory, memory_owner, shape, descriptor);
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 Tensor::Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
@@ -518,13 +558,12 @@ absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
                                           CLContext* context) {
   shape_ = desc.GetBHWDCShape();
   desc.CopyWithoutData(&descriptor_);
-  descriptor_.SetBHWDCShape(shape_);
   memory_owner_ = true;
   CLMemory memory;
   const uint8_t* data_ptr =
       desc.GetData().empty() ? nullptr : desc.GetData().data();
   RETURN_IF_ERROR(
-      AllocateTensorMemory(*context, descriptor_, data_ptr, &memory));
+      AllocateTensorMemory(*context, shape_, descriptor_, data_ptr, &memory));
   memory_ = memory.Release();
   if (desc.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
@@ -588,53 +627,47 @@ absl::Status Tensor::ReadData(void* ptr, CLCommandQueue* queue) const {
   return absl::OkStatus();
 }
 
-absl::Status CreateTensor(const CLContext& context,
+absl::Status CreateTensor(const CLContext& context, const BHWC& shape,
                           const TensorDescriptor& descriptor, Tensor* result) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
-  cl_mem memory = nullptr;
-  const bool memory_owner = memory == nullptr;
-  if (memory_owner) {
-    CLMemory mem;
-    RETURN_IF_ERROR(AllocateTensorMemory(context, descriptor, nullptr, &mem));
-    memory = mem.Release();
-  }
-  if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
-    cl_mem image_memory;
-    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.GetDataType(),
-        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
-        &image_memory));
-    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
-  } else {
-    *result = Tensor(memory, memory_owner, shape, descriptor);
-  }
-  return absl::OkStatus();
+  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
+  return CreateTensor(context, shape5D, descriptor, nullptr, result);
 }
 
-absl::Status CreateTensorShared(const CLContext& context, cl_mem memory,
+absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
+                          const TensorDescriptor& descriptor, Tensor* result) {
+  return CreateTensor(context, shape, descriptor, nullptr, result);
+}
+
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
+                                const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
-  const bool memory_owner = false;
-  if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
-    cl_mem image_memory;
-    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.GetDataType(),
-        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
-        &image_memory));
-    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
-  } else {
-    *result = Tensor(memory, memory_owner, shape, descriptor);
-  }
-  return absl::OkStatus();
+  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
+  return CreateTensorShared(context, shape5D, descriptor, memory, result);
 }
 
-absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
-                                             cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
+                                const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                Tensor* result) {
+  return CreateTensorShared(context, shape, descriptor, memory, result);
+}
+
+absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
+                                             cl_mem memory, const BHWC& shape,
                                              const TensorDescriptor& descriptor,
                                              int width_pixel_alignment,
                                              Tensor* result) {
-  const BHWDC shape = descriptor.GetBHWDCShape();
+  BHWDC shape5d(shape.b, shape.h, shape.w, 1, shape.c);
+  return CreateSharedImage2DBufferTensor(context, memory, shape5d, descriptor,
+                                         width_pixel_alignment, result);
+}
+
+absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
+                                             cl_mem memory, const BHWDC& shape,
+                                             const TensorDescriptor& descriptor,
+                                             int width_pixel_alignment,
+                                             Tensor* result) {
   const int width = shape.b * shape.w * shape.d;
   const int height =
       descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
@@ -653,10 +686,17 @@ absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
   return absl::OkStatus();
 }
 
-absl::Status AllocateTensorMemory(const CLContext& context,
+absl::Status AllocateTensorMemory(const CLContext& context, const BHWC& shape,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result) {
-  return AllocateTensorMemory(context, descriptor, nullptr, result);
+  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
+  return AllocateTensorMemory(context, shape5D, descriptor, nullptr, result);
+}
+
+absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
+                                  const TensorDescriptor& descriptor,
+                                  CLMemory* result) {
+  return AllocateTensorMemory(context, shape, descriptor, nullptr, result);
 }
 
 }  // namespace cl
