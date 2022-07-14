@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/variant_ops_util.h"
 
+#include <functional>
+#include <utility>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"

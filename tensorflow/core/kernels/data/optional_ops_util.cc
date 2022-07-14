@@ -28,7 +28,6 @@ Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
                                               const Tensor& input, Tensor* out)>
                              zeros_like_func) {
   if (!x.has_value()) {
-    *y = x;
     return OkStatus();
   }
   std::vector<Tensor> zero_tensors;
@@ -53,7 +52,6 @@ Status OptionalBinaryAdd(
         "Cannot add optionals because one has a value and the other doesn't.");
   }
   if (!a.has_value()) {
-    *out = a;
     return OkStatus();
   }
   if (a.get_values().size() != b.get_values().size()) {

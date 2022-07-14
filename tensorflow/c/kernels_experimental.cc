@@ -485,7 +485,7 @@ void TF_AddNVariant(TF_OpKernelContext* ctx,
     }
 
     ::tensorflow::AllocatorAttributes attr;
-    if (cc_a.dtype() == TF_VARIANT) {
+    if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
       attr.set_on_host(true);
     }
 
