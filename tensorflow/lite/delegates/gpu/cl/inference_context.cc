@@ -23,6 +23,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,15 +38,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/precision.h"
-#include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
-#include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
-#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -55,22 +50,6 @@ namespace gpu {
 namespace cl {
 
 namespace {
-
-std::vector<std::pair<ValueId, TensorDescriptor>> GetNodeTensors(
-    const GpuNode& node) {
-  std::vector<std::pair<ValueId, TensorDescriptor>> result;
-  result.reserve(node.inputs.size() + node.outputs.size());
-  const OperationDef op_def = node.gpu_operation->GetDefinition();
-  for (int j = 0; j < node.inputs.size(); ++j) {
-    result.push_back({node.inputs[j], op_def.src_tensors[j]});
-  }
-  for (int j = 0; j < node.outputs.size(); ++j) {
-    result.push_back({node.outputs[j], op_def.dst_tensors[j]});
-  }
-
-  return result;
-}
-
 void AddUsage(ValueId id, int task_index,
               std::map<ValueId, int2>* usage_records) {
   auto it = usage_records->find(id);
@@ -138,10 +117,14 @@ void GetUsages(const GpuModel& model,
     }
   }
   for (int op_index = 0; op_index < model.nodes.size(); ++op_index) {
-    auto tensors = GetNodeTensors(model.nodes[op_index]);
-    for (auto& tensor : tensors) {
-      if (functor(tensor.first)) {
-        AddUsage(tensor.first, op_index, usages);
+    for (auto input_id : model.nodes[op_index].inputs) {
+      if (functor(input_id)) {
+        AddUsage(input_id, op_index, usages);
+      }
+    }
+    for (auto output_id : model.nodes[op_index].outputs) {
+      if (functor(output_id)) {
+        AddUsage(output_id, op_index, usages);
       }
     }
   }
@@ -576,27 +559,31 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
   for (auto& node : gpu_model.nodes) {
-    auto tensors = GetNodeTensors(node);
-    for (auto& t : tensors) {
-      if (GetTensorType(gpu_model, create_info, gpu_info, t.first) !=
-              TensorType::kRuntime ||
-          !IsBufferBased(gpu_info,
-                         gpu_model.tensors.at(t.first).GetStorageType()))
+    std::vector<ValueId> node_tensor_ids = node.inputs;
+    node_tensor_ids.insert(node_tensor_ids.end(), node.outputs.begin(),
+                           node.outputs.end());
+    for (auto& tensor_id : node_tensor_ids) {
+      if (GetTensorType(gpu_model, create_info, gpu_info, tensor_id) !=
+          TensorType::kRuntime) {
         continue;
-      const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
+      }
+      const auto& tensor_desc = gpu_model.tensors.at(tensor_id);
+      if (!IsBufferBased(gpu_info, tensor_desc.GetStorageType())) {
+        continue;
+      }
+      const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape_5d = gpu_model.tensors.at(t.first).GetBHWDCShape();
-      const auto shape = BHWC(shape_5d.b, shape_5d.h, shape_5d.w, shape_5d.c);
       const int buffer_index = use_offset_assignment
                                    ? tensor_index
                                    : buffer_assignment.object_ids[tensor_index];
-      if (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D ||
-          t.second.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D) {
+      if (tensor_desc.GetStorageType() == TensorStorageType::TEXTURE_2D ||
+          tensor_desc.GetStorageType() ==
+              TensorStorageType::SINGLE_TEXTURE_2D) {
         const size_t bytes_per_pixel =
-            SizeOf(t.second.GetDataType()) *
-            (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D
+            SizeOf(tensor_desc.GetDataType()) *
+            (tensor_desc.GetStorageType() == TensorStorageType::TEXTURE_2D
                  ? 4
-                 : shape.c);
+                 : tensor_desc.GetBHWCShape().c);
         size_t width_pixel_alignment =
             gpu_info.opencl_info.image_pitch_alignment;
         if (gpu_info.IsAdreno() &&
@@ -604,13 +591,14 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
           width_pixel_alignment /= bytes_per_pixel;
         }
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
-            t.second, width_pixel_alignment,
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
+            tensor_desc.GetBHWCShape(), tensor_desc, width_pixel_alignment,
             &shared_buffer_tensors_[tensor_index]));
       } else {
         RETURN_IF_ERROR(CreateSharedTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
-            t.second, &shared_buffer_tensors_[tensor_index]));
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
+            tensor_desc.GetBHWCShape(), tensor_desc,
+            &shared_buffer_tensors_[tensor_index]));
       }
       created_tensors[tensor_index] = true;
     }
@@ -655,21 +643,24 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
       usage_records, MemoryStrategy::EQUALITY, &assignment));
 
   for (auto& node : gpu_model.nodes) {
-    auto tensors = GetNodeTensors(node);
-    for (auto& t : tensors) {
-      if (GetTensorType(gpu_model, create_info, gpu_info, t.first) !=
-              TensorType::kRuntime ||
-          IsBufferBased(gpu_info,
-                        gpu_model.tensors.at(t.first).GetStorageType())) {
+    std::vector<ValueId> node_tensor_ids = node.inputs;
+    node_tensor_ids.insert(node_tensor_ids.end(), node.outputs.begin(),
+                           node.outputs.end());
+    for (auto& tensor_id : node_tensor_ids) {
+      if (GetTensorType(gpu_model, create_info, gpu_info, tensor_id) !=
+          TensorType::kRuntime) {
         continue;
       }
-      const auto& shape = gpu_model.tensors.at(t.first).GetBHWDCShape();
-      const auto id = assignment.object_ids[remap_from_graph_ids[t.first]];
-      graph_ids_to_strong_shape_tensors_[t.first] = id;
+      const auto& tensor_desc = gpu_model.tensors.at(tensor_id);
+      if (IsBufferBased(gpu_info, tensor_desc.GetStorageType())) {
+        continue;
+      }
+      const auto id = assignment.object_ids[remap_from_graph_ids[tensor_id]];
+      graph_ids_to_strong_shape_tensors_[tensor_id] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, shape, t.second,
-                                     &strong_shape_tensors_[id]));
+        RETURN_IF_ERROR(CreateTensor(*context, tensor_desc.GetBHWCShape(),
+                                     tensor_desc, &strong_shape_tensors_[id]));
       }
     }
   }
