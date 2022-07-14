@@ -193,7 +193,7 @@ void CollectCandidateIslands(
     llvm::Optional<llvm::StringRef> result =
         GetTpuClusterName(&candidate_wrapped_op);
     llvm::StringRef candidate_cluster_name;
-    if (result.hasValue()) {
+    if (result.has_value()) {
       candidate_cluster_name = result.getValue();
     } else if (is_op_calling_func_for_cluster(cluster_name,
                                               &candidate_wrapped_op)) {
@@ -294,7 +294,7 @@ LogicalResult MergeIsland(
   Operation& wrapped_op = island.GetBody().front();
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
-  if (!result.hasValue()) return success();
+  if (!result.has_value()) return success();
   llvm::StringRef cluster_name = result.getValue();
 
   // We found a _replication_info, let's build an island for the full cluster!
@@ -392,7 +392,7 @@ bool is_valid_special_tpu_op(
         GetTpuClusterName(wrapped_op);
 
     bool op_has_inconsistent_cluster_name =
-        wrapped_op_cluster_name.hasValue() &&
+        wrapped_op_cluster_name.has_value() &&
         !wrapped_op_cluster_name.getValue().equals(cluster_name);
 
     if (op_has_inconsistent_cluster_name) {
@@ -499,7 +499,7 @@ LogicalResult CollectSpecialTpuOps(
   if (visited_wrapped_ops.contains(&wrapped_op)) return success();
 
   llvm::Optional<llvm::StringRef> result = GetTpuClusterName(&wrapped_op);
-  if (!result.hasValue()) return success();
+  if (!result.has_value()) return success();
   llvm::StringRef cluster_name = result.getValue();
 
   visited_wrapped_ops.insert(&wrapped_op);
@@ -524,7 +524,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
     func_op.walk([&](Operation* op) {
       llvm::Optional<llvm::StringRef> cluster_name_opt = GetTpuClusterName(op);
-      if (cluster_name_opt.hasValue()) {
+      if (cluster_name_opt.has_value()) {
         tpu_funcs[cluster_name_opt.getValue()].insert(func_op);
       }
     });

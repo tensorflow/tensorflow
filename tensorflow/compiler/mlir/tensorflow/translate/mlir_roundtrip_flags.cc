@@ -204,7 +204,7 @@ Status ParseInputArrayInfo(
     }
 
     if (!node_shapes.empty()) {
-      if (!node_shapes[i].hasValue()) {
+      if (!node_shapes[i].has_value()) {
         info.shape.set_unknown_rank(true);
         continue;
       }

@@ -359,7 +359,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   int lhs_named_label, rhs_named_label;
   auto avaiable_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!avaiable_labels.hasValue()) return llvm::None;
+  if (!avaiable_labels.has_value()) return llvm::None;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
@@ -370,15 +370,15 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   out = std::get<2>(flattended_labels);
 
   auto lhs_map_or = EquationToMap(lhs);
-  if (!lhs_map_or.hasValue()) return llvm::None;
+  if (!lhs_map_or.has_value()) return llvm::None;
   auto lhs_map = lhs_map_or.getValue();
 
   auto rhs_map_or = EquationToMap(rhs);
-  if (!rhs_map_or.hasValue()) return llvm::None;
+  if (!rhs_map_or.has_value()) return llvm::None;
   auto rhs_map = rhs_map_or.getValue();
 
   auto out_map_or = EquationToMap(out);
-  if (!out_map_or.hasValue()) return llvm::None;
+  if (!out_map_or.has_value()) return llvm::None;
   auto out_map = out_map_or.getValue();
 
   EinsumDimensionNumbers dnums;

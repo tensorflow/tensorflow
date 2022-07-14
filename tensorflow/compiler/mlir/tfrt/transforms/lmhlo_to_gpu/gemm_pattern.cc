@@ -106,7 +106,7 @@ Type MlirComputationType(Type element_type,
 // Gets the platform specific Gemm algorithm value.
 tfrt::gpu::wrapper::BlasGemmAlgo GetBlasGemmAlgoOrDefault(
     lmhlo_gpu::GEMMOp op) {
-  if (!op.getAlgorithm().hasValue()) return kBlasGemmDefaultAlgo;
+  if (!op.getAlgorithm().has_value()) return kBlasGemmDefaultAlgo;
   return {static_cast<int>(op.getAlgorithm().getValue()), kGpuTargetPlatform};
 }
 

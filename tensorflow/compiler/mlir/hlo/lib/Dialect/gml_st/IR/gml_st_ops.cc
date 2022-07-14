@@ -176,7 +176,7 @@ void LoopOp::build(OpBuilder &builder, OperationState &result,
                                 static_cast<int32_t>(outputs.size())}));
   result.addAttribute(getIteratorTypesAttrName(), iteratorTypes);
 
-  if (distributionTypes.hasValue())
+  if (distributionTypes.has_value())
     result.addAttribute(getDistributionTypesAttrName(),
                         distributionTypes.getValue());
 
@@ -240,7 +240,7 @@ void LoopOp::print(OpAsmPrinter &p) {
       }))
     p << " iterators" << iterator_types();
 
-  if (distribution_types().hasValue())
+  if (distribution_types().has_value())
     p << " distribution" << distribution_types().getValue();
 
   p << ' ';

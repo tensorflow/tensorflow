@@ -1210,10 +1210,10 @@ template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
     IfLikeRegionOp op, Optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
-  assert(index.hasValue() ||
+  assert(index.has_value() ||
          !operands.empty() && "if-like op expected at least 1 operand");
   // Both regions branch back to the parent op.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
@@ -1275,10 +1275,10 @@ template <typename CaseLikeRegionOp>
 void GetCaseLikeRegionOpSuccessorRegions(
     CaseLikeRegionOp op, Optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
-  assert(index.hasValue() ||
+  assert(index.has_value() ||
          !operands.empty() && "case-like op expected at least 1 operand");
   // All branch regions branch back to the parent op.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));

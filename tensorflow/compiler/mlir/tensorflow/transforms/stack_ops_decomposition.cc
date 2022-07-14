@@ -97,7 +97,7 @@ void ModifyFunctionSignature(
   int64_t original_arg_count = new_input_types.size();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto stack_type = arg_to_stack_type(i);
-    if (!stack_type.hasValue()) continue;
+    if (!stack_type.has_value()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
     auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
@@ -358,7 +358,7 @@ LogicalResult HandleStackV2Op(
         if (!push) return llvm::None;
         return push.elem().getType();
       });
-  if (!elem_type.hasValue()) {
+  if (!elem_type.has_value()) {
     return stack.emitOpError("cannot infer element shape of stack");
   }
   OpBuilder builder(stack);

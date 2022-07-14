@@ -186,7 +186,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         // The input min/max or mean/std are not specified, then skip.
-        if (!min_max.first.hasValue() || !min_max.second.hasValue()) return;
+        if (!min_max.first.has_value() || !min_max.second.has_value()) return;
 
         TypeAttr params = quant::GetQuantizedTypeAttr(
             builder, input_type,

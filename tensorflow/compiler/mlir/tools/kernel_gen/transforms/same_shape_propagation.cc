@@ -293,7 +293,7 @@ class ShapeEqualityKnowledge {
             if (!dimOp) return false;
             if (!candidate) candidate = dimOp.getSource();
             auto index = dimOp.getConstantIndex();
-            if (!index.hasValue()) return false;
+            if (!index.has_value()) return false;
             return candidate == dimOp.getSource() &&
                    p.index() == index.getValue();
           });

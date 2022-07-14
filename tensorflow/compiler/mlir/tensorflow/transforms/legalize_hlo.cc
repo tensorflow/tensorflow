@@ -168,17 +168,17 @@ struct ConvertNdConvOp {
 
     // All ones in "lhs_dilation" means this "mhlo.conv" op should be
     // converted to "tf.Conv2D" or "tf.DepthwiseConv2dNativeOp".
-    if (conv_op.lhs_dilation().hasValue()) {
+    if (conv_op.lhs_dilation().has_value()) {
       auto lhs_dilation = conv_op.lhs_dilation().getValue();
       if (!lhs_dilation.isSplat() || lhs_dilation.getSplatValue<int64_t>() != 1)
         return false;
     }
 
-    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
-                                                        .getValue()
-                                                        .getType()
-                                                        .cast<ShapedType>()
-                                                        .getRank() != 1)
+    if (!conv_op.window_strides().has_value() || conv_op.window_strides()
+                                                         .getValue()
+                                                         .getType()
+                                                         .cast<ShapedType>()
+                                                         .getRank() != 1)
       return false;
 
     auto num_spatial_dims =
@@ -316,7 +316,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         rhs_dilation_array_2d);
 
     // Window reversal is unsupported.
-    if (conv_op.window_reversal().hasValue() &&
+    if (conv_op.window_reversal().has_value() &&
         conv_op.window_reversal()->getValues<bool>()[0] == true)
       return failure();
     auto window_reversal_2d = DenseIntElementsAttr::get(
@@ -324,7 +324,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         SmallVector<int64_t>({0, 0}));
 
     // Precision config
-    if (!conv_op.precision_config().hasValue()) return failure();
+    if (!conv_op.precision_config().has_value()) return failure();
 
     // Dimension numbers reflect the form of the 2d conv op NWHC * WHIO -> NWHC
     auto dnums_2d =
@@ -439,7 +439,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;
     SmallVector<int64_t, 8> explicit_padding;
-    if (!conv_op.padding().hasValue() ||
+    if (!conv_op.padding().has_value() ||
         (conv_op.padding().getValue().isSplat() &&
          conv_op.padding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
@@ -746,7 +746,7 @@ class ConvertNonTrivialConvOp
 
     mhlo::ConvDimensionNumbersAttr dnums = conv_op.dimension_numbers();
     std::string padding;
-    if (!conv_op.padding().hasValue() ||
+    if (!conv_op.padding().has_value() ||
         (conv_op.padding().getValue().isSplat() &&
          conv_op.padding()->getSplatValue<int64_t>() == 0)) {
       padding = "VALID";
@@ -825,7 +825,7 @@ class ConvertNonTrivialConvOp
     }
 
     // Checks lhs_dilation is non-trivial.
-    if (!conv_op.lhs_dilation().hasValue()) {
+    if (!conv_op.lhs_dilation().has_value()) {
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires lhs_dilation attribute");
     }
@@ -834,11 +834,11 @@ class ConvertNonTrivialConvOp
       return rewriter.notifyMatchFailure(conv_op,
                                          "requires non-trivial lhs_dilation");
 
-    if (!conv_op.window_strides().hasValue() || conv_op.window_strides()
-                                                        .getValue()
-                                                        .getType()
-                                                        .cast<ShapedType>()
-                                                        .getRank() != 1)
+    if (!conv_op.window_strides().has_value() || conv_op.window_strides()
+                                                         .getValue()
+                                                         .getType()
+                                                         .cast<ShapedType>()
+                                                         .getRank() != 1)
       return rewriter.notifyMatchFailure(
           conv_op, "requires window_strides to equal to one");
 
@@ -927,7 +927,7 @@ class ConvertNonTrivialConvOp
     // When "lhs_dilation" is 2D and contains at least "1", and "rhs_dilation"
     // are all "1"s, this "mhlo.conv" op can potentially be converted to
     // "tf.ResizeBilinearOp".
-    if (!conv_op.rhs_dilation().hasValue() || !conv_op.padding().hasValue())
+    if (!conv_op.rhs_dilation().has_value() || !conv_op.padding().has_value())
       return rewriter.notifyMatchFailure(
           conv_op, "resize op requires rhs_dilation and padding");
 
@@ -1509,7 +1509,7 @@ bool MatchIotaConst(DenseIntElementsAttr dimensions, Value iota) {
 
   auto index =
       llvm::Optional<SmallVector<int64_t>>(llvm::in_place, iota_type.getRank());
-  while (index.hasValue()) {
+  while (index.has_value()) {
     StridedArrayView<DenseIntElementsAttr> array_view(
         iota_const_attr, iota_shape, *index, reduce_dim);
     for (int64_t i = 0; i < array_view.size(); ++i) {
@@ -2297,7 +2297,7 @@ bool IsSpatialPoolingWithoutDilation(
   const uint64_t rank = rw.window_dimensions().size();
   if (rank <= 2) return false;
 
-  if (rw.window_strides().hasValue()) {
+  if (rw.window_strides().has_value()) {
     window_strides->insert(window_strides->end(),
                            rw.window_strides()->getValues<int64_t>().begin(),
                            rw.window_strides()->getValues<int64_t>().end());
@@ -2306,7 +2306,7 @@ bool IsSpatialPoolingWithoutDilation(
   }
 
   llvm::SmallVector<int64_t, 10> padding;
-  if (rw.padding().hasValue()) {
+  if (rw.padding().has_value()) {
     padding.insert(padding.begin(), rw.padding()->getValues<int64_t>().begin(),
                    rw.padding()->getValues<int64_t>().end());
   } else {
@@ -2325,12 +2325,12 @@ bool IsSpatialPoolingWithoutDilation(
       padding[2 * channel_dim + 1] != 0)
     return false;
 
-  if (rw.window_dilations().hasValue() &&
+  if (rw.window_dilations().has_value() &&
       !(rw.window_dilations()->isSplat() &&
         rw.window_dilations()->getSplatValue<APInt>() == 1))
     return false;
 
-  if (rw.base_dilations().hasValue() &&
+  if (rw.base_dilations().has_value() &&
       !(rw.base_dilations()->isSplat() &&
         rw.base_dilations()->getSplatValue<APInt>() == 1))
     return false;
@@ -2400,7 +2400,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
          &operand_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
           // According to the definition, the default value of these attributes
           // are all ones when unspecified.
-          if (!attr.hasValue()) return true;
+          if (!attr.has_value()) return true;
           if (attr->getType().getShape()[0] != operand_type.getRank())
             return false;
           if (!attr->isSplat()) return false;

@@ -649,11 +649,11 @@ static GpuConvDescriptor GetConvDescriptor(
   }
 
   // Set attributes specific for fused convolutions.
-  if (fused.hasValue())
+  if (fused.has_value())
     descriptor.backend_config.set_activation_mode(fused->activation_mode);
 
   // Set attributes specific for convolutions with side input.
-  if (side_input.hasValue())
+  if (side_input.has_value())
     descriptor.backend_config.set_side_input_scale(
         side_input->side_input_scale);
 
@@ -694,10 +694,10 @@ struct Conv {
       Optional<double> side_input_scale = llvm::None) const {
     // Build config for optional attributes.
     Optional<FusedConvAttrs> fused_attrs = llvm::None;
-    if (activation_mode.hasValue()) fused_attrs = {*activation_mode};
+    if (activation_mode.has_value()) fused_attrs = {*activation_mode};
 
     Optional<SideInputAttrs> side_input_attrs = llvm::None;
-    if (side_input_scale.hasValue()) side_input_attrs = {*side_input_scale};
+    if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
     // Prepare a descriptor for the XLA convolution.
     GpuConvDescriptor descriptor = GetConvDescriptor(
@@ -718,8 +718,9 @@ struct Conv {
     // Prepare buffer arguments.
     std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
                                                  GetDeviceAddress(operand1)};
-    if (bias.hasValue()) buffers.push_back(GetDeviceAddress(*bias));
-    if (side_input.hasValue()) buffers.push_back(GetDeviceAddress(*side_input));
+    if (bias.has_value()) buffers.push_back(GetDeviceAddress(*bias));
+    if (side_input.has_value())
+      buffers.push_back(GetDeviceAddress(*side_input));
 
     se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
     se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);

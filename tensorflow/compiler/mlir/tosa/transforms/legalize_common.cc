@@ -2883,7 +2883,7 @@ llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
       input_is_qtype, input_scale, input_zp, output_scale, output_zp);
 
-  if (!val.hasValue()) return llvm::None;
+  if (!val.has_value()) return llvm::None;
 
   if (!input_is_qtype) {
     Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale);

@@ -1097,7 +1097,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     // AllGather is cross replica if channel_id is not set.
-    bool IsCrossReplica() { return !getChannelId().hasValue(); }
+    bool IsCrossReplica() { return !getChannelId().has_value(); }
   }];
 }
 

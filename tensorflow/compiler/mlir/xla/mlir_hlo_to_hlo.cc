@@ -157,7 +157,7 @@ static std::vector<int64_t> ConvertDenseIntAttr(
 // numbers (empty if the attribute is absent).
 static std::vector<int64_t> Convert_broadcast_dimensions(
     llvm::Optional<mlir::DenseIntElementsAttr> broadcast_dimensions) {
-  if (!broadcast_dimensions.hasValue()) return {};
+  if (!broadcast_dimensions.has_value()) return {};
 
   return ConvertDenseIntAttr(*broadcast_dimensions);
 }
@@ -301,7 +301,7 @@ static std::vector<int64_t> Convert_ArrayRef(llvm::ArrayRef<int64_t> values) {
 // Precision enum. This should have been checked in the op verify method.
 static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
     llvm::Optional<mlir::ArrayAttr> optional_precision_config_attr) {
-  if (!optional_precision_config_attr.hasValue()) return nullptr;
+  if (!optional_precision_config_attr.has_value()) return nullptr;
 
   auto precision_config = std::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.getValue()) {
@@ -370,7 +370,7 @@ xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
 
 std::optional<xla::ChannelHandle> Convert_channel_handle(
     llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
-  if (!attr.hasValue()) return std::nullopt;
+  if (!attr.has_value()) return std::nullopt;
   return Convert_channel_handle(attr.getValue());
 }
 

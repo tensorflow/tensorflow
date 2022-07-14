@@ -890,7 +890,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_.CreateVector<int64_t>(zero_points),
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
-  } else if (quant_parameters.hasValue()) {
+  } else if (quant_parameters.has_value()) {
     q_params = quant_parameters.getValue();
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
@@ -1353,7 +1353,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
   Optional<uint64_t> axis = stats_op.getAxis();
   std::vector<float> mins, maxs;
   mlir::DenseFPElementsAttr min_max_attr =
-      axis_stats.hasValue()
+      axis_stats.has_value()
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
@@ -1371,7 +1371,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
       builder_, builder_.CreateVector<float>(mins),
       builder_.CreateVector<float>(maxs), /*scale=*/0, /*zero_point=*/0,
       tflite::QuantizationDetails_NONE, /*details=*/0,
-      /*quantized_dimension=*/axis.hasValue() ? axis.getValue() : 0);
+      /*quantized_dimension=*/axis.has_value() ? axis.getValue() : 0);
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
@@ -1460,7 +1460,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
           Type qtype = attr.getValue();
           auto tensor_or = BuildTensorFromType(
               qtype, name_mapper_.GetUniqueName(intermediate).str());
-          if (!tensor_or.hasValue()) {
+          if (!tensor_or.has_value()) {
             continue;
           } else {
             intermediates.push_back(tensors.size());
