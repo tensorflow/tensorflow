@@ -9587,6 +9587,26 @@ func CumulativeLogsumexp(scope *Scope, x tf.Output, axis tf.Output, optional ...
 	return op.Output(0)
 }
 
+// An op that informs a host of the global ids of all the of TPUs in the system.
+//
+// Arguments:
+//
+//	topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU topology.
+//
+// Returns the created operation.
+func DTensorSetGlobalTPUArray(scope *Scope, topology tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DTensorSetGlobalTPUArray",
+		Input: []tf.Input{
+			topology,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // DataFormatDimMapAttr is an optional argument to DataFormatDimMap.
 type DataFormatDimMapAttr func(optionalAttr)
 
