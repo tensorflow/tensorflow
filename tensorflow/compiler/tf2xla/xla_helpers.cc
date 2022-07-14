@@ -170,6 +170,9 @@ Status ResolveDeviceAssignment(
   // devices otherwise.
   params->instance.shape = TensorShape({1});
 
+  VLOG(5) << "Using collective params to resolve device assignment: "
+          << params->ToString();
+
   Status st;
   absl::Notification n;
   ctx->collective_executor()->CompleteParamsAsync(
@@ -182,8 +185,7 @@ Status ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
-  VLOG(5) << "Using collective params to resolve device assignment: "
-          << params->ToString();
+  VLOG(5) << "Collective params completed: " << params->ToString();
 
   // Identify the physical device associated with each replica.
   device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
