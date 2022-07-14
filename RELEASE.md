@@ -39,6 +39,8 @@
           * tf.einsum is supported with multiple unknown shapes.
           * tf.unsortedsegmentprod op is supported.
           * tf.unsortedsegmentmax op is supported.
+    *   Updates to existing operations:
+          * tfl.scatter_nd now supports I1 for update arg.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
 *   `tf.keras`:
 
