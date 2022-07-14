@@ -885,8 +885,13 @@ class UnbatchGradResource : public ResourceBase {
     const Tensor& data_t = context->input(0);
     const Tensor& batch_index_t = context->input(1);
     const Tensor& grad_t = context->input(2);
+    const Tensor& batch_key_t = context->input(3);
 
     mutex_lock ml(mu_);
+    if (batch_key_t.NumElements() != 1) {
+      return errors::InvalidArgument("Expected `id` to be scalar. Received ",
+                                     batch_key_t.DebugString());
+    }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
     // Mark our tensor as available.
@@ -902,6 +907,11 @@ class UnbatchGradResource : public ResourceBase {
             "batch_index is empty while the tensor isn't.");
       }
       std::unordered_set<int64_t> missing_tensors;
+      if (batch_index_t.NumElements() != batch_index_t.dim_size(0) * 3) {
+        return errors::InvalidArgument(
+            "batch_index should contain ", batch_index_t.dim_size(0) * 3,
+            " elements. Received ", batch_index_t.NumElements());
+      }
       const auto batch_index =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {

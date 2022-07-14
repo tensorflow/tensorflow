@@ -20,7 +20,9 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -30,6 +32,7 @@ from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import gen_batch_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
@@ -557,6 +560,56 @@ class BatchOpsTest(test.TestCase):
       # The thread's call should hit the timeout, and thus get 0 results.
       self.assertEqual(len(thread_results), 0)
 
+  def testUnbatchGradInvalidId(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_batch_ops.unbatch_grad(
+              original_input=constant_op.constant([1]),
+              batch_index=constant_op.constant([
+                  [0, 0, 0],
+              ], dtype=dtypes.int64),
+              grad=constant_op.constant([
+                  1,
+              ]),
+              id=constant_op.constant([
+                  1,
+                  1,
+              ], dtype=dtypes.int64)))
+
+  def testUnbatchGradInvalidBatchId(self):
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_batch_ops.unbatch_grad(
+              original_input=constant_op.constant([1]),
+              batch_index=constant_op.constant([
+                  [0, 0],
+              ], dtype=dtypes.int64),
+              grad=constant_op.constant([
+                  1,
+              ]),
+              id=constant_op.constant([
+                  1,
+              ], dtype=dtypes.int64)))
+
+  def testUnbatchGradInvalidArgs(self):
+    original_input = random_ops.random_uniform(
+        shape=(3, 1), dtype=dtypes.float64, maxval=None)
+    batch_index = random_ops.random_uniform(
+        shape=(3, 1), dtype=dtypes.int64, maxval=65536)
+    grad = random_ops.random_uniform(
+        shape=(3, 1), dtype=dtypes.float64, maxval=None)
+    batch_id = random_ops.random_uniform(
+        shape=(3, 1), dtype=dtypes.int64, maxval=65536)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(
+          gen_batch_ops.unbatch_grad(
+              original_input=original_input,
+              batch_index=batch_index,
+              grad=grad,
+              id=batch_id,
+              container="",
+              shared_name="",
+              name=""))
 
 if __name__ == "__main__":
   test.main()
