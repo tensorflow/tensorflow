@@ -689,6 +689,7 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
+        "//tensorflow/core/kernels/uniform_quant_ops:kernels",
         "//tensorflow/core/kernels:word2vec_kernels",
         "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels/image:image",
