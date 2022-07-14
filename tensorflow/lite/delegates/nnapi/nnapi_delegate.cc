@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
 #include <algorithm>
+#include <cinttypes>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
@@ -34,6 +35,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/serialization.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
@@ -4482,6 +4484,27 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
           context, "NNAPI delegate requested but no accelerators available.");
       return kTfLiteError;
     }
+
+    if (nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks != nullptr) {
+      nnapi_->SL_ANeuralNetworksDiagnostic_registerCallbacks(
+          [](const void* nnapi,
+             const ANeuralNetworksDiagnosticCompilationInfo* info) {
+            return LogCompilationInfoOnce(static_cast<const NnApi*>(nnapi),
+                                          info);
+          },
+          [](const void* nnapi,
+             const ANeuralNetworksDiagnosticExecutionInfo* info) {
+            return LogExecutionInfoOnce(static_cast<const NnApi*>(nnapi), info);
+          },
+          const_cast<NnApi*>(nnapi_));
+      TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                      "Registered diagnostics callbacks in NNAPI SL driver"
+                      "SL_ANeuralNetworksDiagnostic_registerCallbacks.");
+    } else {
+      TFLITE_LOG_PROD(TFLITE_LOG_WARNING,
+                      "NNAPI SL driver did not implement "
+                      "SL_ANeuralNetworksDiagnostic_registerCallbacks!");
+    }
   }
 
   if (nnapi_->android_sdk_version < kMinSdkVersionForNNAPI12 &&
@@ -6212,6 +6235,109 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
       std::make_unique<NNMemory>(nnapi_, "output_pool", total_output_byte_size);
 
   return kTfLiteOk;
+}
+
+void NNAPIDelegateKernel::LogCompilationInfoOnce(
+    const NnApi* nnapi, const ANeuralNetworksDiagnosticCompilationInfo* info) {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "NNAPI SL compilation callback called.");
+
+  const int32_t session_id =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId(info);
+  const int32_t error_code =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode(info);
+  const uint64_t compilation_time_ns =
+      nnapi
+          ->SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos(
+              info);
+  const int64_t nnapi_version =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion(info);
+  const uint8_t model_arch_hash_first_byte =
+      *nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash(
+          info);
+  const std::string device_ids_string = std::string(
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds(info));
+  const ANeuralNetworksDiagnosticDataClass input_data_class =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass(
+          info);
+  const ANeuralNetworksDiagnosticDataClass output_data_class =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass(
+          info);
+  const bool is_caching_enabled =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled(info);
+  const bool is_control_flow_used =
+      nnapi->SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed(
+          info);
+
+  TFLITE_LOG_PROD_ONCE(
+      TFLITE_LOG_INFO,
+      "Compilation info: getSessionId=%d getErrorCode=%d "
+      "getCompilationTimeNanos=%" PRIu64 " getNnApiVersion=%" PRId64
+      " getDeviceIds=%s getModelArchHash=%x getInputDataClass=%d "
+      "getOutputDataClass=%d isCachingEnabled=%s isControlFlowUser=%s",
+      session_id, error_code, compilation_time_ns, nnapi_version,
+      device_ids_string.c_str(), unsigned{model_arch_hash_first_byte},
+      input_data_class, output_data_class, is_caching_enabled ? "Y" : "N",
+      is_control_flow_used ? "Y" : "N");
+}
+
+void NNAPIDelegateKernel::LogExecutionInfoOnce(
+    const NnApi* nnapi, const ANeuralNetworksDiagnosticExecutionInfo* info) {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "NNAPI SL execution callback called.");
+
+  const int32_t session_id =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId(info);
+
+  const int32_t error_code =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode(info);
+
+  const int64_t nnapi_version =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion(info);
+
+  const uint8_t model_arch_hash_first_byte =
+      *nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash(info);
+  const std::string device_ids_string = std::string(
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds(info));
+  const ANeuralNetworksDiagnosticDataClass input_data_class =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass(info);
+  const ANeuralNetworksDiagnosticDataClass output_data_class =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass(info);
+  const bool is_caching_enabled =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled(info);
+  const bool is_control_flow_used =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed(info);
+  const ANeuralNetworksDiagnosticExecutionMode execution_mode =
+      nnapi->SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode(info);
+
+  const uint64_t runtime_time_ns =
+      nnapi
+          ->SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos(  // NOLINT line too long
+              info);
+
+  const uint64_t driver_time_ns =
+      nnapi
+          ->SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos(  // NOLINT line too long
+              info);
+
+  const uint64_t hardware_time_ns =
+      nnapi
+          ->SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos(  // NOLINT line too long
+              info);
+
+  TFLITE_LOG_PROD_ONCE(
+      TFLITE_LOG_INFO,
+      "Execution info: getSessionId=%d getErrorCode=%d "
+      "getNnApiVersion=%" PRId64
+      " getModelArchHash=%x getDeviceIds=%s getInputDataClass=%d "
+      "getOutputDataClass=%d isCachingEnabled=%s isControlFlowUsed=%s "
+      "getExecutionMode=%d getRuntimeExecutionTimeNanos=%" PRIu64
+      " getDriverExecutionTimeNanos=%" PRIu64
+      " getHardwareExecutionTimeNanos=%" PRIu64,
+      session_id, error_code, nnapi_version,
+      unsigned{model_arch_hash_first_byte}, device_ids_string.c_str(),
+      input_data_class, output_data_class, is_caching_enabled ? "Y" : "N",
+      is_control_flow_used ? "Y" : "N", execution_mode, runtime_time_ns,
+      driver_time_ns, hardware_time_ns);
 }
 
 }  // namespace nnapi
