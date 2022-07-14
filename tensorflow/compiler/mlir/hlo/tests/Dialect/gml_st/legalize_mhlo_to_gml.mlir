@@ -13,7 +13,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>, %shape : tensor<3xin
   // CHECK-NEXT: %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
   // CHECK-SAME: ins(%[[ARG]] : tensor<?x?xf32>)
   // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)
-  // CHECK-SAME: {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}
+  // CHECK-SAME: {broadcast_dimensions = [:i64 0, 2]}
   // CHECK:     return %[[BCAST]]
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape)
       { broadcast_dimensions = dense<[0, 2]> : tensor<2xi64> }

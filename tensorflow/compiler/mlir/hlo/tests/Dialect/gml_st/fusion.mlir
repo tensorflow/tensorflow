@@ -24,7 +24,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // CHECK-DAG: %[[ARG_SPACE:.*]] = gml_st.space [%[[ARG_D0]], %[[ARG_D1]]] : !gml_st.tile<?x?>
 
   // Check collapsing.
-  // CHECK-DAG: %[[CED_RES_TILE:.*]] = gml_st.collapse_tile %[[RES_TILE]], [0, 2] : !gml_st.tile<3x4x5> -> !gml_st.tile<3x5>
+  // CHECK-DAG: %[[CED_RES_TILE:.*]] = gml_st.collapse_tile %[[RES_TILE]], [0, 2] : !gml_st.tile<3x4x5> to !gml_st.tile<3x5>
 
   // Check first dim of the arg tile.
   // CHECK-DAG: %[[IS_EXPANDING_D0:.*]] = arith.cmpi ne, %[[ARG_D0]], %[[RES_D0]] : index
@@ -49,7 +49,7 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   // CHECK-NEXT: %[[RES:.*]] = gml_st.dynamic_broadcast_in_dim
   // CHECK-SAME ins(%[[ARG_SUB]] : tensor<?x?xf32>)
   // CHECK-SAME outs(%[[INIT_SUB]] : tensor<3x4x5xf32>)
-  // CHECK-SAME {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>}
+  // CHECK-SAME {broadcast_dimensions = [0, 2]}
   // CHECK: return %[[RES]] : tensor<3x4x5xf32>
 
   %c0 = arith.constant 0 : index
@@ -61,8 +61,8 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<?x?xf32>,
   %d1 = tensor.extract %shape[%c1] : tensor<3xindex>
   %d2 = tensor.extract %shape[%c2] : tensor<3xindex>
   %dst = linalg.init_tensor [%d0, %d1, %d2] : tensor<?x?x?xf32>
-  %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>) 
-      outs(%dst: tensor<?x?x?xf32>) { broadcast_dimensions = dense<[0, 2]> : tensor<2xi64> }
+  %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?x?xf32>) { broadcast_dimensions = [:i64 0, 2] }
 
   // Materialze a tile.
   %space = gml_st.space [%d0, %d1, %d2] : !gml_st.tile<?x?x?>
@@ -487,7 +487,7 @@ func.func @dim_reification_dynamic_broadcast_in_dim(%arg: tensor<?xf32>,
   %c1 = arith.constant 1 : index
   %0 = gml_st.dynamic_broadcast_in_dim
       ins(%arg : tensor<?xf32>) outs(%init : tensor<?x?xf32>)
-      {broadcast_dimensions = dense<1> : tensor<1xi64>}
+      {broadcast_dimensions = [:i64 1]}
   %1 = tensor.dim %0, %c1 : tensor<?x?xf32>
   return %1 : index
 }
