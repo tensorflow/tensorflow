@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Interface to TensorFlow Lite model interpreter, excluding experimental methods.
@@ -87,8 +88,10 @@ public interface InterpreterApi extends AutoCloseable {
 
   /** An options class for controlling runtime interpreter behavior. */
   class Options {
+
     public Options() {
       this.delegates = new ArrayList<>();
+      this.delegateFactories = new ArrayList<>();
     }
 
     public Options(Options other) {
@@ -96,6 +99,7 @@ public interface InterpreterApi extends AutoCloseable {
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
       this.delegates = new ArrayList<>(other.delegates);
+      this.delegateFactories = new ArrayList<>(other.delegateFactories);
       this.runtime = other.runtime;
     }
 
@@ -166,21 +170,56 @@ public interface InterpreterApi extends AutoCloseable {
       return allowCancellation != null && allowCancellation;
     }
 
-    /** Adds a {@link Delegate} to be applied during interpreter creation. */
+    /**
+     * Adds a {@link Delegate} to be applied during interpreter creation.
+     *
+     * <p>Delegates added here are applied before any delegates created from a {@link
+     * DelegateFactory} that was added with {@link #addDelegateFactory}.
+     *
+     * <p>Note that TF Lite in Google Play Services (see {@link #setRuntime}) does not support
+     * external (developer-provided) delegates, and adding a {@link Delegate} other than {@link
+     * NnApiDelegate} here is not allowed when using TF Lite in Google Play Services.
+     */
     public Options addDelegate(Delegate delegate) {
       delegates.add(delegate);
       return this;
     }
 
     /**
-     * Returns the list of delegates intended to be applied during interpreter creation (that have
-     * been registered via {@code addDelegate}).
+     * Returns the list of delegates intended to be applied during interpreter creation that have
+     * been registered via {@code addDelegate}.
      */
     public List<Delegate> getDelegates() {
       return Collections.unmodifiableList(delegates);
     }
 
-    /** Enum to represent where to get the TensorFlow Lite runtime implementation from. */
+    /**
+     * Adds a {@link DelegateFactory} which will be invoked to apply its created {@link Delegate}
+     * during interpreter creation.
+     *
+     * <p>Delegates from a delegated factory that was added here are applied after any delegates
+     * added with {@link #addDelegate}.
+     */
+    public Options addDelegateFactory(DelegateFactory delegateFactory) {
+      delegateFactories.add(delegateFactory);
+      return this;
+    }
+
+    /**
+     * Returns the list of delegate factories that have been registered via {@code
+     * addDelegateFactory}).
+     */
+    public List<DelegateFactory> getDelegateFactories() {
+      return Collections.unmodifiableList(delegateFactories);
+    }
+
+    /**
+     * Enum to represent where to get the TensorFlow Lite runtime implementation from.
+     *
+     * <p>The difference between this class and the RuntimeFlavor class: This class specifies a
+     * <em>preference</em> which runtime to use, whereas {@link RuntimeFlavor} specifies which exact
+     * runtime <em>is</em> being used.
+     */
     public enum TfLiteRuntime {
       /**
        * Use a TF Lite runtime implementation that is linked into the application. If there is no
@@ -237,8 +276,10 @@ public interface InterpreterApi extends AutoCloseable {
     Boolean useNNAPI;
     Boolean allowCancellation;
 
-    // See InterpreterApi.Options#addDelegate(boolean).
+    // See InterpreterApi.Options#addDelegate.
     final List<Delegate> delegates;
+    // See InterpreterApi.Options#addDelegateFactory.
+    private final List<DelegateFactory> delegateFactories;
   }
 
   /**
@@ -270,8 +311,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  static InterpreterApi create(
-      @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
+  static InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
     TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
     InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(byteBuffer, options);
