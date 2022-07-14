@@ -12051,6 +12051,14 @@ op {
   is_stateful: true
 }
 op {
+  name: "DTensorSetGlobalTPUArray"
+  input_arg {
+    name: "topology"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
   name: "DTensorShardedPrefix"
   input_arg {
     name: "prefix"
