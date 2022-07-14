@@ -25,7 +25,6 @@ import org.tensorflow.lite.nnapi.NnApiDelegateImpl;
 /** Package-private factory class for constructing InterpreterApi instances. */
 @UsedByReflection("InterpreterFactory.java")
 class InterpreterFactoryImpl implements InterpreterFactoryApi {
-
   public InterpreterFactoryImpl() {}
 
   @Override
@@ -52,12 +51,12 @@ class InterpreterFactoryImpl implements InterpreterFactoryApi {
     return nativeSchemaVersion();
   }
 
+  private static native String nativeRuntimeVersion();
+
+  private static native String nativeSchemaVersion();
+
   @Override
   public NnApiDelegate.PrivateInterface createNnApiDelegateImpl(NnApiDelegate.Options options) {
     return new NnApiDelegateImpl(options);
   }
-
-  private static native String nativeRuntimeVersion();
-
-  private static native String nativeSchemaVersion();
 }

@@ -106,7 +106,7 @@ public final class GpuDelegateTest {
 
     Interpreter.Options options = new Interpreter.Options();
     try (GpuDelegate delegate =
-            new GpuDelegate(new GpuDelegateFactory.Options().setQuantizedModelsAllowed(false));
+            new GpuDelegate(new GpuDelegate.Options().setQuantizedModelsAllowed(false));
         Interpreter interpreter =
             new Interpreter(MOBILENET_QUANTIZED_MODEL_BUFFER, options.addDelegate(delegate))) {
       byte[][] output = new byte[1][1001];
@@ -164,7 +164,7 @@ public final class GpuDelegateTest {
     if (enableSerialization) {
       options.addDelegate(
           new GpuDelegate(
-              new GpuDelegateFactory.Options()
+              new GpuDelegate.Options()
                   .setSerializationParams(serializationDir, "GpuDelegateTest.testModelToken")));
     } else {
       options.addDelegate(new GpuDelegate());

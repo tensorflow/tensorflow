@@ -55,11 +55,9 @@ filegroup(
 JAVA_API_SRCS = [
     "src/main/java/org/tensorflow/lite/DataType.java",
     "src/main/java/org/tensorflow/lite/Delegate.java",
-    "src/main/java/org/tensorflow/lite/DelegateFactory.java",
     "src/main/java/org/tensorflow/lite/InterpreterApi.java",
     "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
     "src/main/java/org/tensorflow/lite/InterpreterFactoryApi.java",
-    "src/main/java/org/tensorflow/lite/RuntimeFlavor.java",
     "src/main/java/org/tensorflow/lite/Tensor.java",
     "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
     "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
@@ -85,7 +83,6 @@ filegroup(
         "src/main/java/org/tensorflow/lite/DataType.java",
         "src/main/java/org/tensorflow/lite/DataTypeUtils.java",
         "src/main/java/org/tensorflow/lite/Delegate.java",
-        "src/main/java/org/tensorflow/lite/DelegateFactory.java",
         "src/main/java/org/tensorflow/lite/InterpreterApi.java",
         "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
         "src/main/java/org/tensorflow/lite/InterpreterFactoryApi.java",
@@ -93,7 +90,6 @@ filegroup(
         "src/main/java/org/tensorflow/lite/InterpreterImpl.java",
         "src/main/java/org/tensorflow/lite/NativeInterpreterWrapper.java",
         "src/main/java/org/tensorflow/lite/NativeSignatureRunnerWrapper.java",
-        "src/main/java/org/tensorflow/lite/RuntimeFlavor.java",
         "src/main/java/org/tensorflow/lite/Tensor.java",
         "src/main/java/org/tensorflow/lite/TensorFlowLite.java",
         "src/main/java/org/tensorflow/lite/TensorImpl.java",
@@ -170,19 +166,12 @@ aar_with_jni(
     android_library = ":tensorflowlite_flex",
 )
 
-# EXPERIMENTAL: AAR target for the GPU acceleration API, EXCLUDING implementation.
-# Note that this .aar contains *only* the GPU delegate API; clients must also include a GPU delegate
-# implementation, as well as the core `tensorflow-lite` runtime.
-aar_without_jni(
-    name = "tensorflow-lite-gpu-api",
-    android_library = ":tensorflowlite_gpu_api",
-)
-
-# EXPERIMENTAL: AAR target for GPU acceleration API and implementation. Note that this .aar contains
-# *only* the GPU delegate; clients must also include the core `tensorflow-lite` runtime.
+# EXPERIMENTAL: AAR target for GPU acceleration. Note that this .aar contains
+# *only* the GPU delegate; clients must also include the core `tensorflow-lite`
+# runtime.
 aar_with_jni(
     name = "tensorflow-lite-gpu",
-    android_library = ":tensorflowlite_gpu_impl",
+    android_library = ":tensorflowlite_gpu",
     headers = [
         "//tensorflow/lite/delegates/gpu:delegate.h",
     ],
@@ -206,12 +195,12 @@ android_library_with_tflite(
     proguard_specs = ["proguard.flags"],
     tflite_deps = [
         ":tensorflowlite_native",
+        ":tensorflowlite_api",
     ],
-    exports = [
+    tflite_exports = [
         ":tensorflowlite_api",
     ],
     deps = [
-        ":tensorflowlite_api",
         "@org_checkerframework_qual",
     ],
 )
@@ -221,7 +210,7 @@ android_library_with_tflite(
 # Maven package "org.tensorflow:tensorflow-lite-api".
 # This target does not include the TF Lite Runtime, which nevertheless is
 # required and must be provided via a separate dependency.
-android_library(
+android_library_with_tflite(
     name = "tensorflowlite_api",
     srcs = [":java_api_srcs"],
     manifest = "AndroidManifest.xml",
@@ -274,41 +263,20 @@ tflite_flex_android_library(
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
-alias(
+android_library(
     name = "tensorflowlite_gpu",
-    actual = "tensorflowlite_gpu_impl",
-)
-
-# EXPERIMENTAL: Android target for the implementation of the GPU acceleration API, including the
-# native library. Note that this library contains *only* the GPU delegate and its Java wrapper;
-# clients must also include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
-android_library(
-    name = "tensorflowlite_gpu_impl",
-    # Note that we need to directly includes all the Java source files we intend to ship directly in
-    # "srcs" rather than depending on them via "deps"/"exports"; this is needed when building the
-    # AAR file since the current AAR building process doesn't include the transitive Java
-    # dependencies. The API target however can be an export, because it is shipped in a different
-    # AAR file.
-    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate_impl"],
-    exports = [
-        ":tensorflowlite_gpu_api",
-        ":tensorflowlite_gpu_native",
-    ],
+    # Note that we need to directly includes all the
+    # required Java source files directly in "srcs" rather than
+    # depending on them via "deps"/"exports"; this is needed when
+    # building the AAR file since the current AAR building process
+    # doesn't include the transitive Java dependencies.
+    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
+    exports_manifest = 1,
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
     deps = [
-        ":tensorflowlite_gpu_api",
-        "//tensorflow/lite/java:tensorflowlite_api",
-    ],
-)
-
-# EXPERIMENTAL: Android target for the implementation of the GPU acceleration API,
-# EXCLUDING the native library.
-android_library(
-    name = "tensorflowlite_gpu_impl_java",
-    srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate_impl"],
-    deps = [
-        ":tensorflowlite_api",
-        ":tensorflowlite_gpu_api",
+        ":tensorflowlite_java",
+        ":tensorflowlite_native_gpu",
     ],
 )
 
@@ -334,17 +302,17 @@ android_library(
     ],
 )
 
-# EXPERIMENTAL: Android target for GPU acceleration API, EXCLUDING implementation.
-# Note that this library contains *only* the GPU delegate API; clients must also include
-# an implementation, as well as the core `tensorflowlite` runtime.
+# EXPERIMENTAL: Android target for GPU acceleration, EXCLUDING NATIVE CODE dependencies.
+#  Note that this library contains *only* the GPU delegate and its Java wrapper; clients must also
+# include the core `tensorflowlite` runtime.
 # Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
 android_library(
-    name = "tensorflowlite_gpu_api",
+    name = "tensorflowlite_gpu_java",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
     manifest = "AndroidManifestGpu.xml",
     proguard_specs = ["proguard.flags"],
-    deps = [":tensorflowlite_api"],
+    deps = [":tensorflowlite_java"],
 )
 
 #-----------------------------------------------------------------------------
@@ -886,7 +854,7 @@ cc_library_with_tflite(
 )
 
 cc_library_with_tflite(
-    name = "tensorflowlite_gpu_native",
+    name = "tensorflowlite_native_gpu",
     tflite_jni_binaries = ["libtensorflowlite_gpu_jni.so"],
     visibility = ["//visibility:private"],
 )

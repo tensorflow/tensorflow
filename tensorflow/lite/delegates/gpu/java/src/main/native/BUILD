@@ -10,8 +10,6 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(srcs = ["gpu_delegate_jni.cc"])
-
 cc_library_with_tflite(
     name = "native",
     srcs = ["gpu_delegate_jni.cc"],

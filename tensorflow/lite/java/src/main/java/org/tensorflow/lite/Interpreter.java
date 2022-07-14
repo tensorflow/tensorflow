@@ -81,7 +81,8 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
 
   /** An options class for controlling runtime interpreter behavior. */
   public static class Options extends InterpreterImpl.Options {
-    public Options() {}
+    public Options() {
+    }
 
     public Options(InterpreterApi.Options options) {
       super(options);
@@ -120,12 +121,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     @Override
     public Options addDelegate(Delegate delegate) {
       super.addDelegate(delegate);
-      return this;
-    }
-
-    @Override
-    public Options addDelegateFactory(DelegateFactory delegateFactory) {
-      super.addDelegateFactory(delegateFactory);
       return this;
     }
 
