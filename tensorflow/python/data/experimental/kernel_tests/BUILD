@@ -543,7 +543,7 @@ tf_py_test(
 
 tf_py_test(
     name = "rebatch_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["rebatch_dataset_test.py"],
     shard_count = 4,
     deps = [
