@@ -181,6 +181,7 @@ cc_library(
     name = "dtensor_mlir_passes",
     srcs = [
         "annotate_global_shape.cc",
+        "checkpoint_shape_inference.cc",
         "cluster_function_conversion.cc",
         "constant_folding.cc",
         "dce.cc",
