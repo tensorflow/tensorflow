@@ -158,9 +158,7 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   args.priv = nullptr;
   args.client = c_client_.get();
   args.id = device_id;
-  PJRT_Error* error = c_api_->PJRT_Client_LookupDevice(&args);
-  // TODO(b/236710439): replace this CHECK with an ASSIGN_OR_RETURN
-  CHECK(error == nullptr);
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
 }
 
@@ -401,7 +399,6 @@ StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
   args.struct_size = PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.buffer = buffer_;
-
   RETURN_STATUS_IF_ERROR(
       client_->pjrt_c_api()->PJRT_Buffer_OnDeviceSizeInBytes(&args),
       client_->pjrt_c_api());
@@ -448,9 +445,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient() {
   PJRT_Client_Create_Args init_args;
   init_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
-  PJRT_Error* error = c_api->PJRT_Client_Create(&init_args);
-  // TODO(skyewm): handle error
-  CHECK(error == nullptr);
+  RETURN_STATUS_IF_ERROR(c_api->PJRT_Client_Create(&init_args), c_api);
   PJRT_Client* c_client = init_args.client;
 
   return std::unique_ptr<PjRtClient>(
