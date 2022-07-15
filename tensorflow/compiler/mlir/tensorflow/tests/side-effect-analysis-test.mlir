@@ -2201,3 +2201,44 @@ func.func @collective_reduce_ordering_effect(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
+
+// -----
+
+// Tests that we don't create dependencies between device launch ops with
+// multiple stateless ops each.
+func.func @multi_stateless_op_islands() {
+  // expected-remark@above {{ID: 13}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 11}}
+    %island = tf_executor.island {
+      // expected-remark@above {{ID: 9}}
+      // expected-remark@above {{Successors: {10}}}
+      "tf_device.launch"() ({
+          // expected-remark@above {{ID: 3}}
+          "tf.A"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 0}}
+          "tf.B"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 1}}
+          tf_device.return
+          // expected-remark@above {{ID: 2}}
+      }) {device = "CPU:0"} : () -> ()
+      "tf_device.launch"() ({
+          // expected-remark@above {{ID: 7}}
+          "tf.C"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 4}}
+          "tf.D"() {is_stateless=true} : () -> ()
+          // expected-remark@above {{ID: 5}}
+          tf_device.return
+          // expected-remark@above {{ID: 6}}
+      }) {device = "CPU:0"} : () -> ()
+      tf_executor.yield
+      // expected-remark@above {{ID: 8}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 10}}
+    // expected-remark@above {{Predecessors: {9}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 12}}
+  // expected-remark@above {{Sinks: {11}}}
+}
