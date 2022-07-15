@@ -60,11 +60,11 @@ std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 // creation backtraces.
 Status WithLogBacktrace(const Status& status);
 
-// Ranks greater than 8 are very rare, so use InlinedVector<int64_t, 8> to store
-// the bounds and indices. And for the rare cases of ranks greater than 8,
+// Ranks greater than 6 are very rare, so use InlinedVector<int64_t, 6> to store
+// the bounds and indices. And for the rare cases of ranks greater than 6,
 // the InlinedVector will just behave like an std::vector<> and allocate the
 // memory to store its values.
-inline constexpr int InlineRank() { return 8; }
+inline constexpr int InlineRank() { return 6; }
 using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
 
 // RAII timer that logs with a given label the wall clock time duration in human

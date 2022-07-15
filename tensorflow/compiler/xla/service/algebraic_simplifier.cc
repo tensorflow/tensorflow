@@ -1522,7 +1522,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   if (absl::c_count(operands, operands[0]) == operands.size() &&
       operands[0]->shape().dimensions(concatenate_dimension) == 1) {
     Shape new_shape = operands[0]->shape();
-    absl::InlinedVector<int64_t, 8> broadcast_dims;
+    DimensionVector broadcast_dims;
     for (int64_t i = 0; i < new_shape.rank(); ++i) {
       if (i == concatenate_dimension) {
         continue;
@@ -5724,8 +5724,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
                 m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1)),
                 m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))))) {
     const HloInstruction* nested_root = function->root_instruction();
-    absl::InlinedVector<int64_t, 8> broadcast_dims(
-        nested_root->shape().dimensions_size());
+    DimensionVector broadcast_dims(nested_root->shape().dimensions_size());
     absl::c_iota(broadcast_dims, 0);
     TF_ASSIGN_OR_RETURN(
         auto new_op, MakeBinaryHlo(nested_root->opcode(), operand,
@@ -5762,16 +5761,16 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     auto effective_reduce_dims = [&] {
       if (window_util::HasStride(window) || window_util::HasDilation(window) ||
           window_util::HasPadding(window)) {
-        return absl::InlinedVector<int64_t, 8>{};
+        return DimensionVector{};
       }
-      absl::InlinedVector<int64_t, 8> reduce_dims;
+      DimensionVector reduce_dims;
       for (int64_t i = 0; i < window.dimensions_size(); ++i) {
         if (window.dimensions(i).size() == 1) {
           continue;
         } else if (reduce_window->shape().dimensions(i) == 1) {
           reduce_dims.push_back(i);
         } else {
-          return absl::InlinedVector<int64_t, 8>{};
+          return DimensionVector{};
         }
       }
       return reduce_dims;
@@ -6047,7 +6046,7 @@ bool OnlyPermutesDegenerateDims(const Shape& shape,
 }
 
 bool IsPermutationOfIota(absl::Span<const int64_t> elems) {
-  absl::InlinedVector<int64_t, 8> sorted(elems.begin(), elems.end());
+  DimensionVector sorted(elems.begin(), elems.end());
   absl::c_sort(sorted);
   for (int i = 0; i < sorted.size(); i++) {
     if (sorted[i] != i) {
@@ -6105,7 +6104,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     }
 
     // Transpose must just be over the two last dims (i.e. the non-batch dims).
-    absl::InlinedVector<int64_t, 8> expected_perm(rank);
+    DimensionVector expected_perm(rank);
     absl::c_iota(expected_perm, 0);
     std::swap(expected_perm.rbegin()[0], expected_perm.rbegin()[1]);
     if (transpose->dimensions() != expected_perm) {
