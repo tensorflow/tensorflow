@@ -1041,15 +1041,15 @@ inline bool VerifyConstants(RemapperContext* ctx,
         const_tensor.FromProto(node_def->attr().at("value").tensor())) {
       if (const_tensor.NumElements() == 1) {
         DataType dtype = const_tensor.dtype();
-        if (!(dtype == DT_FLOAT || dtype == DT_BFLOAT16 || dtype == DT_HALF))
-          return false;
         float const_value;
         if (dtype == DT_FLOAT) {
           const_value = const_tensor.flat<float>()(0);
         } else if (dtype == DT_BFLOAT16) {
           const_value = const_tensor.flat<bfloat16>()(0);
-        } else {
+        } else if (dtype == DT_HALF) {
           const_value = const_tensor.flat<Eigen::half>()(0);
+        } else {
+          return false;
         }
         if (std::abs(const_value - it->second) > 1e-2) return false;
       } else {
