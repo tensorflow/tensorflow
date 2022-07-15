@@ -677,16 +677,22 @@ std::string PyTreeDef::ToString() const {
       case PyTreeKind::kNamedTuple:
       case PyTreeKind::kCustom: {
         std::string kind;
+        std::string data;
         if (node.kind == PyTreeKind::kNamedTuple) {
           kind = "namedtuple";
+          if (node.node_data) {
+            // Node data for named tuples is the type.
+            data = absl::StrFormat(
+                "[%s]", py::str(py::getattr(node.node_data, "__name__")));
+          }
         } else {
-          kind = static_cast<std::string>(py::str(node.custom->type));
+          kind = static_cast<std::string>(
+              py::str(py::getattr(node.custom->type, "__name__")));
+          if (node.node_data) {
+            data = absl::StrFormat("[%s]", py::str(node.node_data));
+          }
         }
 
-        std::string data;
-        if (node.node_data) {
-          data = absl::StrFormat("[%s]", py::str(node.node_data));
-        }
         representation =
             absl::StrFormat("CustomNode(%s%s, [%s])", kind, data, children);
         break;
@@ -703,7 +709,7 @@ std::string PyTreeDef::ToString() const {
 
 void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
-  pytree.attr("version") = py::int_(1);
+  pytree.attr("version") = py::int_(2);
   pytree.def("flatten", &PyTreeDef::Flatten, py::arg("tree"),
              py::arg("leaf_predicate") = std::nullopt);
   pytree.def("tuple", &PyTreeDef::Tuple);
