@@ -187,6 +187,13 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   HloInstruction* new_dot = comp->AddInstruction(HloInstruction::CreateDot(
       new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
 
+  // We can't keep both. But one is better then none.
+  if (!a->metadata().op_name().empty()) {
+    new_dot->set_metadata(a->metadata());
+  } else if (!b->metadata().op_name().empty()){
+    new_dot->set_metadata(b->metadata());
+  }
+
   // Slice the outputs.
   DimensionVector start_indices(new_dot_shape.dimensions_size(), 0);
   DimensionVector limit_indices(new_dot_shape.dimensions().begin(),
