@@ -4824,7 +4824,7 @@ LogicalResult ReduceOp::verify() {
 
     // Check shape.
     if (!allInputsUnranked && opResultType.hasRank() &&
-        (newDimensions != opResultType.getShape())) {
+        failed(verifyCompatibleShape(newDimensions, opResultType.getShape()))) {
       Type expectedResultType = RankedTensorType::get(
           newDimensions, accumulatorSubShapes[shapeIdx].getElementType());
       return emitError()
