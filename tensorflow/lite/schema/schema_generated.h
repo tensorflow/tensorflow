@@ -534,6 +534,10 @@ struct UnsortedSegmentSumOptions;
 struct UnsortedSegmentSumOptionsBuilder;
 struct UnsortedSegmentSumOptionsT;
 
+struct ATan2Options;
+struct ATan2OptionsBuilder;
+struct ATan2OptionsT;
+
 struct OperatorCode;
 struct OperatorCodeBuilder;
 struct OperatorCodeT;
@@ -1044,11 +1048,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_UNSORTED_SEGMENT_PROD = 153,
   BuiltinOperator_UNSORTED_SEGMENT_MAX = 154,
   BuiltinOperator_UNSORTED_SEGMENT_SUM = 155,
+  BuiltinOperator_ATAN2 = 156,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_UNSORTED_SEGMENT_SUM
+  BuiltinOperator_MAX = BuiltinOperator_ATAN2
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[156] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[157] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1205,13 +1210,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[156] {
     BuiltinOperator_RELU_0_TO_1,
     BuiltinOperator_UNSORTED_SEGMENT_PROD,
     BuiltinOperator_UNSORTED_SEGMENT_MAX,
-    BuiltinOperator_UNSORTED_SEGMENT_SUM
+    BuiltinOperator_UNSORTED_SEGMENT_SUM,
+    BuiltinOperator_ATAN2
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[157] = {
+  static const char * const names[158] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1368,13 +1374,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "UNSORTED_SEGMENT_PROD",
     "UNSORTED_SEGMENT_MAX",
     "UNSORTED_SEGMENT_SUM",
+    "ATAN2",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_UNSORTED_SEGMENT_SUM)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_ATAN2)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1501,11 +1508,12 @@ enum BuiltinOptions : uint8_t {
   BuiltinOptions_UnsortedSegmentProdOptions = 118,
   BuiltinOptions_UnsortedSegmentMaxOptions = 119,
   BuiltinOptions_UnsortedSegmentSumOptions = 120,
+  BuiltinOptions_ATan2Options = 121,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_UnsortedSegmentSumOptions
+  BuiltinOptions_MAX = BuiltinOptions_ATan2Options
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[121] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[122] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1627,13 +1635,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[121] {
     BuiltinOptions_DynamicUpdateSliceOptions,
     BuiltinOptions_UnsortedSegmentProdOptions,
     BuiltinOptions_UnsortedSegmentMaxOptions,
-    BuiltinOptions_UnsortedSegmentSumOptions
+    BuiltinOptions_UnsortedSegmentSumOptions,
+    BuiltinOptions_ATan2Options
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[122] = {
+  static const char * const names[123] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1755,13 +1764,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "UnsortedSegmentProdOptions",
     "UnsortedSegmentMaxOptions",
     "UnsortedSegmentSumOptions",
+    "ATan2Options",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_UnsortedSegmentSumOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_ATan2Options)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2250,6 +2260,10 @@ template<> struct BuiltinOptionsTraits<tflite::UnsortedSegmentSumOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentSumOptions;
 };
 
+template<> struct BuiltinOptionsTraits<tflite::ATan2Options> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ATan2Options;
+};
+
 template<typename T> struct BuiltinOptionsUnionTraits {
   static const BuiltinOptions enum_value = BuiltinOptions_NONE;
 };
@@ -2732,6 +2746,10 @@ template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentMaxOptionsT> 
 
 template<> struct BuiltinOptionsUnionTraits<tflite::UnsortedSegmentSumOptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_UnsortedSegmentSumOptions;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::ATan2OptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ATan2Options;
 };
 
 struct BuiltinOptionsUnion {
@@ -3723,6 +3741,14 @@ struct BuiltinOptionsUnion {
   const tflite::UnsortedSegmentSumOptionsT *AsUnsortedSegmentSumOptions() const {
     return type == BuiltinOptions_UnsortedSegmentSumOptions ?
       reinterpret_cast<const tflite::UnsortedSegmentSumOptionsT *>(value) : nullptr;
+  }
+  tflite::ATan2OptionsT *AsATan2Options() {
+    return type == BuiltinOptions_ATan2Options ?
+      reinterpret_cast<tflite::ATan2OptionsT *>(value) : nullptr;
+  }
+  const tflite::ATan2OptionsT *AsATan2Options() const {
+    return type == BuiltinOptions_ATan2Options ?
+      reinterpret_cast<const tflite::ATan2OptionsT *>(value) : nullptr;
   }
 };
 
@@ -11235,6 +11261,45 @@ inline flatbuffers::Offset<UnsortedSegmentSumOptions> CreateUnsortedSegmentSumOp
 
 flatbuffers::Offset<UnsortedSegmentSumOptions> CreateUnsortedSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnsortedSegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ATan2OptionsT : public flatbuffers::NativeTable {
+  typedef ATan2Options TableType;
+};
+
+struct ATan2Options FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ATan2OptionsT NativeTableType;
+  typedef ATan2OptionsBuilder Builder;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  ATan2OptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ATan2OptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ATan2Options> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ATan2OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ATan2OptionsBuilder {
+  typedef ATan2Options Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit ATan2OptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<ATan2Options> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ATan2Options>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ATan2Options> CreateATan2Options(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  ATan2OptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ATan2Options> CreateATan2Options(flatbuffers::FlatBufferBuilder &_fbb, const ATan2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code = 0;
@@ -11737,6 +11802,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const tflite::UnsortedSegmentSumOptions *builtin_options_as_UnsortedSegmentSumOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_UnsortedSegmentSumOptions ? static_cast<const tflite::UnsortedSegmentSumOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::ATan2Options *builtin_options_as_ATan2Options() const {
+    return builtin_options_type() == tflite::BuiltinOptions_ATan2Options ? static_cast<const tflite::ATan2Options *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -12252,6 +12320,10 @@ template<> inline const tflite::UnsortedSegmentMaxOptions *Operator::builtin_opt
 
 template<> inline const tflite::UnsortedSegmentSumOptions *Operator::builtin_options_as<tflite::UnsortedSegmentSumOptions>() const {
   return builtin_options_as_UnsortedSegmentSumOptions();
+}
+
+template<> inline const tflite::ATan2Options *Operator::builtin_options_as<tflite::ATan2Options>() const {
+  return builtin_options_as_ATan2Options();
 }
 
 struct OperatorBuilder {
@@ -16476,6 +16548,29 @@ inline flatbuffers::Offset<UnsortedSegmentSumOptions> CreateUnsortedSegmentSumOp
       _fbb);
 }
 
+inline ATan2OptionsT *ATan2Options::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<ATan2OptionsT>(new ATan2OptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void ATan2Options::UnPackTo(ATan2OptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<ATan2Options> ATan2Options::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ATan2OptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateATan2Options(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ATan2Options> CreateATan2Options(flatbuffers::FlatBufferBuilder &_fbb, const ATan2OptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ATan2OptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateATan2Options(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<OperatorCodeT>(new OperatorCodeT());
   UnPackTo(_o.get(), _resolver);
@@ -17499,6 +17594,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_ATan2Options: {
+      auto ptr = reinterpret_cast<const tflite::ATan2Options *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -17998,6 +18097,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_ATan2Options: {
+      auto ptr = reinterpret_cast<const tflite::ATan2Options *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -18485,6 +18588,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::UnsortedSegmentSumOptionsT *>(value);
       return CreateUnsortedSegmentSumOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_ATan2Options: {
+      auto ptr = reinterpret_cast<const tflite::ATan2OptionsT *>(value);
+      return CreateATan2Options(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -18969,6 +19076,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) : 
     }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       value = new tflite::UnsortedSegmentSumOptionsT(*reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ATan2Options: {
+      value = new tflite::ATan2OptionsT(*reinterpret_cast<tflite::ATan2OptionsT *>(u.value));
       break;
     }
     default:
@@ -19575,6 +19686,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_UnsortedSegmentSumOptions: {
       auto ptr = reinterpret_cast<tflite::UnsortedSegmentSumOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ATan2Options: {
+      auto ptr = reinterpret_cast<tflite::ATan2OptionsT *>(value);
       delete ptr;
       break;
     }

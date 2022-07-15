@@ -875,6 +875,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_UNSORTED_SEGMENT_MAX:
     case BuiltinOperator_UNSORTED_SEGMENT_PROD:
     case BuiltinOperator_UNSORTED_SEGMENT_SUM:
+    case BuiltinOperator_ATAN2:
     case BuiltinOperator_WHERE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:

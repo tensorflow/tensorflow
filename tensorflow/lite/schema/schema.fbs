@@ -394,6 +394,7 @@ enum BuiltinOperator : int32 {
   UNSORTED_SEGMENT_PROD = 153,
   UNSORTED_SEGMENT_MAX = 154,
   UNSORTED_SEGMENT_SUM = 155,
+  ATAN2 = 156
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -518,7 +519,8 @@ union BuiltinOptions {
   DynamicUpdateSliceOptions,
   UnsortedSegmentProdOptions,
   UnsortedSegmentMaxOptions,
-  UnsortedSegmentSumOptions
+  UnsortedSegmentSumOptions,
+  ATan2Options
 }
 
 // LINT.IfChange
@@ -1137,6 +1139,9 @@ table UnsortedSegmentMaxOptions {
 }
 
 table UnsortedSegmentSumOptions {
+}
+
+table ATan2Options {
 }
 
 

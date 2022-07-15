@@ -183,6 +183,7 @@ typedef enum {
   kTfLiteBuiltinUnsortedSegmentProd = 153,
   kTfLiteBuiltinUnsortedSegmentMax = 154,
   kTfLiteBuiltinUnsortedSegmentSum = 155,
+  kTfLiteBuiltinAtan2 = 156,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
