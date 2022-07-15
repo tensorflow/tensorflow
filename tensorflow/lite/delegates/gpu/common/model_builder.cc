@@ -968,8 +968,11 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
           output_tensor_info.consumers.size() != 1) {
         return absl::UnavailableError("Not supported logical op case");
       }
-      if (output_tensor_info.consumers[0].second->builtin_code ==
-          kTfLiteBuiltinCast) {
+      const auto& next_node = output_tensor_info.consumers[0];
+      TfLiteType dst_type =
+          context->tensors[next_node.first->outputs->data[0]].type;
+      if (next_node.second->builtin_code == kTfLiteBuiltinCast &&
+          (dst_type == kTfLiteFloat16 || dst_type == kTfLiteFloat32)) {
         return absl::OkStatus();
       } else {
         return absl::UnimplementedError("Not supported logical op case.");
