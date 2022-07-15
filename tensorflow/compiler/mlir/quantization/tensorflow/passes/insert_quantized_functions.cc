@@ -82,9 +82,11 @@ static PassRegistration<InsertQuantizedFunctionsPass> pass;
 
 void InsertQuantizedFunctionsPass::runOnOperation() {
   std::unique_ptr<llvm::MemoryBuffer> mem_buffer;
+  // TODO(b/238064534): Add op_spec configuration.
+  // For now, UNIFORM_QUANTIZED is default for dynamic range quantization case.
   if (quantization_method_ == QuantizationMethod::kDynamicRangeQuantization) {
     mem_buffer = llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(kQuantizedFunctionLibraryInMLIR_DRQ),
+        llvm::StringRef(kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED_DRQ),
         /*BufferName=*/"",
         /*RequiresNullTerminator=*/false);
   } else {
