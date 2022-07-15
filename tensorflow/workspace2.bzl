@@ -20,8 +20,6 @@ load("//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
-load("//third_party/clog:workspace.bzl", clog = "repo")
-load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
 load("//third_party/farmhash:workspace.bzl", farmhash = "repo")
@@ -57,8 +55,6 @@ def _initialize_third_party():
     FP16()
     absl()
     benchmark()
-    clog()  # Note: needed only by XNNPACK, at some point it should be removed
-    cpuinfo()
     dlpack()
     eigen3()
     farmhash()
@@ -152,6 +148,20 @@ def _tf_repositories():
         sha256 = "b96413b10dd8edaa4f6c0a60c6cf5ef55eebeef78164d5d69294c8173457f0ec",
         strip_prefix = "pthreadpool-b8374f80e42010941bda6c85b0e3f1a1bd77a1e0",
         urls = tf_mirror_urls("https://github.com/Maratyszcza/pthreadpool/archive/b8374f80e42010941bda6c85b0e3f1a1bd77a1e0.zip"),
+    )
+
+    tf_http_archive(
+        name = "clog",
+        strip_prefix = "cpuinfo-082deffc80ce517f81dc2f3aebe6ba671fcd09c9",
+        sha256 = "4379348ec3127b37e854a0a66f85ea1d3c606e5f3a6dce235dc9c69ce663c026",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/082deffc80ce517f81dc2f3aebe6ba671fcd09c9.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "cpuinfo",
+        strip_prefix = "cpuinfo-082deffc80ce517f81dc2f3aebe6ba671fcd09c9",
+        sha256 = "4379348ec3127b37e854a0a66f85ea1d3c606e5f3a6dce235dc9c69ce663c026",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/082deffc80ce517f81dc2f3aebe6ba671fcd09c9.tar.gz"),
     )
 
     tf_http_archive(
