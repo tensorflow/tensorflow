@@ -2734,8 +2734,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<-1, 1>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>, AffineQuantizedOpInterface]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
