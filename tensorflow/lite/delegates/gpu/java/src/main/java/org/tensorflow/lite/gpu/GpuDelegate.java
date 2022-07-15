@@ -15,7 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite.gpu;
 
-import java.io.Closeable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.annotations.UsedByReflection;
 
@@ -30,102 +29,35 @@ import org.tensorflow.lite.annotations.UsedByReflection;
  * Interpreter.Options.addDelegate()} was called.
  */
 @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
-public class GpuDelegate implements Delegate, Closeable {
+public class GpuDelegate implements Delegate {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;
   private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
 
   private long delegateHandle;
 
-  /** Delegate options. */
-  public static final class Options {
-    public Options() {}
-
-    /**
-     * Delegate will be used only once, therefore, bootstrap/init time should be taken into account.
-     */
-    public static final int INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0;
-
-    /**
-     * Prefer maximizing the throughput. Same delegate will be used repeatedly on multiple inputs.
-     */
-    public static final int INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1;
-
-    /**
-     * Sets whether precision loss is allowed.
-     *
-     * @param precisionLossAllowed When `true` (default), the GPU may quantify tensors, downcast
-     *     values, process in FP16. When `false`, computations are carried out in 32-bit floating
-     *     point.
-     */
-    public Options setPrecisionLossAllowed(boolean precisionLossAllowed) {
-      this.precisionLossAllowed = precisionLossAllowed;
-      return this;
-    }
-
-    /**
-     * Enables running quantized models with the delegate.
-     *
-     * <p>WARNING: This is an experimental API and subject to change.
-     *
-     * @param quantizedModelsAllowed When {@code true} (default), the GPU may run quantized models.
-     */
-    public Options setQuantizedModelsAllowed(boolean quantizedModelsAllowed) {
-      this.quantizedModelsAllowed = quantizedModelsAllowed;
-      return this;
-    }
-
-    /**
-     * Sets the inference preference for precision/compilation/runtime tradeoffs.
-     *
-     * @param preference One of `INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER` (default),
-     *     `INFERENCE_PREFERENCE_SUSTAINED_SPEED`.
-     */
-    public Options setInferencePreference(int preference) {
-      this.inferencePreference = preference;
-      return this;
-    }
-
-    /**
-     * Enables serialization on the delegate. Note non-null {@code serializationDir} and {@code
-     * modelToken} are required for serialization.
-     *
-     * <p>WARNING: This is an experimental API and subject to change.
-     *
-     * @param serializationDir The directory to use for storing data. Caller is responsible to
-     *     ensure the model is not stored in a public directory. It's recommended to use {@link
-     *     android.content.Context#getCodeCacheDir()} to provide a private location for the
-     *     application on Android.
-     * @param modelToken The token to be used to identify the model. Caller is responsible to ensure
-     *     the token is unique to the model graph and data.
-     */
-    public Options setSerializationParams(String serializationDir, String modelToken) {
-      this.serializationDir = serializationDir;
-      this.modelToken = modelToken;
-      return this;
-    }
-
-    boolean precisionLossAllowed = true;
-    boolean quantizedModelsAllowed = true;
-    int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
-    String serializationDir = null;
-    String modelToken = null;
-  }
-
-  public GpuDelegate(Options options) {
+  public GpuDelegate(GpuDelegateFactory.Options options) {
     delegateHandle =
         createDelegate(
-            options.precisionLossAllowed,
-            options.quantizedModelsAllowed,
-            options.inferencePreference,
-            options.serializationDir,
-            options.modelToken);
+            options.isPrecisionLossAllowed(),
+            options.areQuantizedModelsAllowed(),
+            options.getInferencePreference(),
+            options.getSerializationDir(),
+            options.getModelToken());
   }
 
   @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
   public GpuDelegate() {
-    this(new Options());
+    this(new GpuDelegateFactory.Options());
   }
+
+  /**
+   * Inherits from {@link GpuDelegateFactory.Options} for compatibility with existing code.
+   *
+   * @deprecated Use {@link GpuDelegateFactory.Options} instead.
+   */
+  @Deprecated
+  public static class Options extends GpuDelegateFactory.Options {}
 
   @Override
   public long getNativeHandle() {
