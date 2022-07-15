@@ -3933,7 +3933,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
