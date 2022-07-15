@@ -153,17 +153,39 @@ class CheckpointPosition(object):
     from tensorflow.python.training.saving import saveable_object_util
     # pylint:enable=g-import-not-at-top
 
-    if not self.object_proto.attributes:
+    recorded_registered_saver = self.get_registered_saver_name()
+    if not (self.object_proto.attributes or recorded_registered_saver):
       return [], {}, [], {}
 
     existing_restore_ops = []
     named_saveables = {}
     python_positions = []
-    registered_savers = {}
+    registered_savers = collections.defaultdict(dict)
 
     saveable_factories = saveable_object_util.saveable_objects_from_trackable(
         self.trackable)
-    if isinstance(self.trackable, python_state.PythonState):
+    saver_name = registration.get_registered_saver_name(self.trackable)
+
+    if recorded_registered_saver:
+      if not self.skip_restore:
+        name = self.object_proto.registered_saver.object_name
+        registered_savers[recorded_registered_saver][name] = self.trackable
+      # Else: Skip restoration of this Trackable. This skip only happens if the
+      # registered saver has enabled `option_restore`. Otherwise, an error would
+      # have been raised at `self.get_registered_saver_name()`.
+    elif saver_name:
+      # In this case, the checkpoint has a recorded serialized tensor but no
+      # registered saver, while the Trackable loading the checkpoint has
+      # migrated to the registered checkpoint functionality (TPUEmbedding is an
+      # example of this).
+
+      # Set the Trackable's object name to the first checkpoint key that is
+      # stored in checkpoint. If there is a use case that requires the other
+      # keys, then we can take another look at this.
+      registered_savers[saver_name] = {
+          self.object_proto.attributes[0].checkpoint_key: self.trackable
+      }
+    elif isinstance(self.trackable, python_state.PythonState):
       python_positions.append(self)
     elif saveable_factories.keys() == {
         trackable_utils.SERIALIZE_TO_TENSORS_NAME
@@ -173,26 +195,12 @@ class CheckpointPosition(object):
     elif saveable_factories:
       existing_restore_ops, named_saveables = (
           self._create_saveables_by_attribute_name(saveable_factories))
-    elif self.object_proto.attributes:
-      # The checkpoint may have a serialized tensor recorded, but the
-      # Trackable appears to have no tensors to serialize/restore. When this
-      # happens, it means that the Trackable has migrated to the registered
-      # checkpoint functionality (TPUEmbedding is an example of this).
-      saver_name = registration.get_registered_saver_name(self.trackable)
-      if saver_name:
-        registered_savers[saver_name] = {
-            # For now, set the Trackable's object name to the first checkpoint
-            # key that is stored in checkpoint. If there is a use case that
-            # requires the other keys, then we can take another look at this.
-            self.object_proto.attributes[0].checkpoint_key:
-                self.trackable
-        }
-      else:
-        # If no registered savers were found, then it means that one or more
-        # serialized tensors were never used.
-        for serialized_tensor in self.object_proto.attributes:
-          self._checkpoint.unused_attributes.setdefault(
-              self._proto_id, []).append(serialized_tensor.name)
+    else:
+      # If no registered savers were found, then it means that one or more
+      # serialized tensors were never used.
+      for serialized_tensor in self.object_proto.attributes:
+        self._checkpoint.unused_attributes.setdefault(
+            self._proto_id, []).append(serialized_tensor.name)
     return (existing_restore_ops, named_saveables, python_positions,
             registered_savers)
 
@@ -424,24 +432,16 @@ class CheckpointPosition(object):
     python_positions = []
     registered_savers = collections.defaultdict(dict)
     while visit_queue:
-      current_position, trackable = visit_queue.popleft()
+      current_position, _ = visit_queue.popleft()
 
       # Restore using the ops defined in a Saveable or registered function.
-      registered_saver = current_position.get_registered_saver_name()
-      if registered_saver:
-        if not current_position.skip_restore:
-          object_name = (
-              current_position.object_proto.registered_saver.object_name)
-          registered_savers[registered_saver][object_name] = trackable
-        trackable._update_uid = current_position.checkpoint.restore_uid  # pylint: disable=protected-access
-      else:
-        (new_restore_ops, new_tensor_saveables, new_python_positions,
-         new_registered_savers) = current_position._single_restore()  # pylint: disable=protected-access
-        restore_ops.extend(new_restore_ops)
-        tensor_saveables.update(new_tensor_saveables)
-        python_positions.extend(new_python_positions)
-        for saver_name, trackable_map in new_registered_savers.items():
-          registered_savers[saver_name].update(trackable_map)
+      (new_restore_ops, new_tensor_saveables, new_python_positions,
+       new_registered_savers) = current_position._single_restore()  # pylint: disable=protected-access
+      restore_ops.extend(new_restore_ops)
+      tensor_saveables.update(new_tensor_saveables)
+      python_positions.extend(new_python_positions)
+      for saver_name, trackable_map in new_registered_savers.items():
+        registered_savers[saver_name].update(trackable_map)
 
       # Pass the restoration to the dependencies.
       _queue_children_for_restoration(current_position, visit_queue)
