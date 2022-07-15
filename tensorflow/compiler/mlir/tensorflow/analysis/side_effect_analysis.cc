@@ -581,17 +581,15 @@ SideEffectAnalysisInfo::GetConflictingIds(ResourceId resource_id,
 void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
   VLOG(2) << "Processing op " << mlir::debugString(*op);
   SideEffectsByResourceId side_effects_by_resource_id;
-  if (isa<tf_executor::IslandOp, tf_device::LaunchOp>(op)) {
-    // For islands and launch ops, collect effects for all ops in their region.
+  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
+    // For islands, collect effects for all ops that are wrapped by the island.
     // This is important for two reasons:
-    // 1) The ops are only side-effecting if some op in the attached region is
-    //    side-effecting.
-    // 2) Resource variables that are used in the regions are not exposed to the
-    //    interface of the ops.
+    // 1) Islands are only side-effecting if some wrapped op is side-effecting.
+    // 2) Resource variables that are used in the island are not exposed in the
+    // island's interface.
     // Without this special handling, we would not handle such situations
     // correctly.
-    for (Operation& wrapped_op :
-         op->getRegion(0).front().without_terminator()) {
+    for (Operation& wrapped_op : island_op.GetBody().without_terminator()) {
       SideEffectsByResourceId wrapped_side_effects =
         CollectSideEffectsByResourceId(
             &wrapped_op,
