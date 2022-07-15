@@ -16,7 +16,7 @@
 
 import collections
 
-from tensorflow.python.checkpoint import checkpoint_util
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -208,7 +208,7 @@ class CheckpointPosition(object):
     """Creates a saveable using the _serialize_to_tensor method."""
     # Extract the saveable name from the checkpoint key. This will be used as
     # the cache key or the name to pass to the saveable factory.
-    saveable_name = checkpoint_util.extract_saveable_name(
+    saveable_name = _extract_saveable_name(
         self.trackable, self.object_proto.attributes[0].checkpoint_key)
     # Try to find the cached saveable (only in graph mode).
     if not context.executing_eagerly():
@@ -379,8 +379,6 @@ class CheckpointPosition(object):
       return saver_name
     return None
 
-  # TODO(kathywu): remove this method from CheckpointPosition once the class
-  # has been copied into `checkpoint_util.py`.
   def create_slot_variable_position(self, optimizer_object, variable,
                                     slot_variable_id, slot_name):
     """Generates CheckpointPosition for a slot variable.
@@ -445,7 +443,7 @@ class CheckpointPosition(object):
 
       # Pass the restoration to the dependencies.
       _queue_children_for_restoration(current_position, visit_queue)
-      checkpoint_util.queue_slot_variables(current_position, visit_queue)
+      _queue_slot_variables(current_position, visit_queue)
 
     restore_ops.extend(
         current_position.checkpoint.restore_saveables(tensor_saveables,
@@ -502,3 +500,61 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
         # resolution order (shallowest paths first). The caller is responsible
         # for emptying visit_queue.
         visit_queue.append((child_position, local_object))
+
+
+_DeferredSlotVariableRestoration = collections.namedtuple(
+    "_DeferredSlotVariableRestoration", [
+        "original_variable",
+        "slot_variable_id",
+        "slot_name",
+    ])
+
+
+def _queue_slot_variables(checkpoint_position, visit_queue):
+  """Queues slot variables for restoration."""
+  trackable = checkpoint_position.trackable
+  checkpoint = checkpoint_position.checkpoint
+  for deferred_slot_restoration in (checkpoint.deferred_slot_restorations.pop(
+      checkpoint_position.proto_id, ())):
+    slot_variable_position, slot_variable = (
+        checkpoint_position.create_slot_variable_position(
+            trackable, deferred_slot_restoration.original_variable,
+            deferred_slot_restoration.slot_variable_id,
+            deferred_slot_restoration.slot_name))
+    if slot_variable_position is not None:
+      visit_queue.append((slot_variable_position, slot_variable))
+  for slot_restoration in checkpoint.slot_restorations.pop(
+      checkpoint_position.proto_id, ()):
+    optimizer_object = checkpoint.object_by_proto_id.get(
+        slot_restoration.optimizer_id, None)
+    if optimizer_object is None:
+      # The optimizer has not yet been created or tracked. Record in the
+      # checkpoint that the slot variables need to be restored when it is.
+      checkpoint.deferred_slot_restorations.setdefault(
+          slot_restoration.optimizer_id, []).append(
+              _DeferredSlotVariableRestoration(
+                  original_variable=trackable,
+                  slot_variable_id=slot_restoration.slot_variable_id,
+                  slot_name=slot_restoration.slot_name))
+
+    # `optimizer_object` can be a `Checkpoint` when user only needs the
+    # attributes the optimizer holds, such as `iterations`. In those cases,
+    # it would not have the optimizer's `_create_or_restore_slot_variable`
+    # method.
+    elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
+      slot_variable_position, slot_variable = (
+          checkpoint_position.create_slot_variable_position(
+              optimizer_object, trackable, slot_restoration.slot_variable_id,
+              slot_restoration.slot_name))
+      if slot_variable_position is not None:
+        visit_queue.append((slot_variable_position, slot_variable))
+
+
+def _extract_saveable_name(trackable, checkpoint_key):
+  if saveable_compat.get_saveable_name(trackable) is not None:
+    # If there is a legacy saveable name, the saveable name is the checkpoint
+    # key.
+    return checkpoint_key
+  # Substring the checkpoint key to the end of the ".ATTRIBUTES/" (len=12)
+  return checkpoint_key[:checkpoint_key.index(trackable_utils
+                                              .OBJECT_ATTRIBUTES_NAME) + 12]

@@ -150,26 +150,6 @@ tf_py_test(
 )
 
 py_library(
-    name = "checkpoint_util",
-    srcs = ["checkpoint_util.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":saveable_compat",
-        "//tensorflow/python/trackable:trackable_utils",
-    ],
-)
-
-tf_py_test(
-    name = "checkpoint_util_test",
-    srcs = ["checkpoint_util_test.py"],
-    deps = [
-        ":checkpoint_util",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/trackable:base",
-    ],
-)
-
-py_library(
     name = "checkpoint_view",
     srcs = ["checkpoint_view.py"],
     srcs_version = "PY3",
@@ -270,7 +250,7 @@ py_library(
     srcs = ["restore.py"],
     srcs_version = "PY3",
     deps = [
-        ":checkpoint_util",
+        ":saveable_compat",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops_gen",
@@ -280,6 +260,16 @@ py_library(
         "//tensorflow/python/trackable:constants",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+tf_py_test(
+    name = "restore_test",
+    srcs = ["restore_test.py"],
+    deps = [
+        ":restore",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
     ],
 )
 
