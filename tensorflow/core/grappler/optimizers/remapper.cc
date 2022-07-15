@@ -1032,28 +1032,43 @@ inline bool VerifyConstants(RemapperContext* ctx,
                             std::map<string, int>* nodes_map,
                             std::map<string, float>* values_map) {
   using utils::MutableNodeView;
+
+  bool ret = false;
   for (auto it = values_map->begin(); it != values_map->end(); ++it) {
     int node_idx = nodes_map->at(it->first);
     MutableNodeView* node_view = ctx->graph_view.GetNode(node_idx);
     NodeDef* node_def = node_view->node();
-    Tensor const_tensor;
-    if (node_def != nullptr && node_def->op() == "Const" &&
-        const_tensor.FromProto(node_def->attr().at("value").tensor())) {
-      if (const_tensor.NumElements() == 1) {
-        DataType dtype = const_tensor.dtype();
-        if (!(dtype == DT_FLOAT || dtype == DT_BFLOAT16)) return false;
-        auto const_value = (dtype == DT_FLOAT)
-                               ? const_tensor.flat<float>()(0)
-                               : const_tensor.flat<bfloat16>()(0);
-        if (std::abs(const_value - it->second) > 1e-2) return false;
-      } else {
-        return false;
+
+    auto verify_constant = [](const NodeDef* node_def, const float second) {
+      Tensor const_tensor;
+      if (node_def != nullptr && node_def->op() == "Const" &&
+          const_tensor.FromProto(node_def->attr().at("value").tensor())) {
+        if (const_tensor.NumElements() == 1) {
+          DataType dtype = const_tensor.dtype();
+          if (!(dtype == DT_FLOAT || dtype == DT_BFLOAT16)) return false;
+          auto const_value = (dtype == DT_FLOAT)
+                                 ? const_tensor.flat<float>()(0)
+                                 : const_tensor.flat<bfloat16>()(0);
+          if (std::abs(const_value - second) > 1e-2) return false;
+        } else {
+          return false;
+        }
+        return true;
       }
+    };
+
+    if (node_def != nullptr && node_def->op() == "Cast") {
+      const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+      const auto* regular_node_view = regular_fanin_0.node_view();
+      const auto* const_node = regular_node_view->node();
+
+      ret = verify_constant(const_node, it->second);
+
     } else {
-      return false;
+      ret = verify_constant(node_def, it->second);
     }
   }
-  return true;
+  return ret;
 }
 
 // Gelu in python api generates a number of nodes in the graph. Depending on the
@@ -1070,6 +1085,38 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
   using utils::MatchingDirection;
   using utils::NodeStatus;
   // clang-format off
+  utils::OpTypePattern gelu_exact_pattern2 =
+    {"Mul", "output", NodeStatus::kReplace,
+      {
+        {"Add|AddV2", "erf_plus_one", NodeStatus::kRemove,
+          {
+            {"Erf", "erf", NodeStatus::kRemove,
+              {
+                {"Mul", "bias_add_times_square_root_one_half", NodeStatus::kRemove,
+                  {
+                    {"BiasAdd", "bias_add", NodeStatus::kRemove},
+                    {"Cast|Const", "square_root_one_half", NodeStatus::kRemain}
+                  }
+                }
+              }
+            },
+            {"Cast|Const", "one", NodeStatus::kRemain}
+          }
+        },
+        {"Mul", "erf_plus_one_times_one_half", NodeStatus::kRemove,
+          {
+            {"BiasAdd", "bias_add", NodeStatus::kRemove,
+              {
+                {"MatMul", "matmul", NodeStatus::kRemove},
+                {"*", "bias", NodeStatus::kRemain}
+              }
+            },
+            {"Cast|Const", "one_half", NodeStatus::kRemain}
+          }
+        }
+      }
+    };
+
   utils::OpTypePattern gelu_exact_pattern =
     {"Mul", "output", NodeStatus::kReplace,
       {
@@ -1082,15 +1129,15 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
                     {"Mul", "bias_add_times_square_root_one_half", NodeStatus::kRemove,
                       {
                         {"BiasAdd", "bias_add", NodeStatus::kRemove},
-                        {"Const", "square_root_one_half", NodeStatus::kRemain}
+                        {"Cast|Const", "square_root_one_half", NodeStatus::kRemain}
                       }
                     }
                   }
                 },
-                {"Const", "one", NodeStatus::kRemain}
+                {"Cast|Const", "one", NodeStatus::kRemain}
               }
             },
-            {"Const", "one_half", NodeStatus::kRemain}
+            {"Cast|Const", "one_half", NodeStatus::kRemain}
           }
         },
         {"BiasAdd", "bias_add", NodeStatus::kRemove,
@@ -1153,6 +1200,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     };
   // clang-format on
   bool found_gelu_exact = false;
+  bool found_gelu_exact2 = false;
   bool found_gelu_approximate = false;
   utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
       &(ctx->graph_view));
@@ -1163,8 +1211,17 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
       graph_matcher.GetMatchedNodes(gelu_exact_pattern, ctx->nodes_to_preserve,
                                     ctx->graph_view.GetNode(node_index),
                                     matched_nodes_map, remove_node_indices);
-  // Find GeluApproximate
+  // Find GeluExact2
   if (!found_gelu_exact) {
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_gelu_exact2 = graph_matcher.GetMatchedNodes(
+        gelu_exact_pattern2, ctx->nodes_to_preserve,
+        ctx->graph_view.GetNode(node_index), matched_nodes_map,
+        remove_node_indices);
+  }
+  // Find GeluApproximate
+  if (!found_gelu_exact && !found_gelu_exact2) {
     matched_nodes_map->clear();
     remove_node_indices->clear();
     found_gelu_approximate = graph_matcher.GetMatchedNodes(
@@ -1181,7 +1238,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
   // following fusion: MatMul + BiasAdd + Gelu (disintegrated into smaller
   // ops), we check if (i) MatMul op is CpuCompatible, (ii) const nodes have
   // desired values.
-  if (found_gelu_exact) {
+  if (found_gelu_exact || found_gelu_exact2) {
     // Check if the MatMul to be fused is CPU compatible
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
@@ -1191,7 +1248,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
       return false;
     }
     // Check if the matched constants have desired values.
-    if (found_gelu_exact) {
+    if (found_gelu_exact || found_gelu_exact2) {
       std::map<string, float> values_map = {
           {"square_root_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
       if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
@@ -1219,7 +1276,7 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     return false;
   }
   *is_gelu_approximate = found_gelu_approximate ? true : false;
-  return (found_gelu_exact || found_gelu_approximate);
+  return (found_gelu_exact || found_gelu_exact2 || found_gelu_approximate);
 }
 
 bool FindSigmoidAndMul(RemapperContext* ctx, int node_index,
