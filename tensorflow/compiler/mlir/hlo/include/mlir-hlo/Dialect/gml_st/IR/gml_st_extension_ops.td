@@ -87,7 +87,7 @@ def GMLST_ScatterOp : GMLST_Op<"scatter", [
   }];
   let arguments = (ins
     AnyTensor:$operand,
-    I64Tensor:$scatter_indices,
+    TensorOf<[I32, I64]>:$scatter_indices,
     AnyTensor:$updates,
     AnyTensor:$init
   );
