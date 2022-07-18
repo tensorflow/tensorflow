@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
@@ -654,6 +655,12 @@ class UnbatchResource : public ResourceBase {
           batch_index_t.shape().dim_size(1), ".");
     }
 
+    if (!TensorShapeUtils::IsScalar(context->input(2).shape())) {
+      return errors::InvalidArgument(
+          "Input id should be scalar; "
+          "Got: ",
+          context->input(2).DebugString(), ".");
+    }
     const int64_t batch_key = context->input(2).scalar<int64_t>()();
     const bool nonempty_input = batch_index_t.dim_size(0) > 0;
 
