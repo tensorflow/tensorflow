@@ -2233,8 +2233,7 @@ name=None))
 
     >>> dataset = tf.data.Dataset.from_tensor_slices(
     ...     [[1, 2, 3], [4, 5, 6], [7, 8, 9]])
-    >>> dataset = dataset.flat_map(
-    ...     lambda x: tf.data.Dataset.from_tensor_slices(x))
+    >>> dataset = dataset.flat_map(tf.data.Dataset.from_tensor_slices)
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
 

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -1249,7 +1250,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       }
     }
 
-    absl::InlinedVector<int64_t, InlineRank()> contracting_dim_sizes;
+    DimensionVector contracting_dim_sizes;
     contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
     DimensionVector lhs_contracting_dims;
     DimensionVector rhs_contracting_dims;

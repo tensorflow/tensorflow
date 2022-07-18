@@ -137,6 +137,7 @@ cc_library(
     srcs = ["dtensor_location.cc"],
     hdrs = ["dtensor_location.h"],
     deps = [
+        "//tensorflow/compiler/mlir:name_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -180,6 +181,7 @@ cc_library(
     name = "dtensor_mlir_passes",
     srcs = [
         "annotate_global_shape.cc",
+        "checkpoint_shape_inference.cc",
         "cluster_function_conversion.cc",
         "constant_folding.cc",
         "dce.cc",
@@ -464,6 +466,7 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -512,6 +515,7 @@ tf_cc_test(
     srcs = ["dtensor_location_test.cc"],
     deps = [
         ":dtensor_location",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:IR",

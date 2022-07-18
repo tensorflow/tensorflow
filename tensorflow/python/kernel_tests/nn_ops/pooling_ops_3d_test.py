@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -67,7 +68,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.cached_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu):
       t = constant_op.constant(x, shape=input_sizes)
       window = [1] + list(window) + [1]
       strides = [1] + list(strides) + [1]
@@ -123,6 +124,23 @@ class PoolingTest(test.TestCase):
         strides=(2, 3, 1),
         padding="SAME",
         expected=expected_output)
+
+  def testMaxPool3dGrad(self):
+    with self.assertRaises(
+        (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
+      with self.cached_session():
+        orig_input_shape = constant_op.constant(
+            1879048192, shape=[5], dtype=dtypes.int32)
+        grad = constant_op.constant(
+            1, shape=[1, 3, 2, 4, 2], dtype=dtypes.float32)
+        t = gen_nn_ops.AvgPool3DGrad(
+            orig_input_shape=orig_input_shape,
+            grad=grad,
+            ksize=[1, 1, 1, 1, 1],
+            strides=[1, 1, 1, 1, 1],
+            padding="SAME",
+            data_format="NDHWC")
+        self.evaluate(t)
 
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]

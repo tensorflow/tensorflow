@@ -336,17 +336,21 @@ Status DotOpEmitter::EmitLinalgMatmul() {
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
         tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
-        int64_t alignment =
-            target_machine_features_.minimum_alignment_for_allocation(
-                ShapeUtil::ByteSizeOf(dot_info_.result_shape));
+        // TODO: this has been retired upstream, reevaluate whether this 
+        // path really needs it or if it is even relevant anymore.
+        // int64_t alignment =
+        //     target_machine_features_.minimum_alignment_for_allocation(
+        //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
         strategy
             .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
-            .promote(mlir::linalg::GenericOp::getOperationName(),
-                     mlir::linalg::LinalgPromotionOptions()
-                         .setAlignment(alignment)
-                         .setUseFullTileBuffersByDefault(true)
-                         .setUseAlloca(true))
+            // TODO: this has been retired upstream, reevaluate whether this 
+            // path really needs it or if it is even relevant anymore.
+            // .promote(mlir::linalg::GenericOp::getOperationName(),
+            //          mlir::linalg::LinalgPromotionOptions()
+            //              .setAlignment(alignment)
+            //              .setUseFullTileBuffersByDefault(true)
+            //              .setUseAlloca(true))
             .vectorize(mlir::linalg::GenericOp::getOperationName())
             .vectorLowering(
                 mlir::linalg::LinalgVectorLoweringOptions()

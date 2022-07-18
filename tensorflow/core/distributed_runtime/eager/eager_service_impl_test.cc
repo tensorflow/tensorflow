@@ -15,9 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -28,12 +37,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -130,7 +135,7 @@ class DummyEagerClientCache : public EagerClientCache {
 class FakeCache : public TestWorkerCache {
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
-    eager_client_cache->reset(new DummyEagerClientCache);
+    *eager_client_cache = std::make_unique<DummyEagerClientCache>();
     return OkStatus();
   }
 
@@ -183,7 +188,7 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void BuildOperation(
     Operation* operation, int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
@@ -193,10 +198,10 @@ void BuildOperation(
   for (const auto& input : inputs) {
     if (input.index() == 0) {
       *operation->add_op_inputs()->mutable_tensor() =
-          absl::get<TensorProto>(input);
+          std::get<TensorProto>(input);
     } else {
       const auto& tensor_handle_pair =
-          absl::get<std::pair<int64_t, int32>>(input);
+          std::get<std::pair<int64_t, int32>>(input);
       auto* input = operation->add_op_inputs()->mutable_remote_handle();
       input->set_op_id(tensor_handle_pair.first);
       input->set_output_num(tensor_handle_pair.second);
@@ -212,7 +217,7 @@ void BuildOperation(
 
 void AddOperationToEnqueueRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
@@ -222,7 +227,7 @@ void AddOperationToEnqueueRequest(
 
 void AddOperationToRunComponentFunctionRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     const int output_num, RunComponentFunctionRequest* request) {
@@ -815,7 +820,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     TF_ASSERT_OK(tensor_handle->Tensor(&t));
     EXPECT_EQ(outputs.size(), 1);
     EXPECT_EQ(outputs.at(0).index(), 1);
-    const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
+    const TensorShape& shape = std::get<TensorShape>(outputs.at(0));
     EXPECT_EQ(shape, t->shape());
     CheckOutputTensorAndClose(*t);
   }

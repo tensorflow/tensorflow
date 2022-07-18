@@ -406,6 +406,33 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "list_dataset_op",
+    srcs = ["list_dataset_op.cc"],
+    hdrs = ["list_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "list_dataset_op_test",
+    size = "small",
+    srcs = ["list_dataset_op_test.cc"],
+    deps = [
+        ":list_dataset_op",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:dataset_test_base",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:serialization_utils",
+    ],
+)
+
+tf_kernel_library(
     name = "lmdb_dataset_op",
     srcs = ["lmdb_dataset_op.cc"],
     hdrs = ["lmdb_dataset_op.h"],
@@ -907,6 +934,7 @@ tf_kernel_library(
         ":sampling_dataset_op",
         ":scan_dataset_op",
         ":set_stats_aggregator_dataset_op",
+        ":list_dataset_op",
         ":sleep_dataset_op",
         ":sliding_window_dataset_op",
         ":snapshot_dataset_op",

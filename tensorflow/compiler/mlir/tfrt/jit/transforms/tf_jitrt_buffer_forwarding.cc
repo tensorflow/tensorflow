@@ -45,10 +45,11 @@ llvm::SmallVector<mlir::OpOperand*> FindBufferForwardingCandidates(
     if (!alloc || !mlir::isa<mlir::memref::AllocOp>(alloc)) continue;
 
     // Find input users that are after linalg.generic operation in the block.
-    auto users = llvm::make_filter_range(alloc->getUsers(),
-                                         [&](mlir::Operation* user) -> bool {
-                                           return op->isBeforeInBlock(user);
-                                         });
+    auto users = llvm::make_filter_range(
+        alloc->getUsers(), [&](mlir::Operation* user) -> bool {
+          return user->getBlock() == op->getBlock() &&
+                 op->isBeforeInBlock(user);
+        });
 
     // Input buffer must have exactly one user after linalg.generic.
     llvm::SmallVector<mlir::Operation*> input_users(users.begin(), users.end());
@@ -100,7 +101,8 @@ struct LinalgTrivialBufferForwardingPattern
       // We cannot forward the buffer if there are any users before the
       // linalg.generic op in the block.
       if (llvm::any_of(alloc->getUsers(), [op](mlir::Operation* user) {
-            return user->isBeforeInBlock(op);
+            return user->getBlock() == op->getBlock() &&
+                   user->isBeforeInBlock(op);
           })) {
         continue;
       }

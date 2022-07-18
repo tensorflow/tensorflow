@@ -773,7 +773,7 @@ Example:
   DerivedAttr shape = DerivedAttr<
       "ShapedType",
       "return resource_subtype().cast<ShapedType>();",
-      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
+      [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
   let extraClassDeclaration = [{
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }

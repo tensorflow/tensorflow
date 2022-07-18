@@ -98,12 +98,12 @@ MappedIvs mapWindowIvsToInput(OpTy op, Value operand, ValueRange ivs,
                               ValueRange windowIvs, OpBuilder* b) {
   MappedIvs mappedIvs;
 
-  if (!op.getWindowStrides().hasValue()) {
+  if (!op.getWindowStrides().has_value()) {
     op.emitOpError("No window strides specified.");
   }
   auto windowStrides = op.getWindowStrides().getValue();
 
-  if (!op.getPadding().hasValue()) {
+  if (!op.getPadding().has_value()) {
     op.emitOpError("No padding specified.");
   }
   auto padding = op.getPadding().getValue();
@@ -425,8 +425,8 @@ class ReduceWindowOpConverter
     rewriter->setInsertionPointToStart(windowLoop.getBody());
     auto loc = reduceWindowOp.getLoc();
 
-    if (reduceWindowOp.getBaseDilations().hasValue() ||
-        reduceWindowOp.getWindowDilations().hasValue()) {
+    if (reduceWindowOp.getBaseDilations().has_value() ||
+        reduceWindowOp.getWindowDilations().has_value()) {
       reduceWindowOp.emitRemark(
           "Lowering to parallel loops does not support `base_dilations` or "
           "`window_dilations` attributes yet. The attributes will be ignored.");

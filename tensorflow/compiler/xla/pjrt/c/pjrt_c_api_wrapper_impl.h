@@ -35,6 +35,9 @@ struct PJRT_Client {
   // `addressable_devices` contains pointers to the `owned_devices` that the
   // client can issue commands to.
   std::vector<PJRT_Device*> addressable_devices;
+  // Map from wrapped C++ devices to C devices. The values are the same as
+  // `owned_devices`.
+  absl::flat_hash_map<xla::PjRtDevice*, PJRT_Device*> c_device_from_cpp_device;
 };
 
 // PJRT_Devices are owned by their corresponding PJRT_Client.
@@ -73,10 +76,12 @@ PJRT_Error* PJRT_Client_PlatformVersion(PJRT_Client_PlatformVersion_Args* args);
 PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
 PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
+PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
 PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
+PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -85,6 +90,8 @@ PJRT_Error* PJRT_Executable_AddressableDevices(
 PJRT_Error* PJRT_Executable_Delete(PJRT_Executable_Delete_Args* args);
 PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args);
 
+PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
+    PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);

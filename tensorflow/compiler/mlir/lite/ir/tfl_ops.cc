@@ -2226,7 +2226,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   UnpackOpAdaptor op(operands, attributes);
   // TODO(jpienaar): Refactor verify
-  if (failed(op.verify(loc.hasValue() ? *loc : UnknownLoc::get(context))))
+  if (failed(op.verify(loc.has_value() ? *loc : UnknownLoc::get(context))))
     return failure();
 
   if (operands.size() != 1) {
@@ -3438,7 +3438,7 @@ void IfOp::getSuccessorRegions(Optional<unsigned> index,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<RegionSuccessor> &regions) {
   // The `then` and the `else` region branch back to the parent operation.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     regions.push_back(RegionSuccessor(getResults()));
     return;
   }

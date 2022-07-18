@@ -79,6 +79,7 @@ enum DataType : byte {
   INT32 = 9,
   UINT64 = 10,
   INT64 = 11,
+  BOOL = 12,
 }
 
 enum MemoryType : byte {

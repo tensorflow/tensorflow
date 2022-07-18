@@ -136,7 +136,7 @@ Status ParseArgumentShapes(
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
   for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
-    if (!shape.value().hasValue()) {
+    if (!shape.value().has_value()) {
       TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
           static_cast<int*>(nullptr), 0, &arg_shapes[shape.index()].shape));
       continue;
@@ -231,7 +231,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     XlaArgument& arg = std::get<0>(arg_components);
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
-    if (input_shapes.hasValue()) {
+    if (input_shapes.has_value()) {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
     } else {

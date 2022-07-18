@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/tfrt/eager/virtual_device.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
+#include "tfrt/bef/bef_encoding.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -27,6 +30,7 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
 
 namespace tfrt {
 
@@ -66,20 +70,28 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
       {fallback_init_func.data(), fallback_init_func.size()});
   if (func == nullptr) return ::tensorflow::OkStatus();
 
-  auto ready_chain = GetReadyChain();
+  if (func->function_kind() == FunctionKind::kBEFFunction) {
+    auto ready_chain = GetReadyChain();
 
-  DCHECK_EQ(func->argument_types().size(), 1);
+    DCHECK_EQ(func->argument_types().size(), 1);
 
-  llvm::SmallVector<RCReference<AsyncValue>, 1> results;
-  results.resize(func->result_types().size());
-  DCHECK_EQ(results.size(), 1);
+    llvm::SmallVector<RCReference<AsyncValue>, 1> results;
+    results.resize(func->result_types().size());
+    DCHECK_EQ(results.size(), 1);
 
-  func->Execute(exec_ctx, ready_chain.GetAsyncValue(), results);
+    func->Execute(exec_ctx, ready_chain.GetAsyncValue(), results);
 
-  host->Await(results);
+    host->Await(results);
 
-  if (auto* error = results[0]->GetErrorIfPresent()) {
-    return CreateTfErrorStatus(*error);
+    if (auto* error = results[0]->GetErrorIfPresent()) {
+      return CreateTfErrorStatus(*error);
+    }
+  } else {
+    DCHECK_EQ(func->result_types().size(), 0);
+    if (auto err = ExecuteSyncBEFFunction(*func, exec_ctx, {}, {})) {
+      return tensorflow::errors::Internal(
+          tfrt::StrCat("Failed to run function: ", func->name(), err));
+    }
   }
 
   return ::tensorflow::OkStatus();

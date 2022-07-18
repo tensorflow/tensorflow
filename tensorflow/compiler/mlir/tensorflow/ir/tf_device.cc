@@ -142,8 +142,8 @@ bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 LogicalResult ParallelExecuteOp::verify() {
   ParallelExecuteOp op = *this;
   const auto& regions = op.getOperation()->getRegions();
-  if (regions.size() < 2) {
-    return op.emitOpError() << "must have at least two regions.";
+  if (regions.empty()) {
+    return op.emitOpError() << "must have at least one region.";
   }
 
   int output_index = 0;
@@ -177,7 +177,7 @@ LogicalResult ParallelExecuteOp::verify() {
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
                               int num_regions, TypeRange output_types) {
-  DCHECK_GE(num_regions, 2);
+  DCHECK_GE(num_regions, 1);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
     region->push_back(new Block);
@@ -441,7 +441,7 @@ void BuildReplicateOp(
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
+  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -481,7 +481,7 @@ LogicalResult ReplicateOp::verify() {
   int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue()) {
+  if (op.devices().has_value()) {
     for (auto device_attr : op.devices().getValue().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)

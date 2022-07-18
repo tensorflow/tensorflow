@@ -16,14 +16,16 @@ func.func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-NEXT:       name: "arg0",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 1, 1, 1, 16 ],
   // CHECK-NEXT:       buffer: 2,
   // CHECK-NEXT:       name: "avgpool",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     } ],
   // CHECK-NEXT:     inputs: [ 0 ],
   // CHECK-NEXT:     outputs: [ 1 ],

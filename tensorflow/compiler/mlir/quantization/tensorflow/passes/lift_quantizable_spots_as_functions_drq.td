@@ -32,4 +32,4 @@ def LiftMatMul : Pat<
     (NamedAttributeList
       (NamedAttr<"transpose_a"> $transpose_a),
       (NamedAttr<"transpose_b"> $transpose_b))),
-  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+  [(IsNotInLiftedFunc $res), (IsConstTensor $b)], (addBenefit 1)>;

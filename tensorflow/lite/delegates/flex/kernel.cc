@@ -471,9 +471,10 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
-  // tensors.
+  // tensors (buffer forwarding).
   auto check_if_op_reuses_input = [](const string& op_name) {
-    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem";
+    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
+           op_name == "SparseReshape";
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {

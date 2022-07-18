@@ -426,6 +426,7 @@ py_library(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/checkpoint:graph_view",
+        "//tensorflow/python/checkpoint:restore",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:values_util",
@@ -691,6 +692,7 @@ tf_pybind_cc_library_wrapper(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:fingerprinting",
         "//tensorflow/cc/saved_model:metrics",
     ],
 )
@@ -700,10 +702,12 @@ tf_python_pybind_extension(
     srcs = [
         "pywrap_saved_model.cc",
         "pywrap_saved_model_constants.cc",
+        "pywrap_saved_model_fingerprinting.cc",
         "pywrap_saved_model_metrics.cc",
     ],
     hdrs = [
         "pywrap_saved_model_constants.h",
+        "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
     ],
     features = ["-layering_check"],
@@ -732,5 +736,26 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+tf_py_test(
+    name = "pywrap_saved_model_fingerprinting_test",
+    srcs = ["pywrap_saved_model_fingerprinting_test.py"],
+    data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
+    tags = ["no_windows"],
+    deps = [
+        ":pywrap_saved_model",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "fingerprinting_test",
+    size = "small",
+    srcs = ["fingerprinting_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python/eager:test",
     ],
 )

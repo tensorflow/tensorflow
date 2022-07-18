@@ -63,7 +63,7 @@ TEST_F(GemmTest, GemmPrecisionDefault) {
   std::vector<float> arg1 = {0x1.fffffep+0, 0, 0, 0x1.fffffep+0};
   auto outputs = Run2x2Gemm(
       arg0, arg1,
-      R"(, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">])");
+      R"(, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>])");
   ASSERT_EQ(1, outputs.size());
   auto stream = BorrowStream();
   if (stream->GetCudaComputeCapability().IsAtLeast(
@@ -81,7 +81,7 @@ TEST_F(GemmTest, GemmPrecisionHighest) {
   std::vector<float> arg1 = {0x1.fffffep+0, 0, 0, 0x1.fffffep+0};
   auto outputs = Run2x2Gemm(
       arg0, arg1,
-      R"(, precision_config = [#mhlo<"precision HIGH">, #mhlo<"precision HIGHEST">])");
+      R"(, precision_config = [#mhlo<precision HIGH>, #mhlo<precision HIGHEST>])");
   ASSERT_EQ(1, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
               ElementsAreArray<float>({0x1.fffffcp+1, 0, 0, 0x1.fffffcp+1}));

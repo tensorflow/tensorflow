@@ -810,6 +810,23 @@ func.func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
+// -----
+
+// CHECK-LABEL: test_strided_slice_dynamic_end
+func.func @test_strided_slice_dynamic_end(%arg0: tensor<10x?x?xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
+  %end = arith.constant dense<[7, -1, 6]> : tensor<3xi32>
+  %stride = arith.constant dense<[1, 2, -1]> : tensor<3xi32>
+
+  // CHECK: %[[SLICE1:.+]] = "tosa.slice"(%arg0) {size = [7, -1, 1], start = [0, 1, 2]}
+  // CHECK: %[[RESHAPE1:.+]] = "tosa.reshape"(%[[SLICE1]]) {new_shape = [7, 1, -1, 2, 1, 1]}
+  // CHECK: %[[SLICE2:.+]] = "tosa.slice"(%[[RESHAPE1]]) {size = [7, 1, -1, 1, 1, 1], start = [0, 0, 0, 0, 0, 0]}
+  // CHECK: %[[RESHAPE2:.+]] = "tosa.reshape"(%[[SLICE2]]) {new_shape = [7, -1]}
+  // CHECK: %[[CAST:.+]] = tensor.cast %[[RESHAPE2]]
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 4 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  // CHECK: return %[[CAST]]
+  func.return %0 : tensor<*xf32>
+}
 
 // -----
 

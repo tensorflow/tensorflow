@@ -206,7 +206,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 
     using Dst = decltype(dst);
     using Expr = decltype(expr);
-    if (multiThreadedDevice.hasValue()) {
+    if (multiThreadedDevice.has_value()) {
       ExecuteAssignOp</*vectorize=*/true, Eigen::ThreadPoolDevice, Dst,
                       Expr>::run(*multiThreadedDevice, dst, expr);
     } else {

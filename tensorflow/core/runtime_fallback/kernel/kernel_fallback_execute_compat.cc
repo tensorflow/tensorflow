@@ -399,7 +399,7 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
   auto request_id = exec_ctx.request_ctx()->id();
   // Get Long Name
   auto debug_info = exec_ctx.location().GetDebugInfo();
-  auto long_name = debug_info.hasValue() ? debug_info.getValue().info : "";
+  auto long_name = debug_info.has_value() ? debug_info.getValue().info : "";
 
   if (!profiler::TfOpDetailsEnabled()) {
     return profiler::TraceMeEncode(

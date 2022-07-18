@@ -835,6 +835,11 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
+    # specialization there causing build breakages.  This must be added here
+    # as "defines" so that the header is excluded in all dependent targets.
+    # TODO(b/238649163): remove this once no longer necessary.
+    defines = ["GEMM_KERNEL_H"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -967,6 +972,11 @@ cc_library(
         "eigen_spatial_convolutions-inl.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
+    # specialization there causing build breakages.  This must be added here
+    # as "defines" so that the header is excluded in all dependent targets.
+    # TODO(b/238649163): remove this once no longer necessary.
+    defines = ["GEMM_KERNEL_H"],
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -4423,6 +4433,7 @@ tf_kernel_library(
     deps = [
         ":fill_functor",
         ":gpu_prim_hdrs",
+        ":sparse_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -5009,6 +5020,7 @@ cc_library(
 SPARSE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    ":sparse_utils",
 ]
 
 tf_kernel_library(
@@ -6482,6 +6494,7 @@ filegroup(
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
+        "sparse_utils.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
@@ -6653,6 +6666,7 @@ filegroup(
         "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
         "//tensorflow/core/kernels/image:encode_png_op.cc",
         "//tensorflow/core/kernels/image:colorspace_op.cc",
+        "//tensorflow/core/kernels/uniform_quant_ops:uniform_quantized_dot_ops.cc",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
@@ -6721,6 +6735,7 @@ filegroup(
         "random_ops_util.h",
         "random_poisson_op.cc",
         "shuffle_common.h",
+        "sparse_utils.cc",
         "random_shuffle_op.cc",
         "reduce_join_op.cc",
         "reduction_ops_all.cc",
@@ -6869,6 +6884,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:qr_op_complex64.cc",
         "//tensorflow/core/kernels/linalg:qr_op_double.cc",
         "//tensorflow/core/kernels/linalg:qr_op_float.cc",
+        "//tensorflow/core/kernels/linalg:qr_op_half.cc",
     ],
 )
 

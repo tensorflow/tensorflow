@@ -110,12 +110,12 @@ struct SortOpPattern : public OpConversionPattern<mhlo::SortOp> {
             sortArgs.push_back(b.create<tensor::FromElementsOp>(
                 loc, srcBlock.getArgumentTypes()[2 * idxAndOutput.index()],
                 b.create<tensor::ExtractOp>(loc, idxAndOutput.value(), indices)
-                    .result()));
+                    .getResult()));
             indices[sortDim] = ivPlusOne;
             sortArgs.push_back(b.create<tensor::FromElementsOp>(
                 loc, srcBlock.getArgumentTypes()[2 * idxAndOutput.index() + 1],
                 b.create<tensor::ExtractOp>(loc, idxAndOutput.value(), indices)
-                    .result()));
+                    .getResult()));
           }
         });
 

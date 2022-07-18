@@ -107,6 +107,14 @@ void AddTraceMe(bool is_allocating, TfLiteTensor* tensor,
 
 }  // namespace
 
+void OnTfLiteOpPrepare(const char* op_name, const int node_index) {
+  snprintf(g_current_op_name, sizeof(g_current_op_name), "%sPrepare_%d",
+           op_name, node_index);
+  // Updates TF's current annotation object by creating scoped annotation obj.
+  tensorflow::profiler::ScopedMemoryDebugAnnotation annotation(
+      g_current_op_name);
+}
+
 void OnTfLiteOpInvoke(const char* op_name, const int node_index) {
   snprintf(g_current_op_name, sizeof(g_current_op_name), "%s_%d", op_name,
            node_index);

@@ -138,7 +138,7 @@ struct MhloToScalarOp<mhlo::RoundOp> {
   using FOp = ::mlir::math::RoundOp;
 };
 template <>
-struct MhloToScalarOp<mhlo::SubOp> {
+struct MhloToScalarOp<mhlo::SubtractOp> {
   using FOp = ::mlir::arith::SubFOp;
   using IOp = ::mlir::arith::SubIOp;
   using UOp = ::mlir::arith::SubIOp;
@@ -314,7 +314,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::AbsOp>(Location loc,
         b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
     auto lhsGtZero = b->create<ScalarIOp<CompareOp>>(
         loc, arith::CmpIPredicate::sge, lhs, zeroIntval);
-    auto negVal = b->create<ScalarIOp<mhlo::SubOp>>(loc, zeroIntval, lhs);
+    auto negVal = b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
     return b->create<::mlir::arith::SelectOp>(loc, lhsGtZero, lhs, negVal);
   }
   return nullptr;
@@ -402,7 +402,7 @@ inline Value mapCompareOpToStdScalarOp(Location loc,
     bool isUnsigned = IsUnsignedIntegerType{}(elementType);
     Optional<arith::CmpIPredicate> predicate =
         getCmpPredicate<arith::CmpIPredicate>(comparisonDirection, !isUnsigned);
-    assert(predicate.hasValue() && "expected valid comparison direction");
+    assert(predicate.has_value() && "expected valid comparison direction");
     return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.getValue(), lhs,
                                                  rhs);
   }
@@ -410,7 +410,7 @@ inline Value mapCompareOpToStdScalarOp(Location loc,
     Optional<arith::CmpFPredicate> predicate =
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
-    assert(predicate.hasValue() && "expected valid comparison direction");
+    assert(predicate.has_value() && "expected valid comparison direction");
     return b->create<ScalarFOp<mhlo::CompareOp>>(loc, predicate.getValue(), lhs,
                                                  rhs);
   }
@@ -795,7 +795,7 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
     if (elementType.isa<SupportedType>()) {
       auto predicate = getCmpPredicate<Predicate>(
           comparisonDirection, !elementType.isUnsignedInteger());
-      assert(predicate.hasValue() && "expected valid comparison direction");
+      assert(predicate.has_value() && "expected valid comparison direction");
       auto cmp = b->template create<StdCompareOp>(loc, predicate.getValue(),
                                                   args[0], args[1]);
       return b->create<::mlir::arith::SelectOp>(loc, cmp, args[0], args[1]);
@@ -957,7 +957,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NegOp>(Location loc,
     Value lhs = args[0];
     Value zeroIntval =
         b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
-    return b->create<ScalarIOp<mhlo::SubOp>>(loc, zeroIntval, lhs);
+    return b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
   }
   return nullptr;
 }

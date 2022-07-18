@@ -547,6 +547,15 @@ def CHLO_AtanhOp : CHLO_UnaryElementwiseOp<"atanh",
   }];
 }
 
+def CHLO_BesselI1eOp : CHLO_UnaryElementwiseOp<"bessel_i1e",
+    [HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
+  let summary = "Bessel function of order 1";
+
+  let description = [{
+    Returns `bessel_i1e(operand)` element-wise.
+  }];
+}
+
 def CHLO_ConjOp : CHLO_UnaryElementwiseOp<"conj",
     [HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor, HLO_FpOrComplexTensor> {
   let summary = "Conj operator";

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -82,7 +83,7 @@ std::string PrecisionConfigToString(const PrecisionConfig& precision_config) {
 }
 
 void SetThreadName(HloComputation* called_computation,
-                   const std::optional<std::string>& thread_name,
+                   absl::string_view thread_name,
                    bool skip_async_thread_name_overwrite) {
   called_computation->SetThreadName(thread_name);
   for (HloInstruction* instr : called_computation->instructions()) {
@@ -240,7 +241,7 @@ HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    std::optional<std::string> async_thread_name)
+    absl::string_view async_thread_name)
     : HloInstruction(opcode, shape),
       async_group_id_(async_group_id),
       async_thread_name_(async_thread_name) {
@@ -255,10 +256,11 @@ HloAsyncInstruction::HloAsyncInstruction(
   set_async_thread_name(async_thread_name);
 }
 
-HloAsyncInstruction::HloAsyncInstruction(
-    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    std::optional<std::string> async_thread_name)
+HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                                         HloInstruction* operand,
+                                         HloComputation* async_computation,
+                                         std::optional<int64_t> async_group_id,
+                                         absl::string_view async_thread_name)
     : HloInstruction(opcode, shape),
       async_group_id_(async_group_id),
       async_thread_name_(async_thread_name) {
@@ -304,8 +306,8 @@ std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
   if (async_group_id_.has_value()) {
     result.push_back(StrCat("async_group_id=", *async_group_id_));
   }
-  if (async_thread_name_.has_value()) {
-    result.push_back(StrCat("async_thread_name=\"", *async_thread_name_, "\""));
+  if (async_thread_name_ != kMainThreadName) {
+    result.push_back(StrCat("async_thread_name=\"", async_thread_name_, "\""));
   }
   if (options.syntax_sugar_async_ops()) {
     std::vector<std::string> wrapped_extra_attributes =
@@ -348,8 +350,8 @@ void HloAsyncInstruction::set_async_group_id(
 }
 
 void HloAsyncInstruction::set_async_thread_name(
-    const std::optional<std::string>& async_thread_name) {
-  async_thread_name_ = async_thread_name;
+    absl::string_view async_thread_name) {
+  async_thread_name_ = std::string(async_thread_name);
   SetThreadName(async_wrapped_computation(), async_thread_name,
                 /*skip_async_thread_name_overwrite=*/false);
 }
@@ -357,8 +359,10 @@ void HloAsyncInstruction::set_async_thread_name(
 HloInstructionProto HloAsyncInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_async_group_id(async_group_id_.has_value() ? *async_group_id_ : -1);
-  proto.set_async_thread_name(
-      async_thread_name_.has_value() ? *async_thread_name_ : "");
+  proto.set_async_thread_name(async_thread_name_ ==
+                                      HloInstruction::kMainThreadName
+                                  ? ""
+                                  : async_thread_name_);
   return proto;
 }
 
@@ -1750,8 +1754,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 }
 
 void HloCallableInstruction::RecursivelySetComputationsThreadName(
-    std::optional<std::string> thread_name,
-    bool skip_async_thread_name_overwrite) {
+    absl::string_view thread_name, bool skip_async_thread_name_overwrite) {
   for (HloComputation* comp : called_computations()) {
     SetThreadName(comp, thread_name, skip_async_thread_name_overwrite);
   }

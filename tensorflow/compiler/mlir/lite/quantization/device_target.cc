@@ -60,7 +60,7 @@ Optional<KernelSpec> DeviceTarget::GetKernelSpec(
 }
 
 ScaleDecomposeFn DeviceTarget::GetDecomposeFn(QuantizeRegionOp op) const {
-  auto kernel_specs_it = specs_.find(op.logical_kernel());
+  auto kernel_specs_it = specs_.find(op.getLogicalKernel());
   if (kernel_specs_it == specs_.end()) return ScaleDecomposeFn(nullptr);
   return kernel_specs_it->second.GetDecomposeFn();
 }
@@ -108,10 +108,10 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   if (!rop) return failure();
 
   llvm::SmallVector<Type, 4> input_specs, out_specs;
-  for (auto spec : rop.input_specs()) {
+  for (auto spec : rop.getInputSpecs()) {
     input_specs.push_back(spec.cast<TypeAttr>().getValue());
   }
-  for (auto spec : rop.output_specs()) {
+  for (auto spec : rop.getOutputSpecs()) {
     out_specs.push_back(spec.cast<TypeAttr>().getValue());
   }
 
@@ -161,7 +161,7 @@ LogicalResult DeviceTarget::DecomposeSameScale(
     output_multipliers->push_back(kUnitQuantizedMultiplier);
   }
 
-  auto o_spec = rop.output_specs()[0]
+  auto o_spec = rop.getOutputSpecs()[0]
                     .cast<TypeAttr>()
                     .getValue()
                     .dyn_cast<quant::UniformQuantizedType>();

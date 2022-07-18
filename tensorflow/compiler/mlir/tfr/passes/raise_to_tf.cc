@@ -495,7 +495,7 @@ class RaiseToTFOpsPass
 void RaiseToTFOpsPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = &getContext();
-  SymbolTable table(external_tfr_module_.hasValue()
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 

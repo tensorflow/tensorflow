@@ -70,7 +70,7 @@ void FillConvDescriptor(ConvolutionOpType op, Value result,
     dim->set_base_dilation(lhs_dilation.getValues<int64_t>()[index]);
     dim->set_window_dilation(rhs_dilation.getValues<int64_t>()[index]);
     dim->set_window_reversal(window_reversal.getValues<bool>()[index]);
-    if (op.getPadding().hasValue()) {
+    if (op.getPadding().has_value()) {
       mlir::DenseIntElementsAttr padding = op.getPadding().getValue();
       dim->set_padding_low(padding.getValues<int64_t>()[index]);
       dim->set_padding_high(padding.getValues<int64_t>()[index]);

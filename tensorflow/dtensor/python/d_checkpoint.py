@@ -28,6 +28,7 @@ from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
+from tensorflow.python.checkpoint import restore as restore_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
@@ -173,15 +174,15 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
   def restore_saveables(
       self,
       tensor_saveables: Dict[str, saveable_object.SaveableObject],
-      python_saveables: List[base.PythonStateSaveable],
+      python_positions: List[restore_lib.CheckpointPosition],
       registered_savers: Optional[Dict[str, Dict[str, base.Trackable]]] = None
   ) -> Optional[List[ops.Operation]]:
     """Run or build restore operations for SaveableObjects.
 
     Args:
       tensor_saveables: `SaveableObject`s which correspond to Tensors.
-      python_saveables: `PythonStateSaveable`s which correspond to Python
-        values.
+      python_positions: `CheckpointPosition`s which correspond to `PythonState`
+        Trackables bound to the checkpoint.
       registered_savers: a dict mapping saver names-> object name -> Trackable.
         This argument is not implemented for DTensorCheckpoint.
 
@@ -193,14 +194,13 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
 
     restore_ops = []
     # Eagerly run restorations for Python state.
-    reader = None
-    for saveable in python_saveables:
-      if reader is None:
-        # Lazily create the NewCheckpointReader, since this requires file access
-        # and we may not have any Python saveables.
-        reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
-      spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore([reader.get_tensor(name) for name in spec_names])
+    if python_positions:
+      # Lazily create the NewCheckpointReader, since this requires file access
+      # and we may not have any Python saveables.
+      reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
+      for position in python_positions:
+        key = position.object_proto.attributes[0].checkpoint_key
+        position.trackable.deserialize(reader.get_tensor(key))
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables:
@@ -334,7 +334,7 @@ class DTrackableSaver(util.TrackableSaver):
         graph_view=self._graph_view,
         options=options,
         saveables_cache=self._saveables_cache)
-    base.CheckpointPosition(
+    restore_lib.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
 
     # Attached dependencies are not attached to the root, so should be restored
@@ -357,7 +357,7 @@ class DTrackableSaver(util.TrackableSaver):
           # indirect connection from the attached object to the root.
           continue
 
-        base.CheckpointPosition(
+        restore_lib.CheckpointPosition(
             checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
 
     load_status = util.CheckpointLoadStatus(

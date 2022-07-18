@@ -19,6 +19,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <random>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -88,14 +89,14 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  bool pseudo_random = true,
                                                  bool use_large_range = false);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  std::minstd_rand0* engine,
                                                  bool use_large_range = false);
 

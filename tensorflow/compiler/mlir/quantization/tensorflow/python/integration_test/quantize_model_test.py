@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
+import os
 from typing import List, Mapping, Optional
 import warnings
 
@@ -31,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -676,10 +678,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         maxval=10,
         dtype=dtypes.int64)
 
-    converted_model = quantize_model.quantize(input_saved_model_path,
-                                              ['serving_default'], tags,
-                                              output_directory,
-                                              quantization_options, data_gen)
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=data_gen)
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -1592,6 +1596,65 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     # Quantization is not currently supported for gather.
     self.assertFalse(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_non_empty_directory_raises_file_exists_error(self):
+    model = MatmulModel()
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+
+    # Create a file inside the output directory.
+    output_directory = self.create_tempdir().full_path
+    file_io.write_string_to_file(
+        filename=os.path.join(output_directory, 'dummy_file.txt'),
+        file_content='Test content')
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    with self.assertRaisesRegex(FileExistsError,
+                                'Output directory already exists'):
+      quantize_model.quantize(input_saved_model_path, ['serving_default'], tags,
+                              output_directory, quantization_options)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_non_empty_directory_overwritten(self):
+    model = MatmulModel()
+
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+
+    # Create a file inside the output directory.
+    output_directory = self.create_tempdir().full_path
+    file_io.write_string_to_file(
+        filename=os.path.join(output_directory, 'dummy_file.txt'),
+        file_content='Test content')
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        quantization_options,
+        overwrite_output_directory=True)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {'serving_default'})
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
         self._contains_quantized_function_call(output_meta_graphdef))
 
 

@@ -809,8 +809,7 @@ bool StreamExecutor::StopTimer(Stream* stream, Timer* timer) {
 
 std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
     const {
-  auto desc_status = implementation_->CreateDeviceDescription();
-  return desc_status.ConsumeValueOrDie();
+  return implementation_->CreateDeviceDescription().value();
 }
 
 bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {

@@ -98,13 +98,16 @@ class AutomaticControlDependenciesTest(test.TestCase):
     # A function with two identical ops, should cause a data race in most
     # conditions.
     var_values = set()
-    for _ in range(1000):
+    for _ in range(10000):
       self.evaluate(f())
       var_values.add(
           self.evaluate(
               resource_variable_ops.read_variable_op(v.handle, dtypes.int32)))
     # With regular control dependencies, the function should always run the
     # first assign first, and the value 1 should never be seen.
+    # With run_independently, assign 1 and 2 are run in parallel. Thus, when f
+    # is run large number of times, we see both 1 and 2 values assigned to
+    # variable v.
     self.assertSetEqual(var_values, set((1, 2)))
 
   def testIndependentOpsInLoop(self):

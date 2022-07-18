@@ -506,6 +506,8 @@ class HloInstruction {
     kCustom,
   };
 
+  inline static constexpr char kMainThreadName[] = "main";
+
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
   // Detaches an instruction from its operands and users. That is, remove the
@@ -627,17 +629,17 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
       std::optional<int64_t> async_group_id = std::nullopt,
-      std::optional<std::string> async_thread_name = std::nullopt);
+      absl::string_view async_thread_name = kMainThreadName);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
       std::optional<int64_t> async_group_id = std::nullopt,
-      std::optional<std::string> async_thread_name = std::nullopt);
+      absl::string_view async_thread_name = kMainThreadName);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
       std::optional<int64_t> async_group_id = std::nullopt,
-      std::optional<std::string> async_thread_name = std::nullopt);
+      absl::string_view async_thread_name = kMainThreadName);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -2133,16 +2135,15 @@ class HloInstruction {
   void set_async_group_id(std::optional<int64_t> async_group_id);
 
   // Delegates to HloAsyncInstruction::async_thread_name().
-  std::optional<absl::string_view> async_thread_name() const;
+  absl::string_view async_thread_name() const;
 
   // Delegates to HloAsyncInstruction::set_async_thread_name().
-  void set_async_thread_name(
-      const std::optional<std::string>& async_thread_name);
+  void set_async_thread_name(absl::string_view async_thread_name);
 
   // Delegates to
   // HloCallableInstruction::RecursivelySetComputationsThreadName().
   void set_called_computations_thread_name(
-      const std::optional<std::string>& async_thread_name,
+      absl::string_view async_thread_name,
       bool skip_async_thread_name_overwrite);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().

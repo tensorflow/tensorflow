@@ -77,12 +77,9 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 Attribute LmhloDialect::parseAttribute(DialectAsmParser& parser,
                                        Type type) const {
   StringRef attrTag;
-  if (failed(parser.parseKeyword(&attrTag))) return Attribute();
-  {
-    Attribute attr;
-    auto parseResult = generatedAttributeParser(parser, attrTag, type, attr);
-    if (parseResult.hasValue()) return attr;
-  }
+  Attribute attr;
+  auto parseResult = generatedAttributeParser(parser, &attrTag, type, attr);
+  if (parseResult.hasValue()) return attr;
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
   return Attribute();
 }
@@ -165,7 +162,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
                                  ArrayRef<Attribute> /*operands*/,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
-  if (!index.hasValue()) {
+  if (!index.has_value()) {
     for (auto& branch : getBranches())
       regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
   }
@@ -404,7 +401,7 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
-  if (!index.hasValue() || index.getValue() == 1) {
+  if (!index.has_value() || index.getValue() == 1) {
     regions.push_back(RegionSuccessor(&getCond(), getCond().getArguments()));
     return;
   }
@@ -443,7 +440,7 @@ void FusionOp::getSuccessorRegions(Optional<unsigned> index,
                                    ArrayRef<Attribute> /*operands*/,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     assert(index.getValue() == 0 && "expected fusion region");
     regions.push_back(RegionSuccessor());
   } else {

@@ -509,13 +509,14 @@ struct ShapeVisitor {
   }
   void backwardDim(tensor::DimOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getShapeInfoOf(op.source()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getShapeInfoOf(op.getSource()));
   }
   void forwardDim(tensor::DimOp op) {
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
-    if (auto index = op.index().getDefiningOp<arith::ConstantOp>()) {
+    if (auto index = op.getIndex().getDefiningOp<arith::ConstantOp>()) {
       int64_t i = index.getValue().cast<IntegerAttr>().getInt();
-      auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.source()));
+      auto in = lookup(ShapeOrValueInfo::getShapeInfoOf(op.getSource()));
       dims.push_back({in[i].symbols, in[i].expr});
     } else {
       forwardUnknown(op);
@@ -574,15 +575,17 @@ struct ShapeVisitor {
   }
   void backwardTensorExtract(tensor::ExtractOp op) {
     forwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op));
-    backwardsWorklist.push_back(ShapeOrValueInfo::getValueInfoOf(op.tensor()));
+    backwardsWorklist.push_back(
+        ShapeOrValueInfo::getValueInfoOf(op.getTensor()));
   }
   void forwardTensorExtract(tensor::ExtractOp op) {
     auto &dims = insert(ShapeOrValueInfo::getValueInfoOf(op));
-    assert(op.indices().size() == 1);
-    if (auto index = op.indices().front().getDefiningOp<arith::ConstantOp>()) {
+    assert(op.getIndices().size() == 1);
+    if (auto index =
+            op.getIndices().front().getDefiningOp<arith::ConstantOp>()) {
       int64_t i = index.getValue().cast<IntegerAttr>().getInt();
       // We asssume this is in bounds.
-      auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.tensor()));
+      auto in = lookup(ShapeOrValueInfo::getValueInfoOf(op.getTensor()));
       dims.push_back({in[i].symbols, in[i].expr});
     } else {
       forwardUnknown(op);

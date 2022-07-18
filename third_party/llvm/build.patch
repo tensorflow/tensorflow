@@ -1,8 +1,8 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 2e9faad29af9..bcb94a1e6148 100644
+index eec592dee5e5..7939ba627b1d 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -195,16 +195,18 @@ cc_library(
+@@ -186,13 +186,15 @@ cc_library(
          "lib/Support/BLAKE3/blake3_portable.c",
      ] + select({
          "@platforms//cpu:aarch64": [
@@ -22,12 +22,8 @@ index 2e9faad29af9..bcb94a1e6148 100644
 +            # "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
          ],
          "//conditions:default": [
--        ]
-+        ],
-     }),
-     hdrs = glob([
-         "include/llvm/Support/**/*.h",
-@@ -226,20 +228,22 @@ cc_library(
+         ],
+@@ -217,14 +219,16 @@ cc_library(
      ],
      copts = llvm_copts,
      defines = select({
@@ -38,35 +34,13 @@ index 2e9faad29af9..bcb94a1e6148 100644
 +        #],
          "//conditions:default": [
              "BLAKE3_USE_NEON=0",
--        ]
--    }) + select({
--        "@platforms//cpu:x86_64": [
          ],
-+    }) + select({
+     }) + select({
+-        "@platforms//cpu:x86_64": [
+-        ],
 +        # TODO(b/234415414): temporary disabled
-+        #        "@platforms//cpu:x86_64": [
-+        #       ],
++        # "@platforms//cpu:x86_64": [
++        # ],
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
-             "BLAKE3_NO_SSE2",
-             "BLAKE3_NO_SSE41",
--        ]
-+        ],
-     }),
-     includes = ["include"],
-     linkopts = select({
-@@ -2907,11 +2911,11 @@ cc_binary(
-     copts = llvm_copts,
-     stamp = 0,
-     deps = [
--        ":Symbolize",
-         ":BitReader",
-         ":Core",
--        ":Support",
-         ":Debuginfod",
-+        ":Support",
-+        ":Symbolize",
-     ],
- )
- 

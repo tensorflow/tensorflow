@@ -54,6 +54,7 @@ TfLiteRegistration* Register_NEG();
 
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 
 // Make an interpreter that has no tensors and no nodes
@@ -1154,6 +1155,17 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
                                               &registration),
             kTfLiteOk);
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
+TEST_F(InterpreterTest, SubgraphNumbering) {
+  EXPECT_THAT(interpreter_->subgraph(0)->GetSubgraphIndex(), 0);
+  AddSubgraphs(2);
+  AddSubgraphs(3);
+  std::vector<int> subgraph_indices;
+  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
+    subgraph_indices.push_back(interpreter_->subgraph(i)->GetSubgraphIndex());
+  }
+  EXPECT_THAT(subgraph_indices, ElementsAre(0, 1, 2, 3, 4, 5));
 }
 
 struct TestExternalContext : public TfLiteExternalContext {

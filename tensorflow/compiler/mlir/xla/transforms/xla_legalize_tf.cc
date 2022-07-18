@@ -52,8 +52,8 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
     prefer_tf2xla_ = prefer_tf2xla;
-    use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
-    if (tf2xla_fallback_device_type.hasValue()) {
+    use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
+    if (tf2xla_fallback_device_type.has_value()) {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
     }
   }

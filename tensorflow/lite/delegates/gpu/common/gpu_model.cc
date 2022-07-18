@@ -233,14 +233,12 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           storage_type == TensorStorageType::TEXTURE_2D ||
           storage_type == TensorStorageType::TEXTURE_3D ||
           storage_type == TensorStorageType::TEXTURE_ARRAY;
-      if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-        if (shape.c < 4 && can_use_single_texture &&
-            TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
-                             layout}
-                .CanCreateTensorWithShape(gpu_info, shape)
-                .ok()) {
-          storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
-        }
+      if (shape.c < 4 && can_use_single_texture &&
+          TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
+                           layout}
+              .CanCreateTensorWithShape(gpu_info, shape)
+              .ok()) {
+        storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
       RETURN_IF_ERROR(

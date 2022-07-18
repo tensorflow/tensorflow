@@ -515,22 +515,26 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # then retrace each time.
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'a': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'a': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'b': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'b': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'b': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'c': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'c': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'c': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
 
     # But if we call again with only shape different, then do relax:
     check_trace(  # relax & retrace
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((None,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'a': tensor_spec.TensorSpec((None,), dtypes.int32)},
+            rank=0))
     check_trace(   # use relaxed graph
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3]}),
         None)

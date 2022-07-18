@@ -132,11 +132,11 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
   }];
   let arguments = (ins
     GMLST_TileType:$superset,
-    I64ElementsAttr:$remaining_dims);
+    DenseI64ArrayAttr:$remaining_dims);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    $superset `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
-    qualified(type($superset)) `->` qualified(type($result))
+    $superset `,` $remaining_dims attr-dict `:`
+    qualified(type($superset)) `to` qualified(type($result))
   }];
   let hasVerifier = 0;
 }

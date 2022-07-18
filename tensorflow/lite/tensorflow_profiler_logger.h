@@ -24,6 +24,10 @@ limitations under the License.
 struct TfLiteTensor;
 
 namespace tflite {
+// Records an op preparation with `op_name` and `node_index`.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
+                                             const int node_index);
+
 // Records an op invocation with `op_name` and `node_index`.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpInvoke(const char* op_name,
                                             const int node_index);

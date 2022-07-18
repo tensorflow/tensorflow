@@ -482,7 +482,7 @@ bool BlasLt::DoMatmulInternal(
       }
       return false;
     }
-    auto algorithms = status_or_algorithms.ConsumeValueOrDie();
+    auto algorithms = std::move(status_or_algorithms).value();
     remainder_algo = algorithms.front();
   }
 

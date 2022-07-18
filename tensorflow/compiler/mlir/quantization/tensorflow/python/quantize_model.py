@@ -35,6 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
@@ -487,6 +488,25 @@ def _run_graph_for_calibration(
     ) from ex
 
 
+def _create_empty_output_dir(output_directory: str) -> None:
+  """Creates the `output_directory`.
+
+  If `output_directory` already exists, it recursively deletes all contents
+  inside the directory.
+
+  Also creates the parent & intermediate directories.
+
+  Args:
+    output_directory: Output directory.
+  """
+  if file_io.file_exists_v2(output_directory):
+    logging.info('Deleting existing directory for quantized model output: %s .',
+                 output_directory)
+    file_io.delete_recursively_v2(output_directory)
+
+  file_io.recursive_create_dir_v2(output_directory)
+
+
 def _static_range_quantize(
     saved_model_path: str,
     signature_keys: Sequence[str],
@@ -504,8 +524,8 @@ def _static_range_quantize(
       and outputs.
     tags: Collection of tags identifying the MetaGraphDef within the SavedModel
       to analyze.
-    output_directory: The path to save the output SavedModel (must be an empty
-      directory).
+    output_directory: The path to save the output SavedModel. The directory will
+      be overwritten if not empty.
     representative_dataset: a generator that returns a dictionary in {input_key:
       input_value} format or a tuple with signature key and a dictionary in
       {input_key: input_value} format that feeds calibration data for quantizing
@@ -615,8 +635,7 @@ def _static_range_quantize(
   graph_def = graph_pb2.GraphDef()
   graph_def.ParseFromString(graph_def_serialized)
 
-  if output_directory is None:
-    output_directory = tempfile.mkdtemp()
+  _create_empty_output_dir(output_directory)
   v1_builder = builder.SavedModelBuilder(output_directory)
 
   with session.Session(graph=ops.Graph()) as sess:
@@ -637,8 +656,7 @@ def _static_range_quantize(
 
 def _dynamic_range_quantize(saved_model_path: str,
                             signature_keys: Sequence[str],
-                            tags: Collection[str],
-                            output_directory: str = ''):
+                            tags: Collection[str], output_directory: str) ->...:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
   Args:
@@ -647,8 +665,8 @@ def _dynamic_range_quantize(saved_model_path: str,
       and outputs.
     tags: Collection of tags identifying the MetaGraphDef within the SavedModel
       to analyze.
-    output_directory: The path to save the output SavedModel (must be an empty
-      directory).
+    output_directory: The path to save the output SavedModel. The directory will
+      be overwritten if not empty.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -674,8 +692,7 @@ def _dynamic_range_quantize(saved_model_path: str,
   graph_def = graph_pb2.GraphDef()
   graph_def.ParseFromString(graph_def_serialized)
 
-  if not output_directory:
-    output_directory = tempfile.mkdtemp()
+  _create_empty_output_dir(output_directory)
   v1_builder = builder.SavedModelBuilder(output_directory)
 
   with session.Session(graph=ops.Graph()) as sess:
@@ -694,6 +711,31 @@ def _dynamic_range_quantize(saved_model_path: str,
   return saved_model_load(output_directory)
 
 
+def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
+  """Verifies the output directory.
+
+  Raises an error if `output_dir` is not suitable for writing the output saved
+  model.
+
+  Args:
+    output_dir: Output directory.
+    overwrite: An option allowing to overwrite the existing output directory if
+      set to true. Does not actually create or modify the `output_dir` in this
+      function.
+
+  Raises:
+    FileExistsError: Iff `output_dir` is not empty and `overwrite` is false.
+  """
+  dir_not_empty = (
+      output_dir is not None and file_io.file_exists_v2(output_dir) and
+      file_io.list_directory_v2(output_dir))
+
+  if dir_not_empty and not overwrite:
+    raise FileExistsError(f'Output directory already exists: {output_dir} . '
+                          'Please set overwrite_output_directory to true to '
+                          'overwrite the existing directory.')
+
+
 def quantize(
     saved_model_path: str,
     signature_keys: Optional[Sequence[str]] = None,
@@ -702,6 +744,8 @@ def quantize(
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping] = None,
+    *,
+    overwrite_output_directory: bool = False,
 ) ->...:
   """Quantizes the given SavedModel.
 
@@ -712,13 +756,16 @@ def quantize(
       and outputs. If None, ["serving_default"] is used.
     tags: (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
       within the SavedModel to analyze. If None, {"serve"} is used.
-    output_directory: The path to save the output SavedModel (must be an empty
-      directory).
+    output_directory: The path to save the output SavedModel. Set
+      `overwrite_output_directory` to `True` to overwrite any existing contents
+      in the directory if not empty.
     quantization_options: A set of options for quantization.
     representative_dataset: an iterator that returns a dictionary of {input_key:
       input_value} or a tuple with signature key and a dictionary of {input_key:
       input_value} that feeds calibration data for quantizing model. This should
       be provided when the model is a PTQ model.
+    overwrite_output_directory: If set to true, overwrites the output directory
+      iff it isn't empty. The default value is false.
 
   Returns:
     A SavedModel object with TF quantization applied, or None if no quantization
@@ -731,13 +778,17 @@ def quantize(
     NotImplementedError: When the specified quantization method is not yet
       implemented.
   """
+  _verify_output_dir(output_directory, overwrite_output_directory)
+  if output_directory is None:
+    output_directory = tempfile.mkdtemp()
+
+  # Set default values for None arguments.
+  if quantization_options is None:
+    quantization_options = quant_opts_pb2.QuantizationOptions()
   if tags is None:
     tags = {tag_constants.SERVING}
   if signature_keys is None:
     signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
-  if quantization_options is None:
-    quantization_options = quant_opts_pb2.QuantizationOptions()
 
   method: quant_opts_pb2.QuantizationMethod = quantization_options.quantization_method
   if method.HasField('method'):

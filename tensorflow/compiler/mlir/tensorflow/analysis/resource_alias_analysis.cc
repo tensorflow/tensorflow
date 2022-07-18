@@ -548,7 +548,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
 
     const bool all_passthrough_args_known = llvm::all_of(
         passthrough_args, [](const llvm::Optional<int>& passthrough_arg) {
-          return passthrough_arg.hasValue();
+          return passthrough_arg.has_value();
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {

@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 77
+_version = 78
 
 # Version number for MLIR:Python components.
-mlir_api_version = 28
+mlir_api_version = 29
 
 xla_platform_names = {
     'cpu': 'Host',

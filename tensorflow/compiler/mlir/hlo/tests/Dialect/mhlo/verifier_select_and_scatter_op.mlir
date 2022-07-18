@@ -9,8 +9,8 @@ func.func @select_and_scatter(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        compare_type = #mhlo<"comparison_type TOTALORDER">,
-        comparison_direction = #mhlo<"comparison_direction GE">
+        compare_type = #mhlo<comparison_type TOTALORDER>,
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -37,8 +37,8 @@ func.func @select_and_scatter_with_unranked_dims(
   %3 = "mhlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<*xbf16>, %arg4: tensor<*xbf16>):
     %4 = "mhlo.compare"(%arg3, %arg4) {
-      compare_type = #mhlo<"comparison_type TOTALORDER">,
-      comparison_direction = #mhlo<"comparison_direction GE">}
+      compare_type = #mhlo<comparison_type TOTALORDER>,
+      comparison_direction = #mhlo<comparison_direction GE>}
       : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
     "mhlo.return"(%4) : (tensor<*xi1>) -> ()
   }, {
@@ -67,8 +67,8 @@ func.func @select_and_scatter_invalid_select_computation(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg3) {
-        compare_type = #mhlo<"comparison_type TOTALORDER">,
-        comparison_direction = #mhlo<"comparison_direction GE">
+        compare_type = #mhlo<comparison_type TOTALORDER>,
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -95,7 +95,7 @@ func.func @select_and_scatter_invalid_select_computation(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<i32>, tensor<i32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -122,7 +122,7 @@ func.func @select_and_scatter_invalid_select_computation(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<1xf32>, %arg4: tensor<1xf32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi1>
       %3 = "mhlo.reshape"(%2) : (tensor<1xi1>) -> tensor<i1>
       "mhlo.return"(%3) : (tensor<i1>) -> ()
@@ -150,7 +150,7 @@ func.func @select_and_scatter_invalid_select_computation(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2, %2) : (tensor<i1>, tensor<i1>) -> ()
     },  {
@@ -177,7 +177,7 @@ func.func @select_and_scatter_invalid_select_computation(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       %3 = "mhlo.reshape"(%2) : (tensor<i1>) -> tensor<1xi1>
       "mhlo.return"(%3) : (tensor<1xi1>) -> ()
@@ -205,7 +205,7 @@ func.func @select_and_scatter_invalid_select_computation(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       %3 = "mhlo.tuple"(%2) : (tensor<i1>) -> tuple<tensor<i1>>
       "mhlo.return"(%3) : (tuple<tensor<i1>>) -> ()
@@ -233,7 +233,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -259,7 +259,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -286,7 +286,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -314,7 +314,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -342,7 +342,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -370,7 +370,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -398,7 +398,7 @@ func.func @select_and_scatter_invalid_attributes(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -426,7 +426,7 @@ func.func @select_and_scatter_invalid_ret_type(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -454,7 +454,7 @@ func.func @select_and_scatter_invalid_ret_type(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -482,7 +482,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -510,7 +510,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -538,7 +538,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -566,7 +566,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -595,7 +595,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -623,7 +623,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -651,7 +651,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -679,7 +679,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -707,7 +707,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -735,7 +735,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -763,7 +763,7 @@ func.func @select_and_scatter_invalid_source_operand(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {
@@ -791,7 +791,7 @@ func.func @select_and_scatter_invalid_source_operand(
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
-        comparison_direction = #mhlo<"comparison_direction GE">
+        comparison_direction = #mhlo<comparison_direction GE>
         } : (tensor<f32>, tensor<f32>) -> tensor<i1>
       "mhlo.return"(%2) : (tensor<i1>) -> ()
     },  {

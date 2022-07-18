@@ -83,6 +83,7 @@ using mlir::func::ReturnOp;
 using mlir::gpu::GPUModuleOp;
 using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
+using mlir::gpu::MemsetOp;
 using mlir::lmhlo::AllGatherOp;
 using mlir::lmhlo::AllReduceOp;
 using mlir::lmhlo::AllToAllOp;
@@ -265,6 +266,41 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
         FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
     auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
     auto custom_call = FuncOp::create(op.getLoc(), memcpy, custom_call_type,
+                                      custom_call_attrs);
+    custom_call.setPrivate();
+
+    SymbolTable sym_table(op->getParentOfType<ModuleOp>());
+    auto inserted = sym_table.insert(custom_call);
+    rewriter.notifyOperationInserted(custom_call);
+
+    // Create a function launch call operation.
+    rewriter.replaceOpWithNewOp<CallOp>(op, inserted, TypeRange(),
+                                        op.getOperands());
+
+    return success();
+  }
+};
+
+// -------------------------------------------------------------------------- //
+
+class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MemsetOp op,
+                                PatternRewriter& rewriter) const override {
+    MLIRContext* ctx = getContext();
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Custom call target.
+    NamedAttribute target(b.getStringAttr("rt.direct_custom_call"),
+                          b.getStringAttr("xla.gpu.memset"));
+
+    // Create a custom call function declaration.
+    auto custom_call_type =
+        FunctionType::get(ctx, op.getOperandTypes(), TypeRange());
+    auto custom_call_attrs = ArrayRef<NamedAttribute>(target);
+    auto custom_call = FuncOp::create(op.getLoc(), "memset", custom_call_type,
                                       custom_call_attrs);
     custom_call.setPrivate();
 
@@ -498,7 +534,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue()) values = llvm::to_vector(attr->getValues<int64_t>());
+      if (attr.has_value())
+        values = llvm::to_vector(attr->getValues<int64_t>());
       set_attr(name, b.getI64TensorAttr(values));
     };
 
@@ -506,7 +543,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     // TODO(ezhulenev): Allow passing boolean tensors to the JitRt custom calls.
     auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue())
+      if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),
                       attr->getValues<bool>().end());
       set_attr(name, b.getI64TensorAttr(values));
@@ -762,7 +799,7 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
     // If custom call has target arguments mapping, then we need to pass empty
     // memrefs in place of holes.
-    if (op.getTargetArgMapping().hasValue()) {
+    if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
@@ -853,7 +890,7 @@ class GetGlobalOpLowering : public OpRewritePattern<GetGlobalOp> {
     if (func_mapping == cst_args_.end()) return failure();
 
     // Check if the global operation correposponds to the LMHLO constant arg.
-    auto arg = func_mapping->second.find(op.name());
+    auto arg = func_mapping->second.find(op.getName());
     if (arg == func_mapping->second.end()) return failure();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -1146,7 +1183,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllToAllOp op,
                                         CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
-                  b.getBoolAttr(op.getSplitDimension().hasValue()));
+                  b.getBoolAttr(op.getSplitDimension().has_value()));
     return success();
   }
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
@@ -1483,7 +1520,7 @@ void ConvertGpuToJitRtPass::runOnOperation() {
   // Convert gpu operations to JitRt gpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<GpuModuleOpLowering, LaunchFuncOpLowering, MemcpyOpLowering,
-                  InfeedOpLowering, OutfeedOpLowering>(ctx);
+                  MemsetOpLowering, InfeedOpLowering, OutfeedOpLowering>(ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

@@ -38,6 +38,9 @@
           * tflite SelectV2 now supports 5D.
           * tf.einsum is supported with multiple unknown shapes.
           * tf.unsortedsegmentprod op is supported.
+          * tf.unsortedsegmentmax op is supported.
+    *   Updates to existing operations:
+          * tfl.scatter_nd now supports I1 for update arg.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
 *   `tf.keras`:
 
@@ -64,6 +67,17 @@
     *   Added [`tf.keras.dtensor.experimental.optimizers.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/dtensor/experimental/optimizers/AdamW). This optimizer
         is similar as the existing [`keras.optimizers.experimental.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental/AdamW), and
         works in the DTensor training use case.
+    *   Improved masking support for [tf.keras.layers.MultiHeadAttention](https://www.tensorflow.org/api_docs/python/tf/keras/layers/MultiHeadAttention).
+        *   Implicit masks for `query`, `key` and `value` inputs will
+            automatically be used to compute a correct attention mask for the
+            layer. These padding masks will be combined with any
+            `attention_mask` passed in directly when calling the layer. This
+            can be used with [tf.keras.layers.Embedding](https://www.tensorflow.org/api_docs/python/tf/keras/layers/Embedding)
+            with `mask_zero=True` to automatically infer a correct padding mask.
+        *   Added a `use_causal_mask` call time arugment to the layer. Passing
+            `use_causal_mask=True` will compute a causal attention mask, and
+            optionally combine it with any `attention_mask` passed in directly
+            when calling the layer.
 
 *   `tf.data`:
 
@@ -84,6 +98,8 @@
         STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it
         runs a new algorithm that can get the same performance with lower
         CPU/memory usage.
+    *   Added [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list), a new API for creating
+        `Dataset`s from lists of elements.
 
 *   `tf.distribute`:
 
