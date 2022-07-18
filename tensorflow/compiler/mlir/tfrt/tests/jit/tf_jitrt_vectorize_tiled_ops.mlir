@@ -158,8 +158,7 @@ func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
 // CHECK: gml_st.loop
 // CHECK-SAME: ins (%[[IN:arg[0-9]]] = %{{arg[0-9]}}: tensor<16xf32>)
 
-// CHECK: %[[SLICE:.*]] = tensor.extract_slice %[[IN]]
-// CHECK: %[[VECTOR:.*]] = vector.transfer_read %[[SLICE]]
+// CHECK: %[[VECTOR:.*]] = vector.transfer_read %[[IN]]
 // CHECK: vector.shape_cast %[[VECTOR]] : vector<8xf32> to vector<1x8xf32>
 // CHECK-NOT: tensor.expand_shape
 // CHECK: vector.multi_reduction
