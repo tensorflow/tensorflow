@@ -309,7 +309,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   } else if (isa<mlir::mhlo::ShiftRightLogicalOp,
                  mlir::lmhlo::ShiftRightLogicalOp>(op)) {
     return xla::HloOpcode::kShiftRightLogical;
-  } else if (isa<mlir::mhlo::SubOp, mlir::lmhlo::SubOp>(op)) {
+  } else if (isa<mlir::mhlo::SubtractOp, mlir::lmhlo::SubtractOp>(op)) {
     return xla::HloOpcode::kSubtract;
   } else if (isa<mlir::mhlo::XorOp, mlir::lmhlo::XorOp>(op)) {
     return xla::HloOpcode::kXor;
@@ -400,6 +400,9 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReal;
   } else if (isa<mlir::mhlo::RoundOp, mlir::lmhlo::RoundOp>(op)) {
     return xla::HloOpcode::kRoundNearestAfz;
+  } else if (isa<mlir::mhlo::RoundNearestEvenOp,
+                 mlir::lmhlo::RoundNearestEvenOp>(op)) {
+    return xla::HloOpcode::kRoundNearestEven;
   } else if (isa<mlir::mhlo::RsqrtOp, mlir::lmhlo::RsqrtOp>(op)) {
     return xla::HloOpcode::kRsqrt;
   } else if (isa<mlir::mhlo::SignOp, mlir::lmhlo::SignOp>(op)) {

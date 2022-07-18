@@ -82,8 +82,7 @@ HloComputation::HloComputation(
       fusion_instruction_(fusion_instruction),
       is_fusion_computation_(fusion_instruction != nullptr),
       custom_call_instruction_(nullptr),
-      is_custom_call_computation_(false),
-      thread_name_(std::nullopt) {
+      is_custom_call_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -617,10 +616,10 @@ absl::Cord HloComputation::ToCord(
 
   result.Append(tab);
   result.Append("}");
-  if (options.print_ids() && thread_name().has_value()) {
+  if (options.print_ids() && !IsMainThread()) {
     // When print_ids() is false, exclude entry computation's thread name
     // because it includes and leads to non-deterministic fingerprint.
-    result.Append(StrCat(", thread_name=\"", *thread_name(), "\""));
+    result.Append(StrCat(", thread_name=\"", thread_name(), "\""));
   }
   return result;
 }
@@ -639,7 +638,7 @@ HloComputationProto HloComputation::ToProto() const {
   proto.set_root_id(root_instruction()->unique_id());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   proto.set_is_fusion_computation(is_fusion_computation_);
-  proto.set_thread_name(thread_name_.has_value() ? *thread_name_ : "");
+  proto.set_thread_name(IsMainThread() ? "" : std::string(thread_name()));
   return proto;
 }
 
@@ -750,7 +749,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-    std::optional<std::string> async_thread_name) {
+    absl::string_view async_thread_name) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -924,10 +923,7 @@ bool HloComputation::EqualInternal(const HloComputation& other,
   }
 
   if (!ignore_thread) {
-    std::string current_name = !thread_name().has_value() ? "" : *thread_name();
-    std::string other_name =
-        !other.thread_name().has_value() ? "" : *other.thread_name();
-    return current_name == other_name;
+    return thread_name() == other.thread_name();
   }
   return true;
 }

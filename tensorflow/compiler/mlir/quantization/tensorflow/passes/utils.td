@@ -23,6 +23,9 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
 // Checks if the data format is "NHWC".
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
+// Checks if the op is constant op.
+def IsConstTensor :  Constraint<CPred<"dyn_cast_or_null<TF::ConstOp>($0.getDefiningOp())">>;
+
 // Checks if the element value has a float type.
 def IsFloatElementsAttr : ElementsAttrBase<
   CPred<"$_self.isa<ElementsAttr>() && "

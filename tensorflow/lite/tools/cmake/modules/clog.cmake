@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   clog
   GIT_REPOSITORY https://github.com/pytorch/cpuinfo
   # Sync with tensorflow/third_party/clog/workspace.bzl
-  GIT_TAG d5e37adf1406cf899d7d9ec1d317c47506ccb970
+  GIT_TAG 082deffc80ce517f81dc2f3aebe6ba671fcd09c9
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/clog"
 )

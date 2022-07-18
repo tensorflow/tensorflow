@@ -122,7 +122,7 @@ SmallVector<Value> ExtractValuesToPrint(Operation* op) {
     return loop.getIterOperands();
   }
   if (auto copy = dyn_cast<memref::CopyOp>(op)) {
-    return {copy.target()};
+    return {copy.getTarget()};
   }
   return {};
 }

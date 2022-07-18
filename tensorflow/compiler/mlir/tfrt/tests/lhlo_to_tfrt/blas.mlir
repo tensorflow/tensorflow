@@ -128,7 +128,7 @@ func.func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: m
       layout_a = dense<[0, 1]> : tensor<2xindex>,
       layout_b = dense<[0, 1]> : tensor<2xindex>,
       layout_output = dense<[0, 1]> : tensor<2xindex>,
-      left_side = true, lower = true, transpose_a = #mhlo<"transpose NO_TRANSPOSE">,
+      left_side = true, lower = true, transpose_a = #mhlo<transpose NO_TRANSPOSE>,
       unit_diagonal = true
   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 

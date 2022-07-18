@@ -59,7 +59,7 @@ py_library(
 
 tf_py_test(
     name = "models_test",
-    size = "small",
+    size = "medium",
     srcs = ["models_test.py"],
     tags = [
         "no_pip",  # b/131330719

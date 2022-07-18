@@ -1020,9 +1020,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       GetElementRequest req;
       req.set_task_id(task.info.task_id());
       req.set_skipped_previous_round(task.skipped_previous_round);
-      std::optional<int64_t> round_index;
       if (StrictRoundRobin()) {
-        round_index = task.round;
         req.set_consumer_index(dataset()->consumer_index_.value());
         req.set_round_index(task.round);
         req.set_allow_skip(true);

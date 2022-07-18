@@ -59,7 +59,8 @@ class Subgraph {
            std::vector<std::unique_ptr<Subgraph>>* subgraphs,
            resource::ResourceMap* resources,
            resource::ResourceIDMap* resource_ids,
-           resource::InitializationStatusMap* initialization_status_map);
+           resource::InitializationStatusMap* initialization_status_map,
+           int subgraph_index = kInvalidSubgraphIndex);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -324,6 +325,14 @@ class Subgraph {
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
   std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() { return subgraphs_; }
+
+  // Returns the location of this object within subgraphs_, or
+  // kInvalidSubgraphIndex if subgraphs_ is nullptr or *this is not
+  // represented *subgraphs_.
+  // WARNING: This is an experimental API and subject to
+  // change.
+  static constexpr int kInvalidSubgraphIndex = -1;
+  int GetSubgraphIndex() const { return subgraph_index_; }
 
   // True if all tensors in the graph has static size after calling
   // `AllocateTensors` function.
@@ -829,6 +838,9 @@ class Subgraph {
 
   // A pointer to vector of subgraphs. The vector is owned by the interpreter.
   std::vector<std::unique_ptr<Subgraph>>* subgraphs_ = nullptr;
+
+  // Location of the pointer to *this in *subgraphs_, or kInvalidSubgraphIndex.
+  const int subgraph_index_;
 
   // True if not all tensors in the graph has static size after calling
   // `PrepareOpsStartingAt` function (which is called by the `AllocateTensors`

@@ -82,6 +82,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AsinhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AtanhOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(BesselI1eOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ConjOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CoshOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DigammaOp)
@@ -444,7 +445,7 @@ void RankSpecializationClusterOp::getSuccessorRegions(
   // RankSpecializationClusterOp has unconditional control flows into the region
   // and back to the parent, so return the correct RegionSuccessor purely based
   // on the index being None or 0.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     regions.push_back(RegionSuccessor(getResults()));
     return;
   }

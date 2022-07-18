@@ -138,6 +138,7 @@ REGISTER_OP("MergeV2Checkpoints")
     .Input("checkpoint_prefixes: string")
     .Input("destination_prefix: string")
     .Attr("delete_old_dirs: bool = true")
+    .Attr("allow_missing_files: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;

@@ -128,7 +128,10 @@ void PrintVariantType(VariantType ty, DialectAsmPrinter &os) {
 Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
   StringRef type_tag;
   llvm::SMLoc loc = parser.getNameLoc();
-  if (failed(parser.parseKeyword(&type_tag))) return Type();
+
+  Type genType;
+  auto parse_result = generatedTypeParser(parser, &type_tag, genType);
+  if (parse_result.hasValue()) return genType;
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   if (type_tag == name) return tftype##Type::get(getContext());
@@ -147,9 +150,6 @@ Type TFTypeDialect::parseType(DialectAsmParser &parser) const {
     return ret;
   }
 
-  Type genType;
-  auto parse_result = generatedTypeParser(parser, type_tag, genType);
-  if (parse_result.hasValue()) return genType;
   parser.emitError(parser.getNameLoc(),
                    "unknown type in TF graph dialect: " + type_tag);
   return {};

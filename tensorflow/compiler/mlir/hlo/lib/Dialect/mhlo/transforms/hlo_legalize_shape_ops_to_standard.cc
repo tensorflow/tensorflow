@@ -104,7 +104,7 @@ struct ComputeReshapeShapeConversion
                              loc, targetShapeType.getElementType(), dimVal);
           b.create<tensor::YieldOp>(loc, dimVal);
         });
-    rewriter.replaceOp(op, gen.result());
+    rewriter.replaceOp(op, gen.getResult());
 
     return success();
   }

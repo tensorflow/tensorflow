@@ -1710,6 +1710,32 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
   return std::nullopt;
 }
 
+/*static*/ std::optional<std::vector<int64_t>>
+ShapeUtil::FindTranspose021DimsAndParameters(
+    const std::vector<Shape>& operand_shapes, const Shape& output_shape,
+    std::vector<int64_t>* params_012) {
+  std::optional<std::vector<int64_t>> reduced_dims_021;
+  for (int64_t operand_idx = 0; operand_idx < operand_shapes.size();
+       ++operand_idx) {
+    auto find_transpose_result =
+        ShapeUtil::FindTranspose021(operand_shapes[operand_idx], output_shape);
+    if (!find_transpose_result.has_value()) {
+      continue;
+    }
+    const std::vector<int64_t>& curr_reduced_dims_021 = *find_transpose_result;
+    if (!reduced_dims_021.has_value()) {
+      reduced_dims_021 = curr_reduced_dims_021;
+    }
+    if (!absl::c_equal(*reduced_dims_021, curr_reduced_dims_021)) {
+      // There is more than one possible transpose. Instead of picking one
+      // transpose, we simply give up here.
+      return std::nullopt;
+    }
+    params_012->push_back(operand_idx);
+  }
+  return reduced_dims_021;
+}
+
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   ForEachMutableSubshape(&s, [](Shape* subshape, const ShapeIndex& index) {
     if (subshape->IsArray()) {

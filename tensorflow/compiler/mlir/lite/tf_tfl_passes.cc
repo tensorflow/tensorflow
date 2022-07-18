@@ -53,8 +53,8 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
-  if (quant_specs.default_ranges.first.hasValue() ||
-      quant_specs.default_ranges.second.hasValue()) {
+  if (quant_specs.default_ranges.first.has_value() ||
+      quant_specs.default_ranges.second.has_value()) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateDefaultQuantParamsPass(
             quant_specs.default_ranges.first.getValueOr(0.0),

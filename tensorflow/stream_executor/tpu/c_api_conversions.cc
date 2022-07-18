@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -495,7 +496,7 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
         stream_executor::tpu::DeserializeProto<xla::DeviceAssignmentProto>(
             c_config.static_device_assignment));
     config.set_static_device_assignment(
-        *(device_assignment.ConsumeValueOrDie()));
+        *(std::move(device_assignment).value()));
   }
   config.set_debug_options(
       stream_executor::tpu::DeserializeProto<xla::DebugOptions>(

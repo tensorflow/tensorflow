@@ -389,10 +389,16 @@ class PartitionedHlo {
  private:
   // Same as Reshard except that it does not explicitly modify the reshard
   // cache, although it would indirectly modify by calling Replicate().
-  PartitionedHlo ReshardNoCache(const HloSharding& target);
+  PartitionedHlo ReshardNoCache(const HloSharding& target,
+                                bool allow_full_replication = true);
 
   // Helper function to broadcast data from a single device to all devices.
   PartitionedHlo Broadcast() const;
+
+  // Try to perform complicated reshard handling by splitting a big reshard into
+  // multiple reshards using that can be handled directly.
+  std::optional<PartitionedHlo> TryComplexReshardHandling(
+      const HloSharding& target);
 
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).

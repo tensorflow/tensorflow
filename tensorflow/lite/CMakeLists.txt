@@ -524,7 +524,7 @@ target_link_libraries(tensorflow-lite
     fft2d_fftsg2d
     flatbuffers
     gemmlowp
-    ruy
+    ruy::ruy
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )

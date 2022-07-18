@@ -388,6 +388,7 @@ def HLO_RoundNearestEvenOp: HLO_UnaryElementwiseOp<"round_nearest_even",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasFolder = 1;
 }
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
@@ -527,7 +528,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect, 
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect,
     SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
@@ -643,7 +644,7 @@ def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
   }];
 }
 
-def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
+def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
       [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Subtraction operator";
   let description = [{
@@ -653,6 +654,7 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
   let hasFolder = 1;
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2002,7 +2004,8 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
+def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "SetDimensionSize operator";
   let description = [{
     Sets the dynamic size of operand's given dimension. Pass through the operand
@@ -2017,6 +2020,16 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
     I64Attr:$dimension
   );
   let results = (outs HLO_Tensor);
+
+  let extraClassDeclaration = [{
+    // Method from InferTypeOpInterface interface.
+    // TODO(hinsu): Use MHLO dialect level compatibility that also verifies
+    // that bounds in the encoding attribute are also compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
+
 
   let hasFolder = 1;
   let hasVerifier = 1;

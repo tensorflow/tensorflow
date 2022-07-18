@@ -197,7 +197,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
 
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         // The input min/max or mean/std are not specified, then skip.
-        if (!min_max.first.hasValue() || !min_max.second.hasValue()) return;
+        if (!min_max.first.has_value() || !min_max.second.has_value()) return;
 
         TypeAttr params = quant::GetQuantizedTypeAttr(
             builder, input_type,
@@ -234,15 +234,24 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
     if (!function_name.startswith("composite_")) {
       return spec;
     }
-    if (function_name.contains("depthwise_conv2d_with_bias")) {
-      spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
-      spec->coeff_op_quant_dim[0] = 2;
-    } else if (function_name.contains("conv2d_with_bias")) {
-      spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
-      spec->coeff_op_quant_dim[0] = 3;
-    } else if (function_name.contains("matmul_with_bias")) {
-      spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
-      spec->coeff_op_quant_dim[0] = -1;
+    if (function_name.contains("depthwise_conv2d")) {
+      spec->coeff_op_quant_dim[1] = 3;
+      if (function_name.contains("with_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
+    } else if (function_name.contains("conv2d")) {
+      spec->coeff_op_quant_dim[1] = 3;
+      if (function_name.contains("with_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
+    } else if (function_name.contains("matmul")) {
+      spec->coeff_op_quant_dim[1] = -1;
+      if (function_name.contains("with_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
     }
   }
   return spec;

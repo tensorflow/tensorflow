@@ -496,7 +496,7 @@ Value materializeScalarRankSpecializationCase(
             loc, b.create<tensor::CastOp>(
                       loc, deriveUnrankedTensorTypes(unshapedResult.getType()),
                       unshapedResult)
-                     .dest());
+                     .getDest());
       },
       elseBuilderFn);
 
@@ -550,7 +550,7 @@ Value materializeEqualShapesRankSpecializationCase(
             loc, b.create<tensor::CastOp>(
                       loc, deriveUnrankedTensorTypes(unshapedResult.getType()),
                       unshapedResult)
-                     .dest());
+                     .getDest());
       },
       elseBuilderFn);
 

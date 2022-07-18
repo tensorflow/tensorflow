@@ -2428,6 +2428,38 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
       }
     }
   }
+
+  // Go through all of the values and pin them to the default memory if they are
+  // not allowed on the alternate memory.
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    if (!options_.is_allowed_in_alternate_mem_fn(*value)) {
+      // We won't find the instruction in the schedule if it's inside a fusion.
+      // If so, just skip.
+      auto instruction_time_it =
+          instruction_schedule.find(value->instruction());
+      if (instruction_time_it == instruction_schedule.end()) {
+        continue;
+      }
+      int64_t instruction_time = instruction_time_it->second;
+      auto& required_assignments = required_assignments_[value];
+      // Check if there is an existing matching required assignment (e.g.
+      // inserted by the logic above) and if so ensure it requires a default
+      // memory allocation.
+      auto matching_assignment = absl::c_find_if(
+          required_assignments,
+          [&](const RequiredMemoryAssignment& required_assignment) {
+            return required_assignment.time == instruction_time;
+          });
+      if (matching_assignment != required_assignments.end()) {
+        CHECK(matching_assignment->memory_space == MemorySpace::kDefault)
+            << "Mismatch in required assignments at time " << instruction_time
+            << " value: " << value->ToString();
+      } else {
+        required_assignments.push_back(
+            {MemorySpace::kDefault, instruction_time});
+      }
+    }
+  }
 }
 
 bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(

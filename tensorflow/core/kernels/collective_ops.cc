@@ -176,6 +176,10 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
   void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
                         DoneCallback done) override {
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(c, output_shape.dims() > 0,
+                      errors::InvalidArgument("input should have rank > 0, ",
+                                              "recieved ", output_shape.dims()),
+                      done);
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params_->group.group_size);
     col_params_->instance.shape = output_shape;

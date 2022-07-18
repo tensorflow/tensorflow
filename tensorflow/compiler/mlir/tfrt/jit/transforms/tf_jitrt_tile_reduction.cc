@@ -189,7 +189,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     llvm::Optional<Value> tilable_bound_or =
         getTilableBound(rewriter, loc, zero, input_size, tile_size_value);
     Value tilable_bound =
-        tilable_bound_or.hasValue() ? *tilable_bound_or : input_size;
+        tilable_bound_or.has_value() ? *tilable_bound_or : input_size;
 
     GenericOp tiled_reduction;
     auto perfectly_tiled_loop = rewriter.create<LoopOp>(
@@ -232,7 +232,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
 
     // If the loop was not perfectly tiled, then we have to combine
     // `horizontal_reduction` with the elements in the `tail`.
-    if (tilable_bound_or.hasValue()) {
+    if (tilable_bound_or.has_value()) {
       auto final_reduction = rewriter.create<LoopOp>(
           loc, tilable_bound, input_size, tile_size_value, inputs,
           makeArrayRef(result),

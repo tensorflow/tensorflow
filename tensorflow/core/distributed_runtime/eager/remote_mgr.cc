@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
 #include <memory>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

@@ -225,7 +225,7 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
 
 TensorType CreateTensorType(llvm::Optional<llvm::ArrayRef<int64_t>> shape,
                             Type element_type) {
-  if (shape.hasValue())
+  if (shape.has_value())
     return RankedTensorType::get(shape.getValue(), element_type);
   return UnrankedTensorType::get(element_type);
 }

@@ -81,7 +81,7 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
 
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
-    if (!alloc.symbolOperands().empty()) {
+    if (!alloc.getSymbolOperands().empty()) {
       return failure();
     }
     auto reuse_input_candidates = alloc->getAttrOfType<ArrayAttr>(
@@ -112,11 +112,12 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
-    auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
+    auto operand_memref_type = dealloc.getMemref().getType().cast<MemRefType>();
     if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
-    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx,
+                                             adaptor.getMemref());
     return success();
   }
 };

@@ -65,7 +65,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
-    if (!attr.hasValue() || attr.getValue().empty()) {
+    if (!attr.has_value() || attr.getValue().empty()) {
       Value zero = rewriter->create<LLVM::ConstantOp>(
           loc, size_ty, rewriter->getIntegerAttr(size_ty, 0));
       Value null_ptr = rewriter->create<LLVM::NullOp>(loc, element_ptr_ty);
@@ -133,7 +133,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     Type llvmInt32Type = IntegerType::get(rewriter.getContext(), 32);
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
-        rewriter.getI32IntegerAttr(tf_alloc_op.output_index().hasValue()
+        rewriter.getI32IntegerAttr(tf_alloc_op.output_index().has_value()
                                        ? tf_alloc_op.output_index().getValue()
                                        : -1));
 

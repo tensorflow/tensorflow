@@ -91,66 +91,78 @@ TEST(UtilsTest, AddDummyTfrtDevices) {
 
 TEST(UtilsTest, ReturnIfErrorInImport) {
   auto status = []() {
-    RETURN_IF_ERROR_IN_IMPORT(tensorflow::errors::Cancelled("msg"));
+    RETURN_IF_ERROR_IN_IMPORT(
+        tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}}));
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(), "GraphDef proto -> MLIR: msg");
+  EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
 TEST(UtilsTest, ReturnIfErrorInCompile) {
   auto status = []() {
-    RETURN_IF_ERROR_IN_COMPILE(tensorflow::errors::Cancelled("msg"));
+    RETURN_IF_ERROR_IN_COMPILE(
+        tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}}));
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(),
                "TF dialect -> TFRT dialect, compiler issue, please contact "
                "MLIR team: msg");
+  EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
 TEST(UtilsTest, ReturnIfErrorInInit) {
   auto status = []() {
-    RETURN_IF_ERROR_IN_INIT(tensorflow::errors::Cancelled("msg"));
+    RETURN_IF_ERROR_IN_INIT(
+        tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}}));
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(), "Initialize TFRT: msg");
+  EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
 TEST(UtilsTest, AssignOrReturnInImport) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_IMPORT(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(tensorflow::errors::Cancelled("msg")));
+        tensorflow::StatusOr<int>(
+            tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(), "GraphDef proto -> MLIR: msg");
+  EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
 TEST(UtilsTest, AssignOrReturnInCompile) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_COMPILE(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(tensorflow::errors::Cancelled("msg")));
+        tensorflow::StatusOr<int>(
+            tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(),
                "TF dialect -> TFRT dialect, compiler issue, please contact "
                "MLIR team: msg");
+  EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
 TEST(UtilsTest, AssignOrReturnInInit) {
   auto status = []() {
     ASSIGN_OR_RETURN_IN_INIT(
         [[maybe_unused]] auto unused_value,
-        tensorflow::StatusOr<int>(tensorflow::errors::Cancelled("msg")));
+        tensorflow::StatusOr<int>(
+            tensorflow::errors::CancelledWithPayloads("msg", {{"a", "b"}})));
     return tensorflow::OkStatus();
   }();
   EXPECT_FALSE(status.ok());
   EXPECT_STREQ(status.error_message().c_str(), "Initialize TFRT: msg");
+  EXPECT_EQ(status.GetPayload("a"), "b");
 }
 
 }  // namespace

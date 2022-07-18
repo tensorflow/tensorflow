@@ -119,13 +119,24 @@ TEST(TypeToShapeTest, ConvertMemRefTypeToTypes) {
 }
 
 TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
-  MLIRContext context;
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::mhlo::MhloDialect>();
   Builder b(&context);
 
   EXPECT_THAT(
       TypeToShape(RankedTensorType::get({8, 128}, b.getF32Type())).ToProto(),
       EqualsProto(
           ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
+
+  llvm::SmallVector<int64_t, 4> bounds = {8, mlir::ShapedType::kDynamicSize};
+  auto extensions = mlir::mhlo::TypeExtensionsAttr::get(&context, bounds);
+  EXPECT_THAT(
+      TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamicSize, 128},
+                                        b.getF32Type(), extensions))
+          .ToProto(),
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})
+              .ToProto()));
 
   // Shape cannot represent dynamic shapes.
   // TODO(b/115638799): Update once Shape can support dynamic shapes.

@@ -190,6 +190,10 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
   def _tpu_init_fn():
     return gen_dtensor_ops.configure_and_initialize_global_tpu()
 
+  @def_function.function
+  def _set_global_tpu_array_fn(topology_proto):
+    gen_dtensor_ops.d_tensor_set_global_tpu_array(topology_proto)
+
   try:
     with ops.device("/job:" + api.full_job_name() + "/device:TPU_SYSTEM:0"):  # pylint: disable=protected-access
       my_core_ids = _tpu_init_fn()
@@ -279,6 +283,8 @@ def dtensor_initialize_tpu_system(enable_coordination_service=False):
 
     tpu_topology = _create_tpu_topology(all_core_locations, num_tasks,
                                         num_devices_per_task)
+
+    _set_global_tpu_array_fn(tpu_topology.serialized())
     global _tpu_topology
     _tpu_topology = tpu_topology
     logging.vlog(1, "TPU Topology: %s, %s", tpu_topology.mesh_shape,
@@ -807,4 +813,3 @@ def _configure_tpu_runtime():
     tfrt_utils.set_tfrt_enabled(True)
   if not was_enabled:
     context._reset_context()  # pylint:disable=protected-access
-

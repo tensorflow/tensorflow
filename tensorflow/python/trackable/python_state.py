@@ -14,7 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 import abc
-import functools
 
 import six
 
@@ -77,12 +76,3 @@ class PythonState(base.Trackable):
   @abc.abstractmethod
   def deserialize(self, string_value):
     """Callback to deserialize the object."""
-
-  def _gather_saveables_for_checkpoint(self):
-    """Specify callbacks for saving and restoring `array`."""
-    return {
-        "py_state": functools.partial(
-            base.PythonStringStateSaveable,
-            state_callback=self.serialize,
-            restore_callback=self.deserialize)
-        }

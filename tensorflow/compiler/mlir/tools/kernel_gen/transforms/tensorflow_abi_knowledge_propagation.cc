@@ -173,7 +173,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
         }
         if (auto cast = dyn_cast<memref::ReinterpretCastOp>(user)) {
           // Check that we have offset 0.
-          Value result = cast.result();
+          Value result = cast.getResult();
           if (!cast.isDynamicOffset(0) && cast.getStaticOffset(0) == 0) {
             offset_is_zero.insert(result);
           }

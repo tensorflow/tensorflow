@@ -50,7 +50,6 @@ Status CollectDataToRepository(const ProfileRequest& request,
   // Read the profile data into xspace.
   XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  xspace.add_hostnames(request.host_name());
   VLOG(3) << "Collected XSpace to repository.";
   response->set_empty_trace(IsEmpty(xspace));
 

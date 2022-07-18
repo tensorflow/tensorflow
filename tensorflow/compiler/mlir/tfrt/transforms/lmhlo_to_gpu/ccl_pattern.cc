@@ -209,7 +209,7 @@ FailureOr<Value> CclOpConversionRewrite(
     Value input = mapping.lookup(operands[i]);
     Value output = mapping.lookup(results[i]);
 
-    if (srcOp.getSplitDimension().hasValue()) {
+    if (srcOp.getSplitDimension().has_value()) {
       chain = rewriter.create<tfrt::gpu::CclAllToAllOp>(
           srcOp.getLoc(), handle, input, output, nccl_data_type, chain);
     } else {

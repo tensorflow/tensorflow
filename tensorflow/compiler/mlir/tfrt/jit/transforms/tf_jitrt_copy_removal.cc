@@ -41,7 +41,7 @@ struct LinalgTrivialCopyRemovalPass
 
       // Make sure the alloc and dealloc handle the operands of the copy.
       if (alloc.getResult() != copy.getTarget() ||
-          dealloc.memref() != copy.getSource()) {
+          dealloc.getMemref() != copy.getSource()) {
         return;
       }
 

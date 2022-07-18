@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -344,7 +345,7 @@ class HloComputation {
   // instruction as well as wrapped computations.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-      std::optional<std::string> async_thread_name = std::nullopt);
+      absl::string_view async_thread_name = HloInstruction::kMainThreadName);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
@@ -631,11 +632,15 @@ class HloComputation {
 
   int64_t unique_id() const { return unique_id_; }
 
-  void SetThreadName(std::optional<std::string> thread_name) {
-    thread_name_ = thread_name;
+  void SetThreadName(absl::string_view thread_name) {
+    thread_name_ = std::string(thread_name);
   }
 
-  std::optional<std::string> thread_name() const { return thread_name_; }
+  absl::string_view thread_name() const { return thread_name_; }
+  // Returns true of this computation is annotated on "main" thread.
+  bool IsMainThread() const {
+    return thread_name_ == HloInstruction::kMainThreadName;
+  }
 
   // Deallocate instructions that are marked by "RemoveInstruction". The two
   // stage clean up process is designed such that HloPass can have stable
@@ -718,8 +723,8 @@ class HloComputation {
   // Otherwise, this is empty.
   std::vector<HloInstruction*> async_instructions_;
 
-  // Thread name of this computation. Empty means main thread.
-  std::optional<std::string> thread_name_;
+  // Thread name of this computation. By default, it's main thread.
+  std::string thread_name_ = HloInstruction::kMainThreadName;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

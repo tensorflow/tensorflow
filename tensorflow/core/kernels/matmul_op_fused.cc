@@ -280,7 +280,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     OP_REQUIRES(context, status_or_computation_type.ok(),
                 errors::Internal("Unsupported dtype for batched matmul."));
     se::blas::ComputationType computation_type =
-        status_or_computation_type.ConsumeValueOrDie();
+        std::move(status_or_computation_type).value();
 
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose};

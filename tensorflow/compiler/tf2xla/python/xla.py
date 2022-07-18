@@ -558,6 +558,11 @@ dequantize = gen_xla_ops.xla_dequantize
 custom_call = gen_xla_ops.xla_custom_call
 
 
+def call_module(args, *, module, Tout, Sout, dim_args_spec=()):
+  return gen_xla_ops.xla_call_module(
+      args, module=module, dim_args_spec=dim_args_spec, Tout=Tout, Sout=Sout)
+
+
 def gather(operand, start_indices, dimension_numbers, slice_sizes,
            indices_are_sorted=False, name=None):
   return gen_xla_ops.xla_gather(

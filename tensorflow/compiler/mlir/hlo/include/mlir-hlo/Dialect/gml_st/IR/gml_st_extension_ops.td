@@ -28,9 +28,9 @@ def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim",
   let arguments = (ins
     AnyTensor:$operand,
     AnyTensor:$init,
-    I64ElementsAttr:$broadcast_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions
+    DenseI64ArrayAttr:$broadcast_dimensions,
+    OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
+    OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
   );
   let results = (outs AnyTensor:$result);
   let assemblyFormat = [{
@@ -87,7 +87,7 @@ def GMLST_ScatterOp : GMLST_Op<"scatter", [
   }];
   let arguments = (ins
     AnyTensor:$operand,
-    I64Tensor:$scatter_indices,
+    TensorOf<[I32, I64]>:$scatter_indices,
     AnyTensor:$updates,
     AnyTensor:$init
   );

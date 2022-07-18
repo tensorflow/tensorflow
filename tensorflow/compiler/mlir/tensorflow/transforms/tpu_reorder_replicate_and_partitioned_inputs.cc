@@ -39,10 +39,6 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
     return replicated_input.emitOpError()
            << "expects all inputs from 'tf.TPUPartitionedInput' ops";
 
-  if (replicated_input.index() != -1)
-    return replicated_input->emitOpError()
-           << "unsupported index = " << replicated_input.index();
-
   auto first_partitioned_input = llvm::cast<TF::TPUPartitionedInputOp>(
       replicated_input.getOperand(0).getDefiningOp());
   llvm::Optional<::llvm::StringRef> xla_sharding =

@@ -38,6 +38,8 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(gml_st::createTilingPass(options.tileSizes));
   if (options.fuse) {
     pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
   }
   pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 

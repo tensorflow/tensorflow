@@ -134,8 +134,6 @@ struct FusionPass : public FusionBase<FusionPass> {
     linalg::populateFoldReshapeOpsByExpansionPatterns(patterns,
                                                       SkipUnitDimReshape);
 
-    linalg::populateSparseTensorRewriting(patterns);
-
     linalg::populateConstantFoldLinalgOperations(patterns,
                                                  ControlElementwiseOpsFusion);
 

@@ -369,7 +369,7 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   if (op.getAlgorithm()) algorithm = *op.getAlgorithm();
 
   int64_t compute_precision = 0;  // Default
-  if (op.getPrecisionConfig().hasValue()) {
+  if (op.getPrecisionConfig().has_value()) {
     auto precision_config = op.getPrecisionConfig();
     for (auto attr : precision_config.getValue()) {
       int64_t value = static_cast<int64_t>(

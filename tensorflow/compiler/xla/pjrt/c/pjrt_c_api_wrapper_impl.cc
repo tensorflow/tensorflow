@@ -36,6 +36,15 @@ std::string StructSizeErrorMsg(absl::string_view struct_name,
                       ". Check installed software versions.");
 }
 
+// Returns C device from wrapped C++ device.
+static PJRT_Device* GetCDevice(const PJRT_Client* client,
+                               const xla::PjRtDevice* device) {
+  auto c_device_map = client->c_device_from_cpp_device;
+  auto iter = c_device_map.find(device);
+  CHECK(iter != c_device_map.end());
+  return iter->second;
+}
+
 // ---------------------------------- Errors -----------------------------------
 
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args) {
@@ -122,6 +131,16 @@ PJRT_Error* PJRT_Client_AddressableDevices(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_LookupDevice_Args",
+      PJRT_Client_LookupDevice_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
+                        args->client->client->LookupDevice(args->id));
+  args->device = GetCDevice(args->client, device);
+  return nullptr;
+}
+
 // --------------------------------- Devices -----------------------------------
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
@@ -146,6 +165,16 @@ PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
       "PJRT_Device_IsAddressable_Args",
       PJRT_Device_IsAddressable_Args_STRUCT_SIZE, args->struct_size));
   args->is_addressable = args->device->device->IsAddressable();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_Kind_Args", PJRT_Device_Kind_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->device_kind = args->device->device->device_kind().data();
+  args->device_kind_size = args->device->device->device_kind().size();
   return nullptr;
 }
 
@@ -244,6 +273,16 @@ PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args) {
 }
 
 // ---------------------------------- Buffers ----------------------------------
+
+PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
+    PJRT_Buffer_OnDeviceSizeInBytes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_OnDeviceSizeInBytes_Args",
+      PJRT_Buffer_OnDeviceSizeInBytes_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->on_device_size_in_bytes,
+                        args->buffer->buffer->GetOnDeviceSizeInBytes());
+  return nullptr;
+}
 
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(

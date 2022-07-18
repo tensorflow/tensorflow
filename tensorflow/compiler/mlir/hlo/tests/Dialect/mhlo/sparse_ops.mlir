@@ -214,8 +214,8 @@ func.func @dot1(%arg0: tensor<4xf64, #SV>,
   %0 = "mhlo.dot_general"(%arg0, %arg1)
      {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
                                         rhs_contracting_dimensions = [0]>,
-                                        precision_config = [#mhlo<"precision DEFAULT">,
-                                        #mhlo<"precision DEFAULT">]}
+                                        precision_config = [#mhlo<precision DEFAULT>,
+                                        #mhlo<precision DEFAULT>]}
            : (tensor<4xf64, #SV>, tensor<4xf64>) -> tensor<f64>
   func.return %0 : tensor<f64>
 }
@@ -230,8 +230,8 @@ func.func @dot2(%arg0: tensor<4xf64>,
   %0 = "mhlo.dot_general"(%arg0, %arg1)
      {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
                                         rhs_contracting_dimensions = [0]>,
-                                        precision_config = [#mhlo<"precision DEFAULT">,
-                                        #mhlo<"precision DEFAULT">]}
+                                        precision_config = [#mhlo<precision DEFAULT>,
+                                        #mhlo<precision DEFAULT>]}
            : (tensor<4xf64>, tensor<4xf64, #SV>) -> tensor<f64>
   func.return %0 : tensor<f64>
 }
@@ -246,8 +246,8 @@ func.func @dot3(%arg0: tensor<4xf64, #SV>,
   %0 = "mhlo.dot_general"(%arg0, %arg1)
      {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
                                         rhs_contracting_dimensions = [0]>,
-                                        precision_config = [#mhlo<"precision DEFAULT">,
-                                        #mhlo<"precision DEFAULT">]}
+                                        precision_config = [#mhlo<precision DEFAULT>,
+                                        #mhlo<precision DEFAULT>]}
            : (tensor<4xf64, #SV>, tensor<4xf64, #SV>) -> tensor<f64>
   func.return %0 : tensor<f64>
 }

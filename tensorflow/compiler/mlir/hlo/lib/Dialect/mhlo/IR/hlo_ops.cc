@@ -228,7 +228,7 @@ DenseElementsAttr reshape(DenseElementsAttr attr, ShapedType newType) {
 // Convert a 1D dense int64 attribute to a list of values.
 SmallVector<int64_t> convertDenseIntAttr(
     llvm::Optional<mlir::DenseIntElementsAttr> optionalAttr) {
-  if (!optionalAttr.hasValue()) return SmallVector<int64_t>{};
+  if (!optionalAttr.has_value()) return SmallVector<int64_t>{};
 
   mlir::DenseIntElementsAttr attr = *optionalAttr;
   auto values = attr.getValues<int64_t>();
@@ -238,7 +238,7 @@ SmallVector<int64_t> convertDenseIntAttr(
 // Convert a 1D or Nx2 dense int64 attribute to a list of tuples.
 FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optionalAttr, Location loc) {
-  if (!optionalAttr.hasValue())
+  if (!optionalAttr.has_value())
     return SmallVector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optionalAttr;
 
@@ -689,7 +689,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ShiftRightLogicalOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SignOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SineOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp)
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SubOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SubtractOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(TanhOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 
@@ -799,12 +799,12 @@ void ConstantOp::print(::mlir::OpAsmPrinter& p) {
 LogicalResult CustomCallOp::verify() {
   // If both operand and result layout attributes are not specified then nothing
   // to verify.
-  if (!operand_layouts().hasValue() && !result_layouts().hasValue())
+  if (!operand_layouts().has_value() && !result_layouts().has_value())
     return success();
 
   // Layout constraints for either both operands & results or none should be
   // specified.
-  if (operand_layouts().hasValue() != result_layouts().hasValue())
+  if (operand_layouts().has_value() != result_layouts().has_value())
     return emitOpError() << "Layout attributes should be specified for "
                             "either both operands and results or none.";
 
@@ -4824,7 +4824,7 @@ LogicalResult ReduceOp::verify() {
 
     // Check shape.
     if (!allInputsUnranked && opResultType.hasRank() &&
-        (newDimensions != opResultType.getShape())) {
+        failed(verifyCompatibleShape(newDimensions, opResultType.getShape()))) {
       Type expectedResultType = RankedTensorType::get(
           newDimensions, accumulatorSubShapes[shapeIdx].getElementType());
       return emitError()
@@ -5151,6 +5151,47 @@ OpFoldResult SetDimensionSizeOp::fold(ArrayRef<Attribute> operands) {
   int64_t dimSize = ty.getDimSize(dimension());
   if (dimSize == size.getSplatValue<IntegerAttr>().getInt()) return operand();
   return {};
+}
+
+// TODO(b/238903565): Switch to inferReturnTypeComponents after adding support
+// for the encoding upstream.
+LogicalResult SetDimensionSizeOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  Location loc = location.getValueOr(UnknownLoc::get(context));
+
+  SetDimensionSizeOp::Adaptor adaptor(operands, attributes, regions);
+  if (failed(adaptor.verify(loc))) return failure();
+
+  auto inputType = adaptor.operand().getType().dyn_cast<RankedTensorType>();
+  if (!inputType) {
+    inferredReturnTypes.push_back(adaptor.operand().getType());
+    return success();
+  }
+
+  int64_t dim = adaptor.dimension();
+  int64_t rank = inputType.getRank();
+  if (dim < 0 || dim >= rank) {
+    return mlir::emitError(loc) << "expects dimension to be in range [0, "
+                                << rank << "); got: [" << dim << "].";
+  }
+
+  auto shape = llvm::to_vector<4>(inputType.getShape());
+  llvm::SmallVector<int64_t, 4> bounds(rank, ShapedType::kDynamicSize);
+  if (auto encoding =
+          inputType.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>())
+    bounds = llvm::to_vector<4>(encoding.getBounds());
+
+  // TODO(hinsu): Handle the case when the size operand is a constant.
+  if (shape[dim] != ShapedType::kDynamicSize) bounds[dim] = shape[dim];
+  shape[dim] = ShapedType::kDynamicSize;
+
+  auto extensions = TypeExtensionsAttr::get(context, bounds);
+  auto resultType =
+      RankedTensorType::get(shape, inputType.getElementType(), extensions);
+  inferredReturnTypes.push_back(resultType);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -5713,6 +5754,14 @@ struct Round {
   }
 };
 
+struct RoundNearestEven {
+  APFloat operator()(const APFloat& f) {
+    APFloat r = f;
+    r.roundToIntegral(llvm::RoundingMode::NearestTiesToEven);
+    return r;
+  }
+};
+
 struct LogicalNot {
   APInt operator()(const APInt& i) {
     return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
@@ -5768,6 +5817,7 @@ struct Sign {
 UNARY_FOLDER(NegOp, std::negate);
 UNARY_FOLDER(SignOp, Sign);
 UNARY_FOLDER_INT(NotOp, LogicalNot);
+UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven);
 UNARY_FOLDER_FLOAT(RoundOp, Round);
 
 #undef UNARY_FOLDER
@@ -5954,7 +6004,7 @@ struct Xor {
 // Due to the other ops behaving differently in signed vs unsigned integers,
 // APInts need a special implementation. Currently, it replicates signed int
 // op behavior.
-BINARY_FOLDER(SubOp, std::minus);
+BINARY_FOLDER(SubtractOp, std::minus);
 BINARY_FOLDER(DivOp, Divide);
 BINARY_FOLDER(RemOp, Remainder);
 BINARY_FOLDER(MaxOp, Max);
@@ -7864,12 +7914,9 @@ void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
 Attribute MhloDialect::parseAttribute(DialectAsmParser& parser,
                                       Type type) const {
   StringRef attrTag;
-  if (failed(parser.parseKeyword(&attrTag))) return Attribute();
-  {
-    Attribute attr;
-    auto parseResult = generatedAttributeParser(parser, attrTag, type, attr);
-    if (parseResult.hasValue()) return attr;
-  }
+  Attribute attr;
+  auto parseResult = generatedAttributeParser(parser, &attrTag, type, attr);
+  if (parseResult.hasValue()) return attr;
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
   return Attribute();
 }

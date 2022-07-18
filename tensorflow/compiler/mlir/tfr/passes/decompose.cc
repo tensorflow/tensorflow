@@ -139,7 +139,7 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
   func::FuncOp func = getOperation();
-  SymbolTable table(external_tfr_module_.hasValue()
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
   OpBuilder builder(func);
@@ -281,7 +281,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
   func::FuncOp func = getOperation();
-  SymbolTable table(external_tfr_module_.hasValue()
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 

@@ -115,10 +115,11 @@ sum.u32 {
 }
 
 ENTRY entry {
-  param = (f32[4096,4096]{1,0}, f32[4096,4096]{1,0}) parameter(0),
-    sharding={{maximal device=0}, {replicated}}
+  param = (f32[4096,4096]{1,0}, f32[4096,4096]{1,0}, f32[4096,4096]{1,0})
+    parameter(0), sharding={{maximal device=0}, {replicated}, {replicated}}
   get-tuple-element.2 = f32[4096,4096]{1,0} get-tuple-element(param), index=0
   get-tuple-element.3 = f32[4096,4096]{1,0} get-tuple-element(param), index=1
+  get-tuple-element.4 = f32[4096,4096]{1,0} get-tuple-element(param), index=2
   after-all.1 = token[] after-all()
   replica-id = u32[] replica-id()
   partition-id = u32[] partition-id()
@@ -131,25 +132,37 @@ ENTRY entry {
   get-tuple-element.6 = f32[8,8]{1,0} get-tuple-element(infeed-data), index=1
   dot = f32[4096,4096]{1,0} dot(get-tuple-element.5, get-tuple-element.3),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot.2 = f32[4096,4096]{1,0} dot(get-tuple-element.4, get-tuple-element.3),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
   all-reduce = f32[4096,4096]{1,0} all-reduce(dot), replica_groups={},
+    to_apply=sum
+  all-reduce.2 = f32[4096,4096]{1,0} all-reduce(dot.2), replica_groups={},
     to_apply=sum
   all-reduce-subgroup = f32[4096,4096]{1,0} all-reduce(dot),
     replica_groups={{0,1},{2,3}}, to_apply=sum
   all-reduce-partitions = f32[4096,4096]{1,0} all-reduce(get-tuple-element.2),
     channel_id=1, to_apply=sum
+  all-reduce-partitions.2 = f32[4096,4096]{1,0} all-reduce(get-tuple-element.4),
+    channel_id=1, to_apply=sum
   subtract = f32[4096,4096]{1,0} subtract(get-tuple-element.3,
     all-reduce-partitions)
+  subtract.2 = f32[4096,4096]{1,0} subtract(get-tuple-element.3,
+    all-reduce-partitions.2)
   all-reduce-same-operand = u32[] all-reduce(replica-id), to_apply=sum.u32
   all-reduce-same-operand-subgroup = u32[] all-reduce(replica-id),
     replica_groups={{0,1},{2,3}}, to_apply=sum.u32
   all-reduce-different-operand = u32[] all-reduce(partition-id),
     to_apply=sum.u32
-  ROOT add = f32[4096,4096]{1,0} add(get-tuple-element.2, subtract)
+  add = f32[4096,4096]{1,0} add(get-tuple-element.2, subtract)
+  ROOT add.2 = f32[4096,4096]{1,0} add(get-tuple-element.4, subtract.2)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            module_str, /*replica_count=*/4));
+  auto param = module->entry_computation()->parameter_instruction(0);
+  param->set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool>{false, true, false});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> analysis,
       HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
@@ -158,23 +171,35 @@ ENTRY entry {
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.3"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "get-tuple-element.4"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.5"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.6"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "dot"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "dot.2"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "all-reduce"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce.2"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce-partitions"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "all-reduce-partitions.2"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "subtract"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "subtract.2"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "add"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "add"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "replica-id"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "partition-id"), {}));
-  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "all-reduce-partitions"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "all-reduce-same-operand"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(

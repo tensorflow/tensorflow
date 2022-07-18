@@ -33,8 +33,7 @@ const char kModulePrefix[] = R"(
       ROOT add = f32[] add(lhs, rhs)
     })";
 
-TEST_F(GpuFusibleTest,
-       LayoutsAreReduceInputFusionFriendly_ElementwiseProducer) {
+TEST_F(GpuFusibleTest, IsPhysicallyTransposing_ElementwiseProducer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       p0 = f32[2,2,2]{2,1,0} parameter(0)
@@ -44,17 +43,13 @@ TEST_F(GpuFusibleTest,
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce =
-      module->entry_computation()->root_instruction();
-  ASSERT_EQ(reduce->opcode(), HloOpcode::kReduce);
   const HloInstruction* exp =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(exp->opcode(), HloOpcode::kExp);
-  EXPECT_TRUE(LayoutsAreReduceInputFusionFriendly(*exp, *reduce));
+  EXPECT_FALSE(IsPhysicallyTransposing(*exp));
 }
 
-TEST_F(GpuFusibleTest,
-       LayoutsAreReduceInputFusionFriendly_MixedLayoutProducer) {
+TEST_F(GpuFusibleTest, IsPhysicallyTransposing_MixedLayoutProducer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
@@ -80,19 +75,14 @@ TEST_F(GpuFusibleTest,
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce_fusion =
-      module->entry_computation()->root_instruction()->operand(0);
-  ASSERT_EQ(reduce_fusion->fused_expression_root()->opcode(),
-            HloOpcode::kReduce);
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(1);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kSelect);
-  EXPECT_FALSE(
-      LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce_fusion));
+  EXPECT_TRUE(IsPhysicallyTransposing(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest,
-       LayoutsAreReduceInputFusionFriendly_MixedLayoutProducerWithTrivialDim) {
+       IsPhysicallyTransposing_MixedLayoutProducerWithTrivialDim) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     mixed_input_layouts_computation {
       p0.1 = f16[128,1,32,32]{1,3,2,0} parameter(0)
@@ -118,18 +108,13 @@ TEST_F(GpuFusibleTest,
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce_fusion =
-      module->entry_computation()->root_instruction()->operand(0);
-  ASSERT_EQ(reduce_fusion->fused_expression_root()->opcode(),
-            HloOpcode::kReduce);
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(1);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kSelect);
-  EXPECT_TRUE(
-      LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce_fusion));
+  EXPECT_FALSE(IsPhysicallyTransposing(*loop_fusion));
 }
 
-TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_CopyProducer) {
+TEST_F(GpuFusibleTest, IsPhysicallyTransposing_CopyProducer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce {
       p0.1 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
@@ -143,16 +128,13 @@ TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_CopyProducer) {
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce =
-      module->entry_computation()->root_instruction();
-  ASSERT_EQ(reduce->fused_expression_root()->opcode(), HloOpcode::kReduce);
   const HloInstruction* copy =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
-  EXPECT_FALSE(LayoutsAreReduceInputFusionFriendly(*copy, *reduce));
+  EXPECT_TRUE(IsPhysicallyTransposing(*copy));
 }
 
-TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_PhysicalTranspose) {
+TEST_F(GpuFusibleTest, IsPhysicallyTransposing_PhysicalTranspose) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_reduce {
       p0.1 = f32[1024,128,32,32]{3,2,1,0} parameter(0)
@@ -166,17 +148,13 @@ TEST_F(GpuFusibleTest, LayoutsAreReduceInputFusionFriendly_PhysicalTranspose) {
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce =
-      module->entry_computation()->root_instruction();
-  ASSERT_EQ(reduce->fused_expression_root()->opcode(), HloOpcode::kReduce);
   const HloInstruction* transpose =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(transpose->opcode(), HloOpcode::kTranspose);
-  EXPECT_FALSE(LayoutsAreReduceInputFusionFriendly(*transpose, *reduce));
+  EXPECT_TRUE(IsPhysicallyTransposing(*transpose));
 }
 
-TEST_F(GpuFusibleTest,
-       LayoutsAreReduceInputFusionFriendly_LayoutChangingFusionProducer) {
+TEST_F(GpuFusibleTest, IsPhysicallyTransposing_LayoutChangingFusionProducer) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     layout_changing_computation {
       p0.1 = f16[128,1024,32,32]{3,2,1,0} parameter(0)
@@ -201,19 +179,14 @@ TEST_F(GpuFusibleTest,
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce_fusion =
-      module->entry_computation()->root_instruction();
-  ASSERT_EQ(reduce_fusion->fused_expression_root()->opcode(),
-            HloOpcode::kReduce);
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kCopy);
-  EXPECT_FALSE(
-      LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce_fusion));
+  EXPECT_TRUE(IsPhysicallyTransposing(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest,
-       LayoutsAreReduceInputFusionFriendly_ConsiderMaximumTrueRanksParamsOnly) {
+       IsPhysicallyTransposing_ConsiderMaximumTrueRanksParamsOnly) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     broadcasting_computation {
       p0.1 = f32[128,1024,32,32]{1,3,2,0} parameter(0)
@@ -231,13 +204,10 @@ TEST_F(GpuFusibleTest,
     })"))
                     .ValueOrDie();
   SCOPED_TRACE(module->ToString());
-  const HloInstruction* reduce =
-      module->entry_computation()->root_instruction();
-  ASSERT_EQ(reduce->opcode(), HloOpcode::kReduce);
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kAdd);
-  EXPECT_TRUE(LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce));
+  EXPECT_FALSE(IsPhysicallyTransposing(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {

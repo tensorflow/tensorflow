@@ -193,15 +193,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
              "sees "
           << proto.called_computation_ids_size();
       std::optional<int64_t> async_group_id;
-      std::optional<std::string> async_thread_name;
       if (proto.async_group_id() >= 0) {
         async_group_id = proto.async_group_id();
       }
-      if (!proto.async_thread_name().empty()) {
-        async_thread_name = proto.async_thread_name();
-      }
-      instruction = CreateAsyncStart(shape, all_operands(), computations(0),
-                                     async_group_id, async_thread_name);
+      instruction = CreateAsyncStart(
+          shape, all_operands(), computations(0), async_group_id,
+          proto.async_thread_name().empty() ? kMainThreadName
+                                            : proto.async_thread_name());
       break;
     }
     case HloOpcode::kAsyncUpdate: {
@@ -210,15 +208,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
              "sees "
           << proto.called_computation_ids_size();
       std::optional<int64_t> async_group_id;
-      std::optional<std::string> async_thread_name;
       if (proto.async_group_id() >= 0) {
         async_group_id = proto.async_group_id();
       }
-      if (!proto.async_thread_name().empty()) {
-        async_thread_name = proto.async_thread_name();
-      }
-      instruction = CreateAsyncUpdate(shape, operands(0), computations(0),
-                                      async_group_id, async_thread_name);
+      instruction = CreateAsyncUpdate(
+          shape, operands(0), computations(0), async_group_id,
+          proto.async_thread_name().empty() ? kMainThreadName
+                                            : proto.async_thread_name());
       break;
     }
     case HloOpcode::kAsyncDone: {
@@ -226,15 +222,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Async done instruction should have 1 called computation but sees "
           << proto.called_computation_ids_size();
       std::optional<int64_t> async_group_id;
-      std::optional<std::string> async_thread_name;
       if (proto.async_group_id() >= 0) {
         async_group_id = proto.async_group_id();
       }
-      if (!proto.async_thread_name().empty()) {
-        async_thread_name = proto.async_thread_name();
-      }
-      instruction = CreateAsyncDone(shape, operands(0), computations(0),
-                                    async_group_id, async_thread_name);
+      instruction = CreateAsyncDone(
+          shape, operands(0), computations(0), async_group_id,
+          proto.async_thread_name().empty() ? kMainThreadName
+                                            : proto.async_thread_name());
       break;
     }
     case HloOpcode::kCopyStart: {
@@ -1185,7 +1179,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    std::optional<std::string> async_thread_name) {
+    absl::string_view async_thread_name) {
   return std::make_unique<HloAsyncInstruction>(
       HloOpcode::kAsyncStart, shape, operands, async_computation,
       async_group_id, async_thread_name);
@@ -1194,7 +1188,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
     const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    std::optional<std::string> async_thread_name) {
+    absl::string_view async_thread_name) {
   return std::make_unique<HloAsyncInstruction>(
       HloOpcode::kAsyncUpdate, shape, operand, async_computation,
       async_group_id, async_thread_name);
@@ -1203,7 +1197,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
     const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    std::optional<std::string> async_thread_name) {
+    absl::string_view async_thread_name) {
   return std::make_unique<HloAsyncInstruction>(
       HloOpcode::kAsyncDone, shape, operand, async_computation, async_group_id,
       async_thread_name);
@@ -4861,17 +4855,17 @@ void HloInstruction::set_async_group_id(std::optional<int64_t> async_group_id) {
   Cast<HloAsyncInstruction>(this)->set_async_group_id(async_group_id);
 }
 
-std::optional<absl::string_view> HloInstruction::async_thread_name() const {
+absl::string_view HloInstruction::async_thread_name() const {
   return Cast<HloAsyncInstruction>(this)->async_thread_name();
 }
 
 void HloInstruction::set_async_thread_name(
-    const std::optional<std::string>& async_thread_name) {
+    absl::string_view async_thread_name) {
   Cast<HloAsyncInstruction>(this)->set_async_thread_name(async_thread_name);
 }
 
 void HloInstruction::set_called_computations_thread_name(
-    const std::optional<std::string>& async_thread_name,
+    absl::string_view async_thread_name,
     bool skip_async_thread_name_overwrite) {
   Cast<HloCallableInstruction>(this)->RecursivelySetComputationsThreadName(
       async_thread_name, skip_async_thread_name_overwrite);

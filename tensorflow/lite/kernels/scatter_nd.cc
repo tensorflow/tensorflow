@@ -84,6 +84,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (updates->type) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
+    case kTfLiteBool:
     case kTfLiteInt8:
     case kTfLiteInt64:
     case kTfLiteInt32:
@@ -153,6 +154,8 @@ TfLiteStatus EvalScatterNd(TfLiteContext* context, const TfLiteTensor* indices,
       return ScatterNd<IndicesT, float>(indices, updates, output);
     case kTfLiteUInt8:
       return ScatterNd<IndicesT, uint8_t>(indices, updates, output);
+    case kTfLiteBool:
+      return ScatterNd<IndicesT, bool>(indices, updates, output);
     case kTfLiteInt8:
       return ScatterNd<IndicesT, int8_t>(indices, updates, output);
     case kTfLiteInt32:

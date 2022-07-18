@@ -525,8 +525,10 @@ message LogicalBufferProto {
   message Location {
     // NOTE: module_name isn't necessary, since all LogicalBuffers are
     // associated with a single HloModule.
-    string computation_name = 1;
-    string instruction_name = 2;
+    // TODO(b/239098765): Remove instruction_name and computation_name.
+    string computation_name = 1 [deprecated = true];
+    string instruction_name = 2 [deprecated = true];
+    int64 instruction_id = 4;
     repeated int64 shape_index = 3;
   }
 

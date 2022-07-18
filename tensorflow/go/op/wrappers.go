@@ -9587,6 +9587,26 @@ func CumulativeLogsumexp(scope *Scope, x tf.Output, axis tf.Output, optional ...
 	return op.Output(0)
 }
 
+// An op that informs a host of the global ids of all the of TPUs in the system.
+//
+// Arguments:
+//
+//	topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU topology.
+//
+// Returns the created operation.
+func DTensorSetGlobalTPUArray(scope *Scope, topology tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DTensorSetGlobalTPUArray",
+		Input: []tf.Input{
+			topology,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // DataFormatDimMapAttr is an optional argument to DataFormatDimMap.
 type DataFormatDimMapAttr func(optionalAttr)
 
@@ -21591,6 +21611,37 @@ func LinSpace(scope *Scope, start tf.Output, stop tf.Output, num tf.Output) (out
 	return op.Output(0)
 }
 
+// ListDatasetAttr is an optional argument to ListDataset.
+type ListDatasetAttr func(optionalAttr)
+
+// ListDatasetMetadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func ListDatasetMetadata(value string) ListDatasetAttr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
+// Creates a dataset that emits each of `tensors` once.
+func ListDataset(scope *Scope, tensors []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ListDatasetAttr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ListDataset",
+		Input: []tf.Input{
+			tf.OutputList(tensors),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ListDiffAttr is an optional argument to ListDiff.
 type ListDiffAttr func(optionalAttr)
 
@@ -26108,6 +26159,16 @@ func MergeV2CheckpointsDeleteOldDirs(value bool) MergeV2CheckpointsAttr {
 	}
 }
 
+// MergeV2CheckpointsAllowMissingFiles sets the optional allow_missing_files attribute to value.
+//
+// value: see above.
+// If not specified, defaults to false
+func MergeV2CheckpointsAllowMissingFiles(value bool) MergeV2CheckpointsAttr {
+	return func(m optionalAttr) {
+		m["allow_missing_files"] = value
+	}
+}
+
 // V2 format specific: merges the metadata files of sharded checkpoints.  The
 //
 // result is one logical checkpoint, with one physical metadata file and renamed
@@ -26118,6 +26179,10 @@ func MergeV2CheckpointsDeleteOldDirs(value bool) MergeV2CheckpointsAttr {
 // If delete_old_dirs is true, attempts to delete recursively the dirname of each
 // path in the input checkpoint_prefixes.  This is useful when those paths are non
 // user-facing temporary locations.
+//
+// If allow_missing_files is true, merges the checkpoint prefixes as long as
+// at least one file exists. Otherwise, if no files exist, an error will be thrown.
+// The default value for allow_missing_files is false.
 //
 // Arguments:
 //
@@ -53796,6 +53861,72 @@ func UniformCandidateSampler(scope *Scope, true_classes tf.Output, num_true int6
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// UniformQuantizedDotHybridAttr is an optional argument to UniformQuantizedDotHybrid.
+type UniformQuantizedDotHybridAttr func(optionalAttr)
+
+// UniformQuantizedDotHybridRhsQuantizationAxis sets the optional rhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For dot op rhs, only per-tensor quantization or per-channel quantization along dimension 1 is supported.
+// Thus, this attribute must be set to -1 or 1. Other values are rejected.
+// If not specified, defaults to -1
+func UniformQuantizedDotHybridRhsQuantizationAxis(value int64) UniformQuantizedDotHybridAttr {
+	return func(m optionalAttr) {
+		m["rhs_quantization_axis"] = value
+	}
+}
+
+// Perform hybrid quantized dot of float Tensor `lhs` and quantized Tensor `rhs`.
+//
+// Given float `lhs` and quantized `rhs`, internally performs quantization on `lhs`, and then performs quantized dot on quantized lhs and `rhs`.
+// The internal quantization on `lhs` is a quantization to qint8, dynamic range, per-batch (per-axis along axis 0), asymmetric, and not narrow range (the range is [-128, 127]).
+// `lhs` and `rhs` must be 2D Tensors and the lhs.dim_size(1) must match rhs.dim_size(0).
+// `rhs` must be quantized Tensor, where its data value is quantized using the formula:
+// quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+//
+// Arguments:
+//
+//	lhs: Must be a 2D Tensor of Tlhs.
+//	rhs: Must be a 2D Tensor of Trhs.
+//	rhs_scales: The float value(s) used as scale when quantizing original data that rhs represents.
+//
+// Must be a scalar Tensor (per-tensor quantization) or 1D Tensor of size (rhs.dim_size(1),) (per-channel quantization).
+//
+//	rhs_zero_points: The int32 value(s) used as zero_point when quantizing original data that rhs represents.
+//
+// Same shape condition as rhs_scales.
+//
+//	Tout: The type of output Tensor.
+//	rhs_quantization_min_val: The min value of the quantized data stored in rhs.
+//
+// For example, if Trhs is qint8, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	rhs_quantization_max_val: The max value of the quantized data stored in rhs.
+//
+// For example, if Trhs is qint8, this must be set to 127.
+//
+// Returns The output 2D Tensor of Tout, whose shape is (lhs.dim_size(0), rhs.dim_size(1)).
+// The output data is the original output data itself (Not quantized).
+func UniformQuantizedDotHybrid(scope *Scope, lhs tf.Output, rhs tf.Output, rhs_scales tf.Output, rhs_zero_points tf.Output, Tout tf.DataType, rhs_quantization_min_val int64, rhs_quantization_max_val int64, optional ...UniformQuantizedDotHybridAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "rhs_quantization_min_val": rhs_quantization_min_val, "rhs_quantization_max_val": rhs_quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedDotHybrid",
+		Input: []tf.Input{
+			lhs, rhs, rhs_scales, rhs_zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // UniqueAttr is an optional argument to Unique.
 type UniqueAttr func(optionalAttr)
 
@@ -55262,6 +55393,71 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Temporary op for experimenting with jax2tf.
+//
+// DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
+// very likely to change. This op will be used only in jax2tf under an
+// experimental flag.
+//
+// This is an experimental op to allow a smooth evolution of jax2tf towards
+// emitting and serializing MHLO directly from JAX. At the moment this op
+// carries a serialized MHLO module, therefore there are no backward-compatibility
+// guarantees, and should not be used for serialization.
+// Eventually, the op will carry a MHLO object, which will have
+// backwards-compatibility guarantees.
+//
+// The serialized module must return a tuple if and only if the Sout is an empty
+// list or a list with more than 1 elements. The length of Tout and Sout must
+// match. This op always returns a tuple of results, even if the module returns
+// a single result.
+//
+// The handling of dynamic shapes is work-in-progress. At the moment, the
+// JAX lowering for dynamic shapes will prepend one dimension parameter to the
+// serialized module for each dimension whose value must be passed in.
+// The "args" correspond to the non-dimension arguments. During compilation
+// we compute the values of the dimension arguments based on the static shapes of
+// the "args". In order to do this, we encode for each dimension argument a
+// specification of how to compute its value, as a string, in the form
+// "<arg_idx>.<axis_idx>".
+// E.g., the specification "2.1" denotes the value args[2].shape[1].
+//
+// Arguments:
+//
+//	args: A list of `Tensor` with possibly different types to be passed as arguments
+//
+// to the HLO module.
+//
+//	module: A serialized computation, a text representation of mlir.Module.
+//	Sout: List of output tensor shapes.
+//	Tout: List of output tensor data types.
+//	dim_args_spec: the specification for the dimension arguments, one for each
+//
+// dimension argument. In absence of dynamic shapes this list is empty.
+func XlaCallModule(scope *Scope, args []tf.Output, module string, Sout []tf.Shape, Tout []tf.DataType, dim_args_spec []string) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"module": module, "Sout": Sout, "Tout": Tout, "dim_args_spec": dim_args_spec}
+	opspec := tf.OpSpec{
+		Type: "XlaCallModule",
+		Input: []tf.Input{
+			tf.OutputList(args),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("XlaCallModule", err)
+		return
+	}
+	return output
 }
 
 // XlaConcatNDAttr is an optional argument to XlaConcatND.

@@ -81,7 +81,7 @@ py_test(
 
 py_test(
     name = "zero_out_2_test",
-    size = "small",
+    size = "medium",
     srcs = ["zero_out_2_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

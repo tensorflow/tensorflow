@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include <memory>
 
-// TODO(b/236710439): Provides the macro CHECK(). Can be removed once the error
-// is handled properly.
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 
 namespace pjrt {
 
@@ -34,6 +32,42 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
     // TODO(b/236710439): handle the error and remove this CHECK() call
     CHECK(error == nullptr);
   };
+}
+
+PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api* api) {
+  return [api](PJRT_Error* error) -> void {
+    PJRT_Error_Destroy_Args destroy_args;
+    destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+    destroy_args.priv = nullptr;
+    destroy_args.error = error;
+
+    api->PJRT_Error_Destroy(&destroy_args);
+  };
+}
+
+xla::Status PjrtErrorToStatus(PJRT_Error* error, const PJRT_Api* api) {
+  xla::Status status;
+  if (error != nullptr) {
+    PJRT_Error_Message_Args message_args;
+    message_args.struct_size = PJRT_Error_Message_Args_STRUCT_SIZE;
+    message_args.priv = nullptr;
+    message_args.error = error;
+    api->PJRT_Error_Message(&message_args);
+
+    // TODO(b/237621349) Replace UNKNOWN status code with the actual
+    absl::string_view message(message_args.message, message_args.message_size);
+    status = xla::Status(tensorflow::error::UNKNOWN, message);
+  }
+  return status;
+}
+
+void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api) {
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(
+      error, MakeErrorDeleter(api));
+  xla::Status _status = PjrtErrorToStatus(_error.get(), api);
+  if (!_status.ok()) {
+    LOG(FATAL) << "Unexpected error status " << _status.error_message();
+  }
 }
 
 }  // namespace pjrt

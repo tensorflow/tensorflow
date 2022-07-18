@@ -121,7 +121,7 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
     Operation* global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
-        pair.value(), pair.value().nameAttr());
+        pair.value(), pair.value().getNameAttr());
     auto attr = builder.getIndexAttr(pair.index());
     builder.clone(*global_op)->setAttr("lmhlo.alloc", attr);
   }
@@ -133,7 +133,7 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
   // Annotate the function arguments if they refer to a memref.global op.
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
-    auto attr = builder.getStringAttr(pair.value().name());
+    auto attr = builder.getStringAttr(pair.value().getName());
     func_op.setArgAttr(pair.index(), "lmhlo.constant_name", attr);
   }
   func_op.setPublic();

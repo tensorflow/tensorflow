@@ -177,14 +177,14 @@ LogicalResult DefaultClusteringPolicy::MatchAndUpdateConstraints(
       // operations directly. Revisit if this becomes a problem.
       if (*result_constraint == ValueConstraint::kValue) return failure();
 
-      default_constraint = default_constraint.hasValue()
+      default_constraint = default_constraint.has_value()
                                ? Merge(*default_constraint, *result_constraint)
                                : *result_constraint;
     }
   }
 
   // No constraints to propagate.
-  if (!default_constraint.hasValue()) return success();
+  if (!default_constraint.has_value()) return success();
 
   // Propage constraint to all operands.
   for (unsigned i = 0; i < op->getNumOperands(); ++i)
@@ -421,7 +421,7 @@ class ConstOpClusteringPolicy : public TensorflowOpClusteringPolicy<ConstOp> {
     // We cluster constant operation only if it is required to resolve some of
     // the constraints.
     auto result_constraint = results.GetConstraint(op.getResult());
-    if (!result_constraint.hasValue()) return failure();
+    if (!result_constraint.has_value()) return failure();
 
     return IsCompilableConstant(op.value());
   }
@@ -498,7 +498,7 @@ class FillOpClusteringPolicy : public TensorflowOpClusteringPolicy<FillOp> {
       ValuesConstraintSet& operands) const final {
     // Fill operation does not have any default constraints.
     auto result_constraint = results.GetConstraint(op->getResult(0));
-    if (!result_constraint.hasValue()) return success();
+    if (!result_constraint.has_value()) return success();
 
     // To know the result shape we need to know the shape operand value.
     if (*result_constraint == ValueConstraint::kShape)
@@ -557,7 +557,7 @@ class RangeOpClusteringPolicy : public TensorflowOpClusteringPolicy<RangeOp> {
       ValuesConstraintSet& operands) const final {
     // Range operation does not have any default constraints.
     auto result_constraint = results.GetConstraint(op.getResult());
-    if (!result_constraint.hasValue()) return success();
+    if (!result_constraint.has_value()) return success();
 
     // To know the result shape we need the input values.
     if (*result_constraint == ValueConstraint::kShape) {
@@ -586,7 +586,7 @@ class ReshapeOpClusteringPolicy
 
     // Reshape operation does not have any default constraints.
     auto result_constraint = results.GetConstraint(op.getResult());
-    if (!result_constraint.hasValue()) return success();
+    if (!result_constraint.has_value()) return success();
 
     // To know the result shape we need to know the shape operand value. We also
     // require a static shape on the input in case there's a -1 in the shape.
@@ -619,7 +619,7 @@ class ShapeOpClusteringPolicy : public TensorflowOpClusteringPolicy<ShapeOp> {
 
     // Check constraint on the result value.
     auto result_constraint = results.GetConstraint(op.getResult());
-    if (!result_constraint.hasValue()) return success();
+    if (!result_constraint.has_value()) return success();
 
     // To know the result shape we need only the rank of the input.
     if (*result_constraint == ValueConstraint::kShape)

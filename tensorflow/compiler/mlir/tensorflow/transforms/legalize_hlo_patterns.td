@@ -57,7 +57,7 @@ foreach fromToBinPair = [[HLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
                          [HLO_MinOp, CHLO_BroadcastMinOp, TF_MinimumOp],
                          [HLO_MulOp, CHLO_BroadcastMulOp, TF_MulOp],
                          [HLO_PowOp, CHLO_BroadcastPowOp, TF_PowOp],
-                         [HLO_SubOp, CHLO_BroadcastSubOp, TF_SubOp],
+                         [HLO_SubtractOp, CHLO_BroadcastSubOp, TF_SubOp],
                          [HLO_Atan2Op, CHLO_BroadcastAtan2Op, TF_Atan2Op]] in {
   def : Pat<(fromToBinPair[0] $l, $r), (fromToBinPair[2] $l, $r)>;
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
@@ -263,7 +263,7 @@ def FloatOrDefaultCompare : Constraint<CPred<
 //   return floor(x)
 def : Pat<(HLO_SelectOp
             (HLO_OrOp
-              (HLO_CompareOp (HLO_SubOp:$frac
+              (HLO_CompareOp (HLO_SubtractOp:$frac
                                $input,
                                (HLO_FloorOp:$floor $input)),
                              (HLO_ConstantOp $half),
@@ -276,7 +276,7 @@ def : Pat<(HLO_SelectOp
                   HLO_ComparisonDirectionValue<"EQ">,
                   $compare_type1),
                 (HLO_CompareOp
-                  (HLO_SubOp
+                  (HLO_SubtractOp
                     $floor1,
                     (HLO_MulOp
                       (HLO_FloorOp (HLO_MulOp $input, (HLO_ConstantOp $half2))),
@@ -404,7 +404,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   $arg1b),
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
@@ -460,7 +460,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_MulOp:$mul
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   (HLO_ConstantOp $cst_recip)),
                 (HLO_ConstantOp $cst_neg1)),
               $mul1)),
@@ -518,7 +518,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   (HLO_ConstantOp $cstv1)),
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
@@ -583,7 +583,7 @@ def : Pat<(HLO_RoundOp
                   $compare_type1)),
               (HLO_AddOp
                 (HLO_DivOp:$div
-                  (HLO_SubOp $arg0, $rem2),
+                  (HLO_SubtractOp $arg0, $rem2),
                   $bcst1),
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),

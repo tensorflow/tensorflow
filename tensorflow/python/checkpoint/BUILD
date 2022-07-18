@@ -43,6 +43,7 @@ py_library(
         ":checkpoint_options",
         ":functional_saver",
         ":graph_view",
+        ":restore",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -149,26 +150,6 @@ tf_py_test(
 )
 
 py_library(
-    name = "checkpoint_util",
-    srcs = ["checkpoint_util.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":saveable_compat",
-        "//tensorflow/python/trackable:trackable_utils",
-    ],
-)
-
-tf_py_test(
-    name = "checkpoint_util_test",
-    srcs = ["checkpoint_util_test.py"],
-    deps = [
-        ":checkpoint_util",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/trackable:base",
-    ],
-)
-
-py_library(
     name = "checkpoint_view",
     srcs = ["checkpoint_view.py"],
     srcs_version = "PY3",
@@ -242,6 +223,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
@@ -260,6 +242,34 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:autotrackable",
+    ],
+)
+
+py_library(
+    name = "restore",
+    srcs = ["restore.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":saveable_compat",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops_gen",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:constants",
+        "//tensorflow/python/trackable:python_state",
+        "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+tf_py_test(
+    name = "restore_test",
+    srcs = ["restore_test.py"],
+    deps = [
+        ":restore",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
     ],
 )
 

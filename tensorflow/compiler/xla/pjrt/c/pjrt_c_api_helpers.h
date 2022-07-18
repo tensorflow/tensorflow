@@ -20,14 +20,27 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/status.h"
 
 namespace pjrt {
 
 using PJRT_ClientDeleter = std::function<void(PJRT_Client *)>;
 
-// Pass in an API pointer; recieve a custom deleter for smart pointers.
+// Pass in an API pointer; receive a custom deleter for smart pointers.
 // The lifetime of the Api pointed to must be longer than the client.
 PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api *api);
+
+using PJRT_ErrorDeleter = std::function<void(PJRT_Error *)>;
+
+// Pass in an API pointer; receive a custom deleter for smart pointers.
+// The lifetime of the Api pointed to must be longer than the error.
+PJRT_ErrorDeleter MakeErrorDeleter(const PJRT_Api *api);
+
+xla::Status PjrtErrorToStatus(PJRT_Error *error, const PJRT_Api *api);
+
+// Fatal error logging if status is not success. This terminates the process
+// and frees the PJRT_Error passed in.
+void LogFatalIfPjrtError(PJRT_Error *error, const PJRT_Api *api);
 
 }  // namespace pjrt
 

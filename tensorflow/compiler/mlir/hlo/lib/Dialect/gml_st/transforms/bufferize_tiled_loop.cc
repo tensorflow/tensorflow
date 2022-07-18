@@ -122,7 +122,7 @@ struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
     if (!op->getParentOfType<LoopOp>()) return failure();
 
     rewriter.replaceOpWithNewOp<SubViewOp>(
-        op, adaptor.source(), op.getMixedOffsets(), op.getMixedSizes(),
+        op, adaptor.getSource(), op.getMixedOffsets(), op.getMixedSizes(),
         op.getMixedStrides());
     return success();
   }
@@ -162,7 +162,7 @@ Value findExistingSubview(Value destMemRef) {
         if (auto anotherCast = mlir::dyn_cast<ToMemrefOp>(tensorUser)) {
           for (Operation *memrefUser : anotherCast.getMemref().getUsers()) {
             if (auto subview = mlir::dyn_cast<SubViewOp>(memrefUser)) {
-              if (subview.source() == destMemRef) return subview;
+              if (subview.getSource() == destMemRef) return subview;
             }
           }
         }
@@ -180,10 +180,10 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
   LogicalResult matchAndRewrite(
       InsertSliceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    Value sourceMemRef = adaptor.source();
+    Value sourceMemRef = adaptor.getSource();
     assert(sourceMemRef.getType().isa<MemRefType>());
 
-    Value destMemRef = adaptor.dest();
+    Value destMemRef = adaptor.getDest();
     assert(destMemRef.getType().isa<MemRefType>());
 
     if (!op->getParentOfType<LoopOp>()) return failure();

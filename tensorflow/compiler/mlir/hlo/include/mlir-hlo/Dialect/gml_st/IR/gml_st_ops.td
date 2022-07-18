@@ -24,8 +24,9 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_extension_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize",
-    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [
+    NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins AnyShaped:$source, AnySet:$set);
   let results = (outs AnyType:$result);
   let assemblyFormat = [{
@@ -34,9 +35,9 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize",
   let hasVerifier = 0;
 }
 
-def GMLST_OffsetOp : GMLST_Op<"offset", []> {
+def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
   let summary = [{Returns the offset of a tile in a given dimension}];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
+  let arguments = (ins AnySet:$tile, Index:$dim);
   let results = (outs Index:$result);
   let assemblyFormat = [{
     $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
@@ -45,7 +46,7 @@ def GMLST_OffsetOp : GMLST_Op<"offset", []> {
   let hasFolder = 1;
 }
 
-def GMLST_SizeOp : GMLST_Op<"size", []> {
+def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
   let summary = [{Returns the size of a tile in a given dimension}];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
@@ -56,7 +57,7 @@ def GMLST_SizeOp : GMLST_Op<"size", []> {
   let hasFolder = 1;
 }
 
-def GMLST_StrideOp : GMLST_Op<"stride", []> {
+def GMLST_StrideOp : GMLST_Op<"stride", [NoSideEffect]> {
   let summary = [{Returns the stride of a tile in a given dimension}];
   let arguments = (ins GMLST_TileType:$tile, Index:$dim);
   let results = (outs Index:$result);
@@ -251,7 +252,9 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 }
 
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
-      Terminator, SameVariadicOperandSize]> {
+      Terminator, SameVariadicOperandSize,
+      SingleBlockImplicitTerminator<"YieldOp">
+  ]> {
   let summary = "Set yield operation";
   let description = [{
     `gml_st.set_yield` is a special terminator operation for
@@ -266,11 +269,24 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
   }];
   let arguments = (ins Variadic<AnyType>:$srcs,
                        Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$sets);
-  let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
-
-
+                       Variadic<AnyType>:$sets,
+                       BoolArrayAttr:$accumulatorFlags);
+  let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);
   let hasCustomAssemblyFormat = 1;
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins)>,
+
+    // Builder with default update behaviour, i.e. overriding output.
+    OpBuilder<(ins "ValueRange":$srcs, "ValueRange":$dsts, "ValueRange":$sets)>,
+
+    // Builder with custom update behaviour.
+    OpBuilder<(ins "ValueRange":$srcs, "ValueRange":$dsts, "ValueRange":$sets,
+      "ArrayAttr":$accumulatorFlags,
+      "ArrayRef<function_ref<void(OpBuilder &, Location, Value, Value)>>"
+      :$combiners)>
+  ];
 
   let extraClassDeclaration = [{
 

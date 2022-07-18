@@ -223,8 +223,9 @@ void populateShapeComputationPatterns(MLIRContext *context,
                 MhloElementwiseConverter<mhlo::RoundOp>,
                 MhloElementwiseConverter<mhlo::RsqrtOp>,
                 MhloElementwiseConverter<mhlo::SqrtOp>,
-                MhloElementwiseConverter<mhlo::SubOp>, ConcatenateConverter,
-                GetDimSizeConverter, ReshapeConverter>(context);
+                MhloElementwiseConverter<mhlo::SubtractOp>,
+                ConcatenateConverter, GetDimSizeConverter, ReshapeConverter>(
+      context);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>>

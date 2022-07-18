@@ -23,7 +23,7 @@ func.func @while() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
    cond  {
 // CHECK-NEXT: mhlo.compare
 // CHECK-SAME: %[[ITER_ARG]], %[[ITER_ARG2]]
-    %1 = "mhlo.compare"(%iterArg, %iterArg_4) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %1 = "mhlo.compare"(%iterArg, %iterArg_4) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   } do  {
 // CHECK: mhlo.add

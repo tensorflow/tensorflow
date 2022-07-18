@@ -272,6 +272,24 @@ class ShutdownTPUSystemOpKernel : public OpKernel {
   }
 };
 
+class SetGlobalTPUArrayOpKernel : public OpKernel {
+ public:
+  explicit SetGlobalTPUArrayOpKernel(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "SetGlobalTPUArrayOpKernel op";
+    auto tpu_topology = ctx->input(0).scalar<tstring>()();
+    TF_Status* status = TF_NewStatus();
+
+    tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(tpu_topology.size(),
+                                                  tpu_topology.data(), status);
+    OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+    TF_DeleteStatus(status);
+
+    VLOG(1) << "SetGlobalTPUArrayOpKernel done";
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("ConfigureAndInitializeGlobalTPU")
                             .Device(DEVICE_TPU_SYSTEM)
                             .HostMemory("output"),
@@ -279,6 +297,11 @@ REGISTER_KERNEL_BUILDER(Name("ConfigureAndInitializeGlobalTPU")
 
 REGISTER_KERNEL_BUILDER(Name("ShutdownTPUSystem").Device(DEVICE_TPU_SYSTEM),
                         ShutdownTPUSystemOpKernel);
+
+REGISTER_KERNEL_BUILDER(Name("DTensorSetGlobalTPUArray")
+                            .Device(DEVICE_TPU_SYSTEM)
+                            .HostMemory("topology"),
+                        SetGlobalTPUArrayOpKernel);
 
 }  // namespace dtensor
 }  // namespace tensorflow

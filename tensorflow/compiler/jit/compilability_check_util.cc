@@ -703,6 +703,7 @@ tensorflow::MemoryTypeVector GetOutputMemoryTypes(
 
 static auto const ops_triggering_xla_compilation =
     new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
+                                         "XlaCallModule",
                                          "XlaConv",
                                          "XlaConvV2",
                                          "XlaDequantize",
