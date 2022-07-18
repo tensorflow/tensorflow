@@ -802,12 +802,10 @@ void QuantizationDriver::PreprocessConstantOps() {
         // parameters if there are no quantization parameters (FakeQuant ops).
         // For this case, the weight will not be duplicated.
         weights_.insert(cst);
-        auto affine_user =
-            llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
-        if (affine_user && affine_user.GetAffineOperandIndex() == operand_num &&
-            affine_user.RequiredNarrowRangeAffineOperand()) {
+        if (spec->coeff_op_quant_dim.find(operand_num) !=
+            spec->coeff_op_quant_dim.end()) {
           optimized_weights_.insert(
-              {cst, affine_user.GetQuantizationDimIndex()});
+              {cst, spec->coeff_op_quant_dim[operand_num]});
         }
       } else {
         // This is a bias or an operand of an op with same scale requirements,
