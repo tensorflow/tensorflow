@@ -319,17 +319,19 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
-  def testDisallowFiniteDataset(self):
+  def testRequiresInfiniteDataset(self):
     cluster = self._create_cluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10).map(lambda x: x + 1)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Cross-trainer caching requires the input dataset to be infinite."):
-      dataset = self.make_distributed_range_dataset(
-          10,
-          cluster,
-          job_name="job",
-          cross_trainer_cache=data_service_ops.CrossTrainerCache(
-              trainer_id="Trainer 1"))
+      dataset = dataset.apply(
+          data_service_ops.distribute(
+              processing_mode=data_service_ops.ShardingPolicy.OFF,
+              service=cluster.dispatcher.target,
+              job_name="job_name",
+              cross_trainer_cache=data_service_ops.CrossTrainerCache(
+                  trainer_id="Trainer 1")))
       self.getDatasetOutput(dataset)
 
   @combinations.generate(
