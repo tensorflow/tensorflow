@@ -71,18 +71,21 @@ inline GpuStats GetNumGPUs(const Cluster& cluster) {
         device.second.environment().find("architecture");
 #if TENSORFLOW_USE_ROCM
     bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
-    if ((compute_capability_it->second == "gfx908" || compute_capability_it->second == "gfx90a") && is_enabled) num_volta++;
+    if ((compute_capability_it->second == "gfx908" ||
+         compute_capability_it->second == "gfx90a") && is_enabled) {
+       gpu_stats.num_voltas++;
+    }
 #endif
     if (compute_capability_it == device.second.environment().end()) {
       continue;
     }
-#if GOOGLE_CUDA    
+#if GOOGLE_CUDA
     double compute_capability = 0.0;
     if (absl::SimpleAtod(compute_capability_it->second, &compute_capability)) {
       if (compute_capability >= 7.0) gpu_stats.num_voltas++;
       if (compute_capability >= 8.0) gpu_stats.num_amperes++;
     }
-#endif  
+#endif
   }
   return gpu_stats;
 }
