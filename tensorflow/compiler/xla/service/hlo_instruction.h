@@ -515,6 +515,7 @@ class HloInstruction {
   void DetachFromOperandsAndUsers();
 
   // Adds a derived instruciton to the parent compuation of this instruction.
+  // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
 
