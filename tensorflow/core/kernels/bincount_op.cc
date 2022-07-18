@@ -493,6 +493,9 @@ class RaggedBincountOp : public OpKernel {
     int num_values = values.size();
     int batch_idx = 0;
 
+    OP_REQUIRES(ctx, splits.size() > 0,
+                errors::InvalidArgument("Splits must be non-empty"));
+
     OP_REQUIRES(ctx, splits(0) == 0,
                 errors::InvalidArgument("Splits must start with 0, not with ",
                                         splits(0)));
