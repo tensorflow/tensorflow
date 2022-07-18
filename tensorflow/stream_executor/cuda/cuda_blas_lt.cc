@@ -53,7 +53,8 @@ cublasLtPointerMode_t AsCublasLtPointerMode(BlasLt::PointerMode pointer_mode) {
   }
 }
 
-cublasLtEpilogue_t AsCublasLtEpilogue(BlasLt::Epilogue epilogue) {
+port::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
+    BlasLt::Epilogue epilogue) {
   switch (epilogue) {
     case BlasLt::Epilogue::kDefault:
       return CUBLASLT_EPILOGUE_DEFAULT;
@@ -63,6 +64,20 @@ cublasLtEpilogue_t AsCublasLtEpilogue(BlasLt::Epilogue epilogue) {
       return CUBLASLT_EPILOGUE_BIAS;
     case BlasLt::Epilogue::kBiasThenReLU:
       return CUBLASLT_EPILOGUE_RELU_BIAS;
+    case BlasLt::Epilogue::kGeLU:
+#if CUDA_VERSION >= 11040
+      return CUBLASLT_EPILOGUE_GELU;
+#else
+      return port::InternalError(absl::StrCat(
+          "CUBLASLT_EPILOGUE_GELU epilog requires cublasLt >= 11.4"));
+#endif
+    case BlasLt::Epilogue::kBiasThenGeLUApproximate:
+#if CUDA_VERSION >= 11040
+      return CUBLASLT_EPILOGUE_GELU_BIAS;
+#else
+      return port::InternalError(absl::StrCat(
+          "CUBLASLT_EPILOGUE_GELU_BIAS epilog requires cublasLt >= 11.4"));
+#endif
   }
 }
 
@@ -164,10 +179,12 @@ port::StatusOr<BlasLt::UniqueOpDesc> CreateCublasLtOperationDesc(
                      computation_type, ") failed: ", ToString(status)));
   }
   BlasLt::UniqueOpDesc unique_desc(desc);
+  TF_ASSIGN_OR_RETURN(cublasLtEpilogue_t epilog_op,
+                      AsCublasLtEpilogue(epilogue));
   TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_POINTER_MODE,
                                      AsCublasLtPointerMode(pointer_mode)));
-  TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE,
-                                     AsCublasLtEpilogue(epilogue)));
+  TF_RETURN_IF_ERROR(
+      SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_EPILOGUE, epilog_op));
   TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSA,
                                      AsCublasOperation(transa)));
   TF_RETURN_IF_ERROR(SetCublasLtAttr(desc, CUBLASLT_MATMUL_DESC_TRANSB,
@@ -438,7 +455,8 @@ bool BlasLt::DoMatmulInternal(
     return false;
   }
   if ((plan.params().epilogue == Epilogue::kBias ||
-       plan.params().epilogue == Epilogue::kBiasThenReLU) !=
+       plan.params().epilogue == Epilogue::kBiasThenReLU ||
+       plan.params().epilogue == Epilogue::kBiasThenGeLUApproximate) !=
       (bias != nullptr)) {
     VLOG(2) << "DoBlasLtMatmul returning false because plan has wrong "
                "epilogue for the given bias pointer.";
