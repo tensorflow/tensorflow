@@ -94,7 +94,6 @@ using reference_ops::Less;
 using reference_ops::LessEqual;
 using reference_ops::LessEqualWithScaling;
 using reference_ops::LessWithScaling;
-using reference_ops::Mean;
 using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
 using reference_ops::Relu0To1;  // NOLINT
