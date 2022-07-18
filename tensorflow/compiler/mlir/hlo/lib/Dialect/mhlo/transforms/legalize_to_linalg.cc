@@ -1048,8 +1048,7 @@ class RealDynamicSliceConverter
     auto resultType =
         this->typeConverter->convertType(realDynamicSliceOp.getType())
             .cast<RankedTensorType>();
-    Value zero =
-        rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(arithType, 0));
+    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     SmallVector<OpFoldResult, 4> offsets, sizes, strides;
     SmallVector<Type, 3> clampType(3, arithType);
     for (auto i : llvm::seq<unsigned>(0, argType.getRank())) {
@@ -1070,6 +1069,11 @@ class RealDynamicSliceConverter
               ? computeSize(loc, start, limit, stride, rewriter)
               : rewriter.create<arith::ConstantIndexOp>(loc, resultDimSize);
 
+      // We can now convert start to index.
+      if (!start.getType().isIndex())
+        start = rewriter.create<arith::IndexCastOp>(
+            loc, rewriter.getIndexType(), start);
+
       // Fetch i-th dimension size of the operand and calculate upper bound as
       //   ub = operand_dim[i] - size[i]
       Value operandDimSize =
@@ -1080,21 +1084,19 @@ class RealDynamicSliceConverter
       // We clamp the start_index to keep it bounded as
       //   0 <= start_index[i] <= ub
       // Clamp does not support index type, so cast to integer type.
-      start = rewriter.createOrFold<arith::IndexCastOp>(loc, arithType, start);
-      upperBound =
-          rewriter.createOrFold<arith::IndexCastOp>(loc, arithType, upperBound);
-      start = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ClampOp>(
-          loc, arithType, clampType, ValueRange{zero, start, upperBound},
-          &rewriter);
+      start = rewriter.create<arith::MaxSIOp>(loc, start, zero);
+      start = rewriter.create<arith::MinSIOp>(loc, start, upperBound);
 
-      offsets.push_back(
-          rewriter.createOrFold<arith::IndexCastOp>(loc, indexType, start));
+      offsets.push_back(start);
       if (ShapedType::isDynamic(resultDimSize))
         sizes.push_back(size);
       else
         sizes.push_back(IntegerAttr::get(indexType, resultDimSize));
-      strides.push_back(
-          rewriter.createOrFold<arith::IndexCastOp>(loc, indexType, stride));
+
+      if (!stride.getType().isIndex())
+        stride =
+            rewriter.createOrFold<arith::IndexCastOp>(loc, indexType, stride);
+      strides.push_back(stride);
     }
 
     rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
@@ -1447,13 +1449,7 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
                                          "require known-rank args");
     }
 
-    auto indexType = rewriter.getIndexType();
     SmallVector<OpFoldResult, 3> startIndices, sizes;
-    Value zero = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getZeroAttr(adaptor.start_indices()[0]
-                                      .getType()
-                                      .cast<RankedTensorType>()
-                                      .getElementType()));
     for (auto& en : llvm::enumerate(
              llvm::zip(adaptor.start_indices(),
                        dynamicSliceOp.slice_sizes().getValues<int64_t>()))) {
@@ -1465,24 +1461,20 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
       //       0, operand.dimension_size[i] - size_indices[i])`
       Value startIndex =
           rewriter.create<tensor::ExtractOp>(loc, std::get<0>(en.value()));
-      Value ub = rewriter.createOrFold<tensor::DimOp>(loc, adaptor.operand(),
+      startIndex = rewriter.createOrFold<arith::IndexCastOp>(
+          loc, rewriter.getIndexType(), startIndex);
+
+      Value mn = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+
+      Value mx = rewriter.createOrFold<tensor::DimOp>(loc, adaptor.operand(),
                                                       en.index());
-      // ClampOp lowering does not support index type, so cast it into integer
-      // type.
-      ub = rewriter.createOrFold<arith::IndexCastOp>(loc, startIndex.getType(),
-                                                     ub);
-      ub = rewriter.createOrFold<arith::SubIOp>(
-          loc, ub,
-          rewriter.create<arith::ConstantOp>(
-              loc, rewriter.getIntegerAttr(startIndex.getType(), size)));
-      startIndex = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ClampOp>(
-          loc, startIndex.getType(),
-          ArrayRef<Type>{startIndex.getType(), startIndex.getType(),
-                         startIndex.getType()},
-          ArrayRef<Value>{zero, startIndex, ub}, &rewriter);
-      startIndices.push_back(
-          rewriter.create<arith::IndexCastOp>(loc, indexType, startIndex)
-              .getResult());
+      mx = rewriter.createOrFold<arith::SubIOp>(
+          loc, mx, rewriter.create<arith::ConstantIndexOp>(loc, size));
+
+      startIndex = rewriter.create<arith::MaxSIOp>(loc, startIndex, mn);
+      startIndex = rewriter.create<arith::MinSIOp>(loc, startIndex, mx);
+
+      startIndices.push_back(startIndex);
     }
 
     int64_t rank = argType.getRank();
@@ -1527,30 +1519,23 @@ class DynamicUpdateSliceConverter
       sizes.push_back(rewriter.getIndexAttr(size));
     }
 
-    auto indexType = rewriter.getIndexType();
     SmallVector<OpFoldResult, 3> startIndices;
-    Type startIndexType = adaptor.start_indices()[0]
-                              .getType()
-                              .cast<RankedTensorType>()
-                              .getElementType();
-    Value zero = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getZeroAttr(startIndexType));
+    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     for (auto& en : llvm::enumerate(adaptor.start_indices())) {
       // By mhlo.DynamicUpdateSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - update.dimension_size[i])`
       Value startIndex = rewriter.create<tensor::ExtractOp>(loc, en.value());
-      Value ub = rewriter.create<arith::ConstantOp>(
-          loc, rewriter.getIntegerAttr(startIndexType,
-                                       operandType.getDimSize(en.index()) -
-                                           updateType.getDimSize(en.index())));
-      startIndex = mhlo::MhloOpToStdScalarOp::mapOpOfType<mhlo::ClampOp>(
-          loc, startIndexType,
-          ArrayRef<Type>{startIndexType, startIndexType, startIndexType},
-          ArrayRef<Value>{zero, startIndex, ub}, &rewriter);
-      startIndices.push_back(
-          rewriter.create<arith::IndexCastOp>(loc, indexType, startIndex)
-              .getResult());
+      if (!startIndex.getType().isIndex())
+        startIndex = rewriter.create<arith::IndexCastOp>(
+            loc, rewriter.getIndexType(), startIndex);
+      Value ub = rewriter.create<arith::ConstantIndexOp>(
+          loc, operandType.getDimSize(en.index()) -
+                   updateType.getDimSize(en.index()));
+
+      startIndex = rewriter.create<arith::MaxSIOp>(loc, startIndex, zero);
+      startIndex = rewriter.create<arith::MinSIOp>(loc, startIndex, ub);
+      startIndices.push_back(startIndex);
     }
 
     int64_t rank = operandType.getRank();
