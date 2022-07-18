@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.string_ops import string_to_hash_bucket
 from tensorflow.python.platform import test
 
 
@@ -65,13 +66,13 @@ def ragged_str():
 def dense_str():
   return constant_op.constant([
       ['3', '1', '4', '1'],
-      ['1', '2', '4', '1'],
-      ['2', '3', '4', '1'],
-      ['7', '4', '4', '1'],
-      ['9', '5', '4', '1'],
-      ['6', '6', '4', '1'],
-      ['4', '7', '4', '1'],
-      ['5', '8', '4', '1'],
+      ['', '', '', ''],
+      ['5', '9', '2', ''],
+      ['6', '', '', ''],
+      ['', '', '', ''],
+      ['3', '1', '4', '1'],
+      ['3', '1', '', ''],
+      ['2', '1', '4', '1'],
   ])
 
 
@@ -153,6 +154,91 @@ class RaggedFactoryOpsTest(test_util.TensorFlowTestCase,
         self.evaluate(ds_dict['int'][0]), self.evaluate(result['int'][0]))
     self.assertAllEqual(
         self.evaluate(ds_dict['str'][0]), self.evaluate(result['str'][0]))
+
+  @parameterized.parameters(
+      (dense_str,),
+      # (ragged_str,),  # TODO(b/194439197) fix ragged tensor of string
+  )
+  @test_util.run_v2_only
+  def testOpsWithDistributedDataset(self, string_factory):
+
+    def distributed_dataset_producer(t):
+      strategy = mirrored_strategy.MirroredStrategy(['GPU:0', 'GPU:1'])
+      ragged_ds = dataset_ops.Dataset.from_tensor_slices(t).batch(2)
+      dist_dataset = strategy.experimental_distribute_dataset(ragged_ds)
+
+      @def_function.function
+      def replica_fn(elem):
+        # Example of typical preprocessing of string to numeric feature
+        hashed = string_to_hash_bucket(elem['str'], 10)
+        return 1000 * hashed
+
+      result = []
+      for x in dist_dataset:
+        result.append(strategy.run(replica_fn, args=(x,)))
+      return result
+
+    ds_dict = {'str': string_factory()}
+    result = distributed_dataset_producer(ds_dict)
+    expect_length = [len(i) for i in ds_dict['str']]
+    self.assertAllEqual([[5000, 3000, 5000, 3000][:expect_length[0]]],
+                        self.evaluate(result[0].values[0]))
+    self.assertAllEqual([[9000, 9000, 9000, 9000][:expect_length[1]]],
+                        self.evaluate(result[0].values[1]))
+    self.assertAllEqual([[0, 3000, 2000, 9000][:expect_length[2]]],
+                        self.evaluate(result[1].values[0]))
+    self.assertAllEqual([[2000, 9000, 9000, 9000][:expect_length[3]]],
+                        self.evaluate(result[1].values[1]))
+    self.assertAllEqual([[9000, 9000, 9000, 9000][:expect_length[4]]],
+                        self.evaluate(result[2].values[0]))
+    self.assertAllEqual([[5000, 3000, 5000, 3000][:expect_length[5]]],
+                        self.evaluate(result[2].values[1]))
+    self.assertAllEqual([[5000, 3000, 9000, 9000][:expect_length[6]]],
+                        self.evaluate(result[3].values[0]))
+    self.assertAllEqual([[2000, 3000, 5000, 3000][:expect_length[7]]],
+                        self.evaluate(result[3].values[1]))
+
+  @parameterized.parameters(
+      (dense_str,),
+      # (ragged_str,),  # TODO(b/194439197) fix ragged tensor of string
+  )
+  @test_util.run_v2_only
+  def testIntStringOpsWithDistributedDataset(self, string_factory):
+
+    ri = ragged_int64()
+    # To ease testing both dense and ragged strings, pass in the ragged sizes
+    # so the dense strings can be sliced to match.
+    element_sizes = [len(i) for i in ri]
+    ds_dict = {'int': ri, 'str': string_factory(), 'size': element_sizes}
+
+    def distributed_dataset_producer(t):
+      strategy = mirrored_strategy.MirroredStrategy(['GPU:0', 'GPU:1'])
+      ragged_ds = dataset_ops.Dataset.from_tensor_slices(t).batch(2)
+      dist_dataset = strategy.experimental_distribute_dataset(ragged_ds)
+
+      @def_function.function
+      def replica_fn(elem):
+        # Example of typical preprocessing of string to numeric feature
+        hashed = string_to_hash_bucket(elem['str'], 10)
+        # For dense string case, slice it to size of ragged int
+        hashed_sliced = hashed[:, :elem['size'][0]]
+        # Computation with both feature from string and numeric dataset output
+        return elem['int'] * 10 + hashed_sliced
+
+      result = []
+      for x in dist_dataset:
+        result.append(strategy.run(replica_fn, args=(x,)))
+      return result
+
+    result = distributed_dataset_producer(ds_dict)
+    self.assertAllEqual([[35, 13, 45, 13]], self.evaluate(result[0].values[0]))
+    self.assertAllEqual([[]], self.evaluate(result[0].values[1]))
+    self.assertAllEqual([[50, 93, 22]], self.evaluate(result[1].values[0]))
+    self.assertAllEqual([[62]], self.evaluate(result[1].values[1]))
+    self.assertAllEqual([[]], self.evaluate(result[2].values[0]))
+    self.assertAllEqual([[35, 13, 45, 13]], self.evaluate(result[2].values[1]))
+    self.assertAllEqual([[35, 13]], self.evaluate(result[3].values[0]))
+    self.assertAllEqual([[22, 13, 45, 13]], self.evaluate(result[3].values[1]))
 
 
 if __name__ == '__main__':
