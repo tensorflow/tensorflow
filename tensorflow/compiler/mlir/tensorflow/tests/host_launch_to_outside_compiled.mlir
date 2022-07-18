@@ -20,27 +20,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["bad_devi
 
 // -----
 
-// Checks that model parallelism doesn't cause error.
-
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  // CHECK-LABEL: func @model_parallelism
-  func.func @model_parallelism() -> () {
-    // CHECK:      "tf_device.launch"
-    "tf_device.cluster"() ({
-      "tf.A"() : () -> ()
-      "tf_device.launch"() ({
-        "tf.B"() : () -> ()
-	tf_device.return
-      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
-      "tf.C"() : () -> ()
-      tf_device.return
-    }) {num_cores_per_replica = 2, topology = "", device_assignment = []} : () -> ()
-    func.return
-  }
-}
-
-// -----
-
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
 
   // Tests the unwrap of unreplicated launch of a single outside compiled op with no input or output dependencies.
@@ -181,6 +160,33 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return
     }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
     "tf.C"() : () -> ()
+    func.return
+  }
+}
+
+// -----
+
+// Checks that transform to outside compiled occurs when there is model
+// parallelism.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: func @model_parallelism
+  func.func @model_parallelism() -> () {
+    // CHECK:      "tf.A"
+    // CHECK-NOT:  "tf_device.launch"
+    // CHECK-NEXT: "tf.B"
+    // CHECK-SAME:    _xla_outside_compilation
+    // CHECK:      "tf.C"
+    // CHECK-NEXT: tf_device.return
+    "tf_device.cluster"() ({
+      "tf.A"() : () -> ()
+      "tf_device.launch"() ({
+        "tf.B"() : () -> ()
+	tf_device.return
+      }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+      "tf.C"() : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 2, topology = "", device_assignment = []} : () -> ()
     func.return
   }
 }

@@ -28,6 +28,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -73,6 +74,8 @@ class TPUStrategyModelParallelismTest(
     strategy_test_lib.TwoDeviceDistributionTestBase):
 
   def test_logical_device_assignment(self):
+    if test_util.is_mlir_bridge_enabled():
+      self.skipTest("TODO(b/238811067): fix MLIR bridge")
     strategy, num_replicas = get_tpu_strategy()
     with strategy.scope():
       v = variables.Variable(2.)
@@ -110,6 +113,8 @@ class TPUStrategyModelParallelismTest(
                        self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
   def test_paritioned_model_checkpointing(self):
+    if test_util.is_mlir_bridge_enabled():
+      self.skipTest("TODO(b/238811067): fix MLIR bridge")
 
     class PartitionedModel(module.Module):
 
@@ -188,6 +193,8 @@ class TPUStrategyModelParallelismTest(
                                        dtype=dtypes.float32)
 
     strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+    if test_util.is_mlir_bridge_enabled() and num_replicas == 1:
+      self.skipTest("TODO(b/238811067): fix MLIR bridge for num_replicas=1")
     with strategy.scope():
       w = variables.Variable(w_init, dtype=dtypes.float32)
 
@@ -221,6 +228,8 @@ class TPUStrategyModelParallelismTest(
                                        dtype=dtypes.float32)
 
     strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+    if test_util.is_mlir_bridge_enabled() and num_replicas == 1:
+      self.skipTest("TODO(b/238811067): fix MLIR bridge for num_replicas=1")
     with strategy.scope():
       w = variables.Variable(w_init, dtype=dtypes.float32)
 
@@ -307,6 +316,8 @@ class TPUStrategyModelParallelismTest(
                                   dtype=dtypes.float32)
 
     strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+    if test_util.is_mlir_bridge_enabled() and num_replicas == 1:
+      self.skipTest("TODO(b/238811067): fix MLIR bridge for num_replicas=1")
     with strategy.scope():
       model = LinearModel(w1)
 
@@ -344,6 +355,8 @@ class TPUStrategyModelParallelismTest(
           atol=5e-3)
 
   def test_spmd_with_summary(self):
+    if test_util.is_mlir_bridge_enabled():
+      self.skipTest("TODO(b/232580663): fix MLIR bridge")
     original_device_placement = config.get_soft_device_placement()
     config.set_soft_device_placement(True)
 
@@ -371,6 +384,8 @@ class TPUStrategyModelParallelismTest(
 
   def test_spmd_with_outside_comp(self):
     strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+    if test_util.is_mlir_bridge_enabled() and num_replicas == 1:
+      self.skipTest("TODO(b/238673134): fix MLIR bridge for num_replicas=1")
 
     def host_inc(x):
       return x + 1

@@ -1,22 +1,5 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-outside-compiled-to-host-launch | FILECHECK_OPTS="" FileCheck %s
 
-// Tests that outside compilation and model parallelism together fail.
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  func.func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
-    // expected-error@+1 {{outside compilation is not supported with model parallelism}}
-    %0 = "tf_device.cluster"() ({
-      %1 = "tf.A"() : () -> tensor<2xi32>
-      %2 = "tf.B"(%1) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
-      tf_device.return %2 : tensor<2xi32>
-    }) {num_cores_per_replica = 2, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
-    func.return %0 : tensor<2xi32>
-  }
-}
-
-// -----
-
-
-
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
 
   // Tests that TPU cluster with no outside compilation does not generate launch op.
@@ -182,6 +165,30 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     "tf.A"() : () -> ()
     "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
     "tf.C"() : () -> ()
+    func.return
+  }
+}
+
+// -----
+
+// Tests that model parallelism does not affect outside compilation.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: func @outside_compilation_model_parallelism
+  func.func @outside_compilation_model_parallelism() -> () {
+    // CHECK:      "tf.A"
+    // CHECK:      "tf_device.launch"
+    // CHECK-NEXT:   "tf.B"
+    // CHECK-NOT:    _xla_outside_compilation
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: device_assignment =  [], num_cores_per_replica = 2 : i64, topology =  ""
+    %0 = "tf_device.cluster"() ({
+      "tf.A"() : () -> ()
+      "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
+      "tf.C"() : () -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 2, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
     func.return
   }
 }
