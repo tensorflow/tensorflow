@@ -59,6 +59,15 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     RewriterBase &b, linalg::LinalgOp op,
     const linalg::LinalgTilingOptions &options);
 
+// Sets the attribute to the `op` that indicates that the op was transformed.
+void setTransformationAttr(OpBuilder &b, Operation *op);
+
+// Removes the attribute that indicates that it was transformed.
+void removeTransformationAttr(Operation *op);
+
+// Checks if `op` has the attribute that indicates that it was transformed.
+bool hasTransformationAttr(Operation *op);
+
 }  // namespace gml_st
 }  // namespace mlir
 

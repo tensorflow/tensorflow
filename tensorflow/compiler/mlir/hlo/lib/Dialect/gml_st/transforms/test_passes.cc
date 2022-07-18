@@ -109,21 +109,19 @@ class TestGmlStLoopPeelingPass
 struct LinalgTilingPattern
     : public OpInterfaceRewritePattern<linalg::LinalgOp> {
   LinalgTilingPattern(MLIRContext *context, linalg::LinalgTilingOptions options,
-                      linalg::LinalgTransformationFilter f,
                       PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<linalg::LinalgOp>(context, benefit),
-        filter(std::move(f)),
         options(std::move(options)) {}
 
   LogicalResult matchAndRewrite(linalg::LinalgOp op,
                                 PatternRewriter &rewriter) const override {
-    if (failed(filter.checkAndNotify(rewriter, op))) return failure();
+    if (hasTransformationAttr(op)) return failure();
 
     FailureOr<linalg::TiledLinalgOp> res =
         gml_st::tileLinalgOp(rewriter, op, options);
     if (failed(res)) return failure();
 
-    filter.replaceLinalgTransformationFilter(rewriter, res->op);
+    setTransformationAttr(rewriter, res->op);
 
     if (res->tensorResults.empty())
       rewriter.eraseOp(op);
@@ -134,7 +132,6 @@ struct LinalgTilingPattern
   }
 
  private:
-  linalg::LinalgTransformationFilter filter;
   linalg::LinalgTilingOptions options;
 };
 
@@ -159,14 +156,10 @@ struct TestGmlStLoopTilingPass
     MLIRContext *ctx = funcOp.getContext();
     RewritePatternSet patterns(ctx);
 
-    linalg::LinalgTransformationFilter f(ArrayRef<StringAttr>{},
-                                         StringAttr::get(ctx, "tile"));
-    patterns.add<LinalgTilingPattern>(ctx, options, f);
+    patterns.add<LinalgTilingPattern>(ctx, options);
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 
-    funcOp.walk([](linalg::LinalgOp op) {
-      op->removeAttr(linalg::LinalgTransforms::kLinalgTransformMarker);
-    });
+    funcOp.walk([](linalg::LinalgOp op) { removeTransformationAttr(op); });
   }
 };
 
