@@ -5174,19 +5174,27 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
       HloReachabilityMap::Build(fused_computation);
   for (HloInstruction* instr : fused_computation->instructions()) {
     std::vector<HloInstruction*> reached_output_ids;
+    bool added_to_reduce = false;
     for (HloInstruction* output : roots) {
       if (HloOpcode::kReduce == output->opcode() &&
           (IsBroadcastedConstantOrScalar(*instr))) {
-        // Do not group output reduce instructions through broadcasted
-        // constants or scalars, as the recomputation should be acceptable.
-        VLOG(3) << "Skip broadcasted constant or scalar " << instr->ToString();
-        continue;
+        if (added_to_reduce) {
+          // Do not group more than one output reduce instructions through
+          // broadcasted constants or scalars, as the recomputation should be
+          // acceptable.
+          VLOG(3) << "Skip broadcasted constant or scalar "
+                  << instr->ToString();
+          continue;
+        }
       }
       // Now group output instructions if they have common predecessors.
       if (reachability_map->IsReachable(instr, output)) {
         VLOG(3) << "Reaching " << output->ToString() << " from "
                 << instr->ToString();
         reached_output_ids.push_back(output);
+        if (HloOpcode::kReduce == output->opcode()) {
+          added_to_reduce = true;
+        }
       }
     }
     for (size_t j = 1; j < reached_output_ids.size(); ++j) {
