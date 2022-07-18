@@ -446,6 +446,16 @@ constexpr inline int Log2Ceiling(T x) {
   return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
+// Return the number of sign bits (i.e. the number of leading ones for negative
+// numbers and the number of leading zeros for non-negative numbers).
+template <typename T>
+constexpr inline int CountLeadingSignBits(T x) {
+  static_assert(std::is_signed<T>::value, "T should be a signed integer type");
+  using UnsignedType = std::make_unsigned_t<T>;
+  return x < T{0} ? absl::countl_one<UnsignedType>(x)
+                  : absl::countl_zero<UnsignedType>(x);
+}
+
 // Returns `value` with the low `width` bits set and the remaining bits set to
 // zero.
 template <typename T>
