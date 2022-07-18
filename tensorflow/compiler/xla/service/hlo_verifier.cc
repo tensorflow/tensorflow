@@ -128,11 +128,11 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
       continue;
     }
     for (const HloComputation* called_cmp : instr->called_computations()) {
-      if (called_cmp->thread_name() != comp->thread_name()) {
+      if (called_cmp->execution_thread() != comp->execution_thread()) {
         return InternalError(
             "Nested computations expects same computation's thread name (%s vs "
             "%s).",
-            called_cmp->thread_name(), comp->thread_name());
+            called_cmp->execution_thread(), comp->execution_thread());
       }
       TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
           called_cmp, skip_nested_async_op_check));
@@ -1353,8 +1353,8 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
         HloOpcodeString(async_op->opcode()),
         async_op->async_wrapped_instruction()->ToString(),
         operand->async_wrapped_instruction()->ToString(),
-        async_op->async_wrapped_computation()->thread_name(),
-        operand->async_wrapped_computation()->thread_name());
+        async_op->async_wrapped_computation()->execution_thread(),
+        operand->async_wrapped_computation()->execution_thread());
   }
   if (async_op->async_group_id() != operand->async_group_id()) {
     return InternalError(
@@ -1399,15 +1399,15 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
-  std::optional<absl::string_view> async_thread_name =
-      async_op->async_thread_name();
-  if (async_thread_name !=
-      async_op->async_wrapped_computation()->thread_name()) {
+  std::optional<absl::string_view> async_execution_thread =
+      async_op->async_execution_thread();
+  if (async_execution_thread !=
+      async_op->async_wrapped_computation()->execution_thread()) {
     return InternalError(
         "async-start expects same async thread name as wrapped computation's "
         "thread name (%s vs %s).",
-        async_thread_name ? absl::StrCat(*async_thread_name) : "none",
-        async_op->async_wrapped_computation()->thread_name());
+        async_execution_thread ? absl::StrCat(*async_execution_thread) : "none",
+        async_op->async_wrapped_computation()->execution_thread());
   }
   return CheckNestedComputationThreadNameEqual(
       async_op->async_wrapped_computation(),
@@ -1420,12 +1420,13 @@ Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
                                           bool skip_nested_async_op_check) {
   for (const HloComputation* computation : instruction->called_computations()) {
     if (instruction->parent() != nullptr) {
-      if (instruction->parent()->thread_name() != computation->thread_name()) {
+      if (instruction->parent()->execution_thread() !=
+          computation->execution_thread()) {
         return InternalError(
             "callable instruction %s expects parent computation thread name "
             "same as called computation's thread name (%s vs %s).",
-            instruction->ToString(), instruction->parent()->thread_name(),
-            computation->thread_name());
+            instruction->ToString(), instruction->parent()->execution_thread(),
+            computation->execution_thread());
       }
     }
     TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(

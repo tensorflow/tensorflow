@@ -168,16 +168,17 @@ class HloFftInstruction : public HloInstruction {
 
 class HloAsyncInstruction : public HloInstruction {
  public:
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      absl::Span<HloInstruction* const> operands,
-                      HloComputation* async_computation,
-                      std::optional<int64_t> async_group_id = std::nullopt,
-                      absl::string_view async_thread_name = kMainThreadName);
-  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                      HloInstruction* operand,
-                      HloComputation* async_computation,
-                      std::optional<int64_t> async_group_id = std::nullopt,
-                      absl::string_view async_thread_name = kMainThreadName);
+  HloAsyncInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
+  HloAsyncInstruction(
+      HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_execution_thread = kMainExecutionThread);
 
   ~HloAsyncInstruction() override;
   // When an async instruction is being destructed, remove it from the vector of
@@ -196,9 +197,11 @@ class HloAsyncInstruction : public HloInstruction {
   // Async thread name is a unique thread name for one or more async groups.
   // Typically one HLO module contains a main thread as well as one or more
   // parallel threads.
-  absl::string_view async_thread_name() const { return async_thread_name_; }
+  absl::string_view async_execution_thread() const {
+    return async_execution_thread_;
+  }
   void set_async_group_id(std::optional<int64_t> async_group_id);
-  void set_async_thread_name(absl::string_view async_thread_name);
+  void set_async_execution_thread(absl::string_view async_execution_thread);
   HloInstructionProto ToProto() const override;
 
  private:
@@ -212,7 +215,7 @@ class HloAsyncInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
   std::optional<int64_t> async_group_id_;
-  std::string async_thread_name_ = kMainThreadName;
+  std::string async_execution_thread_ = kMainExecutionThread;
 };
 
 class HloCopyStartInstruction : public HloInstruction {
@@ -982,10 +985,12 @@ class HloCallableInstruction : public HloInstruction {
   HloInstruction* called_computation_root() const;
 
   // Recursively sets all nested called computation to have thread name as
-  // `thread_name`. if `skip_async_thread_name_overwrite` is true, skip
-  // overwrite async instruction and its comptuations thread name overwriting.
+  // `execution_thread`. if `skip_async_execution_thread_overwrite` is true,
+  // skip overwrite async instruction and its comptuations thread name
+  // overwriting.
   void RecursivelySetComputationsThreadName(
-      absl::string_view thread_name, bool skip_async_thread_name_overwrite);
+      absl::string_view execution_thread,
+      bool skip_async_execution_thread_overwrite);
 
  protected:
   // Returns the default called computation name.

@@ -341,11 +341,12 @@ class HloComputation {
   // output tuple of the asynchronous start which is backend specific. Returns
   // the async done instruction. The new async start instruction is the operand
   // of the async done instruction so that can be accessed using that. If
-  // present, `async_thread_name` will be attached to the async-start
-  // instruction as well as wrapped computations.
+  // present, `async_execution_thread` will be attached to the
+  // async-start/update/done instructions as well as wrapped computations.
   StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-      absl::string_view async_thread_name = HloInstruction::kMainThreadName);
+      absl::string_view async_execution_thread =
+          HloInstruction::kMainExecutionThread);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
@@ -378,7 +379,7 @@ class HloComputation {
   bool Equal(const HloComputation& other, bool is_layout_sensitive) const {
     return EqualInternal(other, is_layout_sensitive,
                          /*ignore_channel_id_values=*/false,
-                         /*ignore_thread=*/false);
+                         /*ignore_execution_thread=*/false);
   }
 
   // Same as Equal() but ignores channel ID value mismatches on instructions, as
@@ -388,14 +389,14 @@ class HloComputation {
                                     bool is_layout_sensitive) const {
     return EqualInternal(other, is_layout_sensitive,
                          /*ignore_channel_id_values=*/true,
-                         /*ignore_thread=*/false);
+                         /*ignore_execution_thread=*/false);
   }
 
-  bool EqualIgnoringThread(const HloComputation& other,
-                           bool is_layout_sensitive,
-                           bool ignore_channel_id_values) const {
+  bool EqualIgnoringExecutionThread(const HloComputation& other,
+                                    bool is_layout_sensitive,
+                                    bool ignore_channel_id_values) const {
     return EqualInternal(other, is_layout_sensitive, ignore_channel_id_values,
-                         /*ignore_thread=*/true);
+                         /*ignore_execution_thread=*/true);
   }
 
   // Return whether `*this` and `other` are functionally equivalent.
@@ -632,14 +633,14 @@ class HloComputation {
 
   int64_t unique_id() const { return unique_id_; }
 
-  void SetThreadName(absl::string_view thread_name) {
-    thread_name_ = std::string(thread_name);
+  void SetExecutionThread(absl::string_view execution_thread) {
+    execution_thread_ = std::string(execution_thread);
   }
 
-  absl::string_view thread_name() const { return thread_name_; }
-  // Returns true of this computation is annotated on "main" thread.
+  absl::string_view execution_thread() const { return execution_thread_; }
+  // Returns true if this computation is annotated on "main" execution thread.
   bool IsMainThread() const {
-    return thread_name_ == HloInstruction::kMainThreadName;
+    return execution_thread_ == HloInstruction::kMainExecutionThread;
   }
 
   // Deallocate instructions that are marked by "RemoveInstruction". The two
@@ -663,7 +664,8 @@ class HloComputation {
 
   // Internal helper for comparison with different options.
   bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
-                     bool ignore_channel_id_values, bool ignore_thread) const;
+                     bool ignore_channel_id_values,
+                     bool ignore_execution_thread) const;
 
   // Appends (fuses) HLOs in instructions_to_append into the called computation
   // of the caller.
@@ -723,8 +725,8 @@ class HloComputation {
   // Otherwise, this is empty.
   std::vector<HloInstruction*> async_instructions_;
 
-  // Thread name of this computation. By default, it's main thread.
-  std::string thread_name_ = HloInstruction::kMainThreadName;
+  // Execution thread of this computation. By default, it's main thread.
+  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

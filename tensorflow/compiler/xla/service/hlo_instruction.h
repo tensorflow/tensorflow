@@ -506,7 +506,7 @@ class HloInstruction {
     kCustom,
   };
 
-  inline static constexpr char kMainThreadName[] = "main";
+  inline static constexpr char kMainExecutionThread[] = "main";
 
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
@@ -629,17 +629,17 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
       std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_thread_name = kMainThreadName);
+      absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
       std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_thread_name = kMainThreadName);
+      absl::string_view async_execution_thread = kMainExecutionThread);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
       HloComputation* async_computation,
       std::optional<int64_t> async_group_id = std::nullopt,
-      absl::string_view async_thread_name = kMainThreadName);
+      absl::string_view async_execution_thread = kMainExecutionThread);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -2134,17 +2134,17 @@ class HloInstruction {
   // Delegates to HloAsyncInstruction::set_async_group_id().
   void set_async_group_id(std::optional<int64_t> async_group_id);
 
-  // Delegates to HloAsyncInstruction::async_thread_name().
-  absl::string_view async_thread_name() const;
+  // Delegates to HloAsyncInstruction::async_execution_thread().
+  absl::string_view async_execution_thread() const;
 
-  // Delegates to HloAsyncInstruction::set_async_thread_name().
-  void set_async_thread_name(absl::string_view async_thread_name);
+  // Delegates to HloAsyncInstruction::set_async_execution_thread().
+  void set_async_execution_thread(absl::string_view async_execution_thread);
 
   // Delegates to
   // HloCallableInstruction::RecursivelySetComputationsThreadName().
-  void set_called_computations_thread_name(
-      absl::string_view async_thread_name,
-      bool skip_async_thread_name_overwrite);
+  void set_called_computations_execution_thread(
+      absl::string_view async_execution_thread,
+      bool skip_async_execution_thread_overwrite);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;

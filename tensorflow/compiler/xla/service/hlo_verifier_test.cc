@@ -803,10 +803,10 @@ TEST_F(HloVerifierTestLayoutSensitive,
 
   ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_thread_name="parallel_thread", custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), async_thread_name="parallel_thread", custom_call_target="foo"
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_thread_name="parallel_thread", custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_thread_name="parallel_thread", custom_call_target="foo"
+    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_execution_thread="parallel_thread", custom_call_target="foo"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_execution_thread="parallel_thread", custom_call_target="foo"
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_execution_thread="parallel_thread", custom_call_target="foo"
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -842,8 +842,8 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongThreadName) {
 
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), async_thread_name="parallel_thread", custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start), async_thread_name="main_thread", custom_call_target="bar"
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), async_execution_thread="parallel_thread", custom_call_target="foo"
+    ROOT async-done = f32[2,3] custom-call-done(async-start), async_execution_thread="main_thread", custom_call_target="bar"
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1869,7 +1869,7 @@ TEST_F(HloVerifierTest, FusionThreadVerifier) {
 
   fused_computation {
     ROOT p0 = f32[8,12] parameter(0)
-  }, thread_name="parallel_thread"
+  }, execution_thread="parallel_thread"
 
   ENTRY entry {
     p0 = f32[8,12] parameter(0)
@@ -1891,7 +1891,7 @@ TEST_F(HloVerifierTest, FusionNestedComputationThreadVerifier) {
     lhs = f32[] parameter(0)
     rhs = f32[] parameter(1)
     ROOT add = f32[] add(lhs, rhs)
-  }, thread_name="parallel_thread"
+  }, execution_thread="parallel_thread"
 
   fused_computation {
     p0 = f32[8,12] parameter(0)

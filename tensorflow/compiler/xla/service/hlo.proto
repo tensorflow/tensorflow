@@ -333,10 +333,10 @@ message HloInstructionProto {
   // Negative async_group_id is equivalent to no async group id.
   int64 async_group_id = 78;
 
-  // Represents a unique thread name for one or more async groups. Typically
-  // one HLO module contains a main thread as well as one or more parallel
-  // threads. Empty async_thread_name is equivalent to main thread.
-  string async_thread_name = 79;
+  // Represents a unique execution thread name for one or more async groups.
+  // Each HLO module may contain a main thread and one or more parallel threads.
+  // Empty async_execution_thread is equivalent to main thread.
+  string async_execution_thread = 79;
 }
 
 // Serialization of HloComputation.
@@ -365,8 +365,8 @@ message HloComputationProto {
   // parent fusion_instruction_ may get removed and be nullptr.
   bool is_fusion_computation = 7;
 
-  // The name of thread this computation belongs to.
-  string thread_name = 8;
+  // The name of execution thread this computation belongs to.
+  string execution_thread = 8;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
