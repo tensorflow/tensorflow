@@ -168,13 +168,12 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
                           ? contracting_dim + 1
                           : contracting_dim - 1;
 
-  HloComputation* comp = a->parent();
   TF_ASSIGN_OR_RETURN(
       Shape concat_shape,
       ShapeInference::InferConcatOpShape(
           {&diff_op_a->shape(), &diff_op_b->shape()}, outer_dim));
   HloInstruction* concat_op =
-      comp->AddInstruction(HloInstruction::CreateConcatenate(
+      diff_op_a->AddInstruction(HloInstruction::CreateConcatenate(
           concat_shape, {diff_op_a, diff_op_b}, outer_dim));
 
   HloInstruction* dot_lhs = lhs_same ? shared_op : concat_op;
@@ -184,7 +183,7 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       ShapeInference::InferDotOpShape(
           dot_lhs->shape(), dot_rhs->shape(), dnums,
           /*preferred_element_type=*/a->shape().element_type()));
-  HloInstruction* new_dot = comp->AddInstruction(HloInstruction::CreateDot(
+  HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
       new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
 
   // We can't keep both. But one is better then none.
@@ -204,17 +203,15 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   limit_indices[slice_dim] = a->shape().dimensions(slice_dim);
   // Important: We do RAUW, not ReplaceInstruction, because the old instruction
   // must live until the end of the pass.
-  HloInstruction* new_a = comp->AddInstruction(HloInstruction::CreateSlice(
+  HloInstruction* new_a = a->AddInstruction(HloInstruction::CreateSlice(
       a->shape(), new_dot, start_indices, limit_indices, strides));
   TF_RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
-  new_a->set_metadata(a->metadata());
 
   start_indices[slice_dim] = limit_indices[slice_dim];
   limit_indices[slice_dim] = new_dot_shape.dimensions(slice_dim);
-  HloInstruction* new_b = comp->AddInstruction(HloInstruction::CreateSlice(
+  HloInstruction* new_b = b->AddInstruction(HloInstruction::CreateSlice(
       b->shape(), new_dot, start_indices, limit_indices, strides));
   TF_RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
-  new_b->set_metadata(b->metadata());
 
   return new_dot;
 }

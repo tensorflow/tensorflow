@@ -162,7 +162,7 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
       ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims),
       reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config()));
-  dot->set_metadata(original_dot->metadata());
+  original_dot->SetupDerivedInstruction(dot);
 
   std::unique_ptr<HloInstruction> replacement =
       HloInstruction::CreateReshape(original_dot->shape(), dot);
