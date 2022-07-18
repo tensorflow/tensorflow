@@ -521,8 +521,10 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
 }  // end namespace
 
-StatusOr<bool> LayoutNormalization::Run(HloModule* module) {
-  return LayoutNormalizationVisitor{}.RunOnModule(module);
+StatusOr<bool> LayoutNormalization::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return LayoutNormalizationVisitor{}.RunOnModule(module, execution_threads);
 }
 
 }  // end namespace xla

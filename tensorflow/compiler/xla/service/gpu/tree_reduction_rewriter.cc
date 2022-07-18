@@ -261,11 +261,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   se::CudaComputeCapability cuda_compute_capability_;
 };
 
-StatusOr<bool> GpuTreeReductionRewriter::Run(HloModule *module) {
+StatusOr<bool> GpuTreeReductionRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  TF_ASSIGN_OR_RETURN(
-      bool changed,
-      ReductionRewriterVisitor(cuda_compute_capability_).RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionRewriterVisitor(cuda_compute_capability_)
+                          .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

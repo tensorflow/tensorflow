@@ -355,9 +355,12 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
 
 }  // anonymous namespace
 
-StatusOr<bool> DotMerger::Run(HloModule* module) {
+StatusOr<bool> DotMerger::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool changed_computation,
                         MergeDots(comp, max_size_to_merge_));
     changed |= changed_computation;

@@ -790,9 +790,11 @@ bool SameShardingMetadata(const HloSharding& a, const HloSharding& b) {
 // Assigns metadata to optional sharding on instructions if instructions have
 // metadata. If sharding already has some metadata, no new metadata will be
 // added.
-bool AssignShardingMetadata(HloModule* module) {
+bool AssignShardingMetadata(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       const auto& metadata = instruction->metadata();
       if (!instruction->has_sharding() || metadata.ByteSizeLong() == 0) {
@@ -812,9 +814,11 @@ bool AssignShardingMetadata(HloModule* module) {
 }
 
 // Removes all sharding metadata from shardings on instructions.
-bool RemoveShardingMetadata(HloModule* module) {
+bool RemoveShardingMetadata(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (!instruction->has_sharding()) {
         continue;
@@ -1200,12 +1204,14 @@ bool IsCSEPreventionSharding(const HloSharding& sharding) {
 // partially_specified will be populated with the converted copies if the custom
 // call is partially specified.
 StatusOr<bool> ProcessShardingInstruction(
-    HloModule* module, bool replace_sharding_with_copy,
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool replace_sharding_with_copy,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
         unspecified_dims) {
   bool changed = false;
 
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
     std::reverse(instructions.begin(), instructions.end());
     for (HloInstruction* instruction : instructions) {
@@ -2251,7 +2257,9 @@ bool ShardingPropagation::InferShardingFromOperands(
   return false;
 }  // NOLINT(readability/fn_size)
 
-StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
+StatusOr<bool> ShardingPropagation::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>
       original_sharding;
   bool any_changed = false;
@@ -2260,7 +2268,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   // prevention instructions.
   if (cse_prevention_only_) {
     original_sharding.emplace();
-    for (auto computation : module->computations()) {
+    for (auto computation : module->computations(execution_threads)) {
       for (auto instruction : computation->instructions()) {
         if (instruction->has_sharding()) {
           original_sharding->emplace(instruction, instruction->sharding());
@@ -2270,7 +2278,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   } else {
     // The current pass is not for CSE prevention, but we remove the shardings
     // added by previous passes for CSE prevention.
-    for (auto computation : module->computations()) {
+    for (auto computation : module->computations(execution_threads)) {
       for (auto instruction : computation->instructions()) {
         if (instruction->has_sharding() &&
             IsCSEPreventionSharding(instruction->sharding())) {
@@ -2280,12 +2288,13 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       }
     }
   }
-  any_changed |= propagate_metadata_ ? AssignShardingMetadata(module)
-                                     : RemoveShardingMetadata(module);
+  any_changed |= propagate_metadata_
+                     ? AssignShardingMetadata(module, execution_threads)
+                     : RemoveShardingMetadata(module, execution_threads);
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
       unspecified_dims;
   auto status_or_changed = ProcessShardingInstruction(
-      module, !cse_prevention_only_, &unspecified_dims);
+      module, execution_threads, !cse_prevention_only_, &unspecified_dims);
   if (!status_or_changed.ok()) return status_or_changed;
   any_changed |= status_or_changed.ValueOrDie();
 
@@ -2351,7 +2360,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             }
           };
 
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(
@@ -2362,7 +2371,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
 
   // Populate computation_map in order to associate while bodies to their
   // while instructions.
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile ||
           instruction->opcode() == HloOpcode::kConditional) {
@@ -2399,7 +2408,8 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   // Collect all pre-sharded instructions as we aren't allowed to modify their
   // sharding.
   absl::flat_hash_set<const HloInstruction*> provided_shardings;
-  for (const HloComputation* computation : module->computations()) {
+  for (const HloComputation* computation :
+       module->computations(execution_threads)) {
     for (const HloInstruction* inst : computation->instructions()) {
       if (inst->has_sharding()) {
         provided_shardings.insert(inst);
@@ -2428,7 +2438,8 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       int64_t inferred_from_user_counter = 0;
       int64_t instruction_counter = 0;
       int64_t already_sharded_counter = 0;
-      for (const HloComputation* computation : module->computations()) {
+      for (const HloComputation* computation :
+           module->computations(execution_threads)) {
         VLOG(2) << "Consider computation: " << computation->name();
         std::vector<HloInstruction*> instructions =
             computation->MakeInstructionPostOrder();
@@ -2561,7 +2572,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
 
   // Post-process for CSE prevention.
   if (cse_prevention_only_) {
-    for (auto computation : module->computations()) {
+    for (auto computation : module->computations(execution_threads)) {
       for (auto instruction : computation->instructions()) {
         if (!instruction->has_sharding()) {
           continue;

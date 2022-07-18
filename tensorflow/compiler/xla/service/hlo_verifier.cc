@@ -2499,7 +2499,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-StatusOr<bool> HloVerifier::Run(HloModule* module) {
+StatusOr<bool> HloVerifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto disabled = module->config().debug_options().xla_disable_hlo_passes();
   if (std::find(disabled.begin(), disabled.end(), name()) != disabled.end()) {
     return false;

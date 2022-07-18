@@ -180,8 +180,10 @@ namespace {
 
 // Clears all sharding attributes from instructions in the module. This must be
 // called only after all SPMD transformation is complete.
-Status ClearShardingAttributes(HloModule* module) {
-  for (HloComputation* computation : module->computations()) {
+Status ClearShardingAttributes(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       // Keep sharding annotation on Infeed and entry parameters since they're
       // used by HloReplicationAnalysis later (for ArCrsCombiner).
@@ -4381,9 +4383,11 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
       next_channel_id, logger, std::move(options), this);
 }
 
-StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
-  TF_RETURN_IF_ERROR(PreprocessSharding(module));
-  TF_RETURN_IF_ERROR(PreprocessHlos(module));
+StatusOr<bool> SpmdPartitioner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  TF_RETURN_IF_ERROR(PreprocessSharding(module, execution_threads));
+  TF_RETURN_IF_ERROR(PreprocessHlos(module, execution_threads));
 
   XLA_VLOG_LINES(1, SpmdLogger::ReportBeforePartition(
                         *module, options_.report_instruction_count));
@@ -4471,15 +4475,17 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
     pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pass.AddPass<FlattenCallGraph>();
-    TF_RETURN_IF_ERROR(pass.Run(module).status());
+    TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
   }
 
-  TF_RETURN_IF_ERROR(ClearShardingAttributes(module));
+  TF_RETURN_IF_ERROR(ClearShardingAttributes(module, execution_threads));
   return changed;
 }
 
-Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
-  for (HloComputation* computation : module->computations()) {
+Status SpmdPartitioner::PreprocessSharding(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng) {
         TF_RET_CHECK(hlo->has_sharding())
@@ -4554,7 +4560,9 @@ Status SpmdPartitioner::PreprocessSharding(HloModule* module) {
   return OkStatus();
 }
 
-Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
+Status SpmdPartitioner::PreprocessHlos(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto skip_copy_operands = [](HloInstruction* operand,
                                bool check_single_use =
                                    true) -> HloInstruction* {
@@ -4568,7 +4576,7 @@ Status SpmdPartitioner::PreprocessHlos(HloModule* module) {
     return operand;
   };
 
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->sharding().IsTileMaximal() || hlo->sharding().IsManual()) {
         // No need to optimize for tile-maximal or manual sharding.

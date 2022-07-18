@@ -175,10 +175,13 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
 
 }  // namespace
 
-StatusOr<bool> DotDecomposer::Run(HloModule* module) {
+StatusOr<bool> DotDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Gather all Non-canonical Dot operations.
   std::vector<HloInstruction*> non_canonical_dots;
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kDot) {
         continue;

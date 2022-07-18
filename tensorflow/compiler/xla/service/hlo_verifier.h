@@ -351,7 +351,11 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  using HloPassInterface::RunOnModuleGroup;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Owns verifier config.

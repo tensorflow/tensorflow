@@ -136,7 +136,9 @@ std::optional<std::vector<ReplicaGroup>> FoldReplicaGroups(
 
 }  // namespace
 
-StatusOr<bool> AllReduceFolder::Run(HloModule *module) {
+StatusOr<bool> AllReduceFolder::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedAllReduce(*module)) {
     VLOG(1) << "Skip AllReduceFolder because the module contains all-reduce "
                "with constrained layouts";
@@ -146,7 +148,7 @@ StatusOr<bool> AllReduceFolder::Run(HloModule *module) {
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
 
   bool changed = false;
-  for (auto computation : module->computations()) {
+  for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction *inst : computation->MakeInstructionPostOrder()) {
       if (inst->opcode() != HloOpcode::kAllReduce ||
           inst->operand(0)->opcode() != HloOpcode::kAllReduce) {

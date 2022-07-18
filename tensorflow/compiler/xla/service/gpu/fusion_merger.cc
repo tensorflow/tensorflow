@@ -347,10 +347,13 @@ FusionDecision FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   return {};
 }
 
-StatusOr<bool> FusionMerger::Run(HloModule* module) {
+StatusOr<bool> FusionMerger::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   VLOG(2) << "FusionMerger for module: " << module->name();
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     VLOG(1) << "Before running FusionInstructionMerger for computation: "
             << computation->name();
     XLA_VLOG_LINES(3, computation->ToString());
