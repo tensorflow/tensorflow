@@ -229,7 +229,7 @@ genrule(
 
 py_test(
     name = "test_file_v1_0",
-    size = "small",
+    size = "medium",
     srcs = ["test_file_v1_0.py"],
     python_version = "PY3",
     srcs_version = "PY3",
