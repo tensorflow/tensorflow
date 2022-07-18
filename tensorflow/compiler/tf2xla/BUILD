@@ -43,6 +43,7 @@ package_group(
     includes = [":internal"],
     packages = [
         "//tensorflow/...",
+        "//tensorflow_federated/cc/core/impl/executors/...",
         "//tensorflow_models/...",
         "//third_party/deepmind/deepmind_research/density_functional_approximation_dm21/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
