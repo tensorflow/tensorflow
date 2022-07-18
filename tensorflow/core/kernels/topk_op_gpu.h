@@ -485,12 +485,12 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     // Note: DeviceSegmentedRadixSort is very slow when num_segments=1 because
     // it only uses 1 SM per segment. Calling the un-segmented version is much
     // faster in this case.
-    TF_RETURN_IF_ERROR(GpuRadixSort(ctx, num_cols, /*keys_in=*/input,
-                                    /*keys_out=*/sorted_values_ptr,
-                                    /*indices_in=*/input_indices_t.data(),
-                                    /*indices_out=*/sorted_indices_ptr,
-                                    /*num_bits=*/sizeof(T) * 8,
-                                    /*descending=*/true));
+    TF_RETURN_IF_ERROR(
+        GpuRadixSortDescending(ctx, num_cols, /*keys_in=*/input,
+                               /*keys_out=*/sorted_values_ptr,
+                               /*indices_in=*/input_indices_t.data(),
+                               /*indices_out=*/sorted_indices_ptr,
+                               /*num_bits=*/sizeof(T) * 8));
   } else {
     auto err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
         /* d_temp_storage */ nullptr,
