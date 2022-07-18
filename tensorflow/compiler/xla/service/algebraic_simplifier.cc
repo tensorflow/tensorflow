@@ -4768,6 +4768,9 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
                 absl::MakeSpan(concat->operands())
                     .subspan(*start_operand, *limit_operand - *start_operand),
                 concat_dim));
+        *new_concat->mutable_shape()->mutable_layout() =
+            concat->shape().layout();
+        simplifier_->UpdateLayout(new_concat->mutable_shape());
         concat->SetupDerivedInstruction(new_concat);
         operand = new_concat;
       }
