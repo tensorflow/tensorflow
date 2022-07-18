@@ -166,7 +166,7 @@ Status OpsTestBase::RunOpKernel() {
   params_.reset(new OpKernelContext::Params);
   params_->device = device_;
   params_->frame_iter = FrameAndIter(0, 0);
-  params_->inputs = &inputs_;
+  params_->inputs = inputs_;
   params_->op_kernel = kernel_.get();
   step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
   params_->step_container = step_container_.get();

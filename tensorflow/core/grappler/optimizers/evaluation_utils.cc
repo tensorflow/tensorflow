@@ -75,7 +75,7 @@ Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
   OpKernelContext::Params params;
   params.device = cpu_device;
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &inputs;
+  params.inputs = inputs;
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 

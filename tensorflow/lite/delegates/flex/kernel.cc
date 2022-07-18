@@ -415,9 +415,9 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
   TF_RETURN_IF_ERROR(node_data->BuildOpKernelInputs(
       op_data_->shared_info.buffer_map, run_state));
 
-  run_state->params.inputs = &run_state->input_tf_tensor_values;
+  run_state->params.inputs = run_state->input_tf_tensor_values;
   run_state->params.op_kernel = op_kernel_runner.op_kernel();
-  run_state->params.input_alloc_attrs = &op_kernel_runner.input_alloc_attrs();
+  run_state->params.input_alloc_attrs = op_kernel_runner.input_alloc_attrs();
   run_state->params.output_attr_array =
       op_kernel_runner.output_alloc_attrs().data();
   run_state->params.function_library =

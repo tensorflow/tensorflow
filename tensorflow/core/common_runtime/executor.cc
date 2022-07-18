@@ -507,8 +507,9 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
   AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
              const NodeItem* _item, Entry* _first_input,
              NodeExecStatsInterface* _stats)
-      : saved_inputs(*p.inputs),
-        saved_input_alloc_attrs(*p.input_alloc_attrs),
+      : saved_inputs(p.inputs.begin(), p.inputs.end()),
+        saved_input_alloc_attrs(p.input_alloc_attrs.begin(),
+                                p.input_alloc_attrs.end()),
         params(p),
         tagged_node(_tagged_node),
         item(_item),
@@ -517,8 +518,8 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
         //   params.eigen_gpu_device = nullptr;
         ctx(ParamsButClearingEigenGPUDevice(&params), item->num_outputs),
         stats(_stats) {
-    params.inputs = &saved_inputs;
-    params.input_alloc_attrs = &saved_input_alloc_attrs;
+    params.inputs = saved_inputs;
+    params.input_alloc_attrs = saved_input_alloc_attrs;
   }
 
   TensorValueVec saved_inputs;
@@ -726,8 +727,6 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   params.resource_manager = device->resource_manager();
   params.step_container = step_container_;
   params.slice_reader_cache = slice_reader_cache_;
-  params.inputs = &inputs;
-  params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.run_all_kernels_inline = run_all_kernels_inline_;
   params.stats_collector = stats_collector_;
@@ -822,6 +821,8 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
       params.output_attr_array = item.output_attrs();
       params.forward_from_array = item.forward_from();
       params.outputs_required_array = item.outputs_required.get();
+      params.inputs = inputs;
+      params.input_alloc_attrs = input_alloc_attrs;
 
       if (item.kernel_is_async) {
         ProcessAsync(item, params, tagged_node, first_input, stats);

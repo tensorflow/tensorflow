@@ -625,7 +625,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     inputs.emplace_back(&tensor);
   }
 
-  params_.inputs = &inputs;
+  params_.inputs = inputs;
   params_.op_kernel = op_kernel.get();
   llvm::SmallVector<tensorflow::AllocatorAttributes, 4> output_attr(
       op_->getNumResults());

@@ -1640,7 +1640,7 @@ class VariableOpConverterTest : public OpConverterTest {
     params_.op_kernel = op_kernel_.get();
     params_.resource_manager = resource_mgr;
     params_.frame_iter = FrameAndIter(0, 0);
-    params_.inputs = &inputs_;
+    params_.inputs = inputs_;
     params_.step_container = step_container_.get();
     params_.function_library = flib;
     params_.slice_reader_cache = slice_reader_cache_wrapper_.get();

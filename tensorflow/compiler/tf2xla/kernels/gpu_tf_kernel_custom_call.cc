@@ -487,7 +487,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
     inputs.emplace_back(&input_tensors.back());
   }
 
-  params.inputs = &inputs;
+  params.inputs = inputs;
   OpKernelContext ctx(&params, callback_data.outputs_size());
   kernel->Compute(&ctx);
 
