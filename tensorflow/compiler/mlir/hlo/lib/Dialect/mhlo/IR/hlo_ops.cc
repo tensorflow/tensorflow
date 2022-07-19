@@ -6616,7 +6616,7 @@ void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   if (auto elements = operands.front().dyn_cast_or_null<SplatElementsAttr>()) {
-    return elements.reshape(getResult().getType().cast<ShapedType>());
+    return reshape(elements, getResult().getType().cast<ShapedType>());
   }
   for (const auto& it : llvm::enumerate(permutation().getValues<APInt>())) {
     if (it.index() != it.value()) {
