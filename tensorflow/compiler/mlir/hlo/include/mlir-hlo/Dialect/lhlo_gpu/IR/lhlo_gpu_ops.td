@@ -143,7 +143,8 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
-    Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$d,
     DotDimensionNumbers:$dot_dimension_numbers,
     HLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,

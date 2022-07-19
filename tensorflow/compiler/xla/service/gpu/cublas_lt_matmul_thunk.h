@@ -32,18 +32,20 @@ class CublasLtMatmulThunk : public Thunk {
  public:
   CublasLtMatmulThunk(ThunkInfo thunk_info, cublas_lt::MatmulPlan plan,
                       int64_t algorithm_idx,
-                      const BufferAllocation::Slice& lhs_buffer,
-                      const BufferAllocation::Slice& rhs_buffer,
-                      const BufferAllocation::Slice& output_buffer);
+                      const BufferAllocation::Slice& a_buffer,
+                      const BufferAllocation::Slice& b_buffer,
+                      const BufferAllocation::Slice& c_buffer,
+                      const BufferAllocation::Slice& d_buffer);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   cublas_lt::MatmulPlan plan_;
   int64_t algorithm_idx_;
-  const BufferAllocation::Slice lhs_buffer_;
-  const BufferAllocation::Slice rhs_buffer_;
-  const BufferAllocation::Slice output_buffer_;
+  const BufferAllocation::Slice a_buffer_;
+  const BufferAllocation::Slice b_buffer_;
+  const BufferAllocation::Slice c_buffer_;
+  const BufferAllocation::Slice d_buffer_;
   std::optional<se::cuda::BlasLt::MatmulAlgorithm> algorithm_;
 };
 

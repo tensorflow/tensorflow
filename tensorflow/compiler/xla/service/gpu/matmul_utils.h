@@ -126,9 +126,10 @@ class MatmulPlan {
   static StatusOr<MatmulPlan> For(mlir::lmhlo_gpu::CublasLtMatmulOp op);
   static StatusOr<MatmulPlan> From(const GemmConfig& config);
 
-  Status ExecuteOnStream(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
-                         se::DeviceMemoryBase rhs_buffer,
-                         se::DeviceMemoryBase output_buffer,
+  Status ExecuteOnStream(se::Stream* stream, se::DeviceMemoryBase a_buffer,
+                         se::DeviceMemoryBase b_buffer,
+                         se::DeviceMemoryBase c_buffer,
+                         se::DeviceMemoryBase d_buffer,
                          const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                          se::ScratchAllocator& scratch_allocator,
                          se::blas::ProfileResult* profile_result = nullptr);
@@ -145,9 +146,9 @@ class MatmulPlan {
         must_swap_operands_(must_swap_operands) {}
 
   template <typename Input, typename Scale = Input>
-  Status DoMatmul(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
-                  se::DeviceMemoryBase rhs_buffer,
-                  se::DeviceMemoryBase output_buffer,
+  Status DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
+                  se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
+                  se::DeviceMemoryBase d_buffer,
                   const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
                   se::blas::ProfileResult* profile_result);

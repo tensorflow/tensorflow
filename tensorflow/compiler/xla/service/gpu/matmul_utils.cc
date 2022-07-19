@@ -666,9 +666,10 @@ namespace cublas_lt {
 }
 
 template <typename Input, typename Scale>
-Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
-                            se::DeviceMemoryBase rhs_buffer,
-                            se::DeviceMemoryBase output_buffer,
+Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
+                            se::DeviceMemoryBase b_buffer,
+                            se::DeviceMemoryBase c_buffer,
+                            se::DeviceMemoryBase d_buffer,
                             const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
                             se::ScratchAllocator& scratch_allocator,
                             se::blas::ProfileResult* profile_result) {
@@ -685,45 +686,48 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
 
   Scale beta = static_cast<Scale>(beta_);
 
-  se::DeviceMemory<Input> output(output_buffer);
+  se::DeviceMemory<Input> output(d_buffer);
   return blas_lt->DoMatmul(
       stream, plan_, se::HostOrDeviceScalar<Scale>(alpha),
-      se::DeviceMemory<Input>(lhs_buffer), se::DeviceMemory<Input>(rhs_buffer),
-      se::HostOrDeviceScalar<Scale>(beta), /*c=*/output, /*d=*/output,
-      algorithm, scratch_allocator, /*bias=*/{}, profile_result);
+      se::DeviceMemory<Input>(a_buffer), se::DeviceMemory<Input>(b_buffer),
+      se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<Input>(c_buffer),
+      output, algorithm, scratch_allocator,
+      /*bias=*/{}, profile_result);
 }
 
 Status MatmulPlan::ExecuteOnStream(
-    se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
+    se::Stream* stream, se::DeviceMemoryBase a_buffer,
+    se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
+    se::DeviceMemoryBase d_buffer,
     const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
     se::blas::ProfileResult* profile_result) {
   if (must_swap_operands_) {
-    std::swap(lhs_buffer, rhs_buffer);
+    std::swap(a_buffer, b_buffer);
   }
 
   switch (plan_.d_desc.type()) {
     case CUDA_R_16F:
-      return DoMatmul<Eigen::half, float>(stream, lhs_buffer, rhs_buffer,
-                                          output_buffer, algorithm,
+      return DoMatmul<Eigen::half, float>(stream, a_buffer, b_buffer, c_buffer,
+                                          d_buffer, algorithm,
                                           scratch_allocator, profile_result);
     case CUDA_R_16BF:
       return DoMatmul<Eigen::bfloat16, float>(
-          stream, lhs_buffer, rhs_buffer, output_buffer, algorithm,
+          stream, a_buffer, b_buffer, c_buffer, d_buffer, algorithm,
           scratch_allocator, profile_result);
     case CUDA_R_32F:
-      return DoMatmul<float>(stream, lhs_buffer, rhs_buffer, output_buffer,
+      return DoMatmul<float>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
                              algorithm, scratch_allocator, profile_result);
     case CUDA_R_64F:
-      return DoMatmul<double>(stream, lhs_buffer, rhs_buffer, output_buffer,
+      return DoMatmul<double>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
                               algorithm, scratch_allocator, profile_result);
     case CUDA_C_32F:
-      return DoMatmul<complex64>(stream, lhs_buffer, rhs_buffer, output_buffer,
+      return DoMatmul<complex64>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
                                  algorithm, scratch_allocator, profile_result);
     case CUDA_C_64F:
-      return DoMatmul<complex128>(stream, lhs_buffer, rhs_buffer, output_buffer,
-                                  algorithm, scratch_allocator, profile_result);
+      return DoMatmul<complex128>(stream, a_buffer, b_buffer, c_buffer,
+                                  d_buffer, algorithm, scratch_allocator,
+                                  profile_result);
     default:
       return InternalError("Unexpected dtype");
   }

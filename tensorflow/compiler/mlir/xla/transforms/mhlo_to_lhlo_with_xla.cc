@@ -844,17 +844,18 @@ StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       auto const config,
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
-  if (custom_call->operand_count() != 2) {
-    return xla::InvalidArgument(
-        "cublasLtMatmul custom call should have 2 operands");
-  }
+  bool has_matrix_bias = config.beta() != 0.;
+  TF_RET_CHECK(custom_call->operand_count() == 2 + int{has_matrix_bias});
 
-  // GEMM may have two or three operands. However, in the three operand case,
-  // the third operand is updated in-place, so we treat that as an output here.
-  TF_ASSIGN_OR_RETURN(
-      lmhlo_gpu::CublasLtMatmulOp op,
-      CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call));
+  llvm::SmallVector<Value, 4> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(
+      has_matrix_bias ? custom_call->operand(2) : custom_call, &operands));
+  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
 
+  auto op =
+      CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call, operands);
   SetMatmulAttributes(op, config, builder_);
 
   // Use the first algorithm by default (i.e. fastest according to heuristics).

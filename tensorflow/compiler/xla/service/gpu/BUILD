@@ -1892,6 +1892,7 @@ cc_library(
         "nvptx_compiler.h",
     ]),
     deps = if_cuda_is_configured([
+        ":cublas_cudnn",
         ":cublas_pad_for_gemms",
         ":cudnn_fused_conv_rewriter",
         ":cudnn_pad_for_convolutions",
@@ -1905,6 +1906,7 @@ cc_library(
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
+        ":metrics",
         ":nvptx_helper",
         ":target_constants",
         ":triangular_solve_rewriter",
@@ -1938,9 +1940,7 @@ cc_library(
         "//tensorflow/stream_executor/gpu:asm_compiler",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
-    ]) + [
-        ":metrics",
-    ],
+    ]),
 )
 
 tf_cc_test(

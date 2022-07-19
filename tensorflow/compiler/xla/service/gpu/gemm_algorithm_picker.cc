@@ -282,8 +282,8 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                   stream->parent()->device_ordinal(), allocator);
               se::blas::ProfileResult profile_result;
               TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
-                  stream, lhs_buffer, rhs_buffer, output_buffer, algorithm,
-                  scratch_allocator, &profile_result));
+                  stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
+                  algorithm, scratch_allocator, &profile_result));
               return std::move(profile_result);
             }));
 
