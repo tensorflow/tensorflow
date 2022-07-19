@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -527,6 +528,10 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
 
   SetUpParams(kernel_runner, fallback_request_state, device, run_state);
 
+  bool is_cost_measurement_enabled =
+      exec_ctx.request_ctx()->IsCostMeasurementEnabled();
+  auto run_start_time =
+      is_cost_measurement_enabled ? Env::Default()->NowMicros() : 0;
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
@@ -536,6 +541,14 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
         tensorflow::tfrt_stub::FallbackTensor>(
         exec_ctx, &fallback_request_state, &run_state, kernel_runner, op_chain,
         results);
+  }
+  if (is_cost_measurement_enabled) {
+    op_chain->AndThen([run_start_time, exec_ctx, frame] {
+      auto run_duration = Env::Default()->NowMicros() - run_start_time;
+      exec_ctx.host()
+          ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
+          .RecordCost(frame.op_name().GetValue(), run_duration);
+    });
   }
 }
 
@@ -694,9 +707,18 @@ void FallbackAsyncExecuteOp(tfrt::AsyncKernelFrame* frame) {
       ->GetOrCreateSharedContext<OpLogger>()
       .LogOp(attr_frame.op_name().GetValue());
 #endif
-  KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
-                          /*op_chain=*/nullptr, attr_frame,
-                          frame->GetExecutionContext());
+  // Create op_chain only when cost measurement is enabled. It is used for
+  // measuring async op's actual latency.
+  if (frame->GetExecutionContext().request_ctx()->IsCostMeasurementEnabled()) {
+    auto op_chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
+    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
+                            &op_chain, attr_frame,
+                            frame->GetExecutionContext());
+  } else {
+    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
+                            /*op_chain=*/nullptr, attr_frame,
+                            frame->GetExecutionContext());
+  }
 }
 
 // The implementation of tfrt_fallback_async.executeop.seq kernel. It executes a

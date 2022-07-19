@@ -89,8 +89,8 @@ StatusOr<std::unique_ptr<RequestInfo>> SetUpRequestContext(
   // contention.
   int64_t request_id = work_queue->id();
   if (request_id == 0) request_id = tfrt::GetUniqueInt();
-  tfrt::RequestContextBuilder request_context_builder(host, resource_context,
-                                                      request_id);
+  tfrt::RequestContextBuilder request_context_builder(
+      host, resource_context, request_id, run_options.enable_cost_measurement);
 
   // TODO(b/198671794): `intra_op_threadpool` should be passed through Run()
   // directly.

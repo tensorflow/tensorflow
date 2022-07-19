@@ -84,6 +84,9 @@ cc_library(
 cc_library(
     name = "cost_recorder",
     hdrs = ["cost_recorder.h"],
+    visibility = [
+        "//tensorflow/core/runtime_fallback/kernel:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
