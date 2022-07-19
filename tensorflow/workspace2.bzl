@@ -152,16 +152,16 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "clog",
-        strip_prefix = "cpuinfo-082deffc80ce517f81dc2f3aebe6ba671fcd09c9",
-        sha256 = "4379348ec3127b37e854a0a66f85ea1d3c606e5f3a6dce235dc9c69ce663c026",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/082deffc80ce517f81dc2f3aebe6ba671fcd09c9.tar.gz"),
+        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
+        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
     )
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-082deffc80ce517f81dc2f3aebe6ba671fcd09c9",
-        sha256 = "4379348ec3127b37e854a0a66f85ea1d3c606e5f3a6dce235dc9c69ce663c026",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/082deffc80ce517f81dc2f3aebe6ba671fcd09c9.tar.gz"),
+        strip_prefix = "cpuinfo-5e63739504f0f8e18e941bd63b2d6d42536c7d90",
+        sha256 = "18eca9bc8d9c4ce5496d0d2be9f456d55cbbb5f0639a551ce9c8bac2e84d85fe",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/5e63739504f0f8e18e941bd63b2d6d42536c7d90.tar.gz"),
     )
 
     tf_http_archive(
