@@ -6511,6 +6511,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
         "//tensorflow/core/kernels/linalg:qr_op_impl.h",
+        "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels_headers",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -6648,7 +6649,7 @@ filegroup(
         "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
         "//tensorflow/core/kernels/image:encode_png_op.cc",
         "//tensorflow/core/kernels/image:colorspace_op.cc",
-        "//tensorflow/core/kernels/uniform_quant_ops:uniform_quantized_dot_ops.cc",
+        "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
