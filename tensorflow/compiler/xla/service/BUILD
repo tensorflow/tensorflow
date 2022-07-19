@@ -6536,6 +6536,7 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+        ":pattern_matcher",
         ":shape_inference",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -6543,7 +6544,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
@@ -6608,5 +6608,39 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "change_op_data_type",
+    srcs = ["change_op_data_type.cc"],
+    hdrs = ["change_op_data_type.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "change_op_data_type_test",
+    srcs = ["change_op_data_type_test.cc"],
+    deps = [
+        ":change_op_data_type",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

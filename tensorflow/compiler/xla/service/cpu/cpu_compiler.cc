@@ -106,6 +106,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/change_op_data_type.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
@@ -511,6 +512,22 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
+
+  // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
+  // Justification:
+  //
+  //   - This is significantly faster on our CPUs today than true fp16.
+  //   - It's numerically more accurate.  (Granted, this is not always
+  //     desirable, thus the ability to disable this functionality.)
+  //   - It matches more closely the GPU's behavior on fp16 dot/conv, where
+  //     accumulation happens in f32.
+  if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
+    pipeline.AddPass<ChangeOpDataType>(
+        F16, F32, [](const HloInstruction* instr) {
+          return instr->opcode() == HloOpcode::kDot ||
+                 instr->opcode() == HloOpcode::kConvolution;
+        });
+  }
 
   // Run the following passes to a fixed point.
   [&pipeline =

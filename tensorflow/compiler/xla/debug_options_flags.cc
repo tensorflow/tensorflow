@@ -772,6 +772,13 @@ static void AllocateFlags() {
       flag_values->xla_gpu_normalize_layouts(),
       "An experimental option to force all layouts present in the "
       "after-optimizations HLO to be descending"));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_strict_dot_conv_math",
+      bool_setter_for(&DebugOptions::set_xla_cpu_strict_dot_conv_math),
+      flag_values->xla_cpu_strict_dot_conv_math(),
+      "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
+      "generally (much) faster on our hardware.  Set this flag to true to "
+      "disable this behavior."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)
