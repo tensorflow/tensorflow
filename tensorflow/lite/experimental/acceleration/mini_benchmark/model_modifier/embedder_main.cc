@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ limitations under the License.
 #include "flatbuffers/util.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedder.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/embedder.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"

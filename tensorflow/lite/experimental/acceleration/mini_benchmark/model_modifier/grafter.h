@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINIBENCHMARK_GRAFTER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINIBENCHMARK_GRAFTER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINIBENCHMARK_MODEL_MODIFIER_GRAFTER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINIBENCHMARK_MODEL_MODIFIER_GRAFTER_H_
 
 #include <string>
 #include <vector>
@@ -24,8 +24,10 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/idl.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/schema/reflection/schema_generated.h"
+
+namespace tflite {
+struct Model;
+}  // namespace tflite
 
 namespace tflite {
 namespace acceleration {
@@ -107,4 +109,4 @@ class FlatbufferHelper {
 }  // namespace acceleration
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINIBENCHMARK_GRAFTER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_MINIBENCHMARK_MODEL_MODIFIER_GRAFTER_H_

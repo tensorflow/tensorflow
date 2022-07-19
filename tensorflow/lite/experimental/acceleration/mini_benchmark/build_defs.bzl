@@ -98,7 +98,7 @@ def validation_model(
         cmd = """
           JPEGS='$(locations %s)'
           JPEGS=$${JPEGS// /,}
-          $(location //tensorflow/lite/experimental/acceleration/mini_benchmark:embedder_cmdline) \
+          $(location //tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:embedder_cmdline) \
               --schema=$(location //tensorflow/lite/schema:schema.fbs) \
               --main_model=$(location %s) \
               --metrics_model=$(location %s) \
@@ -113,7 +113,7 @@ def validation_model(
           rm $(@D)/tmp
         """ % (jpegs, main_model, metrics_model, scale_arg, zeropoint_arg, use_ondevice_cpu_for_golden, main_model, name),
         tools = [
-            "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedder_cmdline",
+            "//tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier:embedder_cmdline",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:copy_associated_files",
         ],
     )

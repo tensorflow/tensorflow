@@ -59,20 +59,6 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "grafter",
-    srcs = ["grafter.cc"],
-    hdrs = ["grafter.h"],
-    deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_fbs_with_reflection",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@flatbuffers",
-    ],
-)
-
 py_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
@@ -358,43 +344,6 @@ cc_test(
         ":jpeg_header_parser",
         "//tensorflow/lite/c:c_api_types",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "embedder",
-    srcs = ["embedder.cc"],
-    hdrs = ["embedder.h"],
-    deps = [
-        ":grafter",
-        ":jpeg_common",
-        ":jpeg_header_parser",
-        ":libjpeg_decoder",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/schema:schema_fbs_with_reflection",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@flatbuffers",
-    ],
-)
-
-cc_binary(
-    name = "embedder_cmdline",
-    srcs = ["embedder_main.cc"],
-    deps = [
-        ":call",
-        ":decode_jpeg",
-        ":embedder",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/schema:schema_fbs_with_reflection",
-        "//tensorflow/lite/tools:command_line_flags",
-        "@com_google_absl//absl/strings",
-        "@flatbuffers",
     ],
 )
 

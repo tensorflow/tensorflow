@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/grafter.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/grafter.h"
 
 #include <stdint.h>
 
@@ -25,7 +25,6 @@ limitations under the License.
 #include "flatbuffers/idl.h"  // from @flatbuffers
 #include "flatbuffers/reflection.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
 namespace fb = flatbuffers;
