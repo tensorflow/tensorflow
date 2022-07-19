@@ -5662,6 +5662,27 @@ func ClipByValue(scope *Scope, t tf.Output, clip_value_min tf.Output, clip_value
 	return op.Output(0)
 }
 
+// An op that merges the string-encoded memory config protos from all hosts.
+//
+// Arguments:
+//
+//	memory_configs: String-encoded memory config protos containing metadata about
+//
+// the memory allocations reserved for TPUEmbedding across all hosts.
+func CollateTPUEmbeddingMemory(scope *Scope, memory_configs []tf.Output) (merged_memory_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CollateTPUEmbeddingMemory",
+		Input: []tf.Input{
+			tf.OutputList(memory_configs),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveAllToAllV3Attr is an optional argument to CollectiveAllToAllV3.
 type CollectiveAllToAllV3Attr func(optionalAttr)
 
@@ -6750,6 +6771,65 @@ func ConfigureTPUEmbedding(scope *Scope, config string) (o *tf.Operation) {
 	return scope.AddOperation(opspec)
 }
 
+// An op that configures the TPUEmbedding software on a host.
+//
+// Arguments:
+//
+//	common_config: A string-encoded common configuration proto containing metadata
+//
+// about the TPUEmbedding partitioner output.
+//
+//	memory_config: A string-encoded memory config proto containing metadata about
+//
+// the memory allocations reserved for TPUEmbedding.
+//
+//	config: An TPUEmbeddingConfiguration proto serialized to a string,
+//
+// describing the desired TPUEmbedding configuration.
+//
+// Returns A string containing metadata about the hostname and RPC port
+// used for communication with this host.
+func ConfigureTPUEmbeddingHost(scope *Scope, common_config tf.Output, memory_config tf.Output, config string) (network_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "ConfigureTPUEmbeddingHost",
+		Input: []tf.Input{
+			common_config, memory_config,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op that configures the TPUEmbedding software on a host.
+//
+// Arguments:
+//
+//	common_config: A string-encoded CommonConfiguration proto containing metadata
+//
+// about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+// for operation.
+//
+// Returns A string-encoded HbmBuffersConfig proto containing metadata about
+// the memory allocations reserved for TPUEmbedding.
+func ConfigureTPUEmbeddingMemory(scope *Scope, common_config tf.Output) (memory_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConfigureTPUEmbeddingMemory",
+		Input: []tf.Input{
+			common_config,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns the complex conjugate of a complex number.
 //
 // Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -6797,6 +6877,30 @@ func ConjugateTranspose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// An op that sets up communication between TPUEmbedding host software instances
+//
+// after ConfigureTPUEmbeddingHost has been called on each host.
+//
+// Arguments:
+//
+//	network_configs: Strings containing metadata about the hostname and RPC port
+//
+// used for communication with all hosts.
+//
+// Returns the created operation.
+func ConnectTPUEmbeddingHosts(scope *Scope, network_configs []tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConnectTPUEmbeddingHosts",
+		Input: []tf.Input{
+			tf.OutputList(network_configs),
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // This op consumes a lock created by `MutexLock`.
@@ -14843,6 +14947,33 @@ func EuclideanNorm(scope *Scope, input tf.Output, axis tf.Output, optional ...Eu
 	return op.Output(0)
 }
 
+// An op that executes the TPUEmbedding partitioner on the central configuration
+//
+// device and computes the HBM size (in bytes) required for TPUEmbedding operation.
+//
+// Arguments:
+//
+//	config: An TPUEmbeddingConfiguration proto serialized to a string,
+//
+// describing the desired TPUEmbedding configuration.
+//
+// Returns A string-encoded common configuration proto
+// containing metadata about the TPUEmbedding partitioner output and
+// the HBM size (in bytes) required for operation.
+func ExecuteTPUEmbeddingPartitioner(scope *Scope, config string) (common_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "ExecuteTPUEmbeddingPartitioner",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Exits the current frame to its parent frame.
 //
 // Exit makes its input `data` available to the parent frame.
@@ -16672,6 +16803,33 @@ func FinalizeDataset(scope *Scope, input_dataset tf.Output, output_types []tf.Da
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// An op that finalizes the TPUEmbedding configuration.
+//
+// Arguments:
+//
+//	common_config: A string-encoded common configuration proto containing metadata
+//
+// about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+// for operation.
+//
+//	memory_config: A string-encoded memory config proto containing metadata about
+//
+// the memory allocations reserved for TPUEmbedding.
+//
+// Returns the created operation.
+func FinalizeTPUEmbedding(scope *Scope, common_config tf.Output, memory_config tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FinalizeTPUEmbedding",
+		Input: []tf.Input{
+			common_config, memory_config,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Generates fingerprint values.
