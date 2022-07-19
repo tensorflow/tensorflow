@@ -192,7 +192,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       auto shape_vec = orig_input_tensor.vec<int32>();
       TensorShape orig_input_shape;
       for (int i = 0; i < orig_input_tensor.NumElements(); i++) {
-        orig_input_shape.AddDim(shape_vec(i));
+        orig_input_shape.AddDimWithStatus(shape_vec(i));
       }
 
       bool is_pool2d = (this->ksize_.size() == 4);
