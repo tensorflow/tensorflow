@@ -18,9 +18,12 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
@@ -157,8 +160,10 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
   TF_RET_CHECK(schedule == CustomCallSchedule::SCHEDULE_NONE)
       << "MLIR CustomCallOp does not support custom-call-schedule yet";
-  TF_RET_CHECK(computation == nullptr || computation->IsNull())
-      << "MLIR CustomCallOp with computation isn't supported yet";
+  TF_RET_CHECK(computation == nullptr || computation->IsNull() ||
+               build_functions_ == true)
+      << "MLIR CustomCallOp with computation isn't supported when not allowed "
+         "to create functions";
 
   llvm::SmallVector<mlir::NamedAttribute> attributes;
   if (operand_shapes_with_layout.has_value()) {
@@ -179,14 +184,11 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     attributes.push_back(
         builder_.getNamedAttr("result_layouts", result_layouts));
   }
-  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
-                                         shape, builder_));
   TF_ASSIGN_OR_RETURN(auto mlir_api_version,
                       ConvertCustomCallApiVersion(api_version));
   attributes.push_back(builder_.getNamedAttr(
       "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                          builder_.getContext(), mlir_api_version)));
-
   attributes.push_back(builder_.getNamedAttr(
       "call_target_name", builder_.getStringAttr(call_target_name)));
   attributes.push_back(builder_.getNamedAttr(
@@ -194,6 +196,26 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
   attributes.push_back(
       builder_.getNamedAttr("backend_config", builder_.getStringAttr(opaque)));
 
+  if (computation && !computation->IsNull()) {
+    llvm::SmallVector<mlir::Attribute> computation_names;
+    for (const auto& computation_proto : computation->proto().computations()) {
+      computation_names.push_back(mlir::SymbolRefAttr::get(
+          builder_.getContext(), computation_proto.name()));
+    }
+    attributes.push_back(builder_.getNamedAttr(
+        "called_computations", builder_.getArrayAttr(computation_names)));
+
+    // Create new function(s) to represent the called computations. As a result,
+    // this legalization may only be called during a module pass rather than the
+    // typical parallelized func pass which is not permitted to create
+    // functions.
+    TF_RETURN_IF_ERROR(ImportComputation(
+        computation->proto(),
+        builder_.getBlock()->getParent()->getParentOfType<mlir::ModuleOp>()));
+  }
+
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
   auto op = builder_.create<mlir::mhlo::CustomCallOp>(
       loc_, ty, GetValues(operands), attributes);
   return MakeXlaOp(op.getResult(0));
@@ -702,18 +724,33 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
   return MakeXlaOp(op->getResult(0));
 }
 
+StatusOr<std::unique_ptr<xla::HloModule>> CreateHloModuleFromProto(
+    const HloModuleProto& proto) {
+  TF_ASSIGN_OR_RETURN(
+      auto module_config,
+      xla::HloModule::CreateModuleConfigFromProto(proto, xla::DebugOptions()));
+  TF_ASSIGN_OR_RETURN(auto hlo_module,
+                      xla::HloModule::CreateFromProto(proto, module_config));
+  return hlo_module;
+}
+
 Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
                                          mlir::Region* region,
                                          bool flatten_region_arg_tuple) {
-  TF_ASSIGN_OR_RETURN(auto module_config,
-                      xla::HloModule::CreateModuleConfigFromProto(
-                          computation, xla::DebugOptions()));
-  TF_ASSIGN_OR_RETURN(auto hlo_module, xla::HloModule::CreateFromProto(
-                                           computation, module_config));
+  TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
 
   return HloFunctionImporter::ImportAsRegion(*hlo_module->entry_computation(),
                                              region, &builder_,
                                              flatten_region_arg_tuple);
+}
+
+Status MlirHloBuilder::ImportComputation(const HloModuleProto& computation,
+                                         mlir::ModuleOp module) {
+  TF_ASSIGN_OR_RETURN(auto hlo_module, CreateHloModuleFromProto(computation));
+
+  return HloFunctionImporter::ImportAsFunc(*hlo_module->entry_computation(),
+                                           module, {}, &builder_,
+                                           /*is_main=*/false);
 }
 
 StatusOr<const Shape*> MlirHloBuilder::GetShapePtr(XlaOp op) const {

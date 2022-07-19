@@ -440,7 +440,7 @@ class Tf2XlaRewriter {
         device_type_(device_type),
         rewriter_(rewriter),
         hlo_builder_(op->getName().getStringRef().str(), rewriter_,
-                     op->getLoc()),
+                     op->getLoc(), /*build_functions=*/false),
         context_(nullptr) {}
 
   ~Tf2XlaRewriter() {

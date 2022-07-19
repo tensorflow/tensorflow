@@ -242,9 +242,9 @@ Value HloFunctionImporter::CreateTupleValue(
 Status HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, mlir::ModuleOp module,
     std::unordered_map<const HloComputation*, FuncOp>* function_map,
-    mlir::Builder* builder) {
+    mlir::Builder* builder, bool is_main) {
   HloFunctionImporter importer(module, function_map, builder);
-  return importer.ImportAsFunc(computation).status();
+  return importer.ImportAsFunc(computation, is_main).status();
 }
 
 Status HloFunctionImporter::ImportAsRegion(
@@ -256,18 +256,25 @@ Status HloFunctionImporter::ImportAsRegion(
 }
 
 StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
-    const HloComputation& computation) {
-  auto& imported = (*function_map_)[&computation];
-  if (imported) return imported;
+    const HloComputation& computation, bool is_main) {
+  std::string computation_name =
+      is_main ? "main" : SanitizeFunctionName(computation.name());
+
+  FuncOp* imported(nullptr);
+  if (function_map_) {
+    imported = &((*function_map_)[&computation]);
+    if (*imported) {
+      return *imported;
+    }
+  } else {
+    TF_RET_CHECK(!module_.lookupSymbol<FuncOp>(computation_name))
+        << "Attempting to redeclare an existing function named "
+        << computation.name();
+  }
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
   auto func_type = mlir::FunctionType::get(context_, args, rets);
-
-  std::string computation_name =
-      computation.parent()->entry_computation() == &computation
-          ? "main"
-          : SanitizeFunctionName(computation.name());
 
   // Construct the MLIR function and map arguments.
   llvm::ArrayRef<mlir::NamedAttribute> attrs;
@@ -300,8 +307,10 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
 
   module_.push_back(function);
 
-  // Add to the map right away for function calls.
-  imported = function;
+  // Add to the map right away for function calls if map is set.
+  if (imported) {
+    *imported = function;
+  }
 
   mlir::Block* block = function.addEntryBlock();
   TF_RETURN_IF_ERROR(ImportInstructions(computation, block,
@@ -586,8 +595,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kCall: {
-      TF_ASSIGN_OR_RETURN(FuncOp function,
-                          ImportAsFunc(*instruction->to_apply()));
+      TF_ASSIGN_OR_RETURN(
+          FuncOp function,
+          ImportAsFunc(*instruction->to_apply(), /*is_main=*/false));
       mlir::Operation* new_operation =
           func_builder->create<mlir::func::CallOp>(loc, function, operands);
       return new_operation;
@@ -607,7 +617,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         llvm::SmallVector<mlir::Attribute> callees;
         callees.reserve(called_computations.size());
         for (HloComputation* callee : called_computations) {
-          TF_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*callee));
+          TF_ASSIGN_OR_RETURN(FuncOp function, ImportAsFunc(*callee,
+                                                            /*is_main=*/false));
           callees.push_back(mlir::FlatSymbolRefAttr::get(builder_->getContext(),
                                                          function.getName()));
         }
