@@ -201,6 +201,20 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Device* device;
+  int local_hardware_id;  // out
+} PJRT_Device_LocalHardwareId_Args;
+const size_t PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
+
+// Opaque hardware ID, e.g., the CUDA device number. In general, not guaranteed
+// to be dense, and -1 if undefined.
+typedef PJRT_Error* PJRT_Device_LocalHardwareId(
+    PJRT_Device_LocalHardwareId_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
   int process_index;  // out
 } PJRT_Device_ProcessIndex_Args;
 const size_t PJRT_Device_ProcessIndex_Args_STRUCT_SIZE =
@@ -401,6 +415,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

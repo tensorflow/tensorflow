@@ -246,6 +246,16 @@ absl::string_view PjRtCApiDevice::device_kind() const {
   return device_kind;
 }
 
+int PjRtCApiDevice::local_hardware_id() const {
+  PJRT_Device_LocalHardwareId_Args args;
+  args.struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
+  return args.local_hardware_id;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,

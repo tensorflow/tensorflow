@@ -178,6 +178,15 @@ PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_LocalHardwareId(
+    PJRT_Device_LocalHardwareId_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_LocalHardwareId_Args",
+      PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE, args->struct_size));
+  args->local_hardware_id = args->device->device->local_hardware_id();
+  return nullptr;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
