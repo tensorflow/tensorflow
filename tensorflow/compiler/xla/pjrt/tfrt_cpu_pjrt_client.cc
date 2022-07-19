@@ -1083,7 +1083,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           ready_event.emplace(OkStatus());
         });
     return PjRtFuture<Status>(
-        client_->GetHostContext(), std::move(ready_event),
+        std::move(ready_event),
         /*on_block_start=*/
         []() {
           tensorflow::profiler::TraceMeProducer traceme(
@@ -1286,7 +1286,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
     return PjRtFuture<Status>(*definition_event);
   } else {
     return PjRtFuture<Status>(
-        client_->GetHostContext(), definition_event.CopyRef(),
+        definition_event.CopyRef(),
         /*on_block_start=*/
         []() {
           tensorflow::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
@@ -1753,8 +1753,7 @@ StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           }
           done_event.emplace(std::move(s));
         });
-    future =
-        PjRtFuture<Status>(client_->GetHostContext(), std::move(done_event));
+    future = PjRtFuture<Status>(std::move(done_event));
   }
   return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
