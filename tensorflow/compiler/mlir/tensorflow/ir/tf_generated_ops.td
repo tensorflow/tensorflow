@@ -20623,7 +20623,7 @@ def TF__ArrayToListOp : TF_Op<"_ArrayToList", [NoSideEffect]> {
   TF_DerivedResultTypeListAttr out_types = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF__CollateTPUEmbeddingMemoryOp : TF_Op<"_CollateTPUEmbeddingMemory", []> {
+def TF_CollateTPUEmbeddingMemoryOp : TF_Op<"CollateTPUEmbeddingMemory", []> {
   let summary = [{
 An op that merges the string-encoded HbmBufferConfig protos from all hosts.
   }];
@@ -20640,7 +20640,7 @@ the memory allocations reserved for TPUEmbedding across all hosts.}]>:$memory_co
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF__ConfigureTPUEmbeddingHostOp : TF_Op<"_ConfigureTPUEmbeddingHost", []> {
+def TF_ConfigureTPUEmbeddingHostOp : TF_Op<"ConfigureTPUEmbeddingHost", []> {
   let summary = "An op that configures the TPUEmbedding software on a host.";
 
   let arguments = (ins
@@ -20658,7 +20658,7 @@ used for communication with this host.}]>:$network_config
   );
 }
 
-def TF__ConfigureTPUEmbeddingMemoryOp : TF_Op<"_ConfigureTPUEmbeddingMemory", []> {
+def TF_ConfigureTPUEmbeddingMemoryOp : TF_Op<"ConfigureTPUEmbeddingMemory", []> {
   let summary = "An op that configures the TPUEmbedding software on a host.";
 
   let arguments = (ins
@@ -20673,7 +20673,7 @@ the memory allocations reserved for TPUEmbedding.}]>:$memory_config
   );
 }
 
-def TF__ConnectTPUEmbeddingHostsOp : TF_Op<"_ConnectTPUEmbeddingHosts", []> {
+def TF_ConnectTPUEmbeddingHostsOp : TF_Op<"ConnectTPUEmbeddingHosts", []> {
   let summary = [{
 An op that sets up communication between TPUEmbedding host software instances
   }];
@@ -20706,7 +20706,7 @@ def TF__EagerConstOp : TF_Op<"_EagerConst", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF__ExecuteTPUEmbeddingPartitionerOp : TF_Op<"_ExecuteTPUEmbeddingPartitioner", []> {
+def TF_ExecuteTPUEmbeddingPartitionerOp : TF_Op<"ExecuteTPUEmbeddingPartitioner", []> {
   let summary = [{
 An op that executes the TPUEmbedding partitioner on the central configuration
   }];
@@ -20726,7 +20726,7 @@ the HBM size (in bytes) required for operation.}]>:$common_config
   );
 }
 
-def TF__FinalizeTPUEmbeddingOp : TF_Op<"_FinalizeTPUEmbedding", []> {
+def TF_FinalizeTPUEmbeddingOp : TF_Op<"FinalizeTPUEmbedding", []> {
   let summary = "An op that finalizes the TPUEmbedding configuration.";
 
   let arguments = (ins
