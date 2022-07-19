@@ -488,15 +488,37 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::lmhlo::FusionOp fusion);
+  Status Emit021Transpose(TransposeDimsAndParams descr,
+                          mlir::lmhlo::FusionOp fusion);
 
-  // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
-  // This is a helper to support the implementation of
-  // CheckAndEmitHloWithTile021.
+  // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
+  // algorithm to improve the memory access patterns for the input parameters
+  // with a shape that is a 0-2-1 transpose of the output tensor shape. The
+  // caller is responsible for making sure that it is safe to apply the shared
+  // memory transpose on the input parameters.
+  //
+  //
+  // For the purpose of tiling, the output tensors have a logical shape of three
+  // components 0-2-1 while the relevant input parameters have a logical shape
+  // of three components 0-1-2 in the order major to minor. The x- and y-
+  // dimensions of the tensors are tiled in square tiles with an edge length
+  // `kTileSize`. Each thread block of `kTileSize` x `kNumRows` threads
+  // transposes one tile: each thread copies kTileSize/kNumRows elements from
+  // the input to a shared memory tile, then the otherwise "regular HLO kernel"
+  // reads from the shared memory instead of the original input.
+  //
+  // This is similar to the following CUDA algorithm in TensorFlow:
+  // https://goo.gl/MStRV6.
+  //
+  // `kTileSize` should usually be same as warp size. We currently choose 32 for
+  // `kTileSize` and 4 for `kNumRows`. The CUDA algorithm uses 8 for `kNumRows`.
+  //
+  // TODO(b/33320379): Here each block transposes 1 tile. It may be more
+  // efficient to launch fewer blocks so each transposes many tiles.
   void EmitHlo021Tile(mlir::lmhlo::FusionOp fusion, Thunk* kernel_thunk,
                       absl::Span<const llvm_ir::IrArray> operand_arrays,
                       absl::Span<const llvm_ir::IrArray> output_arrays,
-                      absl::Span<const int64_t> reduced_output_dims,
+                      Vector3 reduced_output_dims,
                       absl::Span<const int64_t> tiled_param_ids,
                       const TilingScheme& tiling_scheme,
                       const LaunchDimensions& launch_dimensions);

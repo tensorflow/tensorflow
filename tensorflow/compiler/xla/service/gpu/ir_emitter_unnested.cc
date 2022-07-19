@@ -169,9 +169,6 @@ const auto kDimTot = TilingScheme::DimTot;
 const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
 const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
 
-// If a dimensions is smaller than this, untiled transposition may be more
-// efficient.
-const int64_t kMinDimensionToTransposeTiled = 16;
 
 void AnnotateWithInt32Value(std::string name, int64_t value,
                             const std::string& kernel_name,
@@ -1871,6 +1868,11 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
   const bool is_single_instruction = IsSingleInstructionFusion(fusion_op);
 
+  TF_ASSIGN_OR_RETURN(
+      const HloComputation* fused_computation,
+      GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
+                                          /*is_fusion=*/true));
+
   if (HasAnyUnnestedReductionRoot(fusion_op)) {
     return EmitUnnestedReduction(fusion_op);
   }
@@ -1894,10 +1896,6 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 
   mlir::Operation* fusion_root = fusion_results[0].getDefiningOp();
   if (mlir::isa<mlir::mhlo::ScatterOp>(fusion_root)) {
-    TF_ASSIGN_OR_RETURN(
-        const HloComputation* fused_computation,
-        GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
-                                            /*is_fusion=*/true));
     auto* root = fused_computation->root_instruction();
 
     ThunkSequence thunks;
@@ -2009,11 +2007,6 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     // touching the un-updated elements.
     CHECK_EQ(1, GetHloOutputs(op).size());
 
-    TF_ASSIGN_OR_RETURN(
-        const HloComputation* fused_computation,
-        GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
-                                            /*is_fusion=*/true));
-
     // Shape of the dynamic-update-slice's "update" operand.
     Shape update_shape =
         fused_computation->root_instruction()->operand(1)->shape();
@@ -2084,9 +2077,9 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(bool matched_021, CheckAndEmitHloWithTile021(fusion_op));
-  if (matched_021) {
-    return OkStatus();
+  if (std::optional<TransposeDimsAndParams> descr =
+          Match021Transpose(fused_computation)) {
+    return Emit021Transpose(*descr, fusion_op);
   }
 
   return EmitLoopFusion(op);
@@ -4444,36 +4437,11 @@ llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
   return EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
 }
 
-// Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
-// algorithm to improve the memory access patterns for the input parameters
-// with a shape that is a 0-2-1 transpose of the output tensor shape. The caller
-// is responsible for making sure that it is safe to apply the shared memory
-// transpose on the input parameters.
-//
-//
-// For the purpose of tiling, the output tensors have a logical shape of three
-// components 0-2-1 while the relevant input parameters have a logical shape
-// of three components 0-1-2 in the order major to minor. The x- and y-
-// dimensions of the tensors are tiled in square tiles with an edge length
-// `kTileSize`. Each thread block of `kTileSize` x `kNumRows` threads
-// transposes one tile: each thread copies kTileSize/kNumRows elements from
-// the input to a shared memory tile, then the otherwise "regular HLO kernel"
-// reads from the shared memory instead of the original input.
-//
-// This is similar to the following CUDA algorithm in TensorFlow:
-// https://goo.gl/MStRV6.
-//
-// `kTileSize` should usually be same as warp size. We currently choose 32 for
-// `kTileSize` and 4 for `kNumRows`. The CUDA algorithm uses 8 for `kNumRows`.
-//
-// TODO(b/33320379): Here each block transposes 1 tile. It may be more
-// efficient to launch fewer blocks so each transposes many tiles.
 void IrEmitterUnnested::EmitHlo021Tile(
     mlir::lmhlo::FusionOp fusion, Thunk* kernel_thunk,
     absl::Span<const llvm_ir::IrArray> operand_arrays,
     absl::Span<const llvm_ir::IrArray> output_arrays,
-    absl::Span<const int64_t> reduced_output_dims,
-    absl::Span<const int64_t> tiled_param_ids,
+    Vector3 reduced_output_dims, absl::Span<const int64_t> tiled_param_ids,
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
   std::string name = GetIrNameFromLoc(fusion.getLoc());
@@ -4596,76 +4564,11 @@ void IrEmitterUnnested::EmitHlo021Tile(
       EmitTilingKernel(tiling_scheme, index_type, tile_generator).status());
 }
 
-
-StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
-    mlir::lmhlo::FusionOp fusion) {
-  // If the output_shape is reduced to 021 shape, find all the parameters of
-  // the HLO that are in the corresponding 012 shape.
-  std::vector<int64_t> params_012;
-  std::vector<Shape> operenad_shapes;
-  absl::c_for_each(fusion.getInputBuffers(), [&](mlir::Value& value) {
-    operenad_shapes.push_back(GetShape(value));
-  });
-  std::optional<std::vector<int64_t>> reduced_dims_021 =
-      ShapeUtil::FindTranspose021DimsAndParameters(
-          operenad_shapes, GetShape(fusion.getOutputBuffers()[0]), &params_012);
-  if (!reduced_dims_021.has_value()) {
-    return false;
-  }
-
-  if ((*reduced_dims_021)[1] < kMinDimensionToTransposeTiled ||
-      (*reduced_dims_021)[2] < kMinDimensionToTransposeTiled) {
-    return false;
-  }
-
-  params_012 = FilterInputsForShmemTranspose(fusion, params_012);
-  if (params_012.empty()) {
-    return false;
-  }
-
-  // Each of our shared memory tiles has 32*33 elements (so ~4kb, if the
-  // elements are of size 4 bytes), and CUDA has an architectural limit of
-  // 48kb shared memory per SM.  (This is increased to 96kb in Volta, but we
-  // don't use this, in part because it eats into our L1 cache space.)
-  //
-  // For correctness we need to ensure that we don't make more than 48kb worth
-  // of shmem tiles per block.  And for performance, we'd probably like to use
-  // significantly less, so that we can fit more than one block at a time on a
-  // gpu core.
-  //
-  // We say without benchmarks that we want at least 3 threads/block,
-  // corresponding to 3 shmem tiles if the elements are 32 bits wide.  We
-  // choose which params get the shmem transpose treatment arbitrarily; it's
-  // not clear if there's a Right Choice.
-  //
-  // This is only sound if tiled transposes are the only place where we use
-  // shared memory in fusions.  If in the future other fusible ops use shared
-  // memory, we'll have to adjust this heuristic.
-  constexpr int kMinBlocksPerCore = 3;
-  constexpr int64_t kShmemPerCore = 48 * 1024;
-  int64_t shmem_used = 0;
-  for (int64_t i = 0; i < params_012.size(); ++i) {
-    const Shape& operand_shape =
-        GetShape(fusion.getInputBuffers()[params_012[i]]);
-    shmem_used +=
-        32 * 33 *
-        ShapeUtil::ByteSizeOfPrimitiveType(operand_shape.element_type());
-
-    if (kMinBlocksPerCore * shmem_used > kShmemPerCore) {
-      // Erase this element and everything after it from params_012.
-      params_012.resize(i);
-      break;
-    }
-  }
-
-  if (params_012.empty()) {
-    return false;
-  }
-
+Status IrEmitterUnnested::Emit021Transpose(TransposeDimsAndParams descr,
+                                           mlir::lmhlo::FusionOp fusion) {
   constexpr int kNumRows = 4;
   CHECK_EQ(WarpSize() % kNumRows, 0);
-  TilingScheme tiling_scheme({reduced_dims_021->at(0), reduced_dims_021->at(1),
-                              reduced_dims_021->at(2)},
+  TilingScheme tiling_scheme(descr.dims,
                              /*tile_sizes=*/{1, WarpSize() / kNumRows, 1},
                              /*num_threads=*/{1, kNumRows, WarpSize()},
                              /*indexing_order=*/kLinearIndexingX,
@@ -4683,9 +4586,10 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
       fusion, kernel_thunk.get(),
       absl::MakeSpan(ir_arrays).subspan(0, fusion.getInputBuffers().size()),
       absl::MakeSpan(ir_arrays).subspan(fusion.getInputBuffers().size()),
-      *reduced_dims_021, params_012, tiling_scheme, launch_dimensions);
+      descr.dims, descr.params, tiling_scheme, launch_dimensions);
+
   AddThunkToThunkSequence(std::move(kernel_thunk));
-  return true;
+  return Status::OK();
 }
 
 namespace {
