@@ -1553,6 +1553,7 @@ cc_library(
         ":bufferize_tiled_loop",
         ":chlo_legalize_to_hlo",
         ":collapse_elementwise_map",
+        ":collapse_parallel_loops_to_1d_pass",
         ":constraint_fusion_pass",
         ":convert_to_signless_pass",
         ":copy_removal",
@@ -2128,6 +2129,27 @@ cc_library(
 )
 
 cc_library(
+    name = "collapse_parallel_loops_to_1d_pass",
+    srcs = [
+        "lib/Transforms/collapse_parallel_loops_to_1d_pass.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Transforms/PassDetail.h",
+        "include/mlir-hlo/Transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        ":transforms_pass_inc_gen",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:SCFUtils",
+    ],
+)
+
+cc_library(
     name = "hlo_to_gpu_pipeline",
     srcs = [
         "lib/Transforms/hlo_to_gpu_pipeline.cc",
@@ -2137,6 +2159,7 @@ cc_library(
     ],
     deps = [
         ":bufferize_pass",
+        ":collapse_parallel_loops_to_1d_pass",
         ":gpu_kernel_lowering_passes",
         ":hlo",
         ":legalize_to_linalg",

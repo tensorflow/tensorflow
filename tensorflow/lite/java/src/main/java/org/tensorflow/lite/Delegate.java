@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import java.io.Closeable;
+
 /**
  * Wrapper for a native TensorFlow Lite Delegate.
  *
@@ -24,7 +26,7 @@ package org.tensorflow.lite;
  * technically allows sharing of a single delegate instance across multiple interpreter instances,
  * the delegate implementation must explicitly support this.
  */
-public interface Delegate {
+public interface Delegate extends Closeable {
   /**
    * Returns a native handle to the TensorFlow Lite delegate implementation.
    *
@@ -40,5 +42,15 @@ public interface Delegate {
    * @return The native delegate handle. In C/C++, this should be a pointer to
    *     'TfLiteOpaqueDelegate'.
    */
-  public long getNativeHandle();
+  long getNativeHandle();
+
+  /**
+   * Closes the delegate and releases any resources associated with it.
+   *
+   * <p>In contrast to the method declared in the base {@link Closeable} interface, this method
+   * does not throw checked exceptions.
+   */
+  @SuppressWarnings("StaticOrDefaultInterfaceMethod")
+  @Override
+  default void close() {}
 }

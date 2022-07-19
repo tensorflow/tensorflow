@@ -298,7 +298,7 @@ class AvgPoolingGradOp : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
     const int64_t in_rows = output_shape.dim_size(1);
     const int64_t in_cols = output_shape.dim_size(2);
@@ -457,7 +457,7 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
 
     if (output_shape.num_elements() == 0) {
@@ -543,7 +543,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
     if (output_shape.num_elements() == 0) {
       Tensor* output = nullptr;

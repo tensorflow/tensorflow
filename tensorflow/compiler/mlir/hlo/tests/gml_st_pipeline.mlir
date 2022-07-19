@@ -78,7 +78,7 @@ func.func @broadcast_in_dim(%arg0: tensor<?xf32>, %shape: tensor<2xindex>)
   // CHECK-DAG:    %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE:.*]]]
   // CHECK-DAG:    %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
   // CHECK-SAME:       ins(%[[ARG_SUB]] : tensor<?xf32>) outs(%[[INIT_SUB]] : tensor<?x?xf32>)
-  // CHECK-SAME:       {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-SAME:       {broadcast_dimensions = [:i64 1]}
   // CHECK:        gml_st.set_yield %[[BCAST]] into %[[INIT]][%[[BCAST_TILE]]]
   // CHECK:      return %[[RESULT]]
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %shape)
@@ -103,7 +103,7 @@ func.func @log_log_bcast(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>)
   // CHECK-SAME:       ins(%[[ARG_SUB]] : tensor<?x?xf32>) outs(%[[INIT_GENERIC0_SUB]] : tensor<?x?xf32>)
   // CHECK:        %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
   // CHECK-SAME:       ins(%[[GENERIC0]] : tensor<?x?xf32>) outs(%[[INIT_BCAST_SUB]] : tensor<?x?xf32>)
-  // CHECK-SAME:       {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-SAME:       {broadcast_dimensions = [:i64 0, 1]}
   // CHECK:        %[[GENERIC1:.*]] = linalg.generic
   // CHECK-SAME:       ins(%[[BCAST]] : tensor<?x?xf32>) outs(%[[INIT_BCAST_SUB]] : tensor<?x?xf32>)
   // CHECK:        gml_st.set_yield %[[GENERIC1]] into %[[INIT_BCAST]][%[[BCAST_TILE]]]

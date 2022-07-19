@@ -758,7 +758,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     // Simulate 2 inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
-    p.inputs = &inputs;
+    p.inputs = inputs;
 
     Status status;
     std::unique_ptr<OpKernel> kernel =
@@ -1186,7 +1186,7 @@ TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
     // GetFakeKernel requires a NodeDef with two inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
-    p.inputs = &inputs;
+    p.inputs = inputs;
 
     Status status;
     std::unique_ptr<OpKernel> kernel =

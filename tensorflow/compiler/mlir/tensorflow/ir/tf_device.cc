@@ -441,7 +441,7 @@ void BuildReplicateOp(
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
+  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -481,7 +481,7 @@ LogicalResult ReplicateOp::verify() {
   int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue()) {
+  if (op.devices().has_value()) {
     for (auto device_attr : op.devices().getValue().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)

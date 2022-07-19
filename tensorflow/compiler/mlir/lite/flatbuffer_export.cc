@@ -774,11 +774,17 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
     mlir::Type type, const std::string& name) {
   auto tensor_type = type.cast<TensorType>();
 
-  if (!tensor_type.hasStaticShape()) {
-    return llvm::None;
+  llvm::ArrayRef<int64_t> shape_ref;
+  std::vector<int32_t> shape;
+
+  if (tensor_type.hasRank()) {
+    if (tensor_type.hasStaticShape()) {
+      shape_ref = tensor_type.getShape();
+      shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+    } else {
+      return llvm::None;
+    }
   }
-  llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
-  std::vector<int32_t> shape(shape_ref.begin(), shape_ref.end());
 
   auto element_type = tensor_type.getElementType();
   tflite::TensorType tflite_element_type =
@@ -802,7 +808,8 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
       /*buffer=*/0, builder_.CreateString(name), q_params,
-      /*is_variable=*/false);
+      /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/0,
+      /*has_rank=*/tensor_type.hasRank());
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
@@ -890,7 +897,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         builder_.CreateVector<int64_t>(zero_points),
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
-  } else if (quant_parameters.hasValue()) {
+  } else if (quant_parameters.has_value()) {
     q_params = quant_parameters.getValue();
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
@@ -906,17 +913,21 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     }
   }
 
+  bool has_rank = type.hasRank();
+
   if (shape_signature.empty()) {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable, s_params);
+        /*is_variable=*/is_variable, s_params, /*shape_signature=*/0,
+        /*has_rank=*/has_rank);
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params,
-        /*shape_signature=*/builder_.CreateVector(shape_signature));
+        /*shape_signature=*/builder_.CreateVector(shape_signature),
+        /*has_rank=*/has_rank);
   }
 }
 
@@ -1353,7 +1364,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
   Optional<uint64_t> axis = stats_op.getAxis();
   std::vector<float> mins, maxs;
   mlir::DenseFPElementsAttr min_max_attr =
-      axis_stats.hasValue()
+      axis_stats.has_value()
           ? axis_stats.getValue().cast<mlir::DenseFPElementsAttr>()
           : layer_stats;
 
@@ -1371,7 +1382,7 @@ Translator::GetQuantizationForQuantStatsOpOutput(
       builder_, builder_.CreateVector<float>(mins),
       builder_.CreateVector<float>(maxs), /*scale=*/0, /*zero_point=*/0,
       tflite::QuantizationDetails_NONE, /*details=*/0,
-      /*quantized_dimension=*/axis.hasValue() ? axis.getValue() : 0);
+      /*quantized_dimension=*/axis.has_value() ? axis.getValue() : 0);
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
@@ -1460,7 +1471,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
           Type qtype = attr.getValue();
           auto tensor_or = BuildTensorFromType(
               qtype, name_mapper_.GetUniqueName(intermediate).str());
-          if (!tensor_or.hasValue()) {
+          if (!tensor_or.has_value()) {
             continue;
           } else {
             intermediates.push_back(tensors.size());

@@ -293,7 +293,7 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (failed(SetMetadataProtoStepMarkerLocation(op, metadata)))
     return failure();
 
-  if (xla_device_assignment.hasValue())
+  if (xla_device_assignment.has_value())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
   auto use_spmd_attr = op->getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);

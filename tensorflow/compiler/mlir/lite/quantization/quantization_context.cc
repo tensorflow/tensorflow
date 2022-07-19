@@ -81,7 +81,7 @@ LogicalResult QuantizeContext::Handle(
     bool *changed) {
   auto signature = GetSignature(op);
   auto spec = target_spec_.GetKernelSpec(op.getLogicalKernel(), signature);
-  if (!spec.hasValue()) {
+  if (!spec.has_value()) {
     op.emitWarning(
         "Couldn't find kernel from the registration for quantization.");
     return success();

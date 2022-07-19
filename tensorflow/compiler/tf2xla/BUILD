@@ -43,6 +43,7 @@ package_group(
     includes = [":internal"],
     packages = [
         "//tensorflow/...",
+        "//tensorflow_federated/cc/core/impl/executors/...",
         "//tensorflow_models/...",
         "//third_party/deepmind/deepmind_research/density_functional_approximation_dm21/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
@@ -403,6 +404,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core/util:overflow",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

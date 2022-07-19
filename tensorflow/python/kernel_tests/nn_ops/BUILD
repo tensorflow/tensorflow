@@ -500,6 +500,7 @@ cuda_py_test(
     srcs = ["pooling_ops_3d_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",

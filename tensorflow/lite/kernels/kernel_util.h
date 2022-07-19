@@ -177,6 +177,14 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
 }
 
+inline int64_t NumElements(const int* dims, int num_dims) {
+  int64_t count = 1;
+  for (int i = 0; i < num_dims; ++i) {
+    count *= dims[i];
+  }
+  return count;
+}
+
 // Determines whether tensor is constant.
 // TODO(b/138199592): Introduce new query which checks for constant OR
 // persistent-read-only, which would be useful for most tensor kernels that

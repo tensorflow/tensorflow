@@ -220,6 +220,10 @@ table Tensor {
   // Encodes `shape` with unknown dimensions. Unknown dimensions are
   // represented with -1.
   shape_signature:[int]; // Optional.
+
+  // If false, the rank or the number of tensor dimensions is unknown.
+  // If false, "shape" must be [].
+  has_rank: bool = false;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
@@ -389,6 +393,8 @@ enum BuiltinOperator : int32 {
   RELU_0_TO_1 = 152,
   UNSORTED_SEGMENT_PROD = 153,
   UNSORTED_SEGMENT_MAX = 154,
+  UNSORTED_SEGMENT_SUM = 155,
+  ATAN2 = 156
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -512,7 +518,9 @@ union BuiltinOptions {
   GeluOptions,
   DynamicUpdateSliceOptions,
   UnsortedSegmentProdOptions,
-  UnsortedSegmentMaxOptions
+  UnsortedSegmentMaxOptions,
+  UnsortedSegmentSumOptions,
+  ATan2Options
 }
 
 // LINT.IfChange
@@ -1127,7 +1135,13 @@ table DynamicUpdateSliceOptions {
 table UnsortedSegmentProdOptions {
 }
 
-table UnsortedSegmentMaxOptions{
+table UnsortedSegmentMaxOptions {
+}
+
+table UnsortedSegmentSumOptions {
+}
+
+table ATan2Options {
 }
 
 

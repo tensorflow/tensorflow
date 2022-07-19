@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
@@ -34,6 +36,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -69,9 +72,25 @@ def _get_config(remapping_on=False):
 class RemapperTest(test.TestCase, parameterized.TestCase):
   """Tests the Grappler remapper optimizer."""
 
+  def setUp(self):
+    # Gelu fusion on GPU requires cublasLt
+    os.environ['TF_USE_CUBLASLT'] = '1'
+
   def _maybe_skip(self, mode):
     if mode == 'cuda':
-      self.skipTest('This test does not pass on GPU.')
+      # It seems the windows os cannot correctly query the cuda_version.
+      # TODO(kaixih@nvidia): Remove this when it works.
+      if os.name == 'nt':
+        self.skipTest("This test doesn't support Windows")
+
+      # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
+      if not test.is_gpu_available(cuda_only=True):
+        self.skipTest('This test requires GPU.')
+      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
+      if cuda_version < (11, 4):
+        self.skipTest('This test requires CUDA >= 11.4.')
+
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled.')
 
@@ -118,35 +137,44 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   def test_matmul_biasadd_gelu_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self._maybe_skip(mode)
+    data_types = [dtypes.float32]
+    if mode == 'cuda':
+      data_types.append(dtypes.float16)
+    elif mode == 'mkl':
+      data_types.append(dtypes.bfloat16)
+
     is_bf16_supported = _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU()
 
     m, n, k = (3, 3, 4)  # Matrix dimensions
-    for precision in ('float32', 'bfloat16'):
+    for precision in data_types:
       for approximate in (False, True):
-        # Gelu exact (approximate=False) is not supported with bfloat16
-        # precision since no support for Erf with bfloat16 data type.
-        if precision == 'bfloat16':
+        if precision == dtypes.bfloat16:
           if not is_bf16_supported:
             continue
 
+        # TODO(kaixih@nvidia): Enable gelu exact when Erf op is supported with
+        # cublaslt.
+        if mode == 'cuda' and not approximate:
+          continue
+
+        device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
         # Create MatMul + BiasAdd + Gelu graph
         ops.reset_default_graph()
-        with ops.device('/device:CPU:0'):
+        with ops.device(device):
           x = _input([m, k])
           w = _weight([k, n])
           b = _bias([n])
-          if precision == 'bfloat16':
-            x = math_ops.cast(x, dtypes.bfloat16)
-            w = math_ops.cast(w, dtypes.bfloat16)
-            b = math_ops.cast(b, dtypes.bfloat16)
+          x = math_ops.cast(x, precision)
+          w = math_ops.cast(w, precision)
+          b = math_ops.cast(b, precision)
           y = math_ops.matmul(x, w)
           z = nn.bias_add(y, b)
           out = nn.gelu(z, approximate=approximate)
 
         gelu_type = b'GeluApproximate' if approximate else b'GeluExact'
         epilog_ops = [b'BiasAdd', gelu_type]
-        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul']
-        graph = self._VerifyValues(out, precision == 'bfloat16', fused_op,
+        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+        graph = self._VerifyValues(out, precision != dtypes.float32, fused_op,
                                    epilog_ops)
 
   @test_util.run_deprecated_v1

@@ -49,9 +49,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   int process_index() const override;
 
-  int local_hardware_id() const override {
-    return wrapped_->local_hardware_id();
-  }
+  int local_hardware_id() const override;
 
   absl::string_view device_kind() const override;
 
@@ -359,6 +357,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
     }
     return wrapped;
   }
+
+  const PJRT_Api* pjrt_c_api() const { return client_->pjrt_c_api(); }
 
  private:
   PjRtCApiClient* client_;

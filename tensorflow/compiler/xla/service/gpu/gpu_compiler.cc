@@ -317,11 +317,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-  // Save proto state before optimizations if we want a snapshot.
-  if (DumpingEnabledForHloModule(*hlo_module)) {
-    hlo_proto_ = std::make_unique<HloProto>();
-    *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
-  }
 
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
@@ -717,10 +712,13 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
-      HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
-          LayoutAssignment::InstructionCanChangeLayout));
+      HloVerifierOpts{}
+          .MakeLayoutSensitive()
+          .WithInstructionCanChangeLayout(
+              LayoutAssignment::InstructionCanChangeLayout)
+          .VerifyBroadcastDimensionsOrder()
+          .VerifyReshapeIsBitcast());
 
-  pipeline.AddPass<ReshapeDecomposer>();
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
@@ -1428,11 +1426,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (embed_ir_in_executable ||
       DumpingEnabledForHloModule(gpu_executable->module())) {
     auto hlo_proto = std::make_unique<HloProto>();
-    if (hlo_proto_) {
-      *hlo_proto = *hlo_proto_;
-    } else {
-      *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
-    }
+    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
     *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }

@@ -95,6 +95,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
 std::unique_ptr<OperationPass<ModuleOp>>
 createPropagateStaticShapesToKernelPass(Type pointerType = {});
 
+// Creates a pass for collapsing multidimensional parallel loops into 1D loops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createCollapseParallelLoopsTo1DPass();
+
 // Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
 // and unroll factors provided through `unroll_factors`.
 std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(

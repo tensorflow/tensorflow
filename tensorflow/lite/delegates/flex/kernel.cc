@@ -415,9 +415,9 @@ tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
   TF_RETURN_IF_ERROR(node_data->BuildOpKernelInputs(
       op_data_->shared_info.buffer_map, run_state));
 
-  run_state->params.inputs = &run_state->input_tf_tensor_values;
+  run_state->params.inputs = run_state->input_tf_tensor_values;
   run_state->params.op_kernel = op_kernel_runner.op_kernel();
-  run_state->params.input_alloc_attrs = &op_kernel_runner.input_alloc_attrs();
+  run_state->params.input_alloc_attrs = op_kernel_runner.input_alloc_attrs();
   run_state->params.output_attr_array =
       op_kernel_runner.output_alloc_attrs().data();
   run_state->params.function_library =
@@ -471,9 +471,10 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
   // since those ops might produce results which keep reference of the input
-  // tensors.
+  // tensors (buffer forwarding).
   auto check_if_op_reuses_input = [](const string& op_name) {
-    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem";
+    return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
+           op_name == "SparseReshape";
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {

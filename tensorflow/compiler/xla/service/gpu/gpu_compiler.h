@@ -151,9 +151,6 @@ class GpuCompiler : public LLVMCompiler {
     return Unimplemented("LinkModules is not implemented.");
   }
 
-  // Optional HloProto, stashed for dumping snapshots.
-  std::unique_ptr<HloProto> hlo_proto_;
-
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.

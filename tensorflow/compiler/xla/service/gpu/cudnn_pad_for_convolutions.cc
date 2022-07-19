@@ -463,9 +463,12 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   return changed;
 }
 
-StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
+StatusOr<bool> CudnnPadForConvolutions::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       // On Turing and later (sm75+), pad to multiples of 32 bytes if possible,
       // because that lets us use the fast int8x32 data type.

@@ -120,7 +120,6 @@ pytype_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
-        "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/training:py_checkpoint_reader",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",

@@ -42,7 +42,7 @@ bool IsCanonicalDot(HloInstruction* dot) {
   // Checks that the given list is a permutation of [0, 1, ..., n].
   auto is_permutation_of_iota =
       [](const tensorflow::protobuf::RepeatedField<int64_t>& vals) {
-        absl::InlinedVector<int64_t, 8> copy(vals.begin(), vals.end());
+        DimensionVector copy(vals.begin(), vals.end());
         absl::c_sort(copy);
         for (int i = 0; i < copy.size(); i++) {
           if (copy[i] != i) {
@@ -188,11 +188,10 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
 
   // Slice the outputs.
-  absl::InlinedVector<int64_t, 6> start_indices(new_dot_shape.dimensions_size(),
-                                                0);
-  absl::InlinedVector<int64_t, 6> limit_indices(
-      new_dot_shape.dimensions().begin(), new_dot_shape.dimensions().end());
-  absl::InlinedVector<int64_t, 6> strides(new_dot_shape.dimensions_size(), 1);
+  DimensionVector start_indices(new_dot_shape.dimensions_size(), 0);
+  DimensionVector limit_indices(new_dot_shape.dimensions().begin(),
+                                new_dot_shape.dimensions().end());
+  DimensionVector strides(new_dot_shape.dimensions_size(), 1);
 
   int64_t slice_dim = new_dot_shape.dimensions_size() - (lhs_same ? 1 : 2);
   limit_indices[slice_dim] = a->shape().dimensions(slice_dim);
@@ -356,9 +355,12 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
 
 }  // anonymous namespace
 
-StatusOr<bool> DotMerger::Run(HloModule* module) {
+StatusOr<bool> DotMerger::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool changed_computation,
                         MergeDots(comp, max_size_to_merge_));
     changed |= changed_computation;

@@ -728,14 +728,14 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                                  use_large_range);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  bool pseudo_random,
                                                  bool use_large_range) {
   auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get(), use_large_range);
 }
 
-StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+StatusOr<std::vector<Literal>> MakeFakeArguments(const HloModule* module,
                                                  std::minstd_rand0* engine,
                                                  bool use_large_range) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));

@@ -428,8 +428,9 @@ TEST_F(HloModuleTest, OneComputationAllAllowed) {
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {computation};
-  EXPECT_THAT(module->MakeComputationPostOrder(/*threads=*/{}, allowList),
-              ::testing::ElementsAre(computation));
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::ElementsAre(computation));
 }
 
 TEST_F(HloModuleTest, OneComputationAllFiltered) {
@@ -438,9 +439,10 @@ TEST_F(HloModuleTest, OneComputationAllFiltered) {
   module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  module->MakeComputationPostOrder(/*threads=*/{}, allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(/*threads=*/{}, allowList),
-              ::testing::IsEmpty());
+  module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::IsEmpty());
 }
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
@@ -457,7 +459,8 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation2,
                                                     computation3, computation4};
-  auto post_order = module->MakeComputationPostOrder(/*threads=*/{}, allowList);
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation2,
                                               computation3, computation4));
@@ -478,7 +481,8 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderMiddleFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation4};
-  auto post_order = module->MakeComputationPostOrder(/*threads=*/{}, allowList);
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation4));
 }
@@ -496,13 +500,15 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  auto post_order = module->MakeComputationPostOrder(/*threads=*/{}, allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(/*threads=*/{}, allowList),
-              ::testing::IsEmpty());
+  auto post_order =
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList);
+  EXPECT_THAT(
+      module->MakeComputationPostOrder(/*execution_threads=*/{}, allowList),
+      ::testing::IsEmpty());
 }
 
-TEST_F(HloModuleTest, TwoComputationsFilterThreads) {
-  // Create a module with two computations with different threads and
+TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
+  // Create a module with two computations with different execution_threads and
   // ensure thread name filtering can return proper computations.
   HloComputation::Builder builder(TestName());
   constexpr char kParallelThreadName[] = "parallel_thread";
@@ -522,7 +528,7 @@ TEST_F(HloModuleTest, TwoComputationsFilterThreads) {
   auto* parallel_thread_computation = async_done->async_wrapped_computation();
 
   EXPECT_THAT(
-      module->MakeComputationPostOrder({HloInstruction::kMainThreadName}),
+      module->MakeComputationPostOrder({HloInstruction::kMainExecutionThread}),
       ::testing::ElementsAre(main_thread_computation));
   EXPECT_THAT(module->MakeComputationPostOrder(),
               ::testing::ElementsAre(parallel_thread_computation,

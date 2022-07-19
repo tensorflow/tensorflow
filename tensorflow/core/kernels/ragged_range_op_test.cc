@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -75,6 +76,17 @@ TEST_F(RaggedRangeOpTest, FloatValues) {
   test::ExpectTensorNear<float>(
       *GetOutput(kValuesOutput),
       test::AsTensor<float>({0, 2, 4, 6, 5, 6, 5, 4, 3, 2}), 0.1);
+}
+
+TEST_F(RaggedRangeOpTest, RangeSizeOverflow) {
+  BuildRaggedRangeGraph<float>();
+  AddInputFromArray<float>(TensorShape({2}), {1.1, 0.1});    // starts
+  AddInputFromArray<float>(TensorShape({2}), {10.0, 1e10});  // limits
+  AddInputFromArray<float>(TensorShape({2}), {1, 1e-10});    // deltas
+
+  EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
+                         std::numeric_limits<int64_t>::max()),
+            RunOpKernel().error_message());
 }
 
 TEST_F(RaggedRangeOpTest, BroadcastDeltas) {

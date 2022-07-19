@@ -4365,7 +4365,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     llvm::Optional<int64_t> optional_axis =
         GetIntegerHLOAxisFromTFAxis(op.dimension(), input_type.getRank());
-    if (!optional_axis.hasValue())
+    if (!optional_axis.has_value())
       return rewriter.notifyMatchFailure(op, "required axis");
     int64_t axis = optional_axis.getValue();
 
@@ -5398,7 +5398,7 @@ class ConvertInfeedDequeueTupleOp
 
     result_types.pop_back();  // remove the token type.
 
-    if (op._XlaSharding().hasValue()) {
+    if (op._XlaSharding().has_value()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
       ::xla::OpSharding sharding_proto;
@@ -5980,7 +5980,7 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
                                 PatternRewriter &rewriter) const override {
     // TODO(b/148313088): define sharding attribute struct in MLIR intead of
     // using a string.
-    if (!op._XlaSharding().hasValue()) return failure();
+    if (!op._XlaSharding().has_value()) return failure();
 
     NamedAttribute call_target_name = rewriter.getNamedAttr(
         "call_target_name", rewriter.getStringAttr("Sharding"));

@@ -65,7 +65,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
-
 # The callable that provide Keras default session that is needed for saving.
 _SESSION_PROVIDER = None
 
@@ -326,14 +325,14 @@ class _CheckpointRestoreCoordinator(object):
 
   def restore_saveables(self,
                         tensor_saveables,
-                        python_saveables,
+                        python_positions,
                         registered_savers=None):
     """Run or build restore operations for SaveableObjects.
 
     Args:
       tensor_saveables: `SaveableObject`s which correspond to Tensors.
-      python_saveables: `PythonStateSaveable`s which correspond to Python
-        values.
+      python_positions: List of CheckpointPositions bound to `PythonState`
+        objects which must be restored eagerly.
       registered_savers: a dict mapping saver names-> object name -> Trackable.
 
     Returns:
@@ -342,10 +341,9 @@ class _CheckpointRestoreCoordinator(object):
     """
     restore_ops = []
     # Eagerly run restorations for Python state.
-    for saveable in python_saveables:
-      spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore(
-          [self.reader.get_tensor(name) for name in spec_names])
+    for position in python_positions:
+      key = position.object_proto.attributes[0].checkpoint_key
+      position.trackable.deserialize(self.reader.get_tensor(key))
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables or registered_savers:

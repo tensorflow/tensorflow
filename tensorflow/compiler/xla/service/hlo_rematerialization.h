@@ -116,7 +116,10 @@ class HloRematerialization : public HloModulePass {
   // instructions were rematerialized. If memory use is already below the limit
   // specified in the constructor then no instructions are rematerialized and
   // false is returned.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   // Rematerializes instructions within the given computation. 'order' is the

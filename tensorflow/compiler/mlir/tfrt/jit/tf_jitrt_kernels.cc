@@ -651,7 +651,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
         "tf_jitrt.Execute",
         {{"id", id},
          {"executable", name},
-         {"specialization", !executable.specialization().hasValue()
+         {"specialization", !executable.specialization().has_value()
                                 ? "default"
                                 : std::to_string(*executable.specialization())},
          {"time_to_compile_ms", executable.time_to_compile().count()}});

@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -62,23 +61,30 @@ using mlir::linalg::GenericOp;
 using mlir::linalg::InitTensorOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
-using mlir::linalg::LinalgTransformationFilter;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::ExtractSliceOp;
+
+// Match 1D or 2D reduction.
+bool isCanonicalizedReduction(Operation *op) {
+  auto reduction = mlir::dyn_cast<GenericOp>(op);
+  if (!reduction) return false;
+
+  if (reduction.getNumOutputs() != 1) return false;
+  if (reduction.getNumLoops() > 2) return false;
+  return reduction.getNumReductionLoops() == 1;
+}
 
 // Tiles a GenericOp that models a 2D row or column reduction.
 struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
   RowOrColumnReductionTilingPattern(const LinalgTilingOptions &options,
-                                    const LinalgTransformationFilter &filter,
                                     MLIRContext *context,
                                     mlir::PatternBenefit benefit = 1)
-      : OpRewritePattern<GenericOp>(context, benefit),
-        filter(filter),
-        options(options) {}
+      : OpRewritePattern<GenericOp>(context, benefit), options(options) {}
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
+    if (hasTransformationAttr(linalg_op)) return failure();
+    if (!isCanonicalizedReduction(linalg_op)) return failure();
 
     if (linalg_op.getNumOutputs() != 1) return failure();
     if (linalg_op.getNumLoops() != 2) return failure();
@@ -86,16 +92,14 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto tiled_op = mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
     if (failed(tiled_op)) return failure();
 
-    tiled_op->loops.front()->walk([&](LinalgOp tOp) {
-      filter.replaceLinalgTransformationFilter(rewriter, tOp);
-    });
+    tiled_op->loops.front()->walk(
+        [&](LinalgOp tOp) { setTransformationAttr(rewriter, tOp); });
 
     rewriter.replaceOp(linalg_op, tiled_op->tensorResults);
     return success();
   }
 
  private:
-  LinalgTransformationFilter filter;
   LinalgTilingOptions options;
 };
 
@@ -147,18 +151,16 @@ struct RowOrColumnReductionTilingPattern : public OpRewritePattern<GenericOp> {
 // This is necessary to push horizontal reduction to the later stage.
 struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
   OneDimReductionTilingPattern(int64_t vector_size, int64_t tile_size,
-                               const LinalgTransformationFilter &filter,
                                mlir::MLIRContext *context,
                                mlir::PatternBenefit benefit = 1)
       : OpRewritePattern<GenericOp>(context, benefit),
-        filter(filter),
         vector_size(vector_size),
         tile_size(tile_size) {}
 
   LogicalResult matchAndRewrite(GenericOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
-    if (linalg_op.getNumOutputs() != 1) return failure();
+    if (hasTransformationAttr(linalg_op)) return failure();
+    if (!isCanonicalizedReduction(linalg_op)) return failure();
 
     // Check if all inputs have a 1D identity map.
     if (linalg_op.getNumLoops() != 1) return failure();
@@ -189,7 +191,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     llvm::Optional<Value> tilable_bound_or =
         getTilableBound(rewriter, loc, zero, input_size, tile_size_value);
     Value tilable_bound =
-        tilable_bound_or.hasValue() ? *tilable_bound_or : input_size;
+        tilable_bound_or.has_value() ? *tilable_bound_or : input_size;
 
     GenericOp tiled_reduction;
     auto perfectly_tiled_loop = rewriter.create<LoopOp>(
@@ -232,7 +234,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
 
     // If the loop was not perfectly tiled, then we have to combine
     // `horizontal_reduction` with the elements in the `tail`.
-    if (tilable_bound_or.hasValue()) {
+    if (tilable_bound_or.has_value()) {
       auto final_reduction = rewriter.create<LoopOp>(
           loc, tilable_bound, input_size, tile_size_value, inputs,
           makeArrayRef(result),
@@ -256,7 +258,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
             bvm.map(linalg_op.inputs(), sliced_inputs);
             bvm.map(linalg_op.outputs(), outputs);
             auto new_linalg_op = b.clone(*linalg_op.getOperation(), bvm);
-            filter.replaceLinalgTransformationFilter(rewriter, new_linalg_op);
+            setTransformationAttr(b, new_linalg_op);
             b.create<mlir::gml_st::YieldOp>(nested_loc,
                                             new_linalg_op->getResult(0));
           });
@@ -264,10 +266,9 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     }
     rewriter.replaceOp(linalg_op, result);
 
-    perfectly_tiled_loop->walk([&](GenericOp op) {
-      filter.replaceLinalgTransformationFilter(rewriter, op);
-    });
-    filter.replaceLinalgTransformationFilter(rewriter, horizontal_reduction);
+    perfectly_tiled_loop->walk(
+        [&](GenericOp op) { setTransformationAttr(rewriter, op); });
+    setTransformationAttr(rewriter, horizontal_reduction);
     return success();
   }
 
@@ -306,7 +307,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto iv = ivs.front();
 
     auto tile_sizes = mlir::linalg::computeTileSizes(
-         b, nested_loc, tile_size_value, input_size);
+        b, nested_loc, tile_size_value, input_size);
     for (auto input : inputs) {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(
@@ -356,19 +357,9 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
   }
 
  private:
-  LinalgTransformationFilter filter;
   int64_t vector_size;
   int64_t tile_size;
 };
-
-// Match 1D or 2D reduction.
-bool isCanonicalizedReduction(Operation *op) {
-  auto reduction = mlir::dyn_cast<GenericOp>(op);
-  if (!reduction) return false;
-
-  if (reduction.getNumLoops() > 2) return false;
-  return reduction.getNumReductionLoops() == 1;
-}
 
 struct TileReductionPass : public TileReductionBase<TileReductionPass> {
   TileReductionPass() = default;
@@ -382,30 +373,22 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
     auto func = getOperation();
     auto context = func.getContext();
 
-    auto filter = LinalgTransformationFilter(
-                      llvm::None, {mlir::StringAttr::get(context, "tiled")})
-                      .addFilter([](Operation *op) {
-                        return success(isCanonicalizedReduction(op));
-                      });
     assert(reduction_1d_tile_size % reduction_vector_size == 0 &&
            "Tile size for 1D reduction should be a multiple of vector size");
     auto patterns =
         mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
-    patterns.add<OneDimReductionTilingPattern>(reduction_vector_size,
-                                               reduction_1d_tile_size, filter,
-                                               patterns.getContext());
+    patterns.add<OneDimReductionTilingPattern>(
+        reduction_vector_size, reduction_1d_tile_size, patterns.getContext());
 
     assert(reduction_2d_tile_sizes.size() == 2 &&
            "Tiling sizes for 2D reductions should have two elements");
     patterns.add<RowOrColumnReductionTilingPattern>(
-        LinalgTilingOptions{}.setTileSizes(reduction_2d_tile_sizes), filter,
+        LinalgTilingOptions{}.setTileSizes(reduction_2d_tile_sizes),
         patterns.getContext());
     (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
     // Ensure we drop the marker in the end.
-    func.walk([](LinalgOp op) {
-      op->removeAttr(mlir::linalg::LinalgTransforms::kLinalgTransformMarker);
-    });
+    func.walk([](LinalgOp op) { removeTransformationAttr(op); });
   }
 };
 

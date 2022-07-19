@@ -36,7 +36,10 @@ class AllReduceCombiner : public HloModulePass {
 
   absl::string_view name() const override { return "all-reduce-combiner"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Combine all reduce ops up to this threshold.

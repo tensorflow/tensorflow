@@ -501,7 +501,7 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   params->device = device_.get();
   params->frame_iter = FrameAndIter(0, 0);
   params->function_library = flr_;
-  params->inputs = inputs;
+  params->inputs = *inputs;
   params->op_kernel = kernel;
   params->resource_manager = resource_mgr_.get();
   params->runner = &runner_;

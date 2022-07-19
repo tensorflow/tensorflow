@@ -298,7 +298,7 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   auto begin = get_const_int(slice_op.begin(), /*expected_rank=*/1);
   auto end = get_const_int(slice_op.end(), /*expected_rank=*/1);
   auto strides = get_const_int(slice_op.strides(), /*expected_rank=*/1);
-  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
+  if (!begin.has_value() || !end.has_value() || !strides.has_value() ||
       *begin != 0 || *end != 1 || *strides != 1)
     return {};
 

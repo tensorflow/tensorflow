@@ -201,7 +201,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     quant::QuantizedType quant_type;
     SmallVector<double, 4> mins, maxs;
 
-    if (op.getAxisStats().hasValue()) {
+    if (op.getAxisStats().has_value()) {
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
       auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();

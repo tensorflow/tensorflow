@@ -1336,7 +1336,9 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   return new_while;
 }
 
-StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
+StatusOr<bool> WhileLoopSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
@@ -1345,7 +1347,7 @@ StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
   // don't have to worry about mutating the lists of computations or
   // instructions while we iterate.
   std::vector<HloInstruction*> while_ops;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->computations(execution_threads)) {
     for (auto* instr : comp->instructions()) {
       if (instr->opcode() == HloOpcode::kWhile) {
         while_ops.push_back(instr);

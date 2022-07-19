@@ -247,7 +247,7 @@ mlir::LogicalResult ClusterDeviceClusterOpsInBlock(mlir::OpBuilder* builder,
   llvm::Optional<mlir::tf_device::ClusterOp> current_cluster;
   for (mlir::tf_device::ClusterOp cluster :
        llvm::make_early_inc_range(block_ops)) {
-    if (!current_cluster.hasValue()) {
+    if (!current_cluster.has_value()) {
       current_cluster = cluster;
       continue;
     }

@@ -285,12 +285,11 @@ func.func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tenso
   func.return %1 : tensor<2x10xi32>
 }
 
-// TOOD(b/168036682): Support dynamic shaped types.
-// DISABLED-CHECK-LABEL: @set_dynamic_dimension_size
+// CHECK-LABEL: @set_dynamic_dimension_size
 func.func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf32> {
   %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
-  // DISABLED-CHECK: mhlo.set_dimension_size
-  // CHECK: tf.XlaSetDynamicDimensionSize
+  // CHECK: mhlo.set_dimension_size
+  // CHECK-SAME: {dimension = 0 : i64} : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>
   %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }

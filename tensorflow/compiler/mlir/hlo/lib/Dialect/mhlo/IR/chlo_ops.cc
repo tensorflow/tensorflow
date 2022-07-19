@@ -445,7 +445,7 @@ void RankSpecializationClusterOp::getSuccessorRegions(
   // RankSpecializationClusterOp has unconditional control flows into the region
   // and back to the parent, so return the correct RegionSuccessor purely based
   // on the index being None or 0.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     regions.push_back(RegionSuccessor(getResults()));
     return;
   }

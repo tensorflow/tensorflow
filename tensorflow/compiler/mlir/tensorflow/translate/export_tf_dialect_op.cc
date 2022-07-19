@@ -73,7 +73,7 @@ void SetShapeAttribute(absl::string_view name, ContainerT shapes,
   auto& shape_list = *value.mutable_list();
   for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
-    if (shape.hasValue()) {
+    if (shape.has_value()) {
       for (int64_t dim : *shape) tshape.add_dim()->set_size(dim);
     } else {
       tshape.set_unknown_rank(true);

@@ -228,7 +228,7 @@ DenseElementsAttr reshape(DenseElementsAttr attr, ShapedType newType) {
 // Convert a 1D dense int64 attribute to a list of values.
 SmallVector<int64_t> convertDenseIntAttr(
     llvm::Optional<mlir::DenseIntElementsAttr> optionalAttr) {
-  if (!optionalAttr.hasValue()) return SmallVector<int64_t>{};
+  if (!optionalAttr.has_value()) return SmallVector<int64_t>{};
 
   mlir::DenseIntElementsAttr attr = *optionalAttr;
   auto values = attr.getValues<int64_t>();
@@ -238,7 +238,7 @@ SmallVector<int64_t> convertDenseIntAttr(
 // Convert a 1D or Nx2 dense int64 attribute to a list of tuples.
 FailureOr<SmallVector<std::pair<int64_t, int64_t>>> convertNx2Attribute(
     llvm::Optional<mlir::DenseIntElementsAttr> optionalAttr, Location loc) {
-  if (!optionalAttr.hasValue())
+  if (!optionalAttr.has_value())
     return SmallVector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optionalAttr;
 
@@ -799,12 +799,12 @@ void ConstantOp::print(::mlir::OpAsmPrinter& p) {
 LogicalResult CustomCallOp::verify() {
   // If both operand and result layout attributes are not specified then nothing
   // to verify.
-  if (!operand_layouts().hasValue() && !result_layouts().hasValue())
+  if (!operand_layouts().has_value() && !result_layouts().has_value())
     return success();
 
   // Layout constraints for either both operands & results or none should be
   // specified.
-  if (operand_layouts().hasValue() != result_layouts().hasValue())
+  if (operand_layouts().has_value() != result_layouts().has_value())
     return emitOpError() << "Layout attributes should be specified for "
                             "either both operands and results or none.";
 
@@ -4824,7 +4824,7 @@ LogicalResult ReduceOp::verify() {
 
     // Check shape.
     if (!allInputsUnranked && opResultType.hasRank() &&
-        (newDimensions != opResultType.getShape())) {
+        failed(verifyCompatibleShape(newDimensions, opResultType.getShape()))) {
       Type expectedResultType = RankedTensorType::get(
           newDimensions, accumulatorSubShapes[shapeIdx].getElementType());
       return emitError()
@@ -6616,7 +6616,7 @@ void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   if (auto elements = operands.front().dyn_cast_or_null<SplatElementsAttr>()) {
-    return elements.reshape(getResult().getType().cast<ShapedType>());
+    return reshape(elements, getResult().getType().cast<ShapedType>());
   }
   for (const auto& it : llvm::enumerate(permutation().getValues<APInt>())) {
     if (it.index() != it.value()) {

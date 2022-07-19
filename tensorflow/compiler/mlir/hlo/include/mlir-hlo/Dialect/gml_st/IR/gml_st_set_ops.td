@@ -120,23 +120,24 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let hasVerifier = 1;
 }
 
-def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
+def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
+    NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
-    Collapses a tile.
+    Drops dimensions of a subset.
   }];
   let description = [{
-    Collapses the argument tile by selecting a subset of its dimensions. The
-    result is a tile in a space of smaller rank, which is implicitly defined by
-    the root space.
+    Selects specific dimensions of a subset and drops the remaining ones. The
+    result is a tile or point in a space of smaller rank, which is implicitly
+    defined by the root space.
   }];
   let arguments = (ins
-    GMLST_TileType:$superset,
-    I64ElementsAttr:$remaining_dims);
-  let results = (outs GMLST_TileType:$result);
+    AnySet:$superset,
+    DenseI64ArrayAttr:$remaining_dims);
+  let results = (outs AnySet:$result);
   let assemblyFormat = [{
-    $superset `,` custom<I64ElementsAttr>($remaining_dims) attr-dict `:`
-    qualified(type($superset)) `->` qualified(type($result))
+    $superset `,` $remaining_dims attr-dict `:`
+    qualified(type($superset)) `to` qualified(type($result))
   }];
   let hasVerifier = 0;
 }

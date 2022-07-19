@@ -38,30 +38,38 @@ class HloPassFix : public Pass {
   template <typename... Args>
   explicit HloPassFix(Args&&... args) : Pass(args...) {}
 
-  Status RunOnChangedComputations(HloModule* module,
-                                  RunState* outer_run_state) override {
+  Status RunOnChangedComputations(HloModule* module, RunState* outer_run_state,
+                                  const absl::flat_hash_set<absl::string_view>&
+                                      execution_threads) override {
     RunState run_state;
     run_state.changed_last_iteration = outer_run_state->changed_last_iteration;
-    TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state));
+    TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     outer_run_state->changed_this_iteration.insert(run_state.changed.begin(),
                                                    run_state.changed.end());
     return OkStatus();
   }
 
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     RunState run_state(module);
-    TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state));
+    TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     return !run_state.changed.empty();
   }
 
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override {
+  using HloPassInterface::RunOnModuleGroup;
+  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
+                                  const absl::flat_hash_set<absl::string_view>&
+                                      execution_threads) override {
     bool changed = false;
     bool changed_this_iteration = true;
     int64_t iteration_count = 0;
     VLOG(3) << "Running HloPassFix.";
     while (changed_this_iteration) {
-      TF_ASSIGN_OR_RETURN(changed_this_iteration,
-                          Pass::RunOnModuleGroup(module_group));
+      TF_ASSIGN_OR_RETURN(
+          changed_this_iteration,
+          Pass::RunOnModuleGroup(module_group, execution_threads));
       changed |= changed_this_iteration;
       VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
       ++iteration_count;
@@ -76,10 +84,13 @@ class HloPassFix : public Pass {
   }
 
  private:
-  Status RunToFixPoint(HloModule* module, RunState* run_state) {
+  Status RunToFixPoint(
+      HloModule* module, RunState* run_state,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) {
     VLOG(3) << "Running HloPassFix on " << Pass::name();
     while (!run_state->changed_last_iteration.empty()) {
-      TF_RETURN_IF_ERROR(RunOnChangedComputationsOnce(module, run_state));
+      TF_RETURN_IF_ERROR(
+          RunOnChangedComputationsOnce(module, run_state, execution_threads));
       VLOG(3) << Pass::name() << " iteration " << run_state->iteration
               << " changed_this_iteration: "
               << !run_state->changed_last_iteration.empty();
@@ -96,18 +107,21 @@ class HloPassFix : public Pass {
     return OkStatus();
   }
 
-  Status RunOnChangedComputationsOnce(HloModule* module, RunState* run_state) {
+  Status RunOnChangedComputationsOnce(
+      HloModule* module, RunState* run_state,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) {
     // If Pass overrides RunOnChangedComputations, just forward to it.
     if (!std::is_same<decltype(&HloPassInterface::RunOnChangedComputations),
                       decltype(&Pass::RunOnChangedComputations)>::value) {
-      return Pass::RunOnChangedComputations(module, run_state);
+      return Pass::RunOnChangedComputations(module, run_state,
+                                            execution_threads);
     }
     // If Pass does not override the default
     // HloPassInterface::RunOnChangedComputations that calls into
     // HloPassFix<Pass>::Run, avoid infinite recursion.
-    TF_ASSIGN_OR_RETURN(bool changed, Pass::Run(module));
+    TF_ASSIGN_OR_RETURN(bool changed, Pass::Run(module, execution_threads));
     if (changed) {
-      auto computations = module->computations();
+      auto computations = module->computations(execution_threads);
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }

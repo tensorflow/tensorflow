@@ -534,7 +534,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue()) values = llvm::to_vector(attr->getValues<int64_t>());
+      if (attr.has_value())
+        values = llvm::to_vector(attr->getValues<int64_t>());
       set_attr(name, b.getI64TensorAttr(values));
     };
 
@@ -542,7 +543,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     // TODO(ezhulenev): Allow passing boolean tensors to the JitRt custom calls.
     auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
-      if (attr.hasValue())
+      if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),
                       attr->getValues<bool>().end());
       set_attr(name, b.getI64TensorAttr(values));
@@ -798,7 +799,7 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
 
     // If custom call has target arguments mapping, then we need to pass empty
     // memrefs in place of holes.
-    if (op.getTargetArgMapping().hasValue()) {
+    if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
@@ -1182,7 +1183,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllToAllOp op,
                                         CallOp call) {
     call->setAttr(b.getStringAttr("has_split_dimension"),
-                  b.getBoolAttr(op.getSplitDimension().hasValue()));
+                  b.getBoolAttr(op.getSplitDimension().has_value()));
     return success();
   }
   static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,

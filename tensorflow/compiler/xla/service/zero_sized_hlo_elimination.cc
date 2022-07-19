@@ -27,9 +27,12 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
+StatusOr<bool> ZeroSizedHloElimination::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
       if (instruction->HasSideEffect() || !instruction->shape().IsArray() ||
           instruction->opcode() == HloOpcode::kConstant) {

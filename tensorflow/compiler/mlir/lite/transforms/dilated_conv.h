@@ -308,7 +308,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.block_shape(), bts_op.block_shape(), expand_axis, rewriter);
-  if (!dilations_attr.hasValue()) {
+  if (!dilations_attr.has_value()) {
     return rewriter.notifyMatchFailure(op, "failed to extract dilation rate");
   }
 

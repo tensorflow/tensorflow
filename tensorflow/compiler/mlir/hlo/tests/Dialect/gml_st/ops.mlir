@@ -15,7 +15,31 @@ func.func @types() {
   %3 = gml_st.tile %1 [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
   // CHECK: %{{.*}} = gml_st.transpose_tile %[[ARG2]], [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
   %4 = gml_st.transpose_tile %1, [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
+  // CHECK: %{{.*}} = gml_st.drop_dims %[[ARG2]], [1] : !gml_st.tile<64x32> to !gml_st.tile<32>
+  %5 = gml_st.drop_dims %1, [1] : !gml_st.tile<64x32> to !gml_st.tile<32>
   func.return
+}
+
+// -----
+
+// CHECK-LABEL: @collapse_tile
+// CHECK-SAME:  %[[ARG0:.*]]: !gml_st.tile<?x64x128>
+func.func @collapse_tile(%tile: !gml_st.tile<?x64x128>) -> !gml_st.tile<?x128> {
+  // CHECK: %[[VAL_0:.*]] = gml_st.drop_dims %[[ARG0]], [0, 2] : !gml_st.tile<?x64x128> to !gml_st.tile<?x128>
+  // CHECK: return %[[VAL_0]]
+  %0 = gml_st.drop_dims %tile, [0, 2] : !gml_st.tile<?x64x128> to !gml_st.tile<?x128>
+  func.return %0 : !gml_st.tile<?x128>
+}
+
+// -----
+
+// CHECK-LABEL: @collapse_point
+// CHECK-SAME:  %[[ARG0:.*]]: !gml_st.point
+func.func @collapse_point(%point: !gml_st.point) -> !gml_st.point {
+  // CHECK: %[[VAL_0:.*]] = gml_st.drop_dims %[[ARG0]], [0, 2] : !gml_st.point to !gml_st.point
+  // CHECK: return %[[VAL_0]]
+  %0 = gml_st.drop_dims %point, [0, 2] : !gml_st.point to !gml_st.point
+  func.return %0 : !gml_st.point
 }
 
 // -----
@@ -318,7 +342,7 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
   %bcast = gml_st.dynamic_broadcast_in_dim
       ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>) {
-        broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>
+        broadcast_dimensions = [:i64 0, 2]
       }
   func.return
 }

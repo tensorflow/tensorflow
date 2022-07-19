@@ -619,7 +619,7 @@ absl::Cord HloComputation::ToCord(
   if (options.print_ids() && !IsMainThread()) {
     // When print_ids() is false, exclude entry computation's thread name
     // because it includes and leads to non-deterministic fingerprint.
-    result.Append(StrCat(", thread_name=\"", thread_name(), "\""));
+    result.Append(StrCat(", execution_thread=\"", execution_thread(), "\""));
   }
   return result;
 }
@@ -638,7 +638,8 @@ HloComputationProto HloComputation::ToProto() const {
   proto.set_root_id(root_instruction()->unique_id());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   proto.set_is_fusion_computation(is_fusion_computation_);
-  proto.set_thread_name(IsMainThread() ? "" : std::string(thread_name()));
+  proto.set_execution_thread(IsMainThread() ? ""
+                                            : std::string(execution_thread()));
   return proto;
 }
 
@@ -702,8 +703,8 @@ HloComputation::CreateFromProto(
                          /*fusion_instruction=*/nullptr));
   computation->unique_id_ = proto.id();
   computation->is_fusion_computation_ = proto.is_fusion_computation();
-  if (!proto.thread_name().empty()) {
-    computation->SetThreadName(proto.thread_name());
+  if (!proto.execution_thread().empty()) {
+    computation->SetExecutionThread(proto.execution_thread());
   }
   return std::move(computation);
 }
@@ -749,7 +750,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-    absl::string_view async_thread_name) {
+    absl::string_view async_execution_thread) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -770,10 +771,11 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
       ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation, /*async_group_id=*/std::nullopt, async_thread_name));
+      async_computation, /*async_group_id=*/std::nullopt,
+      async_execution_thread));
   HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
       root->shape(), async_start, async_computation,
-      /*async_group_id=*/std::nullopt, async_thread_name));
+      /*async_group_id=*/std::nullopt, async_execution_thread));
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
@@ -923,7 +925,7 @@ bool HloComputation::EqualInternal(const HloComputation& other,
   }
 
   if (!ignore_thread) {
-    return thread_name() == other.thread_name();
+    return execution_thread() == other.execution_thread();
   }
   return true;
 }
@@ -1306,7 +1308,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   SortClonedInstructionUsersAndControlLists(*context, replace, instructions_);
 
   context->MapComputation(this, result.get());
-  result->SetThreadName(thread_name());
+  result->SetExecutionThread(execution_thread());
 
   return result;
 }

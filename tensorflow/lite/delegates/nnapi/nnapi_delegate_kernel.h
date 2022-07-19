@@ -402,6 +402,26 @@ class NNAPIDelegateKernel {
                           const TfLiteIntArray* input_tensors,
                           const TfLiteIntArray* output_tensors,
                           int* nnapi_errno);
+
+  // Log the compilation info provided by the support library at the end of
+  // a compilation (failed or successful).
+  // To avoid output spamming, logging is done only once, on the first call to
+  // this method, subsequent runs will only retrieve the information but not
+  // log it.
+  //
+  // This method is registered as a callback with the SL which calls it.
+  static void LogCompilationInfoOnce(
+      const NnApi* nnapi, const ANeuralNetworksDiagnosticCompilationInfo* info);
+
+  // Log the execution info provided by the support library at the end of
+  // an execution (failed or successful).
+  // To avoid output spamming, logging is done only once, on the first call to
+  // this method, subsequent runs will only retrieve the information but not
+  // log it.
+  //
+  // This method is registered as a callback with the SL which calls it.
+  static void LogExecutionInfoOnce(
+      const NnApi* nnapi, const ANeuralNetworksDiagnosticExecutionInfo* info);
 };
 
 }  // namespace nnapi

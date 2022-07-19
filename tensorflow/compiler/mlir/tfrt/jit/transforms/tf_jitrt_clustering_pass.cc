@@ -76,7 +76,7 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // Run clustering only if the clustering tier or supported operations are
     // explicitly defined by the oplist.
-    if (!tier.hasValue() && opset.empty()) return;
+    if (!tier.has_value() && opset.empty()) return;
 
     // If the clustering tier is not defined, it means that the opset will later
     // filter supported operations, so it's ok to use `all` tier.

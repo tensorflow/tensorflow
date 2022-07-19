@@ -51,6 +51,17 @@ func.func @reduce_unranked(%arg0: tensor<*xf32>, %arg1 : tensor<*xf32>)
 
 // -----
 
+// CHECK-LABEL:    func @reduce_mixed_dynamism
+func.func @reduce_mixed_dynamism(%arg0: tensor<4x4xf32>, %arg1 : tensor<f32>)
+    -> (tensor<?xf32>) {
+  %0 = mhlo.reduce(%arg0 init: %arg1)
+    applies mhlo.multiply across dimensions = [1]
+    : (tensor<4x4xf32>, tensor<f32>) -> tensor<?xf32>
+  func.return %0: tensor<?xf32>
+}
+
+// -----
+
 // CHECK-LABEL:    func @reduce_unranked
 func.func @reduce_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>,
     %arg2: tensor<*xf32>, %arg3: tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {

@@ -392,9 +392,9 @@ class SparseBincountOp : public OpKernel {
     OP_REQUIRES(
         ctx, size >= 0,
         errors::InvalidArgument("size (", size, ") must be non-negative"));
-    OP_REQUIRES_OK(
-        ctx, sparse_utils::ValidateSparseTensor<int64_t>(
-                 indices, values, dense_shape, /*validate_indices=*/true));
+    OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                            indices, values, dense_shape,
+                            sparse_utils::IndexValidation::kUnordered));
 
     bool is_1d = dense_shape.NumElements() == 1;
 
@@ -492,6 +492,9 @@ class RaggedBincountOp : public OpKernel {
     int num_rows = splits.size() - 1;
     int num_values = values.size();
     int batch_idx = 0;
+
+    OP_REQUIRES(ctx, splits.size() > 0,
+                errors::InvalidArgument("Splits must be non-empty"));
 
     OP_REQUIRES(ctx, splits(0) == 0,
                 errors::InvalidArgument("Splits must start with 0, not with ",

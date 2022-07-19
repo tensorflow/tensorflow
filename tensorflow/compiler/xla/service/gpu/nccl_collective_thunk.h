@@ -87,7 +87,7 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   config.replica_groups =
       ConvertReplicaGroups(op.getReplicaGroups()).ValueOrDie();
   config.SetCollectiveOpKindAndID(op);
-  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().hasValue(),
+  config.group_mode = GetCollectiveOpGroupMode(op.getChannelId().has_value(),
                                                use_global_device_ids)
                           .ValueOrDie();
   return config;

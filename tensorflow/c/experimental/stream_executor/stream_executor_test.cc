@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <utility>
+
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -42,7 +44,7 @@ TEST(StreamExecutor, SuccessfulRegistration) {
   port::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
-  Platform* platform = maybe_platform.ConsumeValueOrDie();
+  Platform* platform = std::move(maybe_platform).value();
   ASSERT_EQ(platform->Name(), test_util::kDeviceName);
   ASSERT_EQ(platform->VisibleDeviceCount(), test_util::kDeviceCount);
 
@@ -153,7 +155,7 @@ class StreamExecutorTest : public ::testing::Test {
     port::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
     TF_CHECK_OK(maybe_executor.status());
-    return maybe_executor.ConsumeValueOrDie();
+    return std::move(maybe_executor).value();
   }
   SP_Platform platform_;
   SP_PlatformFns platform_fns_;
