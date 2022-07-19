@@ -221,7 +221,7 @@ tensorflow::Tensor CreateTensorFromTensorProto(
 
 }  // namespace
 
-std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
+void ProcessPredictRequestsAndMaybeProfile(
     const std::vector<tensorflow::serving::PredictRequest>& requests,
     SavedModel* saved_model, const bool profile, const int32_t num_steps) {
   std::vector<tensorflow::Tensor> outputs;
@@ -252,7 +252,6 @@ std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
                  << signature;
     }
   }
-  return outputs;
 }
 
 }  // namespace tfrt_stub

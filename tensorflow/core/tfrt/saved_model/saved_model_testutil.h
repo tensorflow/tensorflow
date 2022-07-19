@@ -112,7 +112,7 @@ SavedModel::Options DefaultTpuModelOptions(
 tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
 GetWarmupRequests(absl::string_view saved_model_dir);
 
-std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
+void ProcessPredictRequestsAndMaybeProfile(
     const std::vector<tensorflow::serving::PredictRequest>& requests,
     SavedModel* saved_model, const bool profile = false,
     const int32_t num_steps = 1);
