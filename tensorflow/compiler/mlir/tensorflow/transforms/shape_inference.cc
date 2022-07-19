@@ -1178,9 +1178,6 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
         input_types.size() - num_states - num_captured_arguments;
   }
 
-  VLOG(0) << "Inferring shape for ReduceDataset with #states = " << num_states
-          << " , #input_elements = " << num_input_elements
-          << " , and #captured_arguments = " << num_captured_arguments;
   DCOMMENT_OP(op,
               "Inferring shape for ReduceDataset with #states = "
                   << num_states << " , #input_elements = " << num_input_elements
