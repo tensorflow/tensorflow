@@ -49,6 +49,7 @@ class Thunk {
     kConditional,
     kConvolution,
     kCopy,
+    kCublasLtMatmul,
     kCustomCall,
     kFft,
     kGemm,

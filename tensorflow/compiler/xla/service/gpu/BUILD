@@ -322,6 +322,7 @@ cc_library(
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
         ":launch_dimensions",
+        ":matmul_utils",
         ":nccl_collective_thunks",
         ":parallel_loop_emitter",
         ":target_util",
@@ -396,6 +397,8 @@ cc_library(
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
         ":cholesky_thunk",
+    ]) + if_cuda_is_configured([
+        ":cublas_lt_matmul_thunk",
     ]),
 )
 
@@ -1030,17 +1033,30 @@ cc_library(
     name = "gemm_thunk",
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
-    defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
+        ":matmul_utils",
+        ":thunk",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:stream_header",
+    ],
+)
+
+cc_library(
+    name = "cublas_lt_matmul_thunk",
+    srcs = if_cuda_is_configured(["cublas_lt_matmul_thunk.cc"]),
+    hdrs = if_cuda_is_configured(["cublas_lt_matmul_thunk.h"]),
+    deps = if_cuda_is_configured([
         ":matmul_utils",
         ":thunk",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_header",
-    ] + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:cublas_plugin",
     ]),
 )
 

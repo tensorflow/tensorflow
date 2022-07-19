@@ -230,31 +230,13 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       .ok();
 }
 
-namespace {
-
-bool IsBlasLtCompatible(PrimitiveType type) {
-  switch (type) {
-    case F16:
-    case F32:
-    case F64:
-    case C64:
-    case C128:
-      return true;
-    default:
-      return false;
-  }
-}
-
-}  // namespace
-
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(
     const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
     double alpha_real, double alpha_imag, double beta,
-    std::optional<int64_t> algorithm, int64_t compute_precision,
-    bool use_cublaslt) {
+    std::optional<int64_t> algorithm, int64_t compute_precision) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -303,8 +285,6 @@ bool IsBlasLtCompatible(PrimitiveType type) {
   TF_RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
                (rhs_layout.batch_size == 1));
 
-  use_cublaslt &= IsBlasLtCompatible(output_shape.element_type());
-
   switch (output_shape.element_type()) {
     case F16:
     case BF16:
@@ -334,7 +314,7 @@ bool IsBlasLtCompatible(PrimitiveType type) {
 
   return GemmConfig{
       lhs_layout, rhs_layout, output_layout,     {alpha_real, alpha_imag},
-      beta,       algorithm,  compute_precision, use_cublaslt,
+      beta,       algorithm,  compute_precision,
   };
 }
 
@@ -350,20 +330,16 @@ bool IsBlasLtCompatible(PrimitiveType type) {
   const Shape& lhs_shape = gemm->operand(0)->shape();
   const Shape& rhs_shape = gemm->operand(1)->shape();
   const DotDimensionNumbers& dot_dims = config.dot_dimension_numbers();
-  bool use_cublaslt =
-      gemm->GetModule()->config().debug_options().xla_gpu_enable_cublaslt();
 
-  return GemmConfig::For(lhs_shape, dot_dims.lhs_batch_dimensions(),
-                         dot_dims.lhs_contracting_dimensions(), rhs_shape,
-                         dot_dims.rhs_batch_dimensions(),
-                         dot_dims.rhs_contracting_dimensions(),
-                         /*output_shape=*/gemm->shape(), config.alpha_real(),
-                         config.alpha_imag(), config.beta(), algorithm,
-                         se::blas::kDefaultComputePrecision, use_cublaslt);
+  return GemmConfig::For(
+      lhs_shape, dot_dims.lhs_batch_dimensions(),
+      dot_dims.lhs_contracting_dimensions(), rhs_shape,
+      dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
+      /*output_shape=*/gemm->shape(), config.alpha_real(), config.alpha_imag(),
+      config.beta(), algorithm, se::blas::kDefaultComputePrecision);
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op,
-                                                bool use_cublaslt) {
+/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op) {
   mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
   std::optional<int64_t> algorithm;
@@ -387,8 +363,7 @@ bool IsBlasLtCompatible(PrimitiveType type) {
       dot_dims.getRhsBatchingDimensions(),
       dot_dims.getRhsContractingDimensions(), GetShape(op.getC()),
       op.getAlphaReal().convertToDouble(), op.getAlphaImag().convertToDouble(),
-      op.getBeta().convertToDouble(), algorithm, compute_precision,
-      use_cublaslt);
+      op.getBeta().convertToDouble(), algorithm, compute_precision);
 }
 
 namespace {
@@ -620,6 +595,36 @@ StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
 }  // namespace
 
 namespace cublas_lt {
+
+/*static*/ StatusOr<MatmulPlan> MatmulPlan::For(
+    mlir::lmhlo_gpu::CublasLtMatmulOp op) {
+  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
+
+  int64_t compute_precision = 0;  // Default
+  if (op.getPrecisionConfig().hasValue()) {
+    auto precision_config = op.getPrecisionConfig();
+    for (auto attr : precision_config.getValue()) {
+      int64_t value = static_cast<int64_t>(
+          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
+      if (value > compute_precision) {
+        compute_precision = value;
+      }
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      GemmConfig config,
+      GemmConfig::For(GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
+                      dot_dims.getLhsContractingDimensions(),
+                      GetShape(op.getB()), dot_dims.getRhsBatchingDimensions(),
+                      dot_dims.getRhsContractingDimensions(),
+                      GetShape(op.getC()), op.getAlphaReal().convertToDouble(),
+                      op.getAlphaImag().convertToDouble(),
+                      op.getBeta().convertToDouble(), op.getAlgorithm(),
+                      compute_precision));
+
+  return From(config);
+}
 
 /*static*/ StatusOr<MatmulPlan> MatmulPlan::From(const GemmConfig& config) {
   MatrixLayout lhs_layout = config.lhs_layout;

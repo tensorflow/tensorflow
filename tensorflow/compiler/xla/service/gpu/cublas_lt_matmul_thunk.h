@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,40 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_
+
+#include <optional>
+#include <utility>
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 
 namespace xla {
 namespace gpu {
 
-// This is thread-compatible.
-class GemmThunk : public Thunk {
+class CublasLtMatmulThunk : public Thunk {
  public:
-  // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
-  // BLAS gemm (alpha is stored in the instruction GemmBackendConfig).
-  GemmThunk(ThunkInfo thunk_info, GemmConfig config,
-            const BufferAllocation::Slice& lhs_buffer,
-            const BufferAllocation::Slice& rhs_buffer,
-            const BufferAllocation::Slice& output_buffer);
-
-  GemmThunk(const GemmThunk&) = delete;
-  GemmThunk& operator=(const GemmThunk&) = delete;
+  CublasLtMatmulThunk(ThunkInfo thunk_info, cublas_lt::MatmulPlan plan,
+                      int64_t algorithm_idx,
+                      const BufferAllocation::Slice& lhs_buffer,
+                      const BufferAllocation::Slice& rhs_buffer,
+                      const BufferAllocation::Slice& output_buffer);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  const GemmConfig config_;
+  cublas_lt::MatmulPlan plan_;
+  int64_t algorithm_idx_;
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
+  std::optional<se::cuda::BlasLt::MatmulAlgorithm> algorithm_;
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_LT_MATMUL_THUNK_H_

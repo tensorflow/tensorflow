@@ -203,9 +203,7 @@ FailureOr<Value> GemmOpConversionRewrite(lmhlo_gpu::GEMMOp op,
     return rewriter.notifyMatchFailure(op, "Input element type mismatch.");
   }
 
-  bool use_cublaslt = false;  // FIXME(cjfj).
-  StatusOr<xla::gpu::GemmConfig> config =
-      xla::gpu::GemmConfig::For(op, use_cublaslt);
+  StatusOr<xla::gpu::GemmConfig> config = xla::gpu::GemmConfig::For(op);
 
   if (!config.ok())
     return rewriter.notifyMatchFailure(op, config.status().ToString());

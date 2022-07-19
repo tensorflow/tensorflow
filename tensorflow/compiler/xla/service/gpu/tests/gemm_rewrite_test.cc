@@ -66,8 +66,6 @@ class GemmRewriteTest : public GpuCodegenTest {
   }
 };
 
-class GemmRewriteHloTest : public HloTestBase {};
-
 TEST_F(GemmRewriteTest, SimpleRewrite) {
   const char* hlo_text = R"(
 HloModule SimpleGemm
@@ -787,6 +785,43 @@ ENTRY BF16GemmWithBias {
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2_COPY]]), custom_call_target="__cublas$gemm", output_to_operand_aliasing={{{{}: \(2, {}\)}}}, backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
       )");
 }
+
+#if GOOGLE_CUDA
+
+class CublasLtMatmulRewriteTest : public GpuCodegenTest {
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(true);
+    return debug_options;
+  }
+};
+
+TEST_F(CublasLtMatmulRewriteTest, Simple) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  ROOT dot_a = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]), custom_call_target="__cublas$lt$matmul", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
+#endif  // GOOGLE_CUDA
+
+using GemmRewriteHloTest = HloTestBase;
 
 TEST_F(GemmRewriteHloTest, MergeBitcastAndAdd) {
   const char* hlo_text = R"(

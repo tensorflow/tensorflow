@@ -704,6 +704,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitGemm(custom_call_instr);
   }
 
+  if (xla::gpu::IsCublasLtMatmul(*instr)) {
+    return EmitCublasLtMatmul(custom_call_instr);
+  }
+
   if (xla::gpu::IsCustomCallToDnnConvolution(*instr)) {
     return EmitDnnConvolution(custom_call_instr);
   }
@@ -782,6 +786,35 @@ StatusOr<lmhlo_gpu::CholeskyOp> LhloDialectEmitter::EmitCholesky(
   return cholesky_op;
 }
 
+namespace {
+
+template <typename OpT>
+void SetMatmulAttributes(OpT op, const xla::gpu::GemmBackendConfig& config,
+                         OpBuilder& builder) {
+  auto arrayref = [](absl::Span<const int64_t> array) {
+    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
+  };
+
+  auto hlo_dims = config.dot_dimension_numbers();
+  auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
+      builder.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
+      arrayref(hlo_dims.rhs_batch_dimensions()),
+      arrayref(hlo_dims.lhs_contracting_dimensions()),
+      arrayref(hlo_dims.rhs_contracting_dimensions()));
+  op.setDotDimensionNumbersAttr(mlir_dims);
+  op.setAlphaRealAttr(builder.getF64FloatAttr(config.alpha_real()));
+  op.setAlphaImagAttr(builder.getF64FloatAttr(config.alpha_imag()));
+  op.setBetaAttr(builder.getF64FloatAttr(config.beta()));
+  if (config.algorithm_case() ==
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(builder.getI64IntegerAttr(config.selected_algorithm()));
+  }
+  op.setPrecisionConfigAttr(
+      xla::ConvertPrecisionConfig(&config.precision_config(), &builder));
+}
+
+}  // namespace
+
 StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
     const HloCustomCallInstruction* custom_call) {
   TF_ASSIGN_OR_RETURN(
@@ -801,27 +834,35 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
       CreateOpWithoutAttrs<lmhlo_gpu::GEMMOp>(custom_call,
                                               /*num_operands=*/2));
 
-  auto arrayref = [](absl::Span<const int64_t> array) {
-    return llvm::ArrayRef<int64_t>{array.data(), array.size()};
-  };
+  SetMatmulAttributes(op, config, builder_);
+  return op.getOperation();
+}
 
-  auto hlo_dims = config.dot_dimension_numbers();
-  auto mlir_dims = mhlo::DotDimensionNumbersAttr::get(
-      builder_.getContext(), arrayref(hlo_dims.lhs_batch_dimensions()),
-      arrayref(hlo_dims.rhs_batch_dimensions()),
-      arrayref(hlo_dims.lhs_contracting_dimensions()),
-      arrayref(hlo_dims.rhs_contracting_dimensions()));
-  op.setDotDimensionNumbersAttr(mlir_dims);
-  op.setAlphaRealAttr(builder_.getF64FloatAttr(config.alpha_real()));
-  op.setAlphaImagAttr(builder_.getF64FloatAttr(config.alpha_imag()));
-  op.setBetaAttr(builder_.getF64FloatAttr(config.beta()));
-  if (config.algorithm_case() ==
-      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
-    op.setAlgorithmAttr(
-        builder_.getI64IntegerAttr(config.selected_algorithm()));
+StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
+    const HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const config,
+      custom_call->backend_config<xla::gpu::GemmBackendConfig>());
+
+  if (custom_call->operand_count() != 2) {
+    return xla::InvalidArgument(
+        "cublasLtMatmul custom call should have 2 operands");
   }
-  op.setPrecisionConfigAttr(
-      xla::ConvertPrecisionConfig(&config.precision_config(), &builder_));
+
+  // GEMM may have two or three operands. However, in the three operand case,
+  // the third operand is updated in-place, so we treat that as an output here.
+  TF_ASSIGN_OR_RETURN(
+      lmhlo_gpu::CublasLtMatmulOp op,
+      CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call));
+
+  SetMatmulAttributes(op, config, builder_);
+
+  // Use the first algorithm by default (i.e. fastest according to heuristics).
+  if (config.algorithm_case() !=
+      xla::gpu::GemmBackendConfig::kSelectedAlgorithm) {
+    op.setAlgorithmAttr(builder_.getI64IntegerAttr(0));
+  }
+
   return op.getOperation();
 }
 

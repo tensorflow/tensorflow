@@ -23,10 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#endif  // GOOGLE_CUDA
-
 namespace xla {
 namespace gpu {
 
@@ -41,41 +37,11 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
       output_buffer_(output_buffer) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto get_device_address = [&](const BufferAllocation::Slice& slice) {
-    return params.buffer_allocations->GetDeviceAddress(slice);
-  };
-
-  se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
-  se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
-  se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-
   VLOG(3) << "Running GEMM thunk";
-#if GOOGLE_CUDA
-  if (config_.use_cublaslt) {
-    if (!matmul_plan_and_algorithm_) {
-      TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(config_));
-      TF_ASSIGN_OR_RETURN(
-          std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
-          plan.GetAlgorithms(params.stream));
-      TF_RET_CHECK(config_.algorithm);
-      TF_RET_CHECK(*config_.algorithm >= 0);
-      TF_RET_CHECK(*config_.algorithm < algorithms.size());
-      matmul_plan_and_algorithm_ = {std::move(plan),
-                                    algorithms[*config_.algorithm]};
-    }
-
-    auto& [plan, algorithm] = *matmul_plan_and_algorithm_;
-
-    se::OwningScratchAllocator<> scratch_allocator(
-        params.buffer_allocations->device_ordinal(),
-        params.buffer_allocations->memory_allocator());
-
-    return plan.ExecuteOnStream(params.stream, lhs_data, rhs_data, output_data,
-                                algorithm, scratch_allocator);
-  }
-#endif  // GOOGLE_CUDA
-
-  return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream);
+  const BufferAllocations& allocs = *params.buffer_allocations;
+  return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
+                 allocs.GetDeviceAddress(rhs_buffer_),
+                 allocs.GetDeviceAddress(output_buffer_), params.stream);
 }
 
 }  // namespace gpu

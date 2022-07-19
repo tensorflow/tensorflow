@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -218,7 +219,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   auto key = std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
                              gemm->shape(), gemm_config.SerializeAsString(),
-                             config.use_cublaslt);
+                             IsCublasLtMatmul(*gemm));
 
   static absl::Mutex mutex(absl::kConstInit);
   static auto& cache ABSL_GUARDED_BY(mutex) =
@@ -264,7 +265,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       CreateBuffer(buffer_allocator, *gemm, autotune_config, rng_state));
 
   std::optional<se::blas::AlgorithmType> best_algorithm;
-  if (config.use_cublaslt) {
+  if (IsCublasLtMatmul(*gemm)) {
     TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(config));
     TF_ASSIGN_OR_RETURN(
         std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
@@ -351,7 +352,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
                                 se::DeviceMemoryAllocator* allocator) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr)) {
+    if (IsCublasGemm(*instr) || IsCublasLtMatmul(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, se, allocator));
       changed |= result;
     }

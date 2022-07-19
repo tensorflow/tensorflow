@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
@@ -138,6 +139,10 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/cublas_lt_matmul_thunk.h"
+#endif  // GOOGLE_CUDA
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
@@ -1112,30 +1117,51 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
-  TF_ASSIGN_OR_RETURN(auto thunk, [&]() -> StatusOr<std::unique_ptr<Thunk>> {
-    auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op);
-    TF_RET_CHECK(gemm != nullptr);
+  auto gemm = mlir::dyn_cast<mlir::lmhlo_gpu::GEMMOp>(op);
+  TF_RET_CHECK(gemm != nullptr);
 
-    TF_ASSIGN_OR_RETURN(auto a, GetAllocationSlice(gemm.getA()));
-    TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
-    TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
+  TF_ASSIGN_OR_RETURN(auto a, GetAllocationSlice(gemm.getA()));
+  TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
+  TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
 
-    if (IsBefThunkEnabled(hlo_module_config_)) {
-      return CreateBefThunk(GetThunkInfo(op), op, {a, b, c});
-    }
-
-    bool use_cublaslt =
-        hlo_module_config_.debug_options().xla_gpu_enable_cublaslt();
-
-    TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm, use_cublaslt));
-
-    return std::unique_ptr<Thunk>(
-        new GemmThunk(GetThunkInfo(op), std::move(config), a, b, c));
-  }());
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(thunk, CreateBefThunk(GetThunkInfo(op), op, {a, b, c}));
+  } else {
+    TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
+    thunk = std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config), a,
+                                        b, c);
+  }
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
+
+#if GOOGLE_CUDA
+
+Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
+  auto matmul = mlir::dyn_cast<mlir::lmhlo_gpu::CublasLtMatmulOp>(op);
+  TF_RET_CHECK(matmul != nullptr);
+
+  TF_ASSIGN_OR_RETURN(auto a, GetAllocationSlice(matmul.getA()));
+  TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(matmul.getB()));
+  TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(matmul.getC()));
+
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(thunk, CreateBefThunk(GetThunkInfo(op), op, {a, b, c}));
+  } else {
+    TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
+                        cublas_lt::MatmulPlan::For(matmul));
+    thunk = std::make_unique<CublasLtMatmulThunk>(
+        GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c);
+  }
+
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+#endif  // GOOGLE_CUDA
 
 namespace {
 // An MLIR value and its name as defined in the ODS spec.
@@ -5506,6 +5532,12 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
     return EmitGemmThunk(op);
   }
+
+#if GOOGLE_CUDA
+  if (mlir::isa<mlir::lmhlo_gpu::CublasLtMatmulOp>(op)) {
+    return EmitCublasLtMatmulThunk(op);
+  }
+#endif  // GOOGLE_CUDA
 
   if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp,
                 mlir::lmhlo_gpu::ConvForwardFusedOp,

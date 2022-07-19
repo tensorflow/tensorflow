@@ -88,8 +88,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
-  static StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op,
-                                  bool use_cublaslt);
+  static StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op);
 
   static StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
@@ -97,8 +96,7 @@ struct GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
       double alpha_real, double alpha_imag, double beta,
-      std::optional<int64_t> algorithm, int64_t compute_precision,
-      bool use_cublaslt);
+      std::optional<int64_t> algorithm, int64_t compute_precision);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -107,7 +105,6 @@ struct GemmConfig {
   double beta;
   std::optional<int64_t> algorithm;
   int64_t compute_precision;
-  bool use_cublaslt;
 };
 
 // Run the given GEMM instruction `gemm` subject to the configuration
@@ -126,6 +123,7 @@ namespace cublas_lt {
 
 class MatmulPlan {
  public:
+  static StatusOr<MatmulPlan> For(mlir::lmhlo_gpu::CublasLtMatmulOp op);
   static StatusOr<MatmulPlan> From(const GemmConfig& config);
 
   Status ExecuteOnStream(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
