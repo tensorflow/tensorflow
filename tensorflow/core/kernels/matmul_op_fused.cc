@@ -455,6 +455,14 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
         matmul_activation_mode = se::dnn::ActivationMode::kGeluExact;
         use_cudnn = true;
         break;
+      case FusedComputationType::kBiasAddWithTanh:
+        matmul_activation_mode = se::dnn::ActivationMode::kTanh;
+        use_cudnn = true;
+        break;
+      case FusedComputationType::kBiasAddWithSigmoid:
+        matmul_activation_mode = se::dnn::ActivationMode::kSigmoid;
+        use_cudnn = true;
+        break;
       default:
         use_cudnn = false;
     }
@@ -586,6 +594,8 @@ class FusedMatMulOp : public OpKernel {
       patterns = {
           {FCT::kBiasAdd, {"BiasAdd"}},
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+          {FCT::kBiasAddWithTanh, {"BiasAdd", "Tanh"}},
+          {FCT::kBiasAddWithSigmoid, {"BiasAdd", "Sigmoid"}},
           {FCT::kBiasAddWithGeluApproximate, {"BiasAdd", "GeluApproximate"}},
           {FCT::kBiasAddWithGeluExact, {"BiasAdd", "GeluExact"}}};
     }
@@ -594,10 +604,13 @@ class FusedMatMulOp : public OpKernel {
                                 context, "MatMul", patterns,
                                 &fused_computation_, &fused_computation_args_));
     if (std::is_same<Device, GPUDevice>::value &&
-        fused_computation_ == FCT::kBiasAddWithGeluExact) {
+        (fused_computation_ == FCT::kBiasAddWithGeluExact ||
+         fused_computation_ == FCT::kBiasAddWithTanh ||
+         fused_computation_ == FCT::kBiasAddWithSigmoid)) {
       OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
-                  errors::InvalidArgument("Matmul with BiasAdd+GeluExact "
-                                          "supports only DT_HALF data type."));
+                  errors::InvalidArgument(
+                      "Matmul with BiasAdd+GeluExact|Tanh|Sigmoid supports "
+                      "only DT_HALF data type."));
     }
     use_autotune_ = MatmulAutotuneEnable();
   }

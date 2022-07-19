@@ -167,6 +167,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       if (test_util.is_gpu_available(
           cuda_only=True, min_cuda_compute_capability=(8, 0))):
         config.append((dtypes.float16, gelu_exact, b'GeluExact'))
+        config.append((dtypes.float16, math_ops.tanh, b'Tanh'))
+        config.append((dtypes.float16, math_ops.sigmoid, b'Sigmoid'))
 
     m, n, k = (2, 4, 6)  # Matrix dimensions
     fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
