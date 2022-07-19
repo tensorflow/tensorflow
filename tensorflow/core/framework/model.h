@@ -59,6 +59,10 @@ constexpr char kModelInputTimeKey[] = "model_input_time";
 // Default share of available RAM that can be used by model's internal buffers.
 constexpr double kRamBudgetShare = 0.5;
 
+// Weight of the latest processing time used in computing the exponential moving
+// average of processing time per element.
+constexpr double kProcessingTimeEmaWeight = 0.1;
+
 enum class TraversalOrder {
   BFS = 0,
   REVERSE_BFS = 1,
@@ -317,7 +321,13 @@ class Node {
   }
 
   // Records that the node produced an element.
-  void record_element() TF_LOCKS_EXCLUDED(mu_) { num_elements_++; }
+  void record_element() TF_LOCKS_EXCLUDED(mu_) {
+    num_elements_++;
+    {
+      mutex_lock l(mu_);
+      UpdateProcessingTimeEma();
+    }
+  }
 
   // Records that a node thread has started executing.
   void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
@@ -515,6 +525,24 @@ class Node {
     std::atomic<int64_t> recorded_num_elements_;
   };
 
+  // Computes the exponential moving average of processing time per element.
+  void UpdateProcessingTimeEma() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (previous_processing_time_ == 0) {
+      if (num_elements_ > 0) {
+        processing_time_ema_ = static_cast<double>(processing_time_) /
+                               static_cast<double>(num_elements_);
+      } else {
+        processing_time_ema_ = static_cast<double>(processing_time_);
+      }
+    } else {
+      processing_time_ema_ =
+          (1.0 - kProcessingTimeEmaWeight) * processing_time_ema_ +
+          kProcessingTimeEmaWeight *
+              static_cast<double>(processing_time_ - previous_processing_time_);
+    }
+    previous_processing_time_ = processing_time_;
+  }
+
   // Returns the number of inputs.
   int64_t num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     int64_t num_inputs = 0;
@@ -659,6 +687,11 @@ class Node {
   // Statistic of inputs processing time history.
   double input_processing_time_sum_ = 0.0L;
   int64_t input_processing_time_count_ = 0;
+
+  // Holds the previous processing time and the per element processing time
+  // exponential moving average.
+  int64_t previous_processing_time_ TF_GUARDED_BY(mu_) = 0;
+  double processing_time_ema_ TF_GUARDED_BY(mu_) = 0.0;
 
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined

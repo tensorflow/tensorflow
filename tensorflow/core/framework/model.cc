@@ -553,8 +553,10 @@ class AsyncInterleaveMany : public Node {
     if (num_elements_ == 0) {
       return 0;
     }
-    return static_cast<double>(processing_time_) /
-           (static_cast<double>(num_elements_) * parallelism);
+    {
+      tf_shared_lock l(mu_);
+      return processing_time_ema_ / parallelism;
+    }
   }
 
  protected:
@@ -831,8 +833,10 @@ class AsyncRatio : public Node {
     if (num_elements_ == 0) {
       return 0;
     }
-    return static_cast<double>(processing_time_) /
-           (static_cast<double>(num_elements_) * parallelism);
+    {
+      tf_shared_lock l(mu_);
+      return processing_time_ema_ / parallelism;
+    }
   }
 
  protected:
@@ -1583,7 +1587,13 @@ double Node::OutputTime(Node::NodeValues* input_times,
   return output_times[long_name()];
 }
 
-double Node::ComputeSelfTime() const { return SelfProcessingTime(); }
+double Node::ComputeSelfTime() const {
+  if (num_elements_ == 0) {
+    return 0;
+  }
+  tf_shared_lock l(mu_);
+  return processing_time_ema_;
+}
 
 std::shared_ptr<Node> Node::Snapshot() const {
   NodePairList node_pairs;
@@ -1913,8 +1923,12 @@ std::shared_ptr<Node> Node::SnapshotHelper(
     cloned_current->num_elements_.store(num_elements_);
     cloned_current->record_metrics_.store(false);
     cloned_current->processing_time_.store(processing_time_);
-    mutex_lock l2(cloned_current->mu_);
-    cloned_current->parameters_ = parameters_;
+    {
+      mutex_lock l2(cloned_current->mu_);
+      cloned_current->parameters_ = parameters_;
+      cloned_current->previous_processing_time_ = previous_processing_time_;
+      cloned_current->processing_time_ema_ = processing_time_ema_;
+    }
   }
 
   for (auto& input : inputs_) {
@@ -1997,44 +2011,50 @@ Status Node::ToProto(ModelProto::Node* node_proto) const {
 
 Status Node::FromProtoHelper(ModelProto::Node node_proto,
                              std::shared_ptr<Node> node) {
-  tf_shared_lock l(node->mu_);
-  node->autotune_.store(node_proto.autotune());
-  node->buffered_bytes_.store(node_proto.buffered_bytes());
-  node->buffered_elements_.store(node_proto.buffered_elements());
-  if (node_proto.buffered_elements() == 0) {
-    node->buffered_elements_low_.store(std::numeric_limits<int64_t>::max());
-    node->buffered_elements_high_.store(std::numeric_limits<int64_t>::min());
-  } else {
-    node->buffered_elements_low_.store(node_proto.buffered_elements());
-    node->buffered_elements_high_.store(node_proto.buffered_elements());
-  }
-  node->bytes_consumed_.store(node_proto.bytes_consumed());
-  node->bytes_produced_.store(node_proto.bytes_produced());
-  node->num_elements_.store(node_proto.num_elements());
-  node->processing_time_.store(node_proto.processing_time());
-  node->record_metrics_.store(node_proto.record_metrics());
-
-  // Restore parameters.
-  int64_t num_parameters = node_proto.parameters_size();
-  for (int i = 0; i < num_parameters; i++) {
-    const ModelProto::Node::Parameter& parameter_proto =
-        node_proto.parameters(i);
-    std::shared_ptr<SharedState> state;
-    if (parameter_proto.tunable()) {
-      state =
-          std::make_shared<SharedState>(kAutotune, std::make_shared<mutex>(),
-                                        std::make_shared<condition_variable>());
-      state->value = parameter_proto.state_value();
+  {
+    tf_shared_lock l(node->mu_);
+    node->autotune_.store(node_proto.autotune());
+    node->buffered_bytes_.store(node_proto.buffered_bytes());
+    node->buffered_elements_.store(node_proto.buffered_elements());
+    if (node_proto.buffered_elements() == 0) {
+      node->buffered_elements_low_.store(std::numeric_limits<int64_t>::max());
+      node->buffered_elements_high_.store(std::numeric_limits<int64_t>::min());
     } else {
-      state = std::make_shared<SharedState>(
-          parameter_proto.state_value(), std::make_shared<mutex>(),
-          std::make_shared<condition_variable>());
+      node->buffered_elements_low_.store(node_proto.buffered_elements());
+      node->buffered_elements_high_.store(node_proto.buffered_elements());
     }
-    node->parameters_[parameter_proto.name()] =
-        MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
-                      parameter_proto.max());
-    node->parameters_[parameter_proto.name()]->value =
-        std::max(parameter_proto.min(), parameter_proto.value());
+    node->bytes_consumed_.store(node_proto.bytes_consumed());
+    node->bytes_produced_.store(node_proto.bytes_produced());
+    node->num_elements_.store(node_proto.num_elements());
+    node->processing_time_.store(node_proto.processing_time());
+    node->record_metrics_.store(node_proto.record_metrics());
+
+    // Restore parameters.
+    int64_t num_parameters = node_proto.parameters_size();
+    for (int i = 0; i < num_parameters; i++) {
+      const ModelProto::Node::Parameter& parameter_proto =
+          node_proto.parameters(i);
+      std::shared_ptr<SharedState> state;
+      if (parameter_proto.tunable()) {
+        state = std::make_shared<SharedState>(
+            kAutotune, std::make_shared<mutex>(),
+            std::make_shared<condition_variable>());
+        state->value = parameter_proto.state_value();
+      } else {
+        state = std::make_shared<SharedState>(
+            parameter_proto.state_value(), std::make_shared<mutex>(),
+            std::make_shared<condition_variable>());
+      }
+      node->parameters_[parameter_proto.name()] =
+          MakeParameter(parameter_proto.name(), state, parameter_proto.min(),
+                        parameter_proto.max());
+      node->parameters_[parameter_proto.name()]->value =
+          std::max(parameter_proto.min(), parameter_proto.value());
+    }
+  }
+  {
+    mutex_lock l(node->mu_);
+    node->UpdateProcessingTimeEma();
   }
   return OkStatus();
 }
@@ -2501,8 +2521,7 @@ void Model::OptimizeStageBasedParallelism(
     // Stop optimization if the critical stage has no `parallelism` parameter or
     // it has reached the max parallelism value.
     if (parallelism_parameter == nullptr ||
-        parallelism_parameter->value >= parallelism_parameter->max ||
-        parallelism_parameter->value >= optimization_params.cpu_budget()) {
+        parallelism_parameter->value >= parallelism_parameter->max) {
       break;
     }
     parallelism_parameter->value += 1.0;
