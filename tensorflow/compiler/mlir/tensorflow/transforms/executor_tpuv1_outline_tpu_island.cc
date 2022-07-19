@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -53,8 +54,8 @@ struct TPUBridgeExecutorIslandOutlining
 // Move FuncOp referenced by `symbol_ref` from one symbol table to another.
 void MoveFuncOp(FlatSymbolRefAttr &symbol_ref, SymbolTable &from,
                 SymbolTable &to) {
-  if (to.lookup<FuncOp>(symbol_ref.getValue())) return;
-  FuncOp callee = from.lookup<FuncOp>(symbol_ref.getValue());
+  if (to.lookup<func::FuncOp>(symbol_ref.getValue())) return;
+  func::FuncOp callee = from.lookup<func::FuncOp>(symbol_ref.getValue());
   callee.getOperation()->getBlock()->getOperations().remove(
       callee.getOperation());
   to.insert(callee);
@@ -75,13 +76,33 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   symbol_table.insert(outlined_module);
   SymbolTable outlined_symbol_table(outlined_module);
 
-  // Find every island that contains a TPUReplicateMetadata node and extract it
-  // in a new module to run the V1 bridge there.
-  SmallVector<IslandOp, 8> islands_to_outline;
-  getOperation().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
-    auto island_op = cast<IslandOp>(replicate_op->getParentOp());
-    if (!island_op || island_op.WrapsSingleOp()) return;
-    islands_to_outline.push_back(island_op);
+  // Find every island that contains a TPU node and extract it into a new module
+  // to run the V1 bridge there.
+  llvm::SmallVector<IslandOp, 8> islands_to_outline;
+  getOperation().walk([&](IslandOp island_op) {
+    auto parent_func = island_op->getParentOfType<func::FuncOp>();
+    auto skip_island_outlining =
+        parent_func->getAttrOfType<BoolAttr>(mlir::TF::kSkipIslandOutlining);
+    if (skip_island_outlining && skip_island_outlining.getValue()) {
+      // Island was marked to be skipped.
+      return WalkResult::advance();
+    }
+    for (Operation &op : island_op.GetBody().without_terminator()) {
+      if (isa<TF::TPUReplicateMetadataOp>(&op)) {
+        // Handle replicated TPU case.
+        islands_to_outline.push_back(island_op);
+        break;
+      }
+      auto device_type =
+          op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
+      if (device_type && device_type.getValue() == TF::kTpuDevice &&
+          !op.hasAttrOfType<StringAttr>(TF::kReplicationInfoAttr)) {
+        // Handle single-core TPU case (no `TPUReplicateMetadataOp`).
+        islands_to_outline.push_back(island_op);
+        break;
+      }
+    }
+    return WalkResult::advance();
   });
   int prefix_id = 0;
   for (IslandOp island_op : islands_to_outline) {
@@ -106,8 +127,8 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;
     name += llvm::Twine(prefix_id++).str();
-    auto outlined_func =
-        OpBuilder(ctx).create<FuncOp>(island_op.getLoc(), name, func_type);
+    auto outlined_func = OpBuilder(ctx).create<func::FuncOp>(island_op.getLoc(),
+                                                             name, func_type);
     outlined_symbol_table.insert(outlined_func);
     outlined_func.setNested();
 
@@ -151,9 +172,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     builder.create<YieldOp>(island_op.getLoc(), yield_operands);
   }
 
-  // Outlined all the transitively called functions by moving them in the
+  // Outline all the transitively called functions by moving them in the
   // outlined module.
-  for (FuncOp func : outlined_module.getOps<FuncOp>()) {
+  for (func::FuncOp func : outlined_module.getOps<func::FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
         if (auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {
@@ -169,6 +190,12 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
         }
       }
     });
+  }
+  // Remove `kSkipIslandOutlining` attributes.
+  for (func::FuncOp func_op : getOperation().getOps<func::FuncOp>()) {
+    if (func_op->hasAttr(mlir::TF::kSkipIslandOutlining)) {
+      func_op->removeAttr(mlir::TF::kSkipIslandOutlining);
+    }
   }
 }
 

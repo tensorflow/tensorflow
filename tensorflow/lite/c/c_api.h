@@ -92,6 +92,19 @@ typedef struct TfLiteInterpreter TfLiteInterpreter;
 // data including a dimensionality (or NULL if not currently defined).
 typedef struct TfLiteTensor TfLiteTensor;
 
+// TfLiteOpaqueContext is an opaque version of TfLiteContext;
+// WARNING: This is an experimental type and subject to change.
+typedef struct TfLiteOpaqueContext TfLiteOpaqueContext;
+
+// TfLiteOpaqueNode is an opaque version of TfLiteNode;
+// WARNING: This is an experimental type and subject to change.
+typedef struct TfLiteOpaqueNode TfLiteOpaqueNode;
+
+// TfLiteRegistrationExternal is an external version of TfLiteRegistration to
+// use custom op registration API.
+// WARNING: This is an experimental type and subject to change.
+typedef struct TfLiteRegistrationExternal TfLiteRegistrationExternal;
+
 // --------------------------------------------------------------------------
 // TfLiteVersion returns a string describing version information of the
 // TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
@@ -111,6 +124,40 @@ TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFile(
 
 // Destroys the model instance.
 TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
+
+// Returns a new TfLiteRegistrationExternal instance.
+//
+// NOTE: The caller retains ownership and should ensure that
+// the lifetime of the `TfLiteRegistrationExternal` must be at least as long as
+// the lifetime of the `TfLiteInterpreter`.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteRegistrationExternal*
+TfLiteRegistrationExternalCreate(const char* custom_name, const int version);
+
+// Destroys the TfLiteRegistrationExternal instance.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalDelete(
+    TfLiteRegistrationExternal* registration);
+
+// Sets the preparation callback for the registration.
+//
+// The callback is called when the inputs of operator have been resized.
+// Please refer `prepare` of `TfLiteRegistration` for the detail.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetPrepare(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node));
+
+// Sets the invocation callback for the registration.
+//
+// The callback is called when the operator is executed.
+// Please refer `invoke` of `TfLiteRegistration` for the detail.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInvoke(
+    TfLiteRegistrationExternal* registration,
+    TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
+                           TfLiteOpaqueNode* node));
 
 // Returns a new interpreter options instances.
 TFL_CAPI_EXPORT extern TfLiteInterpreterOptions*
@@ -144,6 +191,22 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
     TfLiteInterpreterOptions* options,
     void (*reporter)(void* user_data, const char* format, va_list args),
     void* user_data);
+
+// Adds an op registration to be applied during `TfLiteInterpreter` creation.
+//
+// The `TfLiteRegistrationExternal` object is needed to implement custom op of
+// TFLite Interpreter via C API. Calling this function ensures that any
+// `TfLiteInterpreter` created with the specified `options` can execute models
+// that use the custom operator specified in `registration`.
+// Please refer https://www.tensorflow.org/lite/guide/ops_custom for custom op
+// support.
+// NOTE: The caller retains ownership of the TfLiteRegistrationExternal object
+// and should ensure that it remains valid for the duration of any created
+// interpreter's lifetime.
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddRegistrationExternal(
+    TfLiteInterpreterOptions* options,
+    TfLiteRegistrationExternal* registration);
 
 // Returns a new interpreter using the provided model and options, or null on
 // failure.

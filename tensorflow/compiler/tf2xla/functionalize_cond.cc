@@ -128,14 +128,14 @@ Status GetSwitchPredicate(const Node& switch_node, OutputTensor* pred) {
     TF_RETURN_IF_ERROR(pred_edge->src()->input_edge(0, &pred_edge));
   }
   *pred = OutputTensor(pred_edge->src(), pred_edge->src_output());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetSwitchValue(const Node& switch_node, OutputTensor* val) {
   const Edge* val_edge;
   TF_RETURN_IF_ERROR(switch_node.input_edge(0, &val_edge));
   *val = OutputTensor(val_edge->src(), val_edge->src_output());
-  return Status::OK();
+  return OkStatus();
 }
 
 bool StateMap::OutputTensorLess::operator()(const OutputTensor& lhs,
@@ -394,7 +394,7 @@ Conditional::Conditional(OutputTensor predicate, FunctionalizeCond* parent,
 
 Status Conditional::AddMerge(Node* m) {
   merges_.insert(m);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::AddSwitch(Node* s) {
@@ -410,7 +410,7 @@ Status Conditional::AddSwitch(Node* s) {
   }
   switches_.insert(s);
   parent_->AddSwitchId(s->id());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::BuildArgumentNodes() {
@@ -492,7 +492,7 @@ Status Conditional::BuildArgumentNodes() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::AddSwitchNodeAlongEdge(const Edge* edge, BranchType branch,
@@ -528,7 +528,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
   VLOG(2) << "Extracting bodies for " << name();
   for (auto b : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     bodies_[static_cast<int>(b)] =
-        absl::make_unique<Graph>(graph->op_registry());
+        std::make_unique<Graph>(graph->op_registry());
   }
 
   auto find_branch = [&](const Edge* e) {
@@ -741,7 +741,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::BuildIfNode(Graph* graph,
@@ -814,10 +814,7 @@ Status Conditional::BuildIfNode(Graph* graph,
 
   builder.Attr("Tcond", DT_BOOL);
   // Add some internal attributes which need to be propagated.
-  // TODO(b/160275126): attributes shouldn't be hard-coded here
-  for (const char* attr_name :
-       {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
-        kTpuReplicateAttrName}) {
+  for (absl::string_view attr_name : kAttrsToPropagate) {
     string attr_val;
     if (GetNodeAttr(predicate_.node->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
@@ -837,7 +834,7 @@ Status Conditional::BuildIfNode(Graph* graph,
   TF_ASSIGN_OR_RETURN(if_node_,
                       parent_->AddIfNode(if_def, *merges_.begin(), predicate_));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::AddInputEdges(
@@ -874,7 +871,7 @@ Status Conditional::AddInputEdges(
   for (Node* n : external_control_inputs_) {
     graph->AddControlEdge(n, if_node_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::AddOutputEdges(
@@ -913,7 +910,7 @@ Status Conditional::AddOutputEdges(
     graph->AddControlEdge(if_node_, n);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Conditional::BuildAndReplace(
@@ -921,7 +918,7 @@ Status Conditional::BuildAndReplace(
     std::unordered_map<Node*, OutputTensor>* merge_to_replacement) {
   VLOG(1) << "Build If and replace merge nodes "
           << NodesToString(this->merges_);
-  if (replaced_) return Status::OK();
+  if (replaced_) return OkStatus();
 
   TF_RETURN_IF_ERROR(ExtractBodies(graph));
   TF_RETURN_IF_ERROR(BuildArgumentNodes());
@@ -947,7 +944,7 @@ Status Conditional::BuildAndReplace(
       "Converting to If failed.");
 
   replaced_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 string Conditional::name() const {
@@ -960,16 +957,16 @@ Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
   NodeBuilder id_builder(replacee->name(), "Identity");
   id_builder.Input(if_node, port);
   string outside_compilation;
-  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttrName,
+  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttr,
                   &outside_compilation)
           .ok()) {
-    id_builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+    id_builder.Attr(kXlaOutsideCompilationAttr, outside_compilation);
   }
   Node* id;
   TF_RETURN_IF_ERROR(id_builder.Finalize(graph_, &id));
   state_map_.ResetCondId(id, state_map_.LookupCondId(if_node));
   state_map_.ResetAncestorId(id, state_map_.LookupAncestorId(if_node));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Node*> FunctionalizeCond::AddIfNode(const NodeDef& def,
@@ -1021,7 +1018,7 @@ Status FunctionalizeCond::PropagateUpdatedState(const Node* replacee) {
       changed.erase(n);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the most restrictive branch of two branches or neither. This is the
@@ -1163,7 +1160,7 @@ Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
   // Only Merge nodes with two inputs are supported, but if this is a redundant
   // merge, then the dead edge may already have been removed (if due to a
   // switch) and so the input count would be incorrect.
-  if (state_map_.IsDead(state_map_.LookupCondId(dst))) return Status::OK();
+  if (state_map_.IsDead(state_map_.LookupCondId(dst))) return OkStatus();
 
   int data_inputs = 0;
   for (auto e : dst->in_edges()) {
@@ -1186,7 +1183,7 @@ Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
         dst->name(), " only has ", data_inputs,
         " inputs, while only merge nodes with two inputs supported.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeCond::DetermineCondStateNonMerge(Node* dst) {
@@ -1204,13 +1201,13 @@ Status FunctionalizeCond::DetermineCondStateNonMerge(Node* dst) {
                                     FormatNodeForError(*dst));
     state_map_.ResetCondId(dst, id_or.ValueOrDie());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeCond::RemoveRedundantMerge(Node* node) {
   // Handle redundant merge nodes. A merge node is considered redundant if
   // one input edge is dead while the other has a value.
-  if (!state_map_.IsDead(state_map_.LookupCondId(node))) return Status::OK();
+  if (!state_map_.IsDead(state_map_.LookupCondId(node))) return OkStatus();
 
   const Edge* non_dead_edge = nullptr;
   for (auto e : node->in_edges()) {
@@ -1242,7 +1239,7 @@ Status FunctionalizeCond::RemoveRedundantMerge(Node* node) {
                         : non_dead_edge->src_output(),
                     dst_node, dst_port);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
@@ -1254,7 +1251,7 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
   // (rather than boolean equivalence) and aimed at redundant switches as
   // currently generated by gradient code.
   StateMap::CondId dst_id = state_map_.LookupCondId(node);
-  if (state_map_.IsDead(dst_id)) return Status::OK();
+  if (state_map_.IsDead(dst_id)) return OkStatus();
 
   BranchType b;
   OutputTensor pred;
@@ -1275,7 +1272,7 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
     }
     b = state_map_.FindBranchOf(dst_id, val);
     if (b != BranchType::kThenBranch && b != BranchType::kElseBranch)
-      return Status::OK();
+      return OkStatus();
   }
 
   VLOG(5) << "Redundant switch " << node->name() << " " << Branch_Name(b) << " "
@@ -1312,7 +1309,7 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
         switch_branch == Graph::kControlSlot ? Graph::kControlSlot : val_port,
         dst_node, dst_input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeCond::DetermineStates(std::vector<Node*> rev_topo_order) {
@@ -1328,7 +1325,7 @@ Status FunctionalizeCond::DetermineStates(std::vector<Node*> rev_topo_order) {
             << " @ " << state_map_.AncestorStateToString(dst);
     if (VLOG_IS_ON(10)) DumpGraphWithCondState("it");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
@@ -1362,7 +1359,7 @@ Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
     id = insert(id, src);
   }
   state_map_.ResetAncestorId(dst, id);
-  return Status::OK();
+  return OkStatus();
 }
 
 void FunctionalizeCond::DeleteReachableAndDeadNodes(
@@ -1507,7 +1504,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
     // No merges mean no switch values consumed (as only considering values
     // fetchable as output of merge);
     DeleteReachableAndDeadNodes(merge_order);
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(DetermineStates(std::move(rev_topo_order)));
@@ -1577,7 +1574,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
 
   DeleteReachableAndDeadNodes(merge_order);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void FunctionalizeCond::DumpGraphWithCondState(const string& name) {

@@ -46,18 +46,23 @@ jobs:
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
         # to tag names on gcr.io/tensorflow-sigs/build.
-        map sigbuild-r2.9 latest-python3.9
-        map sigbuild-r2.9-python3.7 latest-python3.7
-        map sigbuild-r2.9-python3.8 latest-python3.8
-        map sigbuild-r2.9-python3.9 latest-python3.9
-        map sigbuild-r2.9-python3.10 latest-python3.10
+        map sigbuild-r2.9 2.9-python3.9
+        map sigbuild-r2.9-python3.7 2.9-python3.7
+        map sigbuild-r2.9-python3.8 2.9-python3.8
+        map sigbuild-r2.9-python3.9 2.9-python3.9
+        map sigbuild-r2.9-python3.10 2.9-python3.10
+        map sigbuild-r2.10 2.10-python3.9
+        map sigbuild-r2.10-python3.7 2.10-python3.7
+        map sigbuild-r2.10-python3.8 2.10-python3.8
+        map sigbuild-r2.10-python3.9 2.10-python3.9
+        map sigbuild-r2.10-python3.10 2.10-python3.10
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@v3
       with:
         title: Update the RBE images to the latest container versions
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>
         token: ${{ secrets.JENKINS_TOKEN }}
-        reviewers: angerson,mihaimaruseac
+        reviewers: angerson,mihaimaruseac,learning-to-play,nitins17
         body: |
           This PR was created by a GitHub Actions workflow to update all the SIG Build-based RBE containers to the most recent containers. See:
 

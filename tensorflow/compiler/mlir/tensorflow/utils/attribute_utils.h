@@ -18,14 +18,33 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
 namespace TF {
 
-// TODO(b/228344955) use inline constexpr with C++17
-extern const llvm::StringRef kCompileDeviceTypeAttr;
-extern const llvm::StringRef kReplicationInfoAttr;
-extern const llvm::StringRef kTPUReplicateAttr;
+// TODO(b/229028654) Use definitions from tf2xla_defs.h directly. We currently
+// don't do this to avoid explicit casts (implicit conversion from
+// `absl::string_view` to `llvm::StringRef` is not supported until C++17).
+
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
+inline constexpr llvm::StringRef kCompileDeviceTypeAttr =
+    "_xla_compile_device_type";
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
+inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
+// Marks a node for XLA-TPU compilation. The attribute value indicates the
+// associated compilation cluster and replication metadata op.
+inline constexpr llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
+// Device types.
+inline constexpr llvm::StringRef kTpuDevice = "TPU";
+// Function attribute to signal that a function should be skipped from TPU
+// island outlining. The attribute is set in
+// `TpuV1BridgeExecutorIslandCoarsening` and removed in the subsequent
+// `TPUBridgeExecutorIslandOutlining` pass.
+inline constexpr llvm::StringRef kSkipIslandOutlining =
+    "_skip_island_outlining";
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>

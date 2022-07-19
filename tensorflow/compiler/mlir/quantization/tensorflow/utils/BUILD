@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [
@@ -11,6 +12,7 @@ cc_library(
     name = "fake_quant_utils",
     srcs = ["fake_quant_utils.cc"],
     hdrs = ["fake_quant_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
@@ -25,8 +27,9 @@ td_library(
     srcs = [
         "lift_as_function_call_utils.td",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
-        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -34,6 +37,7 @@ cc_library(
     name = "lift_as_function_call_utils",
     srcs = ["lift_as_function_call_utils.cc"],
     hdrs = ["lift_as_function_call_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -48,6 +52,7 @@ cc_library(
     name = "quant_spec",
     srcs = ["quant_spec.cc"],
     hdrs = ["quant_spec.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",

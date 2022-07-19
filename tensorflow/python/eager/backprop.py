@@ -29,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import imperative_grad
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,6 +37,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_util
@@ -50,6 +52,7 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -735,6 +738,19 @@ def _handle_or_self(x):
   return x
 
 
+def _extract_tensors_and_variables(tensor):
+  """Extracts tensors and variables from the input object."""
+  for obj in nest.flatten(tensor):
+    if _pywrap_utils.IsTensor(obj) or _pywrap_utils.IsVariable(obj):
+      yield obj
+    elif isinstance(obj, composite_tensor.CompositeTensor):
+      components = type_spec.type_spec_from_value(obj)._to_components(obj)  # pylint: disable=protected-access
+      yield from _extract_tensors_and_variables(components)
+    else:
+      raise ValueError(f"Passed in object {obj} of type {type(obj).__name__!r}"
+                       f", not tf.Tensor or tf.Variable or ExtensionType.")
+
+
 @tf_export("GradientTape", "autodiff.GradientTape", v1=["GradientTape"])
 class GradientTape(object):
   """Record operations for automatic differentiation.
@@ -893,27 +909,26 @@ class GradientTape(object):
     else:
       yield
 
+  # TODO(b/209081027): Add a variable in composite tensor test case after
+  # variables become composite tensors.
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
 
     Args:
-      tensor: a Tensor or list of Tensors.
+      tensor: a Tensor/Variable or list of Tensors/Variables.
 
     Raises:
       ValueError: if it encounters something that is not a tensor.
     """
-    for t in nest.flatten(tensor, expand_composites=True):
-      if not (_pywrap_utils.IsTensor(t) or _pywrap_utils.IsVariable(t)):
-        raise ValueError("Passed in object of type {}, not tf.Tensor".format(
-            type(t)))
+    for t in _extract_tensors_and_variables(tensor):
       if not backprop_util.IsTrainable(t):
         logging.log_first_n(
             logging.WARN, "The dtype of the watched tensor must be "
             "floating (e.g. tf.float32), got %r", 5, t.dtype)
       if hasattr(t, "handle"):
         # There are many variable-like objects, all of them currently have
-        # `handle` attribute that points to a tensor. If this changes, internals
-        # of watch_variable need to change as well.
+        # `handle` attribute that points to a tensor. If this changes,
+        # internals of watch_variable need to change as well.
         tape.watch_variable(self._tape, t)
       else:
         tape.watch(self._tape, t)
@@ -1057,7 +1072,7 @@ class GradientTape(object):
     if target is None:
       raise TypeError("Argument `target` should be a list or nested structure"
                       " of Tensors, Variables or CompositeTensors to be "
-                      "differentiated, but recieved None.")
+                      "differentiated, but received None.")
 
     flat_targets = []
     for t in nest.flatten(target):
@@ -1066,15 +1081,13 @@ class GradientTape(object):
             logging.WARN, "The dtype of the target tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
             "got %r", t.dtype)
-      if resource_variable_ops.is_resource_variable(t):
-        with self:
-          t = ops.convert_to_tensor(t)
-      flat_targets.append(t)
+      flat_targets.append(_handle_or_self(t))
     flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
         flat_targets)
 
-    flat_sources = nest.flatten(sources)
-    for t in flat_sources:
+    flat_sources_raw = nest.flatten(sources)
+    flat_sources = []
+    for t in flat_sources_raw:
       if not backprop_util.IsTrainable(t):
         logging.vlog(
             logging.WARN, "The dtype of the source tensor must be "
@@ -1084,13 +1097,13 @@ class GradientTape(object):
         raise ValueError(
             "GradientTape.gradient is not supported on packed EagerTensors yet."
         )
-    flat_sources_raw = flat_sources
+      flat_sources.append(_handle_or_self(t))
     flat_sources = composite_tensor_gradient.get_flat_tensors_for_gradients(
         flat_sources)
-    flat_sources = [_handle_or_self(x) for x in flat_sources]
 
     if output_gradients is not None:
-      output_gradients = nest.flatten(output_gradients)
+      output_gradients = nest.flatten(
+          variable_utils.convert_variables_to_tensors(output_gradients))
       output_gradients = (
           composite_tensor_gradient.get_flat_tensors_for_gradients(
               output_gradients))
@@ -1110,6 +1123,7 @@ class GradientTape(object):
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
 
+    flat_sources_raw = nest.map_structure(_handle_or_self, flat_sources_raw)
     flat_grad = composite_tensor_gradient.replace_flat_tensors_for_gradients(
         flat_sources_raw, flat_grad)
     grad = nest.pack_sequence_as(sources, flat_grad)

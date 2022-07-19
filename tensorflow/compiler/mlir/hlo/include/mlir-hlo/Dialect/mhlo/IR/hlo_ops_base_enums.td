@@ -38,6 +38,22 @@ def HLO_Precision : I32EnumAttr<"Precision",
 def HLO_PrecisionAttr : EnumAttr<HLO_Dialect, HLO_Precision, "precision">;
 
 //===----------------------------------------------------------------------===//
+// Domain Metadata Kind  enum definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA FftType proto enum.
+def HLO_DOMAIN_KIND_SHARDING : I32EnumAttrCase<"sharding", 0>;
+
+def HLO_DomainKind : I32EnumAttr<"DomainKind",
+    "Kind of domain metatdata attached to an HLO domain.",
+    [HLO_DOMAIN_KIND_SHARDING]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def HLO_DomainKindAttr : EnumAttr<HLO_Dialect, HLO_DomainKind, "kind">;
+
+//===----------------------------------------------------------------------===//
 // Fast Fourier Transform Type enum definitions.
 //===----------------------------------------------------------------------===//
 
@@ -69,11 +85,14 @@ def HLO_CUSTOM_CALL_API_VERSION_ORIGINAL :
     I32EnumAttrCase<"API_VERSION_ORIGINAL", 1>;
 def HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING :
     I32EnumAttrCase<"API_VERSION_STATUS_RETURNING", 2>;
+def HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED :
+    I32EnumAttrCase<"API_VERSION_STATUS_RETURNING_UNIFIED", 3>;
 def HLO_CustomCallApiVersionAttr :
     I32EnumAttr<"CustomCallApiVersion", "Custom call API version", [
         HLO_CUSTOM_CALL_API_VERISON_UNSPECIFIED,
         HLO_CUSTOM_CALL_API_VERSION_ORIGINAL,
-        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING
+        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING,
+        HLO_CUSTOM_CALL_API_VERSION_STATUS_RETURNING_UNIFIED
     ]> {
   let cppNamespace = "::mlir::mhlo";
 }
@@ -171,6 +190,42 @@ def HLO_FusionKind : I32EnumAttr<"FusionKind", "fusion kind", [
   let cppNamespace = "::mlir::mhlo";
 }
 
+def HLO_RNG_DISTRIBUTION_UNIFORM : I32EnumAttrCase<"UNIFORM", 1>;
+def HLO_RNG_DISTRIBUTION_NORMAL : I32EnumAttrCase<"NORMAL", 2>;
+
+def HLO_RNG_DISTRIBUTION : I32EnumAttr<"RngDistribution",
+    "XLA PRNG distribution to be used.",
+    [
+      HLO_RNG_DISTRIBUTION_UNIFORM,
+      HLO_RNG_DISTRIBUTION_NORMAL
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def HLO_RngDistributionAttr : EnumAttr<HLO_Dialect, HLO_RNG_DISTRIBUTION, "rng_distribution"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
 def HLO_FusionKindAttr : EnumAttr<HLO_Dialect, HLO_FusionKind, "fusion_kind">;
+
+def HLO_RNG_ALGORITHM_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
+def HLO_RNG_ALGORITHM_THREE_FRY : I32EnumAttrCase<"THREE_FRY", 1>;
+def HLO_RNG_ALGORITHM_PHILOX : I32EnumAttrCase<"PHILOX", 2>;
+
+def HLO_RNG_ALGORITHM : I32EnumAttr<"RngAlgorithm",
+    "XLA PRNG algorithm to be used.",
+    [
+      HLO_RNG_ALGORITHM_DEFAULT,
+      HLO_RNG_ALGORITHM_THREE_FRY,
+      HLO_RNG_ALGORITHM_PHILOX
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::mhlo";
+}
+
+def HLO_RngAlgorithmAttr : EnumAttr<HLO_Dialect, HLO_RNG_ALGORITHM, "rng_algorithm"> {
+  let assemblyFormat = "`<` $value `>`";
+}
 
 #endif // HLO_OPS_BASE_ENUMS

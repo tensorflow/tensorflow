@@ -100,7 +100,7 @@ class TfOpKernel : public ::tensorflow::OpKernel {
   using ImplType = Impl<Runtime::kTf>;
 
   explicit TfOpKernel(::tensorflow::OpKernelConstruction* c)
-      : OpKernel(c), impl_(absl::make_unique<ImplType>()) {
+      : OpKernel(c), impl_(std::make_unique<ImplType>()) {
     TfInitContext ctx(c);
     c->SetStatus(FromAbslStatus(impl_->Init(&ctx)));
   }

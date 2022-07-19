@@ -80,7 +80,7 @@ void ExecutorDialectToFunctionalConversion::runOnOperation() {
 }
 }  // end anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateExecutorDialectToFunctionalConversionPass() {
   return std::make_unique<ExecutorDialectToFunctionalConversion>();
 }

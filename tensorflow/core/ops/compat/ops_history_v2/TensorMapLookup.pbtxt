@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorMapLookup"
   input_arg {
     name: "input_handle"

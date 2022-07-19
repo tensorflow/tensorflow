@@ -42,6 +42,20 @@ func.func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
 
 // -----
 
+// CHECK-LABEL: func @complex_atan2
+func.func @complex_atan2(%lhs: tensor<2x2xcomplex<f32>>,
+    %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.atan2"(%lhs, %rhs)
+      : (tensor<2x2xcomplex<f32>>, tensor<2x2xcomplex<f32>>)
+      -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.atan2
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+
+// -----
+
 // CHECK-LABEL: func @float_mul
 func.func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -113,6 +127,17 @@ func.func @population_count_integer(%lhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_sqrt
+func.func @complex_sqrt(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.sqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.sqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_rsqrt
 func.func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %tensor_result = "mhlo.rsqrt"(%operand)
@@ -120,6 +145,18 @@ func.func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: rsqrt
   func.return %tensor_result : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_rsqrt
+func.func @complex_rsqrt(%operand: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.rsqrt"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.rsqrt
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -213,6 +250,18 @@ func.func @float_expm1(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: expm1
   %0 = "mhlo.exponential_minus_one"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_expm1
+func.func @complex_expm1(%arg0: tensor<2x2xcomplex<f32>>)
+    -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.expm1
+  %0 = "mhlo.exponential_minus_one"(%arg0)
+    : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -339,6 +388,17 @@ func.func @float_tanh(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_tanh
+func.func @complex_tanh(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  %tensor_result = "mhlo.tanh"(%operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: linalg.generic
+  // CHECK: complex.tanh
+  func.return %tensor_result : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @integer_and
 func.func @integer_and(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -375,10 +435,20 @@ func.func @integer_xor(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @count_leading_zeros
+func.func @count_leading_zeros(%lhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: math.ctlz
+  %0 = "mhlo.count_leading_zeros"(%lhs) : (tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_cmp
 func.func @float_cmp(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
-  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction EQ">}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction EQ>}
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
@@ -393,7 +463,7 @@ func.func @float_cmp(%lhs: tensor<2x2xf32>,
 // CHECK-LABEL: func @float_cmp_ne
 func.func @float_cmp_ne(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
-  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction NE">}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction NE>}
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
@@ -408,7 +478,7 @@ func.func @float_cmp_ne(%lhs: tensor<2x2xf32>,
 // CHECK-LABEL: func @int_cmp
 func.func @int_cmp(%lhs: tensor<2x2xi32>,
               %rhs: tensor<2x2xi32>) -> tensor<2x2xi1> {
-  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction LT">}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction LT>}
           : (tensor<2x2xi32>, tensor<2x2xi32>) -> (tensor<2x2xi1>)
   func.return %0 : tensor<2x2xi1>
 }
@@ -423,7 +493,7 @@ func.func @int_cmp(%lhs: tensor<2x2xi32>,
 // CHECK-LABEL: func @complex_cmp_eq
 func.func @complex_cmp_eq(%lhs: tensor<2xcomplex<f32>>,
                      %rhs: tensor<2xcomplex<f32>>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction EQ">}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction EQ>}
           : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> (tensor<2xi1>)
   func.return %0 : tensor<2xi1>
 }
@@ -438,7 +508,7 @@ func.func @complex_cmp_eq(%lhs: tensor<2xcomplex<f32>>,
 // CHECK-LABEL: func @complex_cmp_neq
 func.func @complex_cmp_neq(%lhs: tensor<2xcomplex<f64>>,
                       %rhs: tensor<2xcomplex<f64>>) -> tensor<2xi1> {
-  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction NE">}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction NE>}
           : (tensor<2xcomplex<f64>>, tensor<2xcomplex<f64>>) -> (tensor<2xi1>)
   func.return %0 : tensor<2xi1>
 }
@@ -453,9 +523,19 @@ func.func @complex_cmp_neq(%lhs: tensor<2xcomplex<f64>>,
 // CHECK-LABEL: func @float_cos
 func.func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
-  // CHECK: cos
+  // CHECK: math.cos
   %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_cos
+func.func @complex_cos(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.cos
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -463,9 +543,19 @@ func.func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @float_sin
 func.func @float_sin(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
-  // CHECK: sin
+  // CHECK: math.sin
   %0 = "mhlo.sine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_sin
+func.func @complex_sin(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: complex.sin
+  %0 = "mhlo.sine"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -496,12 +586,8 @@ func.func @is_finte(%input: tensor<2x2xf32>) -> tensor<2x2xi1> {
 
 // CHECK-LABEL: func @round
 func.func @round(%val: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  // CHECK: %[[HALF:.+]] = arith.constant 5.000000e-01
-  // CHECK: %[[ABS:.+]] = math.abs %arg1
-  // CHECK: %[[ADD:.+]] = arith.addf %[[ABS]], %[[HALF]]
-  // CHECK: %[[CEIL:.+]] = math.floor %[[ADD]]
-  // CHECK: %[[COPY:.+]] = math.copysign %[[CEIL]], %arg1
-  // CHECK: linalg.yield %[[COPY]]
+  // CHECK: %[[ROUND:.+]] = math.round %arg1
+  // CHECK: linalg.yield %[[ROUND]]
   %0 = "mhlo.round_nearest_afz"(%val) : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
   func.return %0 : tensor<2x2xf32>
 }
@@ -702,7 +788,7 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
   %0 = "mhlo.real_dynamic_slice"(%input, %start_indices, %limit_indices, %strides) : (tensor<256x?xf32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<256x?xf32>
   func.return %0 : tensor<256x?xf32>
 }
-// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0 : i64
+// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0 : index
 
 // 1.   For dimension 0.
 // CHECK-NEXT: %[[DIM0:.*]] = arith.constant 0 : index
@@ -722,11 +808,8 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 
 // 1.4. Clamp starting index : 0 <= start <= ub
 //      where upper bound (ub) is computed at step 1.3
-// CHECK-NEXT: %[[START0_Int:.*]] = arith.index_cast %[[START0]] : index to i64
-// CHECK-NEXT: %[[UB0:.*]] = arith.index_cast %[[UB]] : index to i64
-// CHECK-NEXT: %[[MIN0:.*]] = arith.minsi %[[START0_Int]], %[[UB0]] : i64
-// CHECK-NEXT: %[[MAX0:.*]] = arith.maxsi %[[MIN0]], %[[ZERO]] : i64
-// CHECK-NEXT: %[[CLAMPED_START0:.*]] = arith.index_cast %[[MAX0]] : i64 to index
+// CHECK-NEXT: %[[MAX0:.*]] = arith.maxsi %[[START0]], %[[ZERO]] : index
+// CHECK-NEXT: %[[MIN0:.*]] = arith.minsi %[[MAX0]], %[[UB]] : index
 
 // 2.   For dimension 1.
 // CHECK-NEXT: %[[DIM1:.*]] = arith.constant 1 : index
@@ -748,14 +831,29 @@ func.func @real_dynamic_slice(%input: tensor<256x?xf32>, %start_indices: tensor<
 
 // 2.4. Clamp starting index : 0 <= start <= ub
 //      where upper bound (ub) is computed at step 2.3
-// CHECK-NEXT: %[[START1_Int:.*]] = arith.index_cast %[[START1]] : index to i64
-// CHECK-NEXT: %[[UB1:.*]] = arith.index_cast %[[UB]] : index to i64
-// CHECK-NEXT: %[[MIN1:.*]] = arith.minsi %[[START1_Int]], %[[UB1]] : i64
-// CHECK-NEXT: %[[MAX1:.*]] = arith.maxsi %[[MIN1]], %[[ZERO]] : i64
-// CHECK-NEXT: %[[CLAMPED_START1:.*]] = arith.index_cast %[[MAX1]] : i64 to index
+// CHECK-NEXT: %[[MAX1:.*]] = arith.maxsi %[[START1]], %[[ZERO]] : index
+// CHECK-NEXT: %[[MIN1:.*]] = arith.minsi %[[MAX1]], %[[UB]] : index
 
-// CHECK-NEXT: %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]][%[[CLAMPED_START0]], %[[CLAMPED_START1]]] [256, %[[SIZE1]]] [%[[STRIDE0]], %[[STRIDE1]]] : tensor<256x?xf32> to tensor<256x?xf32>
+// CHECK-NEXT: %[[SLICE:.*]] = tensor.extract_slice %[[OPERAND]][%[[MIN0]], %[[MIN1]]] [256, %[[SIZE1]]] [%[[STRIDE0]], %[[STRIDE1]]] : tensor<256x?xf32> to tensor<256x?xf32>
 // CHECK-NEXT: return %[[SLICE]] : tensor<256x?xf32>
+
+// -----
+
+// CHECK-LABEL: real_dynamic_slice_with_int
+// Verify that legalization of real_dynamic_slice legalization with integer
+// dims work & passes verification.
+func.func public @real_dynamic_slice_with_int(%arg0: tensor<10xi32> , %arg1: tensor<1xi32> ) -> tensor<?xi32> {
+  %0 = mhlo.constant dense<0> : tensor<1xi32>
+  %1 = mhlo.constant dense<1> : tensor<1xi32>
+  %2 = mhlo.constant dense<0> : tensor<i32>
+// Verify cast is inserted for extracted value feeding into subtraction with
+// result of dim.
+// CHECK: %[[SIZE1:.*]] = arith.ceildivui
+// CHECK: %[[SIZE2:.*]] = arith.index_cast %[[SIZE1]] : i32 to index
+// CHECK: arith.subi %{{.*}}, %[[SIZE2]] : index
+  %4 = "mhlo.real_dynamic_slice"(%arg0, %0, %arg1, %1) : (tensor<10xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<?xi32>
+  func.return %4 : tensor<?xi32>
+}
 
 // -----
 
@@ -985,6 +1083,19 @@ func.func @maxu(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32, %{{.*}}: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = arith.maxui %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @maxi1
+func.func @maxi1(%lhs: tensor<?x?xi1>, %rhs: tensor<?x?xi1>) -> tensor<?x?xi1> {
+  %0 = "mhlo.maximum"(%lhs, %rhs)
+          : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+  func.return %0 : tensor<?x?xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1, %{{.*}}: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.maxui %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
 
@@ -1266,6 +1377,124 @@ func.func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 
 // -----
 
+// CHECK-LABEL: func @convert_f32_to_ui16
+func.func @convert_f32_to_ui16(%input: tensor<2x2xf32>) -> tensor<2x2xui16> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xui16>
+  func.return %result : tensor<2x2xui16>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %{{.*}}: i16):
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.fptoui %[[OPERAND_IN]] : f32 to i16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
+// CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x2xi16> to tensor<2x2xui16>
+
+// -----
+
+// CHECK-LABEL: func @convert_bf16_to_f16
+func.func @convert_bf16_to_f16(%input: tensor<2x2xbf16>) -> tensor<2x2xf16> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xbf16>) -> tensor<2x2xf16>
+  func.return %result : tensor<2x2xf16>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %{{.*}}: f16):
+// CHECK-NEXT:   %[[EXT:.*]] = arith.extf %[[OPERAND_IN]] : bf16 to f32
+// CHECK-NEXT:   %[[TRUNC:.*]] = arith.truncf %[[EXT]] : f32 to f16
+// CHECK-NEXT:   linalg.yield %[[TRUNC]] : f16
+
+// -----
+
+// CHECK-LABEL: func @convert_c64_to_c128
+func.func @convert_c64_to_c128(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f64>>
+  func.return %result : tensor<2x2xcomplex<f64>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %{{.*}}: complex<f64>):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-DAG:  %[[IMAG:.*]] = complex.im %[[OPERAND_IN]]
+// CHECK-DAG:  %[[REAL_RESULT:.*]] = arith.extf %[[REAL]] : f32 to f64
+// CHECK-DAG:  %[[IMAG_RESULT:.*]] = arith.extf %[[IMAG]] : f32 to f64
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL_RESULT]], %[[IMAG_RESULT]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f64>
+
+// -----
+
+// CHECK-LABEL: func @convert_c128_to_c64
+func.func @convert_c128_to_c64(%input: tensor<2x2xcomplex<f64>>) -> tensor<2x2xcomplex<f32>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f64>>) -> tensor<2x2xcomplex<f32>>
+  func.return %result : tensor<2x2xcomplex<f32>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f64>, %{{.*}}: complex<f32>):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-DAG:  %[[IMAG:.*]] = complex.im %[[OPERAND_IN]]
+// CHECK-DAG:  %[[REAL_RESULT:.*]] = arith.truncf %[[REAL]] : f64 to f32
+// CHECK-DAG:  %[[IMAG_RESULT:.*]] = arith.truncf %[[IMAG]] : f64 to f32
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL_RESULT]], %[[IMAG_RESULT]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @convert_c64_to_f32
+func.func @convert_c64_to_f32(%input: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
+  func.return %result : tensor<2x2xf32>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f32>, %{{.*}}: f32):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK:      linalg.yield %[[REAL]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_c128_to_i32
+func.func @convert_c128_to_i32(%input: tensor<2x2xcomplex<f64>>) -> tensor<2x2xi32> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xcomplex<f64>>) -> tensor<2x2xi32>
+  func.return %result : tensor<2x2xi32>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: complex<f64>, %{{.*}}: i32):
+// CHECK-DAG:  %[[REAL:.*]] = complex.re %[[OPERAND_IN]]
+// CHECK-NEXT:  %[[RESULT:.*]] = arith.fptosi %[[REAL]] : f64 to i32
+// CHECK-NEXT:  linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_c64
+func.func @convert_f32_to_c64(%input: tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
+  func.return %result : tensor<2x2xcomplex<f32>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %{{.*}}: complex<f32>):
+// CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[OPERAND_IN]], %[[IMAG]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f32>
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_c128
+func.func @convert_i32_to_c128(%input: tensor<2x2xi32>) -> tensor<2x2xcomplex<f64>> {
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xcomplex<f64>>
+  func.return %result : tensor<2x2xcomplex<f64>>
+}
+// CHECK:      linalg.init_tensor
+// CHECK:      linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: complex<f64>):
+// CHECK-DAG:  %[[REAL:.*]] = arith.sitofp %[[OPERAND_IN]] : i32 to f64
+// CHECK-DAG:  %[[IMAG:.*]] = arith.constant 0.000000e+00 : f64
+// CHECK-DAG:  %[[RESULT:.*]] = complex.create %[[REAL]], %[[IMAG]]
+// CHECK:      linalg.yield %[[RESULT]] : complex<f64>
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, -d1 + 2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
@@ -1329,6 +1558,25 @@ func.func @iota_ui32() -> tensor<7x10xui32> {
 // CHECK-NEXT:   %[[INT_CAST:.*]] = arith.index_cast %[[INDEX]] : index to i32
 // CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i32
 // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<7x10xi32> to tensor<7x10xui32>
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota_complexf32
+func.func @iota_complexf32() -> tensor<7x10xcomplex<f32>> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xcomplex<f32>>)
+  func.return %result : tensor<7x10xcomplex<f32>>
+}
+// CHECK: linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%{{.*}}: complex<f32>):
+// CHECK-NEXT:   %[[INDEX:.*]] = linalg.index 1
+// CHECK-NEXT:   %[[INT_CAST:.*]] = arith.index_cast %[[INDEX]] : index to i32
+// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = arith.sitofp %[[INT_CAST]] : i32 to f32
+// CHECK-NEXT:   %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[COMPLEX_CAST:.*]] = complex.create %[[FLOAT_CAST]], %[[ZERO]] : complex<f32>
+// CHECK-NEXT:   linalg.yield %[[COMPLEX_CAST]] : complex<f32>
 
 // -----
 
@@ -1443,6 +1691,22 @@ func.func @float_pow(%lhs: tensor<2x2xf32>,
   %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xf32>,
                                    tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @complex_pow
+func.func @complex_pow(%lhs: tensor<2x2xcomplex<f32>>,
+                %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: ^{{[a-z0-9_]*}}
+  // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: complex<f32>
+  // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: complex<f32>
+  // CHECK: %[[RESULT:[a-zA-Z0-9_]*]] = complex.pow %[[ARG0]], %[[ARG1]]
+  // CHECK: linalg.yield %[[RESULT]]
+  %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+                                   tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -1644,6 +1908,27 @@ func.func @dot_matmul(%arg0: tensor<2x3xf32>,
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xf32>, tensor<3x?xf32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<2x?xf32>)
 
+// -----
+
+func.func @dot_matmul_complex(%arg0: tensor<2x3xcomplex<f32>>,
+                 %arg1: tensor<3x?xcomplex<f32>>) -> tensor<2x?xcomplex<f32>> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {someattr}
+           : (tensor<2x3xcomplex<f32>>, tensor<3x?xcomplex<f32>>) -> tensor<2x?xcomplex<f32>>
+  func.return %0 : tensor<2x?xcomplex<f32>>
+}
+// CHECK-LABEL: func @dot_matmul_complex(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3xcomplex<f32>>, %[[ARG1:.*]]: tensor<3x?xcomplex<f32>>)
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG1]], %[[C1]]
+// CHECK: %[[INIT:.*]] = linalg.init_tensor [2, %[[D1]]]
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
+// CHECK: linalg.matmul
+// CHECK-SAME: {someattr}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xcomplex<f32>>, tensor<3x?xcomplex<f32>>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<2x?xcomplex<f32>>)
+
+// -----
+
 func.func @dot_matmul_i8_i8_i32(%arg0: tensor<2x3xi8>,
                  %arg1: tensor<3x?xi8>) -> tensor<2x?xi32> {
   %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xi8>,
@@ -1749,6 +2034,21 @@ func.func @dot_dot(%arg0: tensor<?xf32>,
 
 // -----
 
+func.func @dot_dot_unsigned(%arg0: tensor<?xui32>,
+              %arg1: tensor<?xui32>) -> tensor<ui32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xui32>, tensor<?xui32>) -> tensor<ui32>
+  func.return %0 : tensor<ui32>
+}
+// CHECK-LABEL: func @dot_dot_unsigned(
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xui32>, %[[ARG1:.*]]: tensor<?xui32>)
+// CHECK: %[[INIT:.*]] = linalg.init_tensor []
+// CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}outs(%[[INIT]]
+// CHECK: linalg.dot
+// CHECK-SAME: ins(%{{.*}} : tensor<?xi32>, tensor<?xi32>)
+// CHECK-SAME: outs(%[[FILL]] : tensor<i32>)
+
+// -----
+
 func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
                   %arg1: tensor<?x3x?xf32>) -> tensor<?x?x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
@@ -1758,7 +2058,7 @@ func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
       rhs_batching_dimensions = [0],
       rhs_contracting_dimensions = [1]
     >,
-    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
     someattr
   } : (tensor<?x?x3xf32>, tensor<?x3x?xf32>) -> tensor<?x?x?xf32>
   func.return %0 : tensor<?x?x?xf32>
@@ -1771,12 +2071,40 @@ func.func @dot_general_batch_matmul(%arg0: tensor<?x?x3xf32>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
 // CHECK-SAME: {someattr}
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xf32>, tensor<?x3x?xf32>)
 // CHECK-SAME: outs(%[[FILL]] : tensor<?x?x?xf32>)
+
+// -----
+
+func.func @dot_general_batch_matmul_unsigned(%arg0: tensor<?x?x3xui32>,
+                  %arg1: tensor<?x3x?xui32>) -> tensor<?x?x?xui32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    someattr
+  } : (tensor<?x?x3xui32>, tensor<?x3x?xui32>) -> tensor<?x?x?xui32>
+  func.return %0 : tensor<?x?x?xui32>
+// CHECK-LABEL: func @dot_general_batch_matmul_unsigned(
+// CHECK: linalg.batch_matmul
+// CHECK-SAME: ins({{.*}} : tensor<?x?x3xi32>, tensor<?x3x?xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
+}
 
 // -----
 
@@ -1789,7 +2117,7 @@ func.func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
       rhs_batching_dimensions = [0],
       rhs_contracting_dimensions = [1]
     >,
-    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
   } : (tensor<?x?x3xi8>, tensor<?x3x?xi8>) -> tensor<?x?x?xi32>
   func.return %0 : tensor<?x?x?xi32>
 }
@@ -1801,6 +2129,13 @@ func.func @dot_general_batch_matmul_i8_i8_i32(%arg0: tensor<?x?x3xi8>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1818,7 +2153,7 @@ func.func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
       rhs_batching_dimensions = [0],
       rhs_contracting_dimensions = [1]
     >,
-    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
   } : (tensor<?x?x3xi16>, tensor<?x3x?xi16>) -> tensor<?x?x?xi32>
   func.return %0 : tensor<?x?x?xi32>
 }
@@ -1830,6 +2165,13 @@ func.func @dot_general_batch_matmul_i16_i16_i32(%arg0: tensor<?x?x3xi16>,
 // CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
 // CHECK: %[[C2:.*]] = arith.constant 2 : index
 // CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.batch_matmul
@@ -1847,7 +2189,7 @@ func.func @dot_general_batch_matmul_large
       rhs_batching_dimensions = [0],
       rhs_contracting_dimensions = [1]
     >,
-    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]}
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
     : (tensor<2x16x32xf32>, tensor<2x32x32xf32>) -> tensor<2x16x32xf32>
   func.return %0 : tensor<2x16x32xf32>
 }
@@ -1884,6 +2226,25 @@ func.func @einsum_basic(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x5x6xf32>) -> t
 // CHECK:   %[[MUL:.*]] = arith.mulf %[[LHS_]], %[[RHS_]] : f32
 // CHECK:   %[[RES:.*]] = arith.addf %[[OUT_]], %[[MUL]] : f32
 // CHECK:   linalg.yield %[[RES]]
+
+// -----
+
+func.func @dot_general_batch_matvec(%arg0: tensor<?x?x3xf32>,
+                                    %arg1: tensor<?x3xf32>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [0],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    someattr
+  } : (tensor<?x?x3xf32>, tensor<?x3xf32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @dot_general_batch_matvec(
+// CHECK: linalg.generic
 
 // -----
 
@@ -2015,9 +2376,9 @@ func.func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>)
   // CHECK: %[[INIT:.*]] = linalg.init_tensor
   // CHECK: %[[RESULT:.*]] = linalg.generic {{.*}} ins(%[[LB]], %[[X]], %[[UB]] : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) outs(%[[INIT]] : tensor<4xf32>)
   // CHECK: ^bb0(%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32, %{{.*}}: f32):
-  // CHECK:   %[[MIN:.*]] = arith.minf %[[SCALAR_X]], %[[SCALAR_UB]] : f32
-  // CHECK:   %[[MAX_X2_LB:.*]] = arith.maxf %[[MIN]], %[[SCALAR_LB]] : f32
-  // CHECK:   linalg.yield %[[MAX_X2_LB]]
+  // CHECK:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+  // CHECK:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+  // CHECK:   linalg.yield %[[MIN]]
   // CHECK: } -> tensor<4xf32>
   // CHECK: return %[[RESULT]] : tensor<4xf32>
   %0 = "mhlo.clamp"(%lb, %x, %ub) : (tensor<4xf32>, tensor<4xf32>,
@@ -2034,15 +2395,49 @@ func.func @clamp_dynamic(%lb : tensor<?xf32>, %x : tensor<?xf32>, %ub : tensor<?
   // CHECK: %[[INIT:.*]] = linalg.init_tensor
   // CHECK: %[[RESULT:.*]] = linalg.generic {{.*}} ins(%[[LB]], %[[X]], %[[UB]] : tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) outs(%[[INIT]] : tensor<?xf32>)
   // CHECK: ^bb0(%[[SCALAR_LB:.*]]: f32, %[[SCALAR_X:.*]]: f32, %[[SCALAR_UB:.*]]: f32, %{{.*}}: f32):
-  // CHECK:   %[[MIN:.*]] = arith.minf %[[SCALAR_X]], %[[SCALAR_UB]] : f32
-  // CHECK:   %[[MAX_X2_LB:.*]] = arith.maxf %[[MIN]], %[[SCALAR_LB]] : f32
-  // CHECK:   linalg.yield %[[MAX_X2_LB]]
+  // CHECK:   %[[MAX:.*]] = arith.maxf %[[SCALAR_LB]], %[[SCALAR_X]] : f32
+  // CHECK:   %[[MIN:.*]] = arith.minf %[[MAX]], %[[SCALAR_UB]] : f32
+  // CHECK:   linalg.yield %[[MIN]]
   // CHECK: } -> tensor<?xf32>
   // CHECK: return %[[RESULT]] : tensor<?xf32>
   %0 = "mhlo.clamp"(%lb, %x, %ub) : (tensor<?xf32>, tensor<?xf32>,
       tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
+
+// -----
+
+func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
+                       %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<complex<f32>>, %arg3: tensor<complex<f32>>):
+    %1 = mhlo.real(%arg2) : (tensor<complex<f32>>) -> tensor<f32>
+    %2 = mhlo.real(%arg3) : (tensor<complex<f32>>) -> tensor<f32>
+    %3 = "mhlo.compare"(%1, %2)
+       {comparison_direction = #mhlo<comparison_direction EQ>}
+       : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%3) : (tensor<i1>) -> ()
+  }) {dimensions = dense<0> : tensor<1xi64>}
+  : (tensor<?xcomplex<f32>>, tensor<?xcomplex<f32>>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// CHECK-LABEL: @map_compare
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?xcomplex<f32>>,
+// CHECK-SAME: %[[ARG1:.*]]: tensor<?xcomplex<f32>>)
+
+// CHECK: %[[INIT:.+]] = linalg.init_tensor
+// CHECK: %[[MAP:.+]] = linalg.generic
+// CHECK-SAME: iterator_types = ["parallel"]}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]]
+// CHECK-SAME: outs(%[[INIT]] : tensor<?xi1>) {
+// CHECK:  ^bb0(%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>, %{{.+}}: i1):
+// CHECK: %[[RE1:.+]] = complex.re %[[A]] : complex<f32>
+// CHECK: %[[RE2:.+]] = complex.re %[[B]] : complex<f32>
+// CHECK: %[[CMP:.+]] = arith.cmpf oeq, %[[RE1]], %[[RE2]] : f32
+// CHECK: linalg.yield %[[CMP]] : i1
+// CHECK: }
+// CHECK: return %[[MAP]] : tensor<?xi1>
 
 // -----
 
@@ -2069,6 +2464,38 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = arith.addi %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func.func @reduce_add_complex(%arg0: tensor<5x4xcomplex<f32>>) -> tensor<5xcomplex<f32>> {
+  %cst = mhlo.constant dense<(0.000000e+00,0.000000e+00)> : tensor<complex<f32>>
+  %0 = "mhlo.reduce"(%arg0, %cst) ({
+  ^bb0(%arg3: tensor<complex<f32>>, %arg4 : tensor<complex<f32>>):
+    %1 = mhlo.add %arg3, %arg4 : tensor<complex<f32>>
+    "mhlo.return"(%1) : (tensor<complex<f32>>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<5x4xcomplex<f32>>, tensor<complex<f32>>) -> tensor<5xcomplex<f32>>
+  func.return %0 : tensor<5xcomplex<f32>>
+}
+
+// CHECK-LABEL: @reduce_add_complex
+// CHECK: %[[INIT:.*]] = complex.constant [0.000000e+00 : f32, 0.000000e+00 : f32] : complex<f32>
+// CHECK: linalg.fill ins(%[[INIT]]
+// CHECK: complex.add
+
+// -----
+
+func.func @reduce_minimum_unsigned(%arg0: tensor<5x4xui32>, %arg1: tensor<ui32>) -> tensor<5xui32> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<ui32>, %arg4 : tensor<ui32>):
+    %1 = mhlo.minimum %arg3, %arg4 : tensor<ui32>
+    "mhlo.return"(%1) : (tensor<ui32>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>, someattr} : (tensor<5x4xui32>, tensor<ui32>) -> tensor<5xui32>
+  func.return %0 : tensor<5xui32>
+}
+// CHECK-LABEL: @reduce_minimum_unsigned
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb{{.}}(%[[ARG2:.+]]: i32, %[[ARG3:.+]]: i32)
+// CHECK-NEXT: arith.minui %[[ARG2]], %[[ARG3]] : i32
 
 // -----
 
@@ -2200,6 +2627,33 @@ func.func @reduce_or_of_zero_constant() -> tensor<5xi1> {
 
 // -----
 
+func.func @reduce_xor(%arg0: tensor<5x4xi1>,
+                      %arg1: tensor<i1>) -> tensor<5xi1> {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+  ^bb0(%arg3: tensor<i1>, %arg4 : tensor<i1>):
+    %1 = mhlo.xor %arg3, %arg4 : tensor<i1>
+    "mhlo.return"(%1) : (tensor<i1>) -> ()
+  }) {dimensions = dense<1> : tensor<1xi64>}
+   : (tensor<5x4xi1>, tensor<i1>) -> tensor<5xi1>
+  func.return %0 : tensor<5xi1>
+}
+// CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: @reduce_xor
+// CHECK-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i1>
+// CHECK-DAG: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5]
+// CHECK-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]]]
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]
+// CHECK-SAME: ins(%{{.*}}tensor<5x4xi1>)
+// CHECK-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi1>)
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i1, %[[RHS_IN:.*]]: i1):
+// CHECK-NEXT:   %[[RESULT:.*]] = arith.xori %[[LHS_IN]], %[[RHS_IN]] : i1
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 func.func @reduce_dim0(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<4xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
@@ -2276,6 +2730,50 @@ func.func @reduce_multi_dimensions(%arg0: tensor<5x4x3xi32>,
 
 // -----
 
+func.func @reduce_lexicographic_min_complex(%arg0: tensor<?x3x4xcomplex<f64>>,
+                                            %arg1: tensor<complex<f64>>)
+  -> tensor<complex<f64>> {
+  %0 = mhlo.reduce(%arg0 init: %arg1)
+   across dimensions = [0, 1, 2]
+   : (tensor<?x3x4xcomplex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
+   reducer(%arg3: tensor<complex<f64>>, %arg4: tensor<complex<f64>>)  {
+    %1 = mhlo.real(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
+    %2 = mhlo.convert(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %3 = "mhlo.compare"(%1, %2)
+      {comparison_direction = #mhlo<comparison_direction EQ>}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %4 = mhlo.imag(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
+    %5 = mhlo.imag(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %6 = "mhlo.compare"(%4, %5)
+      {comparison_direction = #mhlo<comparison_direction LT>}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %7 = "mhlo.compare"(%1, %2)
+      {comparison_direction = #mhlo<comparison_direction LT>}
+      : (tensor<f64>, tensor<f64>) -> tensor<i1>
+    %8 = "mhlo.select"(%3, %6, %7)
+      : (tensor<i1>, tensor<i1>, tensor<i1>) -> tensor<i1>
+    %9 = "mhlo.select"(%8, %arg3, %arg4)
+      : (tensor<i1>, tensor<complex<f64>>, tensor<complex<f64>>)
+      -> tensor<complex<f64>>
+    "mhlo.return"(%9) : (tensor<complex<f64>>) -> ()
+  }
+  return %0 : tensor<complex<f64>>
+}
+
+// CHECK-LABEL: @reduce_lexicographic_min_complex
+// CHECK: linalg.generic
+// CHECK: complex.re
+// CHECK: complex.re
+// CHECK: arith.cmpf
+// CHECK: complex.im
+// CHECK: complex.im
+// CHECK: arith.cmpf
+// CHECK: arith.cmpf
+// CHECK: arith.select
+// CHECK: arith.select
+
+// -----
+
 func.func @reduce_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<i32>) -> tensor<?xi32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg3: tensor<i32>, %arg4 : tensor<i32>):
@@ -2308,9 +2806,9 @@ func.func @variadic_reduce(%arg0: tensor<9x2xi32>, %arg1: tensor<9x2xi32>) -> (t
   %cst1 = mhlo.constant dense<0> : tensor<i32>
   %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ({
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg15: tensor<i32>, %arg16: tensor<i32>):
-    %669 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %669 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = #mhlo<comparison_direction GE>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %670 = "mhlo.select"(%669, %arg2, %arg15) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    %671 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %671 = "mhlo.compare"(%arg2, %arg15) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %672 = mhlo.minimum %arg3, %arg16 : tensor<i32>
     %673 = "mhlo.select"(%669, %arg3, %arg16) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     %674 = "mhlo.select"(%671, %672, %673) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -2350,7 +2848,7 @@ func.func @variadic_diff_type_reduce(%arg0: tensor<128x10xf32>, %arg1: tensor<12
   %cst1 = mhlo.constant dense<1> : tensor<i32>
   %res0, %res1 = "mhlo.reduce"(%arg0, %arg1, %cst0, %cst1) ({
   ^bb0(%arg7: tensor<f32>, %arg8: tensor<i32>, %arg9: tensor<f32>, %arg10: tensor<i32>):
-    %0 = "mhlo.compare"(%arg7, %arg9) {comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %0 = "mhlo.compare"(%arg7, %arg9) {comparison_direction = #mhlo<comparison_direction GE>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     %1 = "mhlo.select"(%0, %arg7, %arg9) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
     %2 = "mhlo.select"(%0, %arg8, %arg10) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
@@ -2434,7 +2932,7 @@ func.func @slice_with_strides2(%arg0: tensor<6xi32>) -> tensor<3xi32> {
 // -----
 
 func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xf32> {
-  %0 = "mhlo.dynamic-slice"(%arg, %start1, %start2) {
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
   } : (tensor<3x4xf32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
   func.return %0 : tensor<1x4xf32>
@@ -2443,23 +2941,24 @@ func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: t
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[C0:.*]] = arith.constant 0 : i64
-// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG1]][] : tensor<i64>
-// CHECK:         %[[UB1:.*]] = arith.constant 2 : i64
-// CHECK:         %[[T1:.*]] = arith.minsi %[[SCALAR1]], %[[UB1]] : i64
-// CHECK:         %[[CLAMPED1:.*]] = arith.maxsi %[[T1]], %[[C0]] : i64
-// CHECK:         %[[START1:.*]] = arith.index_cast %[[CLAMPED1]] : i64 to index
-// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i64>
-// CHECK:         %[[UB2:.*]] = arith.constant 0 : i64
-// CHECK:         %[[T2:.*]] = arith.minsi %[[SCALAR2]], %[[UB2]] : i64
-// CHECK:         %[[CLAMPED2:.*]] = arith.maxsi %[[T2]], %[[C0]] : i64
-// CHECK:         %[[START2:.*]] = arith.index_cast %[[CLAMPED2]] : i64 to index
-// CHECK:           tensor.extract_slice %[[ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract %[[ARG1]][] : tensor<i64>
+// CHECK:         %[[SCALAR1:.*]] = arith.index_cast %[[EXTRACT1]]
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[UB1:.*]] = arith.constant 2 : index
+// CHECK:         %[[T1:.*]] = arith.maxsi %[[SCALAR1]], %[[C0]] : index
+// CHECK:         %[[CLAMPED1:.*]] = arith.minsi %[[T1]], %[[UB1]] : index
+// CHECK:         %[[EXTRACT2:.*]] = tensor.extract %[[ARG2]][] : tensor<i64>
+// CHECK:         %[[SCALAR2:.*]] = arith.index_cast %[[EXTRACT2]]
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[UB2:.*]] = arith.constant 0 : index
+// CHECK:         %[[T2:.*]] = arith.maxsi %[[SCALAR2]], %[[C0]] : index
+// CHECK:         %[[CLAMPED2:.*]] = arith.minsi %[[T2]], %[[UB2]] : index
+// CHECK:           tensor.extract_slice %[[ARG0]][%[[CLAMPED1]], %[[CLAMPED2]]] [1, 4] [1, 1]
 
 // -----
 
 func.func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xui32> {
-  %0 = "mhlo.dynamic-slice"(%arg, %start1, %start2) {
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
   } : (tensor<3x4xui32>, tensor<i64>, tensor<i64>) -> tensor<1x4xui32>
   func.return %0 : tensor<1x4xui32>
@@ -2470,23 +2969,24 @@ func.func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, 
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
 // CHECK:         %[[SIGNLESS_ARG0:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<3x4xui32> to tensor<3x4xi32>
-// CHECK:         %[[C0:.*]] = arith.constant 0 : i64
-// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG1]][] : tensor<i64>
-// CHECK:         %[[UB1:.*]] = arith.constant 2 : i64
-// CHECK:         %[[T1:.*]] = arith.minsi %[[SCALAR1]], %[[UB1]] : i64
-// CHECK:         %[[CLAMPED1:.*]] = arith.maxsi %[[T1]], %[[C0]] : i64
-// CHECK:         %[[START1:.*]] = arith.index_cast %[[CLAMPED1]] : i64 to index
-// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i64>
-// CHECK:         %[[UB2:.*]] = arith.constant 0 : i64
-// CHECK:         %[[T2:.*]] = arith.minsi %[[SCALAR2]], %[[UB2]] : i64
-// CHECK:         %[[CLAMPED2:.*]] = arith.maxsi %[[T2]], %[[C0]] : i64
-// CHECK:         %[[START2:.*]] = arith.index_cast %[[CLAMPED2]] : i64 to index
-// CHECK:           tensor.extract_slice %[[SIGNLESS_ARG0]][%[[START1]], %[[START2]]] [1, 4] [1, 1]
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract %[[ARG1]][] : tensor<i64>
+// CHECK:         %[[SCALAR1:.*]] = arith.index_cast %[[EXTRACT1]]
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[UB1:.*]] = arith.constant 2 : index
+// CHECK:         %[[T1:.*]] = arith.maxsi %[[SCALAR1]], %[[C0]] : index
+// CHECK:         %[[CLAMPED1:.*]] = arith.minsi %[[T1]], %[[UB1]] : index
+// CHECK:         %[[EXTRACT2:.*]] = tensor.extract %[[ARG2]][] : tensor<i64>
+// CHECK:         %[[SCALAR2:.*]] = arith.index_cast %[[EXTRACT2]]
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[UB2:.*]] = arith.constant 0 : index
+// CHECK:         %[[T2:.*]] = arith.maxsi %[[SCALAR2]], %[[C0]] : index
+// CHECK:         %[[CLAMPED2:.*]] = arith.minsi %[[T2]], %[[UB2]] : index
+// CHECK:           tensor.extract_slice %[[SIGNLESS_ARG0]][%[[CLAMPED1]], %[[CLAMPED2]]] [1, 4] [1, 1]
 
 // -----
 
 func.func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi32>, %c0: tensor<i32>) -> tensor<3x3xi32> {
-  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %c0, %c0)
     : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<i32>, tensor<i32>) -> tensor<3x3xi32>
   func.return %0 : tensor<3x3xi32>
 }
@@ -2494,26 +2994,26 @@ func.func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi3
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[C0:.*]] = arith.constant 0 : i32
-// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
-// CHECK:         %[[UB1:.*]] = arith.constant 1 : i32
-// CHECK:         %[[T1:.*]] = arith.minsi %[[SCALAR1]], %[[UB1]] : i32
-// CHECK:         %[[CLAMPED1:.*]] = arith.maxsi %[[T1]], %[[C0]] : i32
-// CHECK:         %[[START1:.*]] = arith.index_cast %[[CLAMPED1]] : i32 to index
-// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
-// CHECK:         %[[UB2:.*]] = arith.constant 1 : i32
-// CHECK:         %[[T2:.*]] = arith.minsi %[[SCALAR2]], %[[UB2]] : i32
-// CHECK:         %[[CLAMPED2:.*]] = arith.maxsi %[[T2]], %[[C0]] : i32
-// CHECK:         %[[START2:.*]] = arith.index_cast %[[CLAMPED2]] : i32 to index
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[SCALAR1:.*]] = arith.index_cast %[[EXTRACT1]]
+// CHECK:         %[[UB1:.*]] = arith.constant 1 : index
+// CHECK:         %[[T1:.*]] = arith.maxsi %[[SCALAR1]], %[[C0]] : index
+// CHECK:         %[[CLAMPED1:.*]] = arith.minsi %[[T1]], %[[UB1]] : index
+// CHECK:         %[[EXTRACT2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[SCALAR2:.*]] = arith.index_cast %[[EXTRACT2]]
+// CHECK:         %[[UB2:.*]] = arith.constant 1 : index
+// CHECK:         %[[T2:.*]] = arith.maxsi %[[SCALAR2]], %[[C0]] : index
+// CHECK:         %[[CLAMPED2:.*]] = arith.minsi %[[T2]], %[[UB2]] : index
 // CHECK:         %[[RES:.*]] = tensor.insert_slice %[[ARG1]] into %[[ARG0]]
-// CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
+// CHECK-SAME:      [%[[CLAMPED1]], %[[CLAMPED2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
 // CHECK:         return %[[RES]] : tensor<3x3xi32>
 
 // -----
 
 func.func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: tensor<2x2xui32>, %c0: tensor<i32>) -> tensor<3x3xui32> {
-  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %c0, %c0)
     : (tensor<3x3xui32>, tensor<2x2xui32>, tensor<i32>, tensor<i32>) -> tensor<3x3xui32>
   func.return %0 : tensor<3x3xui32>
 }
@@ -2523,19 +3023,19 @@ func.func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: ten
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
 // CHECK-DAG:     %[[SIGNLESS_UPDATE:.*]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<2x2xui32> to tensor<2x2xi32>
 // CHECK-DAG:     %[[SIGNLESS_TARGET:.*]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<3x3xui32> to tensor<3x3xi32>
-// CHECK:         %[[C0:.*]] = arith.constant 0 : i32
-// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
-// CHECK:         %[[UB1:.*]] = arith.constant 1 : i32
-// CHECK:         %[[T1:.*]] = arith.minsi %[[SCALAR1]], %[[UB1]] : i32
-// CHECK:         %[[CLAMPED1:.*]] = arith.maxsi %[[T1]], %[[C0]] : i32
-// CHECK:         %[[START1:.*]] = arith.index_cast %[[CLAMPED1]] : i32 to index
-// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
-// CHECK:         %[[UB2:.*]] = arith.constant 1 : i32
-// CHECK:         %[[T2:.*]] = arith.minsi %[[SCALAR2]], %[[UB2]] : i32
-// CHECK:         %[[CLAMPED2:.*]] = arith.maxsi %[[T2]], %[[C0]] : i32
-// CHECK:         %[[START2:.*]] = arith.index_cast %[[CLAMPED2]] : i32 to index
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[SCALAR1:.*]] = arith.index_cast %[[EXTRACT1]]
+// CHECK:         %[[UB1:.*]] = arith.constant 1 : index
+// CHECK:         %[[T1:.*]] = arith.maxsi %[[SCALAR1]], %[[C0]] : index
+// CHECK:         %[[CLAMPED1:.*]] = arith.minsi %[[T1]], %[[UB1]] : index
+// CHECK:         %[[EXTRACT2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[SCALAR2:.*]] = arith.index_cast %[[EXTRACT2]]
+// CHECK:         %[[UB2:.*]] = arith.constant 1 : index
+// CHECK:         %[[T2:.*]] = arith.maxsi %[[SCALAR2]], %[[C0]] : index
+// CHECK:         %[[CLAMPED2:.*]] = arith.minsi %[[T2]], %[[UB2]] : index
 // CHECK:         %[[SIGNLESS_RES:.*]] = tensor.insert_slice %[[SIGNLESS_UPDATE]] into %[[SIGNLESS_TARGET]]
-// CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
+// CHECK-SAME:      [%[[CLAMPED1]], %[[CLAMPED2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
 // CHECK:         %[[RES:.*]] = builtin.unrealized_conversion_cast %[[SIGNLESS_RES]] : tensor<3x3xi32> to tensor<3x3xui32>
 // CHECK:         return %[[RES]] : tensor<3x3xui32>
@@ -2545,7 +3045,7 @@ func.func @dynamic_update_slice_unsigned(%target: tensor<3x3xui32>, %update: ten
 func.func @dynamic_update_slice_float(%target: tensor<3x3xf32>,
                                  %update: tensor<2x2xf32>,
                                  %c0: tensor<i32>) -> tensor<3x3xf32> {
-  %0 = "mhlo.dynamic-update-slice"(%target, %update, %c0, %c0)
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %c0, %c0)
     : (tensor<3x3xf32>, tensor<2x2xf32>, tensor<i32>, tensor<i32>) -> tensor<3x3xf32>
   func.return %0 : tensor<3x3xf32>
 }
@@ -2553,19 +3053,19 @@ func.func @dynamic_update_slice_float(%target: tensor<3x3xf32>,
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
 // CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]*]]
-// CHECK:         %[[C0:.*]] = arith.constant 0 : i32
-// CHECK:         %[[SCALAR1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
-// CHECK:         %[[UB1:.*]] = arith.constant 1 : i32
-// CHECK:         %[[T1:.*]] = arith.minsi %[[SCALAR1]], %[[UB1]] : i32
-// CHECK:         %[[CLAMPED1:.*]] = arith.maxsi %[[T1]], %[[C0]] : i32
-// CHECK:         %[[START1:.*]] = arith.index_cast %[[CLAMPED1]] : i32 to index
-// CHECK:         %[[SCALAR2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
-// CHECK:         %[[UB2:.*]] = arith.constant 1 : i32
-// CHECK:         %[[T2:.*]] = arith.minsi %[[SCALAR2]], %[[UB2]] : i32
-// CHECK:         %[[CLAMPED2:.*]] = arith.maxsi %[[T2]], %[[C0]] : i32
-// CHECK:         %[[START2:.*]] = arith.index_cast %[[CLAMPED2]] : i32 to index
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[SCALAR1:.*]] = arith.index_cast %[[EXTRACT1]]
+// CHECK:         %[[UB1:.*]] = arith.constant 1 : index
+// CHECK:         %[[T1:.*]] = arith.maxsi %[[SCALAR1]], %[[C0]] : index
+// CHECK:         %[[CLAMPED1:.*]] = arith.minsi %[[T1]], %[[UB1]] : index
+// CHECK:         %[[EXTRACT2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+// CHECK:         %[[SCALAR2:.*]] = arith.index_cast %[[EXTRACT2]]
+// CHECK:         %[[UB2:.*]] = arith.constant 1 : index
+// CHECK:         %[[T2:.*]] = arith.maxsi %[[SCALAR2]], %[[C0]] : index
+// CHECK:         %[[CLAMPED2:.*]] = arith.minsi %[[T2]], %[[UB2]] : index
 // CHECK:         %[[RES:.*]] = tensor.insert_slice %[[ARG1]] into %[[ARG0]]
-// CHECK-SAME:      [%[[START1]], %[[START2]]] [2, 2] [1, 1]
+// CHECK-SAME:      [%[[CLAMPED1]], %[[CLAMPED2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xf32> into tensor<3x3xf32>
 // CHECK:         return %[[RES]] : tensor<3x3xf32>
 
@@ -2607,9 +3107,45 @@ func.func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x
 
 // -----
 
+func.func @pad_interior(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<29x15xui32> {
+  %0 = arith.constant dense<0> : tensor<ui32>
+  %1 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, 5]> : tensor<2xi64>,
+    interior_padding = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<12x4xui32>, tensor<ui32>) -> tensor<29x15xui32>
+  func.return %1 : tensor<29x15xui32>
+}
+// CHECK-LABEL: func @pad_interior
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]*]]
+//   CHECK-DAG: %[[CAST0:.+]] = builtin.unrealized_conversion_cast %[[ARG0]] : tensor<12x4xui32> to tensor<12x4xi32>
+//   CHECK-DAG: %[[CAST1:.+]] = builtin.unrealized_conversion_cast %[[ARG1]] : tensor<ui32> to tensor<i32>
+//   CHECK-DAG: %[[PAD:.+]] = tensor.extract %[[CAST1]][] : tensor<i32>
+//       CHECK: %[[INIT:.+]] = linalg.init_tensor [29, 15] : tensor<29x15xi32>
+//       CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PAD]] : i32) outs(%[[INIT]] : tensor<29x15xi32>) -> tensor<29x15xi32>
+//       CHECK: %[[INSERT:.+]] = tensor.insert_slice %[[CAST0]] into %[[FILL]][4, 5] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x15xi32>
+
+// -----
+
+func.func @pad_interior_negative(%arg0: tensor<12x4xui32>, %arg1: tensor<ui32>) -> tensor<25x9xui32> {
+  %0 = arith.constant dense<0> : tensor<ui32>
+  %1 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_high = dense<[-2, 3]> : tensor<2xi64>,
+    edge_padding_low = dense<[4, -1]> : tensor<2xi64>,
+    interior_padding = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<12x4xui32>, tensor<ui32>) -> tensor<25x9xui32>
+  func.return %1 : tensor<25x9xui32>
+}
+// CHECK-LABEL: func @pad_interior_negative
+//       CHECK: %[[PAD:.]] = tensor.insert_slice %{{.+}} into %{{.+}}[4, 0] [12, 4] [2, 2] : tensor<12x4xi32> into tensor<29x10xi32>
+//       CHECK: %[[SLICE:.]] = tensor.extract_slice %[[PAD]][0, 1] [25, 9] [1, 1] : tensor<29x10xi32> to tensor<25x9xi32>
+
+// -----
+
 func.func @linalg.conv_0d_nc(%arg0: tensor<3x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<3x3xf32> {
 
-  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f]x[i, o]->[b, f], window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<3x2xf32>, tensor<2x3xf32>) -> tensor<3x3xf32>
+  %0 = mhlo.convolution(%arg0, %arg1) dim_numbers = [b, f]x[i, o]->[b, f], window = {stride = [], pad = [], lhs_dilate = [], rhs_dilate = [], reverse = []} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3x2xf32>, tensor<2x3xf32>) -> tensor<3x3xf32>
   func.return %0 : tensor<3x3xf32>
 }
 
@@ -2617,8 +3153,7 @@ func.func @linalg.conv_0d_nc(%arg0: tensor<3x2xf32>, %arg1: tensor<2x3xf32>) -> 
 // CHECK-DAG: %[[CST:.+]] = arith.constant 0.000000e+00
 // CHECK-DAG: %[[INIT:.+]] = linalg.init_tensor [3, 3]
 // CHECK-DAG: %[[FILL:.+]] = linalg.fill ins(%cst{{.*}}outs(%[[INIT]]
-// CHECK-DAG: %[[PAD:.+]] = tensor.pad %arg0 low[0, 0] high[0, 0]
-// CHECK: linalg.matmul ins(%[[PAD]], %arg1 : tensor<3x2xf32>, tensor<2x3xf32>) outs(%[[FILL]] : tensor<3x3xf32>)
+// CHECK: linalg.matmul ins(%arg0, %arg1 : tensor<3x2xf32>, tensor<2x3xf32>) outs(%[[FILL]] : tensor<3x3xf32>)
 
 // -----
 
@@ -2638,7 +3173,7 @@ func.func @linalg.conv_1d_nwc(%arg0: tensor<?x8x?xf32>, %arg1: tensor<2x?x?xf32>
       output_spatial_dimensions = [1]
     >,
     feature_group_count = 1 : i64,
-    padding = dense<[[0], [0]]> : tensor<2x1xi64>,
+    padding = dense<[[0, 0]]> : tensor<1x2xi64>,
     rhs_dilation = dense<1> : tensor<1xi64>,
     window_strides = dense<1> : tensor<1xi64>,
     someattr
@@ -2665,7 +3200,7 @@ func.func @linalg.conv_1d_nwc(%arg0: tensor<?x8x?xf32>, %arg1: tensor<2x?x?xf32>
 // -----
 
 func.func @conv_2d_nhwc_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf32>)
-  -> tensor<?x2x3x?xf32> {
+  -> tensor<?x2x4x?xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -2683,8 +3218,8 @@ func.func @conv_2d_nhwc_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf
     padding = dense<[[0, 0], [0, 0]]> : tensor<2x2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_strides = dense<1> : tensor<2xi64>
-  } : (tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>) -> tensor<?x2x3x?xf32>
-  func.return %0 : tensor<?x2x3x?xf32>
+  } : (tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>) -> tensor<?x2x4x?xf32>
+  func.return %0 : tensor<?x2x4x?xf32>
 }
 // CHECK-LABEL: func @conv_2d_nhwc_hwcf
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
@@ -2693,14 +3228,47 @@ func.func @conv_2d_nhwc_hwcf(%arg0: tensor<?x4x5x?xf32>, %arg1: tensor<3x2x?x?xf
 // CHECK:         %[[DIM0:.+]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x4x5x?xf32>
 // CHECK:         %[[C3:.+]] = arith.constant 3 : index
 // CHECK:         %[[DIM3:.+]] = tensor.dim %[[ARG1]], %[[C3]] : tensor<3x2x?x?xf32>
-// CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 2, 3, %[[DIM3]]]
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [%[[DIM0]], 2, 4, %[[DIM3]]]
 // CHECK:         %[[ZERO:.+]] = arith.constant 0.000000e+00 : f32
 // CHECK:         %[[FILL:.+]] = linalg.fill ins(%[[ZERO]]{{.*}}outs(%[[INIT]]
 // CHECK:         linalg.conv_2d_nhwc
 // CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>
 // CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
 // CHECK-SAME:     ins(%[[ARG0]], %[[ARG1]] : tensor<?x4x5x?xf32>, tensor<3x2x?x?xf32>)
-// CHECK-SAME:    outs(%[[FILL]] : tensor<?x2x3x?xf32>) -> tensor<?x2x3x?xf32>
+// CHECK-SAME:    outs(%[[FILL]] : tensor<?x2x4x?xf32>) -> tensor<?x2x4x?xf32>
+
+// -----
+
+func.func @conv_transpose_2d(%arg0: tensor<2x9x10x3xf32>,
+                             %arg1: tensor<4x4x3x3xf32>)
+  -> tensor<2x15x25x3xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[6, 6], [6, 6]],
+              lhs_dilate = [1, 2], rhs_dilate = [2, 2]}
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64,
+      precision_config = [#mhlo<precision DEFAULT>,
+                          #mhlo<precision DEFAULT>]
+    } : (tensor<2x9x10x3xf32>, tensor<4x4x3x3xf32>) -> tensor<2x15x25x3xf32>
+  return %0 : tensor<2x15x25x3xf32>
+}
+
+// CHECK-LABEL: func @conv_transpose_2d
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [2, 15, 25, 3]
+// CHECK:         %[[ZERO:.+]] = arith.constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill ins(%[[ZERO]]{{.*}}outs(%[[INIT]]
+// CHECK:         %[[LHS_INIT:.+]] = linalg.init_tensor [2, 21, 31, 3]
+// CHECK:         %[[LHS_FILL:.+]] = linalg.fill ins(%[[ZERO]]{{.*}}outs(%[[LHS_INIT]]
+// CHECK:         %[[LHS_PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[LHS_FILL]][0, 6, 6, 0] [2, 9, 10, 3] [1, 1, 2, 1] : tensor<2x9x10x3xf32> into tensor<2x21x31x3xf32>
+// CHECK:         linalg.conv_2d_nhwc_hwcf
+// CHECK-SAME:      {dilations = dense<2> : tensor<2xi64>
+// CHECK-SAME:       strides = dense<1> : tensor<2xi64>}
+// CHECK-SAME:     ins(%[[LHS_PAD]], %[[ARG1]] : tensor<2x21x31x3xf32>, tensor<4x4x3x3xf32>)
+// CHECK-SAME:     outs(%[[FILL]] : tensor<2x15x25x3xf32>) -> tensor<2x15x25x3xf32>
 
 // -----
 
@@ -2720,7 +3288,7 @@ func.func @conv_3d_ndhwc_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tensor<2x2x2
       output_spatial_dimensions = [1, 2, 3]
     >,
     feature_group_count = 1 : i64,
-    padding = dense<[[0, 0, 0], [0, 0, 0]]> : tensor<2x3xi64>,
+    padding = dense<[[0, 0], [0, 0], [0, 0]]> : tensor<3x2xi64>,
     rhs_dilation = dense<1> : tensor<3xi64>,
     window_strides = dense<1> : tensor<3xi64>
   } : (tensor<?x8x8x8x?xf32>, tensor<2x2x2x?x?xf32>) -> tensor<?x7x7x7x?xf32>
@@ -2790,7 +3358,7 @@ func.func @linalg.conv_2D_padding_test1(%arg0: tensor<1x33x1x1xf16>, %arg1: tens
 // CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1024, 1024, 1] : tensor<400x1024x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[FILL:.*]] = linalg.fill ins(%[[ZERO]] : f16) outs(%[[INIT]] : tensor<400x1024x1024x1xf16>) -> tensor<400x1024x1024x1xf16>
-// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
+// CHECK: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[PAD:.*]] = tensor.pad %[[INPUT]] low[0, 0, 16, 0] high[0, 0, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
@@ -2803,25 +3371,25 @@ func.func @linalg.conv_2D_padding_test1(%arg0: tensor<1x33x1x1xf16>, %arg1: tens
 // CHECK-LABEL: func @linalg.conv_2D_padding_test2
 // CHECK-SAME: (%[[FILTER:.*]]: tensor<1x33x1x1xf16>, %[[INPUT:.*]]: tensor<400x1024x1024x1xf16>)
 func.func @linalg.conv_2D_padding_test2(%arg0: tensor<1x33x1x1xf16>, %arg1: tensor<400x1024x1024x1xf16>)
-  -> tensor<400x1024x1024x1xf16> {
-  %0 = mhlo.convolution(%arg1, %arg0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[8, 8], [16, 16]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<400x1024x1024x1xf16>, tensor<1x33x1x1xf16>) -> (tensor<400x1024x1024x1xf16>)
-  func.return %0 : tensor<400x1024x1024x1xf16>
+  -> tensor<400x1040x1024x1xf16> {
+  %0 = mhlo.convolution(%arg1, %arg0) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[8, 8], [16, 16]], rhs_dilate = [1, 1]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<400x1024x1024x1xf16>, tensor<1x33x1x1xf16>) -> (tensor<400x1040x1024x1xf16>)
+  return %0 : tensor<400x1040x1024x1xf16>
 }
-// CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1024, 1024, 1] : tensor<400x1024x1024x1xf16>
+// CHECK-NEXT: %[[INIT:.*]] = linalg.init_tensor [400, 1040, 1024, 1] : tensor<400x1040x1024x1xf16>
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
-// CHECK-NEXT: %[[FILL:.*]] = linalg.fill ins(%[[ZERO]] : f16) outs(%[[INIT]] : tensor<400x1024x1024x1xf16>) -> tensor<400x1024x1024x1xf16>
-// CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
+// CHECK-NEXT: %[[FILL:.*]] = linalg.fill ins(%[[ZERO]] : f16) outs(%[[INIT]] : tensor<400x1040x1024x1xf16>) -> tensor<400x1040x1024x1xf16>
+// CHECK: %[[ZERO:.*]] = arith.constant 0.000000e+00 : f16
 // CHECK-NEXT: %[[PAD:.*]] = tensor.pad %[[INPUT]] low[0, 8, 16, 0] high[0, 8, 16, 0]  {
 // CHECK-NEXT: ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK-NEXT:   tensor.yield %[[ZERO]] : f16
 // CHECK-NEXT: } : tensor<400x1024x1024x1xf16> to tensor<400x1040x1056x1xf16>
-// CHECK-NEXT: %[[RESULT:.*]] = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%2, %arg0 : tensor<400x1040x1056x1xf16>, tensor<1x33x1x1xf16>) outs(%1 : tensor<400x1024x1024x1xf16>) -> tensor<400x1024x1024x1xf16>
-// CHECK-NEXT: return %[[RESULT]] : tensor<400x1024x1024x1xf16>
+// CHECK-NEXT: %[[RESULT:.*]] = linalg.conv_2d_nhwc_hwcf {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%2, %arg0 : tensor<400x1040x1056x1xf16>, tensor<1x33x1x1xf16>) outs(%1 : tensor<400x1040x1024x1xf16>) -> tensor<400x1040x1024x1xf16>
+// CHECK-NEXT: return %[[RESULT]] : tensor<400x1040x1024x1xf16>
 
 // -----
 
 func.func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
-                     %arg1: tensor<2x2x2x3xf32>) -> tensor<2x3x4x6xf32> {
+                     %arg1: tensor<2x2x1x6xf32>) -> tensor<2x3x4x6xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -2839,20 +3407,24 @@ func.func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
     padding = dense<0> : tensor<2x2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_strides = dense<1> : tensor<2xi64>,
-    someattr} : (tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>) -> tensor<2x3x4x6xf32>
+    someattr} : (tensor<2x4x5x2xf32>, tensor<2x2x1x6xf32>) -> tensor<2x3x4x6xf32>
   func.return %0 : tensor<2x3x4x6xf32>
 }
 // CHECK:      func @depthwise_conv
 // CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
 // CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
-// CHECK:        %[[INIT:.+]] = linalg.init_tensor [2, 3, 4, 2, 3] : tensor<2x3x4x2x3xf32>
-// CHECK:        %[[CST:.+]] = arith.constant 0.000000e+00 : f32
-// CHECK:        %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
-// CHECK:        %[[OUT:.+]] = linalg.depthwise_conv_2d_nhwc_hwcm
+
+// CHECK:       %[[COLLAPSE:.+]] = tensor.collapse_shape %[[FILTER]] {{\[}}[0, 1, 2, 3]] : tensor<2x2x1x6xf32> into tensor<24xf32>
+// CHECK:       %[[CAST:.+]] = tensor.cast %[[COLLAPSE]] : tensor<24xf32> to tensor<24xf32>
+// CHECK:       %[[EXPAND:.+]] = tensor.expand_shape %[[CAST]] {{\[}}[0, 1, 2, 3]] : tensor<24xf32> into tensor<2x2x2x3xf32>
+// CHECK:       %[[INIT:.+]] = linalg.init_tensor [2, 3, 4, 2, 3] : tensor<2x3x4x2x3xf32>
+// CHECK:       %[[CST:.+]] = arith.constant 0.000000e+00 : f32
+// CHECK:       %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
+// CHECK:       %[[OUT:.+]] = linalg.depthwise_conv_2d_nhwc_hwcm
 // CHECK-SAME:     {dilations = dense<1> : tensor<2xi64>, someattr, strides = dense<1> : tensor<2xi64>}
-// CHECK-SAME:     ins(%[[IN]], %[[FILTER]] : tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>)
+// CHECK-SAME:     ins(%[[IN]], %[[EXPAND]] : tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>)
 // CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x4x2x3xf32>) -> tensor<2x3x4x2x3xf32>
-// CHECK:        %{{.+}} = tensor.collapse_shape %[[OUT]]
+// CHECK:       %{{.+}} = tensor.collapse_shape %[[OUT]]
 // CHECK-SAME:     [0], [1], [2], [3, 4]
 // CHECK-SAME:     : tensor<2x3x4x2x3xf32> into tensor<2x3x4x6xf32>
 
@@ -2860,7 +3432,7 @@ func.func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
 
 func.func @depthwise_conv_with_padding(
     %arg0: tensor<2x4x5x2xf32>,
-    %arg1: tensor<2x2x2x3xf32>) -> tensor<2x3x6x6xf32> {
+    %arg1: tensor<2x2x1x4xf32>) -> tensor<2x3x6x4xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -2878,8 +3450,8 @@ func.func @depthwise_conv_with_padding(
     padding = dense<[[0, 0], [1, 1]]> : tensor<2x2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_strides = dense<1> : tensor<2xi64>,
-    someattr} : (tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>) -> tensor<2x3x6x6xf32>
-  func.return %0 : tensor<2x3x6x6xf32>
+    someattr} : (tensor<2x4x5x2xf32>, tensor<2x2x1x4xf32>) -> tensor<2x3x6x4xf32>
+  func.return %0 : tensor<2x3x6x4xf32>
 }
 // CHECK:      func @depthwise_conv_with_padding
 // CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
@@ -2888,17 +3460,24 @@ func.func @depthwise_conv_with_padding(
 // CHECK:        %[[PAD:.*]] = tensor.pad %[[IN]] low[0, 0, 1, 0] high[0, 0, 1, 0]  {
 // CHECK:        ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK:          tensor.yield %[[ZERO]] : f32
-// CHECK         } : tensor<2x4x5x2xf32> to tensor<2x4x7x1xf32>
-// CHECK:        %[[INIT:.+]] = linalg.init_tensor [2, 3, 6, 2, 3] : tensor<2x3x6x2x3xf32>
+// CHECK         } : tensor<2x4x5x2xf32> to tensor<2x4x7x2xf32>
+// CHECK:        %[[COLLAPSE:.+]] = tensor.collapse_shape %[[FILTER]]
+// CHECK-SAME:    [0, 1, 2, 3]
+// CHECK-SAME:    : tensor<2x2x1x4xf32> into tensor<16xf32>
+// CHECK:       %[[CAST:.+]] = tensor.cast %[[COLLAPSE]] : tensor<16xf32> to tensor<16xf32>
+// CHECK:       %[[EXPAND:.+]] = tensor.expand_shape %[[CAST]]
+// CHECK-SAME:   [0, 1, 2, 3]
+// CHECK-SAME:   tensor<16xf32> into tensor<2x2x2x2xf32>
+// CHECK:        %[[INIT:.+]] = linalg.init_tensor [2, 3, 6, 2, 2] : tensor<2x3x6x2x2xf32>
 // CHECK:        %[[CST:.+]] = arith.constant 0.000000e+00 : f32
-// CHECK:        %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<2x3x6x2x3xf32>) -> tensor<2x3x6x2x3xf32>
+// CHECK:        %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<2x3x6x2x2xf32>) -> tensor<2x3x6x2x2xf32>
 // CHECK:        %[[OUT:.+]] = linalg.depthwise_conv_2d_nhwc_hwcm
 // CHECK-SAME:     {dilations = dense<1> : tensor<2xi64>, someattr, strides = dense<1> : tensor<2xi64>}
-// CHECK-SAME:     ins(%[[PAD]], %[[FILTER]] : tensor<2x4x7x2xf32>, tensor<2x2x2x3xf32>)
-// CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x6x2x3xf32>) -> tensor<2x3x6x2x3xf32>
+// CHECK-SAME:     ins(%[[PAD]], %[[EXPAND]] : tensor<2x4x7x2xf32>, tensor<2x2x2x2xf32>)
+// CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x6x2x2xf32>) -> tensor<2x3x6x2x2xf32>
 // CHECK:        %{{.+}} = tensor.collapse_shape %[[OUT]]
 // CHECK-SAME:     [0], [1], [2], [3, 4]
-// CHECK-SAME:     : tensor<2x3x6x2x3xf32> into tensor<2x3x6x6xf32>
+// CHECK-SAME:     : tensor<2x3x6x2x2xf32> into tensor<2x3x6x4xf32>
 
 // -----
 
@@ -2941,7 +3520,7 @@ func.func @depthwise_conv_multiplier_1(%arg0: tensor<1x113x113x96xf32>,
 
 func.func @depthwise_conv_multiplier_1_with_padding(
     %arg0: tensor<1x113x113x96xf32>,
-    %arg1: tensor<3x3x1x96xf32>) -> tensor<1x56x56x96xf32> {
+    %arg1: tensor<3x3x1x96xf32>) -> tensor<1x57x58x96xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = #mhlo.conv<raw
@@ -2958,8 +3537,8 @@ func.func @depthwise_conv_multiplier_1_with_padding(
     feature_group_count = 96 : i64,
     padding = dense<[[1, 1], [2, 2]]> : tensor<2x2xi64>,
     rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<2> : tensor<2xi64>} : (tensor<1x113x113x96xf32>, tensor<3x3x1x96xf32>) -> tensor<1x56x56x96xf32>
-  func.return %0 : tensor<1x56x56x96xf32>
+    window_strides = dense<2> : tensor<2xi64>} : (tensor<1x113x113x96xf32>, tensor<3x3x1x96xf32>) -> tensor<1x57x58x96xf32>
+  func.return %0 : tensor<1x57x58x96xf32>
 }
 // CHECK:       func @depthwise_conv_multiplier_1_with_padding
 // CHECK-SAME:    %[[IN:[a-zA-Z0-9_]*]]
@@ -2969,16 +3548,122 @@ func.func @depthwise_conv_multiplier_1_with_padding(
 // CHECK:         ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
 // CHECK:           tensor.yield %[[ZERO]] : f32
 // CHECK          } : tensor<1x113x113x96xf32> to tensor<1x115x117x96xf32>
-// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 56, 56, 96] : tensor<1x56x56x96xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 57, 58, 96] : tensor<1x57x58x96xf32>
 // CHECK:         %[[CST:.+]] = arith.constant 0.000000e+00 : f32
-// CHECK:         %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<1x56x56x96xf32>) -> tensor<1x56x56x96xf32>
+// CHECK:         %[[FILL:.+]] = linalg.fill ins(%[[CST]] : f32) outs(%[[INIT]] : tensor<1x57x58x96xf32>) -> tensor<1x57x58x96xf32>
 // CHECK:         %[[RESHAPED_FILTER:.+]] = tensor.collapse_shape %[[FILTER]]
 // CHECK-SAME:     [0], [1], [2, 3]
 // CHECK-SAME:     : tensor<3x3x1x96xf32> into tensor<3x3x96xf32>
 // CHECK:         %{{.+}} = linalg.depthwise_conv_2d_nhwc_hwc
 // CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>, strides = dense<2> : tensor<2xi64>}
 // CHECK-SAME:       ins(%[[PAD]], %[[RESHAPED_FILTER]] : tensor<1x115x117x96xf32>, tensor<3x3x96xf32>)
-// CHECK-SAME:       outs(%[[FILL]] : tensor<1x56x56x96xf32>) -> tensor<1x56x56x96xf32>
+// CHECK-SAME:       outs(%[[FILL]] : tensor<1x57x58x96xf32>) -> tensor<1x57x58x96xf32>
+
+// -----
+
+func.func @depthwise_conv1d(%arg0: tensor<1x10x8xf32>,
+                            %arg1: tensor<3x1x16xf32>) -> tensor<1x10x16xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f],
+    window = {
+      stride = [1],
+      pad = [[1, 1]],
+      lhs_dilate = [1],
+      rhs_dilate = [1],
+      reverse = [0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 8 : i64,
+    someattr} : (tensor<1x10x8xf32>, tensor<3x1x16xf32>) -> tensor<1x10x16xf32>
+  func.return %0 : tensor<1x10x16xf32>
+}
+
+// CHECK:      func @depthwise_conv1d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_1d_nwc_wcm
+// CHECK:       %[[OUT:.+]] = tensor.collapse_shape %[[CONV]]
+// CHECK:       return %[[OUT]]
+
+// -----
+
+func.func @depthwise_conv1d_m1(%arg0: tensor<1x10x8xf32>,
+                               %arg1: tensor<3x1x8xf32>) -> tensor<1x10x8xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f],
+    window = {
+      stride = [1],
+      pad = [[1, 1]],
+      lhs_dilate = [1],
+      rhs_dilate = [1],
+      reverse = [0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 8 : i64,
+    someattr} : (tensor<1x10x8xf32>, tensor<3x1x8xf32>) -> tensor<1x10x8xf32>
+  func.return %0 : tensor<1x10x8xf32>
+}
+
+// CHECK:      func @depthwise_conv1d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_1d_nwc_wc
+// CHECK:       return %[[CONV]]
+
+// -----
+
+func.func @depthwise_conv3d(%arg0: tensor<2x3x5x4x6xf32>,
+                            %arg1: tensor<2x1x3x1x36xf32>)
+                            -> tensor<2x3x13x4x36xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f],
+    window = {
+      stride = [2, 1, 3],
+      pad = [[1, 2], [5, 3], [3, 5]],
+      lhs_dilate = [1, 1, 1],
+      rhs_dilate = [1, 1, 1],
+      reverse = [0, 0, 0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 6 : i64,
+    someattr} : (tensor<2x3x5x4x6xf32>, tensor<2x1x3x1x36xf32>)
+              -> tensor<2x3x13x4x36xf32>
+  func.return %0 : tensor<2x3x13x4x36xf32>
+}
+
+// CHECK:      func @depthwise_conv3d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_3d_ndhwc_dhwcm
+// CHECK:       %[[OUT:.+]] = tensor.collapse_shape %[[CONV]]
+// CHECK:       return %[[OUT]]
+
+// -----
+
+func.func @depthwise_conv3d_m1(%arg0: tensor<2x3x5x4x6xf32>,
+                               %arg1: tensor<2x1x3x1x6xf32>)
+                               -> tensor<2x3x13x4x6xf32> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f],
+    window = {
+      stride = [2, 1, 3],
+      pad = [[1, 2], [5, 3], [3, 5]],
+      lhs_dilate = [1, 1, 1],
+      rhs_dilate = [1, 1, 1],
+      reverse = [0, 0, 0]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 6 : i64,
+    someattr} : (tensor<2x3x5x4x6xf32>, tensor<2x1x3x1x6xf32>)
+              -> tensor<2x3x13x4x6xf32>
+  func.return %0 : tensor<2x3x13x4x6xf32>
+}
+
+// CHECK:      func @depthwise_conv3d
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+
+// CHECK:       %[[CONV:.+]] = linalg.depthwise_conv_3d_ndhwc_dhwc
+// CHECK:       return %[[CONV]]
 
 // -----
 
@@ -3281,6 +3966,80 @@ func.func @reduce_window_generic(%arg0: tensor<4x6xf32>, %arg1: tensor<f32>) -> 
 
 // -----
 
+// CHECK-LABEL: func @reduce_window_generic_padding
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK: %[[PAD:.+]] = tensor.pad %[[ARG0]] low[0, 1] high[3, 2]
+// CHECK: tensor.yield %[[PADVAL]] : f32
+
+func.func @reduce_window_generic_padding(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<3x7xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<3x7xf32>
+  func.return %0 : tensor<3x7xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_generic_base_dilation
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK: %[[INIT:.+]] = linalg.init_tensor [5, 6] : tensor<5x6xf32>
+// CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PADVAL]] : f32) outs(%[[INIT]] : tensor<5x6xf32>) -> tensor<5x6xf32>
+// CHECK: %[[PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[FILL]][0, 0] [3, 6] [2, 1] : tensor<3x6xf32> into tensor<5x6xf32>
+
+func.func @reduce_window_generic_base_dilation(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<3x4xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<[2, 1]> : tensor<2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_generic_padding_base_dilation
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]*]]
+
+// CHECK: %[[PADVAL:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+// CHECK: %[[INIT:.+]] = linalg.init_tensor [8, 9] : tensor<8x9xf32>
+// CHECK: %[[FILL:.+]] = linalg.fill ins(%[[PADVAL]] : f32) outs(%[[INIT]] : tensor<8x9xf32>) -> tensor<8x9xf32>
+// CHECK: %[[PAD:.+]] = tensor.insert_slice %[[ARG0]] into %[[FILL]][0, 1] [3, 6] [2, 1] : tensor<3x6xf32> into tensor<8x9xf32>
+
+func.func @reduce_window_generic_padding_base_dilation(%arg0: tensor<3x6xf32>, %arg1: tensor<f32>) -> tensor<4x7xf32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<[2, 1]> : tensor<2xi64>, padding = dense<[[0, 3], [1, 2]]> : tensor<2x2xi64>, window_dilations = dense<[1, 2]> : tensor<2xi64>, window_dimensions = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (tensor<3x6xf32>, tensor<f32>) -> tensor<4x7xf32>
+  func.return %0 : tensor<4x7xf32>
+}
+
+// -----
+
+func.func @reduce_window_generic_scalar(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {base_dilations = dense<> : tensor<0xi64>, padding = dense<> : tensor<0x2xi64>, window_dilations = dense<> : tensor<0xi64>, window_dimensions = dense<> : tensor<0xi64>, window_strides = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// CHECK: #[[MAP:.+]] = affine_map<() -> ()>
+// CHECK-LABEL: func @reduce_window_generic_scalar
+// CHECK: linalg.generic {indexing_maps = [#[[MAP]], #[[MAP]], #[[MAP]]]
+
+// -----
+
 func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x8x8xi32> {
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
@@ -3317,12 +4076,35 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
 // CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[IDX1]], %[[C1]]] : tensor<1x8x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[C0]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[C0]] : index
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP0]], %[[C0]]
+// CHECK-DAG:         %[[C3:.+]] = arith.constant 3 : index
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[IN1:.+]] = arith.minsi %[[CLAMP1]], %[[C3]] : index
 // CHECK-DAG:         %[[IN2:.+]] = arith.addi %[[C0]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]]] : tensor<1x4x8xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK-DAG:       return %[[RES]]
+
+// -----
+
+func.func @gather_unsigned(%operand : tensor<1x4x8xui32>, %start_indices : tensor<1x8x2xi32>) -> tensor<1x8x8xui32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>
+  } : (tensor<1x4x8xui32>, tensor<1x8x2xi32>) -> tensor<1x8x8xui32>
+  func.return %res : tensor<1x8x8xui32>
+}
+
+// CHECK-LABEL:   func @gather_unsigned(
+// CHECK:           linalg.generic
+// CHECK-SAME:           outs(%{{.*}} : tensor<1x8x8xi32>)
 
 // -----
 
@@ -3357,8 +4139,13 @@ func.func @gather_no_collapse(%operand : tensor<6x3xi32>, %start_indices : tenso
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
 // CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C1]]] : tensor<5x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX1]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[IDX2]] : index
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[C2:.+]] = arith.constant 2 : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[C2]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[CLAMP1_1:.+]] = arith.minsi %[[CLAMP1]], %[[C1]]
+// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[CLAMP1_1]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<6x3xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK:           return %[[RES]]
@@ -3398,8 +4185,17 @@ func.func @gather_max_offset(%operand : tensor<?x?x?xi32>, %start_indices : tens
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
 // CHECK-DAG:         %[[S1_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX3]], %[[C1]]] : tensor<5x2xi32>
 // CHECK-DAG:         %[[S1:.+]] = arith.index_cast %[[S1_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[C2:.+]] = arith.constant 2
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C2]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[D1:.+]] = tensor.dim %[[OPERAND]], %[[C1]]
+// CHECK-DAG:         %[[L1:.+]] = arith.subi %[[D1]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[CLAMP1_1:.+]] = arith.minsi %[[CLAMP1]], %[[L1]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
+// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[CLAMP1_1]], %[[IDX1]] : index
 // CHECK-DAG:         %[[IN2:.+]] = arith.addi %[[C0]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]]] : tensor<?x?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -3444,10 +4240,17 @@ func.func @gather_reorder_start_index(%operand : tensor<6x3x2x7xi32>, %start_ind
 // CHECK-DAG:         %[[S2:.+]] = arith.index_cast %[[S2_INT]] : i32 to index
 // CHECK-DAG:         %[[S3_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX0]], %[[C3]]] : tensor<5x4xi32>
 // CHECK-DAG:         %[[S3:.+]] = arith.index_cast %[[S3_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S3]], %[[C0]] : index
-// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[S1]], %[[IDX1]] : index
-// CHECK-DAG:         %[[IN2:.+]] = arith.addi %[[S2]], %[[C0]] : index
-// CHECK-DAG:         %[[IN3:.+]] = arith.addi %[[S0]], %[[IDX2]] : index
+// CHECK-DAG:         %[[C5:.+]] = arith.constant 5
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP1:.+]] = arith.maxsi %[[C0]], %[[S1]] : index
+// CHECK-DAG:         %[[CLAMP1_1:.+]] = arith.minsi %[[CLAMP1]], %[[C1]]
+// CHECK-DAG:         %[[CLAMP2:.+]] = arith.maxsi %[[C0]], %[[S2]] : index
+// CHECK-DAG:         %[[IN2:.+]] = arith.minsi %[[CLAMP2]], %[[C1]]
+// CHECK-DAG:         %[[CLAMP3:.+]] = arith.maxsi %[[C0]], %[[S3]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.minsi %[[CLAMP3]], %[[C5]]
+// CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[CLAMP1_1]], %[[IDX1]] : index
+// CHECK-DAG:         %[[IN3:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX2]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IN2]], %[[IN3]]] : tensor<6x3x2x7xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK:           return %[[RES]]
@@ -3483,7 +4286,11 @@ func.func @gather_implicit_trailing_dim(%operand : tensor<?x?xi32>, %start_indic
 // CHECK-DAG:         %[[IDX3:.+]] = linalg.index 3
 // CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[IDX3]]] : tensor<5x2xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
 // CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[C0]], %[[IDX1]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -3533,7 +4340,11 @@ func.func @gather_non_static(%operand : tensor<?x?xi32>, %start_indices : tensor
 // CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
 // CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[C3]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
 // CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[C0]], %[[IDX1]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<?x?xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -3588,7 +4399,12 @@ func.func @gather_unranked(%operand : tensor<*xi32>, %start_indices : tensor<?x?
 // CHECK-DAG:         %[[IDX2:.+]] = linalg.index 2
 // CHECK-DAG:         %[[S0_INT:.+]] = tensor.extract %[[START_INDICES]][%[[IDX2]], %[[C0]]] : tensor<?x?xi32>
 // CHECK-DAG:         %[[S0:.+]] = arith.index_cast %[[S0_INT]] : i32 to index
-// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[S0]], %[[IDX0]] : index
+// CHECK-DAG:         %[[DS0:.+]] = tensor.dim %[[INIT]], %[[C0]]
+// CHECK-DAG:         %[[D0:.+]] = tensor.dim %[[OPERAND]], %[[C0]]
+// CHECK-DAG:         %[[L0:.+]] = arith.subi %[[D0]], %[[DS0]]
+// CHECK-DAG:         %[[CLAMP0:.+]] = arith.maxsi %[[C0]], %[[S0]] : index
+// CHECK-DAG:         %[[CLAMP0_1:.+]] = arith.minsi %[[CLAMP0]], %[[L0]] : index
+// CHECK-DAG:         %[[IN0:.+]] = arith.addi %[[CLAMP0_1]], %[[IDX0]] : index
 // CHECK-DAG:         %[[IN1:.+]] = arith.addi %[[C0]], %[[IDX1]] : index
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]]] : tensor<*xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
@@ -3630,7 +4446,7 @@ func.func @torch_index_select(%arg0: tensor<5x1x5xi32>,
 func.func @rng_uniform_1d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<10xf32>
 {
   %shape = arith.constant dense<[10]>  : tensor<1xi32>
-  %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<10xf32>
+  %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<10xf32>
   func.return %0 : tensor<10xf32>
 }
 // CHECK-LABEL: func @rng_uniform_1d
@@ -3657,7 +4473,7 @@ func.func @rng_uniform_1d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<10xf32
 func.func @rng_uniform_2d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<3x3xf32>
 {
         %shape = arith.constant dense<[3, 3]>  : tensor<2xi32>
-        %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<2xi32>) -> tensor<3x3xf32>
+        %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<2xi32>) -> tensor<3x3xf32>
         func.return %0 : tensor<3x3xf32>
 }
 // CHECK-LABEL: func @rng_uniform_2d
@@ -3689,7 +4505,7 @@ func.func @rng_uniform_2d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<3x3xf3
 func.func @rng_uniform_3d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<2x2x2xf32>
 {
         %shape = arith.constant dense<[2, 2, 2]>  : tensor<3xi32>
-        %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<3xi32>) -> tensor<2x2x2xf32>
+        %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<3xi32>) -> tensor<2x2x2xf32>
         func.return %0 : tensor<2x2x2xf32>
 }
 // CHECK-LABEL: func @rng_uniform_3d
@@ -3725,7 +4541,7 @@ func.func @rng_uniform_3d(%min: tensor<f32>, %max: tensor<f32>) -> tensor<2x2x2x
 
 func.func @rng_uniform_dynamic_1d(%min: tensor<f32>, %max: tensor<f32>, %shape: tensor<1xi32>) -> tensor<?xf32>
 {
-  %0 = "mhlo.rng_uniform"(%min, %max, %shape) : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<?xf32>
+  %0 = "mhlo.rng"(%min, %max, %shape) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<1xi32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
 // CHECK-LABEL: func @rng_uniform_dynamic_1d
@@ -4027,10 +4843,45 @@ func.func @concatenate_unsigned(%a: tensor<?x?xui32>, %b: tensor<?x?xui32>, %c: 
 
 // -----
 
+// CHECK-LABEL: signed_divide
+func.func @signed_divide(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: ^bb0(%[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_7:.*]] = arith.constant -1 : i32
+  // CHECK-DAG:   %[[VAL_8:.*]] = arith.constant -2147483648 : i32
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_10:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_11:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_9]] : i32
+  // CHECK-DAG:   %[[VAL_12:.*]] = arith.constant -2147483648 : i32
+  // CHECK:   %[[VAL_13:.*]] = arith.cmpi eq, %[[VAL_4]], %[[VAL_12]] : i32
+  // CHECK-DAG:   %[[VAL_14:.*]] = arith.constant -1 : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_14]] : i32
+  // CHECK:   %[[VAL_16:.*]] = arith.andi %[[VAL_13]], %[[VAL_15]] : i1
+  // CHECK:   %[[VAL_17:.*]] = arith.ori %[[VAL_11]], %[[VAL_16]] : i1
+  // CHECK:   %[[VAL_18:.*]] = arith.select %[[VAL_17]], %[[VAL_10]], %[[VAL_5]] : i32
+  // CHECK:   %[[VAL_19:.*]] = arith.divsi %[[VAL_4]], %[[VAL_18]] : i32
+  // CHECK:   %[[VAL_20:.*]] = arith.select %[[VAL_16]], %[[VAL_8]], %[[VAL_19]] : i32
+  // CHECK:   %[[VAL_21:.*]] = arith.select %[[VAL_11]], %[[VAL_7]], %[[VAL_20]] : i32
+  // CHECK:   linalg.yield %[[VAL_21]] : i32
+  %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: unsigned_divide
 func.func @unsigned_divide(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
   // CHECK: linalg.generic
-  // CHECK: arith.divui
+  // CHECK: ^bb0(%[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant -1 : i32
+  // CHECK-DAG:   %[[VAL_10:.*]] = arith.constant -2147483648 : i32
+  // CHECK-DAG:   %[[VAL_11:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_12:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_13:.*]] = arith.cmpi eq, %[[VAL_7]], %[[VAL_11]] : i32
+  // CHECK:   %[[VAL_14:.*]] = arith.select %[[VAL_13]], %[[VAL_12]], %[[VAL_7]] : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.divui %[[VAL_6]], %[[VAL_14]] : i32
+  // CHECK:   %[[VAL_16:.*]] = arith.select %[[VAL_13]], %[[VAL_9]], %[[VAL_15]] : i32
+  // CHECK:   linalg.yield %[[VAL_16]] : i32
   %0 = "mhlo.divide"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
   func.return %0 : tensor<2x2xui32>
 }
@@ -4048,10 +4899,43 @@ func.func @complex_divide(%lhs: tensor<2xcomplex<f32>>,
 
 // -----
 
+// CHECK-LABEL: signed_remainder
+func.func @signed_remainder(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: ^bb0(%[[VAL_4:.*]]: i32, %[[VAL_5:.*]]: i32, %[[VAL_6:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_7:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_8:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_10:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_8]] : i32
+  // CHECK-DAG:   %[[VAL_11:.*]] = arith.constant -2147483648 : i32
+  // CHECK:   %[[VAL_12:.*]] = arith.cmpi eq, %[[VAL_4]], %[[VAL_11]] : i32
+  // CHECK-DAG:   %[[VAL_13:.*]] = arith.constant -1 : i32
+  // CHECK:   %[[VAL_14:.*]] = arith.cmpi eq, %[[VAL_5]], %[[VAL_13]] : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.andi %[[VAL_12]], %[[VAL_14]] : i1
+  // CHECK:   %[[VAL_16:.*]] = arith.ori %[[VAL_10]], %[[VAL_15]] : i1
+  // CHECK:   %[[VAL_17:.*]] = arith.select %[[VAL_16]], %[[VAL_9]], %[[VAL_5]] : i32
+  // CHECK:   %[[VAL_18:.*]] = arith.remsi %[[VAL_4]], %[[VAL_17]] : i32
+  // CHECK:   %[[VAL_19:.*]] = arith.select %[[VAL_15]], %[[VAL_7]], %[[VAL_18]] : i32
+  // CHECK:   %[[VAL_20:.*]] = arith.select %[[VAL_10]], %[[VAL_4]], %[[VAL_19]] : i32
+  // CHECK:   linalg.yield %[[VAL_20]] : i32
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: unsigned_remainder
 func.func @unsigned_remainder(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xui32> {
   // CHECK: linalg.generic
-  // CHECK: arith.remui
+  // CHECK: ^bb0(%[[VAL_6:.*]]: i32, %[[VAL_7:.*]]: i32, %[[VAL_8:.*]]: i32):
+  // CHECK-DAG:   %[[VAL_9:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_10:.*]] = arith.constant 0 : i32
+  // CHECK-DAG:   %[[VAL_11:.*]] = arith.constant 1 : i32
+  // CHECK:   %[[VAL_12:.*]] = arith.cmpi eq, %[[VAL_7]], %[[VAL_10]] : i32
+  // CHECK:   %[[VAL_13:.*]] = arith.select %[[VAL_12]], %[[VAL_11]], %[[VAL_7]] : i32
+  // CHECK:   %[[VAL_14:.*]] = arith.remui %[[VAL_6]], %[[VAL_13]] : i32
+  // CHECK:   %[[VAL_15:.*]] = arith.select %[[VAL_12]], %[[VAL_6]], %[[VAL_14]] : i32
+  // CHECK:   linalg.yield %[[VAL_15]] : i32
   %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xui32>
   func.return %0 : tensor<2x2xui32>
 }
@@ -4072,7 +4956,17 @@ func.func @unsigned_convert(%in: tensor<2x2xui32>) -> tensor<2x2xui64> {
 func.func @unsigned_compare(%lhs: tensor<2x2xui32>, %rhs: tensor<2x2xui32>) -> tensor<2x2xi1> {
   // CHECK: linalg.generic
   // CHECK: cmpi ugt
-  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xi1>
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2x2xui32>, tensor<2x2xui32>) -> tensor<2x2xi1>
+  func.return %0 : tensor<2x2xi1>
+}
+
+// -----
+
+// CHECK-LABEL: pred_compare
+func.func @pred_compare(%lhs: tensor<2x2xi1>, %rhs: tensor<2x2xi1>) -> tensor<2x2xi1> {
+  // CHECK: linalg.generic
+  // CHECK: cmpi ugt
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<2x2xi1>, tensor<2x2xi1>) -> tensor<2x2xi1>
   func.return %0 : tensor<2x2xi1>
 }
 
@@ -4212,7 +5106,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
       rhs_batching_dimensions = [2],
       rhs_contracting_dimensions = [1]
     >,
-    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
     someattr
   } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   func.return %0 : tensor<?x?x?xf32>
@@ -4224,12 +5118,19 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
 // CHECK: func @dot_general(
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>)
-// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-DAG: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
-// CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
-// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
-// CHECK-DAG: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C2]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D0:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D1:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D2:.*]] = tensor.dim %[[ARG1]], %[[C0]]
+// CHECK: %[[SHAPE:.*]] = tensor.from_elements %[[D0]], %[[D1]], %[[D2]]
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: %[[D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
 // CHECK: %[[INIT:.*]] = linalg.init_tensor [%[[D0]], %[[D1]], %[[D2]]]
 // CHECK: %[[FILL:.*]] = linalg.fill ins(%{{.*}}{{.*}}outs(%[[INIT]]
 // CHECK: linalg.generic
@@ -4241,6 +5142,110 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>,
 // CHECK-SAME: {someattr}
 // CHECK:   ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32, %[[ARG4:.*]]: f32):
 // CHECK:     %[[MUL:.*]] = arith.mulf %[[ARG2]], %[[ARG3]] : f32
-// CHECK:     %[[SUM:.*]] = arith.addf %[[MUL]], %[[ARG4]] : f32
+// CHECK:     %[[SUM:.*]] = arith.addf %[[ARG4]], %[[MUL]] : f32
 // CHECK:     linalg.yield %[[SUM]] : f32
 // CHECK: } -> tensor<?x?x?xf32>
+
+// -----
+
+func.func @dot_general_unsigned(%arg0: tensor<?x?x?xui32>,
+                  %arg1: tensor<?x?x?xui32>) -> tensor<?x?x?xui32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    someattr
+  } : (tensor<?x?x?xui32>, tensor<?x?x?xui32>) -> tensor<?x?x?xui32>
+  func.return %0 : tensor<?x?x?xui32>
+}
+
+// CHECK-LABEL: func @dot_general_unsigned(
+// CHECK: linalg.generic
+// CHECK-SAME: ins({{.*}} : tensor<?x?x?xi32>, tensor<?x?x?xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<?x?x?xi32>)
+
+// -----
+
+func.func @dot_general_complex(%arg0: tensor<?x?x?xcomplex<f32>>,
+                  %arg1: tensor<?x?x?xcomplex<f32>>) -> tensor<?x?x?xcomplex<f32>> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [1],
+      lhs_contracting_dimensions = [2],
+      rhs_batching_dimensions = [2],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    someattr
+  } : (tensor<?x?x?xcomplex<f32>>, tensor<?x?x?xcomplex<f32>>) -> tensor<?x?x?xcomplex<f32>>
+  func.return %0 : tensor<?x?x?xcomplex<f32>>
+}
+
+// CHECK-LABEL: func @dot_general_complex(
+// CHECK: linalg.generic
+// CHECK: complex.mul
+// CHECK: complex.add
+
+// -----
+
+func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
+             %arg1: tensor<3x4x3x2xi32>) -> tensor<3x4x4x3xi32> {
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [3]>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
+    someattr
+  } : (tensor<3x4x2x4xi32>, tensor<3x4x3x2xi32>) -> tensor<3x4x4x3xi32>
+  return %0 : tensor<3x4x4x3xi32>
+}
+
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d4, d2)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d3, d4)>
+// CHECK: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @dot_general_multiple_batch_dimensions(
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[MAP0]], #[[MAP1]], #[[MAP2]]]
+// CHECK-SAME: iterator_types = ["parallel", "parallel", "parallel", "parallel", "reduction"]}
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<3x4x2x4xi32>, tensor<3x4x3x2xi32>)
+// CHECK-SAME: outs({{.*}} : tensor<3x4x4x3xi32>)
+// CHECK-SAME: {someattr}
+
+// -----
+
+// CHECK-LABEL: func @reduce_precision(
+// CHECK: linalg.generic
+// CHECK: %[[X_AS_INT:.*]] = arith.bitcast %{{.*}} : f32 to i32
+// CHECK-DAG: %[[C2:.*]] = arith.constant 1048576 : i32
+// CHECK-DAG: %[[C_21:.*]] = arith.constant 20 : i32
+// CHECK-DAG: %[[C3:.*]] = arith.constant 524287 : i32
+// CHECK: %[[MASKED:.*]] = arith.andi %[[X_AS_INT]], %[[C2]] : i32
+// CHECK: %[[V0:.*]] = arith.shrui %[[MASKED]], %[[C_21]] : i32
+// CHECK: %[[V1:.*]] = arith.addi %[[V0]], %[[C3]] : i32
+// CHECK: %[[V2:.*]] = arith.addi %[[X_AS_INT]], %[[V1]] : i32
+// CHECK: %[[C4:.*]] = arith.constant -1048576 : i32
+// CHECK: %[[V3:.*]] = arith.andi %[[V2]], %[[C4]] : i32
+// CHECK: %[[C5:.*]] = arith.constant 2139095040 : i32
+// CHECK: %[[V4:.*]] = arith.andi %[[V3]], %[[C5]] : i32
+// CHECK: %[[C6:.*]] = arith.constant 1090519040 : i32
+// CHECK: %[[V5:.*]] = arith.cmpi ugt, %[[V4]], %[[C6]] : i32
+// CHECK: %[[C7:.*]] = arith.constant 1040187392 : i32
+// CHECK: %[[V6:.*]] = arith.cmpi ule, %[[V4]], %[[C7]] : i32
+// CHECK: %[[C8:.*]] = arith.constant -2147483648 : i32
+// CHECK: %[[V7:.*]] = arith.andi %[[V3]], %[[C8]] : i32
+// CHECK: %[[C9:.*]] = arith.constant 2139095040 : i32
+// CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C9]] : i32
+// CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
+// CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
+// CHECK: arith.bitcast %[[V10]] : i32 to f32
+func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
+                            -> tensor<1x2x3x4xf32> {
+  %0 = "mhlo.reduce_precision"(%arg0) {exponent_bits=3:i32, mantissa_bits=3:i32} : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
+  return %0 : tensor<1x2x3x4xf32>
+}

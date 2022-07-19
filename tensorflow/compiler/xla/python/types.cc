@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
@@ -249,7 +250,7 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
     for (int i = 0; i < elems.size(); ++i) {
       TF_ASSIGN_OR_RETURN(
           arrays[i],
-          LiteralToPython(absl::make_unique<Literal>(std::move(elems[i]))));
+          LiteralToPython(std::make_unique<Literal>(std::move(elems[i]))));
     }
     py::tuple result(elems.size());
     for (int i = 0; i < elems.size(); ++i) {
@@ -315,15 +316,15 @@ pybind11::tuple SpanToTuple(absl::Span<int64_t const> xs) {
   return IntSpanToTupleHelper(xs);
 }
 
-absl::optional<CastToArrayResult> CastToArray(py::handle h) {
+std::optional<CastToArrayResult> CastToArray(py::handle h) {
   py::array array = py::array::ensure(
       h, py::array::c_style | py::detail::npy_api::NPY_ARRAY_ALIGNED_);
   if (!array) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   auto type_or_status = DtypeToPrimitiveType(array.dtype());
   if (!type_or_status.ok()) {
-    throw std::runtime_error(type_or_status.status().ToString());
+    throw xla::XlaRuntimeError(type_or_status.status());
   }
   PrimitiveType type = type_or_status.ValueOrDie();
 
@@ -333,7 +334,7 @@ absl::optional<CastToArrayResult> CastToArray(py::handle h) {
   }
   Shape shape = ShapeUtil::MakeShape(type, dims);
   if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
-    throw std::runtime_error(absl::StrCat(
+    throw xla::XlaRuntimeError(absl::StrCat(
         "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",
         ShapeUtil::ByteSizeOf(shape)));
   }

@@ -26,9 +26,11 @@ namespace internal {
 Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {
-    return errors::NotFound(dlerror());
+    // Note that in C++17 std::string_view(nullptr) gives segfault!
+    const char* error_msg = dlerror();
+    return errors::NotFound(error_msg ? error_msg : "(null error message)");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -40,9 +42,11 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
     *symbol = dlsym(handle, symbol_name);
   }
   if (!*symbol) {
-    return errors::NotFound(dlerror());
+    // Note that in C++17 std::string_view(nullptr) gives segfault!
+    const char* error_msg = dlerror();
+    return errors::NotFound(error_msg ? error_msg : "(null error message)");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string FormatLibraryFileName(const string& name, const string& version) {

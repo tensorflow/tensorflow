@@ -21,13 +21,13 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {
 
 TEST(ConvertTensorShapeToType, Simple) {
   mlir::MLIRContext context;
+  context.loadDialect<mlir::mhlo::MhloDialect>();
   mlir::Builder builder(&context);
 
   // Static shape.
@@ -45,14 +45,17 @@ TEST(ConvertTensorShapeToType, Simple) {
 
   // Dynamic shape.
   {
-    auto shape = ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128});
-    shape.set_dynamic_dimension(0, true);
-
+    auto shape =
+        ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128}, {true, false});
     TF_ASSERT_OK_AND_ASSIGN(
         auto type,
         ConvertTensorShapeToType<mlir::RankedTensorType>(shape, builder));
-    auto expected = mlir::RankedTensorType::get(
-        {mlir::ShapedType::kDynamicSize, 128}, builder.getI32Type());
+
+    int64_t bounds[] = {8, mlir::ShapedType::kDynamicSize};
+    auto extensions = mlir::mhlo::TypeExtensionsAttr::get(&context, bounds);
+    auto expected =
+        mlir::RankedTensorType::get({mlir::ShapedType::kDynamicSize, 128},
+                                    builder.getI32Type(), extensions);
     EXPECT_TRUE(type == expected)
         << " Expected: " << mlir::debugString(expected)
         << " Computed: " << mlir::debugString(type);

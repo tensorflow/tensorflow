@@ -46,6 +46,13 @@ def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> 
   let constructor = "createLegalizeToArithmeticPass()";
 }
 
+def HloLegalizeSortPass : Pass<"hlo-legalize-sort", "func::FuncOp"> {
+  let summary = "Legalize from MHLO sort to SCF control flow.";
+  let constructor = "createLegalizeSortPass()";
+  let dependentDialects = ["arith::ArithmeticDialect", "scf::SCFDialect",
+                           "tensor::TensorDialect"];
+}
+
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";
@@ -109,7 +116,6 @@ def OptimizeMhloPass : Pass<"mhlo-test-optimize", "func::FuncOp"> {
   let constructor = "createOptimizeMhloPass()";
 }
 
-
 def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow", "func::FuncOp"> {
   let summary = "Sink constants implicitly captured in control flow regions. This "
     "is necessary to export to XLA.";
@@ -155,7 +161,6 @@ def SinkConstantsToControlFlowPass : Pass<"mhlo-sink-constants-to-control-flow",
   }];
 }
 
-
 def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods", "func::FuncOp"> {
   let summary = "Uses test ops to invoke InferShapedTypeOpInterface methods.";
   let constructor = "createTestInferShapedTypeMethodsPass()";
@@ -168,11 +173,30 @@ def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "func::FuncOp"
   let constructor = "createBroadcastPropagationPass()";
 }
 
+def RestrictMaxRankPass : Pass<"mhlo-restrict-max-rank", "func::FuncOp"> {
+  let summary = "Restrict maximum rank of any of the intermediate tensors";
+  let description = "Transform operations in the module so that the maximum "
+  "rank is restricted. This is done by doing transformations that could "
+  "potentially increase overhead but helps in reducing dimensionality. This "
+  "could be useful in backends that don't support higher ranked tensors.";
+  let constructor = "createRestrictMaxRankPass()";
+}
+
 def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
   let summary = "Prepare moving dynamic broadcasts up over element-wise "
     "operations and broadcast the operands rather than the result. This will "
     "eventually allow for larger fusions.";
   let constructor = "createMergeAssumingOpsPass()";
+}
+
+def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
+  let summary = "Iteratively reify all shape computations.";
+  let constructor = "createShapeReificationPass()";
+}
+
+def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
+  let summary = "Fuse shape constraints and merge all assuming regions.";
+  let constructor = "createConstraintFusionPass()";
 }
 
 def GroupReductionDimensionsPass
@@ -192,11 +216,13 @@ def GroupReductionDimensionsPass
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
+
+  let dependentDialects = ["arith::ArithmeticDialect", "shape::ShapeDialect", "tensor::TensorDialect"];
 }
 
 def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
   let summary = "Expand HLO tuple for the entry function of the module.";
-  let constructor = "CreateExpandHloTuplesPass()";
+  let constructor = "createExpandHloTuplesPass()";
   let options = [
     Option<"entry_function_name_", "entry-function", "std::string",
            /*default=*/"", "the name of entry function of the module">,
@@ -209,6 +235,16 @@ def FlattenTuplePass : Pass<"mhlo-flatten-tuple", "func::FuncOp"> {
   let summary = "Flatten tuples in operands and results of operators that "
     "support both tuple and variadic type.";
   let constructor = "createFlattenTuplePass()";
+}
+
+def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
+  let summary = "Pass to transform the IR to be on signless integers.";
+  let constructor = "createConvertToSignlessPass()";
+}
+
+def SparseRewritingPass : Pass<"mhlo-sparse-rewriting", "func::FuncOp"> {
+  let summary = "Pass to rewrite mhlo sparse tensor types.";
+  let constructor = "createSparseRewritingPass()";
 }
 
 /// Rank specialization passes.
@@ -226,4 +262,10 @@ def RankSpecializationToSCFPass
            "The maximum supported rank after rank specialization. Any argument "
            "of greater rank may result in a runtime failure.">,
   ];
+}
+
+def CollapseElementwiseMapPass
+    : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
+  let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
+  let constructor = "createCollapseElementwiseMapPass()";
 }

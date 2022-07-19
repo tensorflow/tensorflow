@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_wrapper.h"
 
+#include <string>
+
 #include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 

@@ -68,7 +68,7 @@ class GraphTensor : public TracingTensorHandle {
     DCHECK_GE(num_dims, -1);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
     if (num_dims == kUnknownRank) {
-      return Status::OK();
+      return OkStatus();
     }
 
     std::vector<int64_t> dims(num_dims, kUnknownDim);
@@ -78,7 +78,7 @@ class GraphTensor : public TracingTensorHandle {
     TF_RETURN_IF_ERROR(StatusFromTF_Status(&status));
     TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
 
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_Output output_;
@@ -105,7 +105,7 @@ class GraphOperation : public TracingOperation {
       device_name_ = raw_device_name;
     }
     op_type_ = op;
-    return Status::OK();
+    return OkStatus();
   }
   Status SetOpName(const char* const op_name) override {
     if (op_) {
@@ -121,7 +121,7 @@ class GraphOperation : public TracingOperation {
     mutex_lock l(g_->mu);
     op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
                                           g_->graph.NewName(op_name).c_str()));
-    return Status::OK();
+    return OkStatus();
   }
   const string& Name() const override { return op_type_; }
   const string& DeviceName() const override { return device_name_; }
@@ -129,7 +129,7 @@ class GraphOperation : public TracingOperation {
   Status SetDeviceName(const char* name) override {
     // TODO(srbs): Implement this.
     device_name_ = name;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status AddInput(AbstractTensorHandle* input) override {
@@ -139,7 +139,7 @@ class GraphOperation : public TracingOperation {
           "Unable to cast input to GraphTensor");
     }
     TF_AddInput(op_.get(), t->output_);
-    return Status::OK();
+    return OkStatus();
   }
   Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override {
     std::vector<TF_Output> tf_outputs(inputs.size());
@@ -152,7 +152,7 @@ class GraphOperation : public TracingOperation {
       tf_outputs[i] = t->output_;
     }
     TF_AddInputList(op_.get(), tf_outputs.data(), tf_outputs.size());
-    return Status::OK();
+    return OkStatus();
   }
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override {
@@ -168,26 +168,26 @@ class GraphOperation : public TracingOperation {
     for (int i = 0; i < *num_retvals; ++i) {
       retvals[i] = new GraphTensor({operation, i}, g_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status SetAttrString(const char* attr_name, const char* data,
                        size_t length) override {
     tensorflow::StringPiece s(data, length);
     op_->node_builder.Attr(attr_name, s);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrInt(const char* attr_name, int64_t value) override {
     op_->node_builder.Attr(attr_name, static_cast<int64_t>(value));
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrFloat(const char* attr_name, float value) override {
     op_->node_builder.Attr(attr_name, value);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrBool(const char* attr_name, bool value) override {
     op_->node_builder.Attr(attr_name, value);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrType(const char* const attr_name, DataType value) override {
     if (!op_) {
@@ -196,7 +196,7 @@ class GraphOperation : public TracingOperation {
           "op_type and op_name must be specified before specifying attrs.");
     }
     op_->node_builder.Attr(attr_name, value);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrShape(const char* attr_name, const int64_t* dims,
                       const int num_dims) override {
@@ -206,7 +206,7 @@ class GraphOperation : public TracingOperation {
           reinterpret_cast<const int64_t*>(dims), num_dims));
     }
     op_->node_builder.Attr(attr_name, shape);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrFunction(const char* attr_name,
                          const AbstractOperation* value) override {
@@ -218,7 +218,7 @@ class GraphOperation : public TracingOperation {
     tensorflow::NameAttrList func_name;
     func_name.set_name(string(value, value + length));
     op_->node_builder.Attr(attr_name, func_name);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrTensor(const char* attr_name,
                        AbstractTensorInterface* tensor) override {
@@ -241,26 +241,26 @@ class GraphOperation : public TracingOperation {
       }
       op_->node_builder.Attr(attr_name, v);
     }
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrFloatList(const char* attr_name, const float* values,
                           int num_values) override {
     op_->node_builder.Attr(attr_name,
                            ArraySlice<const float>(values, num_values));
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrIntList(const char* attr_name, const int64_t* values,
                         int num_values) override {
     op_->node_builder.Attr(
         attr_name, ArraySlice<const int64_t>(
                        reinterpret_cast<const int64_t*>(values), num_values));
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrTypeList(const char* attr_name, const DataType* values,
                          int num_values) override {
     op_->node_builder.Attr(attr_name,
                            ArraySlice<const DataType>(values, num_values));
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
                          int num_values) override {
@@ -271,7 +271,7 @@ class GraphOperation : public TracingOperation {
     op_->node_builder.Attr(attr_name,
                            ArraySlice<const bool>(b.get(), num_values));
 
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
                           const int* num_dims, int num_values) override {
@@ -286,7 +286,7 @@ class GraphOperation : public TracingOperation {
       }
     }
     op_->node_builder.Attr(attr_name, shapes);
-    return Status::OK();
+    return OkStatus();
   }
   Status SetAttrFunctionList(
       const char* attr_name,
@@ -354,7 +354,7 @@ class GraphContext : public TracingContext {
     }
     inputs_.push_back(t->output_);
     *output = tensorflow::down_cast<TracingTensorHandle*>(outputs[0]);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Finalize(OutputList* outputs, AbstractFunction** f) override {
@@ -379,7 +379,7 @@ class GraphContext : public TracingContext {
     TF_DeleteFunction(func);
     TF_RETURN_IF_ERROR(StatusFromTF_Status(s));
     TF_DeleteStatus(s);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RegisterFunction(AbstractFunction* func) override {

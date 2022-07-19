@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -92,17 +92,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // tf2xla bridge, DepthwiseConvolutionConverter and GpuConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier  We run algsimp to a fixed point.
-  //
-  // When transposes appear in a fusion node, we can easily adjust the
-  // multi-dimensional index to create the one needed for the operand. This
-  // is not as easy with bitcasts, because we don't have the information
-  // readily available which dimensions are permuted. In addition to that,
-  // if we have a transpose and a reshape next to each other, they will both
-  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
-  // bitcast. This leads to having to linearize and then delinearize the
-  // index.
   AlgebraicSimplifierOptions options;
-  options.set_replace_transpose_with_bitcast(false);
   options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
@@ -112,7 +102,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
@@ -147,8 +137,12 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
-  // Find the fastest algorithm for GEMMs.
-  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  // Find the fastest algorithm for GEMMs. Skip on Ampere and later as the
+  // algorithm goes unused.
+  if (!stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  }
 
   if (!IsBefEnabled(hlo_module->config())) {
     // Transform TriangularSolve ops into custom-calls, so we can add temp
@@ -159,13 +153,13 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
-absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
-                                        const HloInstruction* operand,
-                                        const ShapeIndex& user_index) {
+std::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                       const HloInstruction* operand,
+                                       const ShapeIndex& user_index) {
   switch (user->opcode()) {
     case HloOpcode::kAllReduce:
       // NCCL all-reduce can be performed in-place.
@@ -173,8 +167,8 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
              (user_index.size() == 1 &&
               user->operand(user_index[0]) == operand);
     case HloOpcode::kCustomCall:
-      // Share the bias buffer with the parent instruction.
-      if (user->custom_call_target() == kGemmCallTarget) {
+      // The matrix bias operand can be overwritten in-place.
+      if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
         return user->operand_count() == 3 && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.
@@ -183,7 +177,7 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
       }
       return false;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -365,7 +359,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   }
 
   std::vector<uint8_t> cubin = CompileGpuAsmOrGetCachedResult(
-      stream_exec, ptx, absl::get<se::CudaComputeCapability>(gpu_version),
+      stream_exec, ptx, std::get<se::CudaComputeCapability>(gpu_version),
       module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8_t>>(std::move(ptx),

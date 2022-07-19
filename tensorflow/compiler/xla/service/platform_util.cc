@@ -156,7 +156,7 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
 PlatformUtil::GetStreamExecutors(
     se::Platform* platform,
-    const absl::optional<std::set<int>>& allowed_devices) {
+    const std::optional<std::set<int>>& allowed_devices) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
     return NotFound("no %s devices found", platform->Name());
@@ -176,33 +176,47 @@ PlatformUtil::GetStreamExecutors(
   {
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), "device_initialization", device_count);
-    for (int i = 0; i < device_count; ++i) {
-      // Once a stream executor is instantiated it will cause allocations on
-      // the device, for example for GPUs cuda context, cudnn handles etc. will
-      // be constructed. By constructing stream executors only on the
-      // allowed_devices, we don't make any allocations on other devices.
-      // This helps in multi-process executions on the same host like horovod or
-      // shared hosts.
-      if (allowed_devices && allowed_devices->count(i) == 0) {
-        VLOG(1) << "Not initializing StreamExecutor for device " << i
-                << " since it is not in the visible device list";
-        continue;
-      }
-      thread_pool.Schedule([platform, i, &stream_executors]() {
-        VLOG(1) << "Started device init " << i;
-        auto executor_status = platform->ExecutorForDevice(i);
-        if (executor_status.ok()) {
-          se::StreamExecutor* executor = executor_status.ValueOrDie();
-          if (IsDeviceSupported(executor)) {
-            stream_executors[i] = executor;
-          }
-        } else {
-          LOG(WARNING) << "unable to create StreamExecutor for "
-                       << platform->Name() << ":" << i << ": "
-                       << executor_status.status().error_message();
+    auto create_fn = [](se::Platform* platform,
+                        std::vector<se::StreamExecutor*>& stream_executors,
+                        int device_ordinal, int count) {
+      VLOG(1) << "Started device init " << device_ordinal;
+      auto executor_status = platform->ExecutorForDevice(device_ordinal);
+      if (executor_status.ok()) {
+        se::StreamExecutor* executor = executor_status.ValueOrDie();
+        if (IsDeviceSupported(executor)) {
+          stream_executors[count] = executor;
         }
-        VLOG(1) << "Finished device init " << i;
-      });
+      } else {
+        LOG(WARNING) << "unable to create StreamExecutor for "
+                     << platform->Name() << ":" << device_ordinal << ": "
+                     << executor_status.status().error_message();
+      }
+      VLOG(1) << "Finished device init " << device_ordinal;
+    };
+    // Once a stream executor is instantiated it will cause allocations on
+    // the device, for example for GPUs cuda context, cudnn handles etc. will
+    // be constructed. By constructing stream executors only on the
+    // allowed_devices, we don't make any allocations on other devices.
+    // This helps in multi-process executions on the same host like horovod or
+    // shared hosts.
+    if (allowed_devices) {
+      int count = 0;
+      for (const auto& i : *allowed_devices) {
+        if (count >= device_count) {
+          break;
+        }
+        thread_pool.Schedule(
+            [platform, &stream_executors, i, count, &create_fn]() {
+              create_fn(platform, stream_executors, i, count);
+            });
+        count++;
+      }
+    } else {
+      for (int i = 0; i < device_count; ++i) {
+        thread_pool.Schedule([platform, &stream_executors, i, &create_fn]() {
+          create_fn(platform, stream_executors, i, i);
+        });
+      }
     }
     // Block here in thread_pool destructor until all devices are initialized.
   }

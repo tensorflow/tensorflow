@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Debug.h"
 #include "pybind11/numpy.h"
@@ -34,71 +35,98 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
-
-using tensorflow::FunctionDefLibrary;
-using tensorflow::Graph;
-using tensorflow::GraphDef;
-using tensorflow::ImportGraphDefOptions;
-using tensorflow::OpRegistry;
 
 namespace tensorflow {
 namespace quantization {
+namespace {
+
+// Serializes GraphDef to python bytes object. Raises python ValueError if
+// serialization fails.
+PyObject* SerializeGraphDefToPyBytes(const GraphDef& graph_def,
+                                     const absl::string_view function_name,
+                                     const int line_no) {
+  const std::string graph_def_serialized = graph_def.SerializeAsString();
+
+  // Empty string means it failed to serialize the protobuf with an error. See
+  // the docstring for SerializeAsString for details.
+  if (graph_def_serialized.empty()) {
+    PyErr_Format(
+        PyExc_ValueError,
+        absl::StrFormat(
+            "Failed to serialize GraphDef result from function %s [%s:%d].",
+            function_name, __FILE__, line_no)
+            .c_str());
+    return nullptr;
+  }
+
+  // Note that Python version 2.x is not supported.
+  return PyBytes_FromStringAndSize(graph_def_serialized.c_str(),
+                                   graph_def_serialized.size());
+}
+
+}  // namespace
 
 PyObject* QuantizeQATModel(absl::string_view saved_model_path,
                            absl::string_view exported_names_str,
                            absl::string_view tags) {
-  absl::StatusOr<tensorflow::GraphDef> graph_def =
+  const absl::StatusOr<GraphDef> graph_def =
       internal::QuantizeQATModel(saved_model_path, exported_names_str, tags);
   if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError, "failed to quantize QAT model: %s",
+    PyErr_Format(PyExc_ValueError, "Failed to quantize QAT model: %s",
                  std::string(graph_def.status().message()).c_str());
     return nullptr;
   }
 
-  std::string ret_str = graph_def.value().SerializeAsString();
+  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
+}
 
-  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
-                                                 ret_str.size());
+PyObject* QuantizePTQDynamicRange(absl::string_view saved_model_path,
+                                  absl::string_view exported_names_str,
+                                  absl::string_view tags) {
+  const absl::StatusOr<GraphDef> graph_def = internal::QuantizePTQDynamicRange(
+      saved_model_path, exported_names_str, tags);
+  if (!graph_def.ok()) {
+    PyErr_Format(PyExc_ValueError,
+                 "Failed to apply post-training dynamic range quantization to "
+                 "the model: %s",
+                 std::string(graph_def.status().message()).c_str());
+    return nullptr;
+  }
+
+  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
 }
 
 PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
                                          absl::string_view exported_names_str,
                                          absl::string_view tags) {
-  absl::StatusOr<tensorflow::GraphDef> graph_def =
+  const absl::StatusOr<GraphDef> graph_def =
       internal::QuantizePTQModelPreCalibration(saved_model_path,
                                                exported_names_str, tags);
   if (!graph_def.ok()) {
     PyErr_Format(PyExc_ValueError,
-                 "failed to quantize PTQ model at the precalibration stage: %s",
+                 "Failed to quantize PTQ model at the precalibration stage: %s",
                  std::string(graph_def.status().message()).c_str());
     return nullptr;
   }
 
-  std::string ret_str = graph_def.value().SerializeAsString();
-
-  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
-                                                 ret_str.size());
+  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
 }
 
 PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
                                           absl::string_view exported_names_str,
                                           absl::string_view tags) {
-  absl::StatusOr<tensorflow::GraphDef> graph_def =
+  const absl::StatusOr<GraphDef> graph_def =
       internal::QuantizePTQModelPostCalibration(saved_model_path,
                                                 exported_names_str, tags);
   if (!graph_def.ok()) {
     PyErr_Format(
         PyExc_ValueError,
-        "failed to quantize PTQ model at the postcalibration stage: %s",
+        "Failed to quantize PTQ model at the postcalibration stage: %s",
         std::string(graph_def.status().message()).c_str());
     return nullptr;
   }
 
-  std::string ret_str = graph_def.value().SerializeAsString();
-
-  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
-                                                 ret_str.size());
+  return SerializeGraphDefToPyBytes(*graph_def, __func__, __LINE__);
 }
 
 void ClearCollectedInformationFromCalibrator() {
@@ -110,7 +138,7 @@ void ClearDataFromCalibrator(absl::string_view id) {
 }
 
 float GetMinFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
     PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
@@ -122,7 +150,7 @@ float GetMinFromCalibrator(absl::string_view id) {
 }
 
 float GetMaxFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
+  std::optional<std::pair<float, float>> min_max =
       calibrator::CalibratorSingleton::GetMinMax(id);
   if (!min_max.has_value()) {
     PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",

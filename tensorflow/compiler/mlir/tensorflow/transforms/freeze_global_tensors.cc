@@ -17,14 +17,15 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Analysis/DataFlowAnalysis.h"  // from @llvm-project
+#include "llvm/Support/Debug.h"
+#include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/DataFlow/SparseAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -33,9 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
+#define DEBUG_TYPE "freeze-global-tensor"
+
 namespace mlir {
 namespace tf_saved_model {
-namespace {
 
 // The value of our lattice represents the GlobalTensorOp matching the value.
 struct ResourceLatticeValue {
@@ -48,7 +50,8 @@ struct ResourceLatticeValue {
   }
   static ResourceLatticeValue getPessimisticValueState(Value value) {
     if (auto barg = value.dyn_cast<BlockArgument>()) {
-      if (FuncOp func = dyn_cast<FuncOp>(barg.getOwner()->getParentOp())) {
+      if (func::FuncOp func =
+              dyn_cast<func::FuncOp>(barg.getOwner()->getParentOp())) {
         SymbolTable symbol_table(func->getParentOfType<ModuleOp>());
         auto global_tensor = LookupBoundInputOfType<GlobalTensorOp>(
             func, barg.getArgNumber(), symbol_table);
@@ -72,19 +75,27 @@ struct ResourceLatticeValue {
     return ret;
   }
 
+  void print(raw_ostream &os) const {
+    llvm::interleaveComma(ops, os << "["), os << "]";
+  }
+
   // The location which originated the int value.
-  DenseSet<GlobalTensorOp> ops;
+  // IR constructs (i.e., GlobalTensorOp) are not const-correct.
+  mutable DenseSet<GlobalTensorOp> ops;
 };
 
-class ResourceAnalysis : public ForwardDataFlowAnalysis<ResourceLatticeValue> {
+namespace {
+class ResourceAnalysis : public dataflow::SparseDataFlowAnalysis<
+                             dataflow::Lattice<ResourceLatticeValue>> {
  public:
-  using LatticeElementT = LatticeElement<ResourceLatticeValue>;
-  using ForwardDataFlowAnalysis<ResourceLatticeValue>::ForwardDataFlowAnalysis;
+  using StateT = dataflow::Lattice<ResourceLatticeValue>;
+  using dataflow::SparseDataFlowAnalysis<StateT>::SparseDataFlowAnalysis;
   ~ResourceAnalysis() override = default;
 
-  ChangeResult visitOperation(Operation *op,
-                              ArrayRef<LatticeElementT *> operands) override {
-    return markAllPessimisticFixpoint(op->getResults());
+  void visitOperation(Operation *op, ArrayRef<const StateT *> operands,
+                      ArrayRef<StateT *> results) override {
+    LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
+    markAllPessimisticFixpoint(results);
   }
 };
 
@@ -100,8 +111,10 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   auto module = getOperation();
   if (!tf_saved_model::HasTfSavedModelSemantics(module)) return;
 
-  ResourceAnalysis analysis(&getContext());
-  analysis.run(module);
+  DataFlowSolver solver;
+  solver.load<dataflow::DeadCodeAnalysis>();
+  solver.load<ResourceAnalysis>();
+  if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
   DenseSet<GlobalTensorOp> remaining_global_tensor_ops;
   {
@@ -126,14 +139,14 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   // Collect all those freezable. This is an extra scan but allows for the
   // partial behavior from `allow_mutable_tensor`.
   DenseMap<BlockArgument, bool> freezeable;
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (BlockArgument val : func.getArguments()) {
       if (!getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>())
         continue;
 
       // Check that there is only a single global tensor associated with arg.
-      LatticeElement<ResourceLatticeValue> *latticeElement =
-          analysis.lookupLatticeElement(val);
+      const ResourceAnalysis::StateT *latticeElement =
+          solver.lookupState<ResourceAnalysis::StateT>(val);
       if (!latticeElement || latticeElement->getValue().ops.size() != 1)
         continue;
 
@@ -161,7 +174,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
   }
 
   DenseSet<GlobalTensorOp> frozen_global_tensors;
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     llvm::BitVector args_to_erase(func.getNumArguments());
     DenseMap<Operation *, llvm::BitVector> remove_operands;
     OpBuilder builder(func.getBody());
@@ -169,8 +182,8 @@ void FreezeGlobalTensorsPass::runOnOperation() {
     for (BlockArgument val : func.getArguments()) {
       if (!freezeable[val]) continue;
 
-      LatticeElement<ResourceLatticeValue> *latticeElement =
-          analysis.lookupLatticeElement(val);
+      const ResourceAnalysis::StateT *latticeElement =
+          solver.lookupState<ResourceAnalysis::StateT>(val);
       GlobalTensorOp global_tensor = *latticeElement->getValue().ops.begin();
 
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;

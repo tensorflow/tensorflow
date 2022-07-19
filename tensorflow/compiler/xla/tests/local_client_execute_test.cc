@@ -126,7 +126,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Add(x, y);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Create x as a col-major array.
   auto x_array = LiteralToShapedBuffer(LiteralUtil::CreateR2WithLayout(
@@ -159,7 +159,7 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Add(x, y);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto x_array = LiteralToShapedBuffer(
       LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
@@ -198,7 +198,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Tuple(&builder, {x, y, x});
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto x_array = LiteralToShapedBuffer(
       LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
@@ -226,7 +226,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   auto inner_tuple = Tuple(&builder, {x, y, x});
   Tuple(&builder, {inner_tuple, x});
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto x_array = LiteralToShapedBuffer(
       LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
@@ -299,7 +299,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   auto array_sum = Add(x_0, y_1);
   auto vector_diff = Sub(x_1, y_0);
   Tuple(&builder, {array_sum, vector_diff});
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto x_literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}),
@@ -345,7 +345,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
   auto negate_array = Neg(inner_array);
   auto vector_sum = Add(inner_vector, outer_vector);
   Tuple(&builder, {negate_array, vector_sum});
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto arg_literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::MakeTupleFromSlices(
@@ -377,7 +377,7 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
   auto element_0 = GetTupleElement(param, 0);
   auto element_1 = GetTupleElement(param, 1);
   Tuple(&builder, {Neg(element_0), Add(element_1, element_1)});
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto arg_literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}),
@@ -426,7 +426,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
     result_elements.push_back(Add(element, ConstantR0<float>(&builder, i)));
   }
   Tuple(&builder, result_elements);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Feed in a tuple where each two-element vector element is {tuple_index,
   // -tuple_index}.
@@ -478,7 +478,7 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
     result_elements.push_back(Tuple(&builder, inner_result_elements));
   }
   Tuple(&builder, result_elements);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Construct the argument to pass to the computation.
   std::vector<Literal> outer_tuple_elements;
@@ -529,7 +529,7 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
   for (int i = 0; i < kTupleDepth; ++i) {
     output = Tuple(&builder, {output});
   }
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   // Construct the argument to pass to the computation.
   Literal arg_literal = LiteralUtil::CreateR0<float>(123.0);
@@ -612,7 +612,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
   // specific device is not supported, check that the right error is returned.
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
   for (int d = 0; d < local_client_->device_count(); ++d) {
     if (!local_client_->device_ordinal_supported(d)) {
       auto execute_status =
@@ -639,7 +639,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
   // exist.
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto execute_status =
       ExecuteLocally(computation, {},
@@ -656,7 +656,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
   // Run a computation on a specific stream on each device on the system.
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   for (int d = 0; d < local_client_->device_count(); ++d) {
     if (!local_client_->device_ordinal_supported(d)) {
@@ -738,26 +738,6 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
               ContainsRegex("stream is uninitialized or in an error state"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(SelectBetweenTuples)) {
-  XlaBuilder builder(TestName());
-
-  std::initializer_list<float> vec1 = {1.f, 2.f, 3.f};
-  std::initializer_list<float> vec2 = {2.f, 4.f, 6.f};
-  auto tuple12 = Tuple(&builder, {ConstantR1<float>(&builder, vec1),
-                                  ConstantR1<float>(&builder, vec2)});
-  auto tuple21 = Tuple(&builder, {ConstantR1<float>(&builder, vec2),
-                                  ConstantR1<float>(&builder, vec1)});
-  Select(ConstantR0<bool>(&builder, false), tuple12, tuple21);
-
-  ScopedShapedBuffer result =
-      ExecuteLocallyOrDie(builder.Build().ValueOrDie(), {});
-  Literal tuple_literal = ShapedBufferToLiteral(result);
-  LiteralTestUtil::ExpectR1Equal<float>({2.0f, 4.0f, 6.0f},
-                                        LiteralSlice(tuple_literal, {0}));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0f, 2.0f, 3.0f},
-                                        LiteralSlice(tuple_literal, {1}));
-}
-
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
@@ -776,9 +756,7 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   auto x_array =
       LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
   ScopedShapedBuffer result =
-      executables[0]
-          ->Run({&x_array}, DefaultExecutableRunOptions())
-          .ConsumeValueOrDie();
+      executables[0]->Run({&x_array}, DefaultExecutableRunOptions()).value();
   ASSERT_IS_OK(local_client_->mutable_backend()
                    ->BorrowStream(0)
                    .ValueOrDie()
@@ -968,12 +946,12 @@ void BM_LocalClientOverhead(::testing::benchmark::State& state) {
   auto shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto x = Parameter(&builder, 0, shape, "x");
   Add(x, x);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   auto buffer =
       transfer_manager
           ->AllocateScopedShapedBuffer(shape, &allocator, /*device_ordinal=*/0)
-          .ConsumeValueOrDie();
+          .value();
   auto literal = LiteralUtil::CreateR2<float>({{0, 0, 0}, {0, 0, 0}});
   auto stream =
       client->mutable_backend()->BorrowStream(device_ordinal).ValueOrDie();

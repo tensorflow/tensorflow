@@ -259,7 +259,7 @@ Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
   ApplyJacobiRotationOverRows(rotation, v_tl, v_tr, v_bl, v_br);
   PermuteRowsInColumn(v_tl, v_bl);
   PermuteRowsInColumn(v_tr, v_br);
-  return Status::OK();
+  return OkStatus();
 }
 
 struct FrobeniusNorms {
@@ -370,7 +370,7 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
            num_dims - 1);
   w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
   v = GetTupleElement(sort_result, 1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // This is the cyclic Jacobi iteration.

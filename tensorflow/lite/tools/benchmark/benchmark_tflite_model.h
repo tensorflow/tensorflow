@@ -32,6 +32,25 @@ limitations under the License.
 namespace tflite {
 namespace benchmark {
 
+// Splits the input_layer_name and input_layer_value_files and stores them in
+// the name_file_pair. In the case of failures, return an error status, and the
+// the state of name_file_pair is unchanged.
+//
+// BenchmarkTfLiteModel takes --input_layer_value_files flag, which is a comma-
+// separated list of input_layer_name:input_value_file_path pairs,
+// e.g. input1:/tmp/path.
+//
+// As TensorFlow allows ':' in the tensor names (e.g. input:0 to denote the
+// output index), having ':' as the delimiter can break the benchmark code
+// unexpectedly. To avoid this issue, we allow escaping ':' char with '\:' for
+// this particular flag only. This function handles splitting the name and file
+// path that contains escaped colon.
+//
+// For example, "input\:0:/tmp/path" will be divided into input:0 and /tmp/path.
+TfLiteStatus SplitInputLayerNameAndValueFile(
+    const std::string& name_and_value_file,
+    std::pair<std::string, std::string>& name_file_pair);
+
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:

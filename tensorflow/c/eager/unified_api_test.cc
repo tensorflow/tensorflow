@@ -48,7 +48,7 @@ Status TestScalarShape(AbstractContext* ctx,
     return errors::InvalidArgument(
         "Tensor expected to have scalar shape found rank: ", shape.dims());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_P(UnifiedAPI, TestTensorShapeScalar) {
@@ -98,7 +98,7 @@ Status TestTensorShape2x4(AbstractContext* ctx,
                                      " found: ", shape.dim_size(i));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_P(UnifiedAPI, TestTensorShape2x4) {

@@ -38,6 +38,13 @@ extern const char kXlaHostTransferHandlerNameAttr[];
 // Command Handler.
 extern const char kXlaHostTransferTfRendezvousHandlerName[];
 
+// XLA frontend attribute name which specifies the type of computation.
+extern const char kXlaComputeTypeAttr[];
+
+// XLA frontend attribute values for kXlaComputeTypeAttr
+extern const char kXlaComputeTypeSparse[];
+extern const char kXlaComputeTypeDense[];
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SIDE_EFFECT_UTIL_H_

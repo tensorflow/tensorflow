@@ -28,14 +28,20 @@ namespace tflite {
 class XnnpackPluginTest : public testing::Test {
  public:
   static constexpr int kNumThreadsForTest = 7;
+  static constexpr tflite::XNNPackFlags kFlagsForTest =
+      tflite::XNNPackFlags::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8;
   void SetUp() override {
     // Construct a FlatBuffer that contains
     //   TFLiteSettings {
     //     delegate: Delegate.XNNPACK,
-    //     XNNPackSettings { num_threads: kNumThreadsForTest }
+    //     XNNPackSettings { num_threads: kNumThreadsForTest
+    //                       flags: TFLITE_XNNPACK_DELEGATE_FLAG_QS8 |
+    //                           TFLITE_XNNPACK_DELEGATE_FLAG_QU8
+    //     }
     //   }.
     XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder_);
     xnnpack_settings_builder.add_num_threads(kNumThreadsForTest);
+    xnnpack_settings_builder.add_flags(kFlagsForTest);
     flatbuffers::Offset<XNNPackSettings> xnnpack_settings =
         xnnpack_settings_builder.Finish();
     TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder_);

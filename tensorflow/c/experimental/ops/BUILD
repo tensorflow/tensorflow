@@ -30,6 +30,26 @@ cc_library(
 )
 
 cc_library(
+    name = "io_ops",
+    srcs = [
+        "io_ops.cc",
+    ],
+    hdrs = [
+        "io_ops.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:tracing_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
     name = "math_ops",
     srcs = [
         "math_ops.cc",
@@ -99,6 +119,7 @@ cc_library(
     name = "ops",
     hdrs = [
         "array_ops.h",
+        "io_ops.h",
         "math_ops.h",
         "nn_ops.h",
         "resource_variable_ops.h",
@@ -108,6 +129,7 @@ cc_library(
     ],
     deps = [
         ":array_ops",
+        ":io_ops",
         ":math_ops",
         ":nn_ops",
         ":resource_variable_ops",
@@ -122,12 +144,10 @@ filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
         "array_ops.h",
+        "io_ops.h",
         "math_ops.h",
         "nn_ops.h",
         "resource_variable_ops.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = ["//tensorflow/python:__subpackages__"],
 )

@@ -26,7 +26,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 // Add and subtraction are elementwise and can be distributed across the real
 // and imaginary components.
-foreach elementwiseOp = [HLO_AddOp, HLO_SubOp] in
+foreach elementwiseOp = [HLO_AddOp, HLO_SubtractOp] in
   def : Pat<(elementwiseOp HLO_ComplexTensor:$lhs,
              HLO_ComplexTensor:$rhs),
             (HLO_ComplexOp
@@ -40,7 +40,7 @@ foreach elementwiseOp = [HLO_AddOp, HLO_SubOp] in
 def : Pat<(HLO_MulOp HLO_ComplexTensor:$lhs,
            HLO_ComplexTensor:$rhs),
           (HLO_ComplexOp
-           (HLO_SubOp
+           (HLO_SubtractOp
             (HLO_MulOp
              (HLO_RealOp:$lhs_real $lhs),
              (HLO_RealOp:$rhs_real $rhs)),
@@ -80,37 +80,37 @@ def : Pat<(HLO_AbsOp HLO_ComplexTensor:$val),
 //   sin(a) * cosh(b) + icos(a) * sinh(b)
 //   sinh(b) = (e^x - e^-x) / 2
 //   cosh(b) = (e^x + e^-x) / 2
-def : Pat<(HLO_SinOp HLO_ComplexTensor:$val),
+def : Pat<(HLO_SineOp HLO_ComplexTensor:$val),
             (HLO_ComplexOp
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_SinOp (HLO_RealOp:$real $val)),
+                  (HLO_SineOp (HLO_RealOp:$real $val)),
                   (HLO_AddOp
                     (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
                     (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
-                 (HLO_ConstOp : $two (ConstantSplat<"2.0"> $real))),
+                 (HLO_ConstantOp : $two (ConstantSplat<"2.0"> $real))),
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_CosOp $real),
-                  (HLO_SubOp $exp, $nexp)), $two))>;
+                  (HLO_CosineOp $real),
+                  (HLO_SubtractOp $exp, $nexp)), $two))>;
 
 // Can deconstruct cos(a + ib) as follows:
 //   cos(a) * cosh(b) - isin(a) * sinh(b)
 //   sinh(b) = (e^x - e^-x) / 2
 //   cosh(b) = (e^x + e^-x) / 2
-def : Pat<(HLO_CosOp HLO_ComplexTensor:$val),
+def : Pat<(HLO_CosineOp HLO_ComplexTensor:$val),
             (HLO_ComplexOp
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_CosOp (HLO_RealOp:$real $val)),
+                  (HLO_CosineOp (HLO_RealOp:$real $val)),
                   (HLO_AddOp
                     (HLO_ExpOp:$exp (HLO_ImagOp:$imag $val)),
                     (HLO_ExpOp:$nexp (HLO_NegOp $imag)))),
-                 (HLO_ConstOp : $two (ConstantSplat<"2.0"> $real))),
+                 (HLO_ConstantOp : $two (ConstantSplat<"2.0"> $real))),
               (HLO_DivOp
                 (HLO_MulOp
-                  (HLO_SinOp $real),
-                  (HLO_SubOp $nexp, $exp)), $two))>;
+                  (HLO_SineOp $real),
+                  (HLO_SubtractOp $nexp, $exp)), $two))>;
 
 // Exponential can be lowered to an exponential on the real component and a
 // sum of sinusoids of the imaginary component, which equates to a normal
@@ -123,9 +123,9 @@ class HLO_ComparisonDirectionValue<string enumStr> :
 def : Pat<(HLO_ExpOp HLO_ComplexTensor:$val),
           (HLO_ComplexOp
            (HLO_MulOp
-            (HLO_CosOp (HLO_ImagOp:$imag $val)),
+            (HLO_CosineOp (HLO_ImagOp:$imag $val)),
             (HLO_ExpOp:$exp (HLO_RealOp:$real $val))),
-           (HLO_MulOp (HLO_SinOp $imag), $exp))>;
+           (HLO_MulOp (HLO_SineOp $imag), $exp))>;
 
 foreach pair = [[HLO_ComparisonDirectionValue<"NE">, HLO_OrOp],
                 [HLO_ComparisonDirectionValue<"EQ">, HLO_AndOp]] in {

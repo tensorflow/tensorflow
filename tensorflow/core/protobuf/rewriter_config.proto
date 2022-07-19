@@ -121,6 +121,8 @@ message RewriterConfig {
   bool disable_meta_optimizer = 19;
   // Optimizers registered by plugin (default is ON)
   Toggle use_plugin_optimizers = 28;
+  // Conditional code motion (default is ON).
+  Toggle experimental_conditional_code_motion = 30;
 
   // Controls how many times we run the optimizers in meta optimizer (default
   // is once).

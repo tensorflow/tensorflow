@@ -110,7 +110,7 @@ port::Status CUDAFftPlan::Initialize(
             return port::Status(port::error::INTERNAL,
                                 "Failed to create cuFFT 1d plan.");
           }
-          return port::Status::OK();
+          return ::tensorflow::OkStatus();
         case 2:
           // cufftPlan2d
           ret = cufftPlan2d(&plan_, elem_count_[0], elem_count_[1],
@@ -120,7 +120,7 @@ port::Status CUDAFftPlan::Initialize(
             return port::Status(port::error::INTERNAL,
                                 "Failed to create cuFFT 2d plan.");
           }
-          return port::Status::OK();
+          return ::tensorflow::OkStatus();
         case 3:
           // cufftPlan3d
           ret = cufftPlan3d(&plan_, elem_count_[0], elem_count_[1],
@@ -130,7 +130,7 @@ port::Status CUDAFftPlan::Initialize(
             return port::Status(port::error::INTERNAL,
                                 "Failed to create cuFFT 3d plan.");
           }
-          return port::Status::OK();
+          return ::tensorflow::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
@@ -229,7 +229,7 @@ port::Status CUDAFftPlan::Initialize(
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
@@ -262,7 +262,7 @@ port::Status CUDAFftPlan::UpdateScratchAllocator(
     return port::Status(port::error::INTERNAL,
                         "Failed to set work area for cuFFT plan.");
   }
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 CUDAFftPlan::~CUDAFftPlan() {

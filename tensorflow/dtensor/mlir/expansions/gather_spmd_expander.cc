@@ -362,7 +362,7 @@ Status GatherNdGetInputLayoutFromOutput(const Layout& output_layout,
   TF_ASSIGN_OR_RETURN(*params_layout, Layout::GetLayout(params_specs, mesh));
   TF_ASSIGN_OR_RETURN(*indices_layout, Layout::GetLayout(indices_specs, mesh));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

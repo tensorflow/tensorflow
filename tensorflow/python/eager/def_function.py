@@ -88,7 +88,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -252,7 +252,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         initializer tensor will be added to this map in addition to adding the
         assignment to the function.
       lifted_initializer_graph: FuncGraph to try to lift initializers to.
-      synchronization: Indicates when a distributed a variable will be
+      synchronization: Indicates when a distributed variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
@@ -1520,7 +1520,7 @@ def function(func=None,
   `func` may contain TensorFlow operations mixed with pure Python operations.
   However, when the function is executed, only the TensorFlow operations will
   run. The Python operations run only once, at trace time. If TensorFlow
-  operations depend on results from Pyhton operations, those results will be
+  operations depend on results from Python operations, those results will be
   frozen into the graph.
 
   >>> @tf.function
@@ -1543,7 +1543,7 @@ def function(func=None,
 
   ## Using type annotations to improve performance
 
-  'experimental_follow_type_hints` can be used along with type annotations to
+  `experimental_follow_type_hints` can be used along with type annotations to
   reduce retracing by automatically casting any Python values to `tf.Tensor`
   (something that is not done by default, unless you use input signatures).
 
@@ -1568,7 +1568,7 @@ def function(func=None,
   <tf.Tensor: shape=(), dtype=int32, numpy=2>
 
   Args:
-    func: the function to be compiled. If `func` is None, `tf.function` returns
+    func: The function to be compiled. If `func` is None, `tf.function` returns
       a decorator that can be invoked with a single argument - `func`. In other
       words, `tf.function(input_signature=...)(func)` is equivalent to
       `tf.function(func, input_signature=...)`. The former can be used as

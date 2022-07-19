@@ -64,7 +64,7 @@ class SquaredLossUpdater : public DualLossUpdater {
 
   // Labels don't require conversion for linear regression.
   Status ConvertLabel(float* const example_label) const final {
-    return Status::OK();
+    return OkStatus();
   }
 };
 

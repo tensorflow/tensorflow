@@ -52,7 +52,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       // TODO(b/210786051): Implement tree reduction rewrite for variadic
       // reductions on CPU as well.
       VLOG(1) << "Skipping rewrite for variadic reduction";
-      return Status::OK();
+      return OkStatus();
     }
 
     // All of the reduced dimensions is smaller than the window size,
@@ -63,7 +63,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1) << "Skipping tree reduction rewrite: all reduced dimensions are "
                  "smaller than "
               << reduce_window_size_;
-      return Status::OK();
+      return OkStatus();
     }
 
     std::vector<int64_t> window_dimensions;
@@ -110,10 +110,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   int64_t reduce_window_size_;
 };
 
-StatusOr<bool> TreeReductionRewriter::Run(HloModule *module) {
+StatusOr<bool> TreeReductionRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   ReductionRewriterVisitor visitor(reduce_window_size_);
   bool changed = false;
-  for (const auto &computation : module->MakeNonfusionComputations()) {
+  for (const auto &computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

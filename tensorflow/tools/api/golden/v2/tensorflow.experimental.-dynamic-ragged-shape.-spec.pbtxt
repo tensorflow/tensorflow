@@ -1,7 +1,9 @@
 path: "tensorflow.experimental.DynamicRaggedShape.Spec"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.dynamic_ragged_shape.DynamicRaggedShape.Spec\'>"
+  is_instance: "<class \'tensorflow.python.framework.extension_type.BatchableExtensionTypeSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeSpec\'>"
+  is_instance: "<class \'tensorflow.python.framework.type_spec.BatchableTypeSpec\'>"
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
   is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
   is_instance: "<type \'object\'>"
@@ -27,7 +29,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'_row_partitions\', \'_inner_shape\', \'_static_inner_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'row_partitions\', \'static_inner_shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_value"
@@ -48,5 +50,9 @@ tf_class {
   member_method {
     name: "most_specific_compatible_type"
     argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_dtype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
 }

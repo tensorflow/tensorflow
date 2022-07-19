@@ -18,6 +18,7 @@ limitations under the License.
 // command-line option header is pulled in.
 
 #include <memory>
+#include <utility>
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -50,7 +51,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
       enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) return nullptr;
-  return module_or.ConsumeValueOrDie();
+  return std::move(module_or).value();
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
@@ -64,7 +65,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
       convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
       enable_shape_inference, unconditionally_use_set_output_shapes, context);
   if (!module_or.status().ok()) return nullptr;
-  return module_or.ConsumeValueOrDie();
+  return std::move(module_or).value();
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(

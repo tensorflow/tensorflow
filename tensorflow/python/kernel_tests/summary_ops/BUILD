@@ -12,7 +12,7 @@ package(
 
 cuda_py_test(
     name = "summary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["summary_ops_test.py"],
     deps = [
         "//tensorflow/core:protos_all_py",

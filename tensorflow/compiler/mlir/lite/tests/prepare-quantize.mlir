@@ -1,4 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-quantize --tfl-test-quantize-allowlist="quantize_float_placeholder_only,not_reset_input" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize="quantize-allowlist=quantize_float_placeholder_only,not_reset_input" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize="disable-set-input-nodes-quantization-params=true" | FileCheck --check-prefix=MixedPrecision %s
 
 // CHECK-LABEL: main
 // Uses `main` function to match the default target function of QuantSpecs and
@@ -19,6 +20,27 @@ func.func @main(%arg0: tensor<2x1xf32>, %arg1: tensor<2x3xf32>) -> (tensor<2x4xf
 // CHECK-NEXT: %[[q_1:.*]] = "tfl.quantize"(%[[c]])
 // CHECK-NEXT: %[[dq_1:.*]] = "tfl.dequantize"(%[[q_1]])
 // CHECK-NEXT: return %[[dq_1:.*]]
+}
+
+// MixedPrecision-LABEL: paritial_quantized
+func.func @paritial_quantized(%arg0: tensor<2x1xf32>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x4xf32>) -> (tensor<2x4xf32>) {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<2x1x!quant.uniform<i16:f32, 1.0>>} : (tensor<2x1xf32>) -> tensor<2x1x!quant.uniform<i16:f32, 1.0>>
+  %1 = "tfl.dequantize"(%0) : (tensor<2x1x!quant.uniform<i16:f32, 1.0>>) -> (tensor<2x1xf32>)
+  %2 = "tfl.quantize"(%arg1) {qtype = tensor<2x3x!quant.uniform<i16:f32, 1.0>>} : (tensor<2x3xf32>) -> tensor<2x3x!quant.uniform<i16:f32, 1.0>>
+  %3 = "tfl.dequantize"(%2) : (tensor<2x3x!quant.uniform<i16:f32, 1.0>>) -> (tensor<2x3xf32>)
+  %4 = "tfl.concatenation"(%1, %3) {axis = -1 : i32, fused_activation_function = "NONE"} : (tensor<2x1xf32>, tensor<2x3xf32>) -> tensor<2x4xf32>
+  %5 = "tfl.add"(%4, %arg2) {fused_activation_function = "NONE"} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<2x4xf32>
+  func.return %5: tensor<2x4xf32>
+
+// MixedPrecision-NEXT: %[[q:.*]] = "tfl.quantize"(%arg0)
+// MixedPrecision-NEXT: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// MixedPrecision-NEXT: %[[q_0:.*]] = "tfl.quantize"(%arg1)
+// MixedPrecision-NEXT: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
+// MixedPrecision-NEXT: %[[c:.*]] = "tfl.concatenation"(%[[dq]], %[[dq_0]])
+// MixedPrecision-NEXT: %[[q_1:.*]] = "tfl.quantize"(%[[c]])
+// MixedPrecision-NEXT: %[[dq_1:.*]] = "tfl.dequantize"(%[[q_1]])
+// MixedPrecision-NEXT: %[[v:.*]] = tfl.add %[[dq_1]], %arg2
+// MixedPrecision-NEXT: return %[[v:.*]]
 }
 
 // CHECK-LABEL: quantize_float_placeholder_only

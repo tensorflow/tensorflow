@@ -35,7 +35,6 @@ pybind_extension(
     ],
     hdrs = ["calibration_wrapper.h"],
     link_in_framework = True,
-    module_name = "_pywrap_tensorflow_lite_calibration_wrapper",
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework_lib",

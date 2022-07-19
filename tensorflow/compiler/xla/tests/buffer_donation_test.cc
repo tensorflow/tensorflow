@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -136,7 +137,7 @@ class BufferDonationTest : public HloTestBase {
           << expected_failure;
       return;
     }
-    ExecutionOutput output = output_status.ConsumeValueOrDie();
+    ExecutionOutput output = std::move(output_status).value();
 
     se::DeviceMemoryBase result_root_buffer = output.Result().root_buffer();
     LOG(INFO) << "result allocation = " << result_root_buffer.opaque()

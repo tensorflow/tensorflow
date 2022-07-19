@@ -271,6 +271,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
+    TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSvdOp>(),
   };
   // clang-format on
@@ -419,9 +420,9 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
   // Register compilation kernels for all registered XLA backends.
   tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
-  auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
+  auto device = std::make_unique<tensorflow::XlaCompilationDevice>(
       tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
-  return absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+  return std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
 class Tf2XlaRewriter {
@@ -500,7 +501,7 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   auto cleanup = [](const std::string& name) {};
   // Use step_id zero as we only have a single context concurrently and
   // concurrently running each of the MLIR functions create a new device.
-  step_container_ = absl::make_unique<tensorflow::ScopedStepContainer>(
+  step_container_ = std::make_unique<tensorflow::ScopedStepContainer>(
       /*step_id=*/0, cleanup);
   tensorflow::Status status = step_container_->Create(
       device_->resource_manager(),
@@ -518,9 +519,9 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
     return emitError(op_->getLoc()) << version_or.status().ToString();
   }
 
-  flib_def_ = absl::make_unique<tensorflow::FunctionLibraryDefinition>(
+  flib_def_ = std::make_unique<tensorflow::FunctionLibraryDefinition>(
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
-  pflr_ = absl::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
+  pflr_ = std::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), tensorflow::Env::Default(), /*config=*/nullptr,
       version_or.ValueOrDie(), flib_def_.get(), tensorflow::OptimizerOptions());
   params_.function_library = pflr_->GetFLR(device_->name());
@@ -624,7 +625,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
     inputs.emplace_back(&tensor);
   }
 
-  params_.inputs = &inputs;
+  params_.inputs = inputs;
   params_.op_kernel = op_kernel.get();
   llvm::SmallVector<tensorflow::AllocatorAttributes, 4> output_attr(
       op_->getNumResults());
@@ -760,7 +761,7 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                      /*legalize_test_only_ops=*/false);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(device_type, prefer_tf2xla);
 }

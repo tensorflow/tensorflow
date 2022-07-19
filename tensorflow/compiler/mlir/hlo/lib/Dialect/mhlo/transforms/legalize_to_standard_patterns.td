@@ -25,7 +25,7 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(HLO_ConstOp ElementsAttr:$value),
+def : Pat<(HLO_ConstantOp ElementsAttr:$value),
           (Arith_ConstantOp $value)>;
 
 //===----------------------------------------------------------------------===//
@@ -51,7 +51,7 @@ def : Pat<(HLO_OrOp HLO_IntTensor:$l, HLO_IntTensor:$r),
 def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (Arith_AddFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_SubOp HLO_FpTensor:$l, HLO_FpTensor:$r),
+def : Pat<(HLO_SubtractOp HLO_FpTensor:$l, HLO_FpTensor:$r),
           (Arith_SubFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r),
@@ -66,7 +66,7 @@ def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r),
 def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (Arith_AddIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-def : Pat<(HLO_SubOp HLO_IntTensor:$l, HLO_IntTensor:$r),
+def : Pat<(HLO_SubtractOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (Arith_SubIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r),

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 
+#include <string>
+
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
@@ -61,11 +63,11 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
                                  StringRef(content.data(), content.size()));
 }
 
-inline TensorType GetInputType(FuncOp func, int idx) {
+inline TensorType GetInputType(func::FuncOp func, int idx) {
   return func.getFunctionType().getInput(idx).dyn_cast_or_null<TensorType>();
 }
 
-inline TensorType GetResultType(FuncOp func, int idx) {
+inline TensorType GetResultType(func::FuncOp func, int idx) {
   return func.getFunctionType().getResult(idx).dyn_cast_or_null<TensorType>();
 }
 
@@ -73,7 +75,7 @@ inline bool RankEquals(const TensorType& type, int rank) {
   return type && type.hasRank() && type.getRank() == rank;
 }
 
-LogicalResult VerifyWhitespaceTokenizer(FuncOp func) {
+LogicalResult VerifyWhitespaceTokenizer(func::FuncOp func) {
   // In the case of input tensor with 0 rank.
   // Whitespace tokenizer generates 1 output:
   // * String tensor for tokens.
@@ -128,7 +130,7 @@ LogicalResult VerifyWhitespaceTokenizer(FuncOp func) {
   return success();
 }
 
-LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
+LogicalResult ConvertWhitespaceTokenizer(func::FuncOp func, llvm::StringRef api,
                                          FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
@@ -142,7 +144,7 @@ LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
   return success();
 }
 
-LogicalResult VerifyNgrams(FuncOp func) {
+LogicalResult VerifyNgrams(func::FuncOp func) {
   // The inputs and outputs should be the same:
   // * A string tensor for tokens/ragged tensor values.
   // * Zero or more row_split tensors.
@@ -206,7 +208,7 @@ LogicalResult VerifyNgrams(FuncOp func) {
   return success();
 }
 
-LogicalResult CreateNgramsCustomOption(FuncOp func, DictionaryAttr attrs,
+LogicalResult CreateNgramsCustomOption(func::FuncOp func, DictionaryAttr attrs,
                                        std::string& custom_option_buffer) {
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
@@ -253,7 +255,8 @@ LogicalResult CreateNgramsCustomOption(FuncOp func, DictionaryAttr attrs,
   return success();
 }
 
-LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
+LogicalResult ConvertNgrams(func::FuncOp func, llvm::StringRef api,
+                            FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
   func->setAttr(kTFImplements, attr);
@@ -270,7 +273,7 @@ LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
   return success();
 }
 
-LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
+LogicalResult VerifySgnnProjection(func::FuncOp func, FuncAttr attr) {
   if (func.getFunctionType().getNumInputs() != 2 ||
       func.getFunctionType().getNumResults() != 1) {
     return func.emitError() << "Mismatched number of inputs and outputs.";
@@ -310,7 +313,8 @@ LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
 }
 
 LogicalResult CreateSgnnProjectionCustomOption(
-    FuncOp func, DictionaryAttr attrs, std::string& custom_option_buffer) {
+    func::FuncOp func, DictionaryAttr attrs,
+    std::string& custom_option_buffer) {
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
 
@@ -331,7 +335,7 @@ LogicalResult CreateSgnnProjectionCustomOption(
   return success();
 }
 
-LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
+LogicalResult ConvertSgnnProjection(func::FuncOp func, llvm::StringRef api,
                                     FuncAttr attr) {
   // See more details in tensorflow_models/sequence_projection/sgnn/sgnn.py
   func.eraseBody();
@@ -351,7 +355,7 @@ LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
 }
 }  // namespace
 
-LogicalResult ConvertTFTextAPI(FuncOp func, llvm::StringRef api,
+LogicalResult ConvertTFTextAPI(func::FuncOp func, llvm::StringRef api,
                                FuncAttr attr) {
   if (api.str() == kWhitespaceTokenizer) {
     if (succeeded(VerifyWhitespaceTokenizer(func))) {

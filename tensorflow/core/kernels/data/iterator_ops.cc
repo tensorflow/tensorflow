@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/finalization_utils.h"
+#include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/utils.h"
@@ -76,9 +79,6 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
 
-// Safely subtracts x from y avoiding underflow.
-inline uint64 safe_sub(uint64 x, uint64 y) { return x >= y ? x - y : 0; }
-
 }  // namespace
 
 /* static */ constexpr const char* const
@@ -91,17 +91,14 @@ IteratorResource::IteratorResource(
     std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* flr)
-    : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+    : metrics_collector_(flr->device()->device_type(), *env),
+      unbounded_thread_pool_(env, "tf_data_iterator_resource"),
       device_mgr_(std::move(device_mgr)),
       iterator_state_(std::make_shared<State>(std::move(flib_def),
                                               std::move(pflr), flr,
                                               /*iterator=*/nullptr)),
       output_dtypes_(output_dtypes),
-      output_shapes_(output_shapes),
-      // We do not collect iterator resource metrics for non-CPU devices. This
-      // is a heuristic to avoid collecting metrics for device-side iterators
-      // created by the multi-device iterator mechanism.
-      collect_metrics_(flr->device()->device_type() == DEVICE_CPU) {
+      output_shapes_(output_shapes) {
   VLOG(2) << "creating iterator resource";
 }
 
@@ -136,41 +133,12 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       [cm = params.cancellation_manager]() { cm->StartCancel(); },
       &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-  const uint64 start_time_us = ctx->env()->NowMicros();
-  if (collect_metrics_) {
-    mutex_lock l(mu_);
-    if (get_next_end_time_us_ == 0) {
-      // We initialize `get_next_end_time_us_` to the start time of the first
-      // request to make it possible to use the delta between
-      // `get_next_end_time_us_` and subsequent `GetNext()` end time to
-      // incrementally collect the duration of the iterator's lifetime.
-      get_next_end_time_us_ = start_time_us;
-    }
-    uint64 gap_time_us = 0;
-    if (num_get_next_calls_ == 0) {
-      get_next_start_time_us_ = start_time_us;
-      gap_time_us = safe_sub(start_time_us, get_next_end_time_us_);
-    }
-    metrics::RecordTFDataIteratorGap(gap_time_us);
-    num_get_next_calls_++;
-  }
+
+  const absl::Time start_time = metrics_collector_.RecordStart();
   auto iterator_ = captured_state->iterator();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
-  if (collect_metrics_) {
-    const uint64 end_time_us = ctx->env()->NowMicros();
-    AddLatencySample(safe_sub(end_time_us, start_time_us));
-    IncrementThroughput(GetTotalBytes(*out_tensors));
-    mutex_lock l(mu_);
-    metrics::RecordTFDataIteratorLifetime(
-        safe_sub(end_time_us, get_next_end_time_us_));
-    get_next_end_time_us_ = std::max(get_next_end_time_us_, end_time_us);
-    num_get_next_calls_--;
-    if (num_get_next_calls_ == 0) {
-      metrics::RecordTFDataIteratorBusy(
-          safe_sub(get_next_end_time_us_, get_next_start_time_us_));
-    }
-  }
+  metrics_collector_.RecordStop(start_time, *out_tensors);
   return status;
 }
 
@@ -237,7 +205,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
 
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
@@ -287,7 +255,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
 
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -330,7 +298,7 @@ class IteratorStateVariant {
   // Initializes `this` from a VariantTensorData object.
   Status InitializeFromVariantData(std::unique_ptr<VariantTensorData> d) {
     data_ = std::move(d);
-    return Status::OK();
+    return OkStatus();
   }
 
   string TypeName() const { return kIteratorVariantTypeName; }
@@ -339,7 +307,7 @@ class IteratorStateVariant {
     if (data.type_name() != TypeName()) {
       return false;
     }
-    auto tensor_data = absl::make_unique<VariantTensorData>();
+    auto tensor_data = std::make_unique<VariantTensorData>();
     std::swap(*tensor_data, data);
     data_ = std::move(tensor_data);
     return true;
@@ -404,7 +372,7 @@ class IteratorVariantSerializer {
     }
     num_tensors_ = variants_.size();
     can_serialize_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Initializes `this` from `serialized_t` while restoring the iterator state.
@@ -423,9 +391,9 @@ class IteratorVariantSerializer {
       }
       data.push_back(w->GetData());
     }
-    reader_ = absl::make_unique<VariantTensorDataReader>(data);
+    reader_ = std::make_unique<VariantTensorDataReader>(data);
     num_tensors_ = data.size();
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t NumTensors() { return num_tensors_; }
@@ -445,7 +413,7 @@ class IteratorVariantSerializer {
       }
       serialized->vec<Variant>()(i) = variants_[i];
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns an IteratorStateReader to restore iterator state. Expects that
@@ -522,7 +490,7 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
                     context->env(), output_dtypes_, output_shapes_,
                     std::move(device_mgr), std::move(flib_def), std::move(pflr),
                     flr);
-                return Status::OK();
+                return OkStatus();
               }));
 
       Status s = VerifyResource(resource);
@@ -545,7 +513,7 @@ Status IteratorHandleOp::VerifyResource(IteratorResource* resource) {
       VerifyTypesMatch(output_dtypes_, resource->output_dtypes()));
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
-  return Status::OK();
+  return OkStatus();
 }
 
 FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
@@ -558,13 +526,13 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   // in that device's resource manager.
 
   *device_mgr =
-      absl::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
+      std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
           ctx->device()->name(), down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
-  *flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
   const auto* config = ctx->function_library()->config_proto();
-  *pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  *pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr->get(), ctx->env(),
       /*config=*/config, graph_def_version_, flib_def->get(),
       config->graph_options().optimizer_options());
@@ -604,7 +572,7 @@ Status AnonymousIteratorHandleOp::CreateResource(
   *resource = new IteratorResource(ctx->env(), output_dtypes_, output_shapes_,
                                    std::move(device_mgr), std::move(flib_def),
                                    std::move(pflr), lib);
-  return Status::OK();
+  return OkStatus();
 }
 
 HybridAsyncOpKernel::HybridAsyncOpKernel(OpKernelConstruction* ctx,
@@ -714,7 +682,7 @@ class ToSingleElementOp : public AsyncOpKernel {
     if (!end_of_sequence) {
       return errors::InvalidArgument("Dataset had more than one element.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   UnboundedThreadPool unbounded_threadpool_;
@@ -824,7 +792,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
                       ctx->env(), output_dtypes_, output_shapes_,
                       /*device_mgr=*/nullptr, std::move(flib_def),
                       std::move(pflr), flr);
-                  return Status::OK();
+                  return OkStatus();
                 }));
 
     core::ScopedUnref unref_iterator(*iterator);
@@ -864,7 +832,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
     TF_RETURN_IF_ERROR((*iterator)->SetIteratorFromDataset(ctx, dataset));
     (*iterator)->Ref();
-    return Status::OK();
+    return OkStatus();
   }
 
   void ProduceOutput(OpKernelContext* ctx, const DoneCallback& done) {
@@ -949,7 +917,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {

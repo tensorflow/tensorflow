@@ -1,4 +1,4 @@
-// RUN: tf-opt -pass-pipeline='func.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-opt -pass-pipeline='func.func(canonicalize)' -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @squeeze_folder
 func.func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -269,7 +269,7 @@ func.func @RemoveLstmQuantZeroBias(
   %cst = "tfl.no_value"() {value = unit} : () -> none
   %zero = "tfl.pseudo_const"() {value = dense<0.0> : tensor<640xf32>} : () -> tensor<640xf32>
   %0 = "tfl.lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %cst, %cst, %cst, %arg9, %arg10, %arg11, %arg12, %arg13, %zero, %arg19, %arg20, %arg15, %arg16, %arg17, %arg18) ({}) {
-     cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = #tfl<"lstm_kernel_type_attr FULL">, proj_clip = 0.01 : f32
+     cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = #tfl<lstm_kernel_type_attr FULL>, proj_clip = 0.01 : f32
   } : (tensor<1x528xf32>, tensor<2048x528xf32>, tensor<2048x528xf32>, tensor<2048x528xf32>, tensor<2048x528xf32>, tensor<2048x640xf32>, tensor<2048x640xf32>, tensor<2048x640xf32>, tensor<2048x640xf32>, none, none, none, tensor<2048xf32>, tensor<2048xf32>, tensor<2048xf32>, tensor<2048xf32>, tensor<640x2048xf32>, tensor<640xf32>, tensor<1x640xf32>, tensor<1x2048xf32>, tensor<2048xf32>, tensor<2048xf32>, tensor<2048xf32>, tensor<2048xf32>) -> tensor<1x640xf32>
     func.return %0 : tensor<1x640xf32>
 // CHECK: %[[NONE:.+]] = "tfl.no_value"() {value} : () -> none
@@ -298,6 +298,31 @@ func.func @keepCustomFlexOps(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {
 func.func @broadcast_to_to_reshape(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi32>) -> tensor<1x4x4x4xf32> {
   %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
   // CHECK: "tfl.reshape"
+  // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
+  func.return %0 : tensor<1x4x4x4xf32>
+}
+
+// Converts tfl.broadcast_to to tfl.reshape if input and output have the same
+// number of elements.
+// CHECK-LABEL: broadcast_to_to_reshape_i64
+func.func @broadcast_to_to_reshape_i64(%arg0: tensor<4x4x4xf32>, %arg1 : tensor<4xi64>) -> tensor<1x4x4x4xf32> {
+  %0 = "tfl.broadcast_to"(%arg0, %arg1) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
+  // CHECK: "tfl.cast"
+  // CHECK-SAME: (tensor<4xi64>) -> tensor<4xi32>
+  // CHECK-NEXT: "tfl.reshape"
+  // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
+  func.return %0 : tensor<1x4x4x4xf32>
+}
+
+
+// Converts tfl.broadcast_to to tfl.reshape if input and output have the same
+// number of elements.
+// CHECK-LABEL: broadcast_to_to_reshape_i64_const
+func.func @broadcast_to_to_reshape_i64_const(%arg0: tensor<4x4x4xf32>) -> tensor<1x4x4x4xf32> {
+  %cst = arith.constant dense<[1, 4, 4, 4]> : tensor<4xi64>
+  %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<4x4x4xf32>, tensor<4xi64>) -> tensor<1x4x4x4xf32>
+  // CHECK: arith.constant dense<[1, 4, 4, 4]> : tensor<4xi32>
+  // CHECK-NEXT: "tfl.reshape"
   // CHECK-SAME: (tensor<4x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x4xf32>
   func.return %0 : tensor<1x4x4x4xf32>
 }

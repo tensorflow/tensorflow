@@ -1,0 +1,8 @@
+op 	 {
+  name: "ConfigureAndInitializeGlobalTPU"
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

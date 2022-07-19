@@ -3,8 +3,8 @@ tf_class {
   is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer.Optimizer\'>"
   is_instance: "<class \'keras.optimizers.optimizer_experimental.optimizer._BaseOptimizer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "iterations"
@@ -36,10 +36,6 @@ tf_class {
   }
   member {
     name: "trainable_variables"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "variables"
     mtype: "<type \'property\'>"
   }
   member_method {
@@ -89,6 +85,10 @@ tf_class {
   member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_name_scope"

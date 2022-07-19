@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -316,6 +317,54 @@ TEST_F(HloCreationUtilsTest, MakeBroadcast_Shape_I32) {
       Literal result_literal,
       evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32_t>(0.0)}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32_t>({{0, 0}, {0, 0}}));
+}
+
+TEST_F(HloCreationUtilsTest, MaybeMakeTupleCrashesWithEmptyOperands) {
+  EXPECT_DEATH(MaybeMakeTuple({}), "");
+}
+
+TEST_F(HloCreationUtilsTest, MaybeMakeTupleForwardsSingleElement) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{2, 2},
+                                             /*output_shape_dims=*/{2, 2},
+                                             &param, &entry_computation);
+  HloInstruction* output = MaybeMakeTuple({param});
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module,
+                         {LiteralUtil::CreateR2<int32_t>({{0, 0}, {0, 0}})}));
+  EXPECT_EQ(result_literal, LiteralUtil::CreateR2<int32_t>({{0, 0}, {0, 0}}));
+}
+
+TEST_F(HloCreationUtilsTest, MaybeMakeTupleTuplizesMultipleOperands) {
+  Shape input_shape0 = ShapeUtil::MakeShape(S32, {2});
+  Shape input_shape1 = ShapeUtil::MakeShape(F32, {3, 3});
+  Shape output_shape =
+      ShapeUtil::MakeTupleShapeWithPtrs({&input_shape1, &input_shape0});
+  auto module = CreateNewVerifiedModule("test");
+  HloComputation* entry_computation = module->AddEntryComputation(
+      CreateComputationWithSignature({&input_shape0, &input_shape1},
+                                     output_shape, "entry")
+          .ValueOrDie());
+  HloInstruction* output =
+      MaybeMakeTuple({entry_computation->parameter_instruction(1),
+                      entry_computation->parameter_instruction(0)});
+  entry_computation->set_root_instruction(output);
+
+  HloEvaluator evaluator;
+  Literal input0 = LiteralUtil::CreateR1<int32_t>({{2, 4}});
+  Literal input1 =
+      LiteralUtil::CreateR2<float>({{3, 2, 1}, {4, 5, 6}, {9, 8, 7}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {input0.Clone(), input1.Clone()}));
+  Literal expected_result = LiteralUtil::MakeTuple({&input1, &input0});
+  EXPECT_EQ(result_literal, expected_result);
 }
 
 }  // namespace

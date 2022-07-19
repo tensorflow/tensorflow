@@ -198,10 +198,8 @@ func.func @verifier_replicate_result_return_operand_type(%arg0: tensor<*xi32>) {
 
 // Check that a parallel_execute op with a single region is not allowed.
 func.func @parallel_execute_single_region() {
-  "tf_device.parallel_execute"() ({
-// expected-error@-1 {{'tf_device.parallel_execute' op must have at least two regions.}}
-    tf_device.return
-  }) {} : () -> ()
+  "tf_device.parallel_execute"() {} : () -> ()
+// expected-error@-1 {{'tf_device.parallel_execute' op must have at least one region.}}
   func.return
 }
 

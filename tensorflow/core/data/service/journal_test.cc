@@ -40,13 +40,12 @@ bool NewJournalDir(std::string& journal_dir) {
   return true;
 }
 
-Update MakeCreateJobUpdate() {
+Update MakeCreateIterationUpdate() {
   Update update;
-  CreateJobUpdate* create_job = update.mutable_create_job();
-  create_job->set_dataset_id(3);
-  create_job->set_job_id(8);
-  create_job->mutable_processing_mode_def()->set_sharding_policy(
-      ProcessingModeDef::OFF);
+  CreateIterationUpdate* create_iteration = update.mutable_create_iteration();
+  create_iteration->set_job_id(3);
+  create_iteration->set_iteration_id(8);
+  create_iteration->set_repetition(5);
   return update;
 }
 
@@ -60,7 +59,7 @@ Update MakeFinishTaskUpdate() {
 Update MakeRegisterDatasetUpdate() {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
-  register_dataset->set_dataset_id(2);
+  register_dataset->set_dataset_id("dataset_id");
   register_dataset->set_fingerprint(3);
   return update;
 }
@@ -81,14 +80,14 @@ Status CheckJournalContent(StringPiece journal_dir,
   bool end_of_journal = false;
   TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
   EXPECT_TRUE(end_of_journal);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
 TEST(Journal, RoundTripMultiple) {
   std::string journal_dir;
   EXPECT_TRUE(NewJournalDir(journal_dir));
-  std::vector<Update> updates = {MakeCreateJobUpdate(),
+  std::vector<Update> updates = {MakeCreateIterationUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishTaskUpdate()};
   FileJournalWriter writer(Env::Default(), journal_dir);
@@ -102,7 +101,7 @@ TEST(Journal, RoundTripMultiple) {
 TEST(Journal, AppendExistingJournal) {
   std::string journal_dir;
   EXPECT_TRUE(NewJournalDir(journal_dir));
-  std::vector<Update> updates = {MakeCreateJobUpdate(),
+  std::vector<Update> updates = {MakeCreateIterationUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishTaskUpdate()};
   for (const auto& update : updates) {
@@ -152,7 +151,7 @@ TEST(Journal, InvalidRecordData) {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
         DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
-    auto writer = absl::make_unique<io::RecordWriter>(file.get());
+    auto writer = std::make_unique<io::RecordWriter>(file.get());
     TF_ASSERT_OK(writer->WriteRecord("not serialized proto"));
   }
 

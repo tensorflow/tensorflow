@@ -18,8 +18,10 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -87,6 +89,16 @@ class EigTest(test.TestCase):
           np.matmul(v, v.transpose()), np.eye(32, dtype=np.float32), atol=2e-3)
       self.assertAllClose(matrix,
                           np.matmul(np.matmul(v, np.diag(e)), v.transpose()))
+
+  def testMismatchedDtypes(self):
+    tensor = constant_op.constant([[0, 1], [2, 3]], dtype=dtypes_lib.float32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Invalid output dtype"):
+      self.evaluate(
+          gen_linalg_ops.eig(
+              input=tensor,
+              Tout=dtypes_lib.complex128,  # Expected dtype: complex64.
+              compute_v=True))
 
 
 def SortEigenValues(e):

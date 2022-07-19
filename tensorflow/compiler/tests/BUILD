@@ -2043,6 +2043,28 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "runtime_shape_check_test",
+    size = "small",
+    srcs = ["runtime_shape_check_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "notap",
+    ],
+    use_xla_device = False,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv_node_name_test",
     size = "medium",
     srcs = ["conv_node_name_test.py"],
@@ -2069,11 +2091,6 @@ tf_xla_py_test(
     name = "tridiagonal_solve_ops_test",
     size = "medium",
     srcs = ["tridiagonal_solve_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-        "cpu",
-        "gpu",
-    ],
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
@@ -2117,6 +2134,28 @@ tf_xla_py_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "image_ops_jit_compile_test",
+    size = "medium",
+    srcs = ["image_ops_jit_compile_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+    ],
+    enable_mlir_bridge = False,
+    shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",
@@ -2252,9 +2291,7 @@ tpu_py_test(
     disable_experimental = False,
     # TODO(b/225357174): Implement MLIR legalization properly.
     disable_mlir_bridge = True,
-    # TODO(b/225357162): Flaky segfault when transfering from device to host
-    # using TFRT.
-    disable_tfrt = True,
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -2267,5 +2304,25 @@ tpu_py_test(
         "//tensorflow/python/framework:test_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "xla_call_module_test",
+    size = "small",
+    srcs = ["xla_call_module_test.py"],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )

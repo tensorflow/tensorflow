@@ -57,7 +57,7 @@ Status ValidateOpIsSafeForSyncExecution(
         ".  Perhaps your graph contains old-style control flow primitives? "
         "Try using tf.compat.v1.enable_control_flow_v2().");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -94,16 +94,21 @@ class SingleThreadedExecutorImpl : public Executor {
                                      ordered_nodes.size());
     }
 
-    kernels_.reserve(ordered_nodes.size());
+    // We reserve two less nodes because we do not need to create kernels for
+    // the _SOURCE and _SINK nodes.
+    kernels_.reserve(ordered_nodes.size() - 2);
     std::vector<Node*> nodes_with_kernels;
     std::vector<Node*> nodes_with_const_tensor_kernels;
-    nodes_with_kernels.reserve(ordered_nodes.size());
+    nodes_with_kernels.reserve(ordered_nodes.size() - 2);
 
     std::map<size_t, Node*> arg_index_to_node_map;
     absl::flat_hash_map<Node*, size_t> node_to_index_map;
 
     // Create the kernel and input-related structures for each node in `graph`.
     for (Node* n : ordered_nodes) {
+      if (n->IsSource() || n->IsSink()) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(ValidateOpIsSafeForSyncExecution(
           *n, params_.allow_control_flow_sync_execution));
       if (n->IsArg()) {
@@ -246,7 +251,7 @@ class SingleThreadedExecutorImpl : public Executor {
     } else {
       total_num_inputs_ = 0;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Run(const Args& args) override {
@@ -317,8 +322,6 @@ class SingleThreadedExecutorImpl : public Executor {
     params.collective_executor = args.collective_executor;
     params.stack_trace = args.stack_trace;
     params.slice_reader_cache = nullptr;  // TODO(mrry): Too severe?
-    params.inputs = &node_inputs;
-    params.input_alloc_attrs = &input_alloc_attrs;
 
     Args::Runner runner_copy = args.runner;
     params.runner = &runner_copy;
@@ -432,6 +435,8 @@ class SingleThreadedExecutorImpl : public Executor {
         }
         input_alloc_attrs[j] = input_alloc_attrs_[input_start_index + j];
       }
+      params.inputs = node_inputs;
+      params.input_alloc_attrs = input_alloc_attrs;
       params.op_kernel = kernel_state.kernel;
       params.output_attr_array = kernel_state.output_alloc_attrs.data();
       OpKernelContext ctx(&params, num_outputs);
@@ -476,7 +481,7 @@ class SingleThreadedExecutorImpl : public Executor {
         delete val.tensor;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Execute all operations in the calling thread when asynchronous execution
@@ -577,7 +582,7 @@ class SingleThreadedExecutorRegistrar {
       Executor* ret;
       TF_RETURN_IF_ERROR(NewSingleThreadedExecutor(params, graph, &ret));
       out_executor->reset(ret);
-      return Status::OK();
+      return OkStatus();
     }
   };
 };
@@ -587,10 +592,10 @@ static SingleThreadedExecutorRegistrar registrar;
 
 Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
                                  const Graph& graph, Executor** executor) {
-  auto impl = absl::make_unique<SingleThreadedExecutorImpl>(params);
+  auto impl = std::make_unique<SingleThreadedExecutorImpl>(params);
   TF_RETURN_IF_ERROR(impl->Initialize(graph));
   *executor = impl.release();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

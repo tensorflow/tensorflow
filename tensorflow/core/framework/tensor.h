@@ -633,7 +633,7 @@ class Tensor {
   void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
-  /// buffer's datatype. If Status::OK() is returned, the two tensors now share
+  /// buffer's datatype. If an ok Status is returned, the two tensors now share
   /// the same underlying storage.
   ///
   /// This call requires that the `other` tensor and the given type and shape
@@ -792,8 +792,9 @@ typename TTypes<T, NDIMS>::Tensor Tensor::reinterpret_last_dimension() {
     return tensor<T, NDIMS>();
   }
   CHECK(IsAligned());
-  CHECK_EQ(NDIMS, dims() - 1);
-  CHECK_EQ(sizeof(T), shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
+  CHECK_EQ(static_cast<int>(NDIMS), dims() - 1);
+  CHECK_EQ(static_cast<int64_t>(sizeof(T)),
+           shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   for (int d = 0; d < NDIMS; ++d) {
     dims[d] = shape_.dim_sizes()[d];
@@ -808,8 +809,9 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::reinterpret_last_dimension()
     return tensor<T, NDIMS>();
   }
   CHECK(IsAligned());
-  CHECK_EQ(NDIMS, dims() - 1);
-  CHECK_EQ(sizeof(T), shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
+  CHECK_EQ(static_cast<int>(NDIMS), dims() - 1);
+  CHECK_EQ(static_cast<int64_t>(sizeof(T)),
+           shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   for (int d = 0; d < NDIMS; ++d) {
     dims[d] = shape_.dim_sizes()[d];
@@ -842,7 +844,8 @@ void Tensor::FillDimsAndValidateCompatibleShape(
   }
   const int element_size = DataTypeSize(BaseType(dtype()));
   if (element_size > 0) {
-    CHECK_EQ(new_num_elements * sizeof(T), NumElements() * element_size);
+    CHECK_EQ(new_num_elements * static_cast<int64_t>(sizeof(T)),
+             NumElements() * element_size);
   } else {
     // DataTypeSize() returns 0 for some data types. In this case, assume that T
     // has the same size as the buffer type.

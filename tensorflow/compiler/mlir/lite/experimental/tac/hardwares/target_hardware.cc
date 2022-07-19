@@ -16,7 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
@@ -99,7 +102,7 @@ getRegisteredOperationsForHardware(mlir::TypeID type_id) {
 
 // A deny list for op cost computation since those ops are not arithemtic.
 inline bool IsNonArithmeticOp(mlir::Operation* op) {
-  if (llvm::isa<func::ReturnOp, FuncOp>(op)) return true;
+  if (llvm::isa<func::ReturnOp, func::FuncOp>(op)) return true;
   if (op->hasTrait<OpTrait::ConstantLike>()) return true;
   if (llvm::isa<QConstOp, SparseQConstOp>(op)) return true;
   if (!NotTFLQuantDequantizeOp(op)) return true;
@@ -143,7 +146,7 @@ bool TargetHardware::IsOpSupported(mlir::Operation* op) const {
   return hardware_op->second->IsOpSupported(op);
 }
 
-double TargetHardware::GetFuncCost(FuncOp* func) const {
+double TargetHardware::GetFuncCost(func::FuncOp* func) const {
   double total_cost = 0.0;
   func->walk([&](Operation* op) {
     if (IsNonArithmeticOp(op)) return;

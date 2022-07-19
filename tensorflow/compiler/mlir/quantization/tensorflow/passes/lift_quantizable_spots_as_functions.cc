@@ -78,7 +78,7 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
 
   populateWithGenerated(patterns);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

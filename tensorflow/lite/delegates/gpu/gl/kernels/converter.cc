@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/converter.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -137,11 +142,11 @@ class FromTensorConverter : public OpenGlConverterImpl {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto output = absl::get_if<OpenGlBuffer>(&output_obj);
+    auto output = std::get_if<OpenGlBuffer>(&output_obj);
     if (!output || !output->id) {
       return absl::InvalidArgumentError("Missing output in converter");
     }
-    auto input = absl::get_if<OpenGlBuffer>(&input_obj);
+    auto input = std::get_if<OpenGlBuffer>(&input_obj);
     if (!input || !input->id) {
       return absl::InvalidArgumentError("Missing input in converter");
     }
@@ -232,11 +237,11 @@ class ToTensorConverter : public OpenGlConverterImpl {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto output = absl::get_if<OpenGlBuffer>(&output_obj);
+    auto output = std::get_if<OpenGlBuffer>(&output_obj);
     if (!output || !output->id) {
       return absl::InvalidArgumentError("Missing output in converter");
     }
-    auto input = absl::get_if<OpenGlBuffer>(&input_obj);
+    auto input = std::get_if<OpenGlBuffer>(&input_obj);
     if (!input || !input->id) {
       return absl::InvalidArgumentError("Missing input in converter");
     }
@@ -281,8 +286,8 @@ class TrivialCopier : public TensorObjectConverter {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto ssbo_input = absl::get_if<OpenGlBuffer>(&input_obj);
-    auto ssbo_output = absl::get_if<OpenGlBuffer>(&output_obj);
+    auto ssbo_input = std::get_if<OpenGlBuffer>(&input_obj);
+    auto ssbo_output = std::get_if<OpenGlBuffer>(&output_obj);
     if (ssbo_input && ssbo_output) {
       return Copy(*ssbo_input, *ssbo_output);
     }
@@ -315,10 +320,10 @@ class CpuCopier : public TensorObjectConverter {
 
   absl::Status Convert(const TensorObject& input_obj,
                        const TensorObject& output_obj) override {
-    auto cpu_input = absl::get_if<CpuMemory>(&input_obj);
-    auto cpu_output = absl::get_if<CpuMemory>(&output_obj);
+    auto cpu_input = std::get_if<CpuMemory>(&input_obj);
+    auto cpu_output = std::get_if<CpuMemory>(&output_obj);
     if (cpu_input) {
-      auto ssbo_output = absl::get_if<OpenGlBuffer>(&output_obj);
+      auto ssbo_output = std::get_if<OpenGlBuffer>(&output_obj);
       if (ssbo_output) {
         GlBuffer gl_buffer;
         RETURN_IF_ERROR(WrapSSBO(*ssbo_output, &gl_buffer));
@@ -327,7 +332,7 @@ class CpuCopier : public TensorObjectConverter {
                                 cpu_input->size_bytes));
       }
     } else if (cpu_output) {
-      auto ssbo_input = absl::get_if<OpenGlBuffer>(&input_obj);
+      auto ssbo_input = std::get_if<OpenGlBuffer>(&input_obj);
       if (ssbo_input) {
         GlBuffer gl_buffer;
         RETURN_IF_ERROR(WrapSSBO(*ssbo_input, &gl_buffer));
@@ -362,17 +367,17 @@ class TensorConverterBuilderImpl : public TensorObjectConverterBuilder {
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
     if (TrivialCopier::IsSupported(input_def, output_def)) {
-      *converter = absl::make_unique<TrivialCopier>();
+      *converter = std::make_unique<TrivialCopier>();
       return absl::OkStatus();
     }
     if (CpuCopier::IsSupported(input_def, output_def)) {
-      *converter = absl::make_unique<CpuCopier>();
+      *converter = std::make_unique<CpuCopier>();
       return absl::OkStatus();
     }
     if (FromTensorConverter::IsSupported(input_def, output_def)) {
-      impl = absl::make_unique<FromTensorConverter>(command_queue_);
+      impl = std::make_unique<FromTensorConverter>(command_queue_);
     } else if (ToTensorConverter::IsSupported(input_def, output_def)) {
-      impl = absl::make_unique<ToTensorConverter>(command_queue_);
+      impl = std::make_unique<ToTensorConverter>(command_queue_);
     } else {
       return absl::UnimplementedError("Unsupported conversion");
     }
@@ -389,7 +394,7 @@ class TensorConverterBuilderImpl : public TensorObjectConverterBuilder {
 
 std::unique_ptr<TensorObjectConverterBuilder> NewConverterBuilder(
     CommandQueue* command_queue) {
-  return absl::make_unique<TensorConverterBuilderImpl>(command_queue);
+  return std::make_unique<TensorConverterBuilderImpl>(command_queue);
 }
 
 }  // namespace gl

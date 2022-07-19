@@ -403,7 +403,7 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {

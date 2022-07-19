@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -76,6 +77,15 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
     LOG(INFO)
         << "No checkpoint found, assuming this is a program-only SavedModel";
   }
+
+  // Build a map of node names to their corresponding nodes.
+  //
+  // See `GetGraphDefNode` for more details.
+  const auto& nodes =
+      tf_package.saved_model_proto_.meta_graphs(0).graph_def().node();
+  for (const auto& node : nodes) {
+    tf_package.graph_def_nodes_by_name_[node.name()] = &node;
+  }
   return tf_package;
 }
 
@@ -99,6 +109,16 @@ tensorflow::StatusOr<std::string> TFPackage::GetVariableCheckpointKey(
 
 const SavedObjectGraph& TFPackage::GetObjectGraph() {
   return saved_model_proto_.mutable_meta_graphs(0)->object_graph_def();
+}
+
+tensorflow::StatusOr<const tensorflow::NodeDef*> TFPackage::GetGraphDefNode(
+    std::string name) {
+  const auto& iter = graph_def_nodes_by_name_.find(name);
+  if (iter == graph_def_nodes_by_name_.end()) {
+    return tensorflow::Status(error::INTERNAL,
+                              absl::StrCat("Failed to find node named ", name));
+  }
+  return iter->second;
 }
 
 const RepeatedPtrField<FunctionDef>& TFPackage::GetFunctionDefs() {

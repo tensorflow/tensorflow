@@ -557,7 +557,7 @@ bool ParentParallelExecuteWrapsSingleOp(Operation* op) {
 void TPUMergeVariablesWithExecutePass::runOnOperation() {
   ModuleOp module = getOperation();
   mlir::TF::ResourceAliasAnalysis resource_analysis(module);
-  module.walk([&](FuncOp func) {
+  module.walk([&](func::FuncOp func) {
     const auto& resource_analysis_info =
         resource_analysis.GetAnalysisForFunc(func);
     // Find all the executes first, since we will mutate the nodes around each

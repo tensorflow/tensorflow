@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 
 #include <set>
+#include <string>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops_internal.h"
@@ -732,11 +733,13 @@ const std::set<std::string>& GetFlexAllowlist() {
           "UniqueWithCounts",
           "UniqueWithCountsV2",
           "Unpack",
+          "UnsortedSegmentJoin",
           "UnsortedSegmentMax",
           "UnsortedSegmentMin",
           "UnsortedSegmentProd",
           "UnsortedSegmentSum",
           "UnwrapDatasetVariant",
+          "UpperBound",
           "VarHandleOp",
           "VarIsInitializedOp",
           "Variable",

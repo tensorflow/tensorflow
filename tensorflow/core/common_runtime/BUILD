@@ -1067,6 +1067,7 @@ cc_library(
         ":session_options",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:cpu_feature_guard",
         "//third_party/eigen3",
     ],
 )

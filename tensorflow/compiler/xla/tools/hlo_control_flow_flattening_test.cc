@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 
+#include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/despecializer.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -637,6 +639,60 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
   LOG(INFO) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::CustomCall(op::Parameter(0))));
+}
+
+TEST_F(HloControlFlowFlatteningTest, CollectiveFusion) {
+  absl::string_view hlo_template = R"(
+HloModule collective-fusion, is_scheduled=true
+
+%sum (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] a, f32[] b)
+}
+
+%all-gather {
+  %constant.3 = f32[] constant(0)
+  %broadcast = f32[full_size,8,128]{2,1,0} broadcast(%constant.3), dimensions={}
+  %input.0 = f32[4,8,128]{2,1,0} parameter(0)
+  %input.1 = f32[4,8,128]{2,1,0} parameter(1)
+  %replica-id.1 = u32[] replica-id()
+  %constant.4 = u32[] constant(4)
+  %multiply.1 = u32[] multiply(%replica-id.1, %constant.4)
+  %constant.5 = u32[] constant(0)
+  %constant.6 = u32[] constant(0)
+  %dynamic-update-slice = f32[full_size,8,128]{2,1,0} dynamic-update-slice(%broadcast, %input.0, %multiply.1, %constant.5, %constant.6)
+  %dynamic-update-slice.1 = f32[full_size,8,128]{2,1,0} dynamic-update-slice(%broadcast, %input.1, %multiply.1, %constant.5, %constant.6)
+  %all-reduce = (f32[full_size,8,128]{2,1,0}, f32[full_size,8,128]{2,1,0}) all-reduce(%dynamic-update-slice,  %dynamic-update-slice.1), replica_groups={}, backend_config="{barrier_config:{barrier_type:3,id:0}}", to_apply=%sum
+  %gte0 = f32[full_size,8,128]{2,1,0} get-tuple-element(%all-reduce), index=0
+  %slice = f32[unpadded_size,8,128]{2,1,0} slice(%gte0), slice={[0:unpadded_size], [0:8], [0:128]}
+  %bitcast = f32[unpadded_size,1,8,128]{3,2,1,0} bitcast(%slice)
+  %gte1 = f32[full_size,8,128]{2,1,0} get-tuple-element(%all-reduce), index=1
+  ROOT %tuple = (f32[unpadded_size,1,8,128]{3,2,1,0}, f32[full_size,8,128]{2,1,0}) tuple(%bitcast, %gte1)
+}
+
+ENTRY main {
+  %add.1 = f32[4,8,128]{2,1,0} parameter(0)
+  %add.2 = f32[4,8,128]{2,1,0} parameter(1)
+  ROOT %fusion = (f32[unpadded_size,1,8,128]{3,2,1,0}, f32[full_size,8,128]{2,1,0}) fusion(%add.1, %add.2), kind=kCustom, calls=%all-gather
+}
+  )";
+  auto hlo_string = absl::StrReplaceAll(
+      hlo_template, {{"full_size", absl::StrCat(12288)},
+                     {"unpadded_size", absl::StrCat(12285)}});
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
+
+  HloControlFlowFlattening flattening({});
+  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  LOG(INFO) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::Parameter(0), op::Parameter(1)));
 }
 
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {

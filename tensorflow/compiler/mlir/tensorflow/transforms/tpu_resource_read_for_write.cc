@@ -115,7 +115,7 @@ void TPUResourceReadForWritePass::runOnOperation() {
     auto new_cluster_func = builder.create<tf_device::ClusterFuncOp>(
         loc, cluster_func.getResultTypes(), operands, cluster_func->getAttrs());
     cluster_func.replaceAllUsesWith(new_cluster_func);
-    FuncOp func = cluster_func.getFunc();
+    func::FuncOp func = cluster_func.getFunc();
     Block& block = func.front();
     for (Value read_operand : read_operands)
       block.addArgument(read_operand.getType(), loc);

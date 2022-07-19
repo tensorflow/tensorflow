@@ -59,7 +59,7 @@ class MapDefunOpParams : public DatasetParams {
       input_names->emplace_back(
           strings::StrCat(MapDefunOp::kCapturedInputs, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -70,7 +70,7 @@ class MapDefunOpParams : public DatasetParams {
         {MapDefunOp::kOutputTypes, output_dtypes_},
         {MapDefunOp::kFunc, func_},
         {MapDefunOp::kMaxIntraOpParallelism, max_intra_op_parallelism_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
@@ -100,7 +100,7 @@ class MapDefunOpTest : public DatasetOpsTestBase {
     NodeDef node_def =
         test::function::NDef(kNodeName, kOpName, input_namess, attributes);
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, map_defun_kernel));
-    return Status::OK();
+    return OkStatus();
   }
 
   // Creates a new `MapDefun` op kernel context.
@@ -109,7 +109,7 @@ class MapDefunOpTest : public DatasetOpsTestBase {
                                std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

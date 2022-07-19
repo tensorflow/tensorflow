@@ -57,7 +57,7 @@ void Optimize::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow.js dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

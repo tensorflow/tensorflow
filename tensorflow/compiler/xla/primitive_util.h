@@ -148,7 +148,10 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 bool IsIntegralType(PrimitiveType type);
 
 // Returns true if values of the given primitive type are held in array shapes.
-bool IsArrayType(PrimitiveType primitive_type);
+inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
+  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
+         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN;
+}
 
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
@@ -366,6 +369,45 @@ StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
 
 // Returns true if the given name is a primitive type string (lower-case).
 bool IsPrimitiveTypeName(absl::string_view name);
+
+// Returns whether `type` can be expressed as an instance of T.
+// For example,
+//  IsCanonicalRepresentation<float>(F32)          // true
+//  IsCanonicalRepresentation<xla::bfloat16>(BF16) // true
+//  IsCanonicalRepresentation<uint32_t>(S8)        // true, 8 <= 32
+//  IsCanonicalRepresentation<uint8_t>(S16)        // false, 16 > 8
+template <typename T>
+bool IsCanonicalRepresentation(PrimitiveType type) {
+  switch (type) {
+    case F16:
+    case F32:
+    case BF16:
+    case F64:
+    case C64:
+    case C128:
+      return NativeToPrimitiveType<T>() == type;
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+      return std::is_integral<T>::value && std::is_signed<T>::value &&
+             ByteWidth(type) <= sizeof(T);
+    case PRED:
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+      return std::is_integral<T>::value && std::is_unsigned<T>::value &&
+             ByteWidth(type) <= sizeof(T);
+    case TUPLE:
+    case OPAQUE_TYPE:
+    case TOKEN:
+    case PRIMITIVE_TYPE_INVALID:
+    case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
+    case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
+      return false;
+  }
+}
 
 }  // namespace primitive_util
 }  // namespace xla

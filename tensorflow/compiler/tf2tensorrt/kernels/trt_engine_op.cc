@@ -82,12 +82,11 @@ class ContextDeviceMemory {
   }
 
   Status AllocateDeviceMemory(nvinfer1::IExecutionContext* execution_context,
-                              TRTBaseAllocator* device_memory_allocator) {
+                              TRTBaseAllocator* device_memory_allocator,
+                              size_t device_memory_size) {
     execution_context_ = execution_context;
     device_memory_allocator_ = device_memory_allocator;
     device_memory_ = nullptr;
-    const size_t device_memory_size =
-        execution_context_->getEngine().getDeviceMemorySize();
     VLOG(2) << "Device memory size for TensorRT engine " << device_memory_size;
     if (device_memory_size > 0) {
       device_memory_ = device_memory_allocator_->allocate(
@@ -98,8 +97,11 @@ class ContextDeviceMemory {
             "Out of GPU memory for execution context");
       }
     }
-    execution_context_->setDeviceMemory(device_memory_);
-
+    {
+      tensorflow::profiler::TraceMe activity(
+          "setDeviceMemory", tensorflow::profiler::TraceMeLevel::kInfo);
+      execution_context_->setDeviceMemory(device_memory_);
+    }
     return Status::OK();
   }
 
@@ -142,10 +144,6 @@ class TRTEngineOp : public AsyncOpKernel {
                     AsyncOpKernel::DoneCallback done) override;
 
  private:
-  using CacheType =
-      LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
-               VectorTensorShapeHasher>;
-
   // Executes calibration asynchronously.
   void ExecuteCalibration(OpKernelContext* ctx,
                           TRTEngineCacheResource* cache_res,
@@ -510,12 +508,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
-
-  if (has_dynamic_shape_input_ && !use_implicit_batch_) {
-    OP_REQUIRES(context, !calibration_mode_,
-                errors::InvalidArgument(
-                    "Dynamic shape mode does not support calibration"));
-  }
 }
 
 // Copies input tensor ctx->input(i) (which is in device memory) to the host,
@@ -786,38 +778,6 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                        dummy_async_helper);
   core::ScopedUnref unref_cache_res(cache_res);
 
-  // Run calibration if in int8+calibration mode.
-  // * Logic in TF 1.x:
-  //   - During conversion: calibration_mode_ is true and cache size is 0, so it
-  //     will run calibration.
-  //   - During inference: calibration_data will be set, so calibration_mode_ is
-  //     false and it won't trigger calibration.
-  // * Logic in TF 2.0:
-  //   - During conversion: similar to 1.x.
-  //   - During inference: calibration_data will still be empty, but cache will
-  //     contain the the calibrated engine, so it won't trigger calibration.
-  //
-  // TODO(laigd): consider the following alternatives:
-  // 1. Serialize the state (calibration or inference) using
-  //    TRTEngineInstance proto (or a new proto), so we know which mode we're
-  //    in and don't run calibration during inference (which is invalid).
-  // 2. Reuse the calibration_data attribute or use a new attribute in the
-  //    NodeDef to indicate whether it's in calibration mode.
-  if (calibration_mode_ && cache_res->cache_.size() == 0) {
-    if (!cache_res->calib_ctx_) {
-      // TODO(laigd): better encapsulation.
-      mutex_lock lock(engine_mutex_);
-      if (!cache_res->calib_ctx_) {
-        OP_REQUIRES_OK_ASYNC(ctx, AllocateCalibrationResources(ctx, cache_res),
-                             dummy_async_helper);
-      }
-    }
-    // TODO(laigd): check that the input shapes match the shapes of the
-    // persistent tensor in the calibration resource.
-    ExecuteCalibration(ctx, cache_res, async_helper);
-    return;
-  }
-
   // Get shapes of inputs to engine.
   std::vector<TensorShape> input_concrete_shapes;
   input_concrete_shapes.reserve(ctx->num_inputs());
@@ -864,6 +824,44 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                         profile_strategy_);
     }
   }
+
+  // Run calibration if in int8+calibration mode.
+  // * Logic in TF 1.x:
+  //   - During conversion: calibration_mode_ is true and cache size is 0, so it
+  //     will run calibration.
+  //   - During inference: calibration_data will be set, so calibration_mode_
+  //     is false and it won't trigger calibration.
+  // * Logic in TF 2.0:
+  //   - During conversion: similar to 1.x.
+  //   - During inference: calibration_data will still be empty, but cache will
+  //     contain the calibrated engine, so it won't trigger calibration.
+  //
+  // TODO(laigd): consider the following alternatives:
+  // 1. Serialize the state (calibration or inference) using
+  //    TRTEngineInstance proto (or a new proto), so we know which mode we're
+  //    in and don't run calibration during inference (which is invalid).
+  // 2. Reuse the calibration_data attribute or use a new attribute in the
+  //    NodeDef to indicate whether it's in calibration mode.
+  if (calibration_mode_ && cache_res->cache_.size() == 0) {
+    if (!cache_res->calib_ctx_) {
+      // TODO(laigd): better encapsulation.
+      mutex_lock lock(engine_mutex_);
+      if (!cache_res->calib_ctx_) {
+        // Add profiles if we are in dynamic shape mode.
+        if (!use_implicit_batch_ && (has_dynamic_shape_input_ ||
+                                     cache_res->profiles_.HasShapeTensor())) {
+          cache_res->profiles_.InitCalibProfile(input_concrete_shapes);
+        }
+        OP_REQUIRES_OK_ASYNC(ctx, AllocateCalibrationResources(ctx, cache_res),
+                             dummy_async_helper);
+      }
+    }
+    // TODO(laigd): check that the input shapes match the shapes of the
+    // persistent tensor in the calibration resource.
+    ExecuteCalibration(ctx, cache_res, async_helper);
+    return;
+  }
+
   StatusOr<std::pair<EngineContext*, int>> status =
       GetEngine(input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), dummy_async_helper);
@@ -878,7 +876,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     }
     return true;
   };
-  if (!engine_context->cuda_engine) {
+  if (!engine_context->GetCudaEngine()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine retrieval for input shapes: "
         << TensorShapeUtils::ShapeListString(input_concrete_shapes)
@@ -916,11 +914,11 @@ Status TRTEngineOp::ExecuteTrtEngine(
       "TRTEngineOp::ExecuteTrtEngine",
       tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT engine: " << name();
-  auto& cuda_engine = engine_context->cuda_engine;
+  nvinfer1::ICudaEngine* cuda_engine = engine_context->GetCudaEngine();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "  Network name: " << cuda_engine->getName();
-    VLOG(2) << "  Activation size: " << cuda_engine->getDeviceMemorySize()
+    VLOG(2) << "  Activation size: " << engine_context->GetDeviceMemorySize()
             << " bytes";
 #if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     // getWorkspaceSize() is deprecated as of TRT 8
@@ -955,10 +953,10 @@ Status TRTEngineOp::ExecuteTrtEngine(
       use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
   TF_RETURN_IF_ERROR(SetTrtEngineInputs(
-      cuda_engine.get(), execution_context, trt_context_idx, buffers,
+      cuda_engine, execution_context, trt_context_idx, buffers,
       use_implicit_batch_, num_batch, profiles, ctx));
 
-  TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine.get(), execution_context,
+  TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine, execution_context,
                                          trt_context_idx, buffers,
                                          use_implicit_batch_, num_batch, ctx));
 
@@ -972,10 +970,13 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
   ContextDeviceMemory context_device_memory;
   if (!has_device_memory) {
+    tensorflow::profiler::TraceMe activity(
+        "TRTEngineOp::AllocateDeviceMemory",
+        tensorflow::profiler::TraceMeLevel::kInfo);
     // Allocate device memory for the TensorRT engine execution. The device
     // memory will be released when context_device_memory goes out of scope.
     TF_RETURN_IF_ERROR(context_device_memory.AllocateDeviceMemory(
-        execution_context, allocator));
+        execution_context, allocator, engine_context->GetDeviceMemorySize()));
   }
   // Enqueue the TensorRT engine for execution.
   return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
@@ -984,6 +985,9 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
                                            TRTEngineCacheResource** cache_res) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::GetEngineCachResource",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   // Canonicalize the op name by removing the scopes if any. This is mainly
   // because in TFv2, the function graph can be instantiated in various ways and
   // it'll insert scope names to the name of the TRTEngineOps, which will result
@@ -1033,7 +1037,7 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
 
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   auto status = convert::ConvertGraphDefToEngine(
-      segment_graph_def_, precision_mode_, batch_size, workspace_size_,
+      segment_graph_def_, ctx, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
       &cache_resource->profiles_, name(), use_explicit_precision_, &cluster);
@@ -1045,7 +1049,7 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     // Store an empty engine in the cache for these input shapes so we don't try
     // to build the same failing engine again.
     cache_resource->cache_.emplace(input_concrete_shapes,
-                                   absl::make_unique<EngineContext>());
+                                   std::make_unique<EngineContext>());
     return status;
   }
   return engine;
@@ -1055,7 +1059,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
   static EngineContext empty_context;
-
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::GetEngine", tensorflow::profiler::TraceMeLevel::kInfo);
   mutex_lock lock(engine_mutex_);
   // Using first input to get batch size is reliable - VerifyInputShapes()
   // guarantees that the first input is not a scalar. As such we can always use
@@ -1106,8 +1111,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
           static_engine.get(), &exec_contexts));
       cache.emplace(input_concrete_shapes,
-                    absl::make_unique<EngineContext>(std::move(static_engine),
-                                                     std::move(exec_contexts)));
+                    std::make_unique<EngineContext>(std::move(static_engine),
+                                                    std::move(exec_contexts)));
       VLOG(1) << "Added new engine to cache of " << name()
               << ". Cache size: " << cache.size();
       // Query which profile of the new engine matches the actual input.
@@ -1123,8 +1128,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       if (!allow_build_at_runtime_) {
         // Store an empty engine in the cache so we don't try to load the same
         // failing engine again.
-        cache.emplace(input_concrete_shapes,
-                      absl::make_unique<EngineContext>());
+        cache.emplace(input_concrete_shapes, std::make_unique<EngineContext>());
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
       if (segment_graph_def_.node().empty()) {
@@ -1156,8 +1160,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
     cache.emplace(engine_input_shapes,
-                  absl::make_unique<EngineContext>(std::move(static_engine),
-                                                   std::move(context)));
+                  std::make_unique<EngineContext>(std::move(static_engine),
+                                                  std::move(context)));
     // Runtime is safe to delete after engine creation
     VLOG(1) << "Size of serialized TRT engine: "
             << serialized_segment_.capacity();
@@ -1198,7 +1202,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
           << "The native segment will be used instead.";
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
-      cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
+      cache.emplace(input_concrete_shapes, std::make_unique<EngineContext>());
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
 
@@ -1216,8 +1220,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), &exec_contexts));
     cache.emplace(input_concrete_shapes,
-                  absl::make_unique<EngineContext>(std::move(engine),
-                                                   std::move(exec_contexts)));
+                  std::make_unique<EngineContext>(std::move(engine),
+                                                  std::move(exec_contexts)));
     VLOG(1) << "Added new engine to cache of " << name()
             << ". Cache size: " << cache.size();
     engine_contexts = cache.at(input_concrete_shapes).get();
@@ -1232,7 +1236,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 // possible.
 Status TRTEngineOp::AllocateCalibrationResources(
     OpKernelContext* ctx, TRTEngineCacheResource* cache_res) {
-  cache_res->calib_ctx_ = absl::make_unique<CalibrationContext>();
+  cache_res->calib_ctx_ = std::make_unique<CalibrationContext>();
   auto* cres = cache_res->calib_ctx_.get();
 
   // Get the input shapes.
@@ -1269,10 +1273,18 @@ Status TRTEngineOp::AllocateCalibrationResources(
         "Context->device doesn't contain device info!");
   }
 
+  bool use_concrete_shapes =
+      use_implicit_batch_ || cache_res->profiles_.IsStaticCompatible();
+  const std::vector<PartialTensorShape>& conversion_input_shapes =
+      use_concrete_shapes
+          ? std::vector<PartialTensorShape>(shapes.begin(), shapes.end())
+          : input_partial_shapes_;
+
   cache_res->Ref();
   string platform_device_name = ctx->device()->name();
-  cres->thr_.reset(new std::thread([this, cres, shapes, platform_device_id,
-                                    platform_device_name, cache_res]() {
+  cres->thr_.reset(new std::thread([this, cres, shapes, conversion_input_shapes,
+                                    platform_device_id, platform_device_name,
+                                    cache_res, ctx]() {
     core::ScopedUnref sc(cache_res);
 
     VLOG(1) << "Starting calibration thread on device " << platform_device_id
@@ -1283,8 +1295,6 @@ Status TRTEngineOp::AllocateCalibrationResources(
       LOG(ERROR) << "Couldn't set cuda device to " << platform_device_id
                  << " in calibration thread";
     }
-    std::vector<PartialTensorShape> partial_shapes(shapes.begin(),
-                                                   shapes.end());
 
     std::unordered_map<string, tensorflow::DeviceProperties> device_map;
     DeviceNameUtils::ParsedName full_parsed_name;
@@ -1302,12 +1312,13 @@ Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        this->segment_graph_def_, TrtPrecisionMode::INT8,
+        this->segment_graph_def_, ctx, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
-        partial_shapes, &cache_res->GetLogger(), cache_res->allocator_.get(),
-        cres->calibrator_.get(), &cres->engine_, /*use_calibration=*/true,
-        this->use_implicit_batch_, /*convert_successfully=*/nullptr,
-        /*profiles=*/nullptr, name(),
+        conversion_input_shapes, &cache_res->GetLogger(),
+        cache_res->allocator_.get(), cres->calibrator_.get(), &cres->engine_,
+        /*use_calibration=*/true, this->use_implicit_batch_,
+        /*convert_successfully=*/nullptr,
+        /*profiles=*/&cache_res->profiles_, name(),
         /*use_explicit_precision=*/use_explicit_precision_,
         /*cluster=*/&cluster);
     if (!s.ok()) {
@@ -1318,10 +1329,21 @@ Status TRTEngineOp::AllocateCalibrationResources(
       // dump it out during conversion for TF 2.0.
       mutex_lock lock(this->engine_mutex_);
       this->calibrator_ = std::move(cres->calibrator_);
-      ExecutionContext context = ExecutionContext::Create(cres->engine_.get());
-      cache_res->cache_.emplace(
-          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
-                                                   std::move(context)));
+      if (!use_implicit_batch_ &&
+          (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
+        std::vector<ExecutionContext> exec_contexts;
+        auto calib_result = cache_res->profiles_.CreateExecutionContexts(
+            cres->engine_.get(), &exec_contexts);
+        cache_res->cache_.emplace(
+            shapes, std::make_unique<EngineContext>(std::move(cres->engine_),
+                                                    std::move(exec_contexts)));
+      } else {
+        ExecutionContext context =
+            ExecutionContext::Create(cres->engine_.get());
+        cache_res->cache_.emplace(
+            shapes, std::make_unique<EngineContext>(std::move(cres->engine_),
+                                                    std::move(context)));
+      }
     }
 
     VLOG(1) << "Calibration loop terminated " << this->name();

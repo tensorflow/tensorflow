@@ -103,12 +103,13 @@ def explicit_filter_keep_keras(parent_path, parent, children):
   if parent_path[-1] not in ["tf", "v1", "v2"]:
     return new_children
 
-  for name, value in children:
-    if name == "keras":
-      new_children.append((name, value))
-      break
+  had_keras = any(name == "keras" for name, child in children)
+  has_keras = any(name == "keras" for name, child in new_children)
 
-  return new_children
+  if had_keras and not has_keras:
+    new_children.append(("keras", parent.keras))
+
+  return sorted(new_children, key=lambda x: x[0])
 
 
 def get_callbacks():

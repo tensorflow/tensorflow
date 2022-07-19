@@ -108,7 +108,7 @@ class BacktrackAnalysis {
   }
 
   // Returns backtracking analysis for the given function.
-  const InfoT& GetAnalysisForFunc(FuncOp func) const {
+  const InfoT& GetAnalysisForFunc(func::FuncOp func) const {
     return GetAnalysisForRegion(func.getBody());
   }
 
@@ -144,7 +144,7 @@ class BacktrackAnalysis {
     return &it->second;
   }
 
-  Optional<const InfoT*> GetAnalysisIfExists(FuncOp func) const {
+  Optional<const InfoT*> GetAnalysisIfExists(func::FuncOp func) const {
     return GetAnalysisIfExists(func.getBody());
   }
 
@@ -201,8 +201,8 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
     } else if (isa<IdentityNOp, IdentityOp>(op)) {
       value = op->getOperand(res_index);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func =
-          dyn_cast<FuncOp>(call.resolveCallable(&symbol_table_collection_));
+      func::FuncOp func = dyn_cast<func::FuncOp>(
+          call.resolveCallable(&symbol_table_collection_));
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
@@ -281,7 +281,7 @@ void IncrementResourceTypeId(int64_t& resource_type_id) {
 
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
-    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis,
+    func::FuncOp func_op, const BacktrackAnalysis& backtrack_analysis,
     SymbolTableCollection& symbol_table_collection) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
 
@@ -386,7 +386,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
                                          while_region.body()));
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
-      llvm::SmallVector<FuncOp, 4> functions;
+      llvm::SmallVector<func::FuncOp, 4> functions;
       case_op.get_branch_functions(functions);
       AnalyzeFunctionalCaseOrIfOp(case_op, functions, backtrack_analysis);
     } else if (auto if_op = dyn_cast<IfOp>(op)) {
@@ -396,7 +396,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast_or_null<FuncOp>(
+      func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
           call.resolveCallable(&symbol_table_collection));
       if (!func) {
         assign_unknown_id_to_all(op->getResults());
@@ -531,11 +531,11 @@ void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
 
 template <class CaseOrIfOp>
 void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
-    CaseOrIfOp case_or_if_op, llvm::ArrayRef<FuncOp> functions,
+    CaseOrIfOp case_or_if_op, llvm::ArrayRef<func::FuncOp> functions,
     const BacktrackAnalysis& backtrack_analysis) {
   llvm::SmallVector<const BacktrackAnalysisInfo*, 2> infos;
   infos.reserve(functions.size());
-  for (FuncOp func : functions)
+  for (func::FuncOp func : functions)
     infos.push_back(&backtrack_analysis.GetAnalysisForFunc(func));
 
   // If a result is a passthrough of all branches' inputs, merge the resource
@@ -548,7 +548,7 @@ void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
 
     const bool all_passthrough_args_known = llvm::all_of(
         passthrough_args, [](const llvm::Optional<int>& passthrough_arg) {
-          return passthrough_arg.hasValue();
+          return passthrough_arg.has_value();
         });
     if (all_passthrough_args_known) {
       for (const auto& passthrough_arg : passthrough_args) {
@@ -638,7 +638,7 @@ ResourceAliasAnalysis::ResourceAliasAnalysis(ModuleOp module) {
   detail::BacktrackAnalysis backtrack_analysis(module, symbol_table_collection);
 
   // Analyze each function.
-  for (auto func : module.getOps<FuncOp>())
+  for (auto func : module.getOps<func::FuncOp>())
     this->info_map_.try_emplace(func, func, backtrack_analysis,
                                 symbol_table_collection);
 }

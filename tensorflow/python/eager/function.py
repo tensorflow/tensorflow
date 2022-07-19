@@ -36,6 +36,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import function_context
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
@@ -59,7 +60,7 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -355,18 +356,19 @@ class _EagerDefinedFunction(object):
         output_names = []
     else:
       output_names = []
-    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
-        graph._c_graph,  # pylint: disable=protected-access
-        compat.as_str(name),
-        False,
-        [o._c_op for o in operations],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-        output_names,
-        [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
-        [],  # control_output_names
-        None,
-        compat.as_str(""))
+    with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+      fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
+          c_graph,
+          compat.as_str(name),
+          False,
+          [o._c_op for o in operations],  # pylint: disable=protected-access
+          [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
+          [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+          output_names,
+          [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
+          [],  # control_output_names
+          None,
+          compat.as_str(""))
 
     self._c_func = c_api_util.ScopedTFFunction(fn, name)
 
@@ -2358,6 +2360,45 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     else:
       return self.__repr__()
 
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """Implements `Trackable`."""
+    if save_type == "checkpoint":
+      # Checkpoint dependencies do not include functions at all. Users
+      # expect the checkpointed variables to be saved using the model
+      # architecture, e.g. `model.layers[1].kernel` or `model.variables`.
+      return {}
+
+    captured_trackables = {}
+    for n, (capture, _) in enumerate(self.graph.captures):
+      if (capture.dtype not in (dtypes.variant, dtypes.resource) and
+          not resource_variable_ops.is_resource_variable(capture)):
+        # Variant/resource type tensors are skipped since we have no way of
+        # getting the `Trackable` wrapper for these tensors. The wrappers are
+        # expected to be elsewhere in the saved object graph.
+        # TODO(b/223866972): Directly encode/decode tensor captures.
+
+        # Resource variable captures are also skipped at this time, to maintain
+        # existing behavior.
+        # TODO(b/217979389): Return the non-constant captures as children.
+
+        captured_trackables[f"capture_{n}"] = capture
+
+    return captured_trackables
+
+  def _deserialization_dependencies(self, children):
+    return children
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   **unused_kwargs):
+    if not self.graph.saveable:
+      raise ValueError(
+          (f"Unable to save function {self.name} for the following reason(s):\n"
+           + "\n".join(self.graph.saving_errors)))
+    self.add_to_graph()
+    object_map[self] = function_saved_model_utils.ExportedConcreteFunction(
+        self, tensor_map)
+    return []
+
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
@@ -2436,7 +2477,9 @@ class Function(object):
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
-
+    # Maintein a dict of all captures: identifier -> lambda function. It's used
+    # to get runtime values for all captures during ConcreteFunction dispatch,
+    self._captures_container = func_graph_module.CapturesContainer()
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `Function`, used to make sure defun-decorated methods create different
@@ -2672,21 +2715,27 @@ class Function(object):
     else:
       filtered_flat_args = []
 
+    # Get runtime values of captures
+    captures = self._captures_container.get_snapshot()
+
+    # cache_key_deletion_observer is useless here. It's based on all captures.
+    # A new cache key will be built later when saving ConcreteFunction because
+    # only active captures should be saved.
     if self.input_signature is None:
-      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
-          (args, kwargs))
+      func_cache_key, _ = function_context.make_cache_key(
+          (args, kwargs), captures)
     else:
-      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
-          self.flat_input_signature)
+      func_cache_key, _ = function_context.make_cache_key(
+          self.flat_input_signature, captures)
 
     try:
-      hash(cache_key)
+      hash(func_cache_key)
     except TypeError as e:
       raise TypeError(
-          "Arguments supplied to `defun`-generated functions must be "
-          f"hashable.  Original error: {e}.")
+          "Arguments supplied to `defun`-generated functions must be hashable."
+          ) from e
 
-    graph_function = self._function_cache.lookup(cache_key, True)
+    graph_function = self._function_cache.lookup(func_cache_key, True)
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
@@ -2694,10 +2743,9 @@ class Function(object):
       with trace.Trace("tf.function-graph_building"):
         logging.vlog(1,
                      "Creating new FuncGraph for Python function %r (key: %r)",
-                     self._python_function, cache_key)
+                     self._python_function, func_cache_key)
         logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
                      args, kwargs)
-
         ag_status = (
             ag_ctx.Status.ENABLED
             if self._autograph else ag_ctx.Status.DISABLED)
@@ -2705,10 +2753,28 @@ class Function(object):
             status=ag_status, options=self._autograph_options):
 
           if (self._reduce_retracing and self.input_signature is None):
-            cache_key = self._function_cache.generalize(cache_key)
-            (args, kwargs) = cache_key._placeholder_value()  # pylint: disable=protected-access
-
+            func_cache_key = self._function_cache.generalize(func_cache_key)
+            placeholder_dict = func_cache_key._placeholder_value()  # pylint: disable=protected-access
+            # Only get placeholders for arguments, not captures
+            args, kwargs = placeholder_dict["args"]
           graph_function = self._create_graph_function(args, kwargs)
+
+          graph_capture_container = graph_function.graph._capture_func_lib  # pylint: disable=protected-access
+          # Maintain the list of all captures
+          self._captures_container.update(graph_capture_container)
+          # Get current active captures snapshot
+          captures = graph_capture_container.get_snapshot()
+
+          # Create a cache_key with args and captures
+          if self.input_signature is None:
+            cache_key, cache_key_deletion_observer = (
+                function_context.make_cache_key(
+                    (args, kwargs), captures))
+          else:
+            cache_key, cache_key_deletion_observer = (
+                function_context.make_cache_key(
+                    self.flat_input_signature, captures))
+
           self._function_cache.add(cache_key, cache_key_deletion_observer,
                                    graph_function)
 

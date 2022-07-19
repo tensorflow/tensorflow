@@ -14,27 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 
+#include <utility>
+
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
 
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 struct IdentifyDilatedConvPass
-    : public PassWrapper<IdentifyDilatedConvPass, OperationPass<FuncOp>> {
+    : public IdentifyDilatedConvPassBase<IdentifyDilatedConvPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IdentifyDilatedConvPass)
-
   void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-identify-dilated-conv";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Identify and replace patterns for dilated convolution.";
-  }
 };
 
 void IdentifyDilatedConvPass::runOnOperation() {
@@ -47,8 +43,9 @@ void IdentifyDilatedConvPass::runOnOperation() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
-
-static PassRegistration<IdentifyDilatedConvPass> pass;
+std::unique_ptr<OperationPass<func::FuncOp>> CreateIdentifyDilatedConvPass() {
+  return std::make_unique<IdentifyDilatedConvPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

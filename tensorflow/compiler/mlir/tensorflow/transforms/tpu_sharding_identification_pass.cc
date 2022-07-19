@@ -158,7 +158,8 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(Value value) {
         }
 
         if (auto call_op = llvm::dyn_cast<CallOpInterface>(owner)) {
-          FuncOp func = llvm::dyn_cast<FuncOp>(call_op.resolveCallable());
+          func::FuncOp func =
+              llvm::dyn_cast<func::FuncOp>(call_op.resolveCallable());
           if (!func) continue;
           next_values_to_visit.push_back(
               func.getArgument(use.getOperandNumber()));
@@ -180,7 +181,7 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromArg(Value value) {
 void IdentifyXlaShardingForComputationInputs(
     StringRef logical_core_0_sharding, bool use_spmd,
     bool infer_from_computation, tf_device::ClusterFuncOp cluster_func,
-    FuncOp func, Builder* builder,
+    func::FuncOp func, Builder* builder,
     llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args) {
   // Look up function definition from module.
   Block& function_block = func.front();
@@ -256,7 +257,7 @@ llvm::Optional<llvm::StringRef> GetXlaShardingFromResult(Value value) {
 }
 
 // Looks up arg->retval aliases for every argument, and builds a reverse map.
-void ExtractAliases(FuncOp func, llvm::SmallVectorImpl<int>& aliases) {
+void ExtractAliases(func::FuncOp func, llvm::SmallVectorImpl<int>& aliases) {
   aliases.resize(func.getNumResults(), -1);
   for (int i = 0; i < func.getNumArguments(); i++) {
     if (auto v = func.getArgAttrOfType<mlir::IntegerAttr>(i, kAliasingAttr)) {
@@ -328,7 +329,8 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
     }
 
     if (auto call_op = llvm::dyn_cast_or_null<CallOpInterface>(def)) {
-      FuncOp func = llvm::dyn_cast<FuncOp>(call_op.resolveCallable());
+      func::FuncOp func =
+          llvm::dyn_cast<func::FuncOp>(call_op.resolveCallable());
       if (!func) continue;
       value_to_visit = func.front().getTerminator()->getOperand(
           value_to_visit.cast<OpResult>().getResultNumber());
@@ -345,7 +347,7 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(Value value) {
 void IdentifyXlaShardingForComputationOutputs(
     StringRef logical_core_0_sharding, bool use_spmd,
     bool infer_from_computation, tf_device::ClusterFuncOp cluster_func,
-    FuncOp func, Builder* builder,
+    func::FuncOp func, Builder* builder,
     const llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_args,
     llvm::SmallVectorImpl<llvm::StringRef>& sharding_for_rets) {
   Block& function_block = func.front();
@@ -406,8 +408,9 @@ void IdentifyXlaShardingForComputationOutputs(
 void IdentifyXlaShardingForTPUComputation(
     Builder* builder, tf_device::ClusterFuncOp cluster_func) {
   // Look up function definition from module.
-  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-      cluster_func.func());
+  func::FuncOp func =
+      cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
+          cluster_func.func());
 
   // By default inputs/outputs have maximal sharding and are assigned to logical
   // core 0 if no sharding is defined.

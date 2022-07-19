@@ -4,9 +4,9 @@
 
 absl-py ~= 0.13.0
 astunparse ~= 1.6.3
-flatbuffers < 2.0  # NOTE: We cannot support faltbuffers 2.0 until internal code updates
+flatbuffers ~= 2.0
 google_pasta ~= 0.2
-h5py ~= 3.6.0  # NOTE: Earliest version for Python 3.10
+h5py ~= 3.7.0  # NOTE: Earliest version for M1 wheels
 keras_preprocessing ~= 1.1.2
 numpy ~= 1.21.4  # NOTE: Earliest version for h5py in Python 3.10
 opt_einsum ~= 3.3.0
@@ -33,6 +33,6 @@ grpcio ~= 1.43.0  # NOTE: Earliest version for Python 3.10
 portpicker ~= 1.4.0
 scipy ~= 1.7.2  # NOTE: Earliest version for Python 3.10
 
-# This is usually vendored in in setuptools but ensure it gets installed in CI anyway
+# This is usually vendored in setuptools but ensure it gets installed in CI anyway
 # No bound here, we prefer the one in setuptools
 packaging

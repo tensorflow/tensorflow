@@ -18,8 +18,9 @@ limitations under the License.
 #ifndef TFL_OP_ENUMS
 #define TFL_OP_ENUMS
 
-include "mlir/IR/OpBase.td"
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 
 // A string attribute whose value are one of the values in `cases`.
@@ -44,8 +45,11 @@ def TFL_DimensionType : I32EnumAttr<
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::TFL";
 }
+
 def TFL_DimensionTypeAttr : EnumAttr<TFL_Dialect, TFL_DimensionType,
-    "dimension_type_attr">;
+    "dimension_type_attr"> {
+  let convertFromStorage = "$_self";
+}
 
 // Allowed activation function cases
 // These should match the ActivationFunctionType enum in TFLite schema.
@@ -68,6 +72,29 @@ def TFL_AF_Relu1 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu1.symbol>;
 def TFL_AF_Relu6 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu6.symbol>;
 def TFL_AF_Tanh  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Tanh.symbol>;
 def TFL_AF_Sign  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Sign.symbol>;
+
+// Allowed padding cases
+// These should match the padding enum in TFLite schema.
+def TFL_PADEnum_Same  : I32EnumAttrCase<"SAME", 0>;
+def TFL_PADEnum_Valid : I32EnumAttrCase<"VALID", 1>;
+def TFL_PaddingAttr : TFL_AnyStrAttrOf<[
+      TFL_PADEnum_Same.symbol, TFL_PADEnum_Valid.symbol
+    ]>;
+def TFL_PAD_Same  : ConstantStrAttr<TFL_PaddingAttr, TFL_PADEnum_Same.symbol>;
+def TFL_PAD_Valid : ConstantStrAttr<TFL_PaddingAttr, TFL_PADEnum_Valid.symbol>;
+
+// FullyConnectedOptionsWeightFormat attributes
+def TFL_FCWOEnum_Default         : I32EnumAttrCase<"DEFAULT", 0>;
+def TFL_FCWOEnum_Shuffled4x16i8  : I32EnumAttrCase<"SHUFFLED4x16INT8", 1>;
+def TFL_FullyConnectedOptionsWeightFormatAttr :
+    TFL_AnyStrAttrOf<[
+      TFL_FCWOEnum_Default.symbol,
+      TFL_FCWOEnum_Shuffled4x16i8.symbol
+    ]>;
+def TFL_FCWO_Default        : ConstantStrAttr<
+      TFL_FullyConnectedOptionsWeightFormatAttr, TFL_FCWOEnum_Default.symbol>;
+def TFL_FCWO_Shuffled4x16i8 : ConstantStrAttr<
+      TFL_FullyConnectedOptionsWeightFormatAttr, TFL_FCWOEnum_Shuffled4x16i8.symbol>;
 
 // MirrorPadding type attributes
 def TFL_MIRRORPAD_Reflect : I32EnumAttrCase<"REFLECT", 0>;
@@ -93,5 +120,36 @@ def TFL_LSTMKernelType : I32EnumAttr<"LSTMKernelType", "lstm_kernel_type",
 }
 def TFL_LSTMKernelTypeAttr : EnumAttr<TFL_Dialect, TFL_LSTMKernelType,
     "lstm_kernel_type_attr">;
+
+def I32ArrayParameter :
+    AttrOrTypeParameter<"::llvm::ArrayRef<int32_t>", ""> {
+  let allocator = [{$_dst = $_allocator.copyInto($_self);}];
+  let cppStorageType = "::llvm::SmallVector<int32_t>";
+  let parser = "::mlir::TFL::parseI32Array($_parser)";
+  let printer = "$_printer << '[' << $_self << ']'";
+}
+
+def DimensionMetadataAttr : AttrDef<TFL_Dialect, "DimensionMetadata"> {
+  let mnemonic = "dimension_metadata";
+  let parameters = (ins
+      TFL_DimensionTypeAttr:$format,
+      "int32_t":$dense_size,
+      I32ArrayParameter:$segments,
+      I32ArrayParameter:$indices
+  );
+  let summary = "Dimension metadata.";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def SparsityParameterAttr : AttrDef<TFL_Dialect, "SparsityParameter"> {
+  let mnemonic = "sparsity_parameter";
+  let parameters = (ins
+      I32ArrayParameter:$traversal_order,
+      I32ArrayParameter:$block_map,
+      ArrayRefParameter<"DimensionMetadataAttr">:$dim_metadata
+  );
+  let summary = "Sparsity parameter.";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
 
 #endif // TFL_OP_ENUMS

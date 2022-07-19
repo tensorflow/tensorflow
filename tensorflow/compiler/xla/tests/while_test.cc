@@ -56,7 +56,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarS32Result) {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Gt(ConstantR0<int32_t>(&builder, 5), prev);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body: add 1 to the result variable.
@@ -66,7 +66,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarS32Result) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR0<int32_t>(&builder, 1);
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -92,7 +92,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarS64Result) {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Gt(ConstantR0<int64_t>(&builder, 5), prev);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body: add 1 to the result variable.
@@ -102,7 +102,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarS64Result) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR0<int64_t>(&builder, 1);
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -123,7 +123,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Gt(ConstantR0<int32_t>(&builder, 5), prev);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body: add 1 to the result variable.
@@ -133,7 +133,7 @@ XLA_TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR0<int32_t>(&builder, 1);
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -155,7 +155,7 @@ XLA_TEST_F(WhileTest, WhileWithPredicateResult) {
     XlaBuilder builder("condition");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Ne(ConstantR0<bool>(&builder, true), prev);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body: or condition with true.
@@ -164,7 +164,7 @@ XLA_TEST_F(WhileTest, WhileWithPredicateResult) {
     XlaBuilder builder("body");
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Or(prev, ConstantR0<bool>(&builder, true));
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -193,7 +193,7 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
     auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
     Add(x, y);
-    add = builder.Build().ConsumeValueOrDie();
+    add = builder.Build().value();
   }
 
   // Create a computation for the condition.
@@ -205,7 +205,7 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
     auto sum = Reduce(prev, ConstantR0<float>(&builder, 0.0f), add,
                       /*dimensions_to_reduce=*/{0});
     Gt(ConstantR0<float>(&builder, 15.5f), sum);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -216,7 +216,7 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR1<float>(&builder, {});
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -224,8 +224,7 @@ XLA_TEST_F(WhileTest, DISABLED_ON_INTERPRETER(WhileWithEmptyVectorResult)) {
   auto init = ConstantR1<float>(&builder, {});
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.0001));
 }
@@ -247,7 +246,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResult) {
     auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
     Add(x, y);
-    add = builder.Build().ConsumeValueOrDie();
+    add = builder.Build().value();
   }
 
   // Create a computation for the condition.
@@ -259,7 +258,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResult) {
     auto sum = Reduce(prev, ConstantR0<float>(&builder, 0.0f), add,
                       /*dimensions_to_reduce=*/{0});
     Gt(ConstantR0<float>(&builder, 15.5f), sum);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -270,7 +269,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR1<float>(&builder, 8, 0.125f);
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -278,8 +277,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResult) {
   auto init = ConstantR1<float>(&builder, 8, 0.f);
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   // Individual elements with increase by 1/8 each time through the loop, so
   // the sum will increase by 1.0.  It will first be >15.5 when the elements
@@ -307,7 +305,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
     auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
     Add(x, y);
-    add = builder.Build().ConsumeValueOrDie();
+    add = builder.Build().value();
   }
 
   // Create a computation for the condition.
@@ -319,7 +317,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
     auto sum = Reduce(prev, ConstantR0<float>(&builder, 0.0f), add,
                       /*dimensions_to_reduce=*/{0});
     Gt(ConstantR0<float>(&builder, 15.5f), sum);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -330,7 +328,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR1<float>(&builder, 8, 0.125f);
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -338,8 +336,7 @@ XLA_TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
   auto init = ConstantR1<float>(&builder, 8, 0.f);
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
   Tuple(&builder, {result});
 
   // Individual elements with increase by 1/8 each time through the loop, so
@@ -367,7 +364,7 @@ XLA_TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Gt(ConstantR0<int32_t>(&builder, N), iteration);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -382,7 +379,7 @@ XLA_TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
     auto w3 = GetTupleElement(prev, 3);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), w3, w1, w2});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -393,8 +390,7 @@ XLA_TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
                                ConstantR1<float>(&builder, 3, 3.f)});
   auto result = While(condition, body, init);
   VLOG(2) << "result = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   auto expected_counter = LiteralUtil::CreateR0<int32_t>(N);
   auto expected_w1 = LiteralUtil::CreateR1<float>({1.0f, 1.0f, 1.0f});
@@ -421,7 +417,7 @@ XLA_TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Gt(ConstantR0<int32_t>(&builder, N), iteration);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -436,7 +432,7 @@ XLA_TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
     auto w3 = GetTupleElement(prev, 3);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), w3, w1, w2});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -451,8 +447,7 @@ XLA_TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
       Add(GetTupleElement(xla_while, 1), GetTupleElement(xla_while, 2));
   auto result = Add(add12, GetTupleElement(xla_while, 3));
   VLOG(2) << "result = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
   std::vector<float> expected = {6.f, 6.f, 6.f};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
@@ -477,7 +472,7 @@ XLA_TEST_F(WhileTest, WhileWithTupleResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Gt(ConstantR0<int32_t>(&builder, 5), iteration);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -493,7 +488,7 @@ XLA_TEST_F(WhileTest, WhileWithTupleResult) {
     auto new_weights = Add(weights, input);
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), new_weights});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -502,8 +497,7 @@ XLA_TEST_F(WhileTest, WhileWithTupleResult) {
                                ConstantR1<float>(&builder, 10, 0.f)});
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   auto expected_counter = LiteralUtil::CreateR0<int32_t>(5);
   auto expected_data = LiteralUtil::CreateR1<float>(
@@ -526,7 +520,7 @@ XLA_TEST_F(WhileTest, WhileWithPredicateTupleResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Gt(ConstantR0<int32_t>(&builder, 5), iteration);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -540,7 +534,7 @@ XLA_TEST_F(WhileTest, WhileWithPredicateTupleResult) {
     auto new_pred = Or(pred, ConstantR0<bool>(&builder, true));
     Tuple(&builder,
           {Add(iteration, ConstantR0<int32_t>(&builder, 1)), new_pred});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -550,8 +544,7 @@ XLA_TEST_F(WhileTest, WhileWithPredicateTupleResult) {
                                   ConstantR0<bool>(&builder, true))});
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   auto expected_counter = LiteralUtil::CreateR0<int32_t>(5);
   auto expected_predicate = LiteralUtil::CreateR0<bool>(true);
@@ -573,7 +566,7 @@ XLA_TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Gt(ConstantR0<int32_t>(&builder, 5), iteration);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -586,7 +579,7 @@ XLA_TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
     auto iteration = GetTupleElement(prev, 0);
     Tuple(&builder, {Add(iteration, ConstantR0<int32_t>(&builder, 1)),
                      ConstantR0<int32_t>(&builder, 7)});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -595,8 +588,7 @@ XLA_TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
                                ConstantR0<int32_t>(&builder, 7)});
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   auto expected_counter = LiteralUtil::CreateR0<int32_t>(5);
   auto expected_data = LiteralUtil::CreateR0<int32_t>(7);
@@ -686,12 +678,10 @@ XLA_TEST_F(WhileTest, TwoWhileWithTupleResult) {
   auto while_result1 = GetTupleElement(while1, 1);
   auto while_result2 = GetTupleElement(while2, 1);
   VLOG(2) << "while_result2 = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(while_result2).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(while_result2).value());
   auto result = Add(while_result1, while_result2);
   VLOG(2) << "result = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
   const float sum = c1 + c2;
   std::vector<float> expected(10, sum);
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -752,12 +742,10 @@ XLA_TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
   auto while_result1 = GetTupleElement(while1, 1);
   auto while_result2 = GetTupleElement(while2, 1);
   VLOG(2) << "while_result2 = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(while_result2).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(while_result2).value());
   auto result = Add(while_result1, while_result2);
   VLOG(2) << "result = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
   const float sum = c1 + c2;
   std::vector<float> expected(10, sum);
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -816,12 +804,10 @@ XLA_TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
   auto while_result1 = GetTupleElement(while1, 1);
   auto while_result2 = GetTupleElement(while2, 1);
   VLOG(2) << "while_result2 = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(while_result2).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(while_result2).value());
   auto result = Add(while_result1, while_result2);
   VLOG(2) << "result = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
   const float sum = c1 + c2;
   std::vector<float> expected(10, sum);
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -843,7 +829,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Gt(ConstantR0<int32_t>(&builder, 5), iteration);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body.
@@ -866,7 +852,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
     auto out1 = DynamicUpdateSlice(input, update, {starts});
 
     Tuple(&builder, {out0, out1});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -875,8 +861,7 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
                                ConstantR1<float>(&builder, 10, 0.f)});
   auto result = While(condition, body, init);
   VLOG(2) << "while = "
-          << ShapeUtil::HumanString(
-                 builder.GetShape(result).ConsumeValueOrDie());
+          << ShapeUtil::HumanString(builder.GetShape(result).value());
 
   auto expected_counter = LiteralUtil::CreateR0<int32_t>(5);
   auto expected_data = LiteralUtil::CreateR1<float>(
@@ -910,7 +895,7 @@ XLA_TEST_F(WhileTest, WhileWithPrngScalarResult) {
     auto prev = Reshape(
         Slice(Parameter(&builder, 0, v6s32, "prev"), {0}, {1}, {1}), {0}, {});
     Gt(ConstantR0<int32_t>(&builder, count), prev);
-    return builder.Build().ConsumeValueOrDie();
+    return builder.Build().value();
   };
 
   // Create a computation for the body: add 1 to the result variable.
@@ -925,7 +910,7 @@ XLA_TEST_F(WhileTest, WhileWithPrngScalarResult) {
                                        ShapeUtil::MakeShape(S32, {5}))},
                            0);
     Add(inc, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -1095,7 +1080,7 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
     auto params = Parameter(&builder, 0, inner_result_shape, "prev");
     auto i = GetTupleElement(params, 0);
     Lt(i, ConstantR0<int32_t>(&builder, 7));
-    inner_condition = builder.Build().ConsumeValueOrDie();
+    inner_condition = builder.Build().value();
   }
 
   // Creates a computation for the outer loop condition:
@@ -1105,7 +1090,7 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
     XlaBuilder builder("outer_condition");
     auto prev = Parameter(&builder, 0, outer_result_shape, "prev");
     Lt(prev, ConstantR0<int32_t>(&builder, 30));
-    outer_condition = builder.Build().ConsumeValueOrDie();
+    outer_condition = builder.Build().value();
   }
 
   // Creates a computation for the inner loop body: add 1 to `i`, and add 2 to
@@ -1119,7 +1104,7 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
     i = Add(ConstantR0<int32_t>(&builder, 1), i);
     result = Add(ConstantR0<int32_t>(&builder, 2), result);
     Tuple(&builder, {i, result});
-    inner_body = builder.Build().ConsumeValueOrDie();
+    inner_body = builder.Build().value();
   }
 
   // Creates a computation for the outer loop: run the inner loop with i = 0.
@@ -1130,7 +1115,7 @@ XLA_TEST_F(WhileTest, NestedWhileWithScalarResult) {
     auto init = Tuple(&builder, {ConstantR0<int32_t>(&builder, 0), prev});
     auto result = While(inner_condition, inner_body, init);
     GetTupleElement(result, 1);
-    outer_body = builder.Build().ConsumeValueOrDie();
+    outer_body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -1157,7 +1142,7 @@ XLA_TEST_F(WhileTest, WhileWithCallInsideCondition) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     Tuple(&builder, {Gt(ConstantR0<int32_t>(&builder, 5), prev)});
 
-    condition_callee = builder.Build().ConsumeValueOrDie();
+    condition_callee = builder.Build().value();
   }
 
   XlaComputation condition;
@@ -1166,7 +1151,7 @@ XLA_TEST_F(WhileTest, WhileWithCallInsideCondition) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto result = Call(&builder, condition_callee, {prev});
     GetTupleElement(result, 0);
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create a computation for the body: add 1 to the result variable.
@@ -1176,7 +1161,7 @@ XLA_TEST_F(WhileTest, WhileWithCallInsideCondition) {
     auto prev = Parameter(&builder, 0, result_shape, "prev");
     auto input = ConstantR0<int32_t>(&builder, 1);
     Add(input, prev);
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While node with computations for the condition and the body.
@@ -1282,7 +1267,7 @@ void BM_WhileLoop(::testing::benchmark::State& state) {
     auto prev = Parameter(&builder, 0, loop_state_shape, "prev");
     auto iteration = GetTupleElement(prev, 0);
     Lt(iteration, ConstantR0<int32_t>(&builder, loop_limit));
-    condition = builder.Build().ConsumeValueOrDie();
+    condition = builder.Build().value();
   }
 
   // Create while body computation with unit loop increment.
@@ -1303,7 +1288,7 @@ void BM_WhileLoop(::testing::benchmark::State& state) {
     // UpdateSlice.
     auto out1 = DynamicUpdateSlice(input, update, {zero, zero, zero});
     Tuple(&builder, {out0, out1});
-    body = builder.Build().ConsumeValueOrDie();
+    body = builder.Build().value();
   }
 
   // Create a While instruction.
@@ -1312,7 +1297,7 @@ void BM_WhileLoop(::testing::benchmark::State& state) {
   auto input = Broadcast(zero, {seq_len, 1024, 1024});
   auto init = Tuple(&builder, {ConstantR0<int32_t>(&builder, 0), input});
   While(condition, body, init);
-  auto computation = builder.Build().ConsumeValueOrDie();
+  auto computation = builder.Build().value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,

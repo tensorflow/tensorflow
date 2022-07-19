@@ -18,5 +18,5 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Note that this may not be a valid transformation for general tensorflow
 // program, but from the perspective of mlir-reduce, it's worth to give it a try
-// because the validity will be checked seperately by the tester.
+// because the validity will be checked separately by the tester.
 def : Pat<(TF_IdentityOp (TF_IdentityOp $arg)), (TF_IdentityOp $arg)>;

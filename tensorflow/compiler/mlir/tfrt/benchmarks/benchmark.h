@@ -98,13 +98,11 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
 template <typename T, int rank>
 MemrefDesc TensorToMemrefDesc(Eigen::Tensor<T, rank, Eigen::RowMajor>& tensor) {
   tfrt::TensorShape shape(tensor.dimensions().values);
-  MemrefDesc desc;
-  desc.dtype = tfrt::GetDType<T>();
-  desc.data = tensor.data();
-  desc.offset = 0;
-  shape.GetDimensions(&desc.sizes);
-  shape.GetStrides(&desc.strides);
-  return desc;
+  return MemrefDesc(shape.GetRank(), tfrt::GetDType<T>(), tensor.data(), 0,
+                    [&](auto sizes, auto strides) {
+                      shape.GetDimensions(sizes);
+                      shape.GetStrides(strides);
+                    });
 }
 
 // Converts Tensorflow Tensor to Memref descriptor.

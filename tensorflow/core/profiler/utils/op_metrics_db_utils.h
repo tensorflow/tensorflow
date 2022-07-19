@@ -78,8 +78,12 @@ double IdleTimeRatio(const OpMetricsDb& db);
 // Returns the idle time in picoseconds.
 uint64 IdleTimePs(const OpMetricsDb& db);
 
-// Adds an op representing idle time, i.e., the amount of time spent without any
-// op execution.
+// Populates an OpMetrics record representing idle time, i.e., the amount of
+// time spent without any op execution.
+void SetIdleOp(uint64_t idle_time_ps, OpMetrics& metrics);
+
+// Adds an OpMetrics record representing idle time, i.e., the amount of time
+// spent without any op execution.
 // REQUIRED: All ops must have been added to the database and the total time
 // must have been set.
 void AddIdleOp(OpMetricsDb& db);

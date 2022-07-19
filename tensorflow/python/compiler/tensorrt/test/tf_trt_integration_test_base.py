@@ -50,8 +50,11 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.util import nest
+
+logging.get_logger().propagate = False
 
 TfTrtIntegrationTestParams = collections.namedtuple(
     "TfTrtIntegrationTestParams",
@@ -149,11 +152,20 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def setUp(self):
     """Setup method."""
-    super(TfTrtIntegrationTestBase, self).setUp()
+    super().setUp()
     warnings.simplefilter("always")
 
     if not is_tensorrt_enabled():
       self.skipTest("Test requires TensorRT")
+
+  def tearDown(self):
+    """Making sure to clean artifact."""
+    idx = 0
+    while gc.garbage:
+      gc.collect()  # Force GC to destroy the TRT engine cache.
+      idx += 1
+      if idx >= 10:  # After 10 iterations, break to avoid infinite collect.
+        break
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
@@ -474,14 +486,36 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
-    int8_gdef = converter.convert()
-    self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
-                         GraphState.CALIBRATE)
+    if run_params.is_v2:
 
-    converter.calibrate(
-        fetch_names=self._GetFetchNames(),
-        num_runs=5,
-        feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
+      def CalibrationInputFn():
+        for data_tensors in inputs_data:
+          yield data_tensors
+
+      converter.convert(calibration_input_fn=CalibrationInputFn)
+    else:
+      int8_gdef = converter.convert()
+      self._VerifyGraphDef(run_params, saved_model_dir, int8_gdef,
+                           GraphState.CALIBRATE)
+
+      converter.calibrate(
+          fetch_names=self._GetFetchNames(),
+          num_runs=5,
+          feed_dict_fn=lambda: self._GetFeedDict(inputs_data[0]))
+
+    if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
+      logging.info("Using build mode")
+
+      def _BuildInputFn():
+        for shapes in self._GetParamsCached().input_dims:
+          yield [
+              array_ops.zeros(x, dtype=spec.dtype)
+              for (x, spec) in zip(shapes,
+                                   self._GetParamsCached().input_specs)
+          ]
+
+      converter.build(input_fn=_BuildInputFn)
+
     trt_saved_model_dir = self._GetSavedModelDir(run_params,
                                                  GraphState.CALIBRATE)
     converter.save(trt_saved_model_dir)
@@ -498,6 +532,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     converter = self._CreateConverter(run_params, saved_model_dir,
                                       conversion_params)
     converter.convert()
+
+    if run_params.is_v2:
+      try:
+        line_length = max(160, os.get_terminal_size().columns)
+      except OSError:
+        line_length = 160
+      converter.summary(line_length=line_length, detailed=True)
 
     if run_params.dynamic_shape and self._ShouldConverterBuild(run_params):
       logging.info("Using build mode")
@@ -555,7 +596,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   # The input value can be a string or a sequence of string.
   def _RemoveGraphSequenceNumberImpl(self, value, expecting_prefix):
     if isinstance(value, str):
-      match = re.search(r"TRTEngineOp_\d+_", value)
+      match = re.search(r"TRTEngineOp_\d{3,}_", value)
       has_prefix = match and value.startswith(match.group(0))
       assert (not expecting_prefix) or has_prefix
       if has_prefix:
@@ -837,7 +878,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     all_op_names = [node.name for node in gdef_to_verify.node]
     trt_op_names = []
     for func in gdef_to_verify.library.function:
-      if not re.search(r"TRTEngineOp_\d+_\d+_native_segment",
+      if not re.search(r"TRTEngineOp_\d{3,}_\d{3,}_native_segment",
                        func.signature.name):
         for node in func.node_def:
           all_op_names.append(node.name)
@@ -928,7 +969,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _MakeSavedModelV2(self, run_params):
     params = self._GetParamsCached()
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.run = def_function.function(
         params.graph_fn, input_signature=params.input_specs)
     saved_model_dir = self._GetSavedModelDir(run_params, GraphState.ORIGINAL)
@@ -1047,6 +1088,7 @@ def _GetTestConfigsV2():
   dynamic_engine = True
   # TODO(laigd): add support for calibration.
   no_calibration = False
+  use_calibration = True
 
   # Add all possible test cases and let the derived test class to decide
   # whether to run specific ones with ShouldRunTest().
@@ -1058,11 +1100,11 @@ def _GetTestConfigsV2():
   #   Grappler config in default eager context.
   # - INT8 without calibration behaves like FP32/FP16.
   opts = list(
-      itertools.product([FP32, FP16, INT8], [convert_offline], [dynamic_engine],
+      itertools.product([FP32, FP16], [convert_offline], [dynamic_engine],
                         [no_calibration], [False, True]))
   # We always run calibration with offline tool.
-  # TODO(aaroey): INT8+calibration is not supported yet in V2.
-  # opts.append((INT8, convert_offline, dynamic_engine, use_calibration))
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, False))
+  opts.append((INT8, convert_offline, dynamic_engine, use_calibration, True))
   return opts
 
 

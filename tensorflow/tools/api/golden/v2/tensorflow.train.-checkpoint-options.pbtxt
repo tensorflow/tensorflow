@@ -1,6 +1,6 @@
 path: "tensorflow.train.CheckpointOptions"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.saving.checkpoint_options.CheckpointOptions\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_options.CheckpointOptions\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "experimental_enable_async_checkpoint"

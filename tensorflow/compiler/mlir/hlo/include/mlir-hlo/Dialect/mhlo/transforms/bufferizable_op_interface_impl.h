@@ -24,18 +24,6 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-/// mhlo dialect analysis state. mhlo-specific bufferization options are
-/// stored in this state.
-struct MhloBufferizationState : public bufferization::DialectAnalysisState {
-  using EnforceIdentityMapFn = std::function<bool(Operation *)>;
-
-  /// If this function returns true for an op, copies will be inserted when
-  /// the lowering would otherwise lead to a memref with a non-identity map.
-  EnforceIdentityMapFn enforce_identity_map_fn = [](Operation *) {
-    return true;
-  };
-};
-
 /// Register the external models for bufferizing mhlo ops.
 void registerBufferizableOpInterfaceExternalModels(DialectRegistry &registry);
 

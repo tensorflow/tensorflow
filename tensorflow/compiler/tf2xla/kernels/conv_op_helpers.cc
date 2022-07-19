@@ -128,7 +128,7 @@ Status CheckConvAttrs(const ConvOpAttrs& attrs) {
                                    attrs.dilations[input_dim]);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Wrapper around ConvBackpropComputeDimensions that converts from XLA shapes

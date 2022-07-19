@@ -78,7 +78,8 @@ is_tfrt_enabled = tfrt_utils.enabled
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION", False)
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
+                                              "1") == "1"
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
@@ -323,8 +324,9 @@ class LogicalDevice(
 @tf_export("config.LogicalDeviceConfiguration",
            "config.experimental.VirtualDeviceConfiguration")
 class LogicalDeviceConfiguration(
-    collections.namedtuple("LogicalDeviceConfiguration",
-                           ["memory_limit", "experimental_priority"])):
+    collections.namedtuple("LogicalDeviceConfiguration", [
+        "memory_limit", "experimental_priority", "experimental_device_ordinal"
+    ])):
   """Configuration class for a logical devices.
 
   The class specifies the parameters to configure a `tf.config.PhysicalDevice`
@@ -341,11 +343,20 @@ class LogicalDeviceConfiguration(
       Lower values have higher priorities and 0 is the default.
       Within a physical GPU, the GPU scheduler will prioritize ops on virtual
       devices with higher priority. Currently only supported for Nvidia GPUs.
+    experimental_device_ordinal: (optional) Ordinal number to order the virtual
+    device.
+      LogicalDevice with lower ordinal number will receive a lower device id.
+      Physical device id and location in the list is used to break ties.
+      Currently only supported for Nvidia GPUs.
   """
 
-  def __new__(cls, memory_limit=None, experimental_priority=None):
+  def __new__(cls,
+              memory_limit=None,
+              experimental_priority=None,
+              experimental_device_ordinal=0):
     return super(LogicalDeviceConfiguration,
-                 cls).__new__(cls, memory_limit, experimental_priority)
+                 cls).__new__(cls, memory_limit, experimental_priority,
+                              experimental_device_ordinal)
 
 
 @tf_export("config.PhysicalDevice")
@@ -497,6 +508,7 @@ class Context(object):
     self._device_lock = threading.Lock()
     self._physical_devices = None
     self._physical_device_to_index = None
+    self._pluggable_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -1204,7 +1216,13 @@ class Context(object):
     virtual_devices = []
     gpu_index = -1
     memory_growths = set()
-    for dev in self.list_physical_devices("GPU"):
+    gpu_devices = self.list_physical_devices("GPU")
+    pluggable_devices = self._pluggable_devices
+    compatible_devices = gpu_devices
+    for dev in pluggable_devices:
+      if dev not in gpu_devices:
+        compatible_devices.append(dev)
+    for dev in compatible_devices:
       gpu_index += 1
 
       if dev not in self._visible_device_list:
@@ -1216,9 +1234,11 @@ class Context(object):
 
       if self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
+        device_ordinals = []
         device_limits = []
         priority = []
         for virt_dev in vdevs:
+          device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1229,7 +1249,9 @@ class Context(object):
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
-                memory_limit_mb=device_limits, priority=priority))
+                memory_limit_mb=device_limits,
+                priority=priority,
+                device_ordinal=device_ordinals))
 
     # Only compute growth if virtual devices have not been configured and we
     # have GPUs
@@ -1430,10 +1452,19 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
+      # We maintain a seperate list just so we can check whether the device in
+      # _physical_devices is a PluggableDevice.
+      pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+      self._pluggable_devices = [
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in pluggable_devs
+      ]
 
       self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
+          d: None
+          for d in self._physical_devices
+          if d.device_type == "GPU" or d in self._pluggable_devices
       }
 
     # Import device settings that may have been passed into the constructor
@@ -1623,8 +1654,9 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
-    if dev.device_type != "GPU":
-      raise ValueError("Cannot set memory growth on non-GPU devices")
+    if dev.device_type != "GPU" and dev not in self._pluggable_devices:
+      raise ValueError(
+          "Cannot set memory growth on non-GPU and non-Pluggable devices")
 
     if self._memory_growth_map.get(dev) == enable:
       return
@@ -1658,6 +1690,9 @@ class Context(object):
                            "currently not supported")
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
+                           " devices is currently not supported")
+        if vdev.experimental_device_ordinal != 0:
+          raise ValueError("Setting experimental_device_ordinal on CPU virtual "
                            " devices is currently not supported")
     elif dev.device_type == "GPU":
       for vdev in virtual_devices:

@@ -25,6 +25,8 @@ limitations under the License.
 #include <unistd.h>
 
 #include <fstream>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -41,6 +43,9 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#elif defined(LIBTPU_STATIC)
+#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace tensorflow {
@@ -48,8 +53,11 @@ namespace tpu {
 namespace {
 
 static std::string GetEnvVar(const char* name) {
-  // Constructing a std::string directly from nullptr is undefined behavior.
-  return absl::StrCat(getenv(name));
+  // Constructing a std::string directly from nullptr is undefined behavior so
+  // we can return empty string in that case
+  const char* env_value = getenv(name);
+  if (!env_value) return "";
+  return std::string(env_value);
 }
 
 bool GetEnvBool(const char* name, bool defval) {
@@ -94,16 +102,16 @@ bool IsTpuUsed(int64_t pid) {
   return false;
 }
 
-// This function iterates through all the processes in /proc and logs if any
-// process it was able to check is using the TPU. It does not have permission to
-// processes owned by another user.
+// This function iterates through all the processes in /proc and finds out if
+// any process it was able to check is using the TPU. It does not have
+// permission to processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-bool FindAndLogLibtpuProcess() {
+StatusOr<int64_t> FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
-    return false;
+    return errors::Unavailable("was not able to open /proc");
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
@@ -113,80 +121,76 @@ bool FindAndLogLibtpuProcess() {
 
     pid = strtol(ent->d_name, nullptr, 10);
     if (IsTpuUsed(pid)) {
-      LOG(INFO) << "libtpu.so is already in use by process with pid " << pid
-                << ". Not attempting to load libtpu.so in this process.";
-      return true;
+      return pid;
     }
   }
-  return false;
+  return errors::NotFound("did not find which pid uses the libtpu.so");
 }
 
-bool TryAcquireTpuLock() {
+Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
-  static bool attempted_file_open = false;
-  static bool should_load_library = false;
-
-  if (!attempted_file_open) {
-    std::string load_library_override =
-        absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
-
-    if (load_library_override == "1") {
-      return true;
-    } else if (load_library_override == "0") {
-      return false;
-    }
-    should_load_library = true;
-
-    // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
-    // we're using different chips in different processes and thus multiple
-    // libtpu loads are ok.
-    // TODO(skyewm): we could make per-chip lock files and look at
-    // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
-    std::string chips_per_process_bounds =
-        GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
-    bool allow_multiple_libtpu_load =
-        GetEnvBool("ALLOW_MULTIPLE_LIBTPU_LOAD", false);
-    // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
-    // deprecated
-    if (chips_per_process_bounds.empty()) {
-      chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
-    }
-    if ((chips_per_process_bounds.empty() ||
-         chips_per_process_bounds == "2,2,1") &&
-        !allow_multiple_libtpu_load) {
-      int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
-
-      // This lock is held until the process exits intentionally. The underlying
-      // TPU device will be held on until it quits.
-      if (lockf(fd, F_TLOCK, 0) != 0) {
-        if (!FindAndLogLibtpuProcess()) {
-          LOG(INFO) << "libtpu.so already in use by another process probably"
-                       " owned by another user. "
-                       "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-                       "which process is using the TPU. Not "
-                       "attempting to load libtpu.so in this process.";
-        }
-        should_load_library = false;
-      } else {
-        should_load_library = true;
-      }
-    } else {
-      VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
-                 "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
-                 "therefore allowing multiple libtpu.so loads.";
-      should_load_library = true;
-    }
+  // TODO(skyewm): use `absl::StrCat(getenv(name))` once we build with the
+  // fix for https://github.com/abseil/abseil-cpp/issues/1167.
+  std::string load_library_override;
+  const char* env_value = getenv("TPU_LOAD_LIBRARY");
+  if (env_value != nullptr) {
+    load_library_override = std::string(env_value);
   }
 
-  return should_load_library;
+  if (load_library_override == "1") {
+    return OkStatus();
+  } else if (load_library_override == "0") {
+    return errors::FailedPrecondition("TPU_LOAD_LIBRARY=0, not loading libtpu");
+  }
+
+  // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
+  // we're using different chips in different processes and thus multiple
+  // libtpu loads are ok.
+  // TODO(skyewm): we could make per-chip lock files and look at
+  // TPU_VISIBLE_DEVICES if we wanted to make this really precise.
+  std::string chips_per_process_bounds =
+      GetEnvVar("TPU_CHIPS_PER_PROCESS_BOUNDS");
+  bool allow_multiple_libtpu_load =
+      GetEnvBool("ALLOW_MULTIPLE_LIBTPU_LOAD", false);
+  // TODO(skyewm): remove this when TPU_CHIPS_PER_HOST_BOUNDS is fully
+  // deprecated
+  if (chips_per_process_bounds.empty()) {
+    chips_per_process_bounds = GetEnvVar("TPU_CHIPS_PER_HOST_BOUNDS");
+  }
+  if ((chips_per_process_bounds.empty() ||
+       chips_per_process_bounds == "2,2,1") &&
+      !allow_multiple_libtpu_load) {
+    int fd = open("/tmp/libtpu_lockfile", O_CREAT | O_RDWR, 0644);
+
+    // This lock is held until the process exits intentionally. The underlying
+    // TPU device will be held on until it quits.
+    if (lockf(fd, F_TLOCK, 0) != 0) {
+      auto pid = FindLibtpuProcess();
+      if (pid.ok()) {
+        return errors::Aborted(absl::StrCat(
+            "libtpu.so is already in use by process with pid ",
+            pid.ValueOrDie(),
+            ". Not attempting to load libtpu.so in this process."));
+      } else {
+        return errors::Aborted(
+            "libtpu.so already in use by another process probably owned by "
+            "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
+            "which process is using the TPU. Not attempting to load "
+            "libtpu.so in this process.");
+      }
+    } else {
+      return OkStatus();
+    }
+  } else {
+    VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
+               "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
+               "therefore allowing multiple libtpu.so loads.";
+    return OkStatus();
+  }
 }
-#if defined(PLATFORM_GOOGLE)
-Status InitializeTpuLibrary(void* library_handle) {
-  return errors::Unimplemented("You must statically link in a TPU library.");
-}
-#else  // PLATFORM_GOOGLE
+#if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_library_init_fns.inc"
 
 Status InitializeTpuLibrary(void* library_handle) {
@@ -251,8 +255,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
   });
 }
 }  // namespace
-
-bool FindAndLoadTpuLibrary() {
+Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
@@ -261,15 +264,42 @@ bool FindAndLoadTpuLibrary() {
   if (library) {
     // We can open the shared library which means we are in a TPU environment.
     // Try to acquire exclusive access.
-    if (TryAcquireTpuLock()) {
-      InitializeTpuLibrary(library);
-    }
+    TF_RETURN_IF_ERROR(TryAcquireTpuLock());
+    TF_RETURN_IF_ERROR(InitializeTpuLibrary(library));
   }
 
   InitializeCreateGcsFileSystemFnPtr();
-  return true;
+  return Status::OK();
 }
 
+#elif defined(LIBTPU_STATIC)
+
+#include "tensorflow/core/tpu/tpu_library_init_fns.inc"
+
+Status InitializeTpuLibrary() {
+  // Retrieve arguments from environment if applicable
+  std::pair<std::vector<std::string>, std::vector<const char*>> args =
+      GetLibTpuInitArguments();
+
+  TfTpu_Initialize(/*init_library*/ true, args.second.size(),
+                   args.second.data());
+
+  RegisterTpuPlatform();
+  return Status::OK();
+}
+
+Status FindAndLoadTpuLibrary() {
+  // We can open the shared library which means we are in a TPU environment.
+  // Try to acquire exclusive access.
+  TF_RETURN_IF_ERROR(TryAcquireTpuLock());
+  TF_RETURN_IF_ERROR(InitializeTpuLibrary());
+  return Status::OK();
+}
+
+#else   // PLATFORM_GOOGLE
+Status InitializeTpuLibrary(void* library_handle) {
+  return errors::Unimplemented("You must statically link in a TPU library.");
+}
 #endif  // PLATFORM_GOOGLE
 std::pair<std::vector<std::string>, std::vector<const char*>>
 GetLibTpuInitArguments() {

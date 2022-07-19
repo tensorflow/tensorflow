@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -28,7 +30,7 @@ namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
 struct LegalizeTFToQuant
-    : public PassWrapper<LegalizeTFToQuant, OperationPass<FuncOp>> {
+    : public PassWrapper<LegalizeTFToQuant, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTFToQuant)
 
   explicit LegalizeTFToQuant() = default;
@@ -159,7 +161,7 @@ void LegalizeTFToQuant::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect to QuantOps dialect pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 

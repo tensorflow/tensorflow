@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/jax_to_tfl_flatbuffer.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_join.h"
@@ -172,7 +173,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   // Set the input names.
   auto main_func = module->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_func) return errors::Internal("Failed to find the main function.");
-  // Retrive input names from model flags.
+  // Retrieve input names from model flags.
   std::vector<std::string> input_names;
   for (const auto& input : model_flags.input_arrays()) {
     input_names.push_back(input.name());

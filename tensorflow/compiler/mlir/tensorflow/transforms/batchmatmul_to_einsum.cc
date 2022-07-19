@@ -100,7 +100,7 @@ void BatchMatMulToEinsumPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBatchMatMulToEinsumPass() {
   return std::make_unique<BatchMatMulToEinsumPass>();
 }
 

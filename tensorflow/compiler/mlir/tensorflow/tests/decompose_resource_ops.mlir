@@ -224,7 +224,7 @@ func.func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1:
 
 // CHECK-LABEL: testResourceApplyFtrl
 func.func @testResourceApplyFtrl(%var: tensor<*x!tf_type.resource>, %accum: tensor<*x!tf_type.resource>, %linear: tensor<*x!tf_type.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
-  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  "tf.ResourceApplyFtrl"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %lr_power) {_xla_compile_device_type = "TPU", _replication_info = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
   // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrl
   // CHECK: return
   func.return
@@ -233,7 +233,7 @@ func.func @testResourceApplyFtrl(%var: tensor<*x!tf_type.resource>, %accum: tens
 // CHECK-LABEL: testResourceApplyFtrlV2
 func.func @testResourceApplyFtrlV2(%var: tensor<*x!tf_type.resource>, %accum: tensor<*x!tf_type.resource>, %linear: tensor<*x!tf_type.resource>, %grad: tensor<*xf32>, %lr: tensor<*xf32>, %l1: tensor<*xf32>, %l2: tensor<*xf32>, %lr_power: tensor<*xf32>) -> () {
   %0 = "tf.ZerosLike"(%lr_power) : (tensor<*xf32>) -> tensor<*xf32>
-  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_tpu_replicate = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
+  "tf.ResourceApplyFtrlV2"(%var, %accum, %linear, %grad, %lr, %l1, %l2, %0, %lr_power) {_xla_compile_device_type = "TPU", _replication_info = "cluster_train_function", device = "", multiply_linear_by_lr = false, use_locking = true} : (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> ()
   // ALWAYS-DECOMPOSE-NOT: ResourceApplyFtrlV2
   // CHECK: return
   func.return
@@ -646,6 +646,33 @@ func.func @decompose_resource_scatter_add_op_1d_indices(%indices : tensor<?xi32>
   func.return
 }
 
+// Test that tf.ResourceScatterAdd operation is decomposed to
+// tf.TensorScatterAdd. Updates is scalar.
+// CHECK-LABEL: @decompose_ResourceScatterAdd_op_with_scalar_updates
+func.func @decompose_ResourceScatterAdd_op_with_scalar_updates(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
+  "tf_device.cluster"() ({
+    // CHECK-NOT: ResourceScatterUpdate
+    // CHECK-NOT: BroadcastTo
+    // CHECK: TensorScatterAdd
+    "tf.ResourceScatterAdd"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf_type.resource>, tensor<?xi32>, tensor<i32>) -> ()
+    tf_device.return
+  }) : () -> ()
+  func.return
+}
+
+// Test that composite tf.ResourceScatterAdd operation is decomposed to
+// tf.TensorScatterAdd when update is unranked.
+// CHECK-LABEL: @decompose_ResourceScatterAdd_with_unranked_updates
+func.func @decompose_ResourceScatterAdd_with_unranked_updates(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<*xi32>) {
+  "tf_device.cluster"() ({
+    // CHECK-NOT: ResourceScatterUpdate
+    // CHECK-NOT: BroadcastTo
+    // CHECK: TensorScatterAdd
+    "tf.ResourceScatterAdd"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf_type.resource>, tensor<?xi32>, tensor<*xi32>) -> ()
+    tf_device.return
+  }) : () -> ()
+  func.return
+}
 
 // Tests that composite tf.ResourceScatterUpdate operation is decomposed.
 
@@ -668,18 +695,44 @@ func.func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %upd
   func.return
 }
 
-
-// CHECK-LABEL: @do_not_decompose_scalar_update
-func.func @do_not_decompose_scalar_update(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
+// Test that tf.ResourceScatterUpdate operation is decomposed to
+// tf.TensorScatterUpdate. updates is scalar
+// CHECK-LABEL: @decompose_resource_scatter_update_op_with_scalar_updates
+func.func @decompose_resource_scatter_update_op_with_scalar_updates(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<i32>) {
   "tf_device.cluster"() ({
-    // CHECK: ResourceScatterUpdate
-    // CHECK-NOT: TensorScatterUpdate
+    // CHECK-NOT: ResourceScatterUpdate
+    // CHECK-NOT: BroadcastTo
+    // CHECK: TensorScatterUpdate
     "tf.ResourceScatterUpdate"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf_type.resource>, tensor<?xi32>, tensor<i32>) -> ()
     tf_device.return
   }) : () -> ()
   func.return
 }
 
+// Test that composite tf.ResourceScatterUpdate operation is decomposed to tf.TensorScatterUpdate when update is unranked
+// CHECK-LABEL: @decompose_unranked_updates
+func.func @decompose_unranked_updates(%resource : tensor<*x!tf_type.resource>, %indices : tensor<?xi32>, %updates: tensor<*xi32>) {
+  "tf_device.cluster"() ({
+    // CHECK-NOT: ResourceScatterUpdate
+    // CHECK-NOT: BroadcastTo
+    // CHECK: TensorScatterUpdate
+    "tf.ResourceScatterUpdate"(%resource, %indices, %updates) {device = ""} : (tensor<*x!tf_type.resource>, tensor<?xi32>, tensor<*xi32>) -> ()
+    tf_device.return
+  }) : () -> ()
+  func.return
+}
+
+// CHECK-LABEL: @decompose_scalar_updates
+func.func @decompose_scalar_updates(%arg0: tensor<!tf_type.resource<tensor<4x3xi32>>>, %arg1: tensor<2xi32>, %arg2: tensor<i32>) {
+  "tf_device.cluster"() ({
+    // CHECK-NOT: ResourceScatterUpdate
+    // CHECK-NOT: BroadcastTo
+    // CHECK: TensorScatterUpdate
+    "tf.ResourceScatterUpdate"(%arg0, %arg1, %arg2) : (tensor<!tf_type.resource<tensor<4x3xi32>>>, tensor<2xi32>, tensor<i32>) -> ()
+    tf_device.return
+  }) : () -> ()
+  func.return
+}
 
 // Tests that tf.VariableShape operation is decomposed.
 

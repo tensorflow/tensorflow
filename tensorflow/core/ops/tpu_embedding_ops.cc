@@ -88,7 +88,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUEmbeddingActivations")
@@ -99,7 +99,7 @@ REGISTER_OP("TPUEmbeddingActivations")
     .Attr("lookup_id: int >= 0")
     .SetShapeFn([](shape_inference::InferenceContext *c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SendTPUEmbeddingGradients")
@@ -121,7 +121,7 @@ REGISTER_OP("SendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingIntegerBatch")
@@ -155,7 +155,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
                                        n);
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")

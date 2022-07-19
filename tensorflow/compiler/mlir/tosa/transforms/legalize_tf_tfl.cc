@@ -31,8 +31,6 @@ namespace mlir {
 namespace tosa {
 
 namespace {
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect
 class LegalizeTFTFL : public TosaLegalizeTFTFLPassBase<LegalizeTFTFL> {
@@ -47,7 +45,7 @@ void LegalizeTFTFL::runOnOperation() {
   populateLegalizeTFPatterns(ctx, patterns);
   populateLegalizeTFLPatterns(ctx, patterns);
 
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
     signalPassFailure();
   }
@@ -56,7 +54,7 @@ void LegalizeTFTFL::runOnOperation() {
 }  // anonymous namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFTFLPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFTFLPass() {
   return std::make_unique<LegalizeTFTFL>();
 }
 

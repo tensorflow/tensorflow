@@ -25,7 +25,6 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
-include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.td"
 
 class LHLOGPU_Op<string mnemonic, list<Trait> traits = []> :
   Op<LmhloGpuDialect, mnemonic,
@@ -126,37 +125,32 @@ def LHLOGPU_ConvForwardFusedSideInputOp :
 // LMHLO ops representing other library functions.
 //===----------------------------------------------------------------------===//
 
-// output = alpha * (lhs * rhs)
-// Verify: beta = 0.0
+// c = alpha * (a @ b) + beta * c
 def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$output,
+    Arg<LHLO_Buffer, "", [MemRead]>:$a,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b,
+    Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha_real,
-    F64Attr:$alpha_imag,
-    I64Attr:$batch_size,
-    I64Attr:$lhs_stride,
-    I64Attr:$rhs_stride,
-    OptionalAttr<I64Attr>:$algorithm);
-}
-
-// output = alpha(lhs * rhs) + beta * bias
-def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
-    Arg<LHLO_Buffer, "", [MemRead]>:$output,
-    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
-    I64Attr:$batch_size,
-    I64Attr:$lhs_stride,
-    I64Attr:$rhs_stride,
     OptionalAttr<I64Attr>:$algorithm);
+}
+
+def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$a,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
+    F64Attr:$beta,
+    I64Attr:$algorithm);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
@@ -175,8 +169,8 @@ def LHLOGPU_AllReduceStartOp :
     Performs an asynchronous custom reduction across replicas.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
@@ -192,8 +186,8 @@ def LHLOGPU_AllReduceDoneOp:
   let summary = "AllReduceDone operator";
   let arguments = (ins
     HLO_Token:$token,
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs
   );
 }
 

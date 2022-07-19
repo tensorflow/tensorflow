@@ -1,0 +1,9 @@
+path: "tensorflow.distribute.experimental.TerminationConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.failure_handling.failure_handling.TerminationConfig\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'termination_watcher_fn\', \'exit_fn\', \'grace_period\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+}

@@ -294,7 +294,7 @@ struct BufferReusePass : BufferReuseBase<BufferReusePass> {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

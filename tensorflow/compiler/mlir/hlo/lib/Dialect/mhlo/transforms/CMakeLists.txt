@@ -53,6 +53,9 @@ add_mlir_library(ChloPasses
 
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
+  collapse_elementwise_map.cc
+  constraint_fusion_pass.cc
+  convert_to_signless_pass.cc
   expand_hlo_tuples.cc
   group_reduction_dimensions.cc
   legalize_shape_computations.cc
@@ -69,7 +72,10 @@ add_mlir_library(MhloPasses
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
+  restrict_max_rank.cc
+  shape_reification_pass.cc
   sink_constants_to_control_flow.cc
+  sparse_rewriting.cc
   test_infer_shaped_type_pass.cc
   unfuse_batch_norm.cc
   unfuse_batch_norm_pass.cc
@@ -86,6 +92,7 @@ add_mlir_library(MhloPasses
   LINK_LIBS PUBLIC
   ChloDialect
   MhloDialect
+  MhloTypeConversion
   MLIRIR
   MLIRMhloUtils
   MLIRPass
@@ -106,12 +113,12 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
-  MLIRArithmetic
+  MLIRArithmeticDialect
   MLIRArithmeticTransforms
   MLIRFuncTransforms
   MLIRIR
   MLIRPass
-  MLIRMath
+  MLIRMathDialect
   MLIRShapeOpsTransforms
   MLIRTransformUtils
   MLIRTransforms
@@ -142,7 +149,7 @@ add_mlir_library(MhloToMemrefConversion
   MhloTypeConversion
   MLIRIR
   MLIRPass
-  MLIRMath
+  MLIRMathDialect
   MLIRTransforms
   MLIRTransformUtils
 )
@@ -162,13 +169,14 @@ add_mlir_library(MhloToArithmeticConversion
   MhloTypeConversion
   MLIRIR
   MLIRPass
-  MLIRMath
+  MLIRMathDialect
   MLIRTransforms
   MLIRTransformUtils
 )
 
 add_mlir_library(MhloToStandard
   legalize_control_flow.cc
+  legalize_sort.cc
   legalize_to_standard.cc
 
   DEPENDS
@@ -185,7 +193,7 @@ add_mlir_library(MhloToStandard
   MhloDialect
   MLIRIR
   MLIRPass
-  MLIRTensor
+  MLIRTensorDialect
   MLIRTransformUtils
 )
 
@@ -203,7 +211,8 @@ add_mlir_library(MhloToLinalg
   LmhloDialect
   MhloDialect
   MhloTypeConversion
-  MLIRComplex
+  MLIRBufferizationDialect
+  MLIRComplexDialect
   MLIRIR
   MLIRPass
   MLIRRewrite
@@ -224,7 +233,7 @@ add_mlir_library(MhloShapeOpsToStandard
   LmhloDialect
   MhloDialect
   MhloTypeConversion
-  MLIRComplex
+  MLIRComplexDialect
   MLIRIR
   MLIRPass
   MLIRRewrite
@@ -241,4 +250,13 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloToStandard
   MhloToLinalg
   MhloShapeOpsToStandard
+)
+
+add_library(AllGmlStPasses INTERFACE)
+target_link_libraries(AllGmlStPasses INTERFACE
+  GmlStPasses
+  GmlStTestPasses
+  MLIRHLOGmlStPipeline
+  MLIRFuncDialect
+  MLIRPass
 )

@@ -39,6 +39,9 @@ struct GraphExecutionOptions {
   // optimizations like function inlining will be applied.
   bool enable_grappler_function_optimizer = false;
 
+  // Whether to enable TFRT GPU.
+  bool enable_tfrt_gpu = false;
+
   // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
   // more details. It must not be nullptr;
   const tensorflow::tfrt_stub::Runtime* runtime = nullptr;
@@ -63,6 +66,9 @@ struct GraphExecutionRunOptions {
   // The thread pool used for this run. If it is nullptr, a default one set
   // in the tensorflow::tfrt_stub::Runtime will be used.
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
+
+  // If true, the cost of the op will be measured at the execution time.
+  bool enable_cost_measurement = false;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

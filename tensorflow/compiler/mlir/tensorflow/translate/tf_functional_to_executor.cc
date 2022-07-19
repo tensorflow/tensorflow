@@ -99,7 +99,7 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass() {
   return std::make_unique<FunctionalToExecutorDialectConversion>();
 }

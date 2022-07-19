@@ -49,7 +49,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -96,12 +96,13 @@ def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
       [d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
       if not s.unknown_rank else None for s in shapes
   ]
-  pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
-      tensor._op._graph._c_graph,  # pylint: disable=protected-access
-      tensor._as_tf_output(),  # pylint: disable=protected-access
-      shapes,
-      ranks,
-      types)
+  with tensor._op._graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+    pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+        c_graph,
+        tensor._as_tf_output(),  # pylint: disable=protected-access
+        shapes,
+        ranks,
+        types)
 
 
 def _combine_handle_data(handle, initial_value):
@@ -1759,7 +1760,7 @@ class ResourceVariable(BaseResourceVariable):
         initial_value, "graph") and initial_value.graph.building_function:
       raise ValueError(f"Argument `initial_value` ({initial_value}) could not "
                        "be lifted out of a `tf.function`. "
-                       "(Tried to create variable with name='{name}'). "
+                       f"(Tried to create variable with name='{name}'). "
                        "To avoid this error, when constructing `tf.Variable`s "
                        "inside of `tf.function` you can create the "
                        "`initial_value` tensor in a "

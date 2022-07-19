@@ -64,6 +64,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
@@ -119,6 +120,7 @@ cc_library(
     name = "tf_passes",
     srcs = [
         "tf_passes.cc",
+        "transforms/dequantize_tfl_softmax.cc",
         "transforms/fuse_bias_tf.cc",
         "transforms/legalize_tf.cc",
         "transforms/tf_legalize_patterns.inc",
@@ -132,6 +134,7 @@ cc_library(
     deps = [
         ":legalize_common",
         ":passes_header",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",

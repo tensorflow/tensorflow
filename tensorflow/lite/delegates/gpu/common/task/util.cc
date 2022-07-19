@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -31,6 +32,7 @@ std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
   }
   bool need_explicit_conversion = true;
   switch (dst_type) {
+    case DataType::BOOL:
     case DataType::FLOAT32:
     case DataType::FLOAT16:
       if (gpu_info.IsGlslSupportsExplicitFp16()) {
@@ -255,13 +257,15 @@ std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
   }
 }
 
-std::string GetTypeConvertion(const GpuInfo& gpu_info, DataType src_type,
+std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size) {
   if (src_type != dst_type) {
     if (gpu_info.IsApiOpenCl()) {
       return "convert_" + ToCLDataType(dst_type, vec_size);
     } else if (gpu_info.IsApiMetal()) {
-      return ToMetalDataType(dst_type, vec_size);
+      return dst_type == DataType::BOOL
+                 ? "convert_" + ToMetalDataType(dst_type, vec_size)
+                 : ToMetalDataType(dst_type, vec_size);
     } else if (gpu_info.IsGlsl()) {
       return GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
     }

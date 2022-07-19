@@ -50,11 +50,15 @@ def BinBroadcastDimensionsNonEmpty : NativeCodeCall<
 // Here, the element type can be any integer or float type. But, note that only
 // 32 bit integers are supported for the value.
 class GetScalarOfType<int value> : NativeCodeCall<
-  "hlo::GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
+  "hlo::getScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 // Constraint that Attr has values [0, 1, ...].
 def IdentityBroadcastDims : AttrConstraint<
-    CPred<"hlo::IsSequenceStartingWith0($_self)">>;
+    CPred<"hlo::isSequenceStartingWith0($_self)">>;
+
+def ComplexElementType : Type<
+  CPred<"$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,
+  "Complex element type">;
 
 def NonComplexElementType : Type<
   CPred<"!$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,

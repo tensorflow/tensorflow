@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
@@ -119,7 +118,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
-    case HloOpcode::kTupleSelect:
       return false;
 
     // Cheap instructions for reals, but expensive for complex.
@@ -484,17 +482,20 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 }  // namespace
 
 std::vector<HloComputation*> InstructionFusion::GetFusionComputations(
-    HloModule* module) {
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Use sorted computations because fusion configuration is order-sensitive.
-  return module->MakeNonfusionComputationsSorted();
+  return module->MakeNonfusionComputationsSorted(execution_threads);
 }
 
 std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
     HloComputation* computation) {
-  return absl::make_unique<ReversePostOrderFusionQueue>(computation);
+  return std::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
-StatusOr<bool> InstructionFusion::Run(HloModule* module) {
+StatusOr<bool> InstructionFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int64_t fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
@@ -508,7 +509,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool dump_fusion =
       module->config().debug_options().xla_dump_fusion_visualization();
 
-  for (auto* computation : GetFusionComputations(module)) {
+  for (auto* computation : GetFusionComputations(module, execution_threads)) {
     CHECK(!computation->IsFusionComputation());
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
@@ -817,9 +818,8 @@ namespace {
 
 // Extracts instruction from the fusion that satisfies filter. If no or multiple
 // instructions in the fusion satisfy filter, returns nullptr.
-const HloInstruction* ExtractInstruction(
-    const HloInstruction* hlo,
-    const std::function<bool(const HloInstruction*)>& filter) {
+const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
+                                         const HloPredicate& filter) {
   if (filter(hlo)) {
     return hlo;
   }
@@ -847,6 +847,49 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
   });
 }
 
+// Returns true if fusing a slice or dynamic slice in producer into a dynamic
+// update slice fusion in consumer is safe. It is not safe to fuse the slice and
+// DUS when fusing will cause another non-elementwise op to share operands with
+// the DUS in-place buffer.
+bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
+                                    const HloInstruction* consumer) {
+  CHECK_EQ(consumer->opcode(), HloOpcode::kFusion);
+  const HloInstruction* dus =
+      ExtractInstruction(consumer, HloOpcode::kDynamicUpdateSlice);
+  CHECK_NE(dus, nullptr);
+
+  // Use a memoization map to avoid exponential runtime.
+  absl::flat_hash_map<const HloInstruction*, bool> nonelementwise_memo;
+  // Recursively check if the instruction or its users (or their users) are
+  // non-elementwise with the exception of the DUS. We have already verified
+  // that the slice and DUS are compatible since their indices match.
+  HloPredicate has_nonelementwise_uses_except_dus =
+      [&](const HloInstruction* instruction) {
+        auto record_and_return = [&](bool val) {
+          nonelementwise_memo[instruction] = val;
+          return val;
+        };
+        auto nonelementwise_memo_it = nonelementwise_memo.find(instruction);
+        if (nonelementwise_memo_it != nonelementwise_memo.end()) {
+          return nonelementwise_memo_it->second;
+        }
+        if (instruction != dus && !instruction->IsElementwise() &&
+            instruction->opcode() != HloOpcode::kParameter) {
+          return record_and_return(true);
+        }
+        return record_and_return(absl::c_any_of(
+            instruction->users(), has_nonelementwise_uses_except_dus));
+      };
+  for (int i = 0; i < consumer->operand_count(); ++i) {
+    if (consumer->operand(i) == producer &&
+        has_nonelementwise_uses_except_dus(consumer->fused_parameter(i))) {
+      VLOG(4) << "Found a different elementwise";
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 /*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
@@ -855,20 +898,27 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
   // operand as an in-place operand of the consumer. The consumer will modify
   // the buffer in-place, which will cause producer's operand to change if we
   // allow them to fuse.
-  if (producer->IsElementwise()) {
-    return {};
-  }
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs =
           HloDataflowAnalysis::GetInPlaceInputOutputPairs(
               const_cast<HloInstruction*>(consumer));
   for (auto& pair : in_place_input_output_pairs) {
-    VLOG(4) << "in/out pair: " << pair.first.operand_number << " "
+    int operand_number = pair.first.operand_number;
+    VLOG(4) << "in/out pair: " << operand_number << " "
             << pair.first.operand_index.ToString() << " "
             << pair.second.ToString();
-    if (absl::c_find(producer->operands(),
-                     consumer->operand(pair.first.operand_number)) !=
-        producer->operands().end()) {
+    // Check if the consumer also has an additional operand that has the same
+    // value as the in-place buffer. If so, it's unsafe to fuse.
+    for (int i = 0; i < consumer->operand_count(); ++i) {
+      if (i != operand_number &&
+          consumer->operand(operand_number) == consumer->operand(i)) {
+        return "The consumer is an in-place operation that has an additional "
+               "operand that has the same value as the in-place buffer";
+      }
+    }
+    if (!producer->IsElementwise() &&
+        absl::c_find(producer->operands(), consumer->operand(operand_number)) !=
+            producer->operands().end()) {
       VLOG(4) << "Found non-elementwise operand that uses the same operand of "
                  "an in-place consumer";
       auto get_real_operand = [](const HloInstruction* op,
@@ -881,11 +931,11 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
       };
 
       auto get_constant_operand =
-          [](const HloInstruction* operand) -> absl::optional<int> {
+          [](const HloInstruction* operand) -> std::optional<int> {
         if (operand->IsConstant()) {
           return operand->literal().GetFirstInteger();
         }
-        return absl::nullopt;
+        return std::nullopt;
       };
       // A common special case is a slice or dynamic-slice and a
       // dynamic-update-slice that use the same indices. This pattern is safe.
@@ -913,6 +963,11 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           }
         }
         VLOG(4) << "DUS and slice index match";
+        if (consumer->opcode() == HloOpcode::kFusion &&
+            !IsSafeToFuseSliceIntoDusFusion(producer, consumer)) {
+          return "Fusing slice into DUS will also fuse another non-elementwise "
+                 "op with shared operand as DUS.";
+        }
         return {};
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
@@ -929,6 +984,11 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
           }
         }
         VLOG(4) << "DUS and DS index match";
+        if (consumer->opcode() == HloOpcode::kFusion &&
+            !IsSafeToFuseSliceIntoDusFusion(producer, consumer)) {
+          return "Fusing DS into DUS will also fuse another non-elementwise op "
+                 "with shared operand as DUS.";
+        }
         return {};
       }
       return "unrecognized inplace update non-elementwise output pair";

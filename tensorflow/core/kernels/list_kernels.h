@@ -38,11 +38,12 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
 
-// stream.h isn't available in some platforms such as Android and iOS.
-// Only include it for platforms that PluggableDevice is tested on.
+// stream.h isn't available in some platforms such as Android, iOS, and
+// ChromiumOS. Only include it for platforms that PluggableDevice is tested on.
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
     (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
-    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS &&      \
+    !defined(PLATFORM_CHROMIUMOS)
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 
@@ -829,7 +830,7 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
     copy_tensor(c, tmp, aligned);
     std::swap(list->tensors()[i], aligned);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename T>
@@ -984,7 +985,7 @@ Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
         BinaryAddTensors<Device>(c, a_tensor, b_tensor, &out_tensor));
     out->tensors().push_back(out_tensor);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device>
@@ -998,7 +999,7 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
     TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, t, &out_tensor));
     y->tensors().emplace_back(out_tensor);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename T>

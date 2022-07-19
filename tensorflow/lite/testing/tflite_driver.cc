@@ -394,12 +394,12 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
       absolute_threshold_(kAbsoluteThreshold),
       quantization_error_multiplier_(kQuantizationErrorMultiplier) {
   if (reference_kernel) {
-    resolver_.reset(new ops::builtin::BuiltinRefOpResolver);
+    resolver_ = std::make_unique<ops::builtin::BuiltinRefOpResolver>();
   } else {
     // TODO(b/168278077): change back to use BuiltinOpResolver after zip tests
     // are fully validated against TfLite delegates.
-    resolver_.reset(
-        new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
+    resolver_ = std::make_unique<
+        ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
     ops::builtin::BuiltinOpResolver* builtin_op_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     builtin_op_resolver_->AddCustom("IRFFT2D",
@@ -704,9 +704,8 @@ void TfLiteDriver::SetExpectation(const string& name,
   if (expected_output_.count(id) != 0) {
     Invalidate(absl::StrCat("Overridden expectation for tensor '", id, "'"));
   }
-  expected_output_[id].reset(
-      new DataExpectation(relative_threshold_, absolute_threshold_,
-                          quantization_error_multiplier_));
+  expected_output_[id] = std::make_unique<DataExpectation>(
+      relative_threshold_, absolute_threshold_, quantization_error_multiplier_);
 
   if (InterpretAsQuantized(*tensor)) {
     expected_output_[id]->SetData<float>(csv_values);
@@ -771,7 +770,7 @@ void TfLiteDriver::SetShapeExpectation(const string& name,
     Invalidate(
         absl::StrCat("Overridden shape expectation for tensor '", id, "'"));
   }
-  expected_output_shape_[id].reset(new ShapeExpectation(csv_values));
+  expected_output_shape_[id] = std::make_unique<ShapeExpectation>(csv_values);
 }
 
 void TfLiteDriver::ResetLSTMStateTensors() {

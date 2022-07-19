@@ -198,8 +198,8 @@ void BroadcastFoldPass::runOnOperation() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass() {
-  return absl::make_unique<BroadcastFoldPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBroadcastFoldPass() {
+  return std::make_unique<BroadcastFoldPass>();
 }
 }  // namespace TF
 

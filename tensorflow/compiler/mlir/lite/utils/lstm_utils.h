@@ -102,7 +102,7 @@ class ConvertLSTMCellSimpleToFusedLSTM {
   virtual void SetOutputLayerNormCoefficients();
 
   // specified state
-  FuncOp fused_func_op_;
+  func::FuncOp fused_func_op_;
   Value input_;
   Value weight_;
   Value bias_;

@@ -35,8 +35,8 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -752,6 +752,18 @@ class ShardedVariableMixin(trackable.Trackable):
   @property
   def is_sharded_variable(self):
     return True
+
+  def numpy(self):
+    """Copies the values in this ShardedVariable to a NumPy array.
+
+    First converts to a single Tensor using the registered conversion function,
+    which concatenates the shards, then uses Tensor.numpy() to convert to
+    a NumPy array.
+
+    Returns:
+      A NumPy array of the same shape and dtype.
+    """
+    return _var_to_tensor(self).numpy()
 
 
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])

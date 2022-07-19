@@ -688,9 +688,12 @@ bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
       for (int i = 0; i < num_dims; ++i) {
         tensorflow::Safe_PyObjectPtr inner_py_value(
             PySequence_ITEM(py_value, i));
+        // If an error is generated when iterating through object, we can
+        // sometimes get a nullptr.
         if (inner_py_value.get() == Py_None) {
           dims[i] = -1;
-        } else if (!ParseDimensionValue(key, inner_py_value.get(), status,
+        } else if (inner_py_value.get() == nullptr ||
+                   !ParseDimensionValue(key, inner_py_value.get(), status,
                                         &dims[i])) {
           return false;
         }
@@ -1005,9 +1008,10 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   tensorflow::DCheckPyGilState();
   DCHECK(!status.ok());
 
-  if (status.stack_trace().empty()) return status.error_message();
+  std::vector<tensorflow::StackFrame> stack_trace =
+      tensorflow::errors::GetStackTrace(status);
 
-  const std::vector<tensorflow::StackFrame>& stack_trace = status.stack_trace();
+  if (stack_trace.empty()) return status.error_message();
 
   PyObject* linecache = PyImport_ImportModule("linecache");
   PyObject* getline =
@@ -1258,7 +1262,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     if (graph_shape_fn_ == nullptr) {
       return tensorflow::errors::InvalidArgument("invalid vspace");
     }
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   ~PyVSpace() override {
@@ -1335,7 +1339,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   Status BuildOnesLike(const PyTapeTensor& t,
                        PyObject** result) const override {
     *result = t.OnesLike();
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   PyObject* Zeros(PyObject* shape, PyObject* dtype) const {
@@ -1408,7 +1412,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     Py_DECREF(seq);
     Py_DECREF(py_result);
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
@@ -2483,7 +2487,7 @@ tensorflow::Status ParseTangentOutputs(
     PyObject* user_output, std::vector<PyObject*>* output_tangents) {
   if (user_output == Py_None) {
     // No connected gradients.
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   tensorflow::Safe_PyObjectPtr fast_result(
       PySequence_Fast(user_output, "expected a sequence of forward gradients"));
@@ -2503,7 +2507,7 @@ tensorflow::Status ParseTangentOutputs(
       output_tangents->push_back(item);
     }
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Calls the registered forward_gradient_function, computing `output_tangents`
@@ -2860,7 +2864,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
       // exception which caused the problem.
-      status->status = tensorflow::Status::OK();
+      status->status = ::tensorflow::OkStatus();
     }
     return nullptr;
   }

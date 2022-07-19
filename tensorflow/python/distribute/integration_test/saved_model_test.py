@@ -297,7 +297,7 @@ class SaveAndLoadForServingTest(test.TestCase, parameterized.TestCase):
       export_dir = self.get_temp_dir()
       # Saving a ConcreteFunction should raise an error.
       with self.assertRaisesRegex(
-          ValueError, "save a tf.function with input_signature instead"):
+          ValueError, "saving a tf.function with input_signature instead"):
         tf.saved_model.save(
             m,
             export_dir,

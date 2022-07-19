@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/meta/type_traits.h"
@@ -98,9 +99,9 @@ class XStatsBuilder {
     }
   }
 
-  const XStat* GetStat(int64_t metadata_id) const {
+  const XStat* GetStat(const XStatMetadata& stat_metadata) const {
     for (auto& stat : *stats_owner_->mutable_stats()) {
-      if (stat.metadata_id() == metadata_id) {
+      if (stat.metadata_id() == stat_metadata.id()) {
         return &stat;
       }
     }
@@ -213,15 +214,21 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   XEventBuilder(const XLine* line, XPlaneBuilder* plane, XEvent* event)
       : XStatsBuilder<XEvent>(event, plane), line_(line), event_(event) {}
 
+  int64_t LineTimestampPs() const { return NanoToPico(line_->timestamp_ns()); }
   int64_t OffsetPs() const { return event_->offset_ps(); }
+  int64_t TimestampPs() const { return LineTimestampPs() + OffsetPs(); }
+  int64_t DurationPs() const { return event_->duration_ps(); }
   int64_t MetadataId() const { return event_->metadata_id(); }
 
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
   void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanoToPico(offset_ns)); }
 
+  void SetTimestampPs(int64_t timestamp_ps) {
+    SetOffsetPs(timestamp_ps - LineTimestampPs());
+  }
   void SetTimestampNs(int64_t timestamp_ns) {
-    SetOffsetPs(NanoToPico(timestamp_ns - line_->timestamp_ns()));
+    SetOffsetNs(timestamp_ns - line_->timestamp_ns());
   }
 
   void SetNumOccurrences(int64_t num_occurrences) {
@@ -236,17 +243,22 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   }
 
   void SetEndTimestampPs(int64_t end_timestamp_ps) {
-    SetDurationPs(end_timestamp_ps - PicoToNano(line_->timestamp_ns()) -
-                  event_->offset_ps());
+    SetDurationPs(end_timestamp_ps - TimestampPs());
   }
   void SetEndTimestampNs(int64_t end_timestamp_ns) {
     SetDurationPs(NanoToPico(end_timestamp_ns - line_->timestamp_ns()) -
                   event_->offset_ps());
   }
 
-  Timespan GetTimespan() const {
-    return Timespan(NanoToPico(line_->timestamp_ns()) + event_->offset_ps(),
-                    event_->duration_ps());
+  Timespan GetTimespan() const { return Timespan(TimestampPs(), DurationPs()); }
+
+  void SetTimespan(Timespan timespan) {
+    SetTimestampPs(timespan.begin_ps());
+    SetDurationPs(timespan.duration_ps());
+  }
+
+  bool operator<(const XEventBuilder& other) const {
+    return GetTimespan() < other.GetTimespan();
   }
 
  private:
@@ -360,6 +372,9 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   XEventMetadata* GetOrCreateEventMetadata(const char* name) {
     return GetOrCreateEventMetadata(absl::string_view(name));
   }
+  // Like the functions above but for multiple names.
+  std::vector<XEventMetadata*> GetOrCreateEventsMetadata(
+      const std::vector<absl::string_view>& names);
 
   // Returns event metadata with the given name. Returns nullptr if not found.
   XEventMetadata* GetEventMetadata(absl::string_view name) const;

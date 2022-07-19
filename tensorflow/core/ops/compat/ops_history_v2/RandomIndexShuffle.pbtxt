@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RandomIndexShuffle"
   input_arg {
     name: "index"

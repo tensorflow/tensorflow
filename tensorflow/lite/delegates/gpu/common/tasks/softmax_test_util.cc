@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -43,7 +44,7 @@ absl::Status SoftmaxTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateSoftmax(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f / 3.0f, 2.0f / 3.0f, 3.0f / 7.0f, 4.0f / 7.0f},
@@ -83,7 +84,7 @@ absl::Status SoftmaxBigNumberTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateSoftmax(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({static_cast<float>(std::exp(doubles[0]) / s0),
@@ -113,7 +114,7 @@ absl::Status Softmax1x1Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Softmax1x1 operation = CreateSoftmax1x1(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Softmax1x1>(std::move(operation)),
+          src_tensor, std::make_unique<Softmax1x1>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.1f, 0.2f, 0.3f, 0.4f}, dst_tensor.data, eps));
@@ -152,7 +153,7 @@ absl::Status Softmax1x1BigNumberTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Softmax1x1 operation = CreateSoftmax1x1(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Softmax1x1>(std::move(operation)),
+          src_tensor, std::make_unique<Softmax1x1>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({static_cast<float>(std::exp(doubles[0]) / s0),

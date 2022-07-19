@@ -71,40 +71,10 @@ def ShapeToDescriptorsPass : Pass<"shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
-def ComputeOpAndFuncBufferizePass : Pass<"computeop-and-func-bufferize", "ModuleOp"> {
-  let summary = "Pass to transform compute operations (hlo and linalg) on "
-                "values to buffer based ones.";
-  let constructor = "transforms::CreateComputeOpAndFuncBufferizePass()";
-}
-
-def TiledLoopBufferizePass : Pass<"tiled-loop-bufferize", "mlir::func::FuncOp"> {
-  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
-  let constructor = "transforms::CreateTiledLoopBufferizePass()";
-}
-
-def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
+def KernelgenFinalBufferizePass : Pass<"kernelgen-final-bufferize", "ModuleOp"> {
   let summary = "Pass to transform late operations on values to buffer based "
                 "ones.";
-  let constructor = "transforms::CreateFinalBufferizePass()";
-  let options = [
-      Option<"alignment_", "alignment", "uint64_t",
-             /*default=*/"64", "Memory alignment">,
-  ];
-}
-
-def ConvertToSignlessPass : Pass<"convert-to-signless", "ModuleOp"> {
-  let summary = "Pass to transform the IR to be on signless integers.";
-  let constructor = "transforms::CreateConvertToSignlessPass()";
-}
-
-def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
-  let summary = "Pass to transform a gpu module to nvvm.";
-  let constructor = "transforms::CreateGpuKernelToNvvmPass()";
-}
-
-def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
-  let summary = "Pass to transform a gpu module to rocdl.";
-  let constructor = "transforms::CreateGpuKernelToRocdlPass()";
+  let constructor = "transforms::CreateKernelgenFinalBufferizePass()";
 }
 
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
@@ -147,15 +117,6 @@ def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
   let dependentDialects = ["LLVM::LLVMDialect"];
 }
 
-def MapParallelLoopsPass
-    : Pass<"map-parallel-loops-to-gpu", "mlir::func::FuncOp"> {
-  let summary = "Greedily maps loops to GPU hardware dimensions.";
-  let constructor = "transforms::CreateMapParallelLoopsPass()";
-  let description = [{
-    Greedily maps loops to GPU hardware dimensions.
-  }];
-}
-
 def FuseInnerParallelLoopsPass
     : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
@@ -164,25 +125,6 @@ def FuseInnerParallelLoopsPass
     Directs parallel loop fusion to the inner loops. This cannot be done with
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
-  }];
-}
-
-def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
-  let summary = "Pass to create vectorized operations for CPU.";
-  let constructor = "transforms::CreateVectorizationPass()";
-  let description = [{
-    Takes linalg loops on buffers and vectorizes the loads/stores and operations
-    in between. This is intended for the CPU backend.
-  }];
-}
-
-def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::func::FuncOp"> {
-  let summary = "Pass to remove dead code in VectorizationPass.";
-  let constructor = "transforms::CreateVectorizationCleanupPass()";
-  let description = [{
-    VectorizationPass creates some memory transfers that are unneeded but cannot
-    be safely removed by current generic infrastructure. This removes the
-    specific operations.
   }];
 }
 

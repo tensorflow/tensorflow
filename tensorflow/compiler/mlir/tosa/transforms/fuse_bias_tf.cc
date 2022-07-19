@@ -21,6 +21,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 #define PASS_NAME "tosa-fuse-bias-tf"
 #define DEBUG_TYPE PASS_NAME
@@ -35,8 +37,6 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 class FuseBiasTF : public TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
@@ -119,7 +119,7 @@ void FuseBiasTF::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createFuseBiasTFPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass() {
   return std::make_unique<FuseBiasTF>();
 }
 

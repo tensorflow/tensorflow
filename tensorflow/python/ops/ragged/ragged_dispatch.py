@@ -17,7 +17,6 @@
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.util import dispatch
@@ -31,13 +30,6 @@ def ragged_unary_elementwise_op(op, x):
   """Unary elementwise api handler for RaggedTensors."""
   x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
   return x.with_values(op(x.values))
-
-
-@dispatch.dispatch_for_binary_elementwise_apis(ragged_tensor.RaggedOrDense,
-                                               ragged_tensor.RaggedOrDense)
-def ragged_binary_elementwise_op_bridge(op, x, y):
-  """Binary elementwise api handler for RaggedTensors."""
-  return dynamic_ragged_shape.ragged_binary_elementwise_op_impl(op, x, y)
 
 
 # TODO(martinz): This is deprecated. Delete.

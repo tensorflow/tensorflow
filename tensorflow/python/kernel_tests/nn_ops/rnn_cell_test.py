@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -33,6 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import   array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -47,8 +49,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 
 
@@ -1322,6 +1323,36 @@ class LSTMTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testDynamicEquivalentToStaticRNNWithSequenceLength(self):
     self._testDynamicEquivalentToStaticRNN(use_sequence_length=True)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellErrorHandling(self):
+    forget_bias = 1
+    cell_clip = 0
+    use_peephole = False
+    x = constant_op.constant(0.837607, shape=[28, 29], dtype=dtypes.float32)
+    cs_prev = constant_op.constant(0, shape=[28, 17], dtype=dtypes.float32)
+    h_prev = constant_op.constant(
+        0.592631638, shape=[28, 17], dtype=dtypes.float32)
+    w = constant_op.constant(0.887386262, shape=[46, 68], dtype=dtypes.float32)
+    wci = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+    wcf = constant_op.constant(0, shape=[17], dtype=dtypes.float32)
+    wco = constant_op.constant(
+        0.592631638, shape=[28, 17], dtype=dtypes.float32)
+    b = constant_op.constant(0.75259006, shape=[68], dtype=dtypes.float32)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=x,
+              cs_prev=cs_prev,
+              h_prev=h_prev,
+              w=w,
+              wci=wci,
+              wcf=wcf,
+              wco=wco,
+              b=b,
+              forget_bias=forget_bias,
+              cell_clip=cell_clip,
+              use_peephole=use_peephole))
 
 
 class BidirectionalRNNTest(test.TestCase):
@@ -3063,7 +3094,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
       self.skipTest("b/175887901")
 
     with self.cached_session():
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
       root.cell = rnn_cell_impl.LSTMCell(8)
       @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
       def call(x):

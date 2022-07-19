@@ -86,8 +86,8 @@ SubContext::SubContext(OpKernelContext* ctx, OpKernelContext::Params* params,
       sub_inputs_({TensorValue(output), TensorValue(input)}),
       sub_input_attr_({ctx->input_alloc_attr(0), ctx->input_alloc_attr(0)}) {
   sub_params_.op_kernel = op;
-  sub_params_.inputs = &sub_inputs_;
-  sub_params_.input_alloc_attrs = &sub_input_attr_;
+  sub_params_.inputs = sub_inputs_;
+  sub_params_.input_alloc_attrs = sub_input_attr_;
   sub_params_.op_device_context = ctx->op_device_context();
   sub_params_.eigen_gpu_device = nullptr;
   sub_params_.ensure_eigen_gpu_device();

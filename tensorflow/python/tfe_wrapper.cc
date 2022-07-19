@@ -413,6 +413,8 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
   IrExportStage selected_stage = [&] {
     if (s_stage == "hlo") {
       return IrExportStage::HLO;
+    } else if (s_stage == "hlo_no_metadata") {
+      return IrExportStage::HLO_NO_METADATA;
     } else if (s_stage == "hlo_serialized") {
       return IrExportStage::HLO_SERIALIZED;
     } else if (s_stage == "optimized_hlo") {
@@ -936,8 +938,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // TFE_Executor logic
   m.def(
       "TFE_NewExecutor",
-      [](const bool is_async) {
-        TFE_Executor* exc = TFE_NewExecutor(is_async);
+      [](const bool is_async, const bool enable_streaming_enqueue) {
+        TFE_Executor* exc = TFE_NewExecutor(is_async, enable_streaming_enqueue);
         return exc;
       },
       py::return_value_policy::reference);

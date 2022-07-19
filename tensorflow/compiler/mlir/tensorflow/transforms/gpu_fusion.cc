@@ -118,7 +118,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 };
 
 void GpuOpFusionPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   RewritePatternSet patterns(&getContext());
   patterns.add<ReluToFusedBatchNorm>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
@@ -126,7 +126,7 @@ void GpuOpFusionPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGpuOpFusionPass() {
   return std::make_unique<GpuOpFusionPass>();
 }
 

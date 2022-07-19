@@ -297,6 +297,101 @@ absl::Status CheckDepthwiseConvGpuDelegateCompatibility(
   return absl::OkStatus();
 }
 
+absl::Status CheckCumsumGpuDelegateCompatibility(const OpSignature& op_sig) {
+  if (op_sig.inputs.size() != 2) {
+    return absl::InvalidArgumentError("Expects 2 inputs and 1 output");
+  }
+  auto error = absl::InvalidArgumentError(
+      "Input/output must be float type and indices must be constant int32 "
+      "type");
+  if ((op_sig.inputs.at(0).type != kTfLiteFloat16 &&
+       op_sig.inputs.at(0).type != kTfLiteFloat32) ||
+      (op_sig.outputs.at(0).type != op_sig.inputs.at(0).type) ||
+      (op_sig.inputs.at(1).type != kTfLiteInt32 ||
+       !op_sig.inputs.at(1).is_const)) {
+    return error;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckOneHotGpuDelegateCompatibility(const OpSignature& op_sig) {
+  if (op_sig.inputs.size() != 4 && op_sig.outputs.size() != 1) {
+    return absl::InvalidArgumentError("Expects 4 inputs and 1 output");
+  }
+  // Supports int32 indices with float scalar on/off values.
+  // Axis value must be -1 or last dimension.
+  absl::Status error = absl::InvalidArgumentError(
+      "Indices must be int32 type, on/off tensors must be constant, scalar, "
+      "float type, axis must be -1 or last dim");
+  if (op_sig.inputs[0].type != kTfLiteInt32) {
+    return error;
+  }
+  auto* one_hot_options =
+      reinterpret_cast<TfLiteOneHotParams*>(op_sig.builtin_data);
+  const int num_dims = op_sig.inputs[0].dims.size();
+  if (one_hot_options->axis != -1 &&
+      one_hot_options->axis != op_sig.inputs[0].dims[num_dims - 1]) {
+    return error;
+  }
+  // Can only have batch and channels as non-singleton.
+  for (int i = 0; i < num_dims - 1; ++i) {
+    if (num_dims > 3 && i == 0) {
+      continue;
+    }
+    if (op_sig.inputs.at(0).dims[i] != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unspported non-singleton dim at ", i));
+    }
+  }
+  // On and off value must be float, constant and scalar.
+  if (op_sig.inputs.at(2).type != kTfLiteFloat32 ||
+      op_sig.inputs.at(3).type != kTfLiteFloat32) {
+    return error;
+  }
+  if (!op_sig.inputs.at(2).is_const || !op_sig.inputs.at(3).is_const ||
+      op_sig.inputs.at(2).dims.size() > 1 ||
+      op_sig.inputs.at(3).dims.size() > 1) {
+    return error;
+  }
+  if ((!op_sig.inputs.at(2).dims.empty() && op_sig.inputs.at(2).dims[0] > 1) ||
+      (!op_sig.inputs.at(3).dims.empty() && op_sig.inputs.at(3).dims[0] > 1)) {
+    return error;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
+  if (op_sig.inputs.size() != 3 || op_sig.outputs.size() != 1) {
+    return absl::InvalidArgumentError("Expected 3 inputs and 1 output");
+  }
+  // Only supports float inputs with non-broadcastable or scalar if/else.
+  absl::Status error = absl::InvalidArgumentError(
+      "Cond must be float type, if, else tensors must be float and either "
+      "be same shape as output or constant, scalar.");
+  if ((op_sig.inputs.at(0).type != kTfLiteFloat16 &&
+       op_sig.inputs.at(0).type != kTfLiteFloat32) ||
+      (op_sig.inputs.at(1).type != kTfLiteFloat16 &&
+       op_sig.inputs.at(1).type != kTfLiteFloat32) ||
+      (op_sig.inputs.at(2).type != kTfLiteFloat16 &&
+       op_sig.inputs.at(2).type != kTfLiteFloat32)) {
+    return error;
+  }
+  std::vector<int32_t> output_dims = op_sig.outputs[0].dims;
+  if (!op_sig.inputs.at(1).dims.empty() &&
+      (op_sig.inputs.at(1).dims != output_dims) &&
+      (op_sig.inputs.at(1).dims.size() > 1 ||
+       op_sig.inputs.at(1).dims[0] > 1)) {
+    return error;
+  }
+  if (!op_sig.inputs.at(2).dims.empty() &&
+      (op_sig.inputs.at(2).dims != output_dims) &&
+      (op_sig.inputs.at(2).dims.size() > 1 ||
+       op_sig.inputs.at(2).dims[0] > 1)) {
+    return error;
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
   if (op_sig.custom_name == "Convolution2DTransposeBias") {
     RETURN_IF_ERROR(CheckTensorIsAvailable(op_sig, 1));
@@ -348,9 +443,16 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinAveragePool2d:
       return CheckPooling2DGpuDelegateCompatibility(op_sig);
 
-    case kTfLiteBuiltinBatchMatmul:
-      return CheckInputsOutputs(op_sig, /*required_runtime_inputs=*/2,
-                                /*required_outputs=*/1);
+    case kTfLiteBuiltinBatchMatmul: {
+      const int num_inputs = op_sig.inputs.size();
+      const int num_outputs = op_sig.outputs.size();
+      if (!(num_inputs == 2 && num_outputs == 1)) {
+        return absl::InternalError(
+            absl::StrCat("Expected 2 inputs and 1 output, got: ", num_inputs,
+                         " inputs and ", num_outputs, " outputs"));
+      }
+      return absl::OkStatus();
+    }
 
     case kTfLiteBuiltinCast:
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
@@ -388,6 +490,9 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
           tf_options->dilation_width_factor));
       return IsActivationSupported(tf_options->activation);
     }
+
+    case kTfLiteBuiltinCumsum:
+      return CheckCumsumGpuDelegateCompatibility(op_sig);
 
     case kTfLiteBuiltinDensify:
       return CheckInputsOutputs(op_sig, /*required_runtime_inputs=*/0,
@@ -549,6 +654,9 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinPack:
       return absl::OkStatus();
 
+    case kTfLiteBuiltinOneHot:
+      return CheckOneHotGpuDelegateCompatibility(op_sig);
+
     case kTfLiteBuiltinQuantize:
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,
@@ -566,6 +674,9 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                                          /*required_runtime_inputs=*/1,
                                          /*required_outputs=*/1));
       return absl::OkStatus();
+
+    case kTfLiteBuiltinSelectV2:
+      return CheckSelectV2GpuDelegateCompatibility(op_sig);
 
     case kTfLiteBuiltinSlice: {
       if (op_sig.inputs.size() < 3) {

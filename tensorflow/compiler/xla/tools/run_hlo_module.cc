@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -110,7 +109,7 @@ Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
   TF_QCHECK_OK(result_status.status())
       << "Failed to execute on " << runner->Name() << "\n";
 
-  return result_status.ConsumeValueOrDie();
+  return std::move(result_status).value();
 }
 }  // namespace
 
@@ -138,7 +137,7 @@ Status RunAndCompare(
 
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
                                                 options.use_large_float_range)
-                                  .ConsumeValueOrDie();
+                                  .value();
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -183,7 +182,7 @@ Status RunAndCompare(
     reference_module =
         PrepareReferenceModule(*test_module, test_runner, config_modifier_hook,
                                reference_module_modifier_hook)
-            .ConsumeValueOrDie();
+            .value();
   }
 
   Literal test_result = ExecuteWithRunner(
@@ -200,7 +199,7 @@ Status RunAndCompare(
 
   if (reference_module == nullptr) {
     std::cerr << "Skipping reference runner\n";
-    return Status::OK();
+    return OkStatus();
   }
 
   Literal reference_result =

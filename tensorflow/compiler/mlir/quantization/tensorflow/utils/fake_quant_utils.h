@@ -145,7 +145,7 @@ class ConvertFakeQuantOpToQuantOps {
 
 // Removes the wrapper of the tf.FakeQuant* ops and creates the quant.qcast
 // and quant.dcast pairs before tf.FakeQuant* ops are being folded.
-LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext* ctx,
+LogicalResult ConvertFakeQuantOps(func::FuncOp func, MLIRContext *ctx,
                                   bool use_fake_quant_num_bits);
 
 }  // namespace quant

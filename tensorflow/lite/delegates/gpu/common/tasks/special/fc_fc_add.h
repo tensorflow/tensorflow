@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -157,7 +158,7 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
       RearrangeFCWeightsToIOO4I4(weights, ptr);
     }
 
-    args_.AddObject(name, absl::make_unique<BufferDescriptor>(std::move(desc)));
+    args_.AddObject(name, std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
@@ -177,7 +178,7 @@ void FCFCAdd::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
     }
 
     args_.AddObject(name,
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                    std::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 

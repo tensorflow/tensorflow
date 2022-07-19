@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 
 namespace mlir {
@@ -36,8 +36,7 @@ TranslateToMLIRRegistration graphdef_to_mlir(
         LOG(ERROR) << status.error_message();
         return OwningOpRef<mlir::ModuleOp>{};
       }
-      auto errorOrModule =
-          tfg::ImportGraphDefToMlir(context, debug_info, graphdef);
+      auto errorOrModule = tfg::ImportGraphDef(context, debug_info, graphdef);
       if (!errorOrModule.ok()) {
         LOG(ERROR) << errorOrModule.status();
         return OwningOpRef<mlir::ModuleOp>{};
@@ -50,7 +49,7 @@ TranslateFromMLIRRegistration mlir_to_graphdef(
     [](ModuleOp module, raw_ostream &output) {
       tensorflow::GraphDef graphdef;
       tensorflow::Status status =
-          tensorflow::ExportMlirToGraphdef(module, &graphdef);
+          mlir::tfg::ConvertToGraphDef(module, &graphdef);
       if (!status.ok()) {
         LOG(ERROR) << "Error exporting MLIR module to GraphDef: " << status;
         return failure();

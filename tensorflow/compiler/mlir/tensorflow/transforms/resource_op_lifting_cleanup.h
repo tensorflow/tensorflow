@@ -39,7 +39,7 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 LogicalResult CleanupAndCanonicalizeForResourceOpLifting(ModuleOp module);
-LogicalResult CleanupAndCanonicalizeForResourceOpLifting(FuncOp func);
+LogicalResult CleanupAndCanonicalizeForResourceOpLifting(func::FuncOp func);
 
 }  // namespace TF
 }  // namespace mlir

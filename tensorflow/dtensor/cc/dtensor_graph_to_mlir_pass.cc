@@ -130,7 +130,7 @@ Status DTensorMlirPassRunner::RunOnGraph(
   Graph* output_graph = graph->get();
   VLOG(4) << DumpGraphToFile("dtensor_mlir_pass_after", *output_graph,
                              flib_def);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

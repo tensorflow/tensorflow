@@ -15,13 +15,47 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def GreedyTilingPass : Pass<"gml-greedy-tiling", "mlir::func::FuncOp"> {
-  let summary = "Tile producers of gml_st.materialize operations";
-  let constructor = "::mlir::gml_st::createGreedyTilingPass()";
+def LegalizeMHLOToGMLPass : Pass<"legalize-mhlo-to-gml", "mlir::func::FuncOp"> {
+  let summary = "TBD";
+  let constructor = "::mlir::gml_st::createLegalizeMHLOToGMLPass()";
+}
+
+def FusionPass : Pass<"gml-fusion", "mlir::func::FuncOp"> {
+  let summary = "Fuse producers in into `gml_st.materialize` operations";
+  let constructor = "::mlir::gml_st::createFusionPass()";
+}
+
+def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
+  let summary = "Tile operations to produce gml_st.parallel or gml_st.for";
+  let constructor = "::mlir::gml_st::createTilingPass()";
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t", "Tile sizes",
+               "llvm::cl::ZeroOrMore">,
+  ];
+}
+
+def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
+  let summary = "Compose set operations.";
+  let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lower `gml_st.loop` to SCF loops and parallel loops";
   let constructor = "::mlir::gml_st::createGmlStToScfPass()";
   let dependentDialects = ["::mlir::scf::SCFDialect"];
+}
+
+def TiledLoopBufferizePass :
+    Pass<"gml-tiled-loop-bufferize", "mlir::func::FuncOp"> {
+  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
+  let constructor = "::mlir::gml_st::CreateTiledLoopBufferizePass()";
+}
+
+def VectorizeGmlStLoopsPass :
+    Pass<"vectorize-gml-st-loops", "mlir::func::FuncOp"> {
+  let summary =
+      "Pass to vectorize linalg.generic ops tiled to gml_st.parallel and " #
+      "gml_st.for loops.";
+  let constructor = "::mlir::gml_st::createVectorizeGmlStLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
 }

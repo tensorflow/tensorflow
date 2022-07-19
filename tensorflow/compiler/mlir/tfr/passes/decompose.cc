@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -95,7 +95,7 @@ Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
 
 // Decompose the TF ops with the registered composition library.
 class DecomposeTFOpsPass
-    : public PassWrapper<DecomposeTFOpsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<DecomposeTFOpsPass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeTFOpsPass)
 
@@ -128,7 +128,7 @@ class DecomposeTFOpsPass
 #include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   RewritePatternSet patterns(&getContext());
 
   populateWithGenerated(patterns);
@@ -138,8 +138,8 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
 }
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
-  FuncOp func = getOperation();
-  SymbolTable table(external_tfr_module_.hasValue()
+  func::FuncOp func = getOperation();
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
   OpBuilder builder(func);
@@ -280,8 +280,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
 LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
-  FuncOp func = getOperation();
-  SymbolTable table(external_tfr_module_.hasValue()
+  func::FuncOp func = getOperation();
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
@@ -353,7 +353,7 @@ void DecomposeTFOpsPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the pass to decompose the TF ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeTFOpsPass(
     llvm::Optional<ModuleOp> tfr_module) {
   return std::make_unique<DecomposeTFOpsPass>(tfr_module);
 }

@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -133,56 +132,5 @@ ENTRY comp {
           _));
 }
 
-// Test that conditionals of tuple type get turned into kTupleSelect
-TEST_F(ConditionalToSelectTest, MapConditionalTuples) {
-  const std::string hlo_text = R"(
-HloModule MapConditionalTuples
-
-if {
-  %pif = () parameter(0)
-  %zero = f32[] constant(0)
-  ROOT %tup = (f32[],f32[]) tuple(%zero, %zero)
-}
-
-else {
-  %pelse = () parameter(0)
-  %one = f32[] constant(0)
-  ROOT %tup = (f32[],f32[]) tuple(%one, %one)
-}
-
-add {
-  %add_lhs = f32[] parameter(0)
-  %add_rhs = f32[] parameter(1)
-  ROOT %add = f32[] add(%add_lhs, %add_rhs)
-}
-
-mapped {
-  %a = f32[] parameter(0)
-  %b = f32[] parameter(1)
-  %lt = pred[] compare(%a, %b), direction=LT
-  %t = () tuple()
-  %conditional = (f32[], f32[]) conditional(%lt, %t, %t), true_computation=if, false_computation=else
-  %el1 = f32[] get-tuple-element(%conditional), index=0
-  %el2 = f32[] get-tuple-element(%conditional), index=1
-  %reduced = f32[] add(%el1, %el2)
-}
-
-ENTRY comp {
-  %p1 = f32[1000]{0} parameter(0)
-  %p2 = f32[1000]{0} parameter(1)
-  ROOT %mapped = f32[1000]{0} map(%p1, %p2), dimensions={0}, to_apply=mapped
-}
-)";
-
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
-  ConditionalToSelect pass;
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  ASSERT_EQ(root->opcode(), HloOpcode::kMap);
-  HloComputation* mapped = root->called_computations()[0];
-  EXPECT_THAT(mapped->root_instruction(),
-              op::Add(op::GetTupleElement(op::TupleSelect(_, _, _)), _));
-}
 }  // namespace
 }  // namespace xla

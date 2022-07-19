@@ -41,11 +41,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const kTPUReplicatedHost = "TPU_REPLICATED_HOST";
-const char* const kNumCoresPerReplicaAttr = "num_cores_per_replica";
-const char* const kTopologyAttr = "topology";
-const char* const kDeviceAssignmentAttr = "device_assignment";
-
 // Device coordinates are defined as (x, y, z, core), thus resulting in a rank 4
 // topology.
 constexpr int kTPUTopologyRank = 4;
@@ -112,7 +107,7 @@ Status GetTPUSystemDevices(Devices devices,
 
   matched_devices->swap(system_devices);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds TPU devices associated to system device based on spec (e.g. from
@@ -159,7 +154,7 @@ Status GetTPUDevices(
     tpu_devices->push_back(std::move(host_tpu_devices));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds the compilation device from system device.
@@ -528,7 +523,7 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
       tensorflow::GetTPUCompilationAndExecutionDevices(
           devices.device_names(), /*num_replicas=*/1,
           /*num_cores_per_replica=*/1, topology_attr.getValue(),
-          status_or_device_coodinates.ConsumeValueOrDie());
+          std::move(status_or_device_coodinates).value());
   if (!status_or_tpu_device_assignment.ok())
     return cluster.emitError()
            << "error in fetching TPU compilation/execution devices: "

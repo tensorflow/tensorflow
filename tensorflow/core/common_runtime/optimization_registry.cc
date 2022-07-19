@@ -89,7 +89,7 @@ Status OptimizationPassRegistry::RunGrouping(
     std::string prefix = strings::StrCat("after_grouping_", grouping);
     dump_graph(prefix);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void OptimizationPassRegistry::LogGrouping(Grouping grouping, int vlog_level) {

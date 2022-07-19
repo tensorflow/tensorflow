@@ -58,26 +58,22 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
 
 }  // namespace
 
-bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
-                                         const HloInstruction& reduce) {
-  if (producer.opcode() == HloOpcode::kCopy) {
-    return false;
-  }
-  if (producer.opcode() == HloOpcode::kFusion) {
-    for (const HloInstruction* instr : producer.fused_instructions()) {
-      if (instr->opcode() == HloOpcode::kCopy) {
-        // Elementwise copies are only inserted in input fusion for
-        // transposition, and those are never friendly to the reduction.
-        return false;
+bool IsPhysicallyTransposing(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* fused_instr : instr.fused_instructions()) {
+      if (IsPhysicallyTransposing(*fused_instr)) {
+        return true;
       }
     }
   }
 
   // A fusion iterates over its output in physically-contiguous order. This
   // applies "upwards" to operands.  Only an operator that changes an operand's
-  // physical layout can create a "bad" memory access pattern, and layout
-  // assignment guarantees kCopy is the only such operator.
-  return true;
+  // physical layout can create a "bad" memory access pattern.
+  return instr.opcode() == HloOpcode::kCopy ||
+         (instr.opcode() == HloOpcode::kTranspose &&
+          !ShapeUtil::TransposeIsBitcast(instr.operand(0)->shape(),
+                                         instr.shape(), instr.dimensions()));
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
@@ -222,12 +218,10 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the fusion would create a nested loop";
   }
 
-  // Do not fuse into reduce input fusions if the resulting kernel would suffer
-  // from poor data locality (due to unfriendly input layouts).
-  if (IsInputFusibleReduction(consumer) &&
-      !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
-    return "the producer layout is not fusion-friendly for the consumer "
-           "reduction";
+  // Do not fuse into fusions if the resulting kernel would suffer from
+  // uncoalesced reads due to a transposed memory access pattern.
+  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
+    return "fusing the producer would break read coalescing";
   }
 
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
@@ -244,7 +238,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "not fusing constant";
   }
 
-  return {};
+  // Make sure the new fusion obeys the in-place semantics.
+  return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
@@ -290,7 +285,7 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+  if (IsPhysicallyTransposing(producer)) {
     return false;
   }
   return true;

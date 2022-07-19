@@ -25,7 +25,7 @@ namespace {
 // This pass is only available in the tf-opt binary for testing.
 class MarkInitializedVariablesTestPass
     : public PassWrapper<MarkInitializedVariablesTestPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MarkInitializedVariablesTestPass)
 
@@ -48,7 +48,7 @@ class MarkInitializedVariablesTestPass
 // This pass is only available in the tf-opt binary for testing.
 class MarkInitializedVariablesInvalidSessionTestPass
     : public PassWrapper<MarkInitializedVariablesInvalidSessionTestPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       MarkInitializedVariablesInvalidSessionTestPass)

@@ -61,7 +61,7 @@ Status GetTfrtExecutionContext(OpKernelContext* c,
   TF_RETURN_IF_ERROR(c->input("tfrt_exec_ctx", &tensor));
   int64_t exec_ctx_intptr = *reinterpret_cast<const int64_t*>(tensor->data());
   *exec_ctx = absl::bit_cast<const tfrt::ExecutionContext*>(exec_ctx_intptr);
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(zce): Move to a util header that can depend on both KernelFallbackTensor
@@ -132,7 +132,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                                allowed_batch_sizes,
                                enable_large_batch_splitting),
         allowed_batch_sizes));
-    return Status::OK();
+    return OkStatus();
   }
 
   static Status Create(
@@ -152,7 +152,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             max_batch_size, batch_timeout_micros, max_enqueued_batches,
             true /* enable large batch split */, allowed_batch_sizes),
         allowed_batch_sizes));
-    return Status::OK();
+    return OkStatus();
   }
 
   string DebugString() const final { return "FallbackBatchResource"; }
@@ -209,8 +209,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
                          std::unique_ptr<BatchTask>* output) const override {
     const tfrt::ExecutionContext* exec_ctx = nullptr;
     TF_RETURN_IF_ERROR(GetTfrtExecutionContext(c, &exec_ctx));
-    *output = absl::make_unique<FallbackBatchTask>(*exec_ctx);
-    return Status::OK();
+    *output = std::make_unique<FallbackBatchTask>(*exec_ctx);
+    return OkStatus();
   }
 
   HostContext* const host_ctx_;
@@ -367,7 +367,7 @@ void BatchFunctionFallbackKernel::ComputeAsync(OpKernelContext* c,
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           bef_func_, *exec_ctx, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
   } else {
     creator = [this, c](FallbackBatchResource** r) {
@@ -379,7 +379,7 @@ void BatchFunctionFallbackKernel::ComputeAsync(OpKernelContext* c,
           max_enqueued_batches_, allowed_batch_sizes_, bef_func_,
           enable_large_batch_splitting_, *exec_ctx, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
   }
   OP_REQUIRES_OK_ASYNC(c,
@@ -403,7 +403,7 @@ void BatchFunctionFallbackKernel::ComputeAsync(OpKernelContext* c,
 
 Status BatchFunctionFallbackKernel::ValidateAllowedBatchSizes() const {
   if (allowed_batch_sizes_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   int32_t last_size = 0;
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -422,7 +422,7 @@ Status BatchFunctionFallbackKernel::ValidateAllowedBatchSizes() const {
 
     last_size = size;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void BatchFunctionFallbackKernel::SetAdaptiveBatchSchedulerOptions(
@@ -570,7 +570,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
   batch_exec_ctx.set_location(exec_ctx.location());
 
-  bef_func_->Execute(batch_exec_ctx, arguments, results);
+  bef_func_->ExecuteAsync(batch_exec_ctx, arguments, results);
   // There is a comment in tensorflow/core/kernels/batch_kernels.cc
   // counterpart of this method that blocking here seems to improve
   // latency/throughput in practice with how the batching library manage
@@ -602,12 +602,19 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
       auto last = std::unique(errors.begin(), errors.end());
       errors.erase(last, errors.end());
     }
-    std::string msg;
-    llvm::raw_string_ostream os(msg);
-    for (auto* error : errors) {
-      os << *error << ";\n";
+
+    // If there is only 1 error after deduplication, we emit the error with
+    // proper error code mapping from TFRT to TF.
+    if (errors.size() == 1) {
+      final_status = tfrt::CreateTfErrorStatus(*errors[0]);
+    } else {
+      std::string msg;
+      llvm::raw_string_ostream os(msg);
+      for (auto* error : errors) {
+        os << *error << ";\n";
+      }
+      final_status = errors::Internal(std::move(os.str()));
     }
-    final_status = errors::Internal(std::move(os.str()));
   }
   done(final_status);
 }

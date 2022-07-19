@@ -85,7 +85,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       }
 
       if (!changed) {  // Since all inputs have same shape dimensions.
-        return Status::OK();
+        return OkStatus();
       }
 
       Shape grouped_shape =
@@ -103,9 +103,11 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionDimensionGrouper::Run(HloModule *module) {
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ReduceDimensionGroupVisitor().RunOnModule(module));
+StatusOr<bool> ReductionDimensionGrouper::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+  TF_ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(
+                                        module, execution_threads));
   return changed;
 }
 

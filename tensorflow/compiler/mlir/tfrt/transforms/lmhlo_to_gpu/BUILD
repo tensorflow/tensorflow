@@ -21,6 +21,20 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "JitRtPassesIncGen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [(
+        ["-gen-pass-decls"],
+        "jitrt_passes.h.inc",
+    )],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "jitrt_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "pattern_utils",
     srcs = ["pattern_utils.cc"],
@@ -28,6 +42,7 @@ cc_library(
     tags = ["gpu"],
     deps = [
         "//tensorflow/stream_executor:dnn",
+        "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:basic_kernels_opdefs",
@@ -49,6 +64,7 @@ cc_library(
     deps = [
         ":lmhlo_to_gpu",
         ":lmhlo_to_gpu_binary",
+        ":lmhlo_to_jitrt",
         ":lmhlo_to_tfrt_gpu",
         ":pattern_utils",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
@@ -72,6 +88,7 @@ cc_library(
         "gemm_pattern.cc",
         "infeed_and_outfeed_pattern.cc",
         "lmhlo_to_gpu.cc",
+        "lmhlo_to_gpu_branch.cc",
         "replica_and_partition_pattern.cc",
         "triangular_solve_pattern.cc",
     ],
@@ -96,10 +113,12 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
+        "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/service/gpu:xlir_opdefs",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
@@ -109,7 +128,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
@@ -133,13 +151,51 @@ cc_library(
     ],
     deps = [
         ":lmhlo_to_gpu",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@tf_runtime//:basic_kernels_opdefs",
+        "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
+    ],
+)
+
+cc_library(
+    name = "lmhlo_to_jitrt",
+    srcs = ["lmhlo_to_jitrt.cc"],
+    hdrs = ["lmhlo_to_jitrt.h"],
+    tags = ["gpu"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
+        "//tensorflow/compiler/xla/service/gpu:__pkg__",
+    ],
+    deps = [
+        ":JitRtPassesIncGen",
+        ":lmhlo_to_gpu_binary",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/mlir/xla:attribute_exporter",
+        "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
+        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ControlFlowDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//backends/gpu:gpu_opdefs",
         "@tf_runtime//backends/gpu:gpu_passes",
+        "@tf_runtime//backends/jitrt:rt_opdefs",
     ],
 )
 
@@ -166,7 +222,6 @@ cc_library(
         ":pattern_utils",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",

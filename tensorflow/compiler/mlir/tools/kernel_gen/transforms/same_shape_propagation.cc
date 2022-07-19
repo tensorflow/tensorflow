@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -196,10 +196,11 @@ class ShapeEqualityKnowledge {
  public:
   /// Checks all operations for potential shape equality of their respective
   /// results.
-  void build(FuncOp function) {
+  void build(func::FuncOp function) {
     function.walk([&](Operation *op) {
       if (auto reshape = dyn_cast<memref::ReshapeOp>(op)) {
-        registerAssociation(ShapeValue{reshape.shape()}, reshape.result());
+        registerAssociation(ShapeValue{reshape.getShape()},
+                            reshape.getResult());
         return;
       }
       if (auto cast = dyn_cast<memref::ReinterpretCastOp>(op)) {
@@ -210,7 +211,7 @@ class ShapeEqualityKnowledge {
             return;
           }
         }
-        registerAssociation(ShapeValue{cast.sizes()}, cast.result());
+        registerAssociation(ShapeValue{cast.getSizes()}, cast.getResult());
         return;
       }
       if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
@@ -290,10 +291,11 @@ class ShapeEqualityKnowledge {
             if (val.isConstant()) return false;
             auto dimOp = val.value().getDefiningOp<memref::DimOp>();
             if (!dimOp) return false;
-            if (!candidate) candidate = dimOp.source();
+            if (!candidate) candidate = dimOp.getSource();
             auto index = dimOp.getConstantIndex();
-            if (!index.hasValue()) return false;
-            return candidate == dimOp.source() && p.index() == index.getValue();
+            if (!index.has_value()) return false;
+            return candidate == dimOp.getSource() &&
+                   p.index() == index.getValue();
           });
       if (all_are_dimops && candidate) {
         equal_shapes_.unionSets(candidate.getAsOpaquePointer(),
@@ -374,7 +376,7 @@ struct PropagateShapeKnowledgeToKernels
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateShapeKnowledgeToKernels() {
   return std::make_unique<PropagateShapeKnowledgeToKernels>();
 }

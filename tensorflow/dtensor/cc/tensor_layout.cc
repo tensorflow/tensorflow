@@ -40,6 +40,8 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -341,6 +343,24 @@ StatusOr<const std::vector<DeviceNameUtils::ParsedName>> Mesh::ParsedDevices()
       return errors::InvalidArgument("Failed to parse local_devices");
 
   return parsed_devices;
+}
+
+StatusOr<Mesh> Mesh::ToDeviceType(const std::string& device_type) const {
+  std::vector<std::string> to_local_devices;
+  DeviceNameUtils::ParsedName parsed_dev;
+  for (const std::string& local_dev : local_devices_) {
+    if (!DeviceNameUtils::ParseFullOrLocalName(absl::string_view(local_dev),
+                                               &parsed_dev)) {
+      return errors::InvalidArgument("Failed to parse local devices");
+    }
+    // Converted mesh using full task name with job, replica and task ids.
+    to_local_devices.push_back(
+        DeviceNameUtils::FullName(parsed_dev.job, parsed_dev.replica,
+                                  parsed_dev.task, device_type, parsed_dev.id));
+    parsed_dev.Clear();
+  }
+  return GetMesh(name_, mesh_dims_, global_device_ids_, local_device_ids_,
+                 to_local_devices, /*global_devices=*/{});
 }
 
 namespace {

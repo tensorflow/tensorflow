@@ -566,6 +566,84 @@ TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSameDynamicSlice) {
   EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
 }
 
+TEST_F(InstructionFusionTest, InPlaceOpShouldNotFuseWithSliceSameIndex) {
+  // Test case for b/223895450. Even though the indices for slice and DUS match,
+  // fusing the two will cause reverse to share operand with the DUS in-place
+  // buffer.
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    slice.19 = f32[7] slice(parameter.1), slice={[1:8]}
+    constant.7 = f32[] constant(1)
+    broadcast.8 = f32[7] broadcast(constant.7), dimensions={}
+    add.9 = f32[7] add(slice.19, broadcast.8)
+    reverse = f32[7] reverse(add.9), dimensions={0}
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, reverse, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  // Verify that the slice is not fused because that would fuse with a
+  // non-elementwise op (reverse) in between the slice and DUS.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Slice()));
+}
+
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldFuseWithSliceSameIndexWithoutUnsafeNonelementwise) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  ENTRY Test {
+    parameter.1 = f32[8] parameter(0)
+    parameter.2 = f32[7] parameter(1)
+    slice.19 = f32[7] slice(parameter.1), slice={[1:8]}
+    reverse = f32[7] reverse(parameter.2), dimensions={0}
+    add.9 = f32[7] add(slice.19, reverse)
+    constant.10 = s32[] constant(1)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(parameter.1, add.9, constant.10)
+  })")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, InPlaceOpShouldNotBeFusedIfItSharesOperand) {
+  // Test case for b/223896048. In-place operations that have an additional
+  // operand that has the same value as the in-place buffer should not be fused.
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  update_s32 {
+    lhs = s32[] parameter(0)
+    ROOT rhs = s32[] parameter(1)
+  }
+
+  ENTRY main {
+    arg0 = s32[9] parameter(0)
+    iota = s32[9] iota(), iota_dimension=0
+    indices = s32[9] reverse(iota), dimensions={0}
+    ROOT scatter = s32[9] scatter(arg0, indices, arg0), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+  }
+  )")
+                    .ValueOrDie();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .ValueOrDie())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Scatter());
+}
+
 TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module

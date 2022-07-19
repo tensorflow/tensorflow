@@ -76,6 +76,7 @@ enum MinibenchmarkStatus {
   // Validator status codes.
   kMinibenchmarkDelegateNotSupported = 1000,
   kMinibenchmarkDelegatePluginNotFound = 1001,
+  kMinibenchmarkDelegateCreateFailed = 1013,
   kMinibenchmarkModelTooLarge = 1002,  // Safety limit currently set at 100M.
   kMinibenchmarkSeekToModelOffsetFailed = 1003,
   kMinibenchmarkModelReadFailed = 1004,

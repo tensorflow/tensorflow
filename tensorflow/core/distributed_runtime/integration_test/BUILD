@@ -103,7 +103,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
     ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_port.h"
 
 #include <cstring>
+#include <string>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -77,7 +78,7 @@ tensorflow::Status ToStatus(const absl::Status& uts) {
         tensorflow::errors::Code(::util::RetrieveErrorCode(uts)),
         uts.error_message());
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Conversion to our wrapper Options.

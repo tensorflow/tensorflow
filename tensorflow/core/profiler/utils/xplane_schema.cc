@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -29,6 +31,7 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
@@ -45,6 +48,7 @@ const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
 const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 
@@ -89,20 +93,12 @@ const HostEventTypeMap& GetHostEventTypeMap() {
        kTfDataCapturedFunctionRunInstantiated},
       {"InstantiatedCapturedFunction::RunAsync",
        kTfDataCapturedFunctionRunAsync},
-      // Functional ops.
-      {"CallOp", kCallOp},
+      // Loop ops.
       {"ParallelForOp", kParallelForOp},
       {"ForeverOp", kForeverOp},
-      {"NumericalGradientOp-EvalRight", kNumericalGradientOpEvalRight},
-      {"NumericalGradientOp-EvalLeft", kNumericalGradientOpEvalLeft},
-      {"SymbolicGradientOp", kSymbolicGradientOp},
-      {"RemoteCallOp", kRemoteCallOp},
-      {"IfOp", kIfOp},
-      {"CaseOp", kCaseOp},
       {"WhileOp-EvalCond", kWhileOpEvalCond},
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
-      {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -141,19 +137,19 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // TPU related.
       {"EnqueueRequestLocked", kEnqueueRequestLocked},
       {"RunProgramRequest", kRunProgramRequest},
-      {"StartProgramRequest", kStartProgramRequest},
       {"HostCallbackRequest", kHostCallbackRequest},
       {"TransferH2DRequest", kTransferH2DRequest},
       {"TransferPreprocessedH2DRequest", kTransferPreprocessedH2DRequest},
       {"TransferD2HRequest", kTransferD2HRequest},
-      {"TransferD2DRequest", kTransferD2DRequest},
-      {"TransferD2DRemoteRequest", kTransferD2DRemoteRequest},
       {"OnDeviceSendRequest", kOnDeviceSendRequest},
       {"OnDeviceRecvRequest", kOnDeviceRecvRequest},
       {"OnDeviceSendRecvLocalRequest", kOnDeviceSendRecvLocalRequest},
+      {"CustomWait", kCustomWait},
+      {"OnDeviceSendRequestMulti", kOnDeviceSendRequestMulti},
+      {"OnDeviceRecvRequestMulti", kOnDeviceRecvRequestMulti},
+      {"PjrtAsyncWait", kPjrtAsyncWait},
       {"DoEnqueueProgram", kDoEnqueueProgram},
       {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
-      {"StartProgram", kStartProgram},
       {"WriteHbm", kWriteHbm},
       {"ReadHbm", kReadHbm},
       {"TpuExecuteOp", kTpuExecuteOp},
@@ -185,8 +181,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"UnknownStatType", kUnknownStatType},
       // TraceMe arguments.
       {"id", kStepId},
-      {"parent_step_id", kParentStepId},
-      {"function_step_id", kFunctionStepId},
       {"device_ordinal", kDeviceOrdinal},
       {"chip_ordinal", kChipOrdinal},
       {"node_ordinal", kNodeOrdinal},
@@ -226,6 +220,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"_a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
+      {"device_type_string", kDeviceTypeString},
       {"context_id", kContextId},
       {"correlation_id", kCorrelationId},
       {"memcpy_details", kMemcpyDetails},
@@ -252,7 +247,6 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
-      {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
@@ -262,6 +256,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
+      {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
       // XLA metadata map related.
       {"Hlo Proto", kHloProto},
       // Device capability related.
@@ -271,6 +266,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      {"peak_teraflops_per_second", kDevCapPeakTeraflopsPerSecond},
+      {"peak_hbm_bw_gigabytes_per_second", kDevCapPeakHbmBwGigabytesPerSecond},
       {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
@@ -280,6 +277,16 @@ const StatTypeMap& GetStatTypeMap() {
       {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
       {"occupancy_min_grid_size", kOccupancyMinGridSize},
       {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
+      // Aggregrated Stat
+      {"self_duration_ps", kSelfDurationPs},
+      {"min_duration_ps", kMinDurationPs},
+      {"max_iteration_num", kMaxIterationNum},
+      {"device_type", kDeviceType},
+      {"uses_megacore", kUsesMegaCore},
+      {"symbol_id", kSymbolId},
+      {"hlo_category", kHloCategory},
+      {"tf_op_name", kTfOpName},
+      {"dma_stall_duration_ps", kDmaStallDurationPs},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -367,7 +374,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;
@@ -375,6 +381,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
       return false;
   }
 }
+
+/*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 }  // namespace profiler
 }  // namespace tensorflow

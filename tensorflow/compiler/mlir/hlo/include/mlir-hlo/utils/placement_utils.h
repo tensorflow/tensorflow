@@ -25,8 +25,8 @@ namespace mlir {
 namespace mhlo {
 namespace placement_utils {
 
-constexpr llvm::StringRef c_cpu = "cpu";
-constexpr llvm::StringRef c_gpu = "gpu";
+constexpr llvm::StringRef cCpu = "cpu";
+constexpr llvm::StringRef cGpu = "gpu";
 
 }  // namespace placement_utils
 }  // namespace mhlo

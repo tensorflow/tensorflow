@@ -58,7 +58,7 @@ func.func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
 // CHECK-SAME: to (%[[C48]]) step (%[[C24]])
 // CHECK-SAME: ins (%[[A_:.*]] = %[[A]]: [[BUF_TY]])
 // CHECK-SAME: outs (%[[B_:.*]] = %[[B]]: [[TY]], %[[C_:.*]] = %[[C]]: [[BUF_TY]]) {
-// CHECK-NEXT:   %[[RES:.*]] = call @foo(%[[A_]], %[[B_]], %[[C_]])
+// CHECK-NEXT:   %[[RES:.*]] = func.call @foo(%[[A_]], %[[B_]], %[[C_]])
 // CHECK-NEXT:   gml_st.yield %[[RES]] :
 
 // CHECK: return %[[RESULT]]
@@ -241,8 +241,32 @@ func.func @fold_tensor_cast(%in: tensor<4x600xf32>,
 // CHECK:      %[[OUT_SUB:.*]] = tensor.cast %[[OUT_]]
 // CHECK-SAME:   : tensor<4xf32> to tensor<?xf32>
 
-// CHECK:      %[[RESULT_SUB:.*]] = call @do(%[[IN_SUB_CAST]], %[[OUT_SUB]])
+// CHECK:      %[[RESULT_SUB:.*]] = func.call @do(%[[IN_SUB_CAST]], %[[OUT_SUB]])
 // CHECK:      %[[RESULT_CAST:.*]] = tensor.cast %[[RESULT_SUB]]
 // CHECK:      gml_st.yield %[[RESULT_CAST]] : tensor<4xf32>
 // CHECK:    }
 // CHECK:    return %[[RESULT]] : tensor<4xf32>
+
+// -----
+
+func.func private @reduce(%A: tensor<4xf32>, %B: tensor<f32>) -> tensor<f32>
+
+// CHECK-LABEL: @remove_empty_loop
+func.func @remove_empty_loop(%in: tensor<16xf32>, %out: tensor<f32>,
+                             %buf: memref<f32>) -> tensor<f32>{
+  // CHECK-NOT: gml_st.loop
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c16 = arith.constant 16 : index
+  %0 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c16, %c0) step (%c4, %c4)
+      ins (%in_ = %in: tensor<16xf32>)
+      outs (%out_ = %out: tensor<f32>, %buf_ = %buf: memref<f32>)
+      iterators["reduction", "parallel"] {
+    %in_sub = tensor.extract_slice %in_[%i][4][1]
+      : tensor<16xf32> to tensor<4xf32>
+    %result = func.call @reduce(%in_sub, %out_):
+      (tensor<4xf32>, tensor<f32>) -> tensor<f32>
+    gml_st.yield %result : tensor<f32>
+  }
+  func.return %0 : tensor<f32>
+}

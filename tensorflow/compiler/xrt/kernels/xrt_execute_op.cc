@@ -173,8 +173,8 @@ Status UpdateMetadata(se::Stream* stream, se::DeviceMemory<uint8>* buffer,
   TF_RETURN_IF_ERROR(transfer_manager->TransferArrayToDeviceAsync(
       stream, *metadata_literal, metadata_buffer));
   // Retain the literal until the end of the transfer.
-  stream->ThenDoHostCallback([metadata_literal]() { return Status::OK(); });
-  return Status::OK();
+  stream->ThenDoHostCallback([metadata_literal]() { return OkStatus(); });
+  return OkStatus();
 }
 
 // Given a static input buffer, convert it to dynamic form by expanding it to
@@ -218,7 +218,7 @@ Status UpdateDynamicInputs(
         [&](const xla::Shape& sub_shape,
             const xla::ShapeIndex& index) -> Status {
           if (sub_shape.IsTuple() || sub_shape.is_static()) {
-            return Status::OK();
+            return OkStatus();
           }
           TF_ASSIGN_OR_RETURN(
               const xla::Shape* runtime_shape,
@@ -245,7 +245,7 @@ Status UpdateDynamicInputs(
               index, xla::MaybeOwningDeviceMemory(std::move(dynamic_input)));
           execution_input->ClearUnownedIndex(index);
           element_modified = true;
-          return Status::OK();
+          return OkStatus();
         }));
     if (element_modified) {
       TF_RETURN_IF_ERROR(execution_input->SetDynamicShape(compile_time_shape));
@@ -261,7 +261,7 @@ Status UpdateDynamicInputs(
           transfer_manager->WriteTupleIndexTablesAsync(stream, shaped_buffer));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(

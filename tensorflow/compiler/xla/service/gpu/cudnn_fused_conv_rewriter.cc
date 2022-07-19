@@ -660,7 +660,7 @@ Status CheckNoIllegalIntegerConvs(HloComputation* comp) {
   }
 
   if (bad_convs.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return Unimplemented(
@@ -773,10 +773,13 @@ void VlogStats(HloModule* module) {
 
 }  // namespace
 
-StatusOr<bool> CudnnFusedConvRewriter::Run(HloModule* module) {
+StatusOr<bool> CudnnFusedConvRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;
 
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     // Fuse "inside out" starting with the operations closest to the conv.
     bool changed = false;
 

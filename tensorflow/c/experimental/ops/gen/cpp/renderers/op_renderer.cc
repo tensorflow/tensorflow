@@ -53,10 +53,7 @@ OpRenderer::OpRenderer(RendererContext context, OpView op)
     : Renderer(context), op_(op), comment_(context, op) {}
 
 void OpRenderer::Render() {
-  if (context_.mode == RendererContext::kSource) {
-    comment_.Render();
-  }
-
+  comment_.Render();
   if (context_.mode == RendererContext::kHeader) {
     Statement(Signature());
   } else {

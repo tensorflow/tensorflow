@@ -16,6 +16,8 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -25,9 +27,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -51,14 +55,15 @@ namespace TFTPU {
 
 namespace {
 
-constexpr char kDeviceAttr[] = "device";
-constexpr char kNameAttr[] = "name";
-constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
-constexpr char kNumReplicasAttr[] = "num_replicas";
-constexpr char kReplicatedInputIndicesAttr[] = "_replicated_input_indices";
-constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
+constexpr llvm::StringRef kDeviceAttr = "device";
+constexpr llvm::StringRef kNameAttr = "name";
+constexpr llvm::StringRef kNumCoresPerReplicaAttr = "num_cores_per_replica";
+constexpr llvm::StringRef kNumReplicasAttr = "num_replicas";
+constexpr llvm::StringRef kMirroredVariableIndicesAttr =
+    "_mirrored_variable_indices";
+constexpr llvm::StringRef kNoReplicationCluster = "__no_replication_cluster";
 
-constexpr char kBadReplicateInfoAttrMsg[] =
+constexpr llvm::StringRef kBadReplicateInfoAttrMsg =
     "requires '_replication_info' string attribute";
 
 // Mapping for `_replication_info` attribute to TPUReplicateMetadata attributes.
@@ -93,18 +98,20 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
     NamedAttrList attrs(metadata_op->getAttrDictionary());
 
     // Missing or bad `_replication_info` attribute.
-    auto tpu_replicate_attr = attrs.get(TF::kReplicationInfoAttr);
-    if (!tpu_replicate_attr)
+    auto replication_info_attr = attrs.get(TF::kReplicationInfoAttr);
+    if (!replication_info_attr)
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
-    auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
-    if (!tpu_replicate_attr_str || tpu_replicate_attr_str.getValue().empty())
+    auto replication_info_attr_str =
+        replication_info_attr.dyn_cast<StringAttr>();
+    if (!replication_info_attr_str ||
+        replication_info_attr_str.getValue().empty())
       return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
     // Remove `name` attribute.
     attrs.erase(StringAttr::get(metadata_op.getContext(), kNameAttr));
 
-    auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
+    auto it = metadata_map->try_emplace(replication_info_attr_str.getValue(),
                                         std::move(attrs));
 
     // There are multiple TPUReplicateMetadata ops with the same
@@ -113,27 +120,70 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError()
              << "multiple TPUReplicateMetadata ops with the same '"
              << TF::kReplicationInfoAttr << "' attribute '"
-             << tpu_replicate_attr_str.getValue() << "' found";
+             << replication_info_attr_str.getValue() << "' found";
     }
     metadata_op.erase();
   }
   return success();
 }
 
-// Collects and clusters ops with the same `_replication_info` attribute. This
-// will return an error if a `_replication_info` attribute of an op is empty.
-LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
+// Collects and clusters ops either based on `_replication_info` attribute
+// (replicated case) or using one single cluster (non-replicated case). Also
+// sets `device_type` if there is any cluster (note that the device type must be
+// unique, otherwise we emit an error).
+// Returns an error in case of invalid compilation or replication attribute(s).
+LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
+                                        std::string& device_type) {
+  bool has_replicated_compiled_op = false;
+  bool has_non_replicated_compiled_op = false;
+  // Use ordered set here to make error message below deterministic.
+  std::set<llvm::StringRef> device_types;
   for (Operation& op : *block) {
-    if (op.hasAttr(TF::kReplicationInfoAttr) ||
-        op.hasAttr(TF::kCompileDeviceTypeAttr)) {
-      auto result = TF::HasValidCompilationAndReplicationAttributes(op);
-      if (failed(result)) return result;
+    LogicalResult result = TF::HasValidCompilationAndReplicationAttributes(op);
+    if (failed(result)) return result;
+
+    // Collect device types which currently must be consistent per block
+    // (checked later).
+    auto device_type_attr =
+        op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
+    if (device_type_attr) device_types.insert(device_type_attr);
+
+    if (op.hasAttr(TF::kReplicationInfoAttr)) {
+      // For replicated case, borrow cluster structure from replication info.
+      // Following condition is already checked in
+      // `HasValidCompilationAndReplicationAttributes` above, assert here for
+      // documentation and to avoid breakage when that function is changed.
+      assert(op.hasAttr(TF::kCompileDeviceTypeAttr));
+      has_replicated_compiled_op = true;
       auto attr = op.getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
       auto it = clusters->try_emplace(attr.getValue());
       it.first->getSecond().insert(&op);
+    } else if (op.hasAttr(TF::kCompileDeviceTypeAttr)) {
+      // For non-replicated case, assume one cluster per block (in line with
+      // Framework behavior).
+      has_non_replicated_compiled_op = true;
+      auto it = clusters->try_emplace(kNoReplicationCluster);
+      it.first->getSecond().insert(&op);
     }
   }
-
+  // Do some checks for unsupported cases.
+  if (has_replicated_compiled_op && has_non_replicated_compiled_op) {
+    return block->getParentOp()->emitError()
+           << "found mixed replicated and non-replicated compiled ops in same "
+              "block which is not supported";
+  }
+  if (device_types.size() > 1) {
+    return block->getParentOp()->emitError()
+           << "found different '" << TF::kCompileDeviceTypeAttr
+           << "' attribute values (" << llvm::join(device_types, ",")
+           << ") in same block which is not supported";
+  }
+  if (!clusters->empty()) {
+    // Note that for size < 1 we shouldn't have any cluster while for size > 1
+    // we should have returned with an error above.
+    assert(device_types.size() == 1);
+    device_type = device_types.begin()->str();
+  }
   return success();
 }
 
@@ -231,9 +281,8 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
         // might have runtime impact for existing models.
         // We should make this message an error once there is such a contract
         // and once existing cases have been fixed.
-        VLOG(1) << "Invalid TPU cluster structure. Following op is both a "
-                   "predecessor and a successor of a cluster: "
-                << mlir::debugString(op);
+        op.emitWarning()
+            << "op has cyclic dependency with a compilation cluster";
       } else {
         cluster_successor_ops.insert(&op);
       }
@@ -327,45 +376,6 @@ tf_device::ClusterOp CreateClusterOp(
   return cluster;
 }
 
-// Sorts `tf.TPUReplicatedInput` ops by `index` attribute. Ops with an `index`
-// of -1 are always after ops with a non negative `index`, and an arbitrary
-// ordering is used as there are no dependencies on their relative ordering. If
-// there are multiple `tf.TPUReplicatedInput` ops with the same non negative
-// index or if indices are less than -1, an error will be returned.
-LogicalResult SortTPUReplicatedInputsByIndex(
-    llvm::ArrayRef<Operation*> inputs,
-    llvm::SmallVectorImpl<Operation*>* sorted_inputs) {
-  llvm::SmallDenseSet<int64_t, 8> unique_indices;
-  for (Operation* input : inputs) {
-    int64_t index = llvm::cast<TF::TPUReplicatedInputOp>(input).index();
-    if (index < -1)
-      return input->emitOpError()
-             << "requires index to be at least -1, but got " << index;
-    if (index == -1) continue;
-    if (!unique_indices.insert(index).second)
-      return input->emitOpError()
-             << "requires indices to be unique, but found multiple '"
-             << input->getName() << "' ops with index " << index;
-  }
-
-  // Sort all TPUReplicatedInputs by `index` attribute to have
-  // TPUReplicatedInputs with indices be added to the `tf_device.replicate` op
-  // deterministically. If `index` attribute is -1, instead move them to the
-  // end.
-  sorted_inputs->assign(inputs.begin(), inputs.end());
-  std::stable_sort(
-      sorted_inputs->begin(), sorted_inputs->end(),
-      [](Operation* l, Operation* r) {
-        int64_t l_index = llvm::cast<TF::TPUReplicatedInputOp>(l).index();
-        int64_t r_index = llvm::cast<TF::TPUReplicatedInputOp>(r).index();
-        if (l_index == -1 && r_index != -1) return false;
-        if (r_index == -1 && l_index != -1) return true;
-        return l_index < r_index;
-      });
-
-  return success();
-}
-
 // Creates a `tf_device.replicate` to represent replication for the cluster, if
 // necessary.
 LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
@@ -378,13 +388,13 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
                                << "' int attribute to be at least 1";
 
   LogicalResult status = success();
-  // Collect all used TPUReplicatedInput ops and sort by `index`.
-  OpSetVector unique_replicated_input_ops;
+  // Collect all used TPUReplicatedInput ops.
+  llvm::SmallVector<Operation*, 8> replicated_input_ops;
   mlir::visitUsedValuesDefinedAbove(
       cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get().getDefiningOp();
         if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(def))
-          unique_replicated_input_ops.insert(def);
+          replicated_input_ops.push_back(def);
         // When model parallelism is used in conjunction with data parallelism
         // for resource inputs, we need to collect the per replica resource
         // inputs from input to `tf.TPUPartitionedInput` ops.
@@ -396,22 +406,12 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
           for (auto operand : pi.inputs()) {
             if (llvm::isa_and_nonnull<TF::TPUReplicatedInputOp>(
                     operand.getDefiningOp()))
-              unique_replicated_input_ops.insert(operand.getDefiningOp());
+              replicated_input_ops.push_back(operand.getDefiningOp());
           }
         }
       });
 
   if (failed(status)) return failure();
-  llvm::SmallVector<Operation*, 8> replicated_input_ops;
-  if (failed(SortTPUReplicatedInputsByIndex(
-          unique_replicated_input_ops.getArrayRef(), &replicated_input_ops)))
-    return failure();
-
-  // Index attribute value stored on TPUReplicatedInput op. These will be used
-  // later for dynamic padder.
-  llvm::SmallVector<int64_t, 8> replicated_input_indices;
-  llvm::SmallVector<int64_t, 8> packed_input_indices;
-  bool has_replicated_input_index = false;
 
   // Indices of the replicate op's arguments that are mirrored variables.
   llvm::SmallVector<int64_t, 8> mirrored_variable_indices;
@@ -430,27 +430,32 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     int num_inputs = is_packed ? 1 : num_replicas;
     if (num_operands != num_inputs)
       return input->emitOpError() << "requires " << num_inputs << " operands";
-
-    auto tpu_replicated_input = llvm::cast<TF::TPUReplicatedInputOp>(input);
-    int64_t tpu_replicated_input_index = tpu_replicated_input.index();
     if (is_packed) {
       packed_inputs.push_back(input->getOperand(0));
-      packed_input_indices.push_back(tpu_replicated_input_index);
       packed_ops.push_back(input);
     } else {
       replicated_inputs.push_back(
           {input->getOperands(), input->getOperand(0).getType()});
-      replicated_input_indices.push_back(tpu_replicated_input_index);
       replicated_ops.push_back(input);
     }
-    if (tpu_replicated_input_index != -1) has_replicated_input_index = true;
-
-    if (tpu_replicated_input.is_mirrored_variable())
-      mirrored_variable_indices.push_back(pos_and_input.index());
   }
 
-  replicated_input_indices.append(packed_input_indices.begin(),
-                                  packed_input_indices.end());
+  // Create `ordered_tpu_replicate_inputs` which constains the final ordered
+  // replicate inputs. All packed arguments are moved to the end of the arg
+  // list.
+  llvm::SmallVector<Operation*, 8> ordered_tpu_replicate_inputs =
+      replicated_ops;
+  ordered_tpu_replicate_inputs.append(packed_ops.begin(), packed_ops.end());
+
+  // Assign `mirrored_variable_indices` based on the ordered replicated inputs.
+  for (const auto& pos_and_input :
+       llvm::enumerate(ordered_tpu_replicate_inputs)) {
+    auto tpu_replicated_input =
+        llvm::cast<TF::TPUReplicatedInputOp>(pos_and_input.value());
+    if (tpu_replicated_input.is_mirrored_variable()) {
+      mirrored_variable_indices.push_back(pos_and_input.index());
+    }
+  }
 
   // Create replicate op.
   OpBuilder builder(cluster);
@@ -458,9 +463,6 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
       cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
       replicated_inputs, packed_inputs, cluster.getResultTypes());
-  if (has_replicated_input_index)
-    replicate_op->setAttr(kReplicatedInputIndicesAttr,
-                          builder.getI64ArrayAttr(replicated_input_indices));
 
   if (!mirrored_variable_indices.empty())
     replicate_op->setAttr(kMirroredVariableIndicesAttr,
@@ -495,9 +497,6 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   // Collect all `tf.TPUPartitionedInput` ops to be moved inside the
   // `tf_device.replicate` later.
   llvm::SmallSet<Operation*, 4> partitioned_inputs;
-  // Update replicated inputs with replicate op block arguments.
-  auto ordered_tpu_replicate_inputs =
-      llvm::concat<Operation*>(replicated_ops, packed_ops);
   for (auto input_and_block_arg :
        llvm::zip(ordered_tpu_replicate_inputs,
                  replicate_op.GetBody().getArguments())) {
@@ -527,14 +526,35 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   return success();
 }
 
-// Forms clusters with ops of the same `_replication_info` attribute under a
+void SetNoReplicationClusterAttrs(tf_device::ClusterOp cluster,
+                                  llvm::StringRef device_type) {
+  OpBuilder builder(cluster);
+  cluster->setAttr(TF::kReplicationInfoAttr,
+                   builder.getStringAttr(kNoReplicationCluster));
+  cluster->setAttr(TF::kCompileDeviceTypeAttr,
+                   builder.getStringAttr(device_type));
+
+  // TODO(b/229992058) Propagate `allow_soft_placement` (and other attributes?)
+  // instead of hard-coding.
+  cluster->setAttr("allow_soft_placement", builder.getBoolAttr(true));
+  cluster->setAttr("topology", builder.getStringAttr(""));
+  cluster->setAttr("num_cores_per_replica",
+                   builder.getIntegerAttr(builder.getI32Type(), 1));
+  cluster->setAttr("device_assignment", builder.getArrayAttr({}));
+  cluster->setAttr("use_spmd_for_xla_partitioning", builder.getBoolAttr(false));
+  cluster->setAttr("step_marker_location", builder.getStringAttr(""));
+}
+
+// Forms compilation clusters in `block`. If the block contains a
+// `TPUReplicateMetadata` op, then we form clusters according to
+// `_replication_info` values (ops with same value go to same cluster).
+// Otherwise, in the non-replicated case, we build one compilation cluster per
 // block.
 //
-// For a given block, clusters are formed via grouping ops by
-// `_replication_info` attributes. For every cluster formed:
-//   1. Find associated TPUReplicateMetadata attributes with the same
-//      `_replication_info` attribute.
-//   2. Find users not in cluster that are interleaved between cluster ops.
+// We do this in following steps:
+//   1. Find `TPUReplicateMetadata` op in `block` (might not exist).
+//   2. Collect and group cluster ops (either based on `_replication_info`
+//      attributes or forming one single cluster).
 //   3. Find external uses of cluster ops.
 //   4. Create `tf_device.cluster` with results consisting of the external uses
 //      of cluster ops determined at 3.
@@ -562,22 +582,24 @@ LogicalResult FormClustersInBlock(
           return failure();
       }
     }
-    return success();
   }
 
   ClusterMap clusters;
-  result = CollectAndGroupClusterOps(block, &clusters);
+  std::string device_type;
+  result = CollectAndGroupClusterOps(block, &clusters, device_type);
   if (failed(result)) return result;
 
   for (const auto& cluster_metadata_and_ops : clusters) {
     const auto& cluster_ops = cluster_metadata_and_ops.getSecond();
 
+    bool has_replication =
+        cluster_metadata_and_ops.getFirst() != kNoReplicationCluster;
     auto cluster_metadata =
         metadata_map.find(cluster_metadata_and_ops.getFirst());
 
     // No TPUReplicateMetadata for a `_replication_info` attribute.
-    if (cluster_metadata == metadata_map.end()) {
-      cluster_ops.front()->emitWarning()
+    if (has_replication && cluster_metadata == metadata_map.end()) {
+      block->getParentOp()->emitWarning()
           << "TPUReplicateMetadata for associated '" << TF::kReplicationInfoAttr
           << "' attribute '" << cluster_metadata_and_ops.getFirst()
           << "' is missing";
@@ -593,11 +615,19 @@ LogicalResult FormClustersInBlock(
     tf_device::ClusterOp cluster = CreateClusterOp(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
-    auto num_replicas = cluster_metadata->getSecond().get(kNumReplicasAttr);
-    if (!num_replicas || !num_replicas.isa<mlir::IntegerAttr>())
+    if (!has_replication) {
+      SetNoReplicationClusterAttrs(cluster, device_type);
+      continue;
+    }
+    // Determine `num_replicas`.
+    auto num_replicas_attr =
+        cluster_metadata->getSecond().get(kNumReplicasAttr);
+    if (!num_replicas_attr || !num_replicas_attr.isa<mlir::IntegerAttr>())
       return cluster.emitError()
              << "requires '" << kNumReplicasAttr << "' int attribute";
+    int num_replicas = num_replicas_attr.cast<mlir::IntegerAttr>().getInt();
 
+    // Determine `num_cores_per_replica`.
     int num_cores_per_replica = 1;
     auto num_cores_per_replica_attr =
         cluster_metadata->getSecond()
@@ -605,10 +635,7 @@ LogicalResult FormClustersInBlock(
             .dyn_cast_or_null<mlir::IntegerAttr>();
     if (num_cores_per_replica_attr)
       num_cores_per_replica = num_cores_per_replica_attr.getInt();
-
-    if (failed(ReplicateCluster(cluster,
-                                num_replicas.cast<mlir::IntegerAttr>().getInt(),
-                                num_cores_per_replica)))
+    if (failed(ReplicateCluster(cluster, num_replicas, num_cores_per_replica)))
       return failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
@@ -622,7 +649,8 @@ LogicalResult FormClustersInBlock(
 }
 
 LogicalResult FormClustersInFunction(
-    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    func::FuncOp func,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
@@ -658,8 +686,26 @@ LogicalResult FormClustersInFunction(
 }
 
 void TPUClusterFormationPass::runOnOperation() {
+  // Attributes on tf.Constant aren't reliable: CSE will merge ConstantLike ops
+  // with the same value (but different attributes!) into the same tf.Const
+  // definition, potentially leading to bogus _replication_info attributes. So
+  // we just scrub all tf.Constants of all extra attributes.
+  // TODO(kramm): Remove this once tf.Const's folder is aware of extra
+  // attributes.
+  auto value_str_attr = StringAttr::get(&getContext(), "value");
+  getOperation().walk([&](TF::ConstOp cst) {
+    auto dict = cst->getAttrDictionary();
+    if (dict.size() == 1) {
+      return;  // Optimization. Assume the one attribute is "value".
+    }
+    // Recreate the attributes dictionary to only contain "value".
+    NamedAttrList attributes;
+    attributes.append(NamedAttribute(value_str_attr, cst->getAttr("value")));
+    cst->setAttrs(attributes.getDictionary(&getContext()));
+  });
+
   auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
-  for (auto func : getOperation().getOps<FuncOp>())
+  for (auto func : getOperation().getOps<func::FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
             func, side_effect_analysis.GetAnalysisForFunc(func))))

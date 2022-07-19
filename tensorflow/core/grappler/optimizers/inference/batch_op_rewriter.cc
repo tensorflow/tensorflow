@@ -107,7 +107,7 @@ Status BatchOpRewriter::Init(
     // (e.g., enable_adaptive_shared_batching_thread_pool is false), proto
     // is considered as empty.
     VLOG(2) << "Empty batch-op rewrite config";
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
   if (!absl::Base64Unescape(params.s(), &unencoded)) {
     return ::tensorflow::errors::Internal(
@@ -118,7 +118,7 @@ Status BatchOpRewriter::Init(
         "Failed to parse batch_op_rewrite_config from params.");
   }
   VLOG(2) << "BatchOp Rewrite config is " << config_.DebugString();
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -175,7 +175,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   if (overridden) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (config_.enable_adaptive_shared_batching_thread_pool()) {
@@ -205,7 +205,7 @@ Status BatchOpRewriter::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(BatchOpRewriter, "batch_op_rewrite");

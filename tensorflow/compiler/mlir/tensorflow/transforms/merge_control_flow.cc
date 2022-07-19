@@ -201,7 +201,7 @@ bool CanAddToIfSegment(
 
   for (auto iter = std::prev(last); std::next(iter) != first; iter--) {
     TF::IfRegionOp first_if_op = *iter;
-    FuncOp func = first_if_op->getParentOfType<FuncOp>();
+    func::FuncOp func = first_if_op->getParentOfType<func::FuncOp>();
     const TF::SideEffectAnalysis::Info& analysis =
         side_effect_analysis->GetAnalysisForFunc(func);
     auto all_ops = GetAllOpsFromIf(*(std::next(iter)));
@@ -246,7 +246,7 @@ absl::flat_hash_set<Operation*> GetMoveOpsBetweenTwoIfRegions(
   absl::flat_hash_set<Operation*> visited;
   absl::flat_hash_set<Operation*> moved_ops;
 
-  FuncOp func = result_op->getParentOfType<FuncOp>();
+  func::FuncOp func = result_op->getParentOfType<func::FuncOp>();
   const TF::SideEffectAnalysis::Info& analysis =
       side_effect_analysis->GetAnalysisForFunc(func);
 

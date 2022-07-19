@@ -33,11 +33,11 @@ absl::Status CreateTextureBuffer(id<MTLBuffer> buffer, uint64_t buffer_offset,
   if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
     const int slices = DivideRoundUp(shape.c, 4);
     const size_t flt4_count = shape.b * shape.w * shape.h * shape.d * slices;
-    const size_t data_size = flt4_count * 4 * SizeOf(descriptor.data_type);
+    const size_t data_size = flt4_count * 4 * SizeOf(descriptor.GetDataType());
     MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
     texture_desc.width = flt4_count;
     texture_desc.pixelFormat =
-        DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+        DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
     texture_desc.textureType = MTLTextureTypeTextureBuffer;
     texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
     texture_desc.storageMode = buffer.storageMode;
@@ -60,11 +60,11 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
                                   const void* data_ptr, id<MTLBuffer>* buffer,
                                   id<MTLTexture>* texture) {
   const int slices = DivideRoundUp(shape.c, 4);
-  switch (descriptor.storage_type) {
+  switch (descriptor.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
       const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
-                               4 * SizeOf(descriptor.data_type);
+                               4 * SizeOf(descriptor.GetDataType());
       if (data_ptr) {
         *buffer = [device newBufferWithBytes:data_ptr
                                       length:data_size
@@ -76,7 +76,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       if (!*buffer) {
         return absl::UnknownError("Failed to allocate id<MTLBuffer>");
       }
-      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+      if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
         RETURN_IF_ERROR(
             CreateTextureBuffer(*buffer, 0, shape, descriptor, texture));
       }
@@ -85,7 +85,8 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
     case TensorStorageType::TEXTURE_2D: {
       MTLTextureDescriptor* texture_desc = [MTLTextureDescriptor
           texture2DDescriptorWithPixelFormat:DataTypeToRGBAPixelFormat(
-                                                 descriptor.data_type, false)
+                                                 descriptor.GetDataType(),
+                                                 false)
                                        width:shape.w * shape.b * shape.d
                                       height:shape.h * slices
                                    mipmapped:NO];
@@ -109,7 +110,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       texture_desc.height = shape.h;
       texture_desc.depth = slices * shape.d;
       texture_desc.pixelFormat =
-          DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+          DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
       texture_desc.textureType = MTLTextureType3D;
       texture_desc.usage =
           MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
@@ -130,7 +131,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
       texture_desc.height = shape.h;
       texture_desc.arrayLength = slices * shape.d;
       texture_desc.pixelFormat =
-          DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+          DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
       texture_desc.textureType = MTLTextureType2DArray;
       texture_desc.usage =
           MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
@@ -235,7 +236,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
     GPUResourcesWithValue* resources) const {
   const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
   if (buffer_desc) {
-    if (descriptor_.storage_type != TensorStorageType::BUFFER) {
+    if (descriptor_.GetStorageType() != TensorStorageType::BUFFER) {
       return absl::InvalidArgumentError(
           "Tensor can be used with BufferDescriptor only wtih "
           "TensorStorageType::BUFFER.");
@@ -246,7 +247,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   const auto* texture2d_desc =
       dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
   if (texture2d_desc) {
-    if (descriptor_.storage_type != TensorStorageType::TEXTURE_2D) {
+    if (descriptor_.GetStorageType() != TensorStorageType::TEXTURE_2D) {
       return absl::InvalidArgumentError(
           "Tensor can be used with Texture2DDescriptor only wtih "
           "TensorStorageType::TEXTURE_2D.");
@@ -258,43 +259,25 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   if (!tensor_desc) {
     return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
   }
-  resources->ints.push_back(
-      {"slice_stride", tensor_desc->GetSliceStrideSize(shape_)});
-  if (descriptor_.HasAxis(Axis::WIDTH)) {
-    resources->ints.push_back({"width", tensor_desc->GetWidthSize(shape_)});
-  }
-  if (descriptor_.HasAxis(Axis::HEIGHT)) {
-    resources->ints.push_back({"height", Height()});
-  }
-  if (descriptor_.HasAxis(Axis::CHANNELS)) {
-    resources->ints.push_back({"slices", Slices()});
-    resources->ints.push_back({"channels", Channels()});
-  }
-  if (descriptor_.HasAxis(Axis::BATCH)) {
-    resources->ints.push_back({"batch", Batch()});
-  }
-  if (descriptor_.HasAxis(Axis::DEPTH)) {
-    resources->ints.push_back({"depth", Depth()});
-  }
+  tensor_desc->GetGpuResources(shape_, &resources->generic);
 
-  if (descriptor_.storage_type == TensorStorageType::BUFFER) {
+  if (descriptor_.GetStorageType() == TensorStorageType::BUFFER) {
     resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
-  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D) {
+  } else if (descriptor_.GetStorageType() == TensorStorageType::TEXTURE_2D) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
-        tensor_desc->use_buffer_for_write_only_2d_texture) {
-      resources->ints.push_back(
-          {"aligned_texture_width", aligned_texture_width_});
+        tensor_desc->GetUseBufferForWriteOnlyTexture2d()) {
+      resources->AddInt("aligned_texture_width", aligned_texture_width_);
       resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
     } else {
       resources->images2d.push_back({"image2d", texture_mem_});
     }
-  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
+  } else if (descriptor_.GetStorageType() == TensorStorageType::TEXTURE_3D) {
     resources->images3d.push_back({"image3d", texture_mem_});
-  } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
+  } else if (descriptor_.GetStorageType() == TensorStorageType::TEXTURE_ARRAY) {
     resources->image2d_arrays.push_back({"image2d_array", texture_mem_});
-  } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+  } else if (descriptor_.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     if (obj_ptr->GetAccess() == AccessType::WRITE &&
-        tensor_desc->use_buffer_for_write_only_image_buffer) {
+        tensor_desc->GetUseBufferForWriteOnlyImageBuffer()) {
       resources->buffers.push_back({"buffer", {memory_, buffer_offset_}});
     } else {
       resources->image_buffers.push_back({"image_buffer", texture_mem_});
@@ -305,7 +288,7 @@ absl::Status MetalSpatialTensor::GetGPUResources(
 }
 
 int3 MetalSpatialTensor::GetFullTensorRegion() const {
-  switch (descriptor_.storage_type) {
+  switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
@@ -365,9 +348,9 @@ absl::Status MetalSpatialTensor::IsValid(const BHWDC& shape) const {
 }
 
 uint64_t MetalSpatialTensor::GetMemorySizeInBytes() const {
-  const int flt_size = SizeOf(descriptor_.data_type);
+  const int flt_size = SizeOf(descriptor_.GetDataType());
   const int flt4_size = 4 * flt_size;
-  switch (descriptor_.storage_type) {
+  switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
@@ -382,7 +365,7 @@ uint64_t MetalSpatialTensor::GetMemorySizeInBytes() const {
 }
 
 int MetalSpatialTensor::GetAlignedChannels() const {
-  return descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+  return descriptor_.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
              ? shape_.c
              : AlignByN(shape_.c, 4);
 }
@@ -402,9 +385,7 @@ absl::Status MetalSpatialTensor::WriteData(
 absl::Status MetalSpatialTensor::CreateFromDescriptor(
     const TensorDescriptor& desc, id<MTLDevice> device) {
   shape_ = desc.GetBHWDCShape();
-  descriptor_.data_type = desc.data_type;
-  descriptor_.storage_type = desc.storage_type;
-  descriptor_.layout = desc.layout;
+  desc.CopyWithoutData(&descriptor_);
   memory_owner_ = true;
   const uint8_t* data_ptr =
       desc.GetData().empty() ? nullptr : desc.GetData().data();
@@ -429,7 +410,7 @@ absl::Status MetalSpatialTensor::ToDescriptor(TensorDescriptor* desc,
 
 absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
                                            const void* ptr) {
-  switch (descriptor_.storage_type) {
+  switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       std::memcpy(
@@ -454,7 +435,7 @@ absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
 
 absl::Status MetalSpatialTensor::ReadData(id<MTLDevice> device,
                                           void* ptr) const {
-  switch (descriptor_.storage_type) {
+  switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       std::memcpy(
@@ -487,7 +468,7 @@ absl::Status MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
     return absl::OkStatus();
   }
   memory_ = buffer;
-  if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
+  if (descriptor_.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     id<MTLTexture> texture_buffer = nullptr;
     RETURN_IF_ERROR(
         CreateTextureBuffer(memory_, 0, shape_, descriptor_, &texture_buffer));
@@ -525,7 +506,8 @@ absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
                                       MetalSpatialTensor* result,
                                       uint64_t buffer_offset) {
   id<MTLTexture> texture_buffer = nullptr;
-  if (buffer && descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+  if (buffer &&
+      descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
     RETURN_IF_ERROR(CreateTextureBuffer(buffer, buffer_offset, shape,
                                         descriptor, &texture_buffer));
   }
@@ -555,8 +537,9 @@ absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
   const int width = shape.b * shape.w * shape.d;
   const int height = shape.h * DivideRoundUp(shape.c, 4);
   const int channels =
-      descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
-                                                                      : 4;
+      descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
+          ? shape.c
+          : 4;
   MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
   texture_desc.width = width;
   texture_desc.height = height;
@@ -566,10 +549,10 @@ absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
   texture_desc.mipmapLevelCount = 1;
   texture_desc.sampleCount = 1;
   texture_desc.pixelFormat =
-      DataTypeToRGBAPixelFormat(descriptor.data_type, false);
+      DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
   texture_desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
   texture_desc.storageMode = buffer.storageMode;
-  const size_t pixel_size = channels * SizeOf(descriptor.data_type);
+  const size_t pixel_size = channels * SizeOf(descriptor.GetDataType());
   const size_t bytes_per_row = width * pixel_size;
   const size_t bytes_per_row_aligned =
       AlignByN(bytes_per_row, row_bytes_alignment);

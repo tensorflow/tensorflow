@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Library imports for WorkerPreemptionHandler."""
+"""Library imports for PreemptionCheckpointHandler."""
 
-from tensorflow.python.distribute.failure_handling.failure_handling import WorkerPreemptionHandler
+from tensorflow.python.distribute.failure_handling.failure_handling import PreemptionCheckpointHandler
+from tensorflow.python.distribute.failure_handling.failure_handling import TerminationConfig

@@ -223,7 +223,7 @@ ParseResult GraphOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse the body region.
   Region &body = *result.addRegion();
-  if (parser.parseRegion(body, llvm::None, llvm::None)) return failure();
+  if (parser.parseRegion(body)) return failure();
 
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
@@ -346,7 +346,8 @@ ParseResult IslandOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
   if (!op_infos.empty()) {
     SmallVector<Type, 2> types(op_infos.size(), control_type);
-    parser.resolveOperands(op_infos, types, loc, result.operands);
+    if (parser.resolveOperands(op_infos, types, loc, result.operands))
+      return failure();
   }
 
   // Parse the body region.
@@ -364,7 +365,7 @@ ParseResult IslandOp::parse(OpAsmParser &parser, OperationState &result) {
     builder.setInsertionPointToEnd(&block);
     builder.create<YieldOp>(wrapped_op->getLoc(), wrapped_op->getResults());
     result.location = wrapped_op->getLoc();
-  } else if (parser.parseRegion(body, llvm::None, llvm::None)) {
+  } else if (parser.parseRegion(body)) {
     return failure();
   }
 

@@ -40,24 +40,18 @@ TfThreadPoolWorkQueue::InitializeRequest(
   DCHECK(intra_op_threadpool);
   *intra_op_threadpool = intra_op_threadpool_;
 
-  return {nullptr};
+  return {std::make_unique<TfThreadPoolWorkQueue>(request_context_builder->id(),
+                                                  intra_op_threadpool_,
+                                                  inter_op_threadpool_)};
 }
 
 void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
-  auto* copy = new tfrt::TaskFunction(std::move(work));
+  auto* copy = new tfrt::TaskFunction(
+      tensorflow::tfrt_stub::WrapWork(id(), "inter", std::move(work)));
   inter_op_threadpool_->Schedule([copy] {
     (*copy)();
     delete copy;
   });
-}
-
-void TfThreadPoolWorkQueue::AddTask(const tfrt::ExecutionContext& exec_ctx,
-                                    tfrt::TaskFunction work) {
-  int64_t id = 0;
-  if (auto* request_context = exec_ctx.request_ctx()) {
-    id = request_context->id();
-  }
-  AddTask(tensorflow::tfrt_stub::WrapWork(id, "inter", std::move(work)));
 }
 
 llvm::Optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(

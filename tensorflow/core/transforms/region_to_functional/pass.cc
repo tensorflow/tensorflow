@@ -40,9 +40,13 @@ struct RegionToFunctionalPass
     SymbolTable table(getOperation());
     PopulateRegionToFunctionalPatterns(patterns, table, force_control_capture);
 
+    GreedyRewriteConfig config;
+    // Use top-down traversal for more efficient conversion. Disable region
+    // simplification as all regions are single block.
+    config.useTopDownTraversal = true;
+    config.enableRegionSimplification = false;
     // Iterate until all regions have been outlined. This is guaranteed to
     // terminate because the IR can only hold a finite depth of regions.
-    GreedyRewriteConfig config;
     config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {

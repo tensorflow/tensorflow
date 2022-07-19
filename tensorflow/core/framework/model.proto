@@ -22,6 +22,7 @@ enum AutotuneAlgorithm {
   HILL_CLIMB = 1;
   GRADIENT_DESCENT = 2;
   MAX_PARALLELISM = 3;
+  STAGE_BASED = 4;
 }
 
 // Protocol buffer representing the data used by the autotuning modeling
@@ -53,7 +54,7 @@ message ModelProto {
     // The number of elements produced by the node.
     int64 num_elements = 8;
 
-    // The aggregate processing time spent in this node.
+    // The aggregate processing time spent in this node in nanoseconds.
     int64 processing_time = 9;
 
     // An indication whether this node records metrics about produced and

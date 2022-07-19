@@ -42,6 +42,7 @@ from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -478,8 +479,11 @@ def _GradientsHelper(ys,
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
                        "is enabled. Use tf.GradientTape instead.")
-  ys = _AsList(ys)
-  xs = _AsList(xs)
+  ys = variable_utils.convert_variables_to_tensors(_AsList(ys))
+  xs = [
+      x.handle if resource_variable_ops.is_resource_variable(x) else x
+      for x in _AsList(xs)
+  ]
   if grad_ys is not None:
     grad_ys = _AsList(grad_ys)
 
@@ -529,10 +533,6 @@ def _GradientsHelper(ys,
     # cluster ops for compilation.
     gradient_uid = ops.get_default_graph().unique_name("uid")
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = [
-        x.handle if resource_variable_ops.is_resource_variable(x) else x
-        for x in xs
-    ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
     xs_set = object_identity.ObjectIdentitySet(xs)

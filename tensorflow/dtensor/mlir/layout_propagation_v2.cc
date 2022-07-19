@@ -61,6 +61,10 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
+// This value dictates how many times during layout propagation we allow
+// fixing of oscillatory behaviors.
+constexpr int kLayoutPropagationMaxStages = 3;
+
 bool AllOpResultsHaveLayouts(
     mlir::ModuleOp* module, mlir::Dialect* tf_dialect,
     const llvm::DenseMap<mlir::Value, Layout>& layouts) {
@@ -458,6 +462,9 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
                                          mlir::Location location,
                                          absl::optional<Layout>* out) {
+  // If there are no layouts to merge, leave the output empty.
+  if (layouts.empty()) return mlir::success();
+
   absl::optional<Layout> layout;
   std::map<std::string, std::set<int>> layout_map;
   for (const Layout& layout : layouts) {
@@ -1138,7 +1145,7 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
       return op->emitOpError() << "body terminator is not a Yield op.";
 
     for (int i = 0; i < op.body().getNumArguments(); ++i) {
-      // Inputs should only have one one, a DTensorLayout op.
+      // Inputs should only have one, a DTensorLayout op.
       mlir::Value argument = op.body().getArgument(i);
       if (!argument.hasOneUse())
         return op.emitOpError()
@@ -1319,6 +1326,68 @@ void FindRootsAndEmitError(
 }
 }  // namespace
 
+// Runs an iteration of layout propagation, where we merge producer and consumer
+// requests and then recompute recommended layouts on all operations that
+// are connected to an updated layout.
+Status RunOneIteration(
+    llvm::DenseSet<mlir::Value>& is_locked,
+    llvm::DenseSet<mlir::Value>& is_updated,
+    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
+        consumer_requests,
+    llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
+    llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
+    llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
+    const uint64_t module_hash, int* stage) {
+  if (is_updated.empty()) return Status::OK();
+  // Merge any possibly updated layouts.
+  if (mlir::failed(
+          MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
+                                    consumer_requests, merged_layouts)))
+    return errors::Internal(
+        "MergeAndGetUpdatedLayouts failed to merge layouts.");
+
+  // Compile a list of operations with updated inputs or outputs.
+  llvm::DenseSet<mlir::Operation*> operations_needing_update;
+  GetOperationsNeedingUpdate(is_updated, consumers, operations_needing_update);
+  is_updated.clear();
+
+  if (VLOG_IS_ON(2)) {
+    LogLayoutsAndOps(*stage, module_hash, merged_layouts, module);
+  }
+
+  for (auto* op : operations_needing_update) {
+    if (mlir::failed(UpdateLayoutsForOp(op, producers, merged_layouts,
+                                        producer_request, consumer_requests,
+                                        is_updated)))
+      return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
+  }
+  ++(*stage);
+  return Status::OK();
+}
+
+// Compares every value's layouts in `merged_a` with the ones in `merged_b`,
+// and store the values that differ in `changed`.
+Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
+                            const llvm::DenseMap<mlir::Value, Layout>& merged_b,
+                            llvm::DenseSet<mlir::Value>& changed) {
+  if (merged_a.size() != merged_b.size())
+    return errors::Internal(
+        "Both merged_layouts did not have the same number of set layouts.");
+  for (const auto& value_and_layout : merged_a) {
+    const mlir::Value value = value_and_layout.getFirst();
+    const Layout& layout = value_and_layout.getSecond();
+    auto value_and_layout_in_b = merged_b.find(value);
+    if (value_and_layout_in_b == merged_b.end())
+      return errors::Internal(
+          "Comparing merged_layouts that contain different mlir::Value's.");
+    if (value_and_layout_in_b->second != layout) {
+      changed.insert(value);
+    }
+  }
+  return Status::OK();
+}
+
 // MLIR pass that propagates layout for all ops the module.
 struct DLayoutPropagationPassV2
     : public DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
@@ -1395,32 +1464,85 @@ struct DLayoutPropagationPassV2
     int stage = 0;
 
     llvm::DenseMap<mlir::Value, Layout> merged_layouts;
-    while (!is_updated.empty() && stage < LayoutPropagationMaxSteps()) {
-      // Merge any possibly updated layouts.
-      if (mlir::failed(
-              MergeAndGetUpdatedLayouts(is_locked, is_updated, producer_request,
-                                        consumer_requests, merged_layouts)))
-        return signalPassFailure();
+    Status status;
 
-      // Compile a list of operations with updated inputs or outputs.
+    while (!is_updated.empty() && stage < kLayoutPropagationMaxStages) {
+      ++stage;
+      int steps = 0;
+      // Step 1. Run the layout propagation v2 until convergence or max steps.
+      while (!is_updated.empty() && steps < LayoutPropagationMaxSteps()) {
+        Status status = RunOneIteration(
+            is_locked, is_updated, producer_request, consumer_requests,
+            producers, consumers, merged_layouts, module, module_hash, &steps);
+        if (!status.ok()) {
+          module.emitOpError() << "Failure running iteration.";
+          return signalPassFailure();
+        }
+      }
+      if (VLOG_IS_ON(2)) {
+        LOG(INFO) << "Failed to converge in stage " << stage;
+      }
+      // Step 2. If we are here, then we failed to converge, and likely
+      // there is an oscillation of layouts. Detect all the edges that are
+      // changing layouts.
+      llvm::DenseMap<mlir::Value, Layout> merged_layouts_at_max_steps =
+          merged_layouts;
+      llvm::DenseSet<mlir::Value> changed;
+      int previous_change_size = -1;
+
+      while (changed.size() > previous_change_size) {
+        if (!RunOneIteration(is_locked, is_updated, producer_request,
+                             consumer_requests, producers, consumers,
+                             merged_layouts, module, module_hash, &steps)
+                 .ok()) {
+          module.emitOpError() << "Failure running iteration.";
+          return signalPassFailure();
+        }
+        if (!CompareMergedLayouts(merged_layouts_at_max_steps, merged_layouts,
+                                  changed)
+                 .ok()) {
+          module.emitOpError() << "Failure comparing merged layouts.";
+          return signalPassFailure();
+        }
+        previous_change_size = changed.size();
+      }
+
+      // Step 3. Layouts that haven't changed means they're not part of the
+      // cyclic problem, so freeze them.
+      for (const auto& value_and_layout : merged_layouts) {
+        const mlir::Value value = value_and_layout.getFirst();
+        if (changed.find(value) == changed.end()) {
+          is_locked.insert(value);
+        }
+      }
+      // Step 4. Any information corresponding to the changed layouts
+      // should be disinfected, we do this by clearing all information
+      // regarding them.
+      for (const mlir::Value changed_value : changed) {
+        producer_request.erase(changed_value);
+        consumer_requests.erase(changed_value);
+        merged_layouts.erase(changed_value);
+      }
+
+      // Step 5. ComputeLayout again on all the ops linked to the changed
+      // layouts. The next iteration will take this information and merge again.
       llvm::DenseSet<mlir::Operation*> operations_needing_update;
+      is_updated = changed;
       GetOperationsNeedingUpdate(is_updated, consumers,
                                  operations_needing_update);
       is_updated.clear();
 
-      if (VLOG_IS_ON(2)) {
-        LogLayoutsAndOps(stage, module_hash, merged_layouts, module);
-      }
-
       for (auto* op : operations_needing_update) {
         if (mlir::failed(UpdateLayoutsForOp(op, producers, merged_layouts,
                                             producer_request, consumer_requests,
-                                            is_updated)))
+                                            is_updated))) {
+          module.emitOpError() << "Failure in UpdateLayoutsForOp.";
           return signalPassFailure();
+        }
       }
-      stage++;
     }
-    if (stage == LayoutPropagationMaxSteps()) {
+
+    if (stage >= kLayoutPropagationMaxStages) {
       FindRootsAndEmitError(module, producers, is_updated);
       return signalPassFailure();
     }

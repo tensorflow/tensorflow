@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
@@ -53,8 +53,8 @@ void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager) {
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreatePrepareQuantizePass(quant_specs));
-  if (quant_specs.default_ranges.first.hasValue() ||
-      quant_specs.default_ranges.second.hasValue()) {
+  if (quant_specs.default_ranges.first.has_value() ||
+      quant_specs.default_ranges.second.has_value()) {
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreateDefaultQuantParamsPass(
             quant_specs.default_ranges.first.getValueOr(0.0),
@@ -108,7 +108,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
 
   // Expands mhlo.tuple ops.
   pass_manager->addPass(
-      mlir::mhlo::CreateExpandHloTuplesPass(entry_function_name));
+      mlir::mhlo::createExpandHloTuplesPass(entry_function_name));
   // Flatten tuples for control flows.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createFlattenTuplePass());
@@ -402,7 +402,7 @@ struct StandardPipelineOptions
 // This does not yet include quantization passes.
 void CreateTFLStandardPipeline(OpPassManager& pm,
                                const StandardPipelineOptions& options) {
-  OpPassManager& func_pm = pm.nest<FuncOp>();
+  OpPassManager& func_pm = pm.nest<func::FuncOp>();
 
   // tf_executor dialect passes - Cleaning up the IR.
   mlir::TF::StandardPipelineOptions standard_pipeline_options;

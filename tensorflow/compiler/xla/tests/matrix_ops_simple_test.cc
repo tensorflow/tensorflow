@@ -16,8 +16,8 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -81,7 +80,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
     Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
-    add_half = computation_status.ConsumeValueOrDie();
+    add_half = std::move(computation_status).value();
   }
 
   XlaBuilder builder("map_2x2");
@@ -133,7 +132,7 @@ class TestLinspaceMaxParametric
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
-    auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
+    auto arhs = std::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
     XlaBuilder builder(absl::StrFormat("max_%dx%d_linspace", rows, cols));
     auto lhs = ConstantR2FromArray2D<T>(&builder, *alhs);

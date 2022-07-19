@@ -584,7 +584,7 @@ HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
   custom_call->set_metadata(metadata);
 
   // Give the customcall a user-friendly name.
-  absl::optional<std::string> name;
+  std::optional<std::string> name;
   if (call_target == kCudnnConvForwardCallTarget) {
     name = "cudnn-conv";
   } else if (call_target == kCudnnConvBackwardInputCallTarget) {
@@ -743,10 +743,13 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> GpuConvRewriter::Run(HloModule* module) {
+StatusOr<bool> GpuConvRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }

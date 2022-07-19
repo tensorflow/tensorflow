@@ -53,7 +53,7 @@ Status ScopedAllocatorContainer::AddScopedAllocator(
     allocators_[f.scope_id] = ScopedAllocatorContainer::SAField(
         i, new ScopedAllocatorInstance(sa, i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 ScopedAllocator* ScopedAllocatorContainer::GetAllocator(int32_t scope_id) {

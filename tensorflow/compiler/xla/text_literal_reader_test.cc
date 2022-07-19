@@ -42,7 +42,7 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, contents)
           .ok());
 
-  Literal literal = TextLiteralReader::ReadPath(fname).ConsumeValueOrDie();
+  Literal literal = TextLiteralReader::ReadPath(fname).value();
   EXPECT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {1, 2, 3}), literal.shape()));
   EXPECT_EQ(42.5, literal.Get<float>({0, 0, 0}));

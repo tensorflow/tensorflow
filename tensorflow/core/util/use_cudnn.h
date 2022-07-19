@@ -33,10 +33,10 @@ int64_t DebugCudnnRnnAlgo();
 // Returns true if the CuDNN depthwise convolution can be used. See cudnn
 // release note 7.6.3.
 // (https://docs.nvidia.com/deeplearning/sdk/cudnn-release-notes/rel_763.html)
-bool IsCudnnSupportedFilterSize(const int32_t filter_rows,
-                                const int32_t filter_cols,
-                                const int32_t in_depth,
-                                const int32_t out_depth);
+bool ShouldCudnnGroupedConvolutionBeUsed(const int32_t filter_rows,
+                                         const int32_t filter_cols,
+                                         const int32_t in_depth,
+                                         const int32_t out_depth);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_USE_CUDNN_H_

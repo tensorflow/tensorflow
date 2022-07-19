@@ -44,3 +44,9 @@ def TestGmlStLoopTiling : Pass<"test-gml-st-loop-tiling", "mlir::func::FuncOp"> 
 
   ];
 }
+
+def TestGmlStBufferization
+    : Pass<"test-gml-st-bufferization", "mlir::ModuleOp"> {
+  let summary = "Bufferize `gml_st.loop`.";
+  let constructor = "::mlir::gml_st::createTestGmlStBufferizationPass()";
+}

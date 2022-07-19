@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/device_target.h"
 
 #include <algorithm>
+#include <functional>
+#include <optional>
 
 #include "absl/types/optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -58,7 +60,7 @@ Optional<KernelSpec> DeviceTarget::GetKernelSpec(
 }
 
 ScaleDecomposeFn DeviceTarget::GetDecomposeFn(QuantizeRegionOp op) const {
-  auto kernel_specs_it = specs_.find(op.logical_kernel());
+  auto kernel_specs_it = specs_.find(op.getLogicalKernel());
   if (kernel_specs_it == specs_.end()) return ScaleDecomposeFn(nullptr);
   return kernel_specs_it->second.GetDecomposeFn();
 }
@@ -106,10 +108,10 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   if (!rop) return failure();
 
   llvm::SmallVector<Type, 4> input_specs, out_specs;
-  for (auto spec : rop.input_specs()) {
+  for (auto spec : rop.getInputSpecs()) {
     input_specs.push_back(spec.cast<TypeAttr>().getValue());
   }
-  for (auto spec : rop.output_specs()) {
+  for (auto spec : rop.getOutputSpecs()) {
     out_specs.push_back(spec.cast<TypeAttr>().getValue());
   }
 
@@ -135,8 +137,8 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
-      (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
-      (max ? absl::optional<double>(max.getValueAsDouble()) : absl::nullopt),
+      (min ? std::optional<double>(min.getValueAsDouble()) : std::nullopt),
+      (max ? std::optional<double>(max.getValueAsDouble()) : std::nullopt),
       o_spec.getStorageTypeMin(), o_spec.getStorageTypeMax()));
 
   return success();
@@ -159,7 +161,7 @@ LogicalResult DeviceTarget::DecomposeSameScale(
     output_multipliers->push_back(kUnitQuantizedMultiplier);
   }
 
-  auto o_spec = rop.output_specs()[0]
+  auto o_spec = rop.getOutputSpecs()[0]
                     .cast<TypeAttr>()
                     .getValue()
                     .dyn_cast<quant::UniformQuantizedType>();
@@ -170,8 +172,8 @@ LogicalResult DeviceTarget::DecomposeSameScale(
   auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
-      (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
-      (max ? absl::optional<double>(max.getValueAsDouble()) : absl::nullopt),
+      (min ? std::optional<double>(min.getValueAsDouble()) : std::nullopt),
+      (max ? std::optional<double>(max.getValueAsDouble()) : std::nullopt),
       o_spec.getStorageTypeMin(), o_spec.getStorageTypeMax()));
 
   return success();

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -81,6 +82,9 @@ class DataServiceWorkerImpl {
   Status GetWorkerTasks(const GetWorkerTasksRequest* request,
                         GetWorkerTasksResponse* response);
 
+  // Exports the worker state for debugging.
+  WorkerStateExport ExportState() const;
+
  private:
   struct Task {
     explicit Task(TaskDef task_def) : task_def(std::move(task_def)) {}
@@ -127,7 +131,7 @@ class DataServiceWorkerImpl {
   std::string transfer_address_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
-  mutex mu_;
+  mutable mutex mu_;
   condition_variable cv_;
   // Information about tasks, keyed by task ids. The tasks are updated based on
   // the heartbeat responses from the dispatcher.
@@ -142,14 +146,14 @@ class DataServiceWorkerImpl {
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
   // Whether the worker has registered with the dispatcher yet.
   bool registered_ TF_GUARDED_BY(mu_) = false;
+  condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
+  condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
+  CancellationManager cancellation_manager_;
+
   // A thread for notifying the dispatcher when tasks complete.
   std::unique_ptr<Thread> task_completion_thread_;
-  condition_variable task_completion_cv_ TF_GUARDED_BY(mu_);
   // A thread for performing regular heartbeats to the dispatcher.
   std::unique_ptr<Thread> heartbeat_thread_;
-  condition_variable heartbeat_cv_ TF_GUARDED_BY(mu_);
-  int64_t outstanding_requests_ TF_GUARDED_BY(mu_) = 0;
-  CancellationManager cancellation_manager_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);
 };

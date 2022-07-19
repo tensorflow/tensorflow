@@ -1,5 +1,6 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "if_oss")
+load("@tf_runtime//:build_defs.bzl", "tfrt_cc_test")
 
 package(licenses = ["notice"])
 
@@ -19,5 +20,21 @@ filegroup(
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
         "@llvm-project//mlir:run_lit.sh",
+    ],
+)
+
+tfrt_cc_test(
+    name = "tf_jitrt_benchmark_test",
+    srcs = ["tf_jitrt_benchmark_test.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@tf_runtime//:dtype",
+        "@tf_runtime//backends/jitrt",
+        "@tf_runtime//backends/jitrt:jitrt_compiler",
     ],
 )

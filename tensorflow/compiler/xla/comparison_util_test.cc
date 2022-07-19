@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
 namespace {
@@ -178,20 +179,79 @@ TEST(Comparison, ToString) {
             "_1_GE_2_C128_3_PARTIALORDER");
 }
 
-TEST(Comparison, CompareFollowsIEEE754) {
-  // Even though this has total ordering, we expect Comparison::Compare to
-  // follow the C++ specification for float comparison.
-  EXPECT_FALSE(Comparison(Comparison::Direction::kEq, PrimitiveType::F32,
+TEST(Comparison, TotalOrderFloatComparison) {
+  EXPECT_TRUE(Comparison(Comparison::Direction::kEq, PrimitiveType::F32,
+                         Comparison::Order::kTotal)
+                  .Compare<float>(std::numeric_limits<float>::quiet_NaN(),
+                                  std::numeric_limits<float>::quiet_NaN()));
+
+  EXPECT_TRUE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32,
+                         Comparison::Order::kTotal)
+                  .Compare<float>(1.0f, 2.0f));
+
+  EXPECT_FALSE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32,
                           Comparison::Order::kTotal)
-                   .Compare<float>(std::numeric_limits<float>::quiet_NaN(),
-                                   std::numeric_limits<float>::quiet_NaN()));
+                   .Compare<float>(std::numeric_limits<float>::infinity(),
+                                   -std::numeric_limits<float>::infinity()));
+  EXPECT_TRUE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32,
+                         Comparison::Order::kTotal)
+                  .Compare<float>(-0.0f, +0.0f));
+
+  EXPECT_TRUE(Comparison(Comparison::Direction::kNe, PrimitiveType::F32,
+                         Comparison::Order::kTotal)
+                  .Compare<float>(+0.0f, -0.0f));
+
+  EXPECT_FALSE(Comparison(Comparison::Direction::kGt, PrimitiveType::F32,
+                          Comparison::Order::kTotal)
+                   .Compare<float>(-0.1f, 0.1f));
+}
+
+TEST(Comparison, TotalOrderBfloat16Comparison) {
+  EXPECT_TRUE(Comparison(Comparison::Direction::kEq, PrimitiveType::BF16,
+                         Comparison::Order::kTotal)
+                  .Compare<xla::bfloat16>(
+                      std::numeric_limits<xla::bfloat16>::quiet_NaN(),
+                      std::numeric_limits<xla::bfloat16>::quiet_NaN()));
+
+  EXPECT_TRUE(
+      Comparison(Comparison::Direction::kLt, PrimitiveType::BF16,
+                 Comparison::Order::kTotal)
+          .Compare<xla::bfloat16>(xla::bfloat16(1.0f), xla::bfloat16(2.0f)));
+
+  EXPECT_FALSE(Comparison(Comparison::Direction::kLt, PrimitiveType::BF16,
+                          Comparison::Order::kTotal)
+                   .Compare<xla::bfloat16>(
+                       std::numeric_limits<xla::bfloat16>::infinity(),
+                       -std::numeric_limits<xla::bfloat16>::infinity()));
+  EXPECT_TRUE(
+      Comparison(Comparison::Direction::kLt, PrimitiveType::BF16,
+                 Comparison::Order::kTotal)
+          .Compare<xla::bfloat16>(xla::bfloat16(-0.0f), xla::bfloat16(+0.0f)));
+
+  EXPECT_TRUE(
+      Comparison(Comparison::Direction::kGt, PrimitiveType::BF16,
+                 Comparison::Order::kTotal)
+          .Compare<xla::bfloat16>(xla::bfloat16(+0.0f), xla::bfloat16(-0.0f)));
+
+  EXPECT_FALSE(
+      Comparison(Comparison::Direction::kGt, PrimitiveType::BF16,
+                 Comparison::Order::kTotal)
+          .Compare<xla::bfloat16>(xla::bfloat16(-0.1f), xla::bfloat16(0.1f)));
 }
 
 TEST(Comparison, Compare) {
   EXPECT_TRUE(Comparison(Comparison::Direction::kLt, PrimitiveType::F32)
                   .Compare<float>(1.0f, 2.0f));
+
+  EXPECT_TRUE(
+      Comparison(Comparison::Direction::kGe, PrimitiveType::BF16)
+          .Compare<xla::bfloat16>(xla::bfloat16(2.0f), xla::bfloat16(1.0f)));
+
   EXPECT_FALSE(Comparison(Comparison::Direction::kNe, PrimitiveType::S64)
                    .Compare<int64_t>(1'000'000, 1'000'000));
+
+  EXPECT_TRUE(Comparison(Comparison::Direction::kEq, PrimitiveType::U8)
+                  .Compare<uint8_t>(63, 63));
 }
 
 }  // namespace

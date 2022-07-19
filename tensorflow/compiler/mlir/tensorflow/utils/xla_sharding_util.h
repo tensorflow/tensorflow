@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -29,8 +30,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-extern const char* const kInputShardingAttr;
-extern const char* const kOutputShardingAttr;
+inline constexpr absl::string_view kInputShardingAttr =
+    "input_sharding_configuration";
+inline constexpr absl::string_view kOutputShardingAttr =
+    "output_sharding_configuration";
 
 // Parses "input_sharding_configuration" attribute and returns a list where i-th
 // element is a list of mlir::Value's which represent inputs for the TPU
@@ -56,13 +59,14 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
     mlir::tf_device::ClusterFuncOp cluster_func,
     llvm::SmallVectorImpl<mlir::Type>* output_types);
 
-// Remaps outputs of `tf_device.parallel_execute` op that represent concurrent
-// execution of the `tf_device.cluster_func` with its users.
+// Remaps outputs of `new_parallel_execute` op that represent concurrent
+// execution of the `tf_device.cluster_func` at index `cluster_idx` of
+// `old_parallel_execute` with its users.
 mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::ClusterFuncOp cluster_func,
-    mlir::tf_device::ParallelExecuteOp parallel_execute,
+    mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
+    mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder);
 
 // Determines each logical core argument to metadata argument index mapping,

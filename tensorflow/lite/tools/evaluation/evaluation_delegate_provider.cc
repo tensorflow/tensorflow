@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
+#include <string>
+
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {

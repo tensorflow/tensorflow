@@ -43,7 +43,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 
   module.walk([&](mlir::Operation* op) {
     if (!mlir::TFL::tac::IsNonConstOp(op) &&
-        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op))
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op))
       return;
 
     // Attach cost per target.

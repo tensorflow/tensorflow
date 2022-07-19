@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "XlaRecvFromHost"
   output_arg {
     name: "output"

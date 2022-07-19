@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
 #define MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
 
+#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
@@ -25,16 +27,17 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 
 // Generated dialect declarations.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_dialect.h.inc"
 
-// Generated operation classes.
-#define GET_OP_CLASSES
-#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc"
-
 // Generated custom type declarations.
 #define GET_TYPEDEF_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.h.inc"
+
+// Generated operation classes.
+#define GET_OP_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H

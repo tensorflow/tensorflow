@@ -22,8 +22,9 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -120,7 +121,7 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
     Operation* global_op = mlir::SymbolTable::lookupNearestSymbolFrom(
-        pair.value(), pair.value().nameAttr());
+        pair.value(), pair.value().getNameAttr());
     auto attr = builder.getIndexAttr(pair.index());
     builder.clone(*global_op)->setAttr("lmhlo.alloc", attr);
   }
@@ -132,7 +133,7 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
   // Annotate the function arguments if they refer to a memref.global op.
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
-    auto attr = builder.getStringAttr(pair.value().name());
+    auto attr = builder.getStringAttr(pair.value().getName());
     func_op.setArgAttr(pair.index(), "lmhlo.constant_name", attr);
   }
   func_op.setPublic();
@@ -266,7 +267,7 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
-  auto emit_result = Emit(std::get<mlir::FuncOp>(module_op), *allocations,
+  auto emit_result = Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
                           cuda_compute_capability, rocm_compute_capability,
                           hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
@@ -327,7 +328,7 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   rewriter.setInsertionPoint(op->getParentOfType<mlir::func::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
-  gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),
+  gpu_module->setAttr(tfrt::gpu::GetGpuBinaryAttrName(),
                       rewriter.getStringAttr(gpu_module_data));
 
   // Annotate memref.global ops with the gpu.module symbol, and annotate the
@@ -341,13 +342,13 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
                    << "unused (spurious) constant.";
       continue;
     }
-    global_op->setAttr(tfrt::gpu::getGpuModuleAttrName(),
+    global_op->setAttr(tfrt::gpu::GetGpuModuleAttrName(),
                        mlir::SymbolRefAttr::get(gpu_module));
     if (!constant.content.empty())
       const_attrs.emplace_back(mlir::SymbolRefAttr::get(global_op));
   }
   if (!const_attrs.empty()) {
-    gpu_module->setAttr(tfrt::gpu::getGpuConstantsAttrName(),
+    gpu_module->setAttr(tfrt::gpu::GetGpuConstantsAttrName(),
                         rewriter.getArrayAttr(const_attrs));
   }
 

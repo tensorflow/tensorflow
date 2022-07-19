@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FUNCTION_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_FUNCTION_OPS_H_
 
-#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -71,10 +70,6 @@ class RemoteCallOp : public AsyncOpKernel {
   NameAttrList func_;
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;
-  // Note that in the future if all RemoteCall ops have full type
-  // information, the kernel will not need access to the "Tout" Attr and
-  // return_type_ will replace output_dtypes_.
-  FullTypeDef return_type_;
 
   mutex mu_;
   typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;

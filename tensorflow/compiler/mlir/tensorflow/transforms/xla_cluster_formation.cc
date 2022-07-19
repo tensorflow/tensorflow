@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This pass encapsulates StatefulPartitionedCallOp within a Cluster op.
-
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -24,13 +22,13 @@ limitations under the License.
 namespace mlir {
 
 namespace {
-// XlaClusterFormation Pass will encapsulate StatefulPartitionedCallOp.
+// Outlines partitioned call ops with `_XlaMustCompile` to device clusters.
 struct XlaClusterFormationPass
     : public TFDevice::XlaClusterFormationPassBase<XlaClusterFormationPass> {
   void runOnOperation() override;
 };
 
-void EncapsulateStatefulpartitionedCall(TF::StatefulPartitionedCallOp call_op) {
+void EncapsulatePartitionedCall(TF::StatefulPartitionedCallOp call_op) {
   mlir::OpBuilder builder(call_op);
 
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
@@ -48,17 +46,19 @@ void EncapsulateStatefulpartitionedCall(TF::StatefulPartitionedCallOp call_op) {
                                             call_op->getResults());
 }
 
-// Encapsulate StatefulpartitionedCall op by outline the op. Inline the ops
-// within a cluster.
 void XlaClusterFormationPass::runOnOperation() {
   ModuleOp module = getOperation();
 
   llvm::SmallVector<TF::StatefulPartitionedCallOp, 4> ops;
-  module.walk(
-      [&](TF::StatefulPartitionedCallOp call_op) { ops.push_back(call_op); });
+  module.walk([&](TF::StatefulPartitionedCallOp call_op) {
+    auto attr = call_op->getAttrOfType<BoolAttr>("_XlaMustCompile");
+    if (attr && attr.getValue()) {
+      ops.push_back(call_op);
+    }
+  });
 
   for (auto call_op : ops) {
-    EncapsulateStatefulpartitionedCall(call_op);
+    EncapsulatePartitionedCall(call_op);
   }
 }
 

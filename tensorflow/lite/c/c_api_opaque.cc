@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_opaque.h"
 
+#include "tensorflow/lite/kernels/kernel_util.h"
+
 TfLiteType TfLiteOpaqueTensorType(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorType(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
 }
@@ -57,4 +59,22 @@ TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
   return TfLiteTensorCopyToBuffer(
       reinterpret_cast<const TfLiteTensor*>(opaque_tensor), output_data,
       output_data_size);
+}
+
+const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
+    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
+    int index) {
+  const TfLiteTensor* tensor =
+      tflite::GetInput(reinterpret_cast<TfLiteContext*>(opaque_context),
+                       reinterpret_cast<const TfLiteNode*>(opaque_node), index);
+  return reinterpret_cast<const TfLiteOpaqueTensor*>(tensor);
+}
+
+TfLiteOpaqueTensor* TfLiteOpaqueNodeGetOutput(
+    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
+    int index) {
+  TfLiteTensor* tensor = tflite::GetOutput(
+      reinterpret_cast<TfLiteContext*>(opaque_context),
+      reinterpret_cast<const TfLiteNode*>(opaque_node), index);
+  return reinterpret_cast<TfLiteOpaqueTensor*>(tensor);
 }

@@ -102,7 +102,7 @@ using RequantizeStates = SmallVector<RequantizeState>;
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(FuncOp fn, bool is_signed,
+  explicit QuantizationDriver(func::FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
                               OpQuantScaleSpecGetter op_quant_scale_spec_getter,
@@ -341,7 +341,7 @@ class QuantizationDriver {
       }
       if (current_op == op) llvm::dbgs() << "===>>>";
       llvm::dbgs() << op->getName() << " : (";
-      if (llvm::isa<FuncOp>(op)) {
+      if (llvm::isa<func::FuncOp>(op)) {
         for (auto &arg : fn_.getArguments()) {
           if (auto params = GetArgQuantState(arg).params) {
             params.print(llvm::dbgs());
@@ -375,7 +375,7 @@ class QuantizationDriver {
     });
   }
 
-  FuncOp fn_;
+  func::FuncOp fn_;
   OpBuilder builder_;
   bool is_signed_;
   bool disable_per_channel_;
@@ -802,12 +802,10 @@ void QuantizationDriver::PreprocessConstantOps() {
         // parameters if there are no quantization parameters (FakeQuant ops).
         // For this case, the weight will not be duplicated.
         weights_.insert(cst);
-        auto affine_user =
-            llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
-        if (affine_user && affine_user.GetAffineOperandIndex() == operand_num &&
-            affine_user.RequiredNarrowRangeAffineOperand()) {
+        if (spec->coeff_op_quant_dim.find(operand_num) !=
+            spec->coeff_op_quant_dim.end()) {
           optimized_weights_.insert(
-              {cst, affine_user.GetQuantizationDimIndex()});
+              {cst, spec->coeff_op_quant_dim[operand_num]});
         }
       } else {
         // This is a bias or an operand of an op with same scale requirements,
@@ -851,7 +849,7 @@ void QuantizationDriver::SetupAllStates() {
         // If the operand comes from a tfl.dequantize op, we use the quantized
         // input of this tfl.dequantize op to set the state.
         if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(inst)) {
-          operand = dq.arg();
+          operand = dq.getArg();
         }
       }
       InitializeOperandState(op, i, operand);

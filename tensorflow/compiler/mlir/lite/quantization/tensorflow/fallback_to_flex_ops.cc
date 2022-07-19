@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -149,7 +150,7 @@ inline bool IsFusibleWithBiasOp(Operation *op) {
 inline void CreateFlexOpCustomOptions(const std::string &op_name,
                                       const std::string &node_def_str,
                                       std::string &custom_option_buffer) {
-  auto flex_builder = absl::make_unique<flexbuffers::Builder>();
+  auto flex_builder = std::make_unique<flexbuffers::Builder>();
   flex_builder->Vector([&]() {
     flex_builder->String(op_name);
     flex_builder->String(node_def_str);
@@ -171,7 +172,7 @@ inline OpaqueElementsAttr CustomOptionForFlexOp(OpBuilder *builder,
 
 // Fallbacks ops that are not supported by TF Quantization to TFLite Flex ops.
 class FallbackToFlexOps
-    : public PassWrapper<FallbackToFlexOps, OperationPass<FuncOp>> {
+    : public PassWrapper<FallbackToFlexOps, OperationPass<func::FuncOp>> {
  public:
   FallbackToFlexOps() {}
   explicit FallbackToFlexOps(const std::string &mode) { mode_ = mode; }
@@ -273,7 +274,7 @@ bool RankEquals(Value value, int rank) {
 void FallbackToFlexOps::runOnOperation() {
   if (mode_.empty()) return;
 
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   MLIRContext *ctx = &getContext();
 
   // Convert binary ops to BiasAdd ops if possible.
@@ -295,7 +296,7 @@ void FallbackToFlexOps::runOnOperation() {
 }
 }  // namespace internal
 
-std::unique_ptr<OperationPass<FuncOp>> CreateFallbackToFlexOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFallbackToFlexOpsPass(
     const std::string &mode) {
   return std::make_unique<internal::FallbackToFlexOps>(mode);
 }

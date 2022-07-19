@@ -18,9 +18,10 @@ limitations under the License.
 #include <stdio.h>
 #include <unistd.h>
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -43,7 +44,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       const HloModule& old_module,
       absl::flat_hash_set<const HloInstruction*>* boundary)
       : old_module_(old_module),
-        module_(absl::make_unique<HloModule>("extracted", config_)),
+        module_(std::make_unique<HloModule>("extracted", config_)),
         clone_context_(module_.get()),
         builder_("entry_computation"),
         boundary_(boundary) {}
@@ -54,7 +55,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         parameter_number_++, parameter->shape(), parameter->name());
     clone_context_.MapInstruction(parameter, new_parameter.get());
     builder_.AddInstruction(std::move(new_parameter));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DefaultAction(const HloInstruction* hlo) override {
@@ -66,7 +67,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       parameter_number_++;
       clone_context_.MapInstruction(hlo, new_parameter.get());
       builder_.AddInstruction(std::move(new_parameter));
-      return Status::OK();
+      return OkStatus();
     }
     std::vector<HloInstruction*> new_operands;
     for (auto operand : hlo->operands()) {
@@ -75,7 +76,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     auto instruction =
         hlo->CloneWithNewOperands(hlo->shape(), new_operands, &clone_context_);
     builder_.AddInstruction(std::move(instruction));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status FinishVisit(const HloInstruction* /*root*/) override {
@@ -91,7 +92,7 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   HloModule* module() { return module_.get(); }

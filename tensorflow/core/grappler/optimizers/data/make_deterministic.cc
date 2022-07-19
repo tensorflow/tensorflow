@@ -210,7 +210,7 @@ Status ConvertMapOrInterleave(const string& node_name,
   // Remove extra attributes not in Interleave or Map.
   node->mutable_attr()->erase("deterministic");
   node->mutable_attr()->erase("sloppy");
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns all transitive dependencies of a set of nodes, including the nodes
@@ -379,7 +379,7 @@ Status SplitMap(
       split_results.first_function;
   *graph->graph()->mutable_library()->mutable_function()->Add() =
       split_results.second_function;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Converts a ParallalBatch dataset to a Batch dataset, to make it
@@ -391,7 +391,7 @@ Status ConvertBatch(const string& node_name, MutableGraphView* graph) {
   node->set_input(2, node->input(3));
   node->set_input(3, absl::StrCat("^", num_parallel_calls_input));
   node->mutable_attr()->erase("deterministic");
-  return Status::OK();
+  return OkStatus();
 }
 
 // Convert a MapAndBatch node to a separate Map node and Batch node, to make it
@@ -473,7 +473,7 @@ Status ConvertMapAndBatch(const string& node_name, MutableGraphView* graph) {
   NodeDef* graph_batch_node = graph->AddNode(std::move(new_batch_node));
   TF_RETURN_IF_ERROR(
       graph->UpdateFanouts(orig_node.name(), graph_batch_node->name()));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Change the buffer_size of a Prefetch node to zero, effectively disabling it,
@@ -484,7 +484,7 @@ Status ConvertPrefetch(const string& node_name, MutableGraphView* graph) {
   node->add_input(absl::StrCat("^", node->input(buffer_size_index)));
   NodeDef* tmp = graph_utils::AddScalarConstNode<int64_t>(0, graph);
   node->set_input(buffer_size_index, tmp->name());
-  return Status::OK();
+  return OkStatus();
 }
 
 // The two ways nondeterminism can occur in an input pipeline when there are
@@ -746,7 +746,7 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MakeDeterministic, "make_deterministic");

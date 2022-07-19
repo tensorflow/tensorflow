@@ -107,7 +107,7 @@ Status PermutationHelper(const Tensor& perm, const int dims,
       reinterpret_cast<const volatile Tperm*>(Vperm.data());
   *permutation = std::vector<int32>(perm_begin, perm_begin + dims);
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

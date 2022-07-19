@@ -44,6 +44,10 @@ namespace full_type {
 // should be set by external means (typically by the user).
 OpTypeConstructor NoOp();
 
+// Helper for a trivial type constructor that indicates a node has no
+// outputs (that is, its output type is an empty TFT_PRODUCT).
+OpTypeConstructor NoOutputs();
+
 // Helper for a type constructor of <t>[] (with no parameters).
 OpTypeConstructor Nullary(FullTypeId t);
 

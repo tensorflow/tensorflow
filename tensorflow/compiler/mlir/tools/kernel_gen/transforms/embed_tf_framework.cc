@@ -29,12 +29,12 @@ namespace tf_framework {
 namespace {
 
 // Prepends argument type list of the function with an OpKernelContextType arg.
-class FuncOpConverter : public OpConversionPattern<FuncOp> {
+class FuncOpConverter : public OpConversionPattern<func::FuncOp> {
  public:
-  using OpConversionPattern<FuncOp>::OpConversionPattern;
+  using OpConversionPattern<func::FuncOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      FuncOp func, OpAdaptor /*adaptor*/,
+      func::FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
     auto func_type = func.getFunctionType();
@@ -57,7 +57,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
 };
 
 llvm::Optional<Value> FindOpKernelContext(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   if (func.getNumArguments() == 0) {
     return llvm::None;
   }
@@ -81,7 +81,7 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
 
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
-    if (!alloc.symbolOperands().empty()) {
+    if (!alloc.getSymbolOperands().empty()) {
       return failure();
     }
     auto reuse_input_candidates = alloc->getAttrOfType<ArrayAttr>(
@@ -112,11 +112,12 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
     if (!ctx) return failure();
 
     // Operand with no layout is expected.
-    auto operand_memref_type = dealloc.memref().getType().cast<MemRefType>();
+    auto operand_memref_type = dealloc.getMemref().getType().cast<MemRefType>();
     if (!operand_memref_type.getLayout().isIdentity()) {
       return failure();
     }
-    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx, adaptor.memref());
+    rewriter.replaceOpWithNewOp<TFDeallocOp>(dealloc, *ctx,
+                                             adaptor.getMemref());
     return success();
   }
 };
@@ -148,7 +149,7 @@ struct JITExecuteOpConverter : public OpConversionPattern<JITExecuteOp> {
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
-    rewriter.replaceOpWithNewOp<JITExecuteOp>(op, op.getResultTypes(), *ctx,
+    rewriter.replaceOpWithNewOp<JITExecuteOp>(op, op.result().getType(), *ctx,
                                               op.callable(), op.operands());
     return success();
   }

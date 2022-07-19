@@ -29,7 +29,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -57,6 +56,13 @@ class LiteralUtil {
 
   // Returns a literal scalar representing the first element.
   static Literal GetFirstScalarLiteral(const LiteralSlice& literal);
+  // Returns a literal scalar representing the element at `multi_index`.
+  static Literal GetScalarLiteral(const LiteralBase& literal,
+                                  absl::Span<const int64_t> multi_index);
+  // Sets the value of the element at `multi_index` with a scalar literal.
+  static void SetScalarLiteral(MutableLiteralBase& literal,
+                               absl::Span<const int64_t> multi_index,
+                               const LiteralBase& scalar);
 
   // Creates a new literal of a given rank. To minimize ambiguity (for users
   // and the compiler) these CreateR[0-2] methods should explicitly specify the

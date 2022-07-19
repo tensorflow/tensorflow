@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -26,6 +28,8 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Dequantize ops will produce 3x larger tensors, so we want to move it after
 // some passthrough ops to reduce the memory consumption.
@@ -100,23 +104,11 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
   }
 };
 
-// This transformation pass optimizes the op execution order of the ops in the
-// model.
 struct OptimizeOpOrderPass
-    : public PassWrapper<OptimizeOpOrderPass, OperationPass<FuncOp>> {
+    : public OptimizeOpOrderPassBase<OptimizeOpOrderPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeOpOrderPass)
 
   void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-optimize-op-order";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Optimize the execution order of the ops.";
-  }
 };
 
 void OptimizeOpOrderPass::runOnOperation() {
@@ -131,7 +123,7 @@ void OptimizeOpOrderPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite optimize op order pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeOpOrderPass() {
   return std::make_unique<OptimizeOpOrderPass>();
 }
 

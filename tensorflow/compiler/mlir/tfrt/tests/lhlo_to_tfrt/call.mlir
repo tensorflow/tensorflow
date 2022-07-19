@@ -15,7 +15,7 @@ func.func @main(%arg0: memref<8xf32>) {
   // CHECK: tfrt.call @return(%arg2) : (!tfrt_gpu.buffer) -> !tfrt_gpu.buffer
   %0 = tfrt.call @return(%arg0) : (memref<8xf32>) -> memref<8xf32>
   // CHECK: tfrt.return %[[ch]] : !tfrt.chain
-  return
+  func.return
 }
 
 // CHECK: func @memcpy(
@@ -27,7 +27,7 @@ func.func @memcpy(%arg0: memref<8xf32>) {
   // CHECK: %[[ch:.*]] = tfrt_gpu.mem.copy %arg2, %arg2, %arg1, %arg0
   gpu.memcpy %arg0, %arg0 : memref<8xf32>, memref<8xf32>
   // CHECK: tfrt.return %[[ch]] : !tfrt.chain
-  return
+  func.return
 }
 
 // CHECK: func @nogpu(%arg0: !tfrt_gpu.buffer)
@@ -36,7 +36,7 @@ func.func @nogpu(%arg0: memref<8xf32>) {
   %ch = tfrt.new.chain
   %zero = tfrt.constant.i32 0
   tfrt.print.i32 %zero, %ch
-  return
+  func.return
 }
 
 // CHECK: func @return(%arg0: !tfrt_gpu.buffer) -> !tfrt_gpu.buffer

@@ -348,6 +348,24 @@ TEST(ShapeUtilTest, NestedTuple) {
       {ShapeUtil::MakeTupleShape({}), ShapeUtil::MakeTupleShape({})})));
 }
 
+TEST(ShapeUtilTest, NestedTupleWithPtrs) {
+  const Shape nil = ShapeUtil::MakeNil();
+  const Shape s32 = ShapeUtil::MakeShape(S32, {});
+  EXPECT_FALSE(ShapeUtil::IsNestedTuple(nil));
+  EXPECT_FALSE(
+      ShapeUtil::IsNestedTuple(ShapeUtil::MakeTupleShapeWithPtrs({&s32})));
+  EXPECT_TRUE(
+      ShapeUtil::IsNestedTuple(ShapeUtil::MakeTupleShapeWithPtrs({&nil})));
+  EXPECT_FALSE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&s32, &s32})));
+  EXPECT_TRUE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&s32, &nil})));
+  EXPECT_TRUE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&nil, &s32})));
+  EXPECT_TRUE(ShapeUtil::IsNestedTuple(
+      ShapeUtil::MakeTupleShapeWithPtrs({&nil, &nil})));
+}
+
 TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(1, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {})));
   EXPECT_EQ(0, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {0})));
@@ -553,10 +571,10 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
   Shape shape0 = ShapeUtil::MakeShape(S32, {9, 1, 4});
   Shape shape1 = ShapeUtil::MakeShape(S32, {1, 9, 4, 1});
   Shape shape2 = ShapeUtil::MakeShape(S32, {3, 1, 12});
-  EXPECT_TRUE(std::get<0>(
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1)));
-  EXPECT_FALSE(std::get<0>(
-      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
+  EXPECT_TRUE(
+      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1).has_value());
+  EXPECT_FALSE(
+      ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2).has_value());
 }
 
 TEST(ShapeUtilTest, ForEachIndex) {
@@ -778,6 +796,21 @@ TEST(ShapeUtilTest, MoveDimToMajor) {
             ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {10, 10, 10}),
                                        ShapeUtil::MakeShapeWithLayout(
                                            F32, {10, 10, 10}, {2, 1, 0})}));
+}
+
+TEST(ShapeUtilTest, DeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2}, {2, 0, 1});
+  Shape new_shape = ShapeUtil::DeleteDimensions({1}, shape);
+  EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {5, 2}, {1, 0}));
+}
+
+TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2, 7, 9}, {2, 0, 1, 4, 3});
+  Shape a = ShapeUtil::DeleteDimensions({1, 2, 3}, shape);
+  Shape b = ShapeUtil::DeleteDimensions({3, 2, 1}, shape);
+  EXPECT_EQ(a, b);
+  EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

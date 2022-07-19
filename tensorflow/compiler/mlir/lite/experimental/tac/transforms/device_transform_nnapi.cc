@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -42,7 +43,7 @@ namespace {
 
 struct DeviceTransformNNAPIPass
     : public mlir::PassWrapper<DeviceTransformNNAPIPass,
-                               OperationPass<FuncOp>> {
+                               OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DeviceTransformNNAPIPass)
 
   llvm::StringRef getArgument() const final {

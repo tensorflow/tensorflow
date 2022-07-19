@@ -14,7 +14,8 @@ Pod::Spec.new do |s|
   acceleration.
                        DESC
 
-  s.ios.deployment_target = '9.0'
+  s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
+  s.ios.deployment_target = '11.0'
 
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true
@@ -26,7 +27,13 @@ Pod::Spec.new do |s|
     'HEADER_SEARCH_PATHS' =>
       '"${PODS_TARGET_SRCROOT}" ' +
       '"${PODS_TARGET_SRCROOT}/' + objc_dir  + 'apis"',
-    'VALID_ARCHS' => 'x86_64 armv7 arm64',
+    # TODO: Remove this after adding support for arm64 simulator.
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => '${TFL_EXCLUDED_SIM_ARCHS}'
   }
 
   s.default_subspec = 'Core'
@@ -37,6 +44,7 @@ Pod::Spec.new do |s|
       objc_dir + '{apis,sources}/*.{h,m,mm}',
       tfl_dir + 'builtin_ops.h',
       tfl_dir + 'c/c_api.h',
+      tfl_dir + 'c/c_api_experimental.h',
       tfl_dir + 'c/c_api_types.h',
       tfl_dir + 'c/common.h',
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',

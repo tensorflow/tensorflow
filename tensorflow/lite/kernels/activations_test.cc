@@ -101,7 +101,7 @@ class BaseActivationsOpModel : public SingleOpModel {
       output_ = AddOutput({input.type, {}});
     }
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
+    resolver_ = std::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -129,8 +129,8 @@ class BaseActivationsOpModel : public SingleOpModel {
     }
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
                  CreateSoftmaxOptions(builder_, softmax_beta).Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_SOFTMAX,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_SOFTMAX,
+                                                   registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -158,8 +158,8 @@ class BaseActivationsOpModel : public SingleOpModel {
     }
     SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
                  CreateLeakyReluOptions(builder_, alpha).Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_LEAKY_RELU,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_LEAKY_RELU,
+                                                   registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -176,7 +176,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     input_ = AddInput(input);
     output_ = AddOutput(output);
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
+    resolver_ = std::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -332,6 +332,20 @@ TEST(FloatActivationsOpTest, Relu) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0, 0, 2, 4,   //
                                  3, 0, 10, 1,  //
+                             }));
+}
+
+TEST(FloatActivationsOpTest, Relu0To1) {
+  FloatActivationsOpModel m(BuiltinOperator_RELU_0_TO_1,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
+  m.SetInput({
+      0.0, -0.6, 0.2, -0.4,  //
+      0.3, -2.0, 1.1, -0.1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.0, 0.0, 0.2, 0.0,  //
+                                 0.3, 0.0, 1.0, 0.0,  //
                              }));
 }
 
@@ -653,6 +667,28 @@ TEST_P(LeakyReluOpTest, LeakyReluInt16) {
       GetRegistration());
 }
 
+TEST(QuantizedActivationsOpTest, Relu0To1Int8) {
+  const float kMin = 0;
+  const float kMax = 1;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU_0_TO_1,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 2 * kMin, kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 2 * kMin, kMax});
+
+  m.SetInput<int8_t>({
+      0.0, -0.6, 0.2, -0.4,  //
+      0.3, -2.0, 1.1, -0.1,  //
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        0.0, 0.0, 0.2, 0.0,  //
+                                                        0.3, 0.0, 1.0, 0.0,  //
+                                                    },
+                                                    kQuantizedTolerance)));
+}
+
 TEST(QuantizedActivationsOpTest, Relu1Int8) {
   const float kMin = -1;
   const float kMax = 1;
@@ -672,6 +708,29 @@ TEST(QuantizedActivationsOpTest, Relu1Int8) {
                   {
                       0.0, -0.6, 0.2, -0.4,  //
                       0.3, -1.0, 1.0, -0.1,  //
+                  },
+                  kQuantizedTolerance)));
+}
+
+TEST(QuantizedActivationsOpTest, Relu0To1UInt8) {
+  const float kMin = 0;
+  const float kMax = 1;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_RELU_0_TO_1,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 2 * kMin, kMax},
+      /*output=*/{TensorType_UINT8, {1, 2, 4, 1}, 2 * kMin, kMax});
+
+  m.SetInput<uint8_t>({
+      0.0, -0.6, 0.2, -0.4,  //
+      0.3, -2.0, 1.1, -0.1,  //
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0, 0.0, 0.2, 0.0,  //
+                      0.3, 0.0, 1.0, 0.0,  //
                   },
                   kQuantizedTolerance)));
 }

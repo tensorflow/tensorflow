@@ -42,14 +42,15 @@ struct CanonicalizeCompileAndReplicateAttributesPass
 };
 
 void CanonicalizeCompileAndReplicateAttributesPass::runOnOperation() {
-  FuncOp func_op = getOperation();
+  func::FuncOp func_op = getOperation();
   ModuleOp module_op = func_op->getParentOfType<ModuleOp>();
   mlir::OpBuilder builder(module_op.getContext());
   func_op->walk([&](mlir::Operation* op) {
-    if (op->hasAttr(TF::kTPUReplicateAttr)) {
-      op->setAttr(TF::kReplicationInfoAttr, op->getAttr(TF::kTPUReplicateAttr));
-      op->removeAttr(TF::kTPUReplicateAttr);
-      op->setAttr(TF::kCompileDeviceTypeAttr, builder.getStringAttr("TPU"));
+    if (op->hasAttr(TF::kTpuReplicateAttr)) {
+      op->setAttr(TF::kReplicationInfoAttr, op->getAttr(TF::kTpuReplicateAttr));
+      op->removeAttr(TF::kTpuReplicateAttr);
+      op->setAttr(TF::kCompileDeviceTypeAttr,
+                  builder.getStringAttr(TF::kTpuDevice));
     }
     return mlir::WalkResult::advance();
   });
@@ -57,7 +58,7 @@ void CanonicalizeCompileAndReplicateAttributesPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateCanonicalizeCompileAndReplicateAttributesPass() {
   return std::make_unique<CanonicalizeCompileAndReplicateAttributesPass>();
 }

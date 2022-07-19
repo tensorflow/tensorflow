@@ -200,6 +200,16 @@ def LegalizeRange : Pat<(TF_RangeOp $start, $limit, $delta),
                         (TFL_RangeOp $start, $limit, $delta)>;
 def LegalizeRelu6 : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def LegalizeRelu : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
+// TFL Relu doesn't support I32/I64 type, so legalizes TF Relu to TFL Maximum.
+def LegalizeReluI32 :
+  Pat<(TF_ReluOp TensorOf<[I32]>:$arg),
+      (TFL_MaximumOp $arg,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[]>,"0">))>;
+def LegalizeReluI64 :
+  Pat<(TF_ReluOp TensorOf<[I64]>:$arg),
+      (TFL_MaximumOp $arg,
+        (Arith_ConstantOp
+          ConstantAttr<RankedI64ElementsAttr<[]>,"static_cast<int64_t>(0)">))>;
 def LegalizeReverseSequence : Pat<
   (TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
   (TFL_ReverseSequenceOp $input, $seq_lengths,
@@ -210,6 +220,14 @@ def LegalizeSqrt : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def LegalizeSquare : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
                              (TFL_SegmentSumOp $data, (CreateTFCastToInt32Op $segment_ids))>;
+def LegalizeUnsortedSegmentProd :
+  Pat<(TF_UnsortedSegmentProdOp $data, $segment_ids, $num_segments),
+      (TFL_UnsortedSegmentProdOp $data, (CreateTFCastToInt32Op $segment_ids),
+        (CreateTFCastToInt32Op $num_segments))>;
+def LegalizeUnsortedSegmentMax :
+  Pat<(TF_UnsortedSegmentMaxOp $data, $segment_ids, $num_segments),
+      (TFL_UnsortedSegmentMaxOp $data, (CreateTFCastToInt32Op $segment_ids),
+        (CreateTFCastToInt32Op $num_segments))>;
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),

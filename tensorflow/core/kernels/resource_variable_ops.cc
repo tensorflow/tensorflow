@@ -128,7 +128,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
         return errors::Internal("Unsupported dtype", t->dtype());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -421,7 +421,7 @@ class AssignVariableOp : public OpKernel {
                                   *ptr = new Var(dtype_);
                                   *(*ptr)->tensor() = value;
                                   (*ptr)->is_initialized = true;
-                                  return Status::OK();
+                                  return OkStatus();
                                 }));
     mutex_lock ml(*variable->mu());
     // (variable->tensor()->dtype() == DT_INVALID && !variable->is_initialized)
@@ -490,7 +490,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                 [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
-                                  return Status::OK();
+                                  return OkStatus();
                                 }));
 
     // For purposes of forwarding DT_VARIANT, we want the least
@@ -949,7 +949,7 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   if (!stream) {
     return errors::Internal("Failed to copy indices to host");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Copies inputs to the CPU, runs DoScatter on the CPU, then copies output
@@ -985,7 +985,7 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // destructed once the lambda is destructed.
   c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
       stream, [host_params] {});
-  return Status::OK();
+  return OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1018,7 +1018,7 @@ Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
         "indices", SliceDebugString(indices.shape(), bad_i), " = ",
         indices_flat(bad_i), " is not in [0, ", params->dim_size(0), ")");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

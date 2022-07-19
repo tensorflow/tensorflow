@@ -13,7 +13,7 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 # Important: this is a leaf library. It may not have any new dependencies inside TF proper.

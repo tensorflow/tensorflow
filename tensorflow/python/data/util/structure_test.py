@@ -21,7 +21,6 @@ import numpy as np
 import wrapt
 from absl.testing import parameterized
 
-from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -33,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -952,25 +950,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       test_obj.most_specific_compatible_shape(100)
     self.assertEqual(test_obj,
                      test_obj.most_specific_compatible_shape(test_obj))
-
-  @parameterized.parameters(
-      (constant_op.constant([1], dtype=dtypes.int64),
-       (full_type_pb2.TFT_TENSOR, full_type_pb2.TFT_INT64)),
-      (constant_op.constant(["1"]),
-       (full_type_pb2.TFT_TENSOR, full_type_pb2.TFT_STRING)),
-      (None, (full_type_pb2.TFT_UNSET,)),
-  )
-  def testFullTypeFromSpec(self, t, expect):
-    if t is not None:
-      ts = type_spec.type_spec_from_value(t)
-    else:
-      ts = structure.NoneTensorSpec()
-    ftd = structure.full_type_from_spec(ts)
-    if t is None:
-      self.assertEmpty(ftd.args)
-    else:
-      self.assertEqual(expect[0], ftd.args[0].type_id)
-      self.assertEqual(expect[1], ftd.args[0].args[0].type_id)
 
 
 class CustomMap(collections_abc.Mapping):

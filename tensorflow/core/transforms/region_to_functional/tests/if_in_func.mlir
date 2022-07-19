@@ -26,10 +26,10 @@ tfg.func @body(%arg0: tensor<*xi1> {tfg.name = "arg0"},
 // CHECK:      %[[ARG1]]: tensor<*xi32>
 // CHECK-NEXT: %[[ARG0]]: tensor<*xi1>
 // CHECK: %[[A:.*]], %[[CTL:.*]] = A(%[[ARG1]]) [%[[ARG1]].ctl]
-// CHECK: return(%[[A]]) [%[[ARG0]].ctl {tfg.name = "[[ARG0]]"}]
+// CHECK: return(%[[A]]) [%[[ARG0]].ctl {tfg.name = "[[ARG0]]_0"}]
 
 // CHECK: tfg.func @[[ELSE]]
 // CHECK:      %[[ARG1]]: tensor<*xi32>
 // CHECK-NEXT: %[[ARG0]]: tensor<*xi1>
 // CHECK: %[[B:.*]], %[[CTL:.*]] = B(%[[ARG1]]) [%[[ARG1]].ctl]
-// CHECK: return(%[[B]]) [%[[ARG0]].ctl {tfg.name = "[[ARG0]]"}]
+// CHECK: return(%[[B]]) [%[[ARG0]].ctl {tfg.name = "[[ARG0]]_0"}]

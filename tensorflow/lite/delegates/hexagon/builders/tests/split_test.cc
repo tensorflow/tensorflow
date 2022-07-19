@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
+#include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/hexagon/builders/tests/hexagon_delegate_op_model.h"
 
@@ -135,6 +138,16 @@ TEST(SplitOpModel, CheckOneDimensionalSplit_Int8) {
   CheckSplitBehavior<int8_t, TensorType_INT8>(
       /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
       {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+}
+
+TEST(SplitOpModel, CheckNegativeOneAxisSplit_UInt8) {
+  CheckSplitBehavior<uint8_t, TensorType_UINT8>(
+      /*axis=*/-1, /*num_splits=*/2, {2, 2, 2}, {2, 2, 1},
+      {1, 2, 3, 4, 5, 6, 7, 8},
+      {
+          {1, 3, 5, 7},
+          {2, 4, 6, 8},
+      });
 }
 
 TEST(SplitOpModel, CheckNegativeAxisSplit_UInt8) {

@@ -27,8 +27,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using Vector3 = std::array<int64_t, 3>;
-
 // Describes tiling used by the kernel.
 //
 // Used by reductions and 021 transpose algorithm. Both algorithms operate over

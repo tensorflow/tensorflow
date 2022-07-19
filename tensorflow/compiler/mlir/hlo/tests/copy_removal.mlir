@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt -copy-removal -allow-unregistered-dialect -split-input-file %s | FileCheck %s
 
 //CHECK-LABEL: @parameter_not_removed
-func @parameter_not_removed(%in : memref<42xf32>) -> memref<42xf32> {
+func.func @parameter_not_removed(%in : memref<42xf32>) -> memref<42xf32> {
   // CHECK: memref.copy
   %0 = memref.alloc() : memref<42xf32>
   memref.copy %in, %0 : memref<42xf32> to memref<42xf32>
@@ -12,7 +12,7 @@ func @parameter_not_removed(%in : memref<42xf32>) -> memref<42xf32> {
 // -----
 
 // CHECK-LABEL: block_local_removed
-func @block_local_removed() {
+func.func @block_local_removed() {
   // CHECK-NOT: memref.copy
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<42xf32>
@@ -26,7 +26,7 @@ func @block_local_removed() {
 // -----
 
 // CHECK-LABEL: conflicting_use
-func @conflicting_use() {
+func.func @conflicting_use() {
   // CHECK: memref.copy
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<42xf32>
@@ -41,7 +41,7 @@ func @conflicting_use() {
 // -----
 
 // CHECK-LABEL: incompatible_maps
-func @incompatible_maps() {
+func.func @incompatible_maps() {
   // CHECK: memref.copy
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<21xf32>
@@ -57,7 +57,7 @@ func @incompatible_maps() {
 // -----
 
 // CHECK-LABEL: compatible_maps
-func @compatible_maps() {
+func.func @compatible_maps() {
   // CHECK-NOT: memref.copy
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<42xf32>
@@ -76,7 +76,7 @@ func @compatible_maps() {
 // -----
 
 // CHECK-LABEL: conflicting_alias_use
-func @conflicting_alias_use() {
+func.func @conflicting_alias_use() {
   // CHECK: memref.copy
   %0 = memref.alloc() : memref<42xf32>
   %1 = memref.alloc() : memref<42xf32>

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
@@ -94,7 +95,7 @@ class DTensorDevice {
   explicit DTensorDevice(absl::string_view name)
       : name_(name),
         same_shape_policy_enabled_(false),
-        cancellation_manager_(absl::make_unique<CancellationManager>()) {}
+        cancellation_manager_(std::make_unique<CancellationManager>()) {}
 
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
@@ -174,7 +175,7 @@ class DTensorDevice {
     }
     Mesh::tpu_core_ids()[mesh_name].assign(tpu_core_ids.begin(),
                                            tpu_core_ids.end());
-    return Status::OK();
+    return OkStatus();
   }
 
   void ClearTPUCoreIDs() { Mesh::tpu_core_ids().clear(); }
@@ -279,7 +280,7 @@ class DTensorDevice {
     // Reset the cancellation manager on (potential) failure so we don't cancel
     // future ops. This is only safe because we have just cleared pending async
     // nodes, which may have had a reference to he cancellation manager.
-    cancellation_manager_ = absl::make_unique<CancellationManager>();
+    cancellation_manager_ = std::make_unique<CancellationManager>();
   }
 
   TFE_TensorHandle* Pack(TFE_Context* context, int num_inputs,
@@ -303,6 +304,9 @@ class DTensorDevice {
 
   bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                        TF_Status* status);
+
+  std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
+      TFE_Context* context, TF_Status* status) const;
 
  private:
   // If the `operation_name` of an op indicates a custom DTensor op (e.g.
@@ -329,20 +333,6 @@ class DTensorDevice {
       tensorflow::Graph* graph, std::vector<const Layout*>* output_layouts,
       TF_Status* status);
 
-  const ExecutionFunctions* GetCachedFunction(tensorflow::Fprint128 cache_key) {
-    auto iter = function_cache_.find(cache_key);
-    if (iter == function_cache_.end()) {
-      return nullptr;
-    }
-    return &iter->second;
-  }
-
-  const ExecutionFunctions* AddCachedFunction(tensorflow::Fprint128 cache_key,
-                                              ExecutionFunctions function) {
-    function_cache_.emplace(cache_key, std::move(function));
-    return &function_cache_.find(cache_key)->second;
-  }
-
   // Takes the description of an operation and makes a function out of it with
   // the same signature, running DTensor MLIR passes. Registers that function
   // with `context`. `translated_function_name` is set to the name of the
@@ -355,6 +345,13 @@ class DTensorDevice {
                            const TFE_OpAttrs* attributes, const int num_outputs,
                            const ExecutionFunctions** execution_functions,
                            TF_Status* status);
+
+  // Execute a given function.
+  void ExecuteFunctionAndWait(
+      TFE_Context* context, const TranslatedFunction* function_ptr,
+      const MeshWithParallelDevice* parallel_device_mesh,
+      const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
+      const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status);
 
   // Implements `Execute` for operations which aren't special-cased in
   void ExecuteRegularOperation(TFE_Context* context,
@@ -405,10 +402,10 @@ class DTensorDevice {
   };
   absl::flat_hash_map<int64_t, CachedLayout> shape_layout_cache_;
 
-  // TODO(b/169348205) Support cache eviction if the cache gets bloated.
-  absl::flat_hash_map<tensorflow::Fprint128, ExecutionFunctions,
-                      tensorflow::Fprint128Hasher>
-      function_cache_;
+  FunctionManager function_manager_;
+
+  // Records the function compilation cache hits and misses.
+  std::unordered_map<std::string, int> function_compilation_hits_and_misses_;
 
   // Coordinates cancelling ops across meshes on error. Must outlive any queued
   // async op launches, so we only reset it after seeing a failure status.
@@ -1158,35 +1155,10 @@ void DTensorDevice::UpdateOutputLayoutsWithSameShapePolicy(
   }
 }
 
-// Cache key computation should consider all features of an op that affects
-// the SPMD lowering. The cache keys of two ops must be different if the
-// translated functions are different.
-// - op name and attr
-// - input shapes and layouts
-// - default layout of outputs.
-tensorflow::Fprint128 CacheKeyForGraph(
-    const DTensorOperation& doperation, const NameAttrList& attributes,
-    const std::vector<TensorWithLayout*>& inputs,
-    const std::vector<const Layout*>& output_layouts) {
-  tensorflow::Fprint128 cache_key = tensorflow::Fingerprint128(doperation.name);
-  std::string serialized;
-  SerializeToStringDeterministic(attributes, &serialized);
-  cache_key =
-      FingerprintCat128(cache_key, tensorflow::Fingerprint128(serialized));
-  for (const auto* input : inputs) {
-    cache_key = FingerprintCat128(cache_key, input->CacheKey());
-  }
-
-  for (int output_index = 0; output_index < output_layouts.size();
-       ++output_index) {
-    if (output_layouts[output_index]) {
-      cache_key = FingerprintCat128(cache_key, output_index);
-      cache_key = FingerprintCat128(
-          cache_key,
-          tensorflow::Fingerprint128(output_layouts[output_index]->ToString()));
-    }
-  }
-  return cache_key;
+std::unordered_map<std::string, int>
+DTensorDevice::GetFunctionCacheHitAndMissCount(TFE_Context* context,
+                                               TF_Status* status) const {
+  return function_compilation_hits_and_misses_;
 }
 
 // From `graph` containing computation for all meshes, extract/select
@@ -1195,9 +1167,8 @@ tensorflow::Fprint128 CacheKeyForGraph(
 StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
     const TranslatedFunction& function, const Graph& graph,
     std::string* stateful_partitioned_call_name) {
-  auto new_graph = absl::make_unique<Graph>(graph.flib_def());
+  auto new_graph = std::make_unique<Graph>(graph.flib_def());
   CopyGraph(graph, new_graph.get());
-  const Mesh& mesh = function.function_mesh;
   std::vector<Node*> arg_nodes;
   std::vector<Node*> retval_nodes;
   for (Node* node : new_graph->nodes()) {
@@ -1209,17 +1180,11 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
   for (Node* node : new_graph->nodes()) {
     if (node->op_def().name() != "StatefulPartitionedCall") continue;
 
-    std::string serialized_mesh;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kMeshAttr, &serialized_mesh));
-
-    TF_ASSIGN_OR_RETURN(const Mesh function_mesh,
-                        Mesh::FromString(serialized_mesh));
-    if (function_mesh != mesh) {
+    if (node->name() != function.node_to_execute->name()) {
       // Remove function call that does not match mesh specification and all
       // output retval nodes connected to the function call node.
       std::queue<Node*> nodes_to_remove;
       nodes_to_remove.push(node);
-
       while (!nodes_to_remove.empty()) {
         Node* n = nodes_to_remove.front();
         for (const Edge* out_edge : n->out_edges()) {
@@ -1235,11 +1200,10 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
         nodes_to_remove.pop();
         new_graph->RemoveNode(n);
       }
-    } else {
-      *stateful_partitioned_call_name = node->name();
     }
   }
 
+  *stateful_partitioned_call_name = function.node_to_execute->name();
   VLOG(1) << "Selected call " << *stateful_partitioned_call_name;
 
   // Remove unused arg nodes in graph.
@@ -1259,7 +1223,13 @@ StatusOr<std::unique_ptr<Graph>> SelectGraphToExecute(
 
   // Reset index attributes for arg and retval nodes.
   for (Node* n : new_graph->nodes()) {
-    // Reset arg node index attributes.
+    // Reset arg node index attributes to its position within all the arg
+    // nodes. This should just be increasing from 0 to n where n
+    // is the total number of arguments. Note that this definition to
+    // the `index` attribute is different from the definition we set in
+    // PrepareGraphForMLIR.
+    // This attribute is needed for each arg node when converting a Graph to
+    // a FunctionDef.
     if (n->IsArg()) {
       auto pos = std::find(arg_nodes.begin(), arg_nodes.end(), n);
       TF_RET_CHECK(pos != arg_nodes.end());
@@ -1301,9 +1271,6 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Graph> new_graph,
         SelectGraphToExecute(function, graph, &selected_call_node_name));
-    // Add the stateful partitioned call node as a control return as we need
-    // to process any control deps inside the inner function.
-    control_ret_names.emplace(selected_call_node_name);
     VLOG(4) << tensorflow::DumpGraphToFile("selected_graph_", *new_graph);
 
     // Add unique identifier based on the function we are executing to the
@@ -1316,8 +1283,12 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     function.translated_function_name =
         absl::StrCat(func.name(), "_", unique_function_number.fetch_add(1));
     auto control_ret_node_names =
-        [&control_ret_names](const Node* node) -> absl::optional<std::string> {
-      if (control_ret_names.contains(node->name())) {
+        [&control_ret_names, &selected_call_node_name](
+            const Node* node) -> absl::optional<std::string> {
+      // Add the stateful partitioned call node as a control return as we need
+      // to process any control deps inside the inner function.
+      if (control_ret_names.contains(node->name()) ||
+          node->name() == selected_call_node_name) {
         return node->name();
       }
       return absl::nullopt;
@@ -1336,7 +1307,7 @@ Status AddExecutionFunctionDefsToFunctionDefLibrary(
     TF_RETURN_IF_ERROR(tensorflow::unwrap(context)->AddFunctionDef(to_run));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void DTensorDevice::LowerToSPMDFunction(
@@ -1349,7 +1320,7 @@ void DTensorDevice::LowerToSPMDFunction(
       profiler::TraceMeLevel::kInfo);
   FunctionLibraryDefinition* flib_def =
       tensorflow::unwrap(context)->FuncLibDef();
-  auto graph(absl::make_unique<tensorflow::Graph>(flib_def));
+  auto graph(std::make_unique<tensorflow::Graph>(flib_def));
   NameAttrList eager_attributes;
   ASSIGN_OR_RETURN_C_STATUS(eager_attributes, FetchAttributes(attributes),
                             status);
@@ -1362,8 +1333,8 @@ void DTensorDevice::LowerToSPMDFunction(
     // key computation, since they might depend on the current DTensorDevice
     // state.
     Status s = PrepareGraphForMlir(
-        inputs, doperation, *flib_def, eager_attributes, default_layout_,
-        graph.get(), &global_output_shapes, &output_layouts);
+        function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        default_layout_, graph.get(), &global_output_shapes, &output_layouts);
     RETURN_C_STATUS_IF_NOT_OK(s, status);
 
     // Finds all meshes the inputs are lied on.
@@ -1381,12 +1352,15 @@ void DTensorDevice::LowerToSPMDFunction(
     if (TF_GetCode(status) != TF_OK) return;
   }
 
-  const tensorflow::Fprint128 cache_key =
-      CacheKeyForGraph(doperation, eager_attributes, inputs, output_layouts);
-  *execution_functions = GetCachedFunction(cache_key);
+  std::pair<tensorflow::Fprint128, const ExecutionFunctions*>
+      cache_key_and_func = function_manager_.GetCachedFunction(
+          doperation, eager_attributes, inputs, output_layouts);
+  *execution_functions = cache_key_and_func.second;
   if (*execution_functions != nullptr) {
+    function_compilation_hits_and_misses_["hit"]++;
     return;
   } else if (function_def) {
+    function_compilation_hits_and_misses_["miss"]++;
     LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
               << ". DTensor is (re-)computing its SPMD transformation.";
   }
@@ -1411,7 +1385,8 @@ void DTensorDevice::LowerToSPMDFunction(
                                    eager_attributes, inputs, device_set,
                                    num_outputs),
           status);
-      *execution_functions = AddCachedFunction(cache_key, std::move(functions));
+      *execution_functions = function_manager_.AddCachedFunction(
+          doperation, cache_key_and_func.first, std::move(functions));
       return;
     }
     // Output layouts of a function are inferred by MLIR lowering. They are
@@ -1419,13 +1394,10 @@ void DTensorDevice::LowerToSPMDFunction(
     // cache key computation to reduce the overheads of running the same
     // function multiple times.
     Status s = PrepareGraphForMlir(
-        inputs, doperation, *flib_def, eager_attributes, default_layout_,
-        graph.get(), &global_output_shapes, &output_layouts);
+        function_manager_, inputs, doperation, *flib_def, eager_attributes,
+        default_layout_, graph.get(), &global_output_shapes, &output_layouts);
     RETURN_C_STATUS_IF_NOT_OK(s, status);
   }
-
-  TranslatedFunction function;
-  function.output_layouts.reserve(num_outputs);
 
   absl::flat_hash_set<Node*> control_ret_nodes;
   // Run DTensor MLIR passes that convert input graph to SPMD version.
@@ -1434,11 +1406,17 @@ void DTensorDevice::LowerToSPMDFunction(
                                profiler::TraceMeLevel::kInfo);
     RETURN_C_STATUS_IF_NOT_OK(
         pass_runner_.RunOnGraph(device_set, doperation.is_func(), flib_def,
-                                &graph, control_ret_nodes, cache_key),
+                                &graph, control_ret_nodes,
+                                cache_key_and_func.first),
         status);
   }
   VLOG(4) << tensorflow::DumpGraphToFile("after_mlir_spmd_lowering", *graph,
                                          flib_def);
+  if (flib_def->Contains(kLoadEmbeddingFn)) {
+    Status s = InsertFunctionForTPUEmbeddingCheckpoint(
+        status, graph.get(), inputs, kLoadEmbeddingFn);
+    RETURN_C_STATUS_IF_NOT_OK(s, status);
+  }
 
   // After MLIR transformations, exactly one StatefulPartitionedCall op is
   // returned for mesh cluster in computation. Identity all functions to execute
@@ -1470,7 +1448,44 @@ void DTensorDevice::LowerToSPMDFunction(
     }
   }
 
-  *execution_functions = AddCachedFunction(cache_key, std::move(functions));
+  *execution_functions = function_manager_.AddCachedFunction(
+      doperation, cache_key_and_func.first, std::move(functions));
+}
+
+void DTensorDevice::ExecuteFunctionAndWait(
+    TFE_Context* context, const TranslatedFunction* function_ptr,
+    const MeshWithParallelDevice* parallel_device_mesh,
+    const std::vector<parallel_device::ParallelTensor*>& parallel_inputs,
+    const int64_t step_id, const TFE_OpAttrs* attributes, TF_Status* status) {
+  const std::string mesh_str = function_ptr->function_mesh.ToString();
+  VLOG(4) << "Launching computation for mesh : " << mesh_str;
+  parallel_device_mesh->parallel_device().StartExecute(
+      context,
+      /*inputs=*/parallel_inputs,
+      /*operation_name=*/function_ptr->translated_function_name.c_str(),
+      /*attributes=*/attributes,
+      /*expected_max_outputs=*/function_ptr->local_output_shapes.size(),
+      /*cancellation_manager=*/*cancellation_manager_,
+      /*step_id=*/step_id);
+
+  VLOG(4) << "Joining computation result from mesh : " << mesh_str;
+  parallel_device_mesh->parallel_device().Join(
+      function_ptr->local_output_shapes, status);
+  VLOG(4) << "Joining status: " << TF_Message(status);
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_CANCELLED) {
+    LOG(ERROR) << "Encountered error while executing function: "
+               << function_ptr->translated_function_name
+               << " for mesh : " << mesh_str
+               << " / error : " << TF_Message(status);
+  }
+
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> async_wait_status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AsyncWait(context, async_wait_status.get());
+  TF_Code error_code = TF_GetCode(async_wait_status.get());
+  if (error_code != TF_OK && error_code != TF_CANCELLED) {
+    LOG(ERROR) << "Async status: " << TF_Message(async_wait_status.get());
+  }
 }
 
 void DTensorDevice::ExecuteRegularOperation(
@@ -1509,9 +1524,22 @@ void DTensorDevice::ExecuteRegularOperation(
   // identifier for a mesh.
   std::map<std::string, const MeshWithParallelDevice*>
       function_name_and_mesh_mapping;
+  absl::flat_hash_set<std::string> excluded_fn_names;
+  std::unique_ptr<const TranslatedFunction> epu_fn_ptr, load_embedding_ptr;
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
-    const Mesh& mesh = function.function_mesh;
+    StatusOr<Mesh> maybe_converted_mesh = function.function_mesh;
+    if (function.function_mesh.is_epu_mesh()) {
+      maybe_converted_mesh = function.function_mesh.ToDeviceType("CPU");
+    }
+
+    if (!maybe_converted_mesh.ok()) {
+      RETURN_STATUS(status, TF_INVALID_ARGUMENT,
+                    absl::StrCat("Failed to convert mesh, get error: ",
+                                 maybe_converted_mesh.status().error_message())
+                        .c_str());
+    }
+    const Mesh& mesh = *maybe_converted_mesh;
     // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
     // object. Ideally we'd just use a fingerprinted int64_t as a unique
     // identifier for a mesh.
@@ -1524,6 +1552,23 @@ void DTensorDevice::ExecuteRegularOperation(
     }
     function_name_and_mesh_mapping[function.translated_function_name] =
         parallel_device_mesh;
+
+    if (function.function_mesh.is_epu_mesh()) {
+      if (epu_fn_ptr != nullptr) {
+        RETURN_STATUS(status, TF_INTERNAL,
+                      "There are more than one function defined on EPU mesh.");
+      }
+      epu_fn_ptr = std::make_unique<const TranslatedFunction>(function);
+      excluded_fn_names.insert(function.translated_function_name);
+    }
+    if (absl::StartsWith(function.translated_function_name, kLoadEmbeddingFn)) {
+      if (load_embedding_ptr != nullptr) {
+        RETURN_STATUS(status, TF_INTERNAL,
+                      "There are more than one function defined on EPU mesh.");
+      }
+      load_embedding_ptr = std::make_unique<const TranslatedFunction>(function);
+      excluded_fn_names.insert(function.translated_function_name);
+    }
   }
 
   // Compute the step_id based on the function_mesh_fingerprint and the
@@ -1541,62 +1586,104 @@ void DTensorDevice::ExecuteRegularOperation(
       function_mesh_fingerprint,
       func_mesh_fingerprint_to_step_counter_.at(function_mesh_fingerprint));
 
+  // Execute excluded functions in sequence.
+  if (epu_fn_ptr != nullptr) {
+    ExecuteFunctionAndWait(
+        context,
+        /*function_ptr=*/epu_fn_ptr.get(),
+        /*parallel_device_mesh=*/
+        function_name_and_mesh_mapping[epu_fn_ptr->translated_function_name],
+        /*parallel_inputs=*/{}, /*step_id=*/step_id, /*attributes=*/attributes,
+        /*status=*/status);
+  }
+
+  if (load_embedding_ptr != nullptr) {
+    StatusOr<std::vector<parallel_device::ParallelTensor*>> parallel_inputs =
+        PrepareEmbeddingInputs(inputs);
+    if (!parallel_inputs.ok()) {
+      RETURN_STATUS(status, TF_INTERNAL,
+                    parallel_inputs.status().error_message().c_str());
+    }
+    ExecuteFunctionAndWait(
+        context,
+        /*function_ptr=*/load_embedding_ptr.get(),
+        /*parallel_device_mesh=*/
+        function_name_and_mesh_mapping[load_embedding_ptr
+                                           ->translated_function_name],
+        /*parallel_inputs=*/*parallel_inputs, /*step_id=*/step_id,
+        /*attributes=*/attributes, /*status=*/status);
+  }
+
+  // Extract the global parallel inputs and flatten SparseTensors
+  // into the three component tensors.
+  std::vector<parallel_device::ParallelTensor*> global_parallel_inputs;
+  std::vector<parallel_device::ParallelTensor*> global_parallel_sparse_inputs;
+  absl::flat_hash_set<int> global_sparse_input_indices;
+  for (auto input : inputs) {
+    if (input->tensor_type() == TensorType::kSparse) {
+      SparseTensorWithLayout* sparse_input =
+          dynamic_cast<SparseTensorWithLayout*>(input);
+      global_parallel_sparse_inputs.push_back(sparse_input->indices());
+      global_parallel_sparse_inputs.push_back(sparse_input->dense_shapes());
+      global_parallel_sparse_inputs.push_back(sparse_input->values());
+    } else {
+      global_parallel_inputs.push_back(input->tensor());
+    }
+  }
+  // Insert SparseTensor components to the end, this is because
+  // in the MLIR handling of SparseTensors, we place SparseTensor components
+  // to the end of the main func arguments for a fixed ordering.
+  global_parallel_inputs.insert(global_parallel_inputs.end(),
+                                global_parallel_sparse_inputs.begin(),
+                                global_parallel_sparse_inputs.end());
+
   // Execute all functions in parallel.
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
     const Mesh& mesh = function.function_mesh;
+    const std::string& translated_function_name =
+        function.translated_function_name;
 
     num_global_outputs += function.local_output_shapes.size();
 
-    if (is_remote_mesh(mesh)) {
-      // Skip execution for a remote mesh.
+    if (is_remote_mesh(mesh) ||
+        (excluded_fn_names.find(translated_function_name) !=
+         excluded_fn_names.end())) {
+      // Skip execution for a translated function has remote mesh or when it is
+      // excluded.
       continue;
     }
 
     const MeshWithParallelDevice* parallel_device_mesh =
-        function_name_and_mesh_mapping[function.translated_function_name];
+        function_name_and_mesh_mapping[translated_function_name];
 
+    // Gather the local inputs for this function.
     std::vector<parallel_device::ParallelTensor*> parallel_inputs;
     parallel_inputs.reserve(inputs.size() + 1);
     auto input_mapping = function.input_index_map;
+
+    // We sort here because by this time, the function graph we are executing
+    // is a reduced version of the main function, that includes the
+    // StatefulPartitionedCall that we are executing for this mesh.
+    // Thus, the ordering is the same as the main function ordering, which
+    // is sorted increasingly.
     std::sort(input_mapping.begin(), input_mapping.end());
 
-    absl::flat_hash_set<int> skip_input;
-    int offset_from_sparsetensors = 0;
-    std::vector<parallel_device::ParallelTensor*> sparse_parallel_inputs;
-
     for (const int global_index : input_mapping) {
-      if (skip_input.find(global_index) != skip_input.end()) continue;
-      auto input_index = global_index - execution_functions->num_device_ids -
-                         offset_from_sparsetensors;
+      auto input_index = global_index - execution_functions->num_device_ids;
 
       if (global_index < execution_functions->num_device_ids) {
         parallel_inputs.push_back(
             parallel_device_mesh->DeviceIDs(context, status));
         if (TF_GetCode(status) != TF_OK) return;
-      } else if (inputs[input_index]->tensor_type() == TensorType::kSparse) {
-        // Save the SparseTensor component inputs so we can add it in later.
-        SparseTensorWithLayout* sparse_input =
-            dynamic_cast<SparseTensorWithLayout*>(inputs[input_index]);
-        sparse_parallel_inputs.insert(
-            sparse_parallel_inputs.end(),
-            {sparse_input->indices(), sparse_input->dense_shapes(),
-             sparse_input->values()});
-        skip_input.insert({global_index + 1, global_index + 2});
-        offset_from_sparsetensors += 2;
       } else {
-        parallel_inputs.push_back(inputs[input_index]->tensor());
+        parallel_inputs.push_back(global_parallel_inputs[input_index]);
       }
     }
-    // Add in the SparseTensors to the end.
-    parallel_inputs.insert(parallel_inputs.end(),
-                           sparse_parallel_inputs.begin(),
-                           sparse_parallel_inputs.end());
 
     VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
     parallel_device_mesh->parallel_device().StartExecute(
-        context, parallel_inputs, function.translated_function_name.c_str(),
-        attributes,
+        context, parallel_inputs, translated_function_name.c_str(), attributes,
         /*expected_max_outputs=*/function.local_output_shapes.size(),
         *cancellation_manager_, /*step_id=*/step_id);
   }
@@ -1611,6 +1698,10 @@ void DTensorDevice::ExecuteRegularOperation(
       TF_NewStatus(), TF_DeleteStatus);
   for (const TranslatedFunction& function :
        execution_functions->function_list) {
+    // Skip execution for a function when it's excluded.
+    if (excluded_fn_names.contains(function.translated_function_name)) {
+      continue;
+    }
     const Mesh& mesh = function.function_mesh;
     // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
     // object. Ideally we'd just use a fingerprinted int64_t as a unique
@@ -1797,30 +1888,13 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     if (!t->layout().mesh().IsEmpty()) {
       input_meshes.insert(t->layout().mesh());
     }
-    // Try to extract the input to a constant node for fully replicated small
-    // tensor. This is especially useful when executing in eager mode and
-    // allows certains op to work, e.g.: For reduce, the reduction_indices
-    // from BroadcastGradientArgs would be lifted as a constant that allows
-    // proper computation.
-    if (!dtensor_operation.is_func() && !t->const_value().has_value() &&
-        t->layout().IsFullyReplicated()) {
-      absl::optional<NodeDef> maybe_const =
+    // Remote mesh inputs are not able to be read and evaluated.
+    if (!is_remote_mesh(t->layout().mesh()) && !t->const_value().has_value()) {
+      std::optional<NodeDef> const_value =
           ExtractSmallTensorValue(context, input, t->layout(), status);
       if (TF_GetCode(status) != TF_OK) return;
-      if (maybe_const.has_value()) {
-        // If we extracted a constant value from the tensor, check if this
-        // value was the output from `tf.shape`. In this case, we need to
-        // forward the kShapeOpInputLayout attribute to the new node def. This
-        // is needed for layout propagation when running in op-by-op mode.
-        //
-        // TODO(b/162747667): Improve the presentation for Shape input Op
-        //                    layout.
-        if (t->shape_metadata_layout().has_value()) {
-          AddNodeAttr(kShapeOpInputLayout,
-                      {t->shape_metadata_layout()->ToString()},
-                      &(*maybe_const));
-        }
-        t->set_const_value(maybe_const.value());
+      if (const_value.has_value()) {
+        t->set_const_value(const_value.value());
       }
     }
     typed_inputs[j] = t;
@@ -1873,9 +1947,7 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     std::unique_ptr<TensorWithLayout> wrapper = TensorWithLayout::Broadcast(
         context, input, *broadcast_mesh, name_, status);
     if (TF_GetCode(status) != TF_OK) return;
-
-    if (!ShouldFoldInputArgument(dtensor_operation.is_func(),
-                                 dtensor_operation.name,
+    if (!ShouldFoldInputArgument(dtensor_operation.name,
                                  /*input_index=*/not_on_device_input_index)) {
       wrapper->reset_const_value();
     }
@@ -1974,7 +2046,7 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
         absl::StripPrefix(mesh_config.name(), kPipelineMeshNamePrefix));
   }
 
-  auto mesh = absl::make_unique<MeshWithParallelDevice>(
+  auto mesh = std::make_unique<MeshWithParallelDevice>(
       std::move(mesh_config), std::move(parallel), composite_device_name);
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   device->AddMesh(std::move(mesh), is_host_mesh);
@@ -2079,6 +2151,12 @@ bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                      void* device_info, TF_Status* status) {
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
   return device->IsSparseDTensor(context, input, status);
+}
+
+std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
+    TFE_Context* context, void* device_info, TF_Status* status) {
+  DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
+  return device->GetFunctionCacheHitAndMissCount(context, status);
 }
 }  // namespace dtensor
 }  // namespace tensorflow

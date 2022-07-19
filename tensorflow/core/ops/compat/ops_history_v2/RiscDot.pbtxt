@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RiscDot"
   input_arg {
     name: "a"

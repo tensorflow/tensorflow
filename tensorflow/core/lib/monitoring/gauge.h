@@ -234,7 +234,7 @@ class Gauge {
               }
             })) {
     if (registration_handle_) {
-      status_ = Status::OK();
+      status_ = OkStatus();
     } else {
       status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
                        "Another metric with the same name already exists.");

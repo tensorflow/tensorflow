@@ -15,9 +15,10 @@
 """Tests for script operations."""
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.script_ops import numpy_function
 from tensorflow.python.platform import test
@@ -85,6 +86,22 @@ class NumpyFunctionTest(test.TestCase):
 
     self.assertEqual(call_count,
                      2)  # as stateful, func is guaranteed to execute twice
+
+
+class PyFunctionTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_variable_arguments(self):
+
+    def plus(a, b):
+      return a + b
+
+    v1 = resource_variable_ops.ResourceVariable(1)
+    self.evaluate(v1.initializer)
+
+    actual_result = script_ops.eager_py_func(plus, [v1, 2], dtypes.int32)
+    expect_result = constant_op.constant(3, dtypes.int32)
+    self.assertAllEqual(actual_result, expect_result)
 
 
 if __name__ == "__main__":

@@ -248,7 +248,7 @@ Status Signature::Compute() {
 
   OrderLinks();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void Signature::PrepareNodes() {

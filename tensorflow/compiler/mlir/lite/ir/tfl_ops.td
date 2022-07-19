@@ -25,7 +25,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
-include "tensorflow/compiler/mlir/lite/ir/tfl_structs.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -43,19 +43,6 @@ def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
                     "TFLite quint8 type">,
               BuildableType<"getType<mlir::TF::Quint8Type>()">;
 
-
-//===----------------------------------------------------------------------===//
-// Padding enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed padding cases
-// These should match the padding enum in TFLite schema.
-def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
-def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
-
-def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
-      TFL_PAD_Same, TFL_PAD_Valid
-    ]>;
 
 //===----------------------------------------------------------------------===//
 // TensorType attribute definitions.
@@ -314,11 +301,14 @@ class TFL_OperandIsNoneOrHasRankAtMost<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
+class TFL_OperandHasRankAtMostPred<int n, int m> :
+  Or<[TFL_OperandIsUnrankedPred<n>,
+    CPred<"$_op.getOperand(" # n #
+    ").getType().cast<ShapedType>().getRank() <= " # m>]>;
+
 class TFL_OperandHasRankAtMost<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
-    Or<[TFL_OperandIsUnrankedPred<n>,
-      CPred<"$_op.getOperand(" # n #
-      ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
+    TFL_OperandHasRankAtMostPred<n, m>>;
 
 class TFL_OperandHasRankAtLeast<int n, int m> :
   PredOpTrait<"operand " # n # " is at least " # m # "-D",
@@ -1026,15 +1016,6 @@ def TFL_DepthwiseConv2DOp :
   }];
 }
 
-def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
-def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
-
-def TFL_FullyConnectedOptionsWeightFormatAttr :
-    StrEnumAttr<"FullyConnectedOptionsWeightsFormat",
-                "fully connected options weights format", [
-      TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
-    ]>;
-
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
@@ -1097,6 +1078,9 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
            And<[CPred<"getElementTypeOrSelf($_op.getOperand(0)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getOperand(1)).isInteger(8)">,
                 CPred<"getElementTypeOrSelf($_op.getResult(0)).isInteger(32)">]>]>>,
+   TFL_RuntimePredOpTrait<"lhs and rhs of this op must have rank between [2, 5]",
+     And<[TFL_OperandHasRankAtMostPred<0, 5>,
+          TFL_OperandHasRankAtMostPred<1, 5>]>>,
    DynamicRangeQuantizedOpInterface]> {
 
   let summary = "Batch Matrix Multiply Operator";
@@ -1218,12 +1202,12 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$indices,
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$updates,
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$updates,
     TFL_1DTensorOf<[I32]>:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$output
   );
 
   let hasVerifier = 1;
@@ -2340,7 +2324,8 @@ def TFL_SumOp: TFL_Op<"sum", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect]> {
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
 
   let summary = "Sum operator";
 
@@ -2358,6 +2343,14 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // Eight-bit types don't require same operands and results scales.
+      return bit_width != 8;
+    }
+  }];
 }
 
 def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
@@ -2741,7 +2734,8 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>, AffineQuantizedOpInterface]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<-1, 1>]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
@@ -3074,7 +3068,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
     NoSideEffect,
     QuantizableResult,
     SameOperandsAndResultsScale,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 4>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 5>,
     PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
     PredOpTrait<"operands and result have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
@@ -4829,6 +4823,49 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
     TFL_TensorOf<[F32, I32]>:$input,
     TFL_I32Tensor:$segment_ids
   );
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
+def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "UnsortedSegmentProd operator";
+
+  let description = [{
+    Computes the product along segments of a tensor.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
+def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentMax operator";
+
+  let description = [{
+    Computes the maximum value along segments of a tensor such that
+    output[i] = max(data[j....]) where segment_ids[j...] = i
+    if the maximum is empty for a given segment ID i,
+    it outputs the smallest possible value for the specific numeric type,
+    output[i] = numeric_limits::lowest().
+    Note the values of segment_ids are always validated to be less than
+    num_segments and an error is thrown for out-of-bound indices.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 

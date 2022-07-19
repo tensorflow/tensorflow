@@ -41,7 +41,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     Block *split_block = rewriter.splitBlock(
         rewriter.getInsertionBlock(), std::next(rewriter.getInsertionPoint()));
 
-    auto func = op->getParentOfType<FuncOp>();
+    auto func = op->getParentOfType<func::FuncOp>();
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
     rewriter.create<ReportErrorOp>(loc, adaptor.ctx(), adaptor.error_code(),
@@ -65,7 +65,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation *op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   return !func->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName);
 }
 // All contained `tf_framework.assert` operations are rewritten into calls to

@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
-#include "tensorflow/lite/toco/toco_port.h"
+
+#include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 
@@ -291,17 +294,6 @@ TEST_P(ShapeImportTest, ShapeTooLarge) {
             "Tensor shape is too large\n\t (while processing node 'Node1')");
 }
 
-TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
-  NodeDef node;
-  BuildConstNode({1, 2, 2, 2}, GetParam(), 0, &node);
-  auto status = ImportNode(node);
-  EXPECT_THAT(status.error_message(),
-              ::testing::MatchesRegex(
-                  "Neither input_content .0. nor .*_val .0. have the right "
-                  "dimensions .8. for this .* tensor\n\t .while processing "
-                  "node 'Node1'."));
-}
-
 std::vector<tensorflow::DataType> TestTypes() {
   return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
 }
@@ -344,6 +336,8 @@ TEST_F(ContentImportTest, Int32) {
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 5));
   RemoveTrailingElements(&node, 4);
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(0, 0, 0, 0, 0, 0));
 }
 
 TEST_F(ContentImportTest, Int64) {
@@ -357,6 +351,8 @@ TEST_F(ContentImportTest, Int64) {
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 5));
   RemoveTrailingElements(&node, 4);
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(0, 0, 0, 0, 0, 0));
 }
 
 TEST_F(ContentImportTest, Quint8) {
@@ -370,6 +366,8 @@ TEST_F(ContentImportTest, Quint8) {
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 5));
   RemoveTrailingElements(&node, 4);
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(0, 0, 0, 0, 0, 0));
 }
 
 TEST_F(ContentImportTest, Bool) {
@@ -383,6 +381,8 @@ TEST_F(ContentImportTest, Bool) {
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 0, 1, 0, 1, 1));
   RemoveTrailingElements(&node, 4);
   EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(0, 0, 0, 0, 0, 0));
 }
 
 TEST_F(ContentImportTest, Float) {
@@ -399,6 +399,9 @@ TEST_F(ContentImportTest, Float) {
   RemoveTrailingElements(&node, 4);
   EXPECT_THAT(ImportAndGetData<kType>(node),
               ElementsAre(1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node),
+              ElementsAre(0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000));
 }
 
 TEST_F(ContentImportTest, Complex64) {
@@ -426,6 +429,13 @@ TEST_F(ContentImportTest, Complex64) {
       ElementsAre(std::complex<float>(1.0000, -1.0000), cplx(1.0000, -1.0000),
                   cplx(1.0000, -1.0000), cplx(1.0000, -1.0000),
                   cplx(1.0000, -1.0000), cplx(1.0000, -1.0000)));
+
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(
+      ImportAndGetData<kType>(node),
+      ElementsAre(std::complex<float>(0.0000, 0.0000), cplx(0.0000, 0.0000),
+                  cplx(0.0000, 0.0000), cplx(0.0000, 0.0000),
+                  cplx(0.0000, 0.0000), cplx(0.0000, 0.0000)));
 }
 
 std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
@@ -456,7 +466,7 @@ class TensorContentTest : public ::testing::Test {
     SetAttrValue(dtype, &dtype_attr);
     (*node->mutable_attr())["dtype"] = dtype_attr;
 
-    auto allocated_content = absl::make_unique<T[]>(num_elements);
+    auto allocated_content = std::make_unique<T[]>(num_elements);
 
     // An attribute describing the content of this const node.
     tensorflow::TensorProto t;

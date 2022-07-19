@@ -70,7 +70,7 @@ Type GetSizeVarType(OpBuilder builder) {
 
 // Returns the aliasing argument number of a fucntion return value if it simply
 // forwards the argument. Otherwise, returns -1.
-int64_t FindAliasedInput(FuncOp func, int64_t return_index) {
+int64_t FindAliasedInput(func::FuncOp func, int64_t return_index) {
   Value return_val = func.front().getTerminator()->getOperand(return_index);
   auto maybe_arg = return_val.dyn_cast<BlockArgument>();
   if (!maybe_arg) return -1;
@@ -88,7 +88,7 @@ int64_t FindAliasedInput(FuncOp func, int64_t return_index) {
 // If handle_new_size_vars is provided, it will be invoked on the list of new
 // size variables before finally changing the function type.
 void ModifyFunctionSignature(
-    FuncOp func, llvm::SmallDenseMap<Value, Value>* stack_var_to_size_var,
+    func::FuncOp func, llvm::SmallDenseMap<Value, Value>* stack_var_to_size_var,
     llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_stack_type,
     llvm::function_ref<void(ArrayRef<BlockArgument>)> handle_new_size_vars =
         nullptr) {
@@ -97,7 +97,7 @@ void ModifyFunctionSignature(
   int64_t original_arg_count = new_input_types.size();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto stack_type = arg_to_stack_type(i);
-    if (!stack_type.hasValue()) continue;
+    if (!stack_type.has_value()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
     auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
@@ -118,7 +118,7 @@ void ModifyFunctionSignature(
 // partitioned call ops.
 struct PartitionedCallStackOpsInfo {
   bool signature_change;
-  FuncOp decomposed_callee;
+  func::FuncOp decomposed_callee;
   llvm::SmallDenseMap<int64_t, int64_t> stack_var_arg_to_size_arg;
 };
 
@@ -255,7 +255,7 @@ LogicalResult HandleIfOp(
 // and performs stack ops decomposition on it.
 template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
-    CallOp call, FuncOp callee, ModuleOp module,
+    CallOp call, func::FuncOp callee, ModuleOp module,
     const llvm::SmallDenseMap<Value, Value>& data_var_to_size_var,
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
@@ -283,7 +283,7 @@ LogicalResult HandlePartitionedCallOp(
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),
-                 const_cast<FuncOp&>(info.decomposed_callee).getName()));
+                 const_cast<func::FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {
       auto result = call.getResult(i);
       if (!getElementTypeOrSelf(result.getType())
@@ -306,7 +306,7 @@ LogicalResult HandlePartitionedCallOp(
     return recreate_caller();
   }
   llvm::SmallDenseMap<Value, Value> callee_map;
-  FuncOp lowered_callee = callee;
+  func::FuncOp lowered_callee = callee;
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
@@ -358,7 +358,7 @@ LogicalResult HandleStackV2Op(
         if (!push) return llvm::None;
         return push.elem().getType();
       });
-  if (!elem_type.hasValue()) {
+  if (!elem_type.has_value()) {
     return stack.emitOpError("cannot infer element shape of stack");
   }
   OpBuilder builder(stack);
@@ -550,7 +550,7 @@ LogicalResult DecomposeStackOps(Block* block, ModuleOp module) {
 
 void StackOpsDecompositionPass::runOnOperation() {
   auto module = getOperation();
-  auto main = module.lookupSymbol<FuncOp>("main");
+  auto main = module.lookupSymbol<func::FuncOp>("main");
   if (!main) return;
   if (failed(DecomposeStackOps(&main.front(), module))) {
     signalPassFailure();

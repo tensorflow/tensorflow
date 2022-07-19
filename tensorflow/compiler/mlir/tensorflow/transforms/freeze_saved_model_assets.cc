@@ -57,7 +57,7 @@ void FreezeAssetsPass::runOnOperation() {
   }
   SymbolTable symbol_table(module);
 
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     llvm::BitVector args_to_erase(func.getNumArguments());
     OpBuilder builder(func.getBody());
 

@@ -795,7 +795,34 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     self.assertEqual(v, (12345,))
     self.assertOpCreated('While')
 
-  def test_tensor_failing_to_create_variable(self):
+  def test_tensor_failing_to_determine_placeholder(self):
+
+    class UserType:
+      pass
+
+    def body():
+      nonlocal v
+      v = UserType()
+
+    def set_state(loop_vars):
+      nonlocal v
+      v, = loop_vars
+
+    v = variable_operators.Undefined('v')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        re.compile('must be defined.*tried to define.*unsupported type',
+                   re.DOTALL)):
+      control_flow.while_stmt(
+          test=lambda: constant_op.constant(True),
+          body=body,
+          get_state=lambda: (v,),
+          set_state=set_state,
+          symbol_names=('v',),
+          opts={})
+
+  def test_tensor_failing_to_stage_loop_body(self):
 
     def body():
       nonlocal i, s
@@ -812,7 +839,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
 
     with self.assertRaisesRegex(
         ValueError,
-        re.compile('must be defined.*tried to determine.*testing', re.DOTALL)):
+        re.compile('must be defined.*tried to define.*testing', re.DOTALL)):
       control_flow.while_stmt(
           test=lambda: math_ops.equal(s, 0),
           body=body,

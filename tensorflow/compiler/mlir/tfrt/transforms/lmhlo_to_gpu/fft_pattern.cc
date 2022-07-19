@@ -71,8 +71,8 @@ struct FftRewritePattern
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::FftOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
-    xla::Shape input_shape = xla::gpu::GetShape(op.operand());
-    xla::Shape output_shape = xla::gpu::GetShape(op.output());
+    xla::Shape input_shape = xla::gpu::GetShape(op.getOperand());
+    xla::Shape output_shape = xla::gpu::GetShape(op.getOutput());
     if (input_shape.is_dynamic() || output_shape.is_dynamic())
       return rewriter.notifyMatchFailure(op, "expected static shapes");
     if (!xla::LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
@@ -82,17 +82,17 @@ struct FftRewritePattern
 
     bool double_precision = input_shape.element_type() == xla::F64 ||
                             input_shape.element_type() == xla::C128;
-    auto type = GetFftType(mlir::mhlo::stringifyFftType(adaptor.fft_type()),
+    auto type = GetFftType(mlir::mhlo::stringifyFftType(adaptor.getFftType()),
                            double_precision);
     auto direction =
-        GetFftDirection(mlir::mhlo::stringifyFftType(adaptor.fft_type()));
+        GetFftDirection(mlir::mhlo::stringifyFftType(adaptor.getFftType()));
     if (!type || !direction) {
       auto error = joinErrors(type.takeError(), direction.takeError());
       return rewriter.notifyMatchFailure(op, llvm::toString(std::move(error)));
     }
 
     llvm::SmallVector<int64_t, 3> dimensions;
-    llvm::copy(op.fft_length().getValues<int64_t>(),
+    llvm::copy(op.getFftLength().getValues<int64_t>(),
                std::back_inserter(dimensions));
     int rank = dimensions.size();
 
@@ -115,7 +115,7 @@ struct FftRewritePattern
     mlir::Location loc = op->getLoc();
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
 
-    auto handle = rewriter.create<tfrt::gpu::FftCreateOp>(
+    auto fft_handle = rewriter.create<tfrt::gpu::FftCreateOp>(
         loc, context, *type, batch, rewriter.getI64ArrayAttr(dimensions),
         rewriter.getI64ArrayAttr(input_strides),
         rewriter.getI64ArrayAttr(output_strides));
@@ -125,17 +125,58 @@ struct FftRewritePattern
     // really want the compiler to depend on cuFFT/hipFFT, and the expensive
     // part is the allocation, which is currently not hoisted.
     mlir::Value workspace_size =
-        rewriter.create<tfrt::gpu::FftGetWorkspaceSizeOp>(loc, handle);
+        rewriter.create<tfrt::gpu::FftGetWorkspaceSizeOp>(loc, fft_handle);
     mlir::Value allocator =
         rewriter.create<tfrt::gpu::AllocatorCreateOp>(loc, context);
     mlir::Value workspace = rewriter.create<tfrt::gpu::MemAllocateOp>(
         loc, allocator, stream, workspace_size, chain);
 
     chain = rewriter.create<tfrt::gpu::FftExecuteOp>(
-        loc, stream, handle, adaptor.operand(), adaptor.output(), workspace,
-        *direction, chain);
+        loc, stream, fft_handle, adaptor.getOperand(), adaptor.getOutput(),
+        workspace, *direction, chain);
 
     rewriter.eraseOp(op);
+
+    if (*direction ==
+        tfrt::gpu::wrapper::FftDirection(CUFFT_FORWARD, kGpuTargetPlatform)) {
+      return chain;
+    }
+
+    // CUDA/HIP inverse FFT is un-normalized, e.g. see
+    // https://docs.nvidia.com/cuda/cufft/index.html#cufft-transform-directions
+    // So in the inverse case we must manually normalize by scaling by the
+    // inverse of the total number of FFT samples.
+    int64_t elements_per_batch = std::accumulate(
+        dimensions.begin(), dimensions.end(), 1, std::multiplies<int64_t>());
+
+    int64_t total_num_elements = elements_per_batch * batch;
+    auto mlir_element_type =
+        op.getOutput().getType().cast<mlir::MemRefType>().getElementType();
+
+    // If the FFT output elements are complex numbers, treat the output as
+    // an array of twice as many real numbers so we can save compute by
+    // scaling in the real domain.
+    if (auto complex_type = mlir_element_type.dyn_cast<ComplexType>()) {
+      total_num_elements *= 2;
+      mlir_element_type = complex_type.getElementType();
+    }
+
+    auto n =
+        rewriter.create<tfrt::compiler::ConstantI32Op>(loc, total_num_elements);
+    auto scaling_factor = MakeScalingFactorConstant(
+        rewriter, loc, mlir_element_type,
+        /*value_real=*/llvm::APFloat(1.0f / elements_per_batch),
+        /*value_imaginary=*/llvm::APFloat(0.0f));
+    // This assumes that the stride of the FFT output is always 1.
+    auto stride = rewriter.create<tfrt::compiler::ConstantI32Op>(loc, 1);
+    auto blas_handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
+    auto blas_element_type = MlirTypeToBlasDataType(mlir_element_type);
+
+    chain = rewriter.create<tfrt::gpu::BlasScalOp>(
+        loc, chain.getType(), blas_handle, stream, n, scaling_factor,
+        blas_element_type, adaptor.getOutput(), blas_element_type, stride,
+        blas_element_type, chain);
+
     return chain;
   }
 };

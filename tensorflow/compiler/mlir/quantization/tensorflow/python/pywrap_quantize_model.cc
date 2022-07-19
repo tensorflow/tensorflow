@@ -61,7 +61,18 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                 saved_model_path, exported_names_str, tags));
       },
       R"pbdoc(
-      Returns a tf model graph def string.
+      Returns a TF model graph def string.
+    )pbdoc");
+  m.def(
+      "quantize_ptq_dynamic_range",
+      [](absl::string_view saved_model_path,
+         absl::string_view exported_names_str, absl::string_view tags) {
+        return tensorflow::PyoOrThrow(
+            tensorflow::quantization::QuantizePTQDynamicRange(
+                saved_model_path, exported_names_str, tags));
+      },
+      R"pbdoc(
+      Returns a TF model graph def string.
     )pbdoc");
   m.def(
       "quantize_ptq_model_pre_calibration",
@@ -72,7 +83,7 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                 saved_model_path, exported_names_str, tags));
       },
       R"pbdoc(
-      Returns a tf model graph def string.
+      Returns a TF model graph def string.
     )pbdoc");
   m.def(
       "quantize_ptq_model_post_calibration",
@@ -83,6 +94,6 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
                 saved_model_path, exported_names_str, tags));
       },
       R"pbdoc(
-      Returns a tf model graph def string.
+      Returns a TF model graph def string.
     )pbdoc");
 }

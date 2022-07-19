@@ -114,6 +114,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
           " BN: TF FusedBatchNorm* operations."
           " FUSIBLE: All TF operations that XLA can fuse (All the above). "
           "You can also put any TF operation name, e.g. 'FUSIBLE,MatMul'."),
+      Flag("tf_xla_cluster_exclude_ops",
+           &mark_for_compilation_flags->tf_xla_cluster_exclude_ops,
+           "(experimental) "
+           "Exclude the operations from auto-clustering. "
+           "If multiple, separate them with commas."
+           " Where, Some_other_ops"),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),
@@ -157,12 +163,17 @@ void AllocateAndParseJitRtFlags() {
   jitrt_flags = new JitRtFlags;
   jitrt_flags->always_specialize = false;
   jitrt_flags->cost_driven_async_parallel_for = false;
+  jitrt_flags->log_query_of_death = false;
   jitrt_flags->vectorize = false;
+  jitrt_flags->enable_crash_reproducer = false;
   jitrt_flag_list = new std::vector<Flag>({
       Flag("always_specialize", &jitrt_flags->always_specialize, ""),
       Flag("cost_driven_async_parallel_for",
            &jitrt_flags->cost_driven_async_parallel_for, ""),
+      Flag("log_query_of_death", &jitrt_flags->log_query_of_death, ""),
       Flag("vectorize", &jitrt_flags->vectorize, ""),
+      Flag("enable_crash_reproducer", &jitrt_flags->enable_crash_reproducer,
+           ""),
   });
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_JITRT_FLAGS", *jitrt_flag_list);
 }
@@ -385,7 +396,7 @@ const JitRtFlags& GetJitRtFlags() {
 }
 
 ConfigProto::Experimental::MlirBridgeRollout GetMlirBridgeRolloutState(
-    absl::optional<const ConfigProto> config_proto) {
+    std::optional<const ConfigProto> config_proto) {
   // TF1 graphs that do not override Sessions's ConfigProto and TF2 graphs
   // can enable/disable the graph via tf_mlir_enable_mlir_bridge.
   auto tf_mlir_enable_mlir_bridge =

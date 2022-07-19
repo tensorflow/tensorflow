@@ -358,7 +358,7 @@ Status TpuProgramGroup::DeserializeFromRpcResponseProtos(
   }
 
   Initialize(tpu_programs);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuProgramGroup::SerializeExecutable(

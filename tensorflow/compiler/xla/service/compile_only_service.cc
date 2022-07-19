@@ -28,9 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -63,7 +60,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const absl::Span<const AotXlaComputationInstance> computations,
+    absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
@@ -109,11 +106,11 @@ CompileOnlyService::CompileAheadOfTime(
         *subshape = compiler_->DefaultDeviceShapeRepresentation(*subshape);
       }
     };
-    ShapeUtil::ForEachMutableSubshape(
-        const_cast<Shape*>(instance.result_layout),
-        update_shape_with_empty_tiles);
+    Shape result_layout(instance.result_layout);
+    ShapeUtil::ForEachMutableSubshape(&result_layout,
+                                      update_shape_with_empty_tiles);
     *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->ToProto();
+        result_layout.ToProto();
     for (auto shape : instance.argument_layouts) {
       ShapeUtil::ForEachMutableSubshape(const_cast<Shape*>(shape),
                                         update_shape_with_empty_tiles);
@@ -133,8 +130,8 @@ CompileOnlyService::CompileAheadOfTime(
   }
 
   return compiler_->CompileAheadOfTime(
-      absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
-                                        absl::MakeSpan(hlo_modules)),
+      std::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
+                                       absl::MakeSpan(hlo_modules)),
       options, metadata);
 }
 

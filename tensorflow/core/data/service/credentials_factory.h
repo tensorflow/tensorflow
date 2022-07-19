@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_CREDENTIALS_FACTORY_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_CREDENTIALS_FACTORY_H_
 
+#include <memory>
+#include <string>
+
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
 #include "absl/strings/string_view.h"

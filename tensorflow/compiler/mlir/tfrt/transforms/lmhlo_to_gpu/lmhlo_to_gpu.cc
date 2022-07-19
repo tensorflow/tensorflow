@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -73,7 +73,7 @@ struct ConvertLmhloToGpuPass
 
 void ConvertLmhloToGpuPass::runOnOperation() {
   auto* context = &getContext();
-  TypeConverter converter = tfrt::gpu::createMemrefToTfrtGpuConverter();
+  TypeConverter converter = tfrt::gpu::CreateMemrefToTfrtGpuConverter();
 
   RewritePatternSet patterns(context);
   populateCclConversionPattern(patterns, converter);
@@ -86,37 +86,26 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   populateTriangularSolveConversionPattern(patterns, converter);
   populateFftConversionPattern(patterns, converter);
 
-  // Set of ops that need to be wrapped in tfrt_gpu.streamify
-  // before lowering directly to tfrt_gpu ops (and therefore require some chain
-  // and stream, which the wrapper op provides as block arguments). On the other
-  // hand, ops which lower to the gpu dialect do not need to be wrapped. TFRT
-  // ops are added to 'wrap_target' inside
-  // populateStreamifyConversionPatterns().
-  ConversionTarget wrap_target(*context);
-  wrap_target.addLegalDialect<lmhlo_gpu::LmhloGpuDialect>();
-  wrap_target.addLegalOp<
-      lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
-      lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
-      lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
-      lmhlo::InfeedOp, lmhlo::OutfeedOp, lmhlo::FftOp>();
-  tfrt::gpu::populateStreamifyConversionPatterns(patterns, converter,
-                                                 wrap_target);
+  patterns.insert(+[](lmhlo::TerminatorOp op, PatternRewriter& rewriter) {
+    rewriter.replaceOpWithNewOp<mlir::func::ReturnOp>(op, op->getOperands());
+    return success();
+  });
+
+  tfrt::gpu::PopulateMemrefConversionPatterns(patterns, converter);
 
   ConversionTarget target(*context);
+  target.addIllegalDialect<lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   target.addIllegalOp<memref::ReinterpretCastOp, memref::ViewOp,
                       memref::AllocaOp, memref::AllocOp, memref::DeallocOp>();
   target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
     return converter.isSignatureLegal(op.getFunctionType()) &&
            converter.isLegal(&op.getBody());
   });
-  target.addDynamicallyLegalOp<tfrt::gpu::StreamifyOp>(
-      [&](tfrt::gpu::StreamifyOp op) { return converter.isLegal(&op.body()); });
   target.addDynamicallyLegalOp<tfrt::compiler::CallOp, tfrt::compiler::ReturnOp,
-                               func::CallOp, func::ReturnOp>(
+                               tfrt::compiler::WhileOp, func::CallOp,
+                               func::ReturnOp>(
       [&](Operation* op) { return converter.isLegal(op); });
-  target.markUnknownOpDynamicallyLegal([&](Operation* op) {
-    return !wrap_target.isLegal(op);  // Wrapped ops are immediately lowered.
-  });
+  target.markUnknownOpDynamicallyLegal([](Operation*) { return true; });
 
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))

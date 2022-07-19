@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PADDER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PADDER_H_
 
+#include <functional>
+
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -67,6 +69,10 @@ struct DynamicPadderOptions {
   // outputs that are inferred to be dynamic.
   bool slice_dynamic_output = true;
 
+  // Assertion generator for shape checks, only used if shape check mode is
+  // "runtime".
+  DynamicDimensionInference::AssertionGenerator assertion_generator;
+
   // If set to true, pessimisticly assumes runtime shape checks may fail and
   // returns a compile-time error.
   DynamicDimensionInference::ShapeCheckMode shape_check_mode =
@@ -80,7 +86,10 @@ class DynamicPadder : public HloModulePass {
 
   absl::string_view name() const override { return "dynamic_padder"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   DynamicPadderOptions options_;

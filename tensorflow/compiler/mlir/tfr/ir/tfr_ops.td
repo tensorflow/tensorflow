@@ -518,7 +518,7 @@ def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
 
 def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
   let description = [{
-   The `quant_rescale` rescales the elements of the integer tensor by the the
+   The `quant_rescale` rescales the elements of the integer tensor by the
    floating-point rescale factor. This op needs to be legalized to the preferred
    operations of the backends.
 

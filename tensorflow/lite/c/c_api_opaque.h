@@ -66,6 +66,19 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
     const TfLiteOpaqueTensor* opaque_tensor, void* output_data,
     size_t output_data_size);
 
+// --------------------------------------------------------------------------
+// Wrapper for kernel_util.h
+
+// Returns the input tensor of the given node.
+TFL_CAPI_EXPORT extern const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
+    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
+    int index);
+
+// Returns the output tensor of the given node.
+TFL_CAPI_EXPORT extern TfLiteOpaqueTensor* TfLiteOpaqueNodeGetOutput(
+    TfLiteOpaqueContext* opaque_context, const TfLiteOpaqueNode* opaque_node,
+    int index);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

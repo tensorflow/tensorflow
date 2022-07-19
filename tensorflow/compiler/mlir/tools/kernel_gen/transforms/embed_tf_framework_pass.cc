@@ -33,7 +33,7 @@ namespace {
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation* op) {
-  auto func = op->getParentOfType<FuncOp>();
+  auto func = op->getParentOfType<func::FuncOp>();
   return !func->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName);
 }
 
@@ -64,7 +64,7 @@ class EmbedTFFrameworkPass
     ConversionTarget target(getContext());
     target.addLegalDialect<tf_framework::TFFrameworkDialect>();
 
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       if (!op->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName)) {
         return true;
       }

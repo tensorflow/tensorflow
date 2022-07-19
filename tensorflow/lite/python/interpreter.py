@@ -273,7 +273,7 @@ class SignatureRunner(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -660,7 +660,7 @@ class Interpreter(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -834,7 +834,7 @@ class Interpreter(object):
         signature_key = next(iter(self._signature_defs))
     return SignatureRunner(interpreter=self, signature_key=signature_key)
 
-  def get_tensor(self, tensor_index):
+  def get_tensor(self, tensor_index, subgraph_index=0):
     """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
@@ -843,11 +843,13 @@ class Interpreter(object):
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
         the 'index' field in get_output_details.
+      subgraph_index: Index of the subgraph to fetch the tensor. Default value
+        is 0, which means to fetch from the primary subgraph.
 
     Returns:
       a numpy array.
     """
-    return self._interpreter.GetTensor(tensor_index)
+    return self._interpreter.GetTensor(tensor_index, subgraph_index)
 
   def tensor(self, tensor_index):
     """Returns function that gives a numpy view of the current tensor buffer.

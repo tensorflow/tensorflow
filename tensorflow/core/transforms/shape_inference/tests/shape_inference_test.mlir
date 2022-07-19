@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -split-input-file -shape-inference=graph-version=1010 %s | FileCheck %s
+// RUN: tfg-transforms-opt -split-input-file -tfg-shape-inference=graph-version=1010 %s | FileCheck %s
 
 module  {
   tfg.graph #tf_type.version<producer = 1010, min_consumer = 0> {
@@ -136,9 +136,22 @@ module {
   tfg.graph #tf_type.version<producer = 1070, min_consumer = 0> {
     %Const, %ctl = Const name("Const") {dtype = i32, value = dense<1> : tensor<1x2x3x4xi32>} : () -> (tensor<1x2x3x4xi32>)
     // CHECK: Shape{{.*}} name("Shape_32") {{.*}} -> (tensor<4xi32>)
-    %Size, %ctl_0 = Shape(%Const) name("Shape_32") {T = i32, out_type = i32} : (tensor<1x2x3x4xi32>) -> (tensor<*xi32>)
+    %Size, %ctl_0 = Shape(%Const) name("Shape_32") {T = i32, out_type = i32} : (tensor<1x2x3x4xi32>) -> (tensor<2x?xi32>)
     // CHECK: Shape{{.*}} name("Shape_64") {{.*}} -> (tensor<4xi64>)
-    %Size_64, %ctl_1 = Shape(%Const) name("Shape_64") {T = i64, out_type = i64} : (tensor<1x2x3x4xi32>) -> (tensor<*xi64>)
+    %Shape_64, %ctl_1 = Shape(%Const, %ctl, %ctl_0) name("Shape_64") {T = i64, out_type = i64} : (tensor<1x2x3x4xi32>, !tf_type.control, !tf_type.control) -> (tensor<*xi64>)
+  }
+}
+
+// -----
+
+module {
+  tfg.func @update_function_arg_return_type(%arg0 : tensor<*xi32> {tfg.name = "input", tf._output_shapes = [#tf_type.shape<2x3>]}, %arg1 : tensor<*xf32> {tfg.name = "another_input"})
+      -> (tensor<*xi32> {tfg.name = "result1"}) {
+    %Const, %ctl = Const name("Const") {dtype = i32, value = dense<1> : tensor<1x2x3x4xi32>} : () -> (tensor<*xi32>)
+    %Size, %ctl_0 = Size(%Const) name("Size") {T = i32, out_type = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
+    // CHECK: Shape{{.*}} name("Shape_1") {{.*}} -> (tensor<2xi64>)
+    %Shape_1, %ctl_1 = Shape(%arg0) name("Shape_1") {T = i64, out_type = i64} : (tensor<*xi32>) -> (tensor<*xi64>)
+    return(%Size) : tensor<*xi32>
   }
 }
 
@@ -151,5 +164,19 @@ module {
     %add, %ctl = Add(%arg0, %arg1) name("unranked_add") : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
     %add_1, %ctl_1 = Add(%arg0, %arg1) name("unranked_add2") : (tensor<*xf32>, tensor<*xf32>) -> (tensor<?x2xf32>)
     return(%add) : tensor<*xf32>
+  }
+}
+
+// -----
+
+module {
+  tfg.func generic @cant_infer_opaque_tensor(%x: !tf_type.tensor {tfg.name = "x", tfg.type_attr = "T"})
+       -> (!tf_type.tensor {tfg.name = "y", tfg.type_attr = "T"})
+   attributes {is_stateful, tf._noinline = true, tfg.func_attrs = {T = {allowed_values = [f32, f64, i32, i64], function_type = "type"}}} {
+    %XTimesFour, %ctl = XTimesFour(%x) name("x4") {T = #tf_type.placeholder<"T">} : (!tf_type.tensor) -> (!tf_type.tensor)
+    %0 = get_result(%XTimesFour) "y" : 0
+    %XTimesFour_0, %ctl_1 = XTimesFour(%0) name("y") {T = #tf_type.placeholder<"T">} : (!tf_type.tensor) -> (!tf_type.tensor)
+    %1 = get_result(%XTimesFour_0) "y" : 0
+    return(%1) : !tf_type.tensor
   }
 }

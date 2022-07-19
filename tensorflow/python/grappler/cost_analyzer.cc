@@ -37,7 +37,7 @@ Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
   PreprocessCosts();
   AnalyzeCosts();
   PrintAnalysis(os, per_node_report, verbose);
-  return Status::OK();
+  return OkStatus();
 }
 
 void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,

@@ -2908,7 +2908,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     const dnn::AlgorithmConfig& algorithm_config,
     ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
     DeviceMemory<uint8>* scratch_memory) {
-  absl::optional<dnn::AlgorithmDesc> input_algo_desc =
+  std::optional<dnn::AlgorithmDesc> input_algo_desc =
       algorithm_config.algorithm();
 
   assert(input_algo_desc.has_value());
@@ -3116,7 +3116,7 @@ port::Status MIOpenSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  SE_ASSIGN_OR_RETURN(
+  TF_ASSIGN_OR_RETURN(
       auto runner,
       ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
                              output_type, input_descriptor, filter_descriptor,
@@ -3169,7 +3169,7 @@ port::Status MIOpenSupport::GetConvolveRunners(
   }
 
   for (const auto& profile_result : profile_results) {
-    SE_ASSIGN_OR_RETURN(
+    TF_ASSIGN_OR_RETURN(
         auto runner, ConvolveRunnerFromDesc(
                          stream, profile_result.algorithm(), kind, input_type,
                          output_type, input_descriptor, filter_descriptor,
@@ -3868,7 +3868,8 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m)
+                            input_data, k, output_data, m,
+                            blas::kDefaultComputePrecision)
              .ok()) {
       return false;
     }
@@ -4236,7 +4237,9 @@ port::Status MIOpenSupport::DoPoolBackward(
       // miopen does not use strides and must have 4D tensor.
       // std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
-      dest2_size == dnn::DataType::kFloat ? sizeof(float) : sizeof(Eigen::half);
+      dest2_size = (element_type == dnn::DataType::kFloat)
+                       ? sizeof(float)
+                       : sizeof(Eigen::half);
       for (auto& x : dims64) dest2_size *= x;
 
       if (dest2_size > 0) {

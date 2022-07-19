@@ -54,7 +54,7 @@ class LHLO_Op<string mnemonic, list<Trait> traits> :
     !listconcat([MemoryEffects<[MemRead, MemWrite]>,
     LmhloStructuredInterface], traits)>;
 
-def LHLO_ConstOp : LHLO_Op<"constant", []> {
+def LHLO_ConstantOp : LHLO_Op<"constant", []> {
   let summary = "Constant operator";
   let description = [{
     Represents a constant value.
@@ -152,7 +152,7 @@ def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert", LHLO_Buffer, [SameOperan
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
   }];
 }
-def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
+def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
   let summary = "Cos operator";
   let description = [{
     Returns `Cos(operand)` element-wise.
@@ -285,6 +285,17 @@ def LHLO_RoundOp: LHLO_UnaryElementwiseOp<"round_nearest_afz", LHLO_FpBuffer> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def LHLO_RoundNearestEvenOp: LHLO_UnaryElementwiseOp<"round_nearest_even", LHLO_FpBuffer> {
+  let summary = "Round nearest even operator";
+  let description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding towards even numbers.
+
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt", LHLO_FpOrComplexBuffer> {
   let summary = "Reciprocal Square-root operator";
   let description = [{
@@ -320,7 +331,7 @@ def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign"> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
-def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
+def LHLO_SineOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
   let summary = "Sin operator";
   let description = [{
     Returns `Sin(operand)` element-wise.
@@ -485,7 +496,7 @@ def LHLO_ShiftRightLogicalOp : LHLO_BinaryElementwiseOp<"shift_right_logical", L
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
-def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract"> {
+def LHLO_SubtractOp : LHLO_BinaryElementwiseOp<"subtract"> {
   let summary = "Subtraction operator";
   let description = [{
     Returns `lhs - rhs` element-wise.
@@ -626,7 +637,7 @@ def LHLO_CustomCallOp : LHLO_Op<"custom_call", [AttrSizedOperandSegments]> {
     DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
                       "mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
                       $api_version,
-    OptionalAttr<CustomCallTargetArgMapping>:$target_arg_mapping
+    OptionalAttr<CustomCallTargetArgMappingAttr>:$target_arg_mapping
   );
   let hasVerifier = 1;
 }
@@ -851,7 +862,7 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []> {
    );
 }
 
-def LHLO_ConvOp : LHLO_Op<"convolution", []> {
+def LHLO_ConvolutionOp : LHLO_Op<"convolution", []> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.
@@ -867,7 +878,7 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []> {
 
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
-      auto reversal = window_reversalAttr();
+      auto reversal = getWindowReversalAttr();
       return reversal && llvm::any_of(reversal.getValues<bool>(),
                                       [](bool v) { return v; });
     }
@@ -894,8 +905,8 @@ def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]> {
   );
 
   let extraClassDeclaration = [{
-    Value getSource() { return operand();}
-    Value getTarget() { return output(); }
+    Value getSource() { return getOperand();}
+    Value getTarget() { return getOutput(); }
   }];
 }
 
@@ -1076,8 +1087,8 @@ def LHLO_ReducePrecisionOp: LHLO_Op<"reduce_precision", [SameTypeOperands]> {
 class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   LHLO_Op<name, !listconcat(traits, [SameVariadicOperandSize])> {
   dag arguments_base = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$results,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     I64ElementsAttr:$replica_groups,
     DefaultValuedAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<ChannelHandle>:$channel_id,
@@ -1086,7 +1097,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     // AllGather is cross replica if channel_id is not set.
-    bool IsCrossReplica() { return !channel_id().hasValue(); }
+    bool IsCrossReplica() { return !getChannelId().has_value(); }
   }];
 }
 
@@ -1222,7 +1233,7 @@ def LHLO_InfeedOp: LHLO_Op<"infeed", []> {
 
 def LHLO_OutfeedOp: LHLO_Op<"outfeed", []> {
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     DefaultValuedStrAttr<StrAttr, "">:$config
   );
 }
@@ -1301,7 +1312,7 @@ def LHLO_MapOp: LHLO_Op<"map", [SameOperandsShape]> {
   See https://www.tensorflow.org/xla/operation_semantics#map.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$dimensions
   );
@@ -1325,7 +1336,7 @@ def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]> {
     See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
   let arguments = (ins
-    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
     Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     DefaultValuedAttr<I64Attr, "-1">:$dimension,
     DefaultValuedAttr<BoolAttr, "false">:$is_stable
@@ -1364,15 +1375,15 @@ def FusionOp : LHLO_Op<"fusion", [
   let extraClassDeclaration = [{
     SmallVector<Value> getInputBuffers() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
-        buffers.push_back(load.memref());
+      for (auto load : getRegion().front().getOps<bufferization::ToTensorOp>()) {
+        buffers.push_back(load.getMemref());
       }
       return buffers;
     }
 
     SmallVector<Value> getOutputBuffers() {
       SmallVector<Value> buffers;
-      for (auto store : region().front().getOps<memref::TensorStoreOp>()) {
+      for (auto store : getRegion().front().getOps<memref::TensorStoreOp>()) {
         buffers.push_back(store.memref());
       }
       return buffers;
@@ -1380,7 +1391,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionParameters() {
       SmallVector<Value> buffers;
-      for (auto load : region().front().getOps<bufferization::ToTensorOp>()) {
+      for (auto load : getRegion().front().getOps<bufferization::ToTensorOp>()) {
         buffers.push_back(load);
       }
       return buffers;
@@ -1388,7 +1399,7 @@ def FusionOp : LHLO_Op<"fusion", [
 
     SmallVector<Value> getFusionResults() {
       SmallVector<Value> buffers;
-      for (auto store : region().front().getOps<memref::TensorStoreOp>()) {
+      for (auto store : getRegion().front().getOps<memref::TensorStoreOp>()) {
         buffers.push_back(store.tensor());
       }
       return buffers;

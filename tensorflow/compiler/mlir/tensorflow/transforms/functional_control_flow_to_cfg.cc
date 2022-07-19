@@ -56,7 +56,7 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
-                         FuncOp fn, OpBuilder* builder) {
+                         func::FuncOp fn, OpBuilder* builder) {
   FunctionType fn_type = fn.getFunctionType();
   llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
@@ -302,7 +302,8 @@ void FunctionalControlFlowToCFG::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

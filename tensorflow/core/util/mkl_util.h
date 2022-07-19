@@ -39,6 +39,9 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::engine;
 using dnnl::memory;
@@ -1765,6 +1768,9 @@ class LRUCache {
   }
 
   T* GetOp(const string& key) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(lru_mu_);
+#endif
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return nullptr;
@@ -1778,6 +1784,9 @@ class LRUCache {
   }
 
   void SetOp(const string& key, T* op) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(lru_mu_);
+#endif
     if (lru_list_.size() >= capacity_) {
       Delete();
     }
@@ -1786,6 +1795,9 @@ class LRUCache {
     lru_list_.push_front(key);
     Entry entry(op, lru_list_.begin());
     cache_.emplace(std::make_pair(key, std::move(entry)));
+#ifdef DNNL_AARCH64_USE_ACL
+    FinishedAllocation(key);
+#endif
   }
 
   void Clear() {
@@ -1795,6 +1807,23 @@ class LRUCache {
     cache_.clear();
     lru_list_.clear();
   }
+
+#ifdef DNNL_AARCH64_USE_ACL
+  bool IsAllocating(const string& key) {
+    mutex_lock lock(in_flight_mu_);
+    return in_flight_.find(key) != in_flight_.end();
+  }
+
+  void Allocate(const string& key) {
+    mutex_lock lock(in_flight_mu_);
+    in_flight_.insert(key);
+  }
+
+  void FinishedAllocation(const string& key) {
+    mutex_lock lock(in_flight_mu_);
+    in_flight_.erase(key);
+  }
+#endif
 
  private:
   struct Entry {
@@ -1843,6 +1872,16 @@ class LRUCache {
   // The front of the list contains the key of the most recently accessed
   // entry, while the back of the list is the least recently accessed entry.
   std::list<string> lru_list_;
+
+#ifdef DNNL_AARCH64_USE_ACL
+  // Guards access to the cache and LRU list
+  mutex lru_mu_;
+
+  // The keys that are currently under creation
+  std::set<string> in_flight_;
+  TF_GUARDED_BY(in_flight_mu_)
+  mutex in_flight_mu_;
+#endif
 };
 
 template <typename T>
@@ -1853,13 +1892,55 @@ class MklPrimitiveFactory {
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const string& key) {
+#ifndef DNNL_AARCH64_USE_ACL
     auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
     return lru_cache.GetOp(key);
+#else
+    while (true) {
+      // TODO(milpuz01): Consider if it is possible to narrow scope to be
+      // only around checks for allocations and conditional wait.
+      mutex_lock lock(primitive_creation_mu_);
+      auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
+
+      // Check to see whether primitive already exists.
+      MklPrimitive* primitive = lru_cache.GetOp(key);
+      if (primitive != nullptr) {
+        return primitive;
+      }
+
+      // Now check whether some other thread is creating this primitive.
+      if (!lru_cache.IsAllocating(key)) {
+        // This thread is going to pick it up and create the primitive.
+        lru_cache.Allocate(key);
+        return nullptr;
+        // Now we release lock as primitive creation might take long time.
+      }
+
+      // At this point we cannot create primitive as other thread is creating
+      // it. We should wait for primitive to get created.
+      primitive_creation_cv_.wait(lock);
+
+      // The primitive is created and is in the cache so we are going to try
+      // retrieve it again after getting a lock on it as multiple threads might
+      // be waiting for the primitive.
+    }
+#endif
   }
 
   void SetOp(const string& key, MklPrimitive* op) {
+#ifndef DNNL_AARCH64_USE_ACL
     auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
     lru_cache.SetOp(key, op);
+#else
+    {
+      mutex_lock lock(primitive_creation_mu_);
+      auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
+      lru_cache.SetOp(key, op);
+    }
+
+    // Now we can inform all waiting threads that primitive is created.
+    primitive_creation_cv_.notify_all();
+#endif
   }
 
   /// Function to decide whether HW has AVX512 or AVX2
@@ -1883,12 +1964,29 @@ class MklPrimitiveFactory {
     return is_primitive_mem_opt_enabled;
   }
 
+#ifdef DNNL_AARCH64_USE_ACL
+  static int IncrementCounter() {
+    static std::atomic_int counter{1};
+    return counter.fetch_add(1);
+  }
+#endif
+
  private:
   static inline LRUCache<MklPrimitive>& GetLRUCache() {
     static const int kCapacity = 1024;  // cache capacity
+#ifndef DNNL_AARCH64_USE_ACL
     static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
+#else
+    static LRUCache<MklPrimitive> lru_cache_(kCapacity);
+    TF_GUARDED_BY(lru_mu_)
+#endif
     return lru_cache_;
   }
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_creation_mu_;
+  condition_variable primitive_creation_cv_;
+#endif
 };
 
 // utility class for creating keys of MKL primitive pool.
@@ -2019,6 +2117,11 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
                                          &to_strides[to_desc.ndims]);
 
     key_creator.AddAsKey(prefix);
+#ifdef DNNL_AARCH64_USE_ACL
+    // The reorder primitives have local memory (calls to SetMemory) so we
+    // need to make sure that memory for those primitives is cached per thread.
+    key_creator.AddAsKey(std::this_thread::get_id());
+#endif
     key_creator.AddAsKey(static_cast<int>(from_desc.extra.flags));
     key_creator.AddAsKey(static_cast<int>(from_inner_nblks));
     key_creator.AddAsKey(from_inner_blks_1);

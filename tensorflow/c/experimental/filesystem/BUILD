@@ -31,7 +31,7 @@ cc_library(
         "modular_filesystem.h",
         "modular_filesystem_registration.h",
     ],
-    # TODO(mihaimaruseac): Visibility should be more restrictive once we
+    # TODO(b/139060984): Visibility should be more restrictive once we
     # convert to modular filesystems everywhere
     visibility = ["//visibility:public"],
     deps = [

@@ -37,7 +37,7 @@ namespace {
 
 class ConvertCustomAggregationOpToQuantStatsPass
     : public PassWrapper<ConvertCustomAggregationOpToQuantStatsPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       ConvertCustomAggregationOpToQuantStatsPass)
@@ -102,7 +102,7 @@ static PassRegistration<ConvertCustomAggregationOpToQuantStatsPass> pass;
 void ConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   patterns.add<ConvertCustomAggregationOpToQuantStats>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
@@ -114,7 +114,7 @@ void ConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertCustomAggregationOpToQuantStatsPass() {
   return std::make_unique<ConvertCustomAggregationOpToQuantStatsPass>();
 }

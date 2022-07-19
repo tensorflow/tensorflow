@@ -9,7 +9,7 @@ func.func @main() attributes {tf._implements = #tf_type.func} {
 
 // -----
 
-// expected-error@+2 {{expected non-function type}}
+// expected-error@+2 {{expected attribute value}}
 // expected-error@+1 {{expected symbol while parsing tf.func attribute}}
 func.func @main() attributes {tf._implements = #tf_type.func<>} {
   func.return

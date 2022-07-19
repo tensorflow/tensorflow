@@ -35,7 +35,7 @@ func.func @RewriteHostComputeMlirOp(%arg0: tensor<*xf32>, %arg1: tensor<3x?xf64>
   // CHECK-SAME: [[ID_OUTPUT]]
   // CHECK-SAME: key = "host_compute_channel_recv"
 
-  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = "module  {\0A  func @host_func(%arg0: tensor<*xf32>, %arg1: tensor<3x?xf64>) -> (tensor<*xf32>, tensor<3x?xf64>) {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    return %0, %arg1 : tensor<*xf32>, tensor<3x?xf64> \0A  } \0A} \0A"} : (tensor<*xf32>, tensor<3x?xf64>) -> (tensor<*xf32>, tensor<3x?xf64>)
+  %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", host_mlir_module = "module  {\0A  func.func @host_func(%arg0: tensor<*xf32>, %arg1: tensor<3x?xf64>) -> (tensor<*xf32>, tensor<3x?xf64>) {\0A    %0 = \22tf.Identity\22(%arg0) {_xla_outside_compilation = \22cluster1\22} : (tensor<*xf32>) -> tensor<*xf32> \0A    func.return %0, %arg1 : tensor<*xf32>, tensor<3x?xf64> \0A  } \0A} \0A"} : (tensor<*xf32>, tensor<3x?xf64>) -> (tensor<*xf32>, tensor<3x?xf64>)
   func.return %0#0 : tensor<*xf32>
 }
 
@@ -59,7 +59,7 @@ func.func @CommunicateOpTokenAttrs() -> () {
   "tf.XlaSendToHost"(%0) {key = "send_key"} : (tensor<i32>) -> ()
 
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME3:.*]], _xla_token_input_nodes = {{\[}}[[NODE_NAME2]]{{\]}}
-  %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", tpu_core = 0, host_mlir_module = ""} : (tensor<i32>) -> (tensor<f32>)
+  %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", host_mlir_module = ""} : (tensor<i32>) -> (tensor<f32>)
   func.return
 }
 

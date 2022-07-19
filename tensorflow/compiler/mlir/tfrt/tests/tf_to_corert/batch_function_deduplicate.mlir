@@ -16,7 +16,7 @@ func.func private @compute_0(%arg0: tensor<?x?xi32> {tf._user_specified_name = "
   func.return %arg0, %arg1 : tensor<?x?xi32>, tensor<?x?xi32>
 }
 
-// Batch function in batch_1 uses the same shared_name as the one in in batch_0,
+// Batch function in batch_1 uses the same shared_name as the one in batch_0,
 // so compute_1 is deduped, and compute_0 will be used here.
 // CHECK-LABEL: func private @batch_1
 // CHECK: f = @compute_0

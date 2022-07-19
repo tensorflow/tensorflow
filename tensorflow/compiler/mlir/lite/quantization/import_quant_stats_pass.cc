@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/APFloat.h"
@@ -56,7 +58,7 @@ using QuantParamsEntry = QuantizationInfo::QuantParams;
 
 namespace {
 class ImportQuantStatsPass
-    : public PassWrapper<ImportQuantStatsPass, OperationPass<FuncOp>> {
+    : public PassWrapper<ImportQuantStatsPass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ImportQuantStatsPass)
 
@@ -186,7 +188,7 @@ void ImportQuantStatsPass::ImportAsStatsOps(OpBuilder b, Operation *op,
 }
 
 void ImportQuantStatsPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   OpBuilder builder(func);
 
   func.walk([&](Operation *op) {
@@ -211,9 +213,9 @@ void ImportQuantStatsPass::runOnOperation() {
 }
 
 // Creates an instance of the default quant parameters pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateImportQuantStatsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateImportQuantStatsPass(
     OperationToName op_to_name, const std::string &stats_str) {
-  auto pass = absl::make_unique<ImportQuantStatsPass>(op_to_name);
+  auto pass = std::make_unique<ImportQuantStatsPass>(op_to_name);
   if (pass->ParseQuantStats(stats_str)) return nullptr;
   return pass;
 }
@@ -221,7 +223,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateImportQuantStatsPass(
 // Creates an instance pass to import quantization stats to the operations in
 // the function. A custom method to get the name from the op is used because
 // different dialect ops might have different ways to assign the name.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
     Location loc = tensorflow::GetLocationWithoutOpType(op->getLoc());

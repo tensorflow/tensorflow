@@ -50,11 +50,6 @@ def TFL_Dialect : Dialect {
     // attribute value with the desired resultant type.
     Operation *materializeConstant(OpBuilder &builder, Attribute value,
                                    Type type, Location loc) override;
-
-    Attribute parseAttribute(DialectAsmParser &parser,
-                             Type type) const override;
-
-    void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
   }];
 }
 

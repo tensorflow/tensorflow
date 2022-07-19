@@ -75,14 +75,14 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -114,7 +114,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     for (const auto& data_input : data_inputs_) {
       inputs->push_back(data_input);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -148,7 +148,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
         /*attrs=*/
         {std::make_pair(kStopOnEmptyDataset, stop_on_empty_dataset_attr)},
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -171,7 +171,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
             &input_contexts_[i + 1], this,
             strings::StrCat(prefix(), "[", i, "]"), &data_input_impls_[i]));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -180,7 +180,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (!selector_input_impl_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       while (true) {
@@ -190,7 +190,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
             &input_contexts_[0], &selector_result, end_of_sequence));
         if (*end_of_sequence) {
           ResetInputs();
-          return Status::OK();
+          return OkStatus();
         }
 
         int64_t selected_input = selector_result[0].scalar<int64_t>()();
@@ -207,13 +207,13 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
               &end_of_selected_input));
 
           if (!end_of_selected_input) {
-            return Status::OK();
+            return OkStatus();
           }
 
           if (dataset()->stop_on_empty_dataset_) {
             *end_of_sequence = true;
             ResetInputs();
-            return Status::OK();
+            return OkStatus();
           }
 
           data_input_impls_[selected_input].reset();
@@ -222,7 +222,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           if (num_active_inputs_ == 0) {
             selector_input_impl_.reset();
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
         }
 
@@ -235,9 +235,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       return model::MakeInterleaveManyNode(
-          std::move(args), {model::MakeParameter(kCycleLength, nullptr,
-                                                 /*min=*/1,
-                                                 /*max=*/1)});
+          std::move(args),
+          {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -259,7 +258,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
               ""));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -278,7 +277,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
           data_input_impls_[i].reset();
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

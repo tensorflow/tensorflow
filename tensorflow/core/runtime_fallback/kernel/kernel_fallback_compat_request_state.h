@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
@@ -37,14 +38,20 @@ namespace tfd {
 // initialization and read-only afterwards.
 class FallbackResourceArray {
  public:
-  // Set `tensor` in the array at `index`. `index` should be dense and duplicate
-  // indices are not allowed.
+  // Sets `tensor` in the array at `index`. `index` should be dense and
+  // duplicate indices are not allowed.
   void SetResource(int index, tensorflow::tfrt_stub::ImmutableTensor tensor);
 
-  // Get the resource tensor wrapped in AsyncValue value at `index`.
+  // Returns the resource tensor wrapped in AsyncValue value at `index`.
   tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>*
   GetResource(int index) const {
     return resource_async_values_.at(index).get();
+  }
+
+  // Returns the resource tensor at `index`.
+  const tensorflow::tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
+      int index) const {
+    return resource_async_values_.at(index)->get();
   }
 
  private:
@@ -86,9 +93,13 @@ class KernelFallbackCompatRequestState {
       const absl::optional<SessionMetadata>& model_metadata,
       const tensorflow::ProcessFunctionLibraryRuntime* pflr);
 
-  // Returns the user-specified custom device for this request. It is currently
-  // only used for configure per-request intra op threadpool.
-  tensorflow::Device* custom_device() const { return custom_device_.get(); }
+  // Returns the user-specified custom device corresponding to the given device.
+  // It is currently only used for configure per-request intra op threadpool.
+  tensorflow::Device* custom_device(const tensorflow::Device* device) const {
+    auto it = custom_device_.find(device);
+    if (it == custom_device_.end()) return nullptr;
+    return it->second.get();
+  }
 
   ScopedStepContainer* step_container() const { return step_container_.get(); }
 
@@ -130,7 +141,9 @@ class KernelFallbackCompatRequestState {
   // Below are resources needed by current tensorflow.
   std::function<void(std::function<void()>)>* runner_ = nullptr;
   ::tfrt::OwnedOrUnownedPtr<ScopedStepContainer> step_container_;
-  std::unique_ptr<tensorflow::Device> custom_device_;
+  absl::flat_hash_map<const tensorflow::Device*,
+                      std::unique_ptr<tensorflow::Device>>
+      custom_device_;
   std::unique_ptr<CollectiveExecutor::Handle> collective_executor_handle_;
   CollectiveExecutor* collective_executor_ = nullptr;
   core::RefCountPtr<Rendezvous> rendezvous_;

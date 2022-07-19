@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_SCHEMA_H_
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -38,6 +39,8 @@ TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name prefix of XPlane that contains TPU events.
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Regex for XPlanes that contain TensorCore planes.
+TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
@@ -59,6 +62,7 @@ TF_CONST_INIT extern const absl::string_view kTensorFlowNameScopeLineName;
 TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
+TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
@@ -88,20 +92,12 @@ enum HostEventType {
   kTfDataCapturedFunctionRunWithBorrowedArgs,
   kTfDataCapturedFunctionRunInstantiated,
   kTfDataCapturedFunctionRunAsync,
-  // Functional ops.
-  kCallOp,
+  // Loop ops.
   kParallelForOp,
   kForeverOp,
-  kNumericalGradientOpEvalRight,
-  kNumericalGradientOpEvalLeft,
-  kSymbolicGradientOp,
-  kRemoteCallOp,
-  kIfOp,
-  kCaseOp,
   kWhileOpEvalCond,
   kWhileOpStartBody,
   kForOp,
-  kPartitionedCallOp,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
@@ -139,19 +135,19 @@ enum HostEventType {
   // TPU related
   kEnqueueRequestLocked,
   kRunProgramRequest,
-  kStartProgramRequest,
   kHostCallbackRequest,
   kTransferH2DRequest,
   kTransferPreprocessedH2DRequest,
   kTransferD2HRequest,
-  kTransferD2DRequest,
-  kTransferD2DRemoteRequest,
   kOnDeviceSendRequest,
   kOnDeviceRecvRequest,
   kOnDeviceSendRecvLocalRequest,
+  kCustomWait,
+  kOnDeviceSendRequestMulti,
+  kOnDeviceRecvRequestMulti,
+  kPjrtAsyncWait,
   kDoEnqueueProgram,
   kDoEnqueueContinuationProgram,
-  kStartProgram,
   kWriteHbm,
   kReadHbm,
   kTpuExecuteOp,
@@ -175,8 +171,6 @@ enum StatType {
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
   kStepId,
-  kParentStepId,
-  kFunctionStepId,
   kDeviceOrdinal,
   kChipOrdinal,
   kNodeOrdinal,
@@ -216,6 +210,7 @@ enum StatType {
   kIsAsync,
   // Device trace arguments.
   kDeviceId,
+  kDeviceTypeString,
   kContextId,
   kCorrelationId,
   // TODO(b/176137043): These "details" should differentiate between activity
@@ -244,7 +239,6 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
-  kSelectedGroupIds,
   kSourceInfo,
   kModelName,
   kModelVersion,
@@ -254,6 +248,7 @@ enum StatType {
   kRawValue,
   kScaledValue,
   kThreadId,
+  kMatrixUnitUtilizationPercent,
   // XLA metadata map related.
   kHloProto,
   // Device capability related.
@@ -263,6 +258,8 @@ enum StatType {
   kDevCapMemorySize,
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
+  kDevCapPeakTeraflopsPerSecond,
+  kDevCapPeakHbmBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
@@ -272,8 +269,21 @@ enum StatType {
   kTheoreticalOccupancyPct,
   kOccupancyMinGridSize,
   kOccupancySuggestedBlockSize,
-  kLastStatType = kOccupancySuggestedBlockSize,
+  // Aggregrated Stats
+  kSelfDurationPs,
+  kMinDurationPs,
+  kMaxIterationNum,
+  kDeviceType,
+  kUsesMegaCore,
+  kSymbolId,
+  kTfOpName,
+  kDmaStallDurationPs,
+  kLastStatType = kDmaStallDurationPs
 };
+
+inline std::string TpuPlaneName(int32_t device_ordinal) {
+  return absl::StrCat(kTpuPlanePrefix, device_ordinal);
+}
 
 inline std::string GpuPlaneName(int32_t device_ordinal) {
   return absl::StrCat(kGpuPlanePrefix, device_ordinal);
@@ -356,9 +366,14 @@ class XFlow {
     return FlowDirection(encoded_.parts.direction);
   }
 
+  static uint64_t GetUniqueId() {  // unique in current process.
+    return next_flow_id_.fetch_add(1);
+  }
+
  private:
   explicit XFlow(uint64_t encoded) { encoded_.whole = encoded; }
   static constexpr uint64_t kFlowMask = (1ULL << 56) - 1;
+  static std::atomic<uint64_t> next_flow_id_;
 
   union {
     // Encoded representation.

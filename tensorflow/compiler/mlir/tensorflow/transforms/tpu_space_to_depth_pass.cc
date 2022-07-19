@@ -69,14 +69,14 @@ struct TPUSpaceToDepthPass
 };
 
 // Updates func argument type to have the updated input shape.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   auto arg_types = func.front().getArgumentTypes();
   auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(func.getContext(), arg_types, result_types));
 }
 
 void HandleFuncOp(Operation* op) {
-  auto func = llvm::cast<FuncOp>(op);
+  auto func = llvm::cast<func::FuncOp>(op);
   UpdateFuncType(func);
 }
 
@@ -498,7 +498,7 @@ Optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
 // PadOp and CastOp.
 Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
   auto block_arg_num = GetBlockArgNum(input);
-  if (block_arg_num.hasValue()) return block_arg_num;
+  if (block_arg_num.has_value()) return block_arg_num;
 
   Value next_input = input;
   auto pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
@@ -507,11 +507,11 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
   while (pad_op || cast_op) {
     if (pad_op) {
       auto block_arg_num = GetBlockArgNum(pad_op.input());
-      if (block_arg_num.hasValue()) return block_arg_num;
+      if (block_arg_num.has_value()) return block_arg_num;
       next_input = pad_op.input();
     } else {
       auto block_arg_num = GetBlockArgNum(cast_op.x());
-      if (block_arg_num.hasValue()) return block_arg_num;
+      if (block_arg_num.has_value()) return block_arg_num;
       next_input = cast_op.x();
     }
     pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
@@ -610,7 +610,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
   });
 
   // Return if there is no tf_device::ClusterFuncOp in training loop.
-  if (!func_result.wasInterrupted() || !cluster_func.hasValue()) {
+  if (!func_result.wasInterrupted() || !cluster_func.has_value()) {
     return;
   }
 
@@ -629,7 +629,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
   auto conv2d_result = device_func.walk([&](TF::Conv2DOp conv2d) {
     Optional<BlockArgumentInfo> arg_num_and_num_users =
         GetConv2DInputArgNum(conv2d);
-    if (arg_num_and_num_users.hasValue()) {
+    if (arg_num_and_num_users.has_value()) {
       // Get block size for the first convolution.
       int64_t block_size = GetConv2DBlockSize(conv2d);
       auto arg_num = arg_num_and_num_users.getValue().arg_num;

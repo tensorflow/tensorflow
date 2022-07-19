@@ -18,9 +18,11 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -37,7 +39,7 @@ std::string GetReadImageFromDataType(DataType data_type) {
              data_type == DataType::INT32) {
     return "read_imagei";
   } else if (data_type == DataType::UINT8 || data_type == DataType::UINT16 ||
-             data_type == DataType::UINT32) {
+             data_type == DataType::UINT32 || data_type == DataType::BOOL) {
     return "read_imageui";
   } else {
     return "error";
@@ -54,6 +56,7 @@ DataType ToClTextureType(DataType data_type) {
     case DataType::INT16:
     case DataType::INT8:
       return DataType::INT32;
+    case DataType::BOOL:
     case DataType::UINT16:
     case DataType::UINT8:
       return DataType::UINT32;
@@ -71,23 +74,14 @@ std::string GetWriteImageFromDataType(DataType data_type) {
              data_type == DataType::INT32) {
     return "write_imagei";
   } else if (data_type == DataType::UINT8 || data_type == DataType::UINT16 ||
-             data_type == DataType::UINT32) {
+             data_type == DataType::UINT32 || data_type == DataType::BOOL) {
     return "write_imageui";
   } else {
     return "error";
   }
 }
 
-std::string AddressModeToCLSampler(AddressMode address_mode) {
-  switch (address_mode) {
-    case AddressMode::kDontCare:
-      return "smp_none";
-    case AddressMode::kZero:
-      return "smp_zero";
-  }
-}
-
-std::string GetConvertionForImage(const GpuInfo& gpu_info, DataType src_type,
+std::string GetConversionForImage(const GpuInfo& gpu_info, DataType src_type,
                                   DataType dst_type) {
   DataType interm_type = src_type;
   if (gpu_info.IsApiOpenCl()) {
@@ -98,23 +92,36 @@ std::string GetConvertionForImage(const GpuInfo& gpu_info, DataType src_type,
   } else if (gpu_info.IsApiMetal()) {
     interm_type = ToMetalTextureType(src_type);
   }
-  return GetTypeConvertion(gpu_info, interm_type, dst_type, 4);
+  return GetTypeConversion(gpu_info, interm_type, dst_type, 4);
 }
 
-std::string GetConvertion(const GpuInfo& gpu_info,
+std::string GetConversion(const GpuInfo& gpu_info,
                           TensorStorageType storage_type, DataType src_type,
                           DataType dst_type) {
   if (storage_type == TensorStorageType::BUFFER) {
-    return GetTypeConvertion(gpu_info, src_type, dst_type, 4);
+    return GetTypeConversion(gpu_info, src_type, dst_type, 4);
   } else {
-    return GetConvertionForImage(gpu_info, src_type, dst_type);
+    return GetConversionForImage(gpu_info, src_type, dst_type);
   }
 }
 
-void MayBeAddConvertion(const std::string& conversion, std::string* result) {
+void MayBeAddConversion(const std::string& conversion, std::string* result) {
   if (!conversion.empty()) {
     *result = conversion + "(" + *result + ")";
   }
+}
+
+absl::optional<std::string> GetLinearIndexFromTemplateArgs(
+    const std::vector<std::string>& template_args) {
+  for (const auto& template_arg : template_args) {
+    const std::string kTokenLinearIndex = "LinearIndex::";
+    size_t pos = template_arg.find(kTokenLinearIndex);
+    if (pos != std::string::npos) {
+      pos += kTokenLinearIndex.size();
+      return template_arg.substr(pos, template_arg.size() - pos);
+    }
+  }
+  return absl::nullopt;
 }
 
 }  // namespace
@@ -140,29 +147,40 @@ std::string ToString(TensorStorageType type) {
 
 TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
     : GPUObjectDescriptor(std::move(desc)),
-      data_type(desc.data_type),
-      storage_type(desc.storage_type),
-      layout(desc.layout),
-      use_buffer_for_write_only_2d_texture(
-          desc.use_buffer_for_write_only_2d_texture),
-      use_buffer_for_write_only_image_buffer(
-          desc.use_buffer_for_write_only_image_buffer),
-      shape(desc.shape),
-      data(std::move(desc.data)) {}
+      data_type_(desc.data_type_),
+      storage_type_(desc.storage_type_),
+      layout_(desc.layout_),
+      use_buffer_for_write_only_2d_texture_(
+          desc.use_buffer_for_write_only_2d_texture_),
+      use_buffer_for_write_only_image_buffer_(
+          desc.use_buffer_for_write_only_image_buffer_),
+      shape_(desc.shape_),
+      data_(std::move(desc.data_)) {}
 TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
   if (this != &desc) {
-    std::swap(data_type, desc.data_type);
-    std::swap(storage_type, desc.storage_type);
-    std::swap(layout, desc.layout);
-    std::swap(use_buffer_for_write_only_2d_texture,
-              desc.use_buffer_for_write_only_2d_texture);
-    std::swap(use_buffer_for_write_only_image_buffer,
-              desc.use_buffer_for_write_only_image_buffer);
-    std::swap(shape, desc.shape);
-    data = std::move(desc.data);
+    std::swap(data_type_, desc.data_type_);
+    std::swap(storage_type_, desc.storage_type_);
+    std::swap(layout_, desc.layout_);
+    std::swap(use_buffer_for_write_only_2d_texture_,
+              desc.use_buffer_for_write_only_2d_texture_);
+    std::swap(use_buffer_for_write_only_image_buffer_,
+              desc.use_buffer_for_write_only_image_buffer_);
+    std::swap(shape_, desc.shape_);
+    data_ = std::move(desc.data_);
     GPUObjectDescriptor::operator=(std::move(desc));
   }
   return *this;
+}
+
+void TensorDescriptor::CopyWithoutData(TensorDescriptor* desc) const {
+  desc->data_type_ = data_type_;
+  desc->storage_type_ = storage_type_;
+  desc->layout_ = layout_;
+  desc->use_buffer_for_write_only_2d_texture_ =
+      use_buffer_for_write_only_2d_texture_;
+  desc->use_buffer_for_write_only_image_buffer_ =
+      use_buffer_for_write_only_image_buffer_;
+  desc->shape_ = shape_;
 }
 
 GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
@@ -184,58 +202,50 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   if (HasAxis(Axis::DEPTH)) {
     resources.ints.push_back("depth");
   }
-  if (storage_type == TensorStorageType::BUFFER) {
+  if (storage_type_ == TensorStorageType::BUFFER) {
     GPUBufferDescriptor desc;
-    desc.data_type = data_type;
+    desc.data_type = data_type_;
     desc.access_type = access_type_;
     desc.element_size = 4;
-    auto it1 = state_vars_.find("ElementsX2");
-    if (it1 != state_vars_.end() && it1->second == "true") {
-      desc.element_size = 8;
-    }
-    auto it2 = state_vars_.find("ElementsX4");
-    if (it2 != state_vars_.end() && it2->second == "true") {
-      desc.element_size = 16;
-    }
     resources.buffers.push_back({"buffer", desc});
-  } else if (storage_type == TensorStorageType::SINGLE_TEXTURE_2D ||
-             storage_type == TensorStorageType::TEXTURE_2D) {
+  } else if (storage_type_ == TensorStorageType::SINGLE_TEXTURE_2D ||
+             storage_type_ == TensorStorageType::TEXTURE_2D) {
     if (access_type_ == AccessType::WRITE &&
-        use_buffer_for_write_only_2d_texture) {
+        use_buffer_for_write_only_2d_texture_) {
       resources.ints.push_back("aligned_texture_width");
       GPUBufferDescriptor desc;
-      desc.data_type = data_type;
+      desc.data_type = data_type_;
       desc.access_type = access_type_;
       desc.element_size = 4;
       resources.buffers.push_back({"buffer", desc});
     } else {
       GPUImage2DDescriptor desc;
-      desc.data_type = data_type;
+      desc.data_type = data_type_;
       desc.normalized = false;
       desc.access_type = access_type_;
       resources.images2d.push_back({"image2d", desc});
     }
-  } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {
+  } else if (storage_type_ == TensorStorageType::TEXTURE_ARRAY) {
     GPUImage2DArrayDescriptor desc;
-    desc.data_type = data_type;
+    desc.data_type = data_type_;
     desc.access_type = access_type_;
     resources.image2d_arrays.push_back({"image2d_array", desc});
-  } else if (storage_type == TensorStorageType::TEXTURE_3D) {
+  } else if (storage_type_ == TensorStorageType::TEXTURE_3D) {
     GPUImage3DDescriptor desc;
-    desc.data_type = data_type;
+    desc.data_type = data_type_;
     desc.access_type = access_type_;
     resources.images3d.push_back({"image3d", desc});
-  } else if (storage_type == TensorStorageType::IMAGE_BUFFER) {
+  } else if (storage_type_ == TensorStorageType::IMAGE_BUFFER) {
     if (access_type_ == AccessType::WRITE &&
-        use_buffer_for_write_only_image_buffer) {
+        use_buffer_for_write_only_image_buffer_) {
       GPUBufferDescriptor desc;
-      desc.data_type = data_type;
+      desc.data_type = data_type_;
       desc.access_type = access_type_;
       desc.element_size = 4;
       resources.buffers.push_back({"buffer", desc});
     } else {
       GPUImageBufferDescriptor desc;
-      desc.data_type = data_type;
+      desc.data_type = data_type_;
       desc.access_type = access_type_;
       resources.image_buffers.push_back({"image_buffer", desc});
     }
@@ -243,16 +253,37 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   return resources;
 }
 
+void TensorDescriptor::GetGpuResources(
+    const BHWDC& tensor_shape, GenericGPUResourcesWithValue* resources) const {
+  resources->AddInt("slice_stride", GetSliceStrideSize(tensor_shape));
+  if (HasAxis(Axis::WIDTH)) {
+    resources->AddInt("width", GetWidthSize(tensor_shape));
+  }
+  if (HasAxis(Axis::HEIGHT)) {
+    resources->AddInt("height", tensor_shape.h);
+  }
+  if (HasAxis(Axis::CHANNELS)) {
+    resources->AddInt("slices", DivideRoundUp(tensor_shape.c, 4));
+    resources->AddInt("channels", tensor_shape.c);
+  }
+  if (HasAxis(Axis::BATCH)) {
+    resources->AddInt("batch", tensor_shape.b);
+  }
+  if (HasAxis(Axis::DEPTH)) {
+    resources->AddInt("depth", tensor_shape.d);
+  }
+}
+
 absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
                                                 const std::string& const_expr,
                                                 std::string* result) const {
   if (const_expr == "type" || const_expr == "scalar_type") {
     const int vec_size = const_expr == "scalar_type" ? 1 : 4;
-    *result = GetTypeDeclaration(gpu_info, data_type, vec_size);
+    *result = GetTypeDeclaration(gpu_info, data_type_, vec_size);
     return absl::OkStatus();
   } else if (const_expr == "zero_value" || const_expr == "scalar_zero_value") {
     const int vec_size = const_expr == "scalar_zero_value" ? 1 : 4;
-    *result = GetZeroValue(gpu_info, data_type, vec_size);
+    *result = GetZeroValue(gpu_info, data_type_, vec_size);
     return absl::OkStatus();
   } else {
     return absl::UnimplementedError(
@@ -328,12 +359,12 @@ absl::Status TensorDescriptor::PerformSelector(
 absl::Status TensorDescriptor::PerformReadSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
-  DataType read_as_type = data_type;
+  DataType read_as_type = data_type_;
   RETURN_IF_ERROR(
       MaybeGetDataTypeFromTemplateArgs(template_args, &read_as_type));
   if (args.size() == 1) {  // function overload for 1D linear types.
-    if (storage_type == TensorStorageType::BUFFER ||
-        storage_type == TensorStorageType::IMAGE_BUFFER) {
+    if (storage_type_ == TensorStorageType::BUFFER ||
+        storage_type_ == TensorStorageType::IMAGE_BUFFER) {
       *result = Read(gpu_info, read_as_type, {args[0]});
       return absl::OkStatus();
     } else {
@@ -486,7 +517,6 @@ absl::Status TensorDescriptor::PerformReadPerChannelSelector(
     channels_index++;
   }
   if (channels_index >= coord_args.size()) {
-    std::cout << channels_index << " " << coord_args.size() << std::endl;
     return absl::NotFoundError(
         "Wrong number of coordinates in ReadPerChannel.");
   }
@@ -498,7 +528,7 @@ absl::Status TensorDescriptor::PerformReadPerChannelSelector(
   RETURN_IF_ERROR(
       PerformReadSelector(gpu_info, coord_args, template_args, &src_value));
   if (gpu_info.IsApiOpenCl()) {
-    DataType dst_type = data_type;
+    DataType dst_type = data_type_;
     RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &dst_type));
     c += "  " + GetTypeDeclaration(gpu_info, dst_type, 4) +
          " src_TMP = " + src_value + ";\n";
@@ -540,6 +570,14 @@ absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
 absl::Status TensorDescriptor::PerformWriteSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
+  if (IsLinear()) {
+    const auto linear_index = GetLinearIndexFromTemplateArgs(template_args);
+    if (linear_index.has_value()) {
+      std::vector<std::string> new_args = {args[0], linear_index.value()};
+      return PerformWriteLinearSelector(gpu_info, new_args, template_args,
+                                        result);
+    }
+  }
   std::string xc;
   std::string yc;
   std::string zc;
@@ -549,7 +587,7 @@ absl::Status TensorDescriptor::PerformWriteSelector(
   if (args.size() < 2 || !parsed) {
     return absl::NotFoundError("Unrecognized Write selector");
   }
-  DataType write_type = data_type;
+  DataType write_type = data_type_;
   RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
   *result = Write(gpu_info, write_type, args[0],
                   GetPhysicalCoords(xc, yc, zc, sc, bc));
@@ -559,8 +597,8 @@ absl::Status TensorDescriptor::PerformWriteSelector(
 absl::Status TensorDescriptor::PerformWriteLinearSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
-  if (storage_type != TensorStorageType::BUFFER &&
-      storage_type != TensorStorageType::IMAGE_BUFFER) {
+  if (storage_type_ != TensorStorageType::BUFFER &&
+      storage_type_ != TensorStorageType::IMAGE_BUFFER) {
     return absl::InvalidArgumentError(
         "WriteLinear selector can be used only with linear "
         "storages(BUFFER/IMAGE_BUFFER)");
@@ -568,7 +606,7 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
   if (args.size() != 2) {
     return absl::NotFoundError("Unrecognized WriteLinear selector");
   }
-  DataType write_type = data_type;
+  DataType write_type = data_type_;
   RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
   *result = Write(gpu_info, write_type, args[0], {args[1]});
   return absl::OkStatus();
@@ -577,7 +615,7 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
 absl::Status TensorDescriptor::PerformWrite2DSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
-  if (storage_type != TensorStorageType::TEXTURE_2D) {
+  if (storage_type_ != TensorStorageType::TEXTURE_2D) {
     return absl::InvalidArgumentError(
         "Write2D selector can be used only with 2d "
         "storages(TEXTURE_2D)");
@@ -585,7 +623,7 @@ absl::Status TensorDescriptor::PerformWrite2DSelector(
   if (args.size() != 3) {
     return absl::NotFoundError("Unrecognized Write2D selector");
   }
-  DataType write_type = data_type;
+  DataType write_type = data_type_;
   RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
   *result = Write(gpu_info, write_type, args[0], {args[1], args[2]});
   return absl::OkStatus();
@@ -595,15 +633,15 @@ std::string TensorDescriptor::Read(
     const GpuInfo& gpu_info, DataType read_as_type,
     const std::vector<std::string>& coords) const {
   const std::string conversion =
-      GetConvertion(gpu_info, storage_type, data_type, read_as_type);
+      GetConversion(gpu_info, storage_type_, data_type_, read_as_type);
   if (gpu_info.IsApiOpenCl() &&
-      !(data_type == DataType::FLOAT16 && read_as_type == DataType::FLOAT32)) {
-    read_as_type = data_type;
+      !(data_type_ == DataType::FLOAT16 && read_as_type == DataType::FLOAT32)) {
+    read_as_type = data_type_;
   }
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER: {
       std::string result;
-      if (gpu_info.IsGlsl() && data_type == DataType::FLOAT16 &&
+      if (gpu_info.IsGlsl() && data_type_ == DataType::FLOAT16 &&
           !gpu_info.IsGlslSupportsExplicitFp16()) {
         result =
             absl::StrCat("vec4(unpackHalf2x16(buffer[", coords[0],
@@ -611,74 +649,70 @@ std::string TensorDescriptor::Read(
       } else {
         result = absl::StrCat("buffer[", coords[0], "]");
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D: {
       std::string result;
       if (gpu_info.IsApiOpenCl()) {
-        result =
-            absl::Substitute("$0(image2d, $1, (int2)($2, $3))",
-                             GetReadImageFromDataType(read_as_type),
-                             AddressModeToCLSampler(AddressModeFromState()),
-                             coords[0], coords[1]);
+        result = absl::Substitute("$0(image2d, smp_zero, (int2)($1, $2))",
+                                  GetReadImageFromDataType(read_as_type),
+                                  coords[0], coords[1]);
       } else if (gpu_info.IsApiMetal()) {
         result = absl::Substitute("image2d.read(ushort2($0, $1))", coords[0],
                                   coords[1]);
       } else if (gpu_info.IsGlsl()) {
         result = "texelFetch(image2d, ivec2(" + coords[0] + ", " + coords[1] +
                  "), 0)";
-        if (data_type == DataType::FLOAT16 &&
+        if (data_type_ == DataType::FLOAT16 &&
             gpu_info.IsGlslSupportsExplicitFp16()) {
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::TEXTURE_3D: {
       std::string result;
       if (gpu_info.IsApiOpenCl()) {
         result =
-            absl::Substitute("$0(image3d, $1, (int4)($2, $3, $4, 0))",
-                             GetReadImageFromDataType(read_as_type),
-                             AddressModeToCLSampler(AddressModeFromState()),
-                             coords[0], coords[1], coords[2]);
+            absl::Substitute("$0(image3d, smp_zero, (int4)($1, $2, $3, 0))",
+                             GetReadImageFromDataType(read_as_type), coords[0],
+                             coords[1], coords[2]);
       } else if (gpu_info.IsApiMetal()) {
         result = absl::Substitute("image3d.read(ushort3($0, $1, $2))",
                                   coords[0], coords[1], coords[2]);
       } else if (gpu_info.IsGlsl()) {
         result = "texelFetch(image3d, ivec3(" + coords[0] + ", " + coords[1] +
                  ", " + coords[2] + "), 0)";
-        if (data_type == DataType::FLOAT16 &&
+        if (data_type_ == DataType::FLOAT16 &&
             gpu_info.IsGlslSupportsExplicitFp16()) {
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::TEXTURE_ARRAY: {
       std::string result;
       if (gpu_info.IsApiOpenCl()) {
-        result =
-            absl::Substitute("$0(image2d_array, $1, (int4)($2, $3, $4, 0))",
-                             GetReadImageFromDataType(read_as_type),
-                             AddressModeToCLSampler(AddressModeFromState()),
-                             coords[0], coords[1], coords[2]);
+        result = absl::Substitute(
+            "$0(image2d_array, smp_zero, (int4)($1, $2, $3, 0))",
+            GetReadImageFromDataType(read_as_type), coords[0], coords[1],
+            coords[2]);
       } else if (gpu_info.IsApiMetal()) {
         result = absl::Substitute("image2d_array.read(ushort2($0, $1), $2)",
                                   coords[0], coords[1], coords[2]);
       } else if (gpu_info.IsGlsl()) {
         result = "texelFetch(image2d_array, ivec3(" + coords[0] + ", " +
                  coords[1] + ", " + coords[2] + "), 0)";
-        if (data_type == DataType::FLOAT16 &&
+        if (data_type_ == DataType::FLOAT16 &&
             gpu_info.IsGlslSupportsExplicitFp16()) {
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::IMAGE_BUFFER: {
@@ -690,12 +724,12 @@ std::string TensorDescriptor::Read(
         result = absl::Substitute("image_buffer.read(uint($0))", coords[0]);
       } else if (gpu_info.IsGlsl()) {
         result = "texelFetch(image_buffer, " + coords[0] + ")";
-        if (data_type == DataType::FLOAT16 &&
+        if (data_type_ == DataType::FLOAT16 &&
             gpu_info.IsGlslSupportsExplicitFp16()) {
           result = "f16vec4(" + result + ")";
         }
       }
-      MayBeAddConvertion(conversion, &result);
+      MayBeAddConversion(conversion, &result);
       return result;
     }
     case TensorStorageType::UNKNOWN:
@@ -706,54 +740,54 @@ std::string TensorDescriptor::Read(
 std::string TensorDescriptor::Write(
     const GpuInfo& gpu_info, DataType write_type, const std::string& var_name,
     const std::vector<std::string>& coords) const {
-  bool is_texture_write = storage_type == TensorStorageType::IMAGE_BUFFER ||
-                          storage_type == TensorStorageType::TEXTURE_2D ||
-                          storage_type == TensorStorageType::TEXTURE_ARRAY ||
-                          storage_type == TensorStorageType::TEXTURE_3D;
-  if (storage_type == TensorStorageType::IMAGE_BUFFER &&
-      use_buffer_for_write_only_image_buffer) {
+  bool is_texture_write = storage_type_ == TensorStorageType::IMAGE_BUFFER ||
+                          storage_type_ == TensorStorageType::TEXTURE_2D ||
+                          storage_type_ == TensorStorageType::TEXTURE_ARRAY ||
+                          storage_type_ == TensorStorageType::TEXTURE_3D;
+  if (storage_type_ == TensorStorageType::IMAGE_BUFFER &&
+      use_buffer_for_write_only_image_buffer_) {
     is_texture_write = false;
   }
-  if (storage_type == TensorStorageType::TEXTURE_2D &&
-      use_buffer_for_write_only_2d_texture) {
+  if (storage_type_ == TensorStorageType::TEXTURE_2D &&
+      use_buffer_for_write_only_2d_texture_) {
     is_texture_write = false;
   }
-  DataType write_required_type = data_type;
+  DataType write_required_type = data_type_;
   if (is_texture_write) {
     if (gpu_info.IsApiOpenCl()) {
-      write_required_type = ToClTextureType(data_type);
+      write_required_type = ToClTextureType(data_type_);
     } else if (gpu_info.IsApiMetal()) {
-      write_required_type = ToMetalTextureType(data_type);
+      write_required_type = ToMetalTextureType(data_type_);
     }
   }
   std::string write_expr = var_name;
   if (write_type != write_required_type) {
     const std::string conversion =
-        GetTypeConvertion(gpu_info, write_type, write_required_type, 4);
+        GetTypeConversion(gpu_info, write_type, write_required_type, 4);
     if (!conversion.empty()) {
       write_expr = conversion + "(" + write_expr + ")";
     }
   }
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       if (gpu_info.IsApiOpenCl()) {
-        if (use_buffer_for_write_only_image_buffer) {
+        if (use_buffer_for_write_only_image_buffer_) {
           return absl::StrCat("buffer[", coords[0], "] = ", write_expr);
         } else {
           return absl::Substitute("$0(image_buffer, $1, $2)",
-                                  GetWriteImageFromDataType(data_type),
+                                  GetWriteImageFromDataType(data_type_),
                                   coords[0], write_expr);
         }
       } else if (gpu_info.IsApiMetal()) {
-        if (use_buffer_for_write_only_image_buffer) {
+        if (use_buffer_for_write_only_image_buffer_) {
           return absl::StrCat("buffer[", coords[0], "] = ", write_expr);
         } else {
           return absl::Substitute("image_buffer.write($0, uint($1))",
                                   write_expr, coords[0]);
         }
       } else if (gpu_info.IsGlsl()) {
-        if (data_type == DataType::FLOAT16 &&
+        if (data_type_ == DataType::FLOAT16 &&
             !gpu_info.IsGlslSupportsExplicitFp16()) {
           return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
                               write_expr, ".xy), packHalf2x16(", write_expr,
@@ -767,17 +801,17 @@ std::string TensorDescriptor::Write(
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_2D:
       if (gpu_info.IsApiOpenCl()) {
-        if (use_buffer_for_write_only_2d_texture) {
+        if (use_buffer_for_write_only_2d_texture_) {
           return absl::Substitute(
               "buffer[($2) * aligned_texture_width + ($1)] = $0", write_expr,
               coords[0], coords[1]);
         } else {
           return absl::Substitute("$0(image2d, (int2)($1, $2), $3)",
-                                  GetWriteImageFromDataType(data_type),
+                                  GetWriteImageFromDataType(data_type_),
                                   coords[0], coords[1], write_expr);
         }
       } else if (gpu_info.IsApiMetal()) {
-        if (use_buffer_for_write_only_2d_texture) {
+        if (use_buffer_for_write_only_2d_texture_) {
           return absl::Substitute(
               "buffer[($2) * aligned_texture_width + ($1)] = $0", write_expr,
               coords[0], coords[1]);
@@ -794,8 +828,8 @@ std::string TensorDescriptor::Write(
     case TensorStorageType::TEXTURE_3D:
       if (gpu_info.IsApiOpenCl()) {
         return absl::Substitute("$0(image3d, (int4)($1, $2, $3, 0), $4)",
-                                GetWriteImageFromDataType(data_type), coords[0],
-                                coords[1], coords[2], write_expr);
+                                GetWriteImageFromDataType(data_type_),
+                                coords[0], coords[1], coords[2], write_expr);
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image3d.write($0, ushort3($1, $2, $3))",
                                 write_expr, coords[0], coords[1], coords[2]);
@@ -808,8 +842,8 @@ std::string TensorDescriptor::Write(
     case TensorStorageType::TEXTURE_ARRAY:
       if (gpu_info.IsApiOpenCl()) {
         return absl::Substitute("$0(image2d_array, (int4)($1, $2, $3, 0), $4)",
-                                GetWriteImageFromDataType(data_type), coords[0],
-                                coords[1], coords[2], write_expr);
+                                GetWriteImageFromDataType(data_type_),
+                                coords[0], coords[1], coords[2], write_expr);
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d_array.write($0, ushort2($1, $2), $3)",
                                 write_expr, coords[0], coords[1], coords[2]);
@@ -844,7 +878,7 @@ absl::Status TensorDescriptor::PerformGetAddressSelector(
 
 absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
     const std::vector<std::string>& args, std::string* result) const {
-  if (storage_type != TensorStorageType::BUFFER) {
+  if (storage_type_ != TensorStorageType::BUFFER) {
     return absl::InvalidArgumentError(
         "GetPtrWithSliceOffset selector can be used only with BUFFER");
   }
@@ -859,8 +893,8 @@ absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
 
 absl::Status TensorDescriptor::PerformGetWHOffsetSelector(
     const std::vector<std::string>& args, std::string* result) const {
-  if (storage_type != TensorStorageType::BUFFER &&
-      storage_type != TensorStorageType::IMAGE_BUFFER) {
+  if (storage_type_ != TensorStorageType::BUFFER &&
+      storage_type_ != TensorStorageType::IMAGE_BUFFER) {
     return absl::InvalidArgumentError(
         "GetWHOffset selector can be used only with BUFFER/IMAGE_BUFFER");
   }
@@ -893,7 +927,7 @@ absl::Status TensorDescriptor::PerformGetHandleSelector(
         absl::StrCat("GetHandle does not require arguments, but ", args.size(),
                      " was passed"));
   }
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
       *result = "buffer";
       return absl::OkStatus();
@@ -926,7 +960,7 @@ std::string TensorDescriptor::DeclareAddress(const std::string& var_name,
 }
 
 std::string TensorDescriptor::StorageTypeToAddressType() const {
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return "int";
@@ -943,7 +977,7 @@ std::string TensorDescriptor::StorageTypeToAddressType() const {
 
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHS(
     const std::string& x, const std::string& y, const std::string& s) const {
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return {
@@ -967,7 +1001,7 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHS(
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHSB(
     const std::string& x, const std::string& y, const std::string& s,
     const std::string& b) const {
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return {absl::Substitute(
@@ -993,7 +1027,7 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHSB(
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDS(
     const std::string& x, const std::string& y, const std::string& z,
     const std::string& s) const {
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return {absl::Substitute(
@@ -1019,7 +1053,7 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDS(
 std::vector<std::string> TensorDescriptor::GetPhysicalCoordsWHDSB(
     const std::string& x, const std::string& y, const std::string& z,
     const std::string& s, const std::string& b) const {
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return {absl::Substitute(
@@ -1048,7 +1082,7 @@ std::string TensorDescriptor::GetGlobalAddressNoDeclaration(
     const std::string& xc, const std::string& yc, const std::string& zc,
     const std::string& sc, const std::string& bc) const {
   auto coords = GetPhysicalCoords(xc, yc, zc, sc, bc);
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
       return coords[0];
@@ -1068,14 +1102,14 @@ std::string TensorDescriptor::GetGlobalAddressNoDeclaration(
 std::vector<std::string> TensorDescriptor::GetPhysicalCoords(
     const std::string& xc, const std::string& yc, const std::string& zc,
     const std::string& sc, const std::string& bc) const {
-  if (layout == Layout::HWC || (IsBatchedWidth() && layout == Layout::BHWC)) {
+  if (layout_ == Layout::HWC || (IsBatchedWidth() && layout_ == Layout::BHWC)) {
     return GetPhysicalCoordsWHS(xc, yc, sc);
-  } else if (layout == Layout::BHWC) {
+  } else if (layout_ == Layout::BHWC) {
     return GetPhysicalCoordsWHSB(xc, yc, sc, bc);
-  } else if (layout == Layout::HWDC ||
-             (IsBatchedWidth() && layout == Layout::BHWDC)) {
+  } else if (layout_ == Layout::HWDC ||
+             (IsBatchedWidth() && layout_ == Layout::BHWDC)) {
     return GetPhysicalCoordsWHDS(xc, yc, zc, sc);
-  } else if (layout == Layout::BHWDC) {
+  } else if (layout_ == Layout::BHWDC) {
     return GetPhysicalCoordsWHDSB(xc, yc, zc, sc, bc);
   } else {
     return {""};
@@ -1120,6 +1154,9 @@ absl::Status TensorDescriptor::MaybeGetDataTypeFromTemplateArgs(
     } else if (read_type == "uchar") {
       *result = DataType::UINT8;
       return absl::OkStatus();
+    } else if (read_type == "bool") {
+      *result = DataType::BOOL;
+      return absl::OkStatus();
     }
   }
   return absl::OkStatus();
@@ -1130,11 +1167,11 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
     return true;
   }
   if (axis == Axis::BATCH &&
-      (layout == Layout::BHWC || layout == Layout::BHWDC)) {
+      (layout_ == Layout::BHWC || layout_ == Layout::BHWDC)) {
     return true;
   }
   if (axis == Axis::DEPTH &&
-      (layout == Layout::HWDC || layout == Layout::BHWDC)) {
+      (layout_ == Layout::HWDC || layout_ == Layout::BHWDC)) {
     return true;
   }
   return false;
@@ -1145,14 +1182,6 @@ int TensorDescriptor::GetWidthSize(BHWDC shape) const {
   auto it = state_vars_.find("BatchedWidth");
   if (it != state_vars_.end() && it->second == "true") {
     width *= shape.b;
-  }
-  auto it1 = state_vars_.find("ElementsX2");
-  if (it1 != state_vars_.end() && it1->second == "true") {
-    width /= 2;
-  }
-  auto it2 = state_vars_.find("ElementsX4");
-  if (it2 != state_vars_.end() && it2->second == "true") {
-    width /= 4;
   }
   return width;
 }
@@ -1166,14 +1195,6 @@ int TensorDescriptor::GetSliceStrideSize(BHWDC shape) const {
     } else {
       return GetWidthSize(shape) * shape.h;
     }
-  }
-}
-
-void TensorDescriptor::SetAddressMode(AddressMode mode) {
-  if (mode == AddressMode::kZero) {
-    state_vars_["TextureMode"] = "ZERO";
-  } else {
-    state_vars_["TextureMode"] = "DONT_CARE";
   }
 }
 
@@ -1218,32 +1239,19 @@ bool TensorDescriptor::IsBatchedWidth() const {
   return it != state_vars_.end() && it->second == "true";
 }
 
-AddressMode TensorDescriptor::AddressModeFromState() const {
-  auto it = state_vars_.find("TextureMode");
-  if (it != state_vars_.end()) {
-    if (it->second == "ZERO") {
-      return AddressMode::kZero;
-    } else {
-      return AddressMode::kDontCare;
-    }
-  } else {
-    return AddressMode::kDontCare;
-  }
-}
-
 size_t TensorDescriptor::GetSizeInBytesForShape(const BHWDC& shape5d) const {
-  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+  int aligned_channels = storage_type_ == TensorStorageType::SINGLE_TEXTURE_2D
                              ? shape5d.c
                              : AlignByN(shape5d.c, 4);
   int elements_count =
       shape5d.b * shape5d.w * shape5d.h * shape5d.d * aligned_channels;
-  return elements_count * SizeOf(data_type);
+  return elements_count * SizeOf(data_type_);
 }
 
 int TensorDescriptor::GetLinearIndex(const BHWDC& shape5d, int b, int x, int y,
                                      int d, int s, int sub_c) const {
   const int slices = DivideRoundUp(shape5d.c, 4);
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
     case TensorStorageType::TEXTURE_ARRAY:
@@ -1268,34 +1276,40 @@ int TensorDescriptor::GetLinearIndex(const BHWDC& shape5d, int b, int x, int y,
 
 void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
-  shape = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
+  shape_ = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
   UploadData(src.data.data());
 }
 
 void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
-  shape = BHWDC(1, 1, 1, 1, src.shape.v);
+  shape_ = BHWDC(1, 1, 1, 1, src.shape.v);
   UploadData(src.data.data());
 }
 
-bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
-  switch (storage_type) {
+bool TensorDescriptor::SupportsZeroClamp(const Axis& axis,
+                                         const GpuInfo& gpu_info) const {
+  switch (storage_type_) {
     case TensorStorageType::UNKNOWN:
       return false;
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       return false;
     case TensorStorageType::TEXTURE_ARRAY:
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
+             gpu_info.SupportsZeroClampForImages();
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return axis == Axis::WIDTH || axis == Axis::HEIGHT;
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT) &&
+             gpu_info.SupportsZeroClampForImages();
     case TensorStorageType::TEXTURE_3D:
-      return axis == Axis::WIDTH || axis == Axis::HEIGHT || axis == Axis::DEPTH;
+      return (axis == Axis::WIDTH || axis == Axis::HEIGHT ||
+              axis == Axis::DEPTH) &&
+             gpu_info.SupportsZeroClampForImages();
   }
 }
 
 bool TensorDescriptor::CanReadOutOfBorder(const Axis& axis) const {
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::UNKNOWN:
       return false;
     case TensorStorageType::BUFFER:
@@ -1310,12 +1324,13 @@ bool TensorDescriptor::CanReadOutOfBorder(const Axis& axis) const {
 }
 
 bool TensorDescriptor::IsLinear() const {
-  return storage_type == TensorStorageType::BUFFER ||
-         storage_type == TensorStorageType::IMAGE_BUFFER;
+  return storage_type_ == TensorStorageType::BUFFER ||
+         storage_type_ == TensorStorageType::IMAGE_BUFFER;
 }
 
-bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
-  return storage_type == TensorStorageType::IMAGE_BUFFER;
+bool TensorDescriptor::ReturnsZeroForNegOneRead(const GpuInfo& gpu_info) const {
+  return storage_type_ == TensorStorageType::IMAGE_BUFFER &&
+         gpu_info.SupportsZeroClampForImageBuffer();
 }
 
 absl::Status TensorDescriptor::CanCreateTensorWithShape(
@@ -1323,14 +1338,14 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
   const int slices = DivideRoundUp(shape.c, 4);
   const uint64_t allocation_size = GetSizeInBytesForShape(shape);
   const std::string common_desc = "Shape - " + ToString(shape) +
-                                  ", data type - " + ToString(data_type) + ".";
+                                  ", data type - " + ToString(data_type_) + ".";
   if (allocation_size > gpu_info.GetMaxMemoryAllocationSize()) {
     return absl::ResourceExhaustedError(absl::StrCat(
         "Requested allocation size - ", allocation_size,
         " bytes. Max allocation size for this GPU - ",
         gpu_info.GetMaxMemoryAllocationSize(), " bytes. ", common_desc));
   }
-  switch (storage_type) {
+  switch (storage_type_) {
     case TensorStorageType::BUFFER: {
       if (allocation_size > gpu_info.GetMaxBufferSize()) {
         return absl::ResourceExhaustedError(absl::StrCat(
@@ -1342,7 +1357,7 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
       }
     }
     case TensorStorageType::IMAGE_BUFFER: {
-      const uint64_t element_size = 4 * SizeOf(data_type);
+      const uint64_t element_size = 4 * SizeOf(data_type_);
       const uint64_t image_width = allocation_size / element_size;
       if (image_width > gpu_info.GetMaxImageBufferWidth()) {
         return absl::ResourceExhaustedError(absl::StrCat(
@@ -1441,7 +1456,7 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
       if (shape.c > 4) {
         return absl::ResourceExhaustedError(absl::StrCat(
             "Image2D with channels - ", shape.c, " can not be created."));
-      } else if (!gpu_info.SupportsFloatImage2D(data_type, shape.c)) {
+      } else if (!gpu_info.SupportsFloatImage2D(data_type_, shape.c)) {
         return absl::ResourceExhaustedError(
             "Image2D doesn't support this pixel layout.");
       } else if (image_width > gpu_info.GetMaxImage2DWidth()) {
@@ -1468,6 +1483,25 @@ absl::Status TensorDescriptor::CanCreateTensorWithShape(
     const GpuInfo& gpu_info, const BHWC& shape) const {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return CanCreateTensorWithShape(gpu_info, shape5D);
+}
+
+absl::Status TensorDescriptor::UpdateToSupportedStorageType(
+    const GpuInfo& gpu_info, const BHWC& shape) {
+  if (CanCreateTensorWithShape(gpu_info, shape).ok()) {
+    return absl::OkStatus();
+  }
+  if (gpu_info.IsApiMetal()) {
+    storage_type_ = TensorStorageType::BUFFER;
+    return CanCreateTensorWithShape(gpu_info, shape);
+  }
+
+  storage_type_ = TensorStorageType::IMAGE_BUFFER;
+  if (gpu_info.SupportsImageBuffer() &&
+      CanCreateTensorWithShape(gpu_info, shape).ok()) {
+    return absl::OkStatus();
+  }
+  storage_type_ = TensorStorageType::BUFFER;
+  return CanCreateTensorWithShape(gpu_info, shape);
 }
 }  // namespace gpu
 }  // namespace tflite

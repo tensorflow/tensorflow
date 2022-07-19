@@ -755,9 +755,9 @@ bool RemoveRedundantStatsOps(
   // Step 0: remove the quant::StatisticsOp which are used by the quant.qcast
   // op in case it overrides the information from training FakeQuant ops.
   func.walk([&](quant::QuantizeCastOp q) {
-    auto input_op = q.arg().getDefiningOp();
+    auto input_op = q.getArg().getDefiningOp();
     if (auto stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(input_op)) {
-      q.setOperand(stats.arg());
+      q.setOperand(stats.getArg());
       if (stats.use_empty()) stats.erase();
     }
   });
@@ -774,7 +774,7 @@ bool RemoveRedundantStatsOps(
     quant::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
-    if (auto def = stats_op.arg().getDefiningOp()) {
+    if (auto def = stats_op.getArg().getDefiningOp()) {
       if (IsStatsRedundant(def, op_quant_spec_getter,
                            op_quant_scale_spec_getter)) {
         redundant_stats_ops.insert(stats_op);
@@ -815,7 +815,7 @@ bool RemoveRedundantStatsOps(
     quant::StatisticsOp stats_op = all_stats_ops.back();
     all_stats_ops.pop_back();
 
-    if (auto def = stats_op.arg().getDefiningOp()) {
+    if (auto def = stats_op.getArg().getDefiningOp()) {
       if (!IsSameScaleOp(def, op_quant_scale_spec_getter)) {
         continue;
       }
@@ -833,7 +833,7 @@ bool RemoveRedundantStatsOps(
   for (auto it : redundant_stats_ops) {
     if (!llvm::isa<quant::StatisticsOp>(it)) return true;
     auto stats_op = llvm::cast<quant::StatisticsOp>(it);
-    stats_op.getResult().replaceAllUsesWith(stats_op.arg());
+    stats_op.getResult().replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   }
 

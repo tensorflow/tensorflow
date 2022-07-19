@@ -54,8 +54,8 @@ std::string GetCastKernelCode(const OperationDef& op_def,
   c += "  args.src_tensor::type src_value = args.src_tensor.Read(" + coords +
        ");\n";
   const std::string conversion =
-      GetTypeConvertion(gpu_info, op_def.src_tensors[0].data_type,
-                        op_def.dst_tensors[0].data_type, 4);
+      GetTypeConversion(gpu_info, op_def.src_tensors[0].GetDataType(),
+                        op_def.dst_tensors[0].GetDataType(), 4);
   if (conversion.empty()) {
     c += "  args.dst_tensor::type result = src_value;\n";
   } else {

@@ -51,7 +51,7 @@ Status ShapeAnnotationsMatch(
     return errors::InvalidArgument("Missing shapes for nodes: ",
                                    absl::StrJoin(missing, ","));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

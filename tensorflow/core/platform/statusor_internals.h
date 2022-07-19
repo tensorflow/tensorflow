@@ -139,7 +139,7 @@ class StatusOrData {
       MakeValue(value);
     } else {
       MakeValue(value);
-      status_ = Status::OK();
+      status_ = OkStatus();
     }
   }
 
@@ -149,7 +149,7 @@ class StatusOrData {
       MakeValue(std::move(value));
     } else {
       MakeValue(std::move(value));
-      status_ = Status::OK();
+      status_ = OkStatus();
     }
   }
 

@@ -52,7 +52,6 @@ limitations under the License.
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -726,7 +725,7 @@ LogicalResult VerifyConcatenationOpTypes(Operation *op,
     return llvm::formatv("operand #{0}", loc).str();
   };
 
-  for (auto operand : llvm::enumerate(operand_types)) {
+  for (const auto &operand : llvm::enumerate(operand_types)) {
     auto operand_type = operand.value().dyn_cast<RankedTensorType>();
     if (!operand_type) {
       result_dim_sizes[axis] = kDynamicSize;
@@ -967,9 +966,16 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
         input_type.getNumElements() != output_type.getNumElements()) {
       return failure();
     }
+    // Reshape op supports only new shape as I32. Add a cast op to I32 always
+    // to make sure the introduced Reshape Op is a valid one.
+    auto result_type = RankedTensorType::get(
+        op.shape().getType().cast<RankedTensorType>().getShape(),
+        rewriter.getI32Type());
+    auto cast_op =
+        rewriter.create<TFL::CastOp>(op->getLoc(), result_type, op.shape());
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.input(),
-                                           op.shape());
+                                           cast_op);
     return success();
   }
 };
@@ -998,7 +1004,7 @@ LogicalResult FullyConnectedOp::verify() {
   // Input's element size must be multiple of parameter's z_in dimension.
   const int z_in = filter_type.getDimSize(1);
   const int num_input_elements = input_type.getNumElements();
-  if (num_input_elements % z_in != 0) {
+  if (z_in != 0 && num_input_elements % z_in != 0) {
     return op.emitOpError(llvm::formatv(
                "expect 'input' num_elements % {0} == 0, got input type ", z_in))
            << input_type;
@@ -1021,7 +1027,7 @@ LogicalResult FullyConnectedOp::verify() {
              << output_type;
     }
 
-    if (num_input_elements / z_in != num_output_elements / z_out) {
+    if (z_in != 0 && num_input_elements / z_in != num_output_elements / z_out) {
       return op.emitOpError(
           "num_input_elements / z_in != num_output_elements / z_out");
     }
@@ -1432,7 +1438,7 @@ mlir::LogicalResult ScatterNdOp::verify() {
 
     // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
     // dimensions of `updates` and `shape` are equal.
-    for (auto shape_it : llvm::enumerate(shape_value)) {
+    for (const auto &shape_it : llvm::enumerate(shape_value)) {
       int64_t i = shape_it.index();
       auto value = shape_it.value().getSExtValue();
       if (i >= outermost_dim) {
@@ -1448,7 +1454,7 @@ mlir::LogicalResult ScatterNdOp::verify() {
 
     // Checks if the output has the shape specified by `shape`.
     if (output_type.hasStaticShape()) {
-      for (auto shape_it : llvm::enumerate(shape_value)) {
+      for (const auto &shape_it : llvm::enumerate(shape_value)) {
         int i = shape_it.index();
         auto value = shape_it.value().getSExtValue();
         if (output_type.getDimSize(i) != value) {
@@ -1612,7 +1618,7 @@ namespace {
 // TODO(antiagainst): This pattern probably should be moved to the peephole
 // category, after we have the infra for peephole passes.
 struct RemoveAdjacentReshape : public RewritePattern {
-  RemoveAdjacentReshape(MLIRContext *context)
+  explicit RemoveAdjacentReshape(MLIRContext *context)
       : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
 
   LogicalResult match(Operation *op) const override {
@@ -1993,7 +1999,7 @@ mlir::LogicalResult SliceOp::verify() {
   DenseIntElementsAttr begin;
   if (matchPattern(op.begin(), m_Constant(&begin))) {
     int axis = 0;
-    for (auto begin_i : llvm::enumerate(begin)) {
+    for (const auto &begin_i : llvm::enumerate(begin)) {
       if (begin_i.value().getSExtValue() < 0) {
         return op.emitError(
             llvm::formatv("begin[{0}] cannot be negative", axis));
@@ -2005,7 +2011,7 @@ mlir::LogicalResult SliceOp::verify() {
   DenseIntElementsAttr size;
   if (matchPattern(op.size(), m_Constant(&size))) {
     int axis = 0;
-    for (auto size_i : llvm::enumerate(size)) {
+    for (const auto &size_i : llvm::enumerate(size)) {
       if (size_i.value().getSExtValue() < -1) {
         return op.emitError(
             llvm::formatv("size[{0}] cannot be negative other than -1", axis));
@@ -2220,7 +2226,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     SmallVectorImpl<Type> &inferredReturnTypes) {
   UnpackOpAdaptor op(operands, attributes);
   // TODO(jpienaar): Refactor verify
-  if (failed(op.verify(loc.hasValue() ? *loc : UnknownLoc::get(context))))
+  if (failed(op.verify(loc.has_value() ? *loc : UnknownLoc::get(context))))
     return failure();
 
   if (operands.size() != 1) {
@@ -3432,7 +3438,7 @@ void IfOp::getSuccessorRegions(Optional<unsigned> index,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<RegionSuccessor> &regions) {
   // The `then` and the `else` region branch back to the parent operation.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     regions.push_back(RegionSuccessor(getResults()));
     return;
   }
@@ -3804,6 +3810,20 @@ bool NoValueOp::isBuildableWith(Attribute value, Type type) {
 //===----------------------------------------------------------------------===//
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
+
+static FailureOr<SmallVector<int32_t>> parseI32Array(AsmParser &parser) {
+  SmallVector<int32_t> elements;
+  auto elementParser = [&]() {
+    int32_t element;
+    if (failed(parser.parseInteger(element))) return failure();
+    elements.push_back(element);
+    return success();
+  };
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     elementParser))
+    return failure();
+  return elements;
+}
 
 }  // namespace TFL
 }  // namespace mlir

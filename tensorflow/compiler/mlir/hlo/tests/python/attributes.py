@@ -120,7 +120,7 @@ def test_comparison_direction():
 
   attr = ComparisonDirectionAttr.get("EQ")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"comparison_direction EQ\">")
+  assert str(attr) == ("#mhlo<comparison_direction EQ>")
   assert attr.comparison_direction == "EQ"
 
 
@@ -130,7 +130,7 @@ def test_comparison_type():
 
   attr = ComparisonTypeAttr.get("TOTALORDER")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"comparison_type TOTALORDER\">")
+  assert str(attr) == ("#mhlo<comparison_type TOTALORDER>")
   assert attr.comparison_type == "TOTALORDER"
 
 
@@ -140,7 +140,7 @@ def test_precision():
 
   attr = PrecisionAttr.get("DEFAULT")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"precision DEFAULT\">")
+  assert str(attr) == ("#mhlo<precision DEFAULT>")
   assert attr.precision_type == "DEFAULT"
 
 
@@ -150,7 +150,7 @@ def test_fft_type():
 
   attr = FftTypeAttr.get("FFT")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"fft_type FFT\">")
+  assert str(attr) == ("#mhlo<fft_type FFT>")
   assert attr.fft_type == "FFT"
 
 
@@ -160,7 +160,7 @@ def test_dequantize_mode():
 
   attr = DequantizeModeAttr.get("MIN_COMBINED")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"dequantize_mode MIN_COMBINED\">")
+  assert str(attr) == ("#mhlo<dequantize_mode MIN_COMBINED>")
   assert attr.dequantize_mode == "MIN_COMBINED"
 
 
@@ -170,7 +170,7 @@ def test_transpose_type():
 
   attr = TransposeAttr.get("TRANSPOSE")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"transpose TRANSPOSE\">")
+  assert str(attr) == ("#mhlo<transpose TRANSPOSE>")
   assert attr.transpose_type == "TRANSPOSE"
 
 
@@ -180,5 +180,35 @@ def test_fusion_kind():
 
   attr = FusionKindAttr.get("kLoop")
   assert attr is not None
-  assert str(attr) == ("#mhlo<\"fusion_kind kLoop\">")
+  assert str(attr) == ("#mhlo<fusion_kind kLoop>")
   assert attr.fusion_kind == "kLoop"
+
+
+@run
+def test_rng_distribution():
+  """Check that RngDistribution attribute is available and usable."""
+
+  attr = RngDistributionAttr.get("UNIFORM")
+  assert attr is not None
+  assert str(attr) == ("#mhlo.rng_distribution<UNIFORM>")
+  assert attr.rng_distribution == "UNIFORM"
+
+
+@run
+def test_rng_algorithm():
+  """Check that RngAlgorithm attribute is available and usable."""
+
+  attr = RngAlgorithmAttr.get("DEFAULT")
+  assert attr is not None
+  assert str(attr) == ("#mhlo.rng_algorithm<DEFAULT>")
+  assert attr.rng_algorithm == "DEFAULT"
+
+
+@run
+def test_channel_handle():
+  """Check that ChannelHandle attribute is available and usable."""
+
+  attr = ChannelHandle.get(handle=1, type=2)
+  assert attr is not None
+  assert attr.handle == 1
+  assert attr.channel_type == 2

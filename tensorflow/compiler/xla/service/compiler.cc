@@ -96,21 +96,10 @@ Compiler::GetPlatformCompilers() {
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
   if (it == factories->end()) {
-    std::string hint;
-    if (platform->Name() == "Host") {
-      hint =
-          " (hint: try adding tensorflow/compiler/jit:xla_cpu_jit as a "
-          "dependency)";
-    } else if (platform->Name() == "CUDA") {
-      hint =
-          " (hint: try adding tensorflow/compiler/jit:xla_gpu_jit as a "
-          "dependency)";
-    }
-
     return NotFound(
-        "could not find registered compiler for platform %s -- check "
-        "target linkage%s",
-        platform->Name(), hint);
+        "could not find registered compiler for platform %s -- was support for "
+        "that platform linked in?",
+        platform->Name());
   }
 
   // And then we invoke the factory, placing the result into the mapping.

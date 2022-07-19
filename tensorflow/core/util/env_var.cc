@@ -30,15 +30,15 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
   string str_value = absl::AsciiStrToLower(tf_env_var_val);
   if (str_value == "0" || str_value == "false") {
     *value = false;
-    return Status::OK();
+    return OkStatus();
   } else if (str_value == "1" || str_value == "true") {
     *value = true;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument(strings::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into bool: ",
@@ -50,10 +50,10 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64_t default_val,
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
   if (strings::safe_strto64(tf_env_var_val, value)) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument(strings::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into int64: ",
@@ -65,10 +65,10 @@ Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
   *value = default_val;
   const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
   if (strings::safe_strtof(tf_env_var_val, value)) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument(strings::StrCat(
       "Failed to parse the env-var ${", env_var_name, "} into float: ",
@@ -83,7 +83,7 @@ Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
   } else {
     *value = string(default_val);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
@@ -91,7 +91,7 @@ Status ReadStringsFromEnvVar(StringPiece env_var_name, StringPiece default_val,
   string str_val;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(env_var_name, default_val, &str_val));
   *value = str_util::Split(str_val, ',');
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

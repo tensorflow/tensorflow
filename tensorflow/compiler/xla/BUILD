@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test", "tf_xla_acl_copts")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -66,6 +66,7 @@ tf_proto_library(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
     cc_api_version = 2,
+    create_grpc_library = True,
     visibility = ["//visibility:public"],
 )
 
@@ -73,6 +74,7 @@ tf_proto_library(
     name = "xla_proto",
     srcs = ["xla.proto"],
     cc_api_version = 2,
+    create_grpc_library = True,
     protodeps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
@@ -114,15 +116,16 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":shape_util",
         ":status_macros",
         ":statusor",
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -181,6 +184,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":status",
+        ":xla_cc_grpc_proto",
         ":xla_data_proto_cc",
         ":xla_proto_cc",
     ],
@@ -263,11 +267,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -372,7 +374,6 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -504,7 +505,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -961,6 +961,7 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    copts = tf_xla_acl_copts(),
     visibility = [":friends"],
     deps =
         [

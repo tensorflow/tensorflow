@@ -86,7 +86,7 @@ int SingleOpModel::AddInput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {});
+    id = AddTensor<float>(t, nullptr, 0);
   }
   inputs_.push_back(id);
   return id;
@@ -97,7 +97,7 @@ int SingleOpModel::AddVariableInput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, true);
+    id = AddTensor<float>(t, nullptr, 0, true);
   }
   inputs_.push_back(id);
   return id;
@@ -112,7 +112,8 @@ int SingleOpModel::AddIntermediate(TensorType type,
       CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
                                    builder_.CreateVector<float>(scale),
                                    builder_.CreateVector<int64_t>(zero_point));
-  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
+  std::vector<int> empty;
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>(empty),
                                   type,
                                   /*buffer=*/0,
                                   /*name=*/0, q_params, false));
@@ -131,7 +132,7 @@ int SingleOpModel::AddOutput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {});
+    id = AddTensor<float>(t, nullptr, 0);
   }
   outputs_.push_back(id);
   return id;
@@ -287,8 +288,6 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
-
 void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
@@ -378,7 +377,7 @@ int CountPartitionsExecutedByCpuKernel(const Interpreter* interpreter) {
 }  // namespace
 
 void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
-  absl::optional<NnapiAccelerationTestParams> validation_params =
+  std::optional<NnapiAccelerationTestParams> validation_params =
       GetNnapiAccelerationTestParam(test_id);
   if (!validation_params.has_value()) {
     return;

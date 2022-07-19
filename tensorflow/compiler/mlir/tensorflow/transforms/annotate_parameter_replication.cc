@@ -71,7 +71,7 @@ void AnnotateParameterReplicationPass::runOnOperation() {
             mirrored_index.cast<IntegerAttr>().getInt());
       }
     }
-    auto func = llvm::cast<FuncOp>(m.lookupSymbol(cluster_func.func()));
+    auto func = llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.func()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
       auto block_arg = operand.dyn_cast<BlockArgument>();

@@ -115,6 +115,21 @@ void TfLiteInterpreterOptionsSetOpResolver(
                                                 int version),
     void* op_resolver_user_data);
 
+/// \private
+/// `TfLiteRegistration_V1` version of TfLiteInterpreterOptionsSetOpResolver.
+///
+/// WARNING: This function is deprecated / not an official part of the API, is
+/// only for binary backwards compatibility, and should not be called.
+void TfLiteInterpreterOptionsSetOpResolverV1(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V1* (*find_custom_op_v1)(void* user_data,
+                                                      const char* op,
+                                                      int version),
+    void* op_resolver_user_data);
+
 /// Returns a new interpreter using the provided model and options, or null on
 /// failure, where the model uses only the operators explicitly added to the
 /// options.  This is the same as `TFLiteInterpreterCreate` from `c_api.h`,
@@ -221,7 +236,7 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
 /// (ii) only using Interpreter APIs.
 ///
 /// NOTE:
-/// * Only use one of the above options to run inference, i.e, avoid mixing both
+/// * Only use one of the above options to run inference, i.e. avoid mixing both
 ///   SignatureRunner APIs and Interpreter APIs to run inference as they share
 ///   the same underlying data (e.g. updating an input tensor “A” retrieved
 ///   using the Interpreter APIs will update the state of the input tensor “B”

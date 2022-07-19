@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -115,13 +115,6 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
       // transparently.
       CHECK_EQ(operand_number, 0);
       return index.empty();
-    case HloOpcode::kTupleSelect:
-      // Select does not use any nested elements of its selected-from operands
-      // (operand 1 and 2)
-      CHECK_GE(operand_number, 0);
-      CHECK_LE(operand_number, 2);
-      return operand_number == 0 || index.empty();
-
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
@@ -285,6 +278,20 @@ bool InstructionValueSet::AssignUnionOf(
       input_value_sets.push_back(&input->element(index));
     }
     changed |= value_set.AssignUnionOf(input_value_sets);
+  }
+
+  return changed;
+}
+
+bool InstructionValueSet::AssignUnionOf(const InstructionValueSet& input,
+                                        ShapeIndexView input_index) {
+  bool changed = false;
+  for (auto& [index, value_set] : *this) {
+    ShapeIndex source_index(input_index);
+    for (auto i : index) {
+      source_index.push_back(i);
+    }
+    changed |= value_set.AssignUnionOf({&input.element(source_index)});
   }
 
   return changed;

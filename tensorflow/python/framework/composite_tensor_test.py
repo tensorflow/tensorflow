@@ -405,6 +405,14 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                               expand_composites=False)
     nest.assert_same_structure(value, spec, expand_composites=True)
 
+  def testConvertVariablesToTensors(self):
+    ct = CT(1)
+    result = ct._convert_variables_to_tensors()
+    self.assertIs(result, ct)
+
+    result2 = composite_tensor.convert_variables_to_tensors(ct)
+    self.assertIs(result2, ct)
+
 
 if __name__ == '__main__':
   googletest.main()

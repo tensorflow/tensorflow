@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 
+#include <utility>
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 
 namespace mlir {
 namespace gml_st {
@@ -151,9 +155,9 @@ Value insertSliceIntoTensor(RewriterBase &b, Location loc,
                             tensor::ExtractSliceOp sliceOp, Value source,
                             Value dest) {
   return b.create<tensor::InsertSliceOp>(
-      loc, sliceOp.source().getType(), source, dest, sliceOp.offsets(),
-      sliceOp.sizes(), sliceOp.strides(), sliceOp.static_offsets(),
-      sliceOp.static_sizes(), sliceOp.static_strides());
+      loc, sliceOp.getSource().getType(), source, dest, sliceOp.getOffsets(),
+      sliceOp.getSizes(), sliceOp.getStrides(), sliceOp.getStaticOffsets(),
+      sliceOp.getStaticSizes(), sliceOp.getStaticStrides());
 }
 
 FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
@@ -224,7 +228,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
       if (auto sliceOp = outputTensor.getDefiningOp<tensor::ExtractSliceOp>()) {
         tensorResults.push_back(insertSliceIntoTensor(rewriter, loc, sliceOp,
                                                       res->getResult(resultIdx),
-                                                      sliceOp.source()));
+                                                      sliceOp.getSource()));
       } else {
         tensorResults.push_back(res->getResult(resultIdx));
       }
@@ -307,6 +311,23 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
   }
 
   return tileLinalgOpImpl(b, op, tileSizeVector, options);
+}
+
+constexpr llvm::StringLiteral kTransformMarker =
+    "__internal_transformation_marker__";
+
+void setTransformationAttr(mlir::OpBuilder &b, Operation *op) {
+  op->setAttr(kTransformMarker, b.getBoolAttr(true));
+}
+
+void removeTransformationAttr(Operation *op) {
+  op->removeAttr(kTransformMarker);
+}
+
+bool hasTransformationAttr(Operation *op) {
+  auto marker = op->getAttr(kTransformMarker);
+  if (!marker) return false;
+  return marker && marker.cast<BoolAttr>().getValue();
 }
 
 }  // namespace gml_st

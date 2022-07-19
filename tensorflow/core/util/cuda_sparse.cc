@@ -96,11 +96,11 @@ class CudaSparseHandles {
   ~CudaSparseHandles() { Release(); }
 
   Status Initialize() {
-    if (initialized_) return Status::OK();
+    if (initialized_) return OkStatus();
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreate(&cusparse_handle_));
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSetStream(cusparse_handle_, stream_));
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   cusparseHandle_t& handle() {
@@ -177,7 +177,7 @@ Status GpuSparse::Initialize() {
   }
   gpusparse_handle_ = &it->second.handle();
   initialized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 #define TF_CALL_CUSPARSE_DTYPES(m)           \
@@ -213,7 +213,7 @@ static inline Status Gtsv2Impl(SparseFn op, cusparseHandle_t cusparse_handle,
   TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
                                   AsCudaComplex(d), AsCudaComplex(du),
                                   AsCudaComplex(B), ldb, pBuffer));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define GTSV2_INSTANCE(Scalar, sparse_prefix)                                \
@@ -250,7 +250,7 @@ static inline Status Gtsv2BufferSizeExtImpl(SparseFn op,
   TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
                                   AsCudaComplex(d), AsCudaComplex(du),
                                   AsCudaComplex(B), ldb, bufferSizeInBytes));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define GTSV2_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix)                     \
@@ -289,7 +289,7 @@ static inline Status Gtsv2StridedBatchImpl(SparseFn op,
   TF_RETURN_IF_GPUSPARSE_ERROR(op(
       cusparse_handle, m, AsCudaComplex(dl), AsCudaComplex(d),
       AsCudaComplex(du), AsCudaComplex(x), batchCount, batchStride, pBuffer));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define GTSV2_STRIDED_BATCH_INSTANCE(Scalar, sparse_prefix)                   \
@@ -314,7 +314,7 @@ static inline Status Gtsv2StridedBatchBufferSizeImpl(
                                   AsCudaComplex(d), AsCudaComplex(du),
                                   AsCudaComplex(x), batchCount, batchStride,
                                   bufferSizeInBytes));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define GTSV2_STRIDED_BATCH_BUFFER_SIZE_INSTANCE(Scalar, sparse_prefix) \
@@ -345,7 +345,7 @@ Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseXcoo2csr(*gpusparse_handle_, cooRowInd,
                                                 nnz, m, csrRowPtr,
                                                 CUSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
@@ -361,7 +361,7 @@ Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseXcsr2coo(*gpusparse_handle_, csrRowPtr,
                                                 nnz, m, cooRowInd,
                                                 CUSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuSparse::CsrgeamNnz(
@@ -383,7 +383,7 @@ Status GpuSparse::CsrgeamNnz(
       csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB,
       descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));
 #endif
-  return Status::OK();
+  return OkStatus();
 }
 
 #if CUDA_VERSION < 10020
@@ -407,7 +407,7 @@ static inline Status CsrmmImpl(
       cusparse_handle, transA, transB, m, n, k, nnz, AsCudaComplex(alpha_host),
       descrA, AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
       AsCudaComplex(B), ldb, AsCudaComplex(beta_host), AsCudaComplex(C), ldc));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRMM_INSTANCE(Scalar, sparse_prefix)                                \
@@ -478,7 +478,7 @@ static inline Status CsrmvImpl(
       op(cusparse_handle, transA, m, n, nnz, AsCudaComplex(alpha_host), descrA,
          AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
          AsCudaComplex(x), AsCudaComplex(beta_host), AsCudaComplex(y)));
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(ebrevdo,rmlarsen): Use csrmv_mp for all cases when available in CUDA 9.
@@ -671,7 +671,7 @@ static inline Status Csrgeam2Impl(
       AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, workspace));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                               \
@@ -732,7 +732,7 @@ static inline Status CsrgeamBufferSizeExtImpl(
       AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, bufferSize));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEAM_BUFFERSIZE_INSTANCE(Scalar, sparse_prefix)                     \
@@ -844,7 +844,7 @@ static const T* null_ptr() {
         nnzA, csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB,                \
         csrSortedRowPtrB, csrSortedColIndB, AsCudaComplex(null_ptr<Scalar>()), \
         descrA, 0, null_ptr<int>(), null_ptr<int>(), info, workspaceBytes));   \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_LAPACK_TYPES(CSRGEMM_BUFFERSIZE_INSTANCE);
@@ -864,7 +864,7 @@ Status GpuSparse::CsrgemmNnz(
       csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB,
       descrA, 0, null_ptr<int>(), null_ptr<int>(), descrC, csrSortedRowPtrC,
       nnzTotalDevHostPtr, info, workspace));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Scalar, typename SparseFnT>
@@ -885,7 +885,7 @@ static inline Status CsrgemmImpl(
          AsCudaComplex(null_ptr<Scalar>()), null_ptr<int>(), null_ptr<int>(),
          descrC, AsCudaComplex(csrSortedValC), csrSortedRowPtrC,
          csrSortedColIndC, info, workspace));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEMM_INSTANCE(Scalar, sparse_prefix)                               \
@@ -939,7 +939,7 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
                                   AsCudaComplex(csrVal), csrRowPtr, csrColInd,
                                   info.info(), pBuffer.data()));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                              \
@@ -1014,7 +1014,7 @@ static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
                          cscRowInd, dtype, copyValues, CUSPARSE_INDEX_BASE_ZERO,
                          CUSPARSE_CSR2CSC_ALG2, buffer.flat<Scalar>().data()));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSR2CSC_INSTANCE(Scalar, cudaDataType)                                \

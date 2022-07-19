@@ -21,7 +21,7 @@ limitations under the License.
 namespace mlir {
 namespace func {
 class FuncOp;
-}
+}  // namespace func
 class Value;
 class Location;
 class Operation;
@@ -42,25 +42,25 @@ namespace lmhlo {
 
 Value createLoadOrUseCachedValue(Location loc, OpBuilder* b, Value memref,
                                  ValueRange indices,
-                                 OpBuilder::InsertPoint insert_point);
+                                 OpBuilder::InsertPoint insertPoint);
 
-DenseSet<Operation*> NoLoaderUser(SmallVectorImpl<Operation*>& ops);
+DenseSet<Operation*> noLoaderUser(SmallVectorImpl<Operation*>& ops);
 void cleanUnusedLhloOps(Block* parent);
 
 template <typename LHLO_OpTy>
 Value elementalLower(OpBuilder* b, Location loc, LHLO_OpTy op,
-                     ValueRange output_index, bool check_cache = false);
+                     ValueRange outputIndex, bool checkCache = false);
 
 scf::ForOp createLoopAndSetInsPt(OpBuilder& b, Location loc, Value& var,
                                  Value lb, Value ub, Value step,
-                                 ArrayRef<Value> init_values = {});
+                                 ArrayRef<Value> initValues = {});
 
 scf::ParallelOp createParallelAndSetInsPt(OpBuilder& b, Location loc,
                                           SmallVectorImpl<Value>& vars,
                                           ArrayRef<Value> lbs,
                                           ArrayRef<Value> ubs,
                                           ArrayRef<Value> steps,
-                                          ArrayRef<Value> init_values);
+                                          ArrayRef<Value> initValues);
 
 void createOffsetStore(OpBuilder& b, Location loc, Value res, Value memref,
                        Value offset);

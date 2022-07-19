@@ -17,6 +17,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load(
@@ -75,7 +76,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "//tensorflow/core:lib",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -138,6 +138,19 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "stream_search_test",
+    size = "small",
+    srcs = ["stream_search_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/host:host_platform",
     ],
 )
 
@@ -269,38 +282,61 @@ alias(
 
 cc_library(
     name = "cublas_plugin",
-    srcs = if_cuda_is_configured(["cuda_blas.cc"]),
-    hdrs = if_cuda_is_configured(["cuda_blas.h"]),
+    srcs = if_cuda_is_configured([
+        "cuda_blas.cc",
+        "cuda_blas_lt.cc",
+    ]),
+    hdrs = if_cuda_is_configured([
+        "cuda_blas.h",
+        "cuda_blas_lt.h",
+    ]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cublas_lib",
         ":cublas_lt_lib",
         ":cuda_activation",
+        ":cuda_blas_utils",
         ":cuda_gpu_executor",
+        ":cuda_helpers",
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_timer",
-        ":cuda_helpers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/platform:tensor_float_32_utils",
-        "//tensorflow/stream_executor",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:host_or_device_scalar",
-        "//tensorflow/stream_executor:plugin_registry",
-        "//tensorflow/stream_executor:scratch_allocator",
-        "//tensorflow/stream_executor:timer",
-        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
-    ]) + [
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-    ],
+        "//third_party/eigen3",
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:host_or_device_scalar",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_activation_header",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_timer_header",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+    ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
     alwayslink = True,
+)
+
+cc_library(
+    name = "cuda_blas_utils",
+    srcs = if_cuda_is_configured(["cuda_blas_utils.cc"]),
+    hdrs = if_cuda_is_configured(["cuda_blas_utils.h"]),
+    deps = if_cuda_is_configured([
+        ":cublas_lib",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor/lib",
+    ]),
 )
 
 cc_library(
@@ -399,7 +435,6 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/util:determinism",

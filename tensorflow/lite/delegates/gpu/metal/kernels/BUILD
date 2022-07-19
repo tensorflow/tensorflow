@@ -45,7 +45,9 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
+        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -91,14 +93,20 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
+        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -135,6 +143,31 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":conv_weights_converter_test_lib"],
+)
+
+objc_library(
+    name = "cumsum_test_lib",
+    testonly = 1,
+    srcs = ["cumsum_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
+        "//third_party/apple_frameworks:XCTest",
+    ],
+)
+
+ios_unit_test(
+    name = "cumsum_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":cumsum_test_lib"],
 )
 
 objc_library(
@@ -307,7 +340,9 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
+        "//third_party/apple_frameworks:XCTest",
     ],
 )
 
@@ -472,6 +507,8 @@ objc_library(
     srcs = ["resampler_test.mm"],
     sdk_frameworks = ["XCTest"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
         "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
     ],
@@ -535,6 +572,30 @@ ios_unit_test(
         "tflite_not_portable_android",
     ],
     deps = [":reshape_test_lib"],
+)
+
+objc_library(
+    name = "select_v2_test_lib",
+    testonly = 1,
+    srcs = ["select_v2_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
+        "//third_party/apple_frameworks:XCTest",
+    ],
+)
+
+ios_unit_test(
+    name = "select_v2_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":select_v2_test_lib"],
 )
 
 objc_library(
@@ -770,6 +831,7 @@ objc_library(
         "concat_test.mm",
         "conv_test.mm",
         "conv_weights_converter_test.mm",
+        "cumsum_test.mm",
         "depthwise_conv_test.mm",
         "elementwise_test.mm",
         "fully_connected_test.mm",
@@ -787,6 +849,7 @@ objc_library(
         "resampler_test.mm",
         "reshape_test.mm",
         "resize_test.mm",
+        "select_v2_test.mm",
         "slice_test.mm",
         "softmax_test.mm",
         "space_to_depth_test.mm",
@@ -801,25 +864,26 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":test_util",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
-        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
@@ -829,6 +893,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
@@ -838,6 +903,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
@@ -846,9 +912,9 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
-        "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:compute_task",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
+        "//third_party/apple_frameworks:XCTest",
     ],
 )
 

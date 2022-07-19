@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -99,7 +100,7 @@ Status GetAndValidateAttributes(OpKernelConstruction* ctx,
     paddings.assign(expected_rank, 0);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::string_view kHandle = "handle";
@@ -506,7 +507,7 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, false> {
 
     auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
       ctx->set_output(/*index=*/0, input);
-      return Status::OK();
+      return OkStatus();
     };
 
     this->ComputeInternal(ctx, assign_or_copy_value_fn, &input);
@@ -547,7 +548,7 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T, true> {
       } else {
         ctx->set_output(/*index=*/0, input);
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     this->ComputeInternal(ctx, assign_or_copy_value_fn, input);
@@ -617,7 +618,7 @@ class XlaConcatNDBaseOp : public OpKernel {
       output_shape.AddDim(max_dim_size - paddings_[i]);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeInternal(
@@ -677,7 +678,7 @@ class XlaConcatNDBaseOp : public OpKernel {
                       const std::function<StatusOr<Tensor*>()>& get_output_fn) {
     auto status_or_output = get_output_fn();
     OP_REQUIRES_OK(ctx, status_or_output.status());
-    Tensor* output = status_or_output.ConsumeValueOrDie();
+    Tensor* output = std::move(status_or_output).value();
 
     const Device& device = ctx->eigen_device<Device>();
     if (num_slices_ == 1) {
@@ -745,7 +746,7 @@ class XlaConcatNDBaseOp : public OpKernel {
 
     auto status_or_output = get_output_fn();
     OP_REQUIRES_OK(ctx, status_or_output.status());
-    Tensor* output = status_or_output.ConsumeValueOrDie();
+    Tensor* output = std::move(status_or_output).value();
 
     Eigen::DSizes<Eigen::DenseIndex, Rank> slice_shape_dsizes =
         inputs[0].shape().AsEigenDSizes<Rank>();
@@ -778,7 +779,7 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, false> {
 
     auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
       ctx->set_output(/*index=*/0, input);
-      return Status::OK();
+      return OkStatus();
     };
 
     auto get_output_fn = [&ctx, &output_shape]() -> StatusOr<Tensor*> {
@@ -823,7 +824,7 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
     OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(ctx, handle, &variable,
                                                     [this](Var** ptr) {
                                                       *ptr = new Var(dtype_);
-                                                      return Status::OK();
+                                                      return OkStatus();
                                                     }));
     mutex_lock ml(*variable->mu());
 
@@ -841,7 +842,7 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T, true> {
       } else {
         *variable->tensor() = input;
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     auto get_output_fn = [this, &ctx, &output_shape,

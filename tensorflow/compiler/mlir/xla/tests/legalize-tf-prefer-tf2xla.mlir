@@ -48,7 +48,7 @@ func.func @random_uniform_simple(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
   // CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[CONV:.*]] = mhlo.convert(%arg0) : (tensor<3xi32>) -> tensor<3xi64>
-  // CHECK: %[[F32:.*]] = "mhlo.rng_uniform"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*}} -> tensor<12x?x64xf32>
+  // CHECK: %[[F32:.*]] = "mhlo.rng"(%[[ZERO]], %[[ONE]], %[[CONV]]) {{.*UNIFORM.*}} -> tensor<12x?x64xf32>
   %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
   // CHECK: return %[[F32]]
   func.return %0 : tensor<12x?x64xf32>
@@ -62,7 +62,7 @@ func.func @random_uniform_with_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64
   // CHECK-NEXT :  %1 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-NEXT :  %2 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK-NEXT :  %3 = mhlo.convert(%0) : (tensor<4xi32>) -> tensor<4xi64>
-  // CHECK-NEXT :  %4 = "mhlo.rng_uniform"(%1, %2, %3) : (tensor<f32>, tensor<f32>, tensor<4xi64>) -> tensor<32x12x12x64xf32>
+  // CHECK-NEXT :  %4 = "mhlo.rng"(%1, %2, %3) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<4xi64>) -> tensor<32x12x12x64xf32>
   %cst = "tf.Const"() {value = dense<[32, 12, 12, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
   %0 = "tf.RandomUniform"(%cst) {seed = 87654321 : i64, seed2 = 0 : i64} : (tensor<4xi32>) -> tensor<32x12x12x64xf32>
   // CHECK: return %4 : tensor<32x12x12x64xf32>

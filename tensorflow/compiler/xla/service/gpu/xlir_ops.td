@@ -96,7 +96,7 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
     cross-module mode.
   }];
   let arguments = (ins TFRTGPU_ContextType:$context, I64Attr:$group_mode,
-                   I64Attr:$op_id);
+                   I64Attr:$op_id, TFRT_ChainType:$chain);
   let results = (outs TFRTGPU_CclHandleType);
 }
 

@@ -44,20 +44,20 @@ TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
           << hlo->ToString();
       TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 1))
           << hlo->ToString();
-      return Status::OK();
+      return OkStatus();
     }
 
     Status HandleElementwiseBinary(HloInstruction* hlo) override {
       // HLO should be elementwise binary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 2)
           << hlo->ToString();
-      return Status::OK();
+      return OkStatus();
     }
     Status HandleElementwiseUnary(HloInstruction* hlo) override {
       // HLO should be elementwise unary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 1)
           << hlo->ToString();
-      return Status::OK();
+      return OkStatus();
     }
   };
 
@@ -80,7 +80,7 @@ ENTRY TestComputation {
   ROOT convert = f64[] convert(f32[] arg)
 })";
   std::unique_ptr<HloModule> module =
-      ParseAndReturnVerifiedModule(hlo_string).ConsumeValueOrDie();
+      ParseAndReturnVerifiedModule(hlo_string).value();
   ElementwiseTestVisitor visitor;
   TF_EXPECT_OK(module->entry_computation()->Accept(&visitor));
 }

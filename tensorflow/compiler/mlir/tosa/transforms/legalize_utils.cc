@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -412,8 +413,7 @@ bool getTransposeConv2dPaddingValues(
     tensorflow::Padding tf_pad, tensorflow::TensorFormat data_format_tf,
     uint32_t first_filter_spatial_dim, ShapedType input_type,
     ShapedType filter_type, ShapedType output_type, ArrayAttr strides,
-    ArrayAttr dilations, PatternRewriter& rewriter,
-    ArrayAttr& explicit_padding) {
+    PatternRewriter& rewriter, ArrayAttr& explicit_padding) {
   assert(tf_pad != tensorflow::Padding::EXPLICIT);
   if (!input_type.hasRank() || !filter_type.hasRank() || !output_type.hasRank())
     return false;
@@ -434,7 +434,6 @@ bool getTransposeConv2dPaddingValues(
     int64_t ifm_size = input_type.getDimSize(ifm_dim);
     int64_t filter_size = filter_type.getDimSize(filter_dim);
     int64_t ofm_size = output_type.getDimSize(ofm_dim);
-    int64_t dim_dilation = dilations[i].template cast<IntegerAttr>().getInt();
     int64_t dim_stride = strides[i].template cast<IntegerAttr>().getInt();
 
     // These dimensions need to be static to legalize.
@@ -443,15 +442,14 @@ bool getTransposeConv2dPaddingValues(
       return false;
     }
 
-    int effective_filter_size = (filter_size - 1) * dim_dilation + 1;
-    int total_padding =
-        ((ifm_size - 1) * dim_stride + effective_filter_size - ofm_size);
+    int total_padding = ((ifm_size - 1) * dim_stride + filter_size - ofm_size);
     total_padding = total_padding > 0 ? total_padding : 0;
 
     pad_before = total_padding / 2;
     pad_after = total_padding - pad_before;
 
     computed_paddings.push_back(pad_before);
+    computed_paddings.push_back(pad_after);
   }
 
   explicit_padding = rewriter.getI64ArrayAttr(computed_paddings);
@@ -542,7 +540,7 @@ bool isScale32(mlir::quant::UniformQuantizedType output_element_type) {
 }
 
 LogicalResult ApplyPatternsWithShapeResolution(
-    FuncOp func, const FrozenRewritePatternSet& patterns) {
+    func::FuncOp func, const FrozenRewritePatternSet& patterns) {
   // We use top-down traversal so that shape inference can fully infer types
   // during pattern rewrite.
   GreedyRewriteConfig config;
@@ -567,7 +565,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // the FuncOp type.
   IRRewriter rewriter(func.getContext());
   func.walk([&](func::ReturnOp op) {
-    FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
+    func::FuncOp parent = dyn_cast<func::FuncOp>(op->getParentOp());
     if (parent != func) return;
 
     rewriter.setInsertionPoint(op);

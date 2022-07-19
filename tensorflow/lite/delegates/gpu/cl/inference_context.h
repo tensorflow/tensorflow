@@ -74,6 +74,8 @@ class InferenceContext {
       Environment* env, std::vector<uint8_t>* serialized_model = nullptr,
       Buffer* shared_buffer = nullptr);
 
+  absl::Status AddToCommanBuffer(cl_command_buffer_khr cb);
+
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.

@@ -29,7 +29,6 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/...",
         # Allow visibility from the mlir language server.
@@ -51,7 +50,7 @@ td_library(
         "@llvm-project//mlir:FunctionInterfacesTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:ShapeOpsTdFiles",
-        "@llvm-project//mlir:SideEffectTdFiles",
+        "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
 )
 
@@ -118,8 +117,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -168,7 +167,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SCFToStandard",
+        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -191,7 +190,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
     ],
 )
 
@@ -238,7 +237,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -329,8 +328,6 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
-    module_name = "tfr_wrapper",
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfr",
@@ -342,7 +339,7 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:ShapeDialect",
         "@pybind11",
     ],
 )

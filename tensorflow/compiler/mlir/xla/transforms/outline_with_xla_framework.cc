@@ -19,32 +19,17 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/iterator_range.h"
-#include "llvm/IR/Constants.h"
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
-#include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 
 namespace mlir {
@@ -68,7 +53,7 @@ namespace {
 //   }
 struct OutlineXLAFunc : public RewritePattern {
   explicit OutlineXLAFunc(MLIRContext *context, PatternBenefit benefit = 1)
-      : RewritePattern(FuncOp::getOperationName(), benefit, context) {}
+      : RewritePattern(func::FuncOp::getOperationName(), benefit, context) {}
 
   static void filterFuncAttributes(ArrayRef<NamedAttribute> attrs,
                                    bool argAttrs,
@@ -77,7 +62,7 @@ struct OutlineXLAFunc : public RewritePattern {
       if (attr.getName() == SymbolTable::getSymbolAttrName() ||
           attr.getName() == FunctionOpInterface::getTypeAttrName() ||
           attr.getName() == "std.varargs" ||
-          (argAttrs && attr.getName() == FuncOp::getArgDictAttrName()))
+          (argAttrs && attr.getName() == func::FuncOp::getArgDictAttrName()))
         continue;
       result.push_back(attr);
     }
@@ -85,7 +70,7 @@ struct OutlineXLAFunc : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    auto func = dyn_cast<FuncOp>(op);
+    auto func = dyn_cast<func::FuncOp>(op);
     auto ctx = rewriter.getContext();
     auto loc = func.getLoc();
     SmallVector<Location> locs(func.getFunctionType().getNumInputs(), loc);
@@ -113,9 +98,9 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // The wrapper function will have the same name but with _xla_framework
     // appended and will be annotated with the attribute "xla_entry".
-    auto outline_func =
-        rewriter.create<FuncOp>(loc, func.getSymName().str() + "_xla_framework",
-                                func_type, attrs, arg_attrs);
+    auto outline_func = rewriter.create<func::FuncOp>(
+        loc, func.getSymName().str() + "_xla_framework", func_type, attrs,
+        arg_attrs);
     outline_func->setAttr("outlined", BoolAttr::get(ctx, true));
     outline_func->setAttr("xla_entry", BoolAttr::get(ctx, true));
     auto *b = rewriter.createBlock(&outline_func.getBody(), {},
@@ -138,6 +123,11 @@ struct OutlineXLAFunc : public RewritePattern {
     }
 
     rewriter.create<func::ReturnOp>(loc, results);
+
+    // Finally, mark the called function as private to prevent users from
+    // accidentally trying to use it.
+    func.setVisibility(SymbolTable::Visibility::Private);
+
     return success();
   }
 };
@@ -165,7 +155,7 @@ class OutlineWithXLAFrameworkPass
     if (failed(applyPatternsAndFoldGreedily(m, std::move(patterns)))) {
       signalPassFailure();
     }
-    m->walk([](FuncOp f) {
+    m->walk([](func::FuncOp f) {
       if (f->hasAttr("outlined")) f->removeAttr("outlined");
     });
   }

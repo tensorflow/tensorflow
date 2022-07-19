@@ -1,4 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_features_nolayering_check_if_ios")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_mobile",
+    "if_not_mobile",
+    "tf_cc_test",
+    "tf_features_nolayering_check_if_ios",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -63,22 +69,29 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/container:inlined_vector",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:core_cpu_base",
-            "//tensorflow/core/framework:node_def_proto_cc",
-            "//tensorflow/core/framework:op_def_proto_cc",
-            "//tensorflow/core/platform:errors",
-            "//tensorflow/core/platform:status",
-        ],
-    }),
+    ] + if_mobile([
+        "//tensorflow/core:portable_tensorflow_lib_lite",
+    ]) + if_not_mobile([
+        "//tensorflow/core:framework",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "//tensorflow/core/framework:op_def_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ]),
+)
+
+cc_library(
+    name = "cost_recorder",
+    hdrs = ["cost_recorder.h"],
+    visibility = [
+        "//tensorflow/core/runtime_fallback/kernel:__pkg__",
+    ],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@tf_runtime//:hostcontext",
+    ],
 )
 
 tf_cuda_cc_test(

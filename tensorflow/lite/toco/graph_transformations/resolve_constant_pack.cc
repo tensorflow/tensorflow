@@ -56,7 +56,7 @@ void Pack(Model* model, PackOperator const& op) {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kPack) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto* op = static_cast<const PackOperator*>(base_op);
 
@@ -65,18 +65,18 @@ void Pack(Model* model, PackOperator const& op) {
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   for (const auto& input : op->inputs) {
     if (!IsConstantParameterArray(*model, input)) {
       // Yield if any input is mutable
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -112,7 +112,7 @@ void Pack(Model* model, PackOperator const& op) {
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

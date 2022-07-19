@@ -17,24 +17,35 @@ limitations under the License.
 #define LHLO_OPS_STRUCTS
 
 include "mlir-hlo/Dialect/lhlo/IR/lhlo_dialect.td"
+include "mlir/IR/AttrTypeBase.td"
 
-// This structure defines information about how arguments to the LHLO custom
+// This attribute defines information about how arguments to the LHLO custom
 // call operation relate to the arguments of the target function. In most cases
 // the mapping will be 1:1, but in certain cases, it may not be. As an example,
 // tokens are not represented in the LHLO dialect, but the custom call target
 // might still expect to see buffer arguments corresponding to tokens, in which
 // case the mapping will not be 1:1.
-def CustomCallTargetArgMapping : StructAttr<"CustomCallTargetArgMapping",
-                                 LHLO_Dialect, [
-   // number of buffer expected by the target for arguments.
-   StructFieldAttr<"num_args", I64Attr>,
-   // number of buffer expected by the target for results.
-   StructFieldAttr<"num_results", I64Attr>,
-   // map each custom call op arg to its position in target args.
-   StructFieldAttr<"args_to_target_args", I64ArrayAttr>,
-   // map each custom call op arg to its position in target results.
-   StructFieldAttr<"results_to_target_results", I64ArrayAttr>]> {
-   let summary = "Custom call operands to target argument mapping info";
+def CustomCallTargetArgMappingAttr : AttrDef<
+  LHLO_Dialect, "CustomCallTargetArgMapping"> {
+  let mnemonic = "custom_call_target_arg_mapping";
+  let parameters = (ins
+    // number of buffer expected by the target for arguments.
+    "int64_t":$num_args,
+    // number of buffer expected by the target for results.
+    "int64_t":$num_results,
+    // map each custom call op arg to its position in target args.
+    ArrayRefParameter<"int64_t">:$args_to_target_args,
+    // map each custom call op arg to its position in target results.
+    ArrayRefParameter<"int64_t">:$results_to_target_results
+  );
+  // 'struct()' would allow any order, but doesn't support square brackets yet.
+  let assemblyFormat = [{`<`
+    `num_args` `=` $num_args`,`
+    `num_results` `=` $num_results`,`
+    `args_to_target_args` `=` `[`$args_to_target_args`]``,`
+    `results_to_target_results` `=` `[`$results_to_target_results`]``>`
+  }];
+  let summary = "Custom call operands to target argument mapping info";
 }
 
 #endif // LHLO_OPS_STRUCTS

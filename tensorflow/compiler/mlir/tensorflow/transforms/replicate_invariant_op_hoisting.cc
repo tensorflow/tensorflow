@@ -86,7 +86,7 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 // Check if op uses a device from a list of virtual devices.
 bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
                        Operation* operation) {
-  if (!virtual_devices.hasValue()) return false;
+  if (!virtual_devices.has_value()) return false;
 
   auto result = operation->walk([&](Operation* op) {
     StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
@@ -149,7 +149,7 @@ void ReplicateInvariantOpHoistingPass::runOnOperation() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicateInvariantOpHoistingPass() {
   return std::make_unique<ReplicateInvariantOpHoistingPass>();
 }

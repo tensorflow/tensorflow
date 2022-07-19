@@ -162,6 +162,18 @@ class _Optimizer(object):
         slots[slot] = variable_creator(slot, initializer)
       return slots
 
+  def __eq__(self, other: Any) -> Union[Any, bool]:
+    if isinstance(other, self.__class__):
+      return all([
+          attr1 == attr2
+          for attr1, attr2 in zip(self.__dict__.items(), other.__dict__.items())
+      ])
+    else:
+      return False
+
+  def __hash__(self) -> int:
+    return hash(tuple(self.__dict__.items()))
+
 
 @tf_export("tpu.experimental.embedding.SGD")
 class SGD(_Optimizer):

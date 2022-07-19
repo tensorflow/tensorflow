@@ -63,7 +63,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -91,17 +93,17 @@ Status MaybeRewriteLayoutWithShardedShape(
     mlir::StringAttr sharding,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* shape) {
-  if (!sharding) return Status::OK();
+  if (!sharding) return OkStatus();
 
   xla::OpSharding op_sharding;
   if (!op_sharding.ParseFromString(sharding.getValue().str()))
     return errors::InvalidArgument("failed to parse sharding '",
                                    sharding.getValue().str(), "'");
-  absl::optional<xla::HloSharding> hlo_sharding;
+  std::optional<xla::HloSharding> hlo_sharding;
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
   TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
       hlo_sharding, /*use_fast_memory=*/false, shape_determination_fns, shape));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
@@ -130,7 +132,7 @@ Status GetXlaInputShapes(
     TF_RETURN_IF_ERROR(ConvertToDataType(func_type.getInput(i), &arg_dtype));
 
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        arg_shapes[i].shape, arg_dtype, absl::nullopt);
+        arg_shapes[i].shape, arg_dtype, std::nullopt);
     TF_ASSIGN_OR_RETURN(xla_shape,
                         shape_determination_fns.shape_representation_fn(
                             arg_shapes[i].shape, arg_dtype,
@@ -148,7 +150,7 @@ Status GetXlaInputShapes(
   } else {
     *xla_input_shapes = individual_arg_shapes;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Calculates computation output shape and build OutputDescription for each
@@ -162,7 +164,7 @@ Status GetOutputInfo(
   auto shape_representation_fn_no_fast_memory =
       [shape_determination_fns](const TensorShape& shape, DataType dtype) {
         auto layout_preference = shape_determination_fns.layout_preference_fn(
-            shape, dtype, absl::nullopt);
+            shape, dtype, std::nullopt);
         return shape_determination_fns.shape_representation_fn(
             shape, dtype, /*use_fast_memory=*/false, layout_preference);
       };
@@ -228,7 +230,7 @@ Status GetOutputInfo(
 
   // XLA computation always uses Tuple shape.
   *xla_output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates a vector that maps from the parameters of the XLA computation to
@@ -310,7 +312,8 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type, bool prefer_tf2xla,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes) {
+        custom_legalization_passes,
+    bool allow_partial_conversion) {
   // Note that the region-based control-flow produced here still contains
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
@@ -375,7 +378,8 @@ void CreateConvertMlirToXlaHloPipeline(
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
+      /*allow_partial_conversion=*/allow_partial_conversion,
+      /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
 
   if (CanInlineFunctionsPostLegalization(device_type))
@@ -397,7 +401,7 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
                                     custom_legalization_passes);
 
   if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("legalize_hlo_before", module_op);
+    tensorflow::DumpMlirOpToFile("legalize_hlo_before", module_op, "", &tf2xla);
   if (VLOG_IS_ON(2)) {
     // Print the whole module after each pass which requires disabling
     // multi-threading as well.
@@ -412,14 +416,20 @@ Status LegalizeToHlo(mlir::ModuleOp module_op, llvm::StringRef device_type,
   mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
 
   if (failed(tf2xla.run(module_op))) {
-    return error_handler.Combine(
-        errors::InvalidArgument("TF to XLA legalization failed: "));
+    Status status = errors::InvalidArgument("TF to XLA legalization failed: ");
+    tensorflow::OkOrSetErrorCounterPayload(
+        tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+        status);
+    return error_handler.Combine(status);
   }
 
   if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op);
-
-  return error_handler.ConsumeStatus();
+    tensorflow::DumpMlirOpToFile("legalize_hlo_after", module_op, "", &tf2xla);
+  Status status = error_handler.ConsumeStatus();
+  tensorflow::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_2,
+      status);
+  return status;
 }
 
 Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -452,7 +462,7 @@ Status ConvertMLIRToXlaComputation(
                                                use_tuple_args, return_tuple,
                                                shape_determination_fns));
   *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CompileMlirSetup(mlir::ModuleOp module_op,
@@ -463,7 +473,7 @@ Status CompileMlirSetup(mlir::ModuleOp module_op,
   if (VLOG_IS_ON(2))
     tensorflow::DumpMlirOpToFile("compile_mlir_shape_refiner", module_op);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
@@ -486,7 +496,7 @@ Status BuildHloFromTf(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
   if (VLOG_IS_ON(2))
     tensorflow::DumpMlirOpToFile("build_hlo_tf_after", module_op);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
@@ -500,7 +510,7 @@ Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
           kGroupSizeAttrName.data(), kGroupSizeAttrName.size()));
   if (group_key_attr == nullptr && group_size_attr == nullptr) {
     // No CollectiveInfo is present.
-    return Status::OK();
+    return OkStatus();
   }
   DCHECK(group_key_attr != nullptr)
       << "module attribute " << kGroupKeyAttrName
@@ -513,7 +523,7 @@ Status PopulateCollectiveInfo(mlir::ModuleOp module_op,
   VLOG(2) << "Populating CollectiveInfo: group_key=" << group_key
           << " group_size=" << group_size;
   compilation_result->collective_info = {group_key, group_size, 0};
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PopulateResultIOInfo(
@@ -700,7 +710,7 @@ Status CompileGraphSetup(
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("compile_graph_setup_after", module_op);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BuildHloFromModule(mlir::ModuleOp module_op, xla::XlaBuilder& builder,

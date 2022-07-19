@@ -15,15 +15,13 @@
 """Utilities for describing the structure of a `tf.data` type."""
 import collections
 import functools
+import itertools
 
 import six
 import wrapt
 
-from tensorflow.core.framework import full_type_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -282,8 +280,9 @@ def get_flat_tensor_specs(element_spec):
   """
 
   # pylint: disable=protected-access
-  return functools.reduce(lambda state, value: state + value._flat_tensor_specs,
-                          nest.flatten(element_spec), [])
+  return list(
+      itertools.chain.from_iterable(
+          spec._flat_tensor_specs for spec in nest.flatten(element_spec)))
 
 
 def get_flat_tensor_shapes(element_spec):
@@ -310,77 +309,6 @@ def get_flat_tensor_types(element_spec):
     A list `tf.DType`s for the element tensor representation.
   """
   return [spec.dtype for spec in get_flat_tensor_specs(element_spec)]
-
-# TODO(b/226455884) A python binding for DT_TO_FT or map_dtype_to_tensor() from
-# tensorflow/core/framework/types.cc to avoid duplication here
-DT_TO_FT = {
-    types_pb2.DT_FLOAT: full_type_pb2.TFT_FLOAT,
-    types_pb2.DT_DOUBLE: full_type_pb2.TFT_DOUBLE,
-    types_pb2.DT_INT32: full_type_pb2.TFT_INT32,
-    types_pb2.DT_UINT8: full_type_pb2.TFT_UINT8,
-    types_pb2.DT_INT16: full_type_pb2.TFT_INT16,
-    types_pb2.DT_INT8: full_type_pb2.TFT_INT8,
-    types_pb2.DT_STRING: full_type_pb2.TFT_STRING,
-    types_pb2.DT_COMPLEX64: full_type_pb2.TFT_COMPLEX64,
-    types_pb2.DT_INT64: full_type_pb2.TFT_INT64,
-    types_pb2.DT_BOOL: full_type_pb2.TFT_BOOL,
-    types_pb2.DT_UINT16: full_type_pb2.TFT_UINT16,
-    types_pb2.DT_COMPLEX128: full_type_pb2.TFT_COMPLEX128,
-    types_pb2.DT_HALF: full_type_pb2.TFT_HALF,
-    types_pb2.DT_UINT32: full_type_pb2.TFT_UINT32,
-    types_pb2.DT_UINT64: full_type_pb2.TFT_UINT64,
-    types_pb2.DT_VARIANT: full_type_pb2.TFT_LEGACY_VARIANT,
-}
-
-
-def full_type_from_spec(element_spec):
-  """Returns a FullTypeDef for the element tensor representation.
-
-  Args:
-     element_spec: A nested structure of `tf.TypeSpec` objects representing the
-       element type specification.
-
-  Returns:
-    A FullTypeDef for the element tensor representation.
-  """
-  args = []
-  for ts in nest.flatten(element_spec):
-    if isinstance(ts, NoneTensorSpec):
-      # NoneTensorSpec does not correspond to an output
-      continue
-    if isinstance(ts, sparse_tensor.SparseTensorSpec):
-      # Currently, this represents a SparseTensor spec as a single ouput (that
-      # is a variant) as a TFT_TENSOR. When shape information is added to
-      # fulltype, either the shape needs to reflect this
-      # (e.g. TFT_TENSOR[..., shape=COOSparseShape]) or a new TFT_SPARSE data
-      # type should be created.
-      fts = get_flat_tensor_specs(ts)
-      if (len(fts) != 1) or (fts[0].dtype != dtypes.variant):
-        raise TypeError("Only sparse tensors as variants is supported")
-      type_id = full_type_pb2.TFT_TENSOR
-    elif isinstance(ts, ragged_tensor.RaggedTensorSpec):
-      type_id = full_type_pb2.TFT_RAGGED
-    elif isinstance(ts, tensor_spec.TensorSpec):
-      type_id = full_type_pb2.TFT_TENSOR
-    else:
-      # The intent of defaulting to TFT_UNSET is so other cases can fallback
-      # to the behavior prior to full type or a reasonable default. Users
-      # can define their own type specs, so it is important to have a reasonable
-      # default.
-      type_id = full_type_pb2.TFT_UNSET
-    if type_id != full_type_pb2.TFT_UNSET:
-      args.append(
-          full_type_pb2.FullTypeDef(
-              type_id=type_id,
-              args=[
-                  full_type_pb2.FullTypeDef(
-                      type_id=DT_TO_FT.get(ts.dtype, full_type_pb2.TFT_ANY))
-              ]))
-    else:
-      args.append(full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET))
-  element_type = full_type_pb2.FullTypeDef(
-      type_id=full_type_pb2.TFT_PRODUCT, args=args)
-  return element_type
 
 
 def _to_tensor_list_helper(encode_fn, element_spec, element):
