@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_MLIR_HLO_BUILDER_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -134,7 +135,8 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> CustomCallInternal(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape, const std::string& opaque,
+      const XlaComputation* computation, const Shape& shape,
+      const std::string& opaque,
       std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>

@@ -135,9 +135,11 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
   return MakeXlaOp(op);
 }
 
+// TODO(b/235207091) Add actual support for the called computation.
 StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
-    const Shape& shape, const std::string& opaque,
+    const XlaComputation* computation, const Shape& shape,
+    const std::string& opaque,
     std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -155,6 +157,8 @@ StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
       << "MLIR CustomCallOp does not support ConvolutionDimensionNumbers yet";
   TF_RET_CHECK(schedule == CustomCallSchedule::SCHEDULE_NONE)
       << "MLIR CustomCallOp does not support custom-call-schedule yet";
+  TF_RET_CHECK(computation == nullptr || computation->IsNull())
+      << "MLIR CustomCallOp with computation isn't supported yet";
 
   llvm::SmallVector<mlir::NamedAttribute> attributes;
   if (operand_shapes_with_layout.has_value()) {
