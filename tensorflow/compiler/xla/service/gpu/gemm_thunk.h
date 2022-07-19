@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
 
 #include <optional>
+#include <utility>
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
@@ -51,7 +52,9 @@ class GemmThunk : public Thunk {
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
 #if GOOGLE_CUDA
-  std::optional<se::cuda::BlasLt::MatmulPlan> matmul_plan_;
+  std::optional<
+      std::pair<cublas_lt::MatmulPlan, se::cuda::BlasLt::MatmulAlgorithm>>
+      matmul_plan_and_algorithm_;
 #endif  // GOOGLE_CUDA
 };
 

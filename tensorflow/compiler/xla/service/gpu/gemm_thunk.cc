@@ -52,26 +52,26 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
 #if GOOGLE_CUDA
   if (config_.use_cublaslt) {
-    auto &buffer_allocations = *params.buffer_allocations;
+    if (!matmul_plan_and_algorithm_) {
+      TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(config_));
+      TF_ASSIGN_OR_RETURN(
+          std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+          plan.GetAlgorithms(params.stream));
+      TF_RET_CHECK(config_.algorithm);
+      TF_RET_CHECK(*config_.algorithm >= 0);
+      TF_RET_CHECK(*config_.algorithm < algorithms.size());
+      matmul_plan_and_algorithm_ = {std::move(plan),
+                                    algorithms[*config_.algorithm]};
+    }
+
+    auto& [plan, algorithm] = *matmul_plan_and_algorithm_;
+
     se::OwningScratchAllocator<> scratch_allocator(
-        buffer_allocations.device_ordinal(),
-        buffer_allocations.memory_allocator());
+        params.buffer_allocations->device_ordinal(),
+        params.buffer_allocations->memory_allocator());
 
-    TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
-                        GetBlasLtMatmulPlanParams(config_));
-
-    if (!matmul_plan_) {
-      matmul_plan_ = se::cuda::BlasLt::MatmulPlan();
-      TF_RETURN_IF_ERROR(matmul_plan_->init(matmul_plan_params.params));
-    }
-
-    if (matmul_plan_params.must_swap_operands) {
-      std::swap(lhs_data, rhs_data);
-    }
-
-    return RunBlasLtMatmul(*matmul_plan_, config_.alpha, lhs_data, rhs_data,
-                           config_.beta, output_data, params.stream,
-                           scratch_allocator);
+    return plan.ExecuteOnStream(params.stream, lhs_data, rhs_data, output_data,
+                                algorithm, scratch_allocator);
   }
 #endif  // GOOGLE_CUDA
 

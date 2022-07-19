@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/blas.h"
 
@@ -120,40 +122,45 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
 #if GOOGLE_CUDA
 
-constexpr size_t kBlasLtMaxWorkspaceSize = 1ll << 32;  // 4GB
+namespace cublas_lt {
 
-struct MatmulPlanParams {
-  se::cuda::BlasLt::MatmulPlanParams params;
-  bool must_swap_operands;
-};
-
-StatusOr<MatmulPlanParams> GetBlasLtMatmulPlanParams(const GemmConfig& config);
-
-Status RunBlasLtMatmul(
-    const se::cuda::BlasLt::MatmulPlan& plan, complex128 alpha,
-    se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
-    double beta, se::DeviceMemoryBase output_buffer, se::Stream* stream,
-    se::ScratchAllocator& scratch_allocator,
-    const se::cuda::BlasLt::MatmulAlgorithm* algorithm = nullptr,
-    se::blas::ProfileResult* profile_result = nullptr);
-
-class BlasPlansAutotuneCache {
+class MatmulPlan {
  public:
-  BlasPlansAutotuneCache() = default;
+  static StatusOr<MatmulPlan> From(const GemmConfig& config);
 
-  std::optional<se::blas::AlgorithmConfig> Find(
-      const se::cuda::BlasLt::MatmulPlanParams& params) const;
-  void Insert(se::cuda::BlasLt::MatmulPlanParams params,
-              se::blas::AlgorithmConfig config);
+  Status ExecuteOnStream(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
+                         se::DeviceMemoryBase rhs_buffer,
+                         se::DeviceMemoryBase output_buffer,
+                         const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                         se::ScratchAllocator& scratch_allocator,
+                         se::blas::ProfileResult* profile_result = nullptr);
+
+  StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>> GetAlgorithms(
+      se::Stream* stream) const;
 
  private:
-  mutable absl::Mutex mu_;
-  absl::flat_hash_map<se::cuda::BlasLt::MatmulPlanParams,
-                      se::blas::AlgorithmConfig>
-      blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
+  MatmulPlan(se::cuda::BlasLt::MatmulPlan plan, complex128 alpha, double beta,
+             bool must_swap_operands)
+      : plan_(std::move(plan)),
+        alpha_(alpha),
+        beta_(beta),
+        must_swap_operands_(must_swap_operands) {}
+
+  template <typename Input, typename Scale = Input>
+  Status DoMatmul(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
+                  se::DeviceMemoryBase rhs_buffer,
+                  se::DeviceMemoryBase output_buffer,
+                  const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                  se::ScratchAllocator& scratch_allocator,
+                  se::blas::ProfileResult* profile_result);
+
+  se::cuda::BlasLt::MatmulPlan plan_;
+  complex128 alpha_;
+  double beta_;
+  bool must_swap_operands_;
 };
 
-BlasPlansAutotuneCache& GetBlasPlansAutotuneCache();
+}  // namespace cublas_lt
 
 #endif  // GOOGLE_CUDA
 

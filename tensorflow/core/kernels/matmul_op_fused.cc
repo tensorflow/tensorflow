@@ -183,8 +183,8 @@ StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
 template <typename LaunchFunc>
 se::blas::AlgorithmConfig AutotuneMatmul(
     const std::vector<se::cuda::BlasLt::MatmulAlgorithm>& algorithms,
-    const se::cuda::BlasLt::MatmulPlanParams& matmul_params,
-    OpKernelContext* context, const LaunchFunc& launch_func) {
+    BlasLtMatmulPlanParams& matmul_params, OpKernelContext* context,
+    const LaunchFunc& launch_func) {
   // Note that algorithm_config.algorithm() here is used to refer
   // to the index within the algorithms vector, not the algorithm
   // itself.
@@ -203,18 +203,20 @@ se::blas::AlgorithmConfig AutotuneMatmul(
       // scratch space is deallocated between runs.
       BlasScratchAllocator scratch_allocator(context);
 
-      bool cublaslt_launch_ok =
-          launch_func(&scratch_allocator, profile_algorithm, &profile_result);
+      Status cublaslt_launch =
+          launch_func(scratch_allocator, profile_algorithm, &profile_result);
 
       VLOG(4) << "  Autotune algorithm " << i
               << " result: " << profile_result.elapsed_time_in_ms()
               << " ms, valid=" << profile_result.is_valid()
-              << ", workspace_size=" << profile_algorithm.workspace_size();
+              << ", workspace_size=" << profile_algorithm.workspace_size;
 
-      if (cublaslt_launch_ok && profile_result.is_valid() &&
+      if (cublaslt_launch.ok() && profile_result.is_valid() &&
           profile_result.elapsed_time_in_ms() <
               best_result.elapsed_time_in_ms()) {
         best_result = profile_result;
+        // Use index into algorithms array, instead of cublas internal ID.
+        best_result.set_algorithm(i);
       }
     }
 
@@ -275,59 +277,33 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     const int64_t k = a.dim_size(trans_a ? 0 : 1);
     const int64_t n = b.dim_size(trans_b ? 0 : 1);
 
-    se::blas::DataType blas_dtype = se::blas::ToDataType<T>::value;
-
-    DataType dtype = DataTypeToEnum<T>::value;
-    auto status_or_computation_type = GetBlasComputationType(dtype);
-    OP_REQUIRES(context, status_or_computation_type.ok(),
-                errors::Internal("Unsupported dtype for batched matmul."));
-    se::blas::ComputationType computation_type =
-        std::move(status_or_computation_type).value();
-
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose};
 
-    se::cuda::BlasLt::MatmulPlanParams matmul_params{
-        /*ab_type=*/blas_dtype,
-        /*c_type=*/blas_dtype,
-        computation_type,
-        se::cuda::BlasLt::PointerMode::kHost,
-        epilog_op,
-        trans[trans_b ? 1 : 0],
-        trans[trans_a ? 1 : 0],
-        static_cast<uint64_t>(n),
-        static_cast<uint64_t>(m),
-        static_cast<uint64_t>(k),
-        trans_b ? k : n,
-        trans_a ? m : k,
-        static_cast<int64_t>(n),
-        /*batch_size=*/1,
-        static_cast<int64_t>(k * n),
-        static_cast<int64_t>(m * k),
-        static_cast<int64_t>(m * n)};
+    BlasLtMatmulPlanParams matmul_params{se::blas::ToDataType<T>::value,
+                                         static_cast<size_t>(m),
+                                         static_cast<size_t>(n),
+                                         static_cast<size_t>(k),
+                                         trans[trans_a ? 1 : 0],
+                                         trans[trans_b ? 1 : 0],
+                                         /*batch_size=*/1,
+                                         /*broadcast_a=*/false,
+                                         /*broadcast_b=*/false,
+                                         epilog_op};
 
     auto plan_and_algorithms_or = GetPlanAndAlgorithms(stream, matmul_params);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
-
     const auto& plan = plan_and_algorithms->plan;
     const auto& algorithms = plan_and_algorithms->algorithms;
     OP_REQUIRES(context, algorithms.size() > 0,
                 errors::InvalidArgument("No matmul algorithm returned!"));
 
-    T alpha(1.0);
-    T beta(0.0);
-
-    se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
-    OP_REQUIRES(context, blas_lt != nullptr,
-                errors::Internal("blaslt not supported"));
-
-    auto launch_func = [&](BlasScratchAllocator* scratch_allocator,
+    auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
-                           se::blas::ProfileResult* profile_result) -> bool {
-      return blas_lt->DoMatmul(stream, plan, alpha, b_ptr, a_ptr, beta, c_ptr,
-                               scratch_allocator, algorithm, bias_ptr,
-                               profile_result);
+                           se::blas::ProfileResult* profile_result) {
+      return DoBlasLtMatmul(stream, plan, a_ptr, b_ptr, c_ptr, algorithm,
+                            scratch_allocator, bias_ptr, profile_result);
     };
 
     se::cuda::BlasLt::MatmulAlgorithm algorithm = algorithms[0];
@@ -340,16 +316,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     }
 
     BlasScratchAllocator scratch_allocator(context);
-
-    bool cublaslt_launch_ok =
-        launch_func(&scratch_allocator, algorithm, nullptr);
-    if (!cublaslt_launch_ok) {
-      OP_REQUIRES_OK(context,
-                     errors::Internal("BlasLt Matmul launch failed : a.shape=",
-                                      a.shape().DebugString(),
-                                      ", b.shape=", b.shape().DebugString(),
-                                      ", m=", m, ", n=", n, ", k=", k));
-    }
+    OP_REQUIRES_OK(context, launch_func(scratch_allocator, algorithm, nullptr));
   }
 };
 

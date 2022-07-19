@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -231,7 +232,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 
 namespace {
 
-bool IsBlasPlansCompatibleType(PrimitiveType type) {
+bool IsBlasLtCompatible(PrimitiveType type) {
   switch (type) {
     case F16:
     case F32:
@@ -302,7 +303,7 @@ bool IsBlasPlansCompatibleType(PrimitiveType type) {
   TF_RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
                (rhs_layout.batch_size == 1));
 
-  use_cublaslt &= IsBlasPlansCompatibleType(output_shape.element_type());
+  use_cublaslt &= IsBlasLtCompatible(output_shape.element_type());
 
   switch (output_shape.element_type()) {
     case F16:
@@ -603,144 +604,137 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
-template <typename Input>
-Status DoGemmLt(const se::cuda::BlasLt::MatmulPlan& plan, Input alpha,
-                se::DeviceMemoryBase lhs_buffer,
-                se::DeviceMemoryBase rhs_buffer, Input beta,
-                se::DeviceMemoryBase output_buffer, se::Stream* stream,
-                se::ScratchAllocator& scratch_allocator,
-                const se::cuda::BlasLt::MatmulAlgorithm* algorithm,
-                se::blas::ProfileResult* profile_result) {
-  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
-  TF_RET_CHECK(blas_lt != nullptr);
+StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
+    const MatrixLayout& layout) {
+  TF_ASSIGN_OR_RETURN(se::blas::DataType dtype, AsBlasDataType(layout.dtype));
 
-  TF_ASSIGN_OR_RETURN(
-      se::cuda::BlasLt::MatmulAlgorithm algo,
-      [&]() -> StatusOr<se::cuda::BlasLt::MatmulAlgorithm> {
-        if (algorithm != nullptr) {
-          return *algorithm;
-        } else {
-          BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
-          std::optional<se::blas::AlgorithmConfig> algorithm_config =
-              cache.Find(plan.params());
+  auto order = (layout.order == MatrixLayout::Order::kColumnMajor)
+                   ? se::cuda::BlasLt::MatrixLayout::Order::kColumnMajor
+                   : se::cuda::BlasLt::MatrixLayout::Order::kRowMajor;
 
-          if (!algorithm_config) {
-            VLOG(4) << "Autotuner disabled: Using algorithm 0";
-            cache.Insert(plan.params(), se::blas::AlgorithmConfig(0));
-            algorithm_config = se::blas::AlgorithmConfig(0);
-          }
-
-          int max_algorithm_count = algorithm_config->algorithm() + 1;
-          TF_ASSIGN_OR_RETURN(
-              std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
-              blas_lt->GetMatmulAlgorithms(plan, kBlasLtMaxWorkspaceSize,
-                                           max_algorithm_count));
-
-          return algorithms[algorithm_config->algorithm()];
-        }
-      }());
-
-  se::DeviceMemory<Input> output_data(output_buffer);
-  if (blas_lt->DoMatmul(stream, plan, se::HostOrDeviceScalar<Input>(alpha),
-                        se::DeviceMemory<Input>(lhs_buffer),
-                        se::DeviceMemory<Input>(rhs_buffer),
-                        se::HostOrDeviceScalar<Input>(beta), &output_data,
-                        &scratch_allocator, algo, /*bias=*/{},
-                        profile_result)) {
-    return OkStatus();
-  }
-  return InternalError("BlasLtMatmul failed.");
+  return se::cuda::BlasLt::MatrixLayout::Create(
+      dtype, layout.num_rows, layout.num_cols, order, layout.batch_size,
+      layout.leading_dim_stride, layout.batch_stride);
 }
 
 }  // namespace
 
-StatusOr<MatmulPlanParams> GetBlasLtMatmulPlanParams(const GemmConfig& config) {
+namespace cublas_lt {
+
+/*static*/ StatusOr<MatmulPlan> MatmulPlan::From(const GemmConfig& config) {
   MatrixLayout lhs_layout = config.lhs_layout;
   MatrixLayout rhs_layout = config.rhs_layout;
   MatrixLayout output_layout = config.output_layout;
+
+  // cublasLt matmul requires batch sizes to be equal. If only one operand has a
+  // batch, the other will be broadcast (as its batch_stride == 0).
+  size_t batch_size = std::max(lhs_layout.batch_size, rhs_layout.batch_size);
+  lhs_layout.batch_size = batch_size;
+  rhs_layout.batch_size = batch_size;
+
   bool must_swap_operands =
       MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout);
 
-  TF_ASSIGN_OR_RETURN(se::blas::DataType dtype,
+  TF_ASSIGN_OR_RETURN(se::blas::DataType output_dtype,
                       AsBlasDataType(output_layout.dtype));
   TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
                       GetBlasComputationType(output_layout.dtype));
+  TF_ASSIGN_OR_RETURN(
+      se::cuda::BlasLt::MatmulDesc op_desc,
+      se::cuda::BlasLt::MatmulDesc::Create(
+          computation_type,
+          se::cuda::BlasLt::GetScaleType(output_dtype, computation_type)));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout a_desc,
+                      AsBlasLtMatrixLayout(lhs_layout));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout b_desc,
+                      AsBlasLtMatrixLayout(rhs_layout));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout c_desc,
+                      AsBlasLtMatrixLayout(output_layout));
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout d_desc,
+                      AsBlasLtMatrixLayout(output_layout));
 
-  se::cuda::BlasLt::MatmulPlanParams params{
-      /*ab_type=*/dtype,
-      /*c_type=*/dtype,
-      computation_type,
-      se::cuda::BlasLt::PointerMode::kHost,
-      se::cuda::BlasLt::Epilogue::kDefault,
-      AsBlasTranspose(lhs_layout.order),
-      AsBlasTranspose(rhs_layout.order),
-      static_cast<uint64_t>(output_layout.num_rows),
-      static_cast<uint64_t>(output_layout.num_cols),
-      static_cast<uint64_t>(lhs_layout.num_cols),
-      lhs_layout.leading_dim_stride,
-      rhs_layout.leading_dim_stride,
-      output_layout.leading_dim_stride,
-      static_cast<int>(output_layout.batch_size),
-      lhs_layout.batch_stride,
-      rhs_layout.batch_stride,
-      output_layout.batch_stride};
-
-  return MatmulPlanParams{params, must_swap_operands};
+  return MatmulPlan{
+      se::cuda::BlasLt::MatmulPlan{std::move(op_desc), std::move(a_desc),
+                                   std::move(b_desc), std::move(c_desc),
+                                   std::move(d_desc)},
+      config.alpha, config.beta, must_swap_operands};
 }
 
-Status RunBlasLtMatmul(const se::cuda::BlasLt::MatmulPlan& plan,
-                       complex128 alpha, se::DeviceMemoryBase lhs_buffer,
-                       se::DeviceMemoryBase rhs_buffer, double beta,
-                       se::DeviceMemoryBase output_buffer, se::Stream* stream,
-                       se::ScratchAllocator& scratch_allocator,
-                       const se::cuda::BlasLt::MatmulAlgorithm* algorithm,
-                       se::blas::ProfileResult* profile_result) {
-  switch (plan.c_type()) {
-    case se::blas::DataType::kHalf:
-      return DoGemmLt(plan, static_cast<Eigen::half>(alpha.real()), lhs_buffer,
-                      rhs_buffer, static_cast<Eigen::half>(beta), output_buffer,
-                      stream, scratch_allocator, algorithm, profile_result);
-    case se::blas::DataType::kFloat:
-      return DoGemmLt(plan, static_cast<float>(alpha.real()), lhs_buffer,
-                      rhs_buffer, static_cast<float>(beta), output_buffer,
-                      stream, scratch_allocator, algorithm, profile_result);
-    case se::blas::DataType::kDouble:
-      return DoGemmLt(plan, alpha.real(), lhs_buffer, rhs_buffer, beta,
-                      output_buffer, stream, scratch_allocator, algorithm,
-                      profile_result);
-    case se::blas::DataType::kComplexFloat:
-      return DoGemmLt(plan, static_cast<complex64>(alpha), lhs_buffer,
-                      rhs_buffer, static_cast<complex64>(beta), output_buffer,
-                      stream, scratch_allocator, algorithm, profile_result);
-    case se::blas::DataType::kComplexDouble:
-      return DoGemmLt(plan, alpha, lhs_buffer, rhs_buffer,
-                      static_cast<complex128>(beta), output_buffer, stream,
-                      scratch_allocator, algorithm, profile_result);
+template <typename Input, typename Scale>
+Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
+                            se::DeviceMemoryBase rhs_buffer,
+                            se::DeviceMemoryBase output_buffer,
+                            const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                            se::ScratchAllocator& scratch_allocator,
+                            se::blas::ProfileResult* profile_result) {
+  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  TF_RET_CHECK(blas_lt != nullptr);
+
+  Scale alpha;
+  if constexpr (std::is_same_v<Scale, complex64> ||
+                std::is_same_v<Scale, complex128>) {
+    alpha = static_cast<Scale>(alpha_);
+  } else {
+    alpha = static_cast<Scale>(alpha_.real());
+  }
+
+  Scale beta = static_cast<Scale>(beta_);
+
+  se::DeviceMemory<Input> output(output_buffer);
+  return blas_lt->DoMatmul(
+      stream, plan_, se::HostOrDeviceScalar<Scale>(alpha),
+      se::DeviceMemory<Input>(lhs_buffer), se::DeviceMemory<Input>(rhs_buffer),
+      se::HostOrDeviceScalar<Scale>(beta), /*c=*/output, /*d=*/output,
+      algorithm, scratch_allocator, /*bias=*/{}, profile_result);
+}
+
+Status MatmulPlan::ExecuteOnStream(
+    se::Stream* stream, se::DeviceMemoryBase lhs_buffer,
+    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
+    const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+    se::ScratchAllocator& scratch_allocator,
+    se::blas::ProfileResult* profile_result) {
+  if (must_swap_operands_) {
+    std::swap(lhs_buffer, rhs_buffer);
+  }
+
+  switch (plan_.d_desc.type()) {
+    case CUDA_R_16F:
+      return DoMatmul<Eigen::half, float>(stream, lhs_buffer, rhs_buffer,
+                                          output_buffer, algorithm,
+                                          scratch_allocator, profile_result);
+    case CUDA_R_16BF:
+      return DoMatmul<Eigen::bfloat16, float>(
+          stream, lhs_buffer, rhs_buffer, output_buffer, algorithm,
+          scratch_allocator, profile_result);
+    case CUDA_R_32F:
+      return DoMatmul<float>(stream, lhs_buffer, rhs_buffer, output_buffer,
+                             algorithm, scratch_allocator, profile_result);
+    case CUDA_R_64F:
+      return DoMatmul<double>(stream, lhs_buffer, rhs_buffer, output_buffer,
+                              algorithm, scratch_allocator, profile_result);
+    case CUDA_C_32F:
+      return DoMatmul<complex64>(stream, lhs_buffer, rhs_buffer, output_buffer,
+                                 algorithm, scratch_allocator, profile_result);
+    case CUDA_C_64F:
+      return DoMatmul<complex128>(stream, lhs_buffer, rhs_buffer, output_buffer,
+                                  algorithm, scratch_allocator, profile_result);
     default:
       return InternalError("Unexpected dtype");
   }
 }
 
-std::optional<se::blas::AlgorithmConfig> BlasPlansAutotuneCache::Find(
-    const se::cuda::BlasLt::MatmulPlanParams& params) const {
-  absl::MutexLock lock(&mu_);
-  auto it = blas_plans_algorithms_map_.find(params);
-  if (it == blas_plans_algorithms_map_.end()) {
-    return std::nullopt;
-  }
-  return it->second;
+StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>>
+MatmulPlan::GetAlgorithms(se::Stream* stream) const {
+  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+  TF_RET_CHECK(blas_lt != nullptr);
+  TF_ASSIGN_OR_RETURN(auto preference,
+                      se::cuda::BlasLt::MatmulPreference::Create(
+                          /*max_workspace_size=*/1ll << 32));  // 4GB
+  return blas_lt->GetMatmulAlgorithms(plan_, preference);
 }
 
-void BlasPlansAutotuneCache::Insert(se::cuda::BlasLt::MatmulPlanParams params,
-                                    se::blas::AlgorithmConfig config) {
-  absl::MutexLock lock(&mu_);
-  blas_plans_algorithms_map_.insert({std::move(params), std::move(config)});
-}
-
-BlasPlansAutotuneCache& GetBlasPlansAutotuneCache() {
-  static auto& instance = *new BlasPlansAutotuneCache();
-  return instance;
-}
+}  // namespace cublas_lt
 
 #endif  // GOOGLE_CUDA
 

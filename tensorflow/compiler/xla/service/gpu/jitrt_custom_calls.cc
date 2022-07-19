@@ -458,25 +458,22 @@ LogicalResult Gemm::operator()(
     config = configs->Set(uid, std::move(*cfg));
   }
 
-  Status executed = [&] {
+  Status executed = [&]() -> Status {
     if (config->use_cublaslt) {
-      TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
-                          GetBlasLtMatmulPlanParams(*config));
-
-      // TODO(cjfj): Cache the plan.
-      se::cuda::BlasLt::MatmulPlan matmul_plan;
-      TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
-
-      if (matmul_plan_params.must_swap_operands) {
-        std::swap(lhs_data, rhs_data);
-      }
+      // TODO(cjfj): Cache the plan and algorithm.
+      TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(*config));
+      TF_RET_CHECK(config->algorithm);
+      TF_ASSIGN_OR_RETURN(
+          std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+          plan.GetAlgorithms(stream));
+      const se::cuda::BlasLt::MatmulAlgorithm& algorithm =
+          algorithms[*config->algorithm];
 
       se::OwningScratchAllocator<> scratch_allocator(
           run_options->device_ordinal(), run_options->allocator());
 
-      return RunBlasLtMatmul(matmul_plan, {alpha_real, alpha_imag}, lhs_data,
-                             rhs_data, beta, output_data, stream,
-                             scratch_allocator);
+      return plan.ExecuteOnStream(stream, lhs_data, rhs_data, output_data,
+                                  algorithm, scratch_allocator);
     }
     return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
   }();

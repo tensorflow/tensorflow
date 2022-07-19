@@ -23,13 +23,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logger.h"
@@ -208,78 +205,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
   return {std::nullopt};
 }
 
-Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* gemm,
-                           se::DeviceMemoryAllocator* allocator,
-                           const GemmBackendConfig& gemm_config) {
-  se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
-  TF_RET_CHECK(blas_lt != nullptr);
-
-  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
-
-  const DebugOptions& debug_options =
-      gemm->GetModule()->config().debug_options();
-  AutotuneConfig autotune_config = GetConfig(debug_options);
-
-  se::RedzoneAllocator buffer_allocator =
-      CreateRedzoneAllocator(stream, allocator, debug_options, autotune_config);
-
-  int64_t rng_state = 0;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase lhs_buffer,
-                      CreateBuffer(buffer_allocator, *gemm->operand(0),
-                                   autotune_config, rng_state));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase rhs_buffer,
-                      CreateBuffer(buffer_allocator, *gemm->operand(1),
-                                   autotune_config, rng_state));
-  TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase output_buffer,
-      CreateBuffer(buffer_allocator, *gemm, autotune_config, rng_state));
-
-  TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
-                      GetBlasLtMatmulPlanParams(config));
-
-  BlasPlansAutotuneCache& cache = GetBlasPlansAutotuneCache();
-  if (cache.Find(matmul_plan_params.params)) {
-    return OkStatus();
-  }
-
-  se::cuda::BlasLt::MatmulPlan matmul_plan;
-  TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
-
-  if (matmul_plan_params.must_swap_operands) {
-    std::swap(lhs_buffer, rhs_buffer);
-  }
-
-  constexpr int kMaxAlgorithmCount = 100;
-  TF_ASSIGN_OR_RETURN(
-      std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
-      blas_lt->GetMatmulAlgorithms(matmul_plan, kBlasLtMaxWorkspaceSize,
-                                   kMaxAlgorithmCount));
-
-  TF_ASSIGN_OR_RETURN(
-      std::optional<size_t> best_algorithm_idx,
-      GetBestAlgorithm<se::cuda::BlasLt::MatmulAlgorithm>(
-          stream, buffer_allocator, *gemm, autotune_config, lhs_buffer,
-          rhs_buffer, output_buffer, algorithms,
-          [&](const se::cuda::BlasLt::MatmulAlgorithm& algorithm)
-              -> StatusOr<se::blas::ProfileResult> {
-            se::OwningScratchAllocator<> scratch_allocator(
-                stream->parent()->device_ordinal(), allocator);
-            se::blas::ProfileResult profile_result;
-            TF_RETURN_IF_ERROR(RunBlasLtMatmul(
-                matmul_plan, config.alpha, lhs_buffer, rhs_buffer, config.beta,
-                output_buffer, stream, scratch_allocator, &algorithm,
-                &profile_result));
-            return std::move(profile_result);
-          }));
-
-  if (best_algorithm_idx) {
-    cache.Insert(std::move(matmul_plan_params.params),
-                 se::blas::AlgorithmConfig(*best_algorithm_idx));
-  }
-  return OkStatus();
-}
-
-static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
+StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
     const HloInstruction* gemm, const GemmBackendConfig& gemm_config,
     se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
@@ -290,14 +216,9 @@ static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   // Don't run autotuning concurrently on the same GPU.
   absl::MutexLock gpu_lock(&GetGpuMutex(stream->parent()));
 
-  if (config.use_cublaslt) {
-    TF_RETURN_IF_ERROR(
-        DoBlasPlansAutotune(stream, gemm, allocator, gemm_config));
-    return {se::blas::kNoAlgorithm};
-  }
-
   auto key = std::make_tuple(stream->parent(), lhs->shape(), rhs->shape(),
-                             gemm->shape(), gemm_config.SerializeAsString());
+                             gemm->shape(), gemm_config.SerializeAsString(),
+                             config.use_cublaslt);
 
   static absl::Mutex mutex(absl::kConstInit);
   static auto& cache ABSL_GUARDED_BY(mutex) =
@@ -324,9 +245,6 @@ static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   cache_misses++;
   VLOG(4) << "Autotuning cache miss";
 
-  std::vector<se::blas::AlgorithmType> algorithms;
-  CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
-
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
   AutotuneConfig autotune_config = GetConfig(debug_options);
@@ -345,27 +263,57 @@ static StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       se::DeviceMemoryBase output_buffer,
       CreateBuffer(buffer_allocator, *gemm, autotune_config, rng_state));
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<size_t> best_algorithm_idx,
-      GetBestAlgorithm<se::blas::AlgorithmType>(
-          stream, buffer_allocator, *gemm, autotune_config, lhs_buffer,
-          rhs_buffer, output_buffer, algorithms,
-          [&](const se::blas::AlgorithmType& algorithm)
-              -> StatusOr<se::blas::ProfileResult> {
-            se::blas::ProfileResult profile_result;
-            // We expect GemmWithAlgorithm to fail sometimes -- in fact, it will
-            // fail for all algorithms if we're targeting < sm_50.  But because
-            // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
-            // always return true, and the actual success-ness is returned in
-            // ProfileResult::is_valid.
-            TF_RETURN_IF_ERROR(RunGemm(config, lhs_buffer, rhs_buffer,
-                                       output_buffer, stream, algorithm,
-                                       &profile_result));
-            return std::move(profile_result);
-          }));
-
   std::optional<se::blas::AlgorithmType> best_algorithm;
-  if (best_algorithm_idx) best_algorithm = algorithms[*best_algorithm_idx];
+  if (config.use_cublaslt) {
+    TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(config));
+    TF_ASSIGN_OR_RETURN(
+        std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+        plan.GetAlgorithms(stream));
+
+    TF_ASSIGN_OR_RETURN(
+        std::optional<size_t> best_algorithm_idx,
+        GetBestAlgorithm<se::cuda::BlasLt::MatmulAlgorithm>(
+            stream, buffer_allocator, *gemm, autotune_config, lhs_buffer,
+            rhs_buffer, output_buffer, algorithms,
+            [&](const se::cuda::BlasLt::MatmulAlgorithm& algorithm)
+                -> StatusOr<se::blas::ProfileResult> {
+              se::OwningScratchAllocator<> scratch_allocator(
+                  stream->parent()->device_ordinal(), allocator);
+              se::blas::ProfileResult profile_result;
+              TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
+                  stream, lhs_buffer, rhs_buffer, output_buffer, algorithm,
+                  scratch_allocator, &profile_result));
+              return std::move(profile_result);
+            }));
+
+    TF_RET_CHECK(best_algorithm_idx) << "failed to auto-tune cublas_lt matmul";
+    best_algorithm = *best_algorithm_idx;
+  } else {
+    std::vector<se::blas::AlgorithmType> algorithms;
+    TF_RET_CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
+
+    TF_ASSIGN_OR_RETURN(std::optional<size_t> best_algorithm_idx,
+                        GetBestAlgorithm<se::blas::AlgorithmType>(
+                            stream, buffer_allocator, *gemm, autotune_config,
+                            lhs_buffer, rhs_buffer, output_buffer, algorithms,
+                            [&](const se::blas::AlgorithmType& algorithm)
+                                -> StatusOr<se::blas::ProfileResult> {
+                              se::blas::ProfileResult profile_result;
+                              // We expect GemmWithAlgorithm to fail sometimes
+                              // -- in fact, it will fail for all algorithms if
+                              // we're targeting < sm_50.  But because we pass a
+                              // non-null ProfileResult, DoGemmWithAlgorithm
+                              // should always return true, and the actual
+                              // success-ness is returned in
+                              // ProfileResult::is_valid.
+                              TF_RETURN_IF_ERROR(RunGemm(
+                                  config, lhs_buffer, rhs_buffer, output_buffer,
+                                  stream, algorithm, &profile_result));
+                              return std::move(profile_result);
+                            }));
+
+    if (best_algorithm_idx) best_algorithm = algorithms[*best_algorithm_idx];
+  }
 
   CHECK(cache.emplace(key, best_algorithm).second);
   return best_algorithm;
