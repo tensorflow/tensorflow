@@ -627,6 +627,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_proto_map",
+    srcs = ["hlo_proto_map.cc"],
+    hdrs = ["hlo_proto_map.h"],
+    visibility = [":friends"],
+    deps = [
+        ":tf_xplane_visitor",
+        ":xplane_schema",
+        ":xplane_utils",
+        ":xplane_visitor",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core/profiler/convert:xla_op_utils",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "tpu_xplane_utils_test",
     srcs = ["tpu_xplane_utils_test.cc"],
