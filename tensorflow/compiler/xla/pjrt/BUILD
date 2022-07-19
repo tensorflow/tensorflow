@@ -587,3 +587,11 @@ cc_library(
         "//tensorflow/core/tpu:pjrt_api",
     ],
 )
+
+cc_library(
+    name = "host_callback",
+    srcs = ["host_callback.cc"],
+    hdrs = ["host_callback.h"],
+    visibility = [":friends"],
+    deps = [":pjrt_client"],
+)

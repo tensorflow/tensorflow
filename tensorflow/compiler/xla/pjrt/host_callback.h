@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_HOST_CALLBACK_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_HOST_CALLBACK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PJRT_HOST_CALLBACK_H_
+#define TENSORFLOW_COMPILER_XLA_PJRT_HOST_CALLBACK_H_
 
 #include <atomic>
 #include <functional>
@@ -22,6 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+
+// The following provides an API for implementing host callbacks on top of
+// PjRT's send/recv interface (see xla::SendCallback and xla::RecvCallback).
+// While this is not the only way to implement host callbacks using send/recv,
+// it is provided as an example implementation that encapsulates common
+// mechanisms for host callbacks in a framework-agnostic manner.
 
 namespace xla {
 
@@ -121,4 +127,4 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_HOST_CALLBACK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PJRT_HOST_CALLBACK_H_
