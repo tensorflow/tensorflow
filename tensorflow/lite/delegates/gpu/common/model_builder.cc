@@ -1493,16 +1493,39 @@ class PackOperationParser : public TFLiteOperationParser {
         }
       }
 
+      const TfLiteTensor* output = reader->GetOutputTensor(0);
+      ConcatAttributes attr;
+      RETURN_IF_ERROR(
+          ExtractAxisFromIndex(*output, tf_options->axis, &attr.axis));
+      BHWC output_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*output, &output_shape));
+      BHWC input_required_shape = output_shape;
+      input_required_shape.set(attr.axis, 1);
+      for (int i = 0; i < inputs.size(); ++i) {
+        BHWC input_shape = inputs[i]->tensor.shape;
+        if (input_shape != input_required_shape) {
+          // GPU delegates does not support implicit shapes transformations
+          // adding explicit Reshape
+          Node* node_reshape = graph->NewNode();
+          node_reshape->operation.type = ToString(OperationType::RESHAPE);
+          ReshapeAttributes reshape_attr;
+          reshape_attr.new_shape = input_required_shape;
+          node_reshape->operation.attributes = reshape_attr;
+          RETURN_IF_ERROR(graph->AddConsumer(node_reshape->id, inputs[i]->id));
+          Value* copy_value = graph->NewValue();
+          copy_value->tensor.type = inputs[i]->tensor.type;
+          copy_value->tensor.shape = input_required_shape;
+          RETURN_IF_ERROR(graph->SetProducer(node_reshape->id, copy_value->id));
+          inputs[i] = copy_value;
+        }
+      }
+
       Node* node = graph->NewNode();
       node->operation.type = ToString(OperationType::CONCAT);
       RETURN_IF_ERROR(reader->AddOutputs(node));
       for (const Value* input : inputs) {
         RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
       }
-      const TfLiteTensor* output = reader->GetOutputTensor(0);
-      ConcatAttributes attr;
-      RETURN_IF_ERROR(
-          ExtractAxisFromIndex(*output, tf_options->axis, &attr.axis));
       node->operation.attributes = attr;
       return absl::OkStatus();
     }
