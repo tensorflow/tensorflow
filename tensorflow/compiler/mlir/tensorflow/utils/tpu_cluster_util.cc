@@ -49,7 +49,7 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
   // Traverse ops in each TPU cluster.
   auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
     std::optional<std::string> host_device;
-    if (pass_host_device) {
+    if (pass_host_device && !tensorflow::HasModelParallelism(tpu_cluster)) {
       std::string host_device_value;
       if (failed(tensorflow::GetHostDeviceOutsideComputation(
               devices, tpu_cluster, &host_device_value)))
