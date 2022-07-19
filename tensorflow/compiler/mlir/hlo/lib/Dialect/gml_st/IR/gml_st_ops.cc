@@ -1579,29 +1579,36 @@ LogicalResult DropDimsOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
-// TransposeTileOp
+// TransposeDimsOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TransposeTileOp::inferReturnTypes(
+LogicalResult TransposeDimsOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  // Get argument tile type.
-  TransposeTileOp::Adaptor adaptor(operands, attributes, regions);
-  auto argTy = adaptor.superset().getType().dyn_cast<TileType>();
-  if (!argTy) return failure();
-  auto argShape = argTy.getShape();
+  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
+  Type argTy = adaptor.superset().getType();
 
-  // Derive result shape.
-  SmallVector<int64_t> shape = llvm::to_vector(llvm::map_range(
-      adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
+  // If the argument is of point type, so is the result.
+  if (auto pointTy = argTy.dyn_cast<PointType>()) {
+    inferredReturnTypes.push_back(argTy);
+    return success();
+  }
 
-  auto resultTy = TileType::get(ctx, shape);
-  inferredReturnTypes.push_back(resultTy);
-  return success();
+  // If the argument is of tile type, we can transpose the type's dimensions.
+  if (auto tileTy = argTy.dyn_cast<TileType>()) {
+    auto argShape = tileTy.getShape();
+    SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
+        adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
+    auto resultTy = TileType::get(ctx, resultShape);
+    inferredReturnTypes.push_back(resultTy);
+    return success();
+  }
+
+  return failure();
 }
 
-Value TransposeTileOp::compose(OpBuilder &builder) {
+Value TransposeDimsOp::compose(OpBuilder &builder) {
   // We can compose with a TileOp operand which has a SpaceOp operand, or
   // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
   // strides)) is replaced by tile(transpose(space), transpose(offsets),
@@ -1677,16 +1684,9 @@ Value TransposeTileOp::compose(OpBuilder &builder) {
                                 builder.getI64ArrayAttr(inputStaticStrides));
 }
 
-LogicalResult TransposeTileOp::verify() {
-  TileType type = getType();
-  int64_t rank = type.getShape().size();
-  // 'permutation' should have 'rank' elements.
-  if (permutation().size() != rank) {
-    return emitOpError("expected permutation attribute size = ")
-           << permutation().size() << " to match rank = " << rank;
-  }
-  // Verify that 'permutation' is in fact a permutation.
-  // Store where a certain number occurred.
+LogicalResult TransposeDimsOp::verify() {
+  // Verify that `permutation` is in fact a permutation.
+  size_t rank = permutation().size();
   SmallVector<int64_t> position(rank, -1);
   for (const auto &it : llvm::enumerate(permutation())) {
     int64_t dim = it.value();
@@ -1704,6 +1704,18 @@ LogicalResult TransposeTileOp::verify() {
     }
     position[dim] = it.index();
   }
+
+  // Verify tile-specific relationship between types and permutation. The
+  // constraints between argument and result type are verified through the
+  // implementation of `inferReturnTypes`.
+  if (auto tileTy = getType().dyn_cast<TileType>()) {
+    size_t tileRank = tileTy.getShape().size();
+    if (tileRank != rank) {
+      return emitOpError("expected result rank ")
+             << tileRank << " to match the permutation size of " << rank << ".";
+    }
+  }
+
   return success();
 }
 

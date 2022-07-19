@@ -142,19 +142,19 @@ def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
   let hasVerifier = 0;
 }
 
-def GMLST_TransposeTileOp : GMLST_Op<"transpose_tile", [
+def GMLST_TransposeDimsOp : GMLST_Op<"transpose_dims", [
     NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let summary = "Transposes a tile.";
+  let summary = "Transposes the dimensions of a subset.";
   let description = [{
-    Transposes the argument tile by applying the permutation to the dimensions,
-    offsets and strides of the operand tile.
+    Transposes the dimensions of a subset by applying the permutation to the
+    offsets, sizes, and strides.
   }];
   let arguments = (ins
-    GMLST_TileType:$superset,
+    AnySet:$superset,
     DenseI64ArrayAttr:$permutation);
-  let results = (outs GMLST_TileType:$result);
+  let results = (outs AnySet:$result);
   let assemblyFormat = [{
     $superset `,` $permutation attr-dict `:`
     qualified(type($superset)) `to` qualified(type($result))

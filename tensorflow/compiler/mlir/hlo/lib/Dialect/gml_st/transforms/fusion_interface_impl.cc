@@ -31,124 +31,27 @@ namespace gml_st {
 
 namespace {
 
-enum class LinalgGenericFusionKind {
-  FuseAsElementwise,
-  FuseAsTranspose,
-  None,
-};
-
-LinalgGenericFusionKind getLinalgGenericFusionKind(
-    linalg::GenericOp genericOp) {
+bool isTransposeOrElementwise(linalg::GenericOp genericOp) {
   // Only consider all-parallel `linalg.generic` ops with a unique result and
   // tensor semantics for fusion.
   if (!genericOp.hasTensorSemantics() || genericOp.outputs().size() != 1 ||
       llvm::any_of(genericOp.iterator_types(), [](Attribute attr) {
         return !mlir::isParallelIterator(attr);
       })) {
-    return LinalgGenericFusionKind::None;
+    return false;
   }
 
-  // Fuse as element-wise if all maps are identity maps.
+  // Fuse if op is transpose (or element-wise).
   if (llvm::all_of(genericOp.indexing_maps(), [](Attribute attr) {
-        return attr.cast<AffineMapAttr>().getAffineMap().isIdentity();
+        auto map = attr.cast<AffineMapAttr>().getAffineMap();
+        assert((!map.isIdentity() || map.isPermutation()) &&
+               "expect identity maps to be considered a permutation");
+        return map.isPermutation();
       })) {
-    return LinalgGenericFusionKind::FuseAsElementwise;
+    return true;
   }
 
-  // Fuse as transpose if all maps are permutation maps.
-  if (llvm::all_of(genericOp.indexing_maps(), [](Attribute attr) {
-        return attr.cast<AffineMapAttr>().getAffineMap().isPermutation();
-      })) {
-    return LinalgGenericFusionKind::FuseAsTranspose;
-  }
-
-  return LinalgGenericFusionKind::None;
-}
-
-Value fuseAsElementwise(linalg::GenericOp genericOp, Location loc, Value subset,
-                        OpBuilder& builder) {
-  assert(getLinalgGenericFusionKind(genericOp) ==
-             LinalgGenericFusionKind::FuseAsElementwise &&
-         "expect element-wise linalg.generic op");
-  linalg::LinalgOp linalgOp = genericOp;
-  return llvm::TypeSwitch<Type, Value>(subset.getType())
-      .Case([&](TileType tileTy) -> Value {
-        // Create tiled op.
-        Value output = genericOp.outputs().front();
-        auto outputTy = output.getType().cast<RankedTensorType>();
-        auto subResultTy =
-            RankedTensorType::get(tileTy.getShape(), outputTy.getElementType());
-        SmallVector<Value> subOperands;
-        subOperands.reserve(genericOp.getNumInputs());
-        for (auto input : genericOp.inputs()) {
-          subOperands.push_back(
-              builder.create<MaterializeOp>(loc, input, subset));
-        }
-        subOperands.push_back(
-            builder.create<MaterializeOp>(loc, output, subset));
-        Operation* tiledOp =
-            linalgOp.clone(builder, loc, subResultTy, subOperands);
-
-        return tiledOp->getResults().front();
-      })
-      .Case([&](PointType) -> Value {
-        // Create scalar computation.
-        BlockAndValueMapping bvm;
-        Block* block = genericOp.getBody();
-        for (auto it : llvm::zip(block->getArguments(), linalgOp.inputs())) {
-          bvm.map(std::get<0>(it),
-                  builder.create<MaterializeOp>(loc, std::get<1>(it), subset));
-        }
-        for (auto& it : block->without_terminator()) builder.clone(it, bvm);
-
-        auto innerResults = block->getTerminator()->getOperands();
-        assert(innerResults.size() == 1 && "expect unique inner result");
-        return bvm.lookup(innerResults.front());
-      })
-      .Default([](Type) -> Value { return {}; });
-}
-
-Value fuseAsTranspose(linalg::GenericOp genericOp, Location loc, Value subset,
-                      OpBuilder& builder) {
-  assert(getLinalgGenericFusionKind(genericOp) ==
-             LinalgGenericFusionKind::FuseAsTranspose &&
-         "expect transposing linalg.generic op");
-
-  auto tileTy = subset.getType().dyn_cast<TileType>();
-  if (!tileTy) return {};
-
-  // Create tiled op.
-  Value output = genericOp.outputs().front();
-  auto outputTy = output.getType().cast<RankedTensorType>();
-  auto subResultTy =
-      RankedTensorType::get(tileTy.getShape(), outputTy.getElementType());
-  SmallVector<Value> subOperands;
-  subOperands.reserve(genericOp.getNumInputs());
-  for (const auto& inputAndMap :
-       llvm::zip(genericOp.inputs(), genericOp.getIndexingMaps())) {
-    Value input;
-    AffineMap map;
-    std::tie(input, map) = inputAndMap;
-    if (map.isIdentity()) {
-      subOperands.push_back(builder.create<MaterializeOp>(loc, input, subset));
-      continue;
-    }
-    assert(map.isPermutation());
-    SmallVector<int64_t> permutation;
-    permutation.reserve(map.getNumResults());
-    for (unsigned int r = 0, e = map.getNumResults(); r < e; ++r) {
-      permutation.push_back(map.getPermutedPosition(r));
-    }
-    auto transposedTile = builder.create<TransposeTileOp>(
-        loc, subset, DenseI64ArrayAttr::get(builder.getContext(), permutation));
-    subOperands.push_back(
-        builder.create<MaterializeOp>(loc, input, transposedTile));
-  }
-  // Materialize the tiled output.
-  subOperands.push_back(builder.create<MaterializeOp>(loc, output, subset));
-  linalg::LinalgOp linalgOp = genericOp;
-  Operation* tiledOp = linalgOp.clone(builder, loc, subResultTy, subOperands);
-  return tiledOp->getResults().front();
+  return false;
 }
 
 struct LinalgGenericFusionInterface
@@ -157,17 +60,72 @@ struct LinalgGenericFusionInterface
   Value fuse(Operation* op, Location loc, Value subset,
              OpBuilder& builder) const {
     auto genericOp = llvm::cast<linalg::GenericOp>(op);
-    auto kind = getLinalgGenericFusionKind(genericOp);
 
-    if (kind == LinalgGenericFusionKind::FuseAsElementwise) {
-      return fuseAsElementwise(genericOp, loc, subset, builder);
+    // Only fuse transpose (or element-wise) `linalg.generic` ops.
+    if (!isTransposeOrElementwise(genericOp)) return {};
+
+    // Materialze fused operands.
+    SmallVector<Value> subOperands;
+    subOperands.reserve(genericOp.getNumInputs());
+    for (const auto& it :
+         llvm::zip(genericOp.inputs(), genericOp.getIndexingMaps())) {
+      Value operand;
+      AffineMap map;
+      std::tie(operand, map) = it;
+
+      // Create subset for the current operand from the result subset.
+      assert(map.isPermutation() && "expect permutation (or identity) map");
+      Value operandSubset = subset;
+
+      // Transpose operand subset if needed.
+      if (!map.isIdentity()) {
+        unsigned int rank = map.getNumResults();
+        SmallVector<int64_t> permutation;
+        permutation.reserve(rank);
+        for (int i = 0; i < rank; ++i) {
+          permutation.push_back(map.getPermutedPosition(i));
+        }
+        operandSubset = builder.create<TransposeDimsOp>(
+            loc, operandSubset,
+            DenseI64ArrayAttr::get(builder.getContext(), permutation));
+      }
+
+      // Materialize subset of current operand.
+      subOperands.push_back(
+          builder.create<MaterializeOp>(loc, operand, operandSubset));
     }
 
-    if (kind == LinalgGenericFusionKind::FuseAsTranspose) {
-      return fuseAsTranspose(genericOp, loc, subset, builder);
-    }
+    Type subsetTy = subset.getType();
+    return llvm::TypeSwitch<Type, Value>(subsetTy)
+        .Case([&](TileType tileTy) -> Value {
+          Value output = genericOp.outputs().front();
+          auto outputTy = output.getType().cast<RankedTensorType>();
+          auto subResultTy = RankedTensorType::get(tileTy.getShape(),
+                                                   outputTy.getElementType());
+          // Materialize the tiled output.
+          subOperands.push_back(
+              builder.create<MaterializeOp>(loc, output, subset));
 
-    return {};
+          // Materialize tiled `linalg.generic` op.
+          linalg::LinalgOp linalgOp = genericOp;
+          return linalgOp.clone(builder, loc, subResultTy, subOperands)
+              ->getResults()
+              .front();
+        })
+        .Case([&](PointType) -> Value {
+          // Create scalar computation by copying from the `linalg.generic`
+          // body.
+          BlockAndValueMapping bvm;
+          Block* block = genericOp.getBody();
+          for (const auto& it : llvm::zip(block->getArguments(), subOperands)) {
+            bvm.map(std::get<0>(it), std::get<1>(it));
+          }
+          for (auto& it : block->without_terminator()) builder.clone(it, bvm);
+          auto innerResults = block->getTerminator()->getOperands();
+          assert(innerResults.size() == 1 && "expect unique inner result");
+          return bvm.lookup(innerResults.front());
+        })
+        .Default([](Type) -> Value { return {}; });
   }
 };
 

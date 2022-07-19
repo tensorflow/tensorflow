@@ -513,3 +513,69 @@ func.func @dim_reification_dynamic_broadcast_in_dim(%arg: tensor<?xf32>,
   %1 = tensor.dim %0, %c1 : tensor<?x?xf32>
   return %1 : index
 }
+
+// -----
+
+#transposed = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
+#id = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK-LABEL: @transpose_point
+// CHECK-SAME:  %[[ARG:.*]]: tensor<1x2x3x?xf32>, %[[POINT:.*]]: !gml_st.point
+func.func @transpose_point(%arg: tensor<1x2x3x?xf32>, %point: !gml_st.point) -> f32 {
+  // CHECK-DAG: %[[TRANSPOSED_POINT:.*]] = gml_st.transpose_dims %[[POINT]], [1, 0, 3, 2]
+  // CHECK-DAG: %[[RESULT:.*]] = gml_st.materialize %[[ARG]][%[[TRANSPOSED_POINT]]]
+  // CHECK:     return %[[RESULT]]
+  %c3 = arith.constant 3 : index
+  %d3 = tensor.dim %arg, %c3 : tensor<1x2x3x?xf32>
+  %init = linalg.init_tensor [2, 1, %d3, 3] : tensor<2x1x?x3xf32>
+  %transpose = linalg.generic {
+      indexing_maps = [#transposed, #id],
+      iterator_types = ["parallel", "parallel", "parallel", "parallel"]}
+      ins(%arg : tensor<1x2x3x?xf32>) outs(%init : tensor<2x1x?x3xf32>) {
+  ^bb0(%a: f32, %_: f32):
+    linalg.yield %a : f32
+  } -> tensor<2x1x?x3xf32>
+  %transpose_sub = gml_st.materialize %transpose[%point]
+      : tensor<2x1x?x3xf32>[!gml_st.point]
+  return %transpose_sub : f32
+}
+
+// -----
+
+// CHECK: #[[TRANSPOSED:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
+// CHECK: #[[ID:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+#transposed = affine_map<(d0, d1, d2, d3) -> (d1, d0, d3, d2)>
+#id = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+
+// CHECK:      @transpose_tile
+// CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x?xf32>, %[[TILE:.*]]: !gml_st.tile<?x?x?x?>
+func.func @transpose_tile(%arg: tensor<1x2x3x?xf32>,
+    %tile: !gml_st.tile<?x?x?x?>) -> tensor<?x?x?x?xf32> {
+  // CHECK-DAG:  %[[C3:.*]] = arith.constant 3
+  // CHECK-DAG:  %[[D3:.*]] = tensor.dim %[[ARG]], %[[C3]]
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [2, 1, %[[D3]], 3]
+  // CHECK-DAG:  %[[TRANSPOSED_TILE:.*]] = gml_st.transpose_dims %[[TILE]], [1, 0, 3, 2]
+  // CHECK-DAG:  %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[TRANSPOSED_TILE]]]
+  // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
+  // CHECK:      %[[TRANSPOSED_SUB:.*]] = linalg.generic
+  // CHECK-SAME:     indexing_maps = [#[[TRANSPOSED]], #[[ID]]]
+  // CHECK-SAME:     iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+  // CHECK-SAME:     ins(%[[ARG_SUB]] : tensor<?x?x?x?xf32>)
+  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<?x?x?x?xf32>)
+  // CHECK:      ^bb0(%[[A:.*]]: f32, %{{.*}}: f32):
+  // CHECK:        linalg.yield %[[A]]
+  // CHECK:      return %[[TRANSPOSED_SUB]]
+  %c3 = arith.constant 3 : index
+  %d3 = tensor.dim %arg, %c3 : tensor<1x2x3x?xf32>
+  %init = linalg.init_tensor [2, 1, %d3, 3] : tensor<2x1x?x3xf32>
+  %transposed = linalg.generic {
+      indexing_maps = [#transposed, #id],
+      iterator_types = ["parallel", "parallel", "parallel", "parallel"]}
+      ins(%arg : tensor<1x2x3x?xf32>) outs(%init : tensor<2x1x?x3xf32>) {
+  ^bb0(%a: f32, %_: f32):
+    linalg.yield %a : f32
+  } -> tensor<2x1x?x3xf32>
+  %transposed_sub = gml_st.materialize %transposed[%tile]
+      : tensor<2x1x?x3xf32>[!gml_st.tile<?x?x?x?>]
+  return %transposed_sub : tensor<?x?x?x?xf32>
+}
