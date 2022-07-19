@@ -154,6 +154,7 @@ cuda_py_test(
         "no_rocm",
         "no_windows",
         "nomac",
+        "no_oss",
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
