@@ -26,9 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -183,6 +181,28 @@ TEST_F(HloVerifierTest, CheckCallOperandParameterShapesMismatch) {
               HasSubstr("shape does not match parameter"));
 }
 
+TEST_F(HloVerifierTest, CheckCallThreadMismatch) {
+  constexpr absl::string_view hlo = R"(
+    HloModule Module
+
+    callme {
+      ROOT param = (s32[], f32[4]) parameter(0)
+    }, execution_thread="parallel_thread"
+
+    ENTRY entry {
+      p0 = (s32[], f32[4]) parameter(0)
+      ROOT mycall = (s32[], f32[4]) call(p0), to_apply=callme
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("expects parent computation thread name same as called "
+                        "computation's thread name"));
+}
+
 TEST_F(HloVerifierTest, CheckConditionalOperandParameterShapesMismatch) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -257,6 +277,72 @@ TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               HasSubstr("first operand of conditional must be a scalar"));
+}
+
+TEST_F(HloVerifierTest, CheckConditionalBranchThread) {
+  const char* const hlo_string = R"(
+    HloModule Module
+
+    branch0 {
+      tparam = f32[4] parameter(0)
+      ROOT tgte1 = f32[4] ceil(tparam)
+    }
+
+    branch1 {
+      fparam = f32[4] parameter(0)
+      ROOT fgte1 = f32[4] floor(fparam)
+    }, execution_thread="parallel_thread"
+
+    branch2 {
+      sparam = f32[4] parameter(0)
+      ROOT sgte1 = f32[4] ceil(sparam)
+    }
+
+    ENTRY entry {
+      p0 = f32[4] parameter(0)
+      b0 = s32[] parameter(1)
+      ROOT conditional = f32[4] conditional(b0, p0, p0, p0),
+        branch_computations={branch0, branch1, branch2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("expects parent computation thread name same as called "
+                        "computation's thread name"));
+}
+
+TEST_F(HloVerifierTest, CheckConditionalBranchContainsAsyncThread) {
+  const char* const hlo_string = R"(
+    HloModule Module
+
+    branch0 {
+      tparam = f32[4] parameter(0)
+      ROOT tgte1 = f32[4] ceil(tparam)
+    }
+
+    branch1 {
+      fparam = f32[4] parameter(0)
+      %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
+      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+    }
+
+    branch2 {
+      sparam = f32[4] parameter(0)
+      ROOT sgte1 = f32[4] ceil(sparam)
+    }
+
+    ENTRY entry {
+      p0 = f32[4] parameter(0)
+      b0 = s32[] parameter(1)
+      ROOT conditional = f32[4] conditional(b0, p0, p0, p0),
+        branch_computations={branch0, branch1, branch2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
@@ -2333,6 +2419,71 @@ ENTRY main {
       HloVerifierOpts{}.MakeLayoutSensitive().VerifyReshapeIsBitcast()}
                    .Run(module.get())
                    .status());
+}
+
+TEST_F(HloVerifierTest, CheckWhileThread) {
+  const char* const hlo_string = R"(
+    HloModule While, entry_computation_layout={()->s32[]}
+
+    %body.v3 (prev.1: s32[]) -> s32[] {
+      %constant = s32[] constant(1)
+      %prev.1 = s32[] parameter(0)
+      ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+    }
+
+    %condition.v3 (prev.2: s32[]) -> pred[] {
+      %constant.1 = s32[] constant(5)
+      %prev.2 = s32[] parameter(0)
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
+    }, execution_thread="parallel_thread"
+
+    ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+      %constant.2 = s32[] constant(0)
+      ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("expects parent computation thread name same as called "
+                        "computation's thread name"));
+}
+
+TEST_F(HloVerifierTest, CheckWhileContainsAsyncThread) {
+  const char* const hlo_string = R"(
+    HloModule While, entry_computation_layout={()->s32[]}
+
+    %async_add (prev.1: s32[]) -> s32[] {
+      %constant = s32[] constant(1)
+      %prev.1 = s32[] parameter(0)
+      ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+    }, execution_thread="parallel_thread"
+
+    %body.v3 (prev.1: s32[]) -> s32[] {
+      %constant = s32[] constant(1)
+      %prev.1 = s32[] parameter(0)
+      ROOT %add = s32[] add(s32[] %constant, s32[] %prev.1)
+    }
+
+    %condition.v3 (prev.2: s32[]) -> pred[] {
+      %constant.1 = s32[] constant(5)
+      %prev.2 = s32[] parameter(0)
+      %async-start = ((s32[]), s32[], s32[]) custom-call-start(s32[] %prev.2), async_execution_thread="parallel_thread", custom_call_target="async_add"
+      %async-done = s32[] custom-call-done(((s32[]), s32[], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="async_add"
+      ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %async-done), direction=GT
+    }
+
+    ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
+      %constant.2 = s32[] constant(0)
+      ROOT %while = s32[] while(s32[] %constant.2), condition=%condition.v3, body=%body.v3
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
 }
 
 TEST_F(HloVerifierTestLayoutFusion, DynamicUpdateSliceWithMemorySpace) {

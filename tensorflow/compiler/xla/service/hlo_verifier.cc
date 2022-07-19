@@ -1414,8 +1414,6 @@ Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
       /*skip_nested_async_op_check=*/false);
 }
 
-// TODO(b/229887502): apply CheckCallableInstructionThreadName to all
-// CallableInstructions verifier.
 Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
                                           bool skip_nested_async_op_check) {
   for (const HloComputation* computation : instruction->called_computations()) {
@@ -2396,7 +2394,16 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           "While loop must have exactly one operand; had %d : %s",
           xla_while->operand_count(), xla_while->ToString());
     }
+    // Allow kWhile to contain computations on separate thread.
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
+        xla_while, /*skip_nested_async_op_check=*/true));
     return OkStatus();
+  }
+
+  Status HandleCall(HloInstruction* call) override {
+    // Allow kCall to contain computations on separate thread.
+    return CheckCallableInstructionThreadName(
+        call, /*skip_nested_async_op_check=*/true);
   }
 
   Status HandleConditional(HloInstruction* conditional) override {
@@ -2408,6 +2415,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             conditional->branch_computation(b)->num_parameters());
       }
     }
+    // Allow kConditional to contain computations on separate thread.
+    TF_RETURN_IF_ERROR(CheckCallableInstructionThreadName(
+        conditional, /*skip_nested_async_op_check=*/true));
     return OkStatus();
   }
 
