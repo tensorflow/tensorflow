@@ -85,6 +85,10 @@ class HloComputation {
     std::unique_ptr<HloComputation> Build(
         HloInstruction* root_instruction = nullptr);
 
+    // Add the instruction to be part of this computation.
+    // If the new instruction is derived from another one,
+    // you probably want to do
+    // `original_inst->AddInstruction(new_inst)` instead.
     virtual HloInstruction* AddInstruction(
         std::unique_ptr<HloInstruction> instruction) {
       instructions_.push_back(std::move(instruction));
