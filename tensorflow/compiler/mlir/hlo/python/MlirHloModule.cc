@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-c/Registration.h"
+#include "mlir-c/IR.h"
 #include "mlir-hlo-c/Attributes.h"
 #include "mlir-hlo-c/Dialects.h"
 #include "mlir-hlo-c/Passes.h"
