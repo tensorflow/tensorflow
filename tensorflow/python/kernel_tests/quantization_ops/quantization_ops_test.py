@@ -206,5 +206,60 @@ class RequantizeOpTest(test_util.TensorFlowTestCase):
               out_type=dtypes.qint8))
 
 
+class QuantizedAddOpTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    x = constant_op.constant(
+        np.int8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+    y = constant_op.constant(np.int8(0), shape=[3], dtype=dtypes.quint8)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 0"):
+      self.evaluate(
+          math_ops.quantized_add(
+              x=x,
+              y=y,
+              min_x=[],
+              max_x=1.0,
+              min_y=0.0,
+              max_y=1.0,
+              Toutput=dtypes.qint32))
+
+
+class QuantizedReluOpTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    inputs = constant_op.constant(
+        np.int8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 0"):
+      self.evaluate(
+          nn_ops.quantized_relu(
+              features=inputs,
+              min_features=[],
+              max_features=127.0,
+              out_type=dtypes.quint8))
+
+
+class QuantizedRelu6OpTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    inputs = constant_op.constant(
+        np.int8(0), shape=[3, 3, 3, 3], dtype=dtypes.quint8)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 0"):
+      self.evaluate(
+          nn_ops.quantized_relu6(
+              features=inputs,
+              min_features=[],
+              max_features=127.0,
+              out_type=dtypes.quint8))
+
+
 if __name__ == "__main__":
   googletest.main()
