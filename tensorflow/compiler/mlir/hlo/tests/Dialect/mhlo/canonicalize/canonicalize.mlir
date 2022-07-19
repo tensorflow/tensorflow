@@ -2152,6 +2152,91 @@ func.func @pad_float_fold() -> tensor<2xf32> {
   // CHECK: mhlo.constant dense<[2.000000e+00, 1.000000e+00]> : tensor<2xf32>
 }
 
+// CHECK-LABEL: @pad_zero_length
+func.func @pad_zero_length(%arg0: tensor<5x0xf32>, %arg1: tensor<f32>) -> tensor<7x2xf32> {
+  // CHECK: %[[RES:.+]] = "mhlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<7x2xf32>
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<1> : tensor<2xi64>,
+    edge_padding_high = dense<1> : tensor<2xi64>,
+    interior_padding = dense<0> : tensor<2xi64>
+  } : (tensor<5x0xf32>, tensor<f32>) -> tensor<7x2xf32>
+  // CHECK: return %[[RES]]
+  func.return %0 : tensor<7x2xf32>
+}
+
+// CHECK-LABEL: @pad_zero_length_dyn
+func.func @pad_zero_length_dyn(%arg0: tensor<?x0xf32>, %arg1: tensor<f32>) -> tensor<?x2xf32> {
+  // CHECK-DAG: %[[C0:.+]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.+]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C2:.+]] = arith.constant 2 : index
+  // CHECK-DAG: %[[DIM:.+]] = tensor.dim %arg0, %[[C0]] : tensor<?x0xf32>
+  // CHECK-DAG: %[[SUB:.+]] = arith.subi %[[DIM]], %[[C1]]
+  // CHECK-DAG: %[[MAX:.+]] = arith.maxsi %[[SUB]], %[[C0]]
+  // CHECK-DAG: %[[MUL:.+]] = arith.muli %[[MAX]], %[[C2]]
+  // CHECK-DAG: %[[ADD1:.+]] = arith.addi %[[DIM]], %[[MUL]]
+  // CHECK-DAG: %[[ADD2:.+]] = arith.addi %[[ADD1]], %[[C2]]
+  // CHECK-DAG: %[[SHAPE:.+]] = tensor.from_elements %[[ADD2]], %[[C2]] : tensor<2xindex>
+  // CHECK-DAG: %[[BROAD:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>, tensor<2xindex>) -> tensor<?x2xf32>
+  %0 = "mhlo.pad"(%arg0, %arg1) {
+    edge_padding_low = dense<1> : tensor<2xi64>,
+    edge_padding_high = dense<1> : tensor<2xi64>,
+    interior_padding = dense<2> : tensor<2xi64>
+  } : (tensor<?x0xf32>, tensor<f32>) -> tensor<?x2xf32>
+  // CHECK: return %[[BROAD]]
+  func.return %0 : tensor<?x2xf32>
+}
+
+// CHECK-LABEL: @dynamic_pad_identity_fold
+func.func @dynamic_pad_identity_fold(%arg0: tensor<5x7xf32>) -> tensor<11x15xf32> {
+  %0 = arith.constant dense<0.0> : tensor<f32>
+  %1 = arith.constant dense<1> : tensor<2xi32>
+  %2 = arith.constant dense<1> : tensor<2xi32>
+  %3 = arith.constant dense<1> : tensor<2xi32>
+  // CHECK: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[PAD:.+]] = "mhlo.pad"(%arg0, %[[CST]]) 
+  // CHECK-SAME: edge_padding_high = dense<1> : tensor<2xi64>
+  // CHECK-SAME: edge_padding_low = dense<1> : tensor<2xi64>
+  // CHECK-SAME: interior_padding = dense<1> : tensor<2xi64>} 
+  // CHECK-SAME: (tensor<5x7xf32>, tensor<f32>) -> tensor<11x15xf32>
+  %4 = "mhlo.dynamic_pad"(%arg0, %0, %1, %2, %3) {
+  } : (tensor<5x7xf32>, tensor<f32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<11x15xf32>
+  // return %[[PAD]]
+  func.return %4 : tensor<11x15xf32>
+}
+
+// CHECK-LABEL: @dynamic_pad_length_dyn
+func.func @dynamic_pad_length_dyn(
+  %arg0: tensor<?x0xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>,
+  %arg3: tensor<2xi32>) -> tensor<?x?xf32> {
+  // CHECK: %[[C0:.+]] = arith.constant 0 : i32
+  // CHECK: %[[C1:.+]] = arith.constant 1 : i32
+  // CHECK: %[[CI0:.+]] = arith.constant 0 : index
+  // CHECK: %[[CI1:.+]] = arith.constant 1 : index
+  // CHECK: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: %[[DIM0:.+]] = tensor.dim %arg0, %[[CI0]]
+  // CHECK: %[[CAST:.+]] = arith.index_cast %[[DIM0]] : index to i32
+  // CHECK: %[[EX0:.+]] = tensor.extract %arg1[%[[CI0]]]
+  // CHECK: %[[EX1:.+]] = tensor.extract %arg2[%[[CI0]]]
+  // CHECK: %[[EX2:.+]] = tensor.extract %arg3[%[[CI0]]]
+  // CHECK: %[[CMP:.+]] = arith.cmpi slt, %[[CAST]], %[[C1]] : i32
+  // CHECK: %[[SUB:.+]] = arith.subi %[[CAST]], %[[C1]] : i32
+  // CHECK: %[[SEL:.+]] = arith.select %[[CMP]], %[[C0]], %[[SUB]] : i32
+  // CHECK: %[[MUL:.+]] = arith.muli %[[EX2]], %[[SEL]] : i32
+  // CHECK: %[[ADD0:.+]] = arith.addi %[[MUL]], %[[CAST]] : i32
+  // CHECK: %[[ADD1:.+]] = arith.addi %[[ADD0]], %[[EX0]] : i32
+  // CHECK: %[[ADD2:.+]] = arith.addi %[[ADD1]], %[[EX1]] : i32
+  // CHECK: %[[EX3:.+]] = tensor.extract %arg1[%[[CI1]]]
+  // CHECK: %[[EX4:.+]] = tensor.extract %arg2[%[[CI1]]]
+  // CHECK: %[[ADD3:.+]] = arith.addi %[[EX3]], %[[EX4]] : i32
+  // CHECK: %[[SHAPE:.+]] = tensor.from_elements %[[ADD2]], %[[ADD3]] : tensor<2xi32>
+  // CHECK: %[[BROAD:.+]] = "mhlo.dynamic_broadcast_in_dim"(%[[CST]], %[[SHAPE]]) {broadcast_dimensions = dense<> : tensor<0xi64>}
+  %0 = arith.constant dense<0.0> : tensor<f32>
+  %1 = "mhlo.dynamic_pad"(%arg0, %0, %arg1, %arg2, %arg3) {
+  } : (tensor<?x0xf32>, tensor<f32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?xf32>
+  // CHECK: return %[[BROAD]]
+  func.return %1 : tensor<?x?xf32>
+}
+
 // CHECK-LABEL: @pad_complex_fold
 func.func @pad_complex_fold() -> tensor<2xcomplex<f32>> {
   %0 = mhlo.constant dense<(2.000000e+00,0.000000e+00)> : tensor<1xcomplex<f32>>
@@ -2360,17 +2445,7 @@ func.func @sort_no_dim_provided(%arg0: tensor<3x5xi32>) -> tensor<3x5xi32> {
 // CHECK-LABEL: @reshape_splat_of_bools
 func.func public @reshape_splat_of_bools() -> tensor<2x1xi1> {
   // CHECK: mhlo.constant dense<true> : tensor<2x1xi1>
-  // CHECK-NOT: mhlo.reshape
   %0 = mhlo.constant dense<true> : tensor<2xi1>
   %1 = "mhlo.reshape"(%0) : (tensor<2xi1>) -> tensor<2x1xi1>
   return %1 : tensor<2x1xi1>
-}
-
-// CHECK-LABEL: @transpose_splat_of_bools
-func.func public @transpose_splat_of_bools() -> tensor<3x5xi1> {
-  // CHECK: mhlo.constant dense<true> : tensor<3x5xi1>
-  // CHECK-NOT: mhlo.transpose
-  %0 = mhlo.constant dense<true> : tensor<5x3xi1>
-  %1 = "mhlo.transpose"(%0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<5x3xi1>) -> tensor<3x5xi1>
-  func.return %1 : tensor<3x5xi1>
 }

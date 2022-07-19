@@ -5355,13 +5355,156 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+LogicalResult PadOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  PadOp::Adaptor adaptor(operands, this->getOperation()->getAttrDictionary());
+  auto loc = this->getLoc();
+  Value operand = adaptor.operand();
+  auto operandTy = operand.getType().cast<RankedTensorType>();
+
+  llvm::SmallVector<int32_t> padHigh;
+  llvm::SmallVector<int32_t> padLow;
+  llvm::SmallVector<int32_t> padInterior;
+
+  auto padHighAttr = adaptor.edge_padding_high();
+  auto padLowAttr = adaptor.edge_padding_low();
+  auto padInteriorAttr = adaptor.interior_padding();
+
+  padHigh.reserve(padHighAttr.getNumElements());
+  padLow.reserve(padLowAttr.getNumElements());
+  padInterior.reserve(padInteriorAttr.getNumElements());
+
+  for (const APInt& val : padHighAttr.getValues<APInt>())
+    padHigh.push_back(val.getSExtValue());
+
+  for (const APInt& val : padLowAttr.getValues<APInt>())
+    padLow.push_back(val.getSExtValue());
+
+  for (const APInt& val : padInteriorAttr.getValues<APInt>())
+    padInterior.push_back(val.getSExtValue());
+
+  Value one = builder.create<arith::ConstantIndexOp>(loc, 1).getResult();
+  Value zero = builder.create<arith::ConstantIndexOp>(loc, 0).getResult();
+
+  llvm::SmallVector<Value> dimensions;
+  dimensions.reserve(operandTy.getRank());
+  for (int i = 0, s = operandTy.getRank(); i < s; ++i) {
+    Value padEdge =
+        builder.create<arith::ConstantIndexOp>(loc, padHigh[i] + padLow[i]);
+
+    // First we grab the initial interior size.
+    Value dim = builder.create<tensor::DimOp>(loc, operand, i).getResult();
+
+    // Compute the interior of the tensor and determine padding size.
+    if (padInterior[i] > 0) {
+      Value padInter =
+          builder.create<arith::ConstantIndexOp>(loc, padInterior[i])
+              .getResult();
+      Value interior = builder.create<arith::SubIOp>(loc, dim, one).getResult();
+      interior = builder.create<arith::MaxSIOp>(loc, interior, zero);
+      interior = builder.create<arith::MulIOp>(loc, interior, padInter);
+      dim = builder.create<arith::AddIOp>(loc, dim, interior).getResult();
+    }
+
+    // Then we add the padding on the edge of the tensor.
+    dim = builder.create<arith::AddIOp>(loc, dim, padEdge).getResult();
+    dimensions.push_back(dim);
+  }
+
+  Value dimensionTensor =
+      builder.create<tensor::FromElementsOp>(loc, dimensions).getResult();
+  reifiedReturnShapes.push_back(dimensionTensor);
+  return success();
+}
+
+// If the input tensor has a dimension of length-0, the input tensor is
+// irrelevant. Instead we can broadcast the pad value to the output size rather
+// than pad the input tensor.
+struct PadEmptyTensor : public OpRewritePattern<PadOp> {
+  using OpRewritePattern<PadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PadOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operand = op.operand();
+    auto padVal = op.padding_value();
+
+    auto operandTy = operand.getType().cast<RankedTensorType>();
+    auto resultTy = op.getType().cast<RankedTensorType>();
+
+    if (llvm::all_of(operandTy.getShape(), [](int64_t d) { return d != 0; })) {
+      return failure();
+    }
+
+    if (resultTy.hasStaticShape()) {
+      auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
+      auto dims =
+          DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
+      rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(op, resultTy, padVal,
+                                                          dims);
+      return success();
+    }
+
+    llvm::SmallVector<Value> reifiedShapes;
+    if (failed(op.reifyReturnTypeShapes(rewriter, op.getOperands(),
+                                        reifiedShapes)))
+      return failure();
+
+    auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
+    auto broadcastDims =
+        DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
+    rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
+        op, op.getType(), padVal, reifiedShapes.front(), broadcastDims);
+
+    return failure();
+  }
+};
+
+void PadOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                        MLIRContext* context) {
+  results.add<PadEmptyTensor>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicPadOp
 //===----------------------------------------------------------------------===//
 
+// If the input tensor has a dimension of length-0, the input tensor is
+// irrelevant. Instead we can broadcast the pad value to the output size rather
+// than pad the input tensor.
+struct DynamicPadEmptyTensor : public OpRewritePattern<DynamicPadOp> {
+  using OpRewritePattern<DynamicPadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicPadOp op,
+                                PatternRewriter& rewriter) const override {
+    // auto loc = op.getLoc();
+    auto operand = op.operand();
+    auto padVal = op.padding_value();
+
+    auto operandTy = operand.getType().cast<RankedTensorType>();
+
+    if (llvm::all_of(operandTy.getShape(), [](int64_t d) { return d != 0; })) {
+      return failure();
+    }
+
+    llvm::SmallVector<Value> reifiedShapes;
+    if (failed(op.reifyReturnTypeShapes(rewriter, op->getOperands(),
+                                        reifiedShapes)))
+      return failure();
+
+    auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
+    auto broadcastDims =
+        DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
+    rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
+        op, op.getType(), padVal, reifiedShapes.front(), broadcastDims);
+
+    return failure();
+  }
+};
+
 void DynamicPadOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                MLIRContext* context) {
-  results.add<DPadToPad>(context);
+  results.add<DPadToPad, DynamicPadEmptyTensor>(context);
 }
 
 LogicalResult DynamicPadOp::verify() {

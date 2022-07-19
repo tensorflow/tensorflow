@@ -2098,7 +2098,7 @@ def HLO_PartitionIdOp : HLO_Op<"partition_id", []> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_PadOp: HLO_Op<"pad",
+def HLO_PadOp: HLO_ShapedInterfaceOp<"pad",
       [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Pad operator";
   let description = [{
@@ -2137,6 +2137,7 @@ def HLO_PadOp: HLO_Op<"pad",
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
 
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 
