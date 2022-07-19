@@ -3619,7 +3619,16 @@ tf_kernel_library(
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
+        ":conv_ops",
+        ":conv_ops_gpu_hdrs",
         ":matmul_util",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
+        "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
+        "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
