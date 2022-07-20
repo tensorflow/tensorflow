@@ -800,6 +800,11 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
+      if (tensorflow::HasModelParallelism(tpu_cluster)) {
+        tpu_cluster.emitOpError(
+            "outside compilation is not supported with model parallelism.");
+        return signalPassFailure();
+      }
       if (failed(tensorflow::GetHostDeviceOutsideComputation(
               devices, tpu_cluster, &host_device)))
         return signalPassFailure();

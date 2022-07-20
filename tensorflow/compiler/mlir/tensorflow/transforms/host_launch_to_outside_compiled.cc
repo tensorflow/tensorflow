@@ -79,6 +79,19 @@ void HostLaunchToOutsideCompiledPass::runOnOperation() {
   };
 
   ModuleOp module = getOperation();
+  // If there is model parallelism, we return early since
+  // GetHostDeviceOutsideComputation will fail and an error should have been
+  // returned in an earlier pass.
+  // TODO(b/186420116): Remove this check once outside compilation and model
+  // parallelism work together.
+  auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
+    if (tensorflow::HasModelParallelism(tpu_cluster)) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted()) return;
+
   if (failed(TFTPU::WalkReachableFromTpuCluster(module, traverse_op)))
     return signalPassFailure();
 }
