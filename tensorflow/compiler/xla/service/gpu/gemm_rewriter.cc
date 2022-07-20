@@ -267,7 +267,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
 
     auto config = gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-    if (config.beta() != 0 || !can_fuse_bias || gemm->user_count() != 1) {
+
+    // It is possible to fuse into a cublasLt matmul that already has a vector
+    // bias, but no other epilogue will commute with the matrix bias add.
+    bool supported_epilogue =
+        ((config.epilogue() == GemmBackendConfig::DEFAULT) ||
+         (config.epilogue() == GemmBackendConfig::BIAS));
+
+    if ((config.beta() != 0) || !can_fuse_bias || (gemm->user_count() != 1) ||
+        !supported_epilogue) {
       return OkStatus();
     }
 
@@ -297,9 +305,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     auto config = matmul->backend_config<GemmBackendConfig>().ValueOrDie();
 
-    bool has_matrix_bias = config.beta() != 0.;
-    bool has_vector_bias = matmul->operand_count() > (has_matrix_bias ? 3 : 2);
-
     // # output column dims == # non-contracting rhs operand dims.
     const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
     size_t num_col_dims = matmul->operand(1)->shape().rank() -
@@ -307,7 +312,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           dot_dims.rhs_contracting_dimensions_size();
 
     HloInstruction *bias = broadcast_bias->mutable_operand(0);
-    if ((matmul->user_count() != 1) || has_vector_bias ||
+    if ((matmul->user_count() != 1) ||
+        (config.epilogue() != GemmBackendConfig::DEFAULT) ||
         (bias->shape().rank() != num_col_dims)) {
       return false;
     }
@@ -327,6 +333,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     std::unique_ptr<HloInstruction> fused_op =
         matmul->CloneWithNewOperands(instr->shape(), operands);
+
+    config.set_epilogue(GemmBackendConfig::BIAS);
+    TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
     return true;

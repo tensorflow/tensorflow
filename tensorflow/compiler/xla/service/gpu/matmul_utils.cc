@@ -579,6 +579,18 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   }
 }
 
+StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+    mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
+  switch (epilogue) {
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Default:
+      return se::cuda::BlasLt::Epilogue::kDefault;
+    case mlir::lmhlo_gpu::CublasLtMatmulEpilogue::Bias:
+      return se::cuda::BlasLt::Epilogue::kBias;
+    default:
+      return InternalError("unknown epilogue");
+  }
+}
+
 StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
     const MatrixLayout& layout) {
   TF_ASSIGN_OR_RETURN(se::blas::DataType dtype, AsBlasDataType(layout.dtype));
@@ -623,9 +635,8 @@ namespace cublas_lt {
                       op.getBeta().convertToDouble(), op.getAlgorithm(),
                       compute_precision));
 
-  auto epilogue = (op.getBias() != nullptr)
-                      ? se::cuda::BlasLt::Epilogue::kBias
-                      : se::cuda::BlasLt::Epilogue::kDefault;
+  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
+                      AsBlasLtEpilogue(op.getEpilogue()));
   return From(config, epilogue);
 }
 

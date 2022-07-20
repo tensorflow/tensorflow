@@ -813,6 +813,20 @@ void SetMatmulAttributes(OpT op, const xla::gpu::GemmBackendConfig& config,
       xla::ConvertPrecisionConfig(&config.precision_config(), &builder));
 }
 
+StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
+    xla::gpu::GemmBackendConfig_Epilogue epilogue) {
+  switch (epilogue) {
+    case xla::gpu::GemmBackendConfig::DEFAULT:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Default;
+      break;
+    case xla::gpu::GemmBackendConfig::BIAS:
+      return lmhlo_gpu::CublasLtMatmulEpilogue::Bias;
+      break;
+    default:
+      return xla::InternalError("unknown epilogue");
+  }
+}
+
 }  // namespace
 
 StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
@@ -845,8 +859,7 @@ StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   bool has_matrix_bias = config.beta() != 0.;
-  bool has_vector_bias =
-      custom_call->operand_count() > (has_matrix_bias ? 3 : 2);
+  bool has_vector_bias = config.epilogue() == xla::gpu::GemmBackendConfig::BIAS;
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
 
@@ -865,6 +878,11 @@ StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
   auto op =
       CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call, operands);
   SetMatmulAttributes(op, config, builder_);
+
+  TF_ASSIGN_OR_RETURN(lmhlo_gpu::CublasLtMatmulEpilogue epilogue,
+                      AsLhloEpilogue(config.epilogue()));
+  op.setEpilogueAttr(lmhlo_gpu::CublasLtMatmulEpilogueAttr::get(
+      builder_.getContext(), epilogue));
 
   // Use the first algorithm by default (i.e. fastest according to heuristics).
   if (config.algorithm_case() !=

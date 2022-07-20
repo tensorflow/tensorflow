@@ -151,6 +151,7 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
+    CublasLtMatmulEpilogueAttr:$epilogue,
     I64Attr:$algorithm);
 }
 

@@ -82,4 +82,16 @@ def ConvolutionBackendConfigAttr : AttrDef<
  let summary = "GPU Convolution backend configuration";
 }
 
+def CublasLtMatmulEpilogueDefault : I32EnumAttrCase<"Default", 0>;
+def CublasLtMatmulEpilogueBias : I32EnumAttrCase<"Bias", 1>;
+
+def CublasLtMatmulEpilogue: I32EnumAttr<"CublasLtMatmulEpilogue",
+    "Epilogue for cublasLt matmul",
+    [CublasLtMatmulEpilogueDefault, CublasLtMatmulEpilogueBias]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::lmhlo_gpu";
+}
+
+def CublasLtMatmulEpilogueAttr : EnumAttr<LmhloGpuDialect, CublasLtMatmulEpilogue, "epilogue">;
+
 #endif // LHLO_GPU_OPS_ENUMS

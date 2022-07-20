@@ -267,7 +267,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
-    bool has_vector_bias = gemm->operand_count() > (has_matrix_bias ? 3 : 2);
+    bool has_vector_bias = gemm_config.epilogue() == GemmBackendConfig::BIAS;
 
     auto epilogue = has_vector_bias ? se::cuda::BlasLt::Epilogue::kBias
                                     : se::cuda::BlasLt::Epilogue::kDefault;
