@@ -1337,8 +1337,7 @@ class DatasetOpKernel : public OpKernel {
                   errors::InvalidArgument(absl::StrCat(
                       "Could not parse the 'metadata' attribute.")));
     }
-    if (ctx->HasAttr(UseGpuCompatAllocatorAttr))
-    {
+    if (ctx->HasAttr(UseGpuCompatAllocatorAttr)) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr(UseGpuCompatAllocatorAttr, &UseGpuCompatAllocatorAttr_));
     }
   }
