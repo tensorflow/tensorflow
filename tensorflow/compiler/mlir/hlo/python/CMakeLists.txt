@@ -51,7 +51,7 @@ add_mlir_python_common_capi_library(MLIRHLOCAPI
   RELATIVE_INSTALL_ROOT "../../../.."
   DECLARED_SOURCES
     MLIRPythonSources
-    MLIRPythonExtension.AllPassesRegistration
+    MLIRPythonExtension.RegisterEverything
     MLIRHLOPythonSources
     MLIRHLOPythonExtensions
 )
@@ -61,7 +61,7 @@ add_mlir_python_modules(MLIRHLOPythonModules
   INSTALL_PREFIX "python_packages/mlir_hlo/mlir"
   DECLARED_SOURCES
     MLIRPythonSources
-    MLIRPythonExtension.AllPassesRegistration
+    MLIRPythonExtension.RegisterEverything
     MLIRHLOPythonSources
     MLIRHLOPythonExtensions
   COMMON_CAPI_LINK_LIBS
