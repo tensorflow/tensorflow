@@ -1149,6 +1149,14 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([dtypes.float32],
                      backprop.make_attr([int(pywrap_tfe.TF_ATTR_TYPE)], [1]))
 
+  def testMakeAttrString(self):
+    self.assertEqual(b'a',
+                     backprop.make_attr(int(pywrap_tfe.TF_ATTR_STRING), 'a'))
+
+  def testMakeAttrStringList(self):
+    self.assertEqual(
+        [b'a'], backprop.make_attr([int(pywrap_tfe.TF_ATTR_STRING)], ['a']))
+
   def testMulType(self):
 
     def mul(x):

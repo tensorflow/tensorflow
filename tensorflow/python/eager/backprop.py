@@ -96,9 +96,9 @@ def make_attr(attr_type, value):
     return tensor_shape.as_shape(value).as_proto()
   if attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
-  if isinstance(value, str):
-    return value.encode()
-  return value
+  return nest.map_structure(
+      lambda v: v.encode() if isinstance(v, str) else v,
+      value)
 
 
 class _MockOp(object):
