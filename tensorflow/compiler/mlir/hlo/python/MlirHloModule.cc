@@ -475,4 +475,21 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_property_readonly("channel_type", [](MlirAttribute self) {
         return mlirMhloChannelHandleGetType(self);
       });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "TypeExtensions", mlirMhloAttributeIsTypeExtensions)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const std::vector<int64_t> &bounds,
+             MlirContext ctx) {
+            return cls(
+                mlirMhloTypeExtensionsGet(ctx, bounds.size(), bounds.data()));
+          },
+          py::arg("cls"), py::arg("bounds"), py::arg("context") = py::none(),
+          "Creates a TypeExtensions with the given bounds.")
+      .def_property_readonly("bounds", [](MlirAttribute self) {
+        return attributePropertyVector(self,
+                                       mlirMhloTypeExtensionsGetBoundsSize,
+                                       mlirMhloTypeExtensionsGetBoundsElem);
+      });
 }
