@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace pjrt {
@@ -278,6 +280,52 @@ PJRT_Error* PJRT_Executable_IsDeleted(PJRT_Executable_IsDeleted_Args* args) {
       "PJRT_Executable_IsDeleted_Args",
       PJRT_Executable_IsDeleted_Args_STRUCT_SIZE, args->struct_size));
   args->is_deleted = args->executable->executable->IsDeleted();
+  return nullptr;
+}
+
+static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
+    PJRT_Buffer*** c_lists, size_t outer_size, size_t inner_size) {
+  std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
+  cpp_lists.reserve(outer_size);
+  for (int i = 0; i < outer_size; ++i) {
+    auto& cpp_list = cpp_lists.emplace_back();
+    cpp_list.reserve(inner_size);
+    for (int j = 0; j < inner_size; ++j) {
+      cpp_list.push_back(c_lists[i][j]->buffer.get());
+    }
+  }
+  return cpp_lists;
+}
+
+PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_Execute_Args", PJRT_Executable_Execute_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_ExecuteOptions",
+                                                PJRT_ExecuteOptions_STRUCT_SIZE,
+                                                args->options->struct_size));
+  xla::ExecuteOptions options;
+  options.launch_id = args->options->launch_id;
+  options.strict_shape_checking = true;
+  options.arguments_are_tupled = false;
+  options.untuple_result = true;
+  options.context = nullptr;
+  options.multi_slice_config = nullptr;
+  std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
+      Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
+                                    args->num_args);
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>>
+          cpp_buffer_lists,
+      args->executable->executable->Execute(cpp_argument_lists, options));
+
+  for (int i = 0; i < cpp_buffer_lists.size(); ++i) {
+    for (int j = 0; j < cpp_buffer_lists[i].size(); ++j) {
+      args->output_lists[i][j] =
+          new PJRT_Buffer{std::move(cpp_buffer_lists[i][j])};
+    }
+  }
   return nullptr;
 }
 

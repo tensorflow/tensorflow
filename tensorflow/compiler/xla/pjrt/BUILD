@@ -580,10 +580,11 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
         ":pjrt_client",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
-        "//tensorflow/core/platform:casts",
         "//tensorflow/core/tpu:pjrt_api",
     ],
 )

@@ -344,6 +344,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   PjRtBuffer* wrapped() const { return wrapped_; }
 
+  PJRT_Buffer* c_buffer() const { return buffer_; }
+
   static PjRtBuffer* GetWrapped(PjRtBuffer* c_api_buffer) {
     return tensorflow::down_cast<PjRtCApiBuffer*>(c_api_buffer)->wrapped();
   }

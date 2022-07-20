@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
 
 namespace xla {
@@ -297,27 +299,104 @@ PjRtCApiExecutable::~PjRtCApiExecutable() {
   pjrt::LogFatalIfPjrtError(api->PJRT_Executable_Destroy(&args), api);
 }
 
+static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
+    absl::Span<const std::vector<PjRtBuffer*>> cpp_lists) {
+  std::vector<std::vector<PJRT_Buffer*>> c_lists;
+  c_lists.reserve(cpp_lists.size());
+  for (const auto& cpp_list : cpp_lists) {
+    auto& c_list = c_lists.emplace_back();
+    c_list.reserve(cpp_list.size());
+    for (PjRtBuffer* buffer : cpp_list) {
+      auto* c_api_argument = down_cast<PjRtCApiBuffer*>(buffer);
+      c_list.push_back(c_api_argument->c_buffer());
+    }
+  }
+  return c_lists;
+}
+
+static std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
+Convert2DCBuffersToCppBuffers(PJRT_Buffer*** c_lists, size_t outer_size,
+                              int inner_size, xla::PjRtCApiClient* client) {
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> ret;
+  for (size_t i = 0; i < outer_size; ++i) {
+    auto& output_list = ret.emplace_back();
+    output_list.reserve(inner_size);
+    for (size_t j = 0; j < inner_size; ++j) {
+      output_list.push_back(
+          std::make_unique<PjRtCApiBuffer>(client, c_lists[i][j]));
+    }
+  }
+  return ret;
+}
+
+// TODO(jieying): expose a C API PJRT_Executable_NumOutputs which gets the
+// number of putputs from the HloModule inside the implementation.
+static StatusOr<int> GetNumOutputsPerDevice(
+    const PjRtCApiExecutable& executable, int num_devices) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                      executable.GetHloModules());
+  if (hlo_modules.empty()) {
+    return xla::InvalidArgument("Hlo modules is empty for executable %s.",
+                                executable.name());
+  }
+  if (hlo_modules.size() != 1) {
+    return xla::Unimplemented(
+        "MPMD execution not supported by PjRtCApiClient::Execute.");
+  }
+  xla::Shape shape = hlo_modules[0].get()->result_shape();
+  if (shape.IsTuple()) {
+    return shape.tuple_shapes_size();
+  }
+  // The output size is 1 is it is not a tuple.
+  return 1;
+}
+
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 PjRtCApiExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
-  std::vector<std::vector<PjRtBuffer*>> wrapped_args;
-  for (const std::vector<PjRtBuffer*>& args : argument_handles) {
-    wrapped_args.push_back(PjRtCApiBuffer::GetWrappedVector(args));
-  }
+  PJRT_Executable_Execute_Args args;
+  args.struct_size = PJRT_Executable_Execute_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = executable_;
+  PJRT_ExecuteOptions c_options;
+  args.options = &c_options;
+  args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
+  args.options->launch_id = options.launch_id;
+  args.num_devices = argument_handles.size();
+  CHECK_GT(args.num_devices, 0);
+  args.num_args = argument_handles[0].size();
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> out,
-      wrapped()->Execute(wrapped_args, options, returned_futures));
-
-  for (auto& buffer_list : out) {
-    for (std::unique_ptr<PjRtBuffer>& buffer : buffer_list) {
-      buffer = std::make_unique<PjRtCApiBuffer>(
-          client_, new PJRT_Buffer{std::move(buffer)});
-    }
+  // Populates `args.argument_lists` from `argument_handles`.
+  std::vector<std::vector<PJRT_Buffer*>> c_argument_lists =
+      Convert2DCppBuffersToCBuffers(argument_handles);
+  std::vector<PJRT_Buffer**> c_arguments;
+  c_arguments.reserve(c_argument_lists.size());
+  for (auto& argument_list : c_argument_lists) {
+    c_arguments.push_back(argument_list.data());
   }
-  return out;
+  args.argument_lists = c_arguments.data();
+
+  // Allocates memory for output. `c_buffer_lists_holder` and `c_buffer_lists`
+  // needs to stay alive during the call of `PJRT_Executable_Execute`.
+  TF_ASSIGN_OR_RETURN(int num_outputs_per_device,
+                      GetNumOutputsPerDevice(*this, args.num_devices));
+  size_t outer_size = args.num_devices;
+  size_t inner_size = num_outputs_per_device;
+  std::vector<std::vector<PJRT_Buffer*>> c_buffer_lists_holder(outer_size);
+  auto c_buffer_lists = std::vector<PJRT_Buffer**>(outer_size);
+  for (int i = 0; i < outer_size; ++i) {
+    c_buffer_lists_holder[i].resize(inner_size);
+    c_buffer_lists[i] = c_buffer_lists_holder[i].data();
+  }
+  args.output_lists = c_buffer_lists.data();
+
+  RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
+                         pjrt_c_api());
+
+  return Convert2DCBuffersToCppBuffers(args.output_lists, args.num_devices,
+                                       num_outputs_per_device, client_);
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
