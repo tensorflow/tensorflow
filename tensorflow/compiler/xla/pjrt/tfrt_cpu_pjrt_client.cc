@@ -181,6 +181,8 @@ TfrtCpuClient::TfrtCpuClient(
   LOG(INFO) << "TfrtCpuClient created.";
 }
 
+TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
+
 StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(int device_id) const {
   auto it = id_to_device_.find(device_id);
   if (it != id_to_device_.end()) {
