@@ -653,21 +653,12 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
   return CreateTensorShared(context, shape, descriptor, memory, result);
 }
 
-absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
-                                             cl_mem memory, const BHWC& shape,
+absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
+                                             cl_mem memory,
                                              const TensorDescriptor& descriptor,
                                              int width_pixel_alignment,
                                              Tensor* result) {
-  BHWDC shape5d(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateSharedImage2DBufferTensor(context, memory, shape5d, descriptor,
-                                         width_pixel_alignment, result);
-}
-
-absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
-                                             cl_mem memory, const BHWDC& shape,
-                                             const TensorDescriptor& descriptor,
-                                             int width_pixel_alignment,
-                                             Tensor* result) {
+  const BHWDC& shape = descriptor.GetBHWDCShape();
   const int width = shape.b * shape.w * shape.d;
   const int height =
       descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D

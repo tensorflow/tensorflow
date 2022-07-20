@@ -107,8 +107,8 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
                             CLCommandQueue* queue) const;
 
  private:
-  friend absl::Status CreateSharedImage2DBufferTensor(
-      const CLContext& context, cl_mem memory, const BHWDC& shape,
+  friend absl::Status CreateTensorSharedImage2DBuffer(
+      const CLContext& context, cl_mem memory,
       const TensorDescriptor& descriptor, int width_pixel_alignment,
       Tensor* result);
   absl::Status IsValid(const BHWC& shape) const;
@@ -163,14 +163,8 @@ absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
 
-absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
-                                             cl_mem memory, const BHWC& shape,
-                                             const TensorDescriptor& descriptor,
-                                             int width_pixel_alignment,
-                                             Tensor* result);
-
-absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
-                                             cl_mem memory, const BHWDC& shape,
+absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
+                                             cl_mem memory,
                                              const TensorDescriptor& descriptor,
                                              int width_pixel_alignment,
                                              Tensor* result);

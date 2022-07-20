@@ -590,10 +590,9 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
             width_pixel_alignment % bytes_per_pixel == 0) {
           width_pixel_alignment /= bytes_per_pixel;
         }
-        RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
-            tensor_desc.GetBHWCShape(), tensor_desc, width_pixel_alignment,
-            &shared_buffer_tensors_[tensor_index]));
+        RETURN_IF_ERROR(CreateTensorSharedImage2DBuffer(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
+            width_pixel_alignment, &shared_buffer_tensors_[tensor_index]));
       } else {
         RETURN_IF_ERROR(CreateSharedTensor(
             *context, shared_buffers_[buffer_index].GetMemoryPtr(),
