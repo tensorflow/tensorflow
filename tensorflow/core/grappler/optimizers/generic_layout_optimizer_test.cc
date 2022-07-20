@@ -69,6 +69,10 @@ constexpr int kDepthOut = 16;
   { 0, 3, 1, 2 }
 #define PERMUTATION_DST_TO_SRC \
   { 0, 2, 3, 1 }
+#define DIMS_5D(n, d, h, w, c) \
+  { n, d, h, w, c }
+#define SRC_DATA_FORMAT_5D "NDHWC"
+#define DST_DATA_FORMAT_5D "NCDHW"
 #else
 #define DIMS(n, h, w, c) \
   { n, c, h, w }
@@ -711,9 +715,6 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv3DGraph_CPU) {
-#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
-  GTEST_SKIP() << "CUDA or ROCm is enabled";
-#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   // A simple graph contains 1 Conv3D node, 2 input and 1 output nodes.
   // Data format is NCDHW on CPU.
   Scope scope = Scope::NewRootScope();
@@ -730,6 +731,19 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv3DGraph_CPU) {
   Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
+
+  auto* conv3d_node = graph_view.GetNode("Conv3D");
+  ASSERT_NE(conv3d_node, nullptr);
+  ASSERT_EQ(conv3d_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(conv3d_node, 1, "Filter", 0);
+
+  auto* output_node = graph_view.GetNode("Output");
+  ASSERT_NE(output_node, nullptr);
+  ASSERT_EQ(output_node->NumRegularFanins(), 1);
+
+#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  VerifyDataFormatAttributeMatch(conv3d_node, SRC_DATA_FORMAT_5D);
+#else
   // The expected optimized graph contains 2 extra sets of Transpose nodes and
   // has the Conv3D's data_format set "NDHWC" on CPU.
   auto* input_transpose_node = graph_view.GetNode(
@@ -740,11 +754,7 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv3DGraph_CPU) {
   ASSERT_EQ(input_transpose_node->NumRegularFanins(), 2);
   VerifyRegularFaninMatch(input_transpose_node, 0, "Input", 0);
 
-  auto* conv3d_node = graph_view.GetNode("Conv3D");
-  ASSERT_NE(conv3d_node, nullptr);
-  ASSERT_EQ(conv3d_node->NumRegularFanins(), 2);
   VerifyRegularFaninMatch(conv3d_node, 0, input_transpose_node->GetName(), 0);
-  VerifyRegularFaninMatch(conv3d_node, 1, "Filter", 0);
   VerifyDataFormatAttributeMatch(conv3d_node, DST_DATA_FORMAT_5D);
 
   auto* output_transpose_node = graph_view.GetNode(
@@ -754,10 +764,8 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv3DGraph_CPU) {
   ASSERT_EQ(output_transpose_node->NumRegularFanins(), 2);
   VerifyRegularFaninMatch(output_transpose_node, 0, conv3d_node->GetName(), 0);
 
-  auto* output_node = graph_view.GetNode("Output");
-  ASSERT_NE(output_node, nullptr);
-  ASSERT_EQ(output_node->NumRegularFanins(), 1);
   VerifyRegularFaninMatch(output_node, 0, output_transpose_node->GetName(), 0);
+#endif
 }
 
 // TODO(yanzha): Add more complex Graph for test.
