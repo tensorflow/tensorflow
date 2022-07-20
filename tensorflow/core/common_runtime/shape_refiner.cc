@@ -154,9 +154,9 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
 // NOTE: Recursive user-defined functions are not supported.
 // Maybe we won't support recursive functions at all in TF, because of
 // other maintainability issues.
-Status ShapeRefiner::InferShapesForFunction(
-    const FunctionDef* function_def, AttrSlice attributes,
-    ExtendedInferenceContext* outer_context) {
+Status ShapeRefiner::InferShapesForFunction(const FunctionDef* function_def,
+                                            AttrSlice attributes,
+                                            InferenceContext* outer_context) {
   const Graph* graph;
   auto it = functions_.find(function_def);
   if (it != functions_.end()) {
@@ -185,8 +185,7 @@ Status ShapeRefiner::InferShapesForFunction(
     auto node_shape_inference_lambda = [this, &outer_context, &function_nodes,
                                         &inference_status](const Node* node) {
       if (!inference_status.ok()) return;
-      inference_status =
-          InferShapesForFunctionSubNode(node, outer_context->get_context());
+      inference_status = InferShapesForFunctionSubNode(node, outer_context);
       function_nodes.insert(node);
     };
 
@@ -704,7 +703,7 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
           auto const_tensor_map_copy = const_tensor_map_;
           const_tensor_map_.clear();
           Status function_inference_status = InferShapesForFunction(
-              function_def, AttrSlice(&function.attr()), ec);
+              function_def, AttrSlice(&function.attr()), c);
           const_tensor_map_ = const_tensor_map_copy;
           return function_inference_status;
         }
