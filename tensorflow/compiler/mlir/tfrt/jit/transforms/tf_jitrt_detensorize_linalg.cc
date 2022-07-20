@@ -59,7 +59,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
       GenericOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const override {
     mlir::Location loc = op.getLoc();
-    mlir::SmallVector<AffineMap, 3> indexing_maps = op.getIndexingMaps();
+    mlir::SmallVector<AffineMap, 3> indexing_maps = op.getIndexingMapsArray();
 
     mlir::SmallVector<Value, 3> inputs;
     bool found_zero_dim_tensor = false;

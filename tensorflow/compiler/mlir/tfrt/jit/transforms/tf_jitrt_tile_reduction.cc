@@ -164,7 +164,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
 
     // Check if all inputs have a 1D identity map.
     if (linalg_op.getNumLoops() != 1) return failure();
-    auto indexing_maps = linalg_op.getIndexingMaps();
+    auto indexing_maps = linalg_op.getIndexingMapsArray();
     for (auto affine_map : makeArrayRef(indexing_maps).drop_back()) {
       if (!affine_map.isIdentity()) return failure();
     }

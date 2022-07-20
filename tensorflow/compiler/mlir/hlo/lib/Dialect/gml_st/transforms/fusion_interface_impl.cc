@@ -68,7 +68,7 @@ struct LinalgGenericFusionInterface
     SmallVector<Value> subOperands;
     subOperands.reserve(genericOp.getNumInputs());
     for (const auto& it :
-         llvm::zip(genericOp.inputs(), genericOp.getIndexingMaps())) {
+         llvm::zip(genericOp.inputs(), genericOp.getIndexingMapsArray())) {
       Value operand;
       AffineMap map;
       std::tie(operand, map) = it;

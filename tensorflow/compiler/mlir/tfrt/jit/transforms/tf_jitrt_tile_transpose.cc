@@ -79,7 +79,7 @@ bool IsTransposeGenericOp(Operation *op) {
     return false;
 
   // Check that the two indexing maps are a permutation.
-  auto indexing_maps = generic_op.getIndexingMaps();
+  auto indexing_maps = generic_op.getIndexingMapsArray();
   if (indexing_maps.size() != 2) return false;
   return (indexing_maps[0].isIdentity() && indexing_maps[1].isPermutation()) ||
          (indexing_maps[0].isPermutation() && indexing_maps[1].isIdentity());
@@ -131,7 +131,7 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
       // scatter operations.
       SmallVector<Value> tiles(num_loops,
                                b.create<ConstantIndexOp>(op->getLoc(), 1));
-      auto indexing_maps = generic_op.getIndexingMaps();
+      auto indexing_maps = generic_op.getIndexingMapsArray();
       unsigned last_dim = num_loops - 1;
       unsigned vec_factor0 = 8, vec_factor1 = 8;
       unsigned vec_dim0 = indexing_maps[0].getDimPosition(last_dim);
