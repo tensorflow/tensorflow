@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <memory>
 #include <string>
@@ -23,13 +24,20 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace acceleration {
 namespace {
+
+using ::testing::IsNull;
+using ::testing::Not;
+using ::testing::WhenDynamicCastTo;
 
 class ModelLoaderTest : public ::testing::Test {
  protected:
@@ -43,8 +51,8 @@ class ModelLoaderTest : public ::testing::Test {
 };
 
 TEST_F(ModelLoaderTest, CreateFromModelPath) {
-  std::unique_ptr<ModelLoader> model_loader =
-      ModelLoader::CreateFromFdOrPath(model_path_);
+  auto model_loader = std::make_unique<PathModelLoader>(model_path_);
+
   ASSERT_NE(model_loader, nullptr);
   EXPECT_THAT(model_loader->Init(), kMinibenchmarkSuccess);
 }
@@ -54,36 +62,92 @@ TEST_F(ModelLoaderTest, CreateFromFdPath) {
   ASSERT_GE(fd, 0);
   struct stat stat_buf = {0};
   ASSERT_EQ(fstat(fd, &stat_buf), 0);
-  auto model_loader = std::make_unique<ModelLoader>(fd, 0, stat_buf.st_size);
+  auto model_loader =
+      std::make_unique<MmapModelLoader>(fd, 0, stat_buf.st_size);
   close(fd);
 
   ASSERT_NE(model_loader, nullptr);
   EXPECT_THAT(model_loader->Init(), kMinibenchmarkSuccess);
 }
 
-TEST_F(ModelLoaderTest, CreateFromFdOrModelPath) {
-  int fd = open(model_path_.c_str(), O_RDONLY);
-  ASSERT_GE(fd, 0);
-  struct stat stat_buf = {0};
-  ASSERT_EQ(fstat(fd, &stat_buf), 0);
-  std::string path = absl::StrFormat("fd:%d:%zu:%zu", fd, 0, stat_buf.st_size);
-  auto model_loader = ModelLoader::CreateFromFdOrPath(path);
-  close(fd);
+TEST_F(ModelLoaderTest, CreateFromPipePath) {
+  // Setup.
+  // Read the model and serialize it.
+  auto model = FlatBufferModel::BuildFromFile(model_path_.c_str());
+  flatbuffers::FlatBufferBuilder fbb;
+  ModelT model_obj;
+  model->GetModel()->UnPackTo(&model_obj);
+  std::string model_description = model_obj.description;
+  fbb.Finish(CreateModel(fbb, &model_obj));
+  int pipe_fds[2];
+  ASSERT_EQ(pipe(pipe_fds), 0);
+  pid_t r = fork();
+  // Child thread to write to pipe.
+  if (r == 0) {
+    close(pipe_fds[0]);
+    int written_bytes = 0;
+    int remaining_bytes = fbb.GetSize();
+    uint8_t* buffer = fbb.GetBufferPointer();
+    while (remaining_bytes > 0 &&
+           (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) > 0) {
+      remaining_bytes -= written_bytes;
+      buffer += written_bytes;
+    }
+    close(pipe_fds[1]);
+    ASSERT_TRUE(written_bytes > 0 && remaining_bytes == 0);
+    _exit(0);
+  }
 
+  // Execute.
+  // Parent thread.
+  // Close the write pipe.
+  close(pipe_fds[1]);
+  auto model_loader =
+      std::make_unique<PipeModelLoader>(pipe_fds[0], fbb.GetSize());
   ASSERT_NE(model_loader, nullptr);
+
+  // Verify.
   EXPECT_THAT(model_loader->Init(), kMinibenchmarkSuccess);
+  EXPECT_EQ(model_loader->GetModel()->GetModel()->description()->string_view(),
+            model_description);
 }
 
-TEST_F(ModelLoaderTest, InvalidFdPath) {
-  int fd = open(model_path_.c_str(), O_RDONLY);
-  ASSERT_GE(fd, 0);
-  struct stat stat_buf = {0};
-  ASSERT_EQ(fstat(fd, &stat_buf), 0);
-  std::string path = absl::StrFormat("fd:%d:%zu", fd, 0);
-  auto model_loader = ModelLoader::CreateFromFdOrPath(path);
-  close(fd);
+TEST_F(ModelLoaderTest, InvalidModelPath) {
+  auto model_loader = std::make_unique<PathModelLoader>("invalid/path");
 
-  EXPECT_EQ(model_loader, nullptr);
+  ASSERT_NE(model_loader, nullptr);
+  EXPECT_THAT(model_loader->Init(), kMinibenchmarkModelBuildFailed);
+}
+
+TEST_F(ModelLoaderTest, InvalidFd) {
+  auto model_loader = std::make_unique<MmapModelLoader>(0, 5, 10);
+
+  ASSERT_NE(model_loader, nullptr);
+  EXPECT_THAT(model_loader->Init(), kMinibenchmarkModelReadFailed);
+}
+
+TEST_F(ModelLoaderTest, InvalidPipe) {
+  auto model_loader = std::make_unique<PipeModelLoader>(-1, 10);
+
+  ASSERT_NE(model_loader, nullptr);
+  EXPECT_THAT(model_loader->Init(), kMinibenchmarkModelReadFailed);
+}
+
+TEST_F(ModelLoaderTest, CreateModelLoaderFromValidPath) {
+  EXPECT_THAT(CreateModelLoaderFromPath("a/b/c").get(),
+              WhenDynamicCastTo<PathModelLoader*>(Not(IsNull())));
+  EXPECT_THAT(CreateModelLoaderFromPath("fd:1:2:3").get(),
+              WhenDynamicCastTo<MmapModelLoader*>(Not(IsNull())));
+  EXPECT_THAT(CreateModelLoaderFromPath("pipe:1:2:3").get(),
+              WhenDynamicCastTo<PipeModelLoader*>(Not(IsNull())));
+}
+
+TEST_F(ModelLoaderTest, CreateModelLoaderFromInvalidPath) {
+  EXPECT_EQ(CreateModelLoaderFromPath("fd:1"), nullptr);
+  EXPECT_EQ(CreateModelLoaderFromPath("fd:1:2:3:4"), nullptr);
+
+  EXPECT_EQ(CreateModelLoaderFromPath("pipe:1"), nullptr);
+  EXPECT_EQ(CreateModelLoaderFromPath("pipe:1:2:3:4"), nullptr);
 }
 
 }  // namespace

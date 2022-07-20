@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #ifdef ENABLE_NNAPI_SL_TEST
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
@@ -106,7 +107,7 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     struct stat stat_buf = {0};
     ASSERT_EQ(fstat(fd, &stat_buf), 0);
     auto validator = std::make_unique<Validator>(
-        std::make_unique<ModelLoader>(fd, /*offset=*/0, stat_buf.st_size),
+        std::make_unique<MmapModelLoader>(fd, /*offset=*/0, stat_buf.st_size),
         settings);
     close(fd);
 

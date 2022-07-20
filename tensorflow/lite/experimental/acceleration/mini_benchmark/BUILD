@@ -455,7 +455,6 @@ cc_library(
         ":validator_runner",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         # For NNAPI support library, the headears and source files are defined
         # as two separate targets. We need to include both targets for NNAPI to
@@ -673,9 +672,8 @@ cc_library(
     hdrs = ["model_loader.h"],
     deps = [
         ":status_codes",
-        "//tensorflow/lite:allocation",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:model_builder",
-        "//tensorflow/lite:stderr_reporter",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -688,8 +686,11 @@ cc_test(
         ":mini_benchmark_test_helper",
         ":model_loader",
         ":status_codes",
+        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

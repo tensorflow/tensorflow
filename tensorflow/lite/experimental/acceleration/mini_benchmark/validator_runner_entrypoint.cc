@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>
@@ -28,9 +26,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -65,7 +65,7 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
       CreateComputeSettings(fbb, ExecutionPreference_ANY,
                             CreateTFLiteSettings(fbb, &tflite_settings)));
   std::unique_ptr<ModelLoader> model_loader =
-      ModelLoader::CreateFromFdOrPath(model_path);
+      CreateModelLoaderFromPath(model_path);
   if (!model_loader) {
     return kMinibenchmarkPreconditionNotMet;
   }
