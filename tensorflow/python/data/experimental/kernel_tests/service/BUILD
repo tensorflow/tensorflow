@@ -86,6 +86,7 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",

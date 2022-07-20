@@ -18,6 +18,7 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import service_config_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -35,6 +36,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -384,6 +386,42 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     for _ in range(num_epochs):
       get_next = self.getNext(dataset)
       self.assertEqual(self.getIteratorOutput(get_next), list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testStringDatasetId(self):
+    """Tests passing a dataset ID of string Tensor."""
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
+                                                   dataset)
+    dataset_id_str = (
+        dataset_id if dataset_id.dtype == dtypes.string else
+        string_ops.as_string(dataset_id))
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id_str,
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testPyStringDatasetId(self):
+    """Tests passing a dataset ID of Python string."""
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(cluster.dispatcher.target,
+                                                   dataset)
+    dataset_id_val = tensor_util.constant_value(dataset_id)
+    dataset_id_str = (
+        dataset_id_val.decode()
+        if isinstance(dataset_id_val, bytes) else str(dataset_id_val))
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id_str,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    self.assertDatasetProduces(dataset, list(range(10)))
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
@@ -745,12 +783,14 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.default_test_combinations())
   def testFromDatasetIdNotRegistered(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-
-    dataset_id = 0
+    dataset_id = ("UnregisteredID"
+                  if compat.forward_compatible(2022, 8, 31) else 0)
     element_spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.variant)
-    with self.assertRaisesRegex(errors.NotFoundError, "Dataset id 0 not found"):
-      from_dataset_id_ds = self.from_dataset_id("parallel_epochs", cluster,
-                                                dataset_id, element_spec)
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                f"Dataset id {dataset_id} not found."):
+      from_dataset_id_ds = self.from_dataset_id(
+          data_service_ops.ShardingPolicy.OFF, cluster, dataset_id,
+          element_spec)
       self.evaluate(self.getNext(from_dataset_id_ds)())
 
   @combinations.generate(test_base.default_test_combinations())

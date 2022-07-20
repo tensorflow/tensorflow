@@ -1466,11 +1466,47 @@ REGISTER_OP("DataServiceDatasetV3")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+// Changes `dataset_id` from int64 to string.
+REGISTER_OP("DataServiceDatasetV4")
+    .Input("dataset_id: string")
+    .Input("processing_mode: string")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("job_name: string")
+    .Input("consumer_index: int64")
+    .Input("num_consumers: int64")
+    .Input("max_outstanding_requests: int64")
+    .Input("iteration_counter: resource")
+    .Output("handle: variant")
+    .Attr("task_refresh_interval_hint_ms: int = -1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("data_transfer_protocol: string = ''")
+    .Attr("target_workers: string = 'AUTO'")
+    .Attr("uncompress: bool = false")
+    .Attr("uncompress_fn: func")
+    .Attr("cross_trainer_cache_options: string = ''")
+    .SetIsStateful()
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("RegisterDataset")
     .Input("dataset: variant")
     .Input("address: string")
     .Input("protocol: string")
     .Output("dataset_id: int64")
+    .Attr("external_state_policy: int")
+    .Attr("element_spec: string = ''")
+    .Attr("metadata: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Changes `dataset_id` from int64 to string.
+REGISTER_OP("RegisterDatasetV2")
+    .Input("dataset: variant")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Output("dataset_id: string")
     .Attr("external_state_policy: int")
     .Attr("element_spec: string = ''")
     .Attr("metadata: string = ''")

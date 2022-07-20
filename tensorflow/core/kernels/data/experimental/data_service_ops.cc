@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/numbers.h"
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -31,17 +30,34 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 namespace {
+
 const int64_t kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
-}
+
+constexpr char kRegisterDatasetV1[] = "RegisterDataset";
+constexpr char kRegisterDatasetV2[] = "RegisterDatasetV2";
+
+}  // namespace
 
 RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
+  const std::string& op_name = ctx->def().op();
+  if (op_name == kRegisterDatasetV1) {
+    op_version_ = 1;
+  } else if (op_name == kRegisterDatasetV2) {
+    op_version_ = 2;
+  } else {
+    ctx->CtxFailure(errors::FailedPrecondition(
+        "Unrecognized register dataset op name: ", op_name));
+    return;
+  }
+
   int64_t external_state_policy_int;
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy_int));
@@ -121,18 +137,27 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
                strings::StrCat("register dataset with dispatcher at ", address),
                deadline_micros));
 
-  int64_t dataset_id_int;
-  OP_REQUIRES(ctx, absl::SimpleAtoi(dataset_id, &dataset_id_int),
-              errors::InvalidArgument("Failed to parse dataset ID: ",
-                                      dataset_id, ". Expect integers."));
+  if (op_version_ >= 2) {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
+    auto output_dataset_id = output->tensor<tstring, /*NDIMS=*/0>();
+    output_dataset_id() = dataset_id;
+  } else {
+    int64_t dataset_id_int = 0;
+    OP_REQUIRES(ctx, absl::SimpleAtoi(dataset_id, &dataset_id_int),
+                errors::InvalidArgument("Failed to parse dataset ID: ",
+                                        dataset_id, ". Expect integers."));
 
-  Tensor* output;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
-  auto output_dataset_id = output->tensor<int64_t, 0>();
-  output_dataset_id() = dataset_id_int;
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
+    auto output_dataset_id = output->tensor<int64_t, /*NDIMS=*/0>();
+    output_dataset_id() = dataset_id_int;
+  }
 }
 
-REGISTER_KERNEL_BUILDER(Name("RegisterDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name(kRegisterDatasetV1).Device(DEVICE_CPU),
+                        RegisterDatasetOp);
+REGISTER_KERNEL_BUILDER(Name(kRegisterDatasetV2).Device(DEVICE_CPU),
                         RegisterDatasetOp);
 
 }  // namespace data
