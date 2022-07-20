@@ -877,10 +877,15 @@ def HLO_IfOp: HLO_Op<"if", [
   let summary = "If operator";
 
   let description = [{
-    Returns the result of executing either a true or false function depending on
-    the result of a condition function.
+    Executes the function `true_branch` if `pred` is true or `false_branch` if
+    pred is false, and returns the result.
 
-    See https://www.tensorflow.org/xla/operation_semantics#conditional.
+    The type of the returned values of `true_branch` and `false_branch`
+    functions must be the same and equal to the types of the values returned by
+    the operation.
+
+    Note that only one of two functions will be executed depending on the value
+    of `pred`.
   }];
 
   let arguments = (ins
@@ -908,17 +913,14 @@ def HLO_CaseOp: HLO_Op<"case", [
     ]> {
   let summary = "Switch-Case operator";
   let description = [{
-    Returns the result of executing `branches[index]`. If
-    `index` is < 0 or >= N, then `branches[N-1] is executed as
-    the default branch.
+    Returns the result of executing `branches[index]`. If `index` is < 0 or >=
+    N, then `branches[N-1]` is executed as the default branch.
 
-    Each branch `branches[b]` must take in a single argument of same type as
-    `branch_operands[b]` and will be invoked with `branch_operands[b]`. The type
-    of the returned value of each branch must be the same.
+    The type of the returned values of each branch must be the same and equal
+    to the types of the values returned by the operation.
 
     Note that only one of the branches will be executed depending on the value
     of index.
-    See https://www.tensorflow.org/xla/operation_semantics#conditional.
   }];
 
   let arguments = (ins
