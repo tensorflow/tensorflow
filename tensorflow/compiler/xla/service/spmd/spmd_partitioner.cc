@@ -222,6 +222,22 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
   return partition_groups;
 }
 
+// Returns a sharding that is replicated on all the dimensions where the given
+// window is not unary.
+HloSharding GetShardingReplicatedOnWindowedDimension(
+    const HloSharding& sharding, const Window& window) {
+  std::vector<int64_t> dimensions_to_replicate;
+  for (int i = 0; i < window.dimensions_size(); ++i) {
+    const WindowDimension& wd = window.dimensions(i);
+    if (window_util::IsTrivialWindowDimension(wd)) {
+      continue;
+    }
+    dimensions_to_replicate.push_back(i);
+  }
+  return hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+      sharding, dimensions_to_replicate);
+}
+
 }  // namespace
 
 HloInstruction* SpmdBuilder::AddInstruction(
@@ -673,13 +689,20 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   std::vector<int64_t> pre_halo_exchange_slice_starts(base_shape_.rank(), 0);
   std::vector<int64_t> pre_halo_exchange_slice_limits(
       hlo_->shape().dimensions().begin(), hlo_->shape().dimensions().end());
+  std::vector<bool> can_leave_dimension_partitioned(base_shape_.rank(), false);
+  for (int64_t i = 0; i < base_shape_.rank(); ++i) {
+    can_leave_dimension_partitioned[i] =
+        window_util::IsTrivialWindowDimension(window.dimensions(i));
+  }
   for (int64_t i = 0; i < base_shape_.rank(); ++i) {
     // Do not pad non-partitioned dimensions.
     int64_t shard_count = target.tile_assignment().dim(i);
     trimmed_target_sharding_tile_shape[i] = shard_count;
-    if (shard_count == 1) {
+    if (shard_count == 1 || can_leave_dimension_partitioned[i]) {
       offsets_on_padded_shape[i] = state_.b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+      shard_shape.set_dimensions(
+          i, CeilOfRatio(base_shape_.dimensions(i), shard_count));
       continue;
     }
     const WindowDimension& wd = window.dimensions(i);
@@ -928,16 +951,20 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     return dynamic_slice_offset_on_output;
   };
 
-  // If the currrent HLO is replicated, pad then slice.
-  if (sharding().IsReplicated()) {
+  auto handle_all_windowed_dimensions_are_replicated = [&]() {
     PaddingConfig padding_config;
+    auto pad_hlo_shape = padded_shape;
     for (int64_t i = 0; i < base_shape_.rank(); ++i) {
       auto padding_config_dim = padding_config.add_dimensions();
       padding_config_dim->set_interior_padding(0);
-      // Do not pad non-partitioned dimensions.
-      if (target.tile_assignment().dim(i) == 1) {
+      // Do not pad non-partitioned dimensions or partitioned dimensions that
+      // are already sharded in a way that where the windowed sharding matches
+      // the sharding we want.
+      if (target.tile_assignment().dim(i) == 1 ||
+          can_leave_dimension_partitioned[i]) {
         padding_config_dim->set_edge_padding_low(0);
         padding_config_dim->set_edge_padding_high(0);
+        pad_hlo_shape.set_dimensions(i, hlo_->shape().dimensions(i));
         continue;
       }
       padding_config_dim->set_edge_padding_low(explicit_left_padding[i]);
@@ -945,10 +972,11 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                                 explicit_left_padding[i] -
                                                 base_shape_.dimensions(i));
     }
-    auto padded_hlo = ShapeUtil::Compatible(padded_shape, base_shape_)
-                          ? hlo_
-                          : state_.b->AddInstruction(HloInstruction::CreatePad(
-                                padded_shape, hlo_, pad_value, padding_config));
+    auto padded_hlo =
+        ShapeUtil::Compatible(pad_hlo_shape, base_shape_)
+            ? hlo_
+            : state_.b->AddInstruction(HloInstruction::CreatePad(
+                  pad_hlo_shape, hlo_, pad_value, padding_config));
     auto sharded_input =
         state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
             shard_shape, padded_hlo, offsets_on_padded_shape,
@@ -956,9 +984,21 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     return update_cache(WindowedInputShardReturnValue{
         sharded_input, shard_window,
         get_dynamic_slice_offset_on_output_if_needed()});
-  }
+  };
 
-  if (target != sharding()) {
+  auto sharding_with_non_windowed_dims_replicated =
+      GetShardingReplicatedOnWindowedDimension(target, window);
+  // If the currrent HLO is replicated or all windows dimensions are replicated,
+  // pad then slice. If the target sharding and current sharding are not the
+  // same then give the halo exchange system a chance to run as it can skip
+  // generating a dynamic slice.
+  if (sharding().IsReplicated() ||
+      (target != sharding() &&
+       sharding_with_non_windowed_dims_replicated == sharding())) {
+    return handle_all_windowed_dimensions_are_replicated();
+  }
+  if (target != sharding() &&
+      sharding_with_non_windowed_dims_replicated != sharding()) {
     return Reshard(target).ReshardAsWindowedInput(window, target, pad_value);
   }
   if (Product(trimmed_target_sharding_tile_shape) == 1) {
@@ -1031,7 +1071,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
   // halos only concating slices, instead of slicing concats.
   for (int dim = 0; dim < base_shape_.rank(); ++dim) {
     int64_t shard_count = halo_exchange_target->tile_assignment().dim(dim);
-    if (shard_count == 1) {
+    if (shard_count == 1 || can_leave_dimension_partitioned[dim]) {
       continue;
     }
     int64_t input_shard_size =
@@ -1061,7 +1101,13 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     if (!resharded) {
       VLOG(1) << "ReshardAsWindowedInput failed without replicate first: halo "
                  "is beyond the neighbor.";
-      return Replicate().ReshardAsWindowedInput(window, target, pad_value);
+      // If we are already sharded in such a way that all windowed dimensions
+      // are replicated then just handle it with pad + slice.
+      if (sharding_with_non_windowed_dims_replicated == sharding()) {
+        return handle_all_windowed_dimensions_are_replicated();
+      }
+      return Reshard(sharding_with_non_windowed_dims_replicated)
+          .ReshardAsWindowedInput(window, target, pad_value);
     }
     visiting_hlo = *resharded;
   }
