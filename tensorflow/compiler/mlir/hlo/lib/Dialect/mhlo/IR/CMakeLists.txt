@@ -56,7 +56,13 @@ target_link_libraries(MhloDialect
   PUBLIC
   MLIRIR
   MLIRMhloUtils
+  MLIRQuantDialect
   HloOpsCommon
+)
+target_include_directories(MhloDialect
+  PUBLIC
+  ${MLIR_HLO_GEN_INCLUDE_DIR}
+  ${MLIR_HLO_MAIN_INCLUDE_DIR}
 )
 
 add_mlir_dialect_library(MhloRegisterDialects
