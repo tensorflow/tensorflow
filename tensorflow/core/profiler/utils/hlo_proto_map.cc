@@ -59,7 +59,8 @@ ParseHloProtosFromXSpace(const XSpace& space) {
       plane.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.ValueCase() != XStat::kBytesValue) return;
         auto hlo_proto = std::make_unique<xla::HloProto>();
-        if (hlo_proto->ParseFromString(stat.BytesValue())) {
+        absl::string_view byte_value = stat.BytesValue();
+        if (hlo_proto->ParseFromArray(byte_value.data(), byte_value.size())) {
           hlo_protos.emplace_back(stat.Id(), std::move(hlo_proto));
         }
       });
