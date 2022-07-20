@@ -219,7 +219,7 @@ func.func @conv_forward_fused(%input: memref<8x5x5x1xf32, #map1>,
   // CHECK: call @xla.gpu.conv.forward.fused(
   // CHECK-SAME: %[[INPUT]], %[[FILTER]], %[[BIAS]], %[[OUTPUT]], %[[SCRATCH]])
 
-  // CHECK-DAG: activation_mode = 2 : i64
+  // CHECK-DAG: activation_mode = #lmhlo_gpu<activation Relu>
   // CHECK-DAG: knob_ids = dense<[2, 3]> : tensor<2xi64>
   // CHECK-DAG: knob_values = dense<[4, 0]> : tensor<2xi64>
   lmhlo_gpu.conv_forward_fused(%input, %filter, %bias, %output, %scratch)
@@ -285,7 +285,7 @@ func.func @conv_forward_fused_with_side_input(
   // CHECK-SAME: %[[INPUT]], %[[FILTER]], %[[BIAS]], %[[SIDE_INPUT]],
   // CHECK-SAME: %[[OUTPUT]], %[[SCRATCH]])
 
-  // CHECK-DAG: activation_mode = 2 : i64
+  // CHECK-DAG: activation_mode = #lmhlo_gpu<activation Relu>
   // CHECK-DAG: side_input_scale = 1.000000e+00 : f64
   lmhlo_gpu.conv_forward_fused_with_side_input(
       %input, %filter, %bias, %side_input, %output, %scratch)

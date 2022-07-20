@@ -23,6 +23,7 @@
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tfrt/jitrt/conversion/custom_call_to_llvm.h"  // from @tf_runtime
 #include "tfrt/jitrt/custom_call.h"  // from @tf_runtime
 #include "tfrt/support/type_id.h"  // from @tf_runtime
 
@@ -34,6 +35,12 @@ class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
 }  // namespace gpu
 }  // namespace xla
+
+namespace tfrt {
+namespace jitrt {
+JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
+}  // namespace jitrt
+}  // namespace tfrt
 
 // Declare explicit dense type ids for all types passed to the custom calls
 // as a user data to generate template specializations for fast id lookup.
@@ -52,6 +59,10 @@ TFRT_DECLARE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
 
 namespace xla {
 namespace gpu {
+
+// Populate encoding from LMHLO attributes to XLA(SE) enums and structs.
+void PopulateLmhloToXlaAttrEncoding(
+    tfrt::jitrt::CustomCallAttrEncodingSet& encoding);
 
 class JitRtKernelsCache {
  public:

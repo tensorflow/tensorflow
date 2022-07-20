@@ -96,6 +96,18 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 // -------------------------------------------------------------------------- //
 
+void PopulateLmhloToXlaAttrEncoding(
+    jitrt::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<jitrt::EnumAttrEncoding<mlir::lmhlo_gpu::ActivationAttr,
+                                       mlir::lmhlo_gpu::Activation,
+                                       se::dnn::ActivationMode>>(
+      [](mlir::lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
+        return ConvertConvActivationMode(value).value();
+      });
+}
+
+// -------------------------------------------------------------------------- //
+
 se::KernelBase* JitRtKernelsCache::Get(se::StreamExecutor* executor,
                                        const char* data, StringRef name) {
   Key key(executor, data, name);
@@ -543,7 +555,7 @@ struct ConvAttrs {
 };
 
 struct FusedConvAttrs {
-  int64_t activation_mode;
+  se::dnn::ActivationMode activation_mode;
 };
 
 struct SideInputAttrs {
@@ -670,7 +682,7 @@ struct Conv {
       // Remaining attributes
       int64_t feature_group_count, double result_scale,
       // Optional attributes for fused convolutions.
-      Optional<int64_t> activation_mode = llvm::None,
+      Optional<se::dnn::ActivationMode> activation_mode = llvm::None,
       Optional<double> side_input_scale = llvm::None) const {
     // Build config for optional attributes.
     Optional<FusedConvAttrs> fused_attrs = llvm::None;
@@ -796,7 +808,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
                              .Arg<jitrt::StridedMemrefView>()  // output
                              .Arg<jitrt::FlatMemrefView>()     // scratch
                          )
-          .Attr<int64_t>("activation_mode")
+          .Attr<se::dnn::ActivationMode>("activation_mode")
           .To(Conv::Handler(kind))
           .release();
 
@@ -817,7 +829,7 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
                              .Arg<jitrt::StridedMemrefView>()  // output
                              .Arg<jitrt::FlatMemrefView>()     // scratch
                          )
-          .Attr<int64_t>("activation_mode")
+          .Attr<se::dnn::ActivationMode>("activation_mode")
           .Attr<double>("side_input_scale")
           .To(Conv::Handler(kind))
           .release();

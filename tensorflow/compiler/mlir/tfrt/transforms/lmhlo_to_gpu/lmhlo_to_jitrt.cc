@@ -592,20 +592,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Copy attributes specific for fused convolutions.
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
     }
 
     // Copy attributes specific for fused convolutions with side input.
     if (auto fused = dyn_cast<ConvForwardFusedSideInputOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
       set_attr("side_input_scale", fused.getSideInputScaleAttr());
     }
 
