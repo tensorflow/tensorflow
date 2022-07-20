@@ -36334,6 +36334,45 @@ func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protoco
 	return op.Output(0)
 }
 
+// RegisterDatasetV2Attr is an optional argument to RegisterDatasetV2.
+type RegisterDatasetV2Attr func(optionalAttr)
+
+// RegisterDatasetV2ElementSpec sets the optional element_spec attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2ElementSpec(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["element_spec"] = value
+	}
+}
+
+// RegisterDatasetV2Metadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2Metadata(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
+// Registers a dataset with the tf.data service.
+func RegisterDatasetV2(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64, optional ...RegisterDatasetV2Attr) (dataset_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RegisterDatasetV2",
+		Input: []tf.Input{
+			dataset, address, protocol,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes rectified linear: `max(features, 0)`.
 //
 // See: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
