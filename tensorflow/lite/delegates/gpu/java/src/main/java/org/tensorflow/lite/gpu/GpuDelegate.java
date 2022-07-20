@@ -36,6 +36,7 @@ public class GpuDelegate implements Delegate {
 
   private long delegateHandle;
 
+  @UsedByReflection("GpuDelegateFactory")
   public GpuDelegate(GpuDelegateFactory.Options options) {
     delegateHandle =
         createDelegate(
