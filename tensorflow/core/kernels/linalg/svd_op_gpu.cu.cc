@@ -395,6 +395,12 @@ class SvdOpGpu : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(context, context->allocate_output(2, shapeV, &outputV),
                          done);
 
+    // If there are zero batches, we are done.
+    if (shapeRaw.num_elements() == 0) {
+      done();
+      return;
+    }
+
     if (n == 0 || m == 0) {
       if (n == m || !compute_uv_ || !full_matrices_) {
         // S, U, and V are all empty. Nothing to do.
