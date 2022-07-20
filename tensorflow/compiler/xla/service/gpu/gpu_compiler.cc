@@ -153,6 +153,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
+#include "tensorflow/compiler/xla/service/scatter_simplifier.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
 #include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
@@ -343,6 +344,9 @@ Status GpuCompiler::OptimizeHloModule(
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
+      if (debug_options.xla_gpu_simplify_scatters()) {
+        spmd_simplify.AddPass<ScatterSimplifier>();
+      }
       spmd_simplify.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
       spmd_simplify.AddPass<GatherExpander>(
@@ -478,6 +482,9 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+      if (debug_options.xla_gpu_simplify_scatters()) {
+        pipeline.AddPass<ScatterSimplifier>();
+      }
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
 

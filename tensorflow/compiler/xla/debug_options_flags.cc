@@ -672,6 +672,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_deterministic_ops(),
       "Guarantees run-to-run determinism on GPU."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_simplify_scatters",
+      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_scatters),
+      flag_values->xla_gpu_simplify_scatters(),
+      "Simplifies all Scatters to a canonical form."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       flag_values->xla_gpu_enable_async_all_reduce(),
