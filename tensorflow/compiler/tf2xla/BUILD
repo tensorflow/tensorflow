@@ -1,6 +1,11 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# copybara:uncomment_begin(google-only)
+# load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
+# copybara:uncomment_end
+
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -220,6 +225,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.h",
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
+        "//tensorflow/compiler/xla/service:custom_call_status_hdrs",
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -232,6 +238,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.cc",
         "//tensorflow/compiler/xla:cpu_runtime_srcs",
+        "//tensorflow/compiler/xla/service:custom_call_status_srcs",
         "//tensorflow/compiler/xla/service/cpu:runtime_srcs",
         "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
@@ -264,6 +271,22 @@ cc_library(
     #
     # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of
     # absl/strings:cord when we update absl to a newer version.
+    #
+    # NOTE!!!!! (b/150412548 for reference)
+    # DO NOT add dependencies here!
+    #
+    # 1) Read first the purpose of this target and the purpose of the
+    #   :xla_compiled_cpu_runtime_{srcs|hrds} targets.
+    #
+    # Key point is: this target represents the sources available under the xla_aot_runtime_srcs
+    # dir in the tensorflow pip package, which enables linking AOT-ed saved modules in customer
+    # projects, including those not using bazel. So adding a dependency here to fix the tests
+    # using this target (xla_compiled_cpu_runtime_standalone) defeats the purpose.
+    #
+    # 2) Most likely you need to split your dependency into 2 file groups and add them
+    #    to the :xla_compiled_cpu_runtime_{srcs|hrds} targets accordingly.
+    #
+    # !!!DO NOT EDIT dependencies - please read the above!!!
     deps = [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -272,7 +295,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "//third_party/eigen3",
-        "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:stringpiece",
@@ -283,6 +305,45 @@ cc_library(
     ] + tf_additional_tensor_coding_deps(),
     alwayslink = 1,
 )
+
+# copybara:uncomment_begin(google-only)
+# check_dependencies(
+#     # Please read the whole comment above the `deps` of xla_compiled_cpu_runtime_standalone before
+#     # making any change here.
+#     name = "only_pip_sources_in_xla_lib",
+#     of = [":xla_compiled_cpu_runtime_standalone"],
+#     allowed_match_regexp = "|".join([
+#         ":xla_compiled_cpu_runtime_standalone",
+#         "//tensorflow/core/framework:numeric_types",
+#         "//tensorflow/core/platform/default:cord",
+#         "//tensorflow/core/platform/default:env_time",
+#         "//tensorflow/core/platform/default:logging",
+#         "//tensorflow/core/platform/default:mutex",
+#         "//tensorflow/core/platform/default:types",
+#         "//tensorflow/core/platform/google:cord",
+#         "//tensorflow/core/platform/google:env_time",
+#         "//tensorflow/core/platform/google:logging",
+#         "//tensorflow/core/platform/google:mutex",
+#         "//tensorflow/core/platform/google:types",
+#         "//tensorflow/core/platform/windows:env_time",
+#         "//tensorflow/core/platform:bfloat16",
+#         "//tensorflow/core/platform:blocking_counter",
+#         "//tensorflow/core/platform:byte_order",
+#         "//tensorflow/core/platform:cord",
+#         "//tensorflow/core/platform:env_time",
+#         "//tensorflow/core/platform:logging",
+#         "//tensorflow/core/platform:macros",
+#         "//tensorflow/core/platform:mutex",
+#         "//tensorflow/core/platform:platform",
+#         "//tensorflow/core/platform:stringpiece",
+#         "//tensorflow/core/platform:thread_annotations",
+#         "//tensorflow/core/platform:tstring",
+#         "//tensorflow/core/platform:types",
+#     ]),
+#     dont_match_regexp = "|".join(["//tensorflow"]),
+#     kind = "cc_library",
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "xla_compiled_cpu_function",

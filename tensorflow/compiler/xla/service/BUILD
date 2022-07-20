@@ -6126,6 +6126,21 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "custom_call_status_hdrs",
+    srcs = [
+        "custom_call_status.h",
+        "custom_call_status_internal.h",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "custom_call_status_srcs",
+    srcs = ["custom_call_status.cc"],
+    visibility = [":friends"],
+)
+
 # Internal version that exposes internal details and private interfaces. For
 # use by other XLA code only.
 cc_library(
