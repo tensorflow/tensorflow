@@ -139,7 +139,7 @@ class SplitOpTest(test.TestCase):
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + size_splits[i])
       offset += size_splits[i]
-      self.assertAllEqual(result[i], inp[slices])
+      self.assertAllEqual(result[i], inp[tuple(slices)])
 
   def _testSpecialCasesVariable(self):
     inp = np.random.rand(4, 4).astype("f")
@@ -165,7 +165,7 @@ class SplitOpTest(test.TestCase):
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + size_splits[i])
       offset += size_splits[i]
-      self.assertAllEqual(result[i], inp[slices])
+      self.assertAllEqual(result[i], inp[tuple(slices)])
 
   @test_util.run_in_graph_and_eager_modes
   def testSpecialCasesVariable(self):
@@ -299,7 +299,7 @@ class SplitOpTest(test.TestCase):
     for i in range(num_split):
       slices[split_dim] = slice(offset, offset + length)
       offset += length
-      self.assertAllEqual(result[i], inp[slices])
+      self.assertAllEqual(result[i], inp[tuple(slices)])
 
   @test_util.run_in_graph_and_eager_modes
   def testRandom(self):
