@@ -6160,9 +6160,8 @@ bool isSplatZero(SplatElementsAttr attr) {
   }
   if (attr.getElementType().isa<IntegerType>()) {
     return attr.getSplatValue<APInt>().isZero();
-  } else {
-    return false;
   }
+  return false;
 }
 
 OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
@@ -6186,9 +6185,8 @@ bool isSplatOne(SplatElementsAttr attr) {
   }
   if (attr.getElementType().isa<IntegerType>()) {
     return attr.getSplatValue<APInt>().getSExtValue() == 1;
-  } else {
-    return false;
   }
+  return false;
 }
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
