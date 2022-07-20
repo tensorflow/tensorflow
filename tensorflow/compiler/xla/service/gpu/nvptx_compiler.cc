@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -169,7 +170,9 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
     case HloOpcode::kCustomCall:
       // The matrix bias operand can be overwritten in-place.
       if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
-        return user->operand_count() == 3 && user->operand(2) == operand;
+        GemmBackendConfig config =
+            std::move(user->backend_config<GemmBackendConfig>()).ValueOrDie();
+        return (config.beta() != 0.) && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.
       if (user->custom_call_target() == kCusolverCholeskyCallTarget) {

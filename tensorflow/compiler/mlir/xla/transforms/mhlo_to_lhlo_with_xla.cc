@@ -845,14 +845,22 @@ StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   bool has_matrix_bias = config.beta() != 0.;
-  TF_RET_CHECK(custom_call->operand_count() == 2 + int{has_matrix_bias});
+  bool has_vector_bias =
+      custom_call->operand_count() > (has_matrix_bias ? 3 : 2);
+  TF_RET_CHECK(custom_call->operand_count() ==
+               2 + int{has_matrix_bias} + int{has_vector_bias});
 
-  llvm::SmallVector<Value, 4> operands;
+  llvm::SmallVector<Value, 5> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(
       has_matrix_bias ? custom_call->operand(2) : custom_call, &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+
+  if (has_vector_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(
+        custom_call->operand(has_matrix_bias ? 3 : 2), &operands));
+  }
 
   auto op =
       CreateOpWithoutAttrs<lmhlo_gpu::CublasLtMatmulOp>(custom_call, operands);

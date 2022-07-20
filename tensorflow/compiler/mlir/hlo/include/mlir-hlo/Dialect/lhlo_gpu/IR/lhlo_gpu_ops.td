@@ -145,6 +145,7 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead]>:$c,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
     DotDimensionNumbers:$dot_dimension_numbers,
     HLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,

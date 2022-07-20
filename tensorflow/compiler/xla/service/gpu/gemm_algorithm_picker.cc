@@ -266,7 +266,22 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
-    TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(config));
+    bool has_matrix_bias = config.beta != 0.;
+    bool has_vector_bias = gemm->operand_count() > (has_matrix_bias ? 3 : 2);
+
+    auto epilogue = has_vector_bias ? se::cuda::BlasLt::Epilogue::kBias
+                                    : se::cuda::BlasLt::Epilogue::kDefault;
+
+    se::DeviceMemoryBase bias_buffer;
+    if (has_vector_bias) {
+      TF_ASSIGN_OR_RETURN(bias_buffer,
+                          CreateBuffer(buffer_allocator,
+                                       *gemm->operand(has_matrix_bias ? 3 : 2),
+                                       autotune_config, rng_state));
+    }
+
+    TF_ASSIGN_OR_RETURN(auto plan,
+                        cublas_lt::MatmulPlan::From(config, epilogue));
     TF_ASSIGN_OR_RETURN(
         std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
         plan.GetAlgorithms(stream));
@@ -283,7 +298,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
               se::blas::ProfileResult profile_result;
               TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
                   stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
-                  algorithm, scratch_allocator, &profile_result));
+                  bias_buffer, algorithm, scratch_allocator, &profile_result));
               return std::move(profile_result);
             }));
 

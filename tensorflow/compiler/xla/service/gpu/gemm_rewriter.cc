@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -187,6 +188,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
 
+    // First, try to match vector bias add, so we might elide the broadcast.
+    if (Match(instr, m::AddAnyOrder(
+                         m::Op(&existing_gemm)
+                             .WithCustomCallTarget(kCublasLtMatmulCallTarget),
+                         m::Broadcast(&bias, m::Op())))) {
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm));
+      if (was_fused) return OkStatus();
+    }
+
     // add(bitcast(gemm(a, b)), bias) ->
     //   bitcast(add(gemm(a, b), bitcast(bias))) ->
     //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
@@ -220,7 +231,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                              .WithCustomCallTarget(
                                  {kGemmCallTarget, kCublasLtMatmulCallTarget}),
                          m::Op(&bias)))) {
-      return FuseBiasedGemm(instr, bias, existing_gemm);
+      return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
     return Status::OK();
@@ -236,13 +247,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                           .WithElementType(BF16)),
                            m::Convert(m::Op(&bias).WithElementType(BF16))))
                 .WithElementType(BF16))) {
-      return FuseBiasedGemm(instr, bias, existing_gemm);
+      return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     return OkStatus();
   }
 
-  Status FuseBiasedGemm(HloInstruction *instr, HloInstruction *bias,
-                        HloInstruction *gemm) {
+  Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
+                           HloInstruction *gemm) {
+    TF_RET_CHECK(bias->shape() == gemm->shape());
+
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
     if (gemm->shape().element_type() == S32) {
@@ -254,8 +267,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
 
     auto config = gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-    if (config.beta() != 0 || !can_fuse_bias || gemm->user_count() != 1 ||
-        bias->shape() != gemm->shape()) {
+    if (config.beta() != 0 || !can_fuse_bias || gemm->user_count() != 1) {
       return OkStatus();
     }
 
@@ -276,6 +288,48 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
     return OkStatus();
+  }
+
+  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+                                   HloInstruction *broadcast_bias,
+                                   HloInstruction *matmul) {
+    TF_RET_CHECK(broadcast_bias->shape() == matmul->shape());
+
+    auto config = matmul->backend_config<GemmBackendConfig>().ValueOrDie();
+
+    bool has_matrix_bias = config.beta() != 0.;
+    bool has_vector_bias = matmul->operand_count() > (has_matrix_bias ? 3 : 2);
+
+    // # output column dims == # non-contracting rhs operand dims.
+    const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
+    size_t num_col_dims = matmul->operand(1)->shape().rank() -
+                          dot_dims.rhs_batch_dimensions_size() -
+                          dot_dims.rhs_contracting_dimensions_size();
+
+    HloInstruction *bias = broadcast_bias->mutable_operand(0);
+    if ((matmul->user_count() != 1) || has_vector_bias ||
+        (bias->shape().rank() != num_col_dims)) {
+      return false;
+    }
+
+    // We require the bias vector to have been broadcast in the most major
+    // dimensions; i.e. its dimensions align with the output column dims.
+    for (size_t i = 0; i < num_col_dims; ++i) {
+      if (broadcast_bias->dimensions(i) !=
+          matmul->shape().rank() - num_col_dims + i) {
+        return false;
+      }
+    }
+
+    std::vector<HloInstruction *> operands(matmul->operands().begin(),
+                                           matmul->operands().end());
+    operands.push_back(bias);
+
+    std::unique_ptr<HloInstruction> fused_op =
+        matmul->CloneWithNewOperands(instr->shape(), operands);
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
+    return true;
   }
 };
 

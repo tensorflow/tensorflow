@@ -1145,15 +1145,21 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(matmul.getC()));
   TF_ASSIGN_OR_RETURN(auto d, GetAllocationSlice(matmul.getD()));
 
+  BufferAllocation::Slice bias;
+  if (matmul.getBias() != nullptr) {
+    TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
+  }
+
   std::unique_ptr<Thunk> thunk;
   if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(thunk,
-                        CreateBefThunk(GetThunkInfo(op), op, {a, b, c, d}));
+    TF_ASSIGN_OR_RETURN(
+        thunk, CreateBefThunk(GetThunkInfo(op), op, {a, b, c, d, bias}));
   } else {
     TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                         cublas_lt::MatmulPlan::For(matmul));
     thunk = std::make_unique<CublasLtMatmulThunk>(
-        GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d);
+        GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
+        bias);
   }
 
   AddThunkToThunkSequence(std::move(thunk));
