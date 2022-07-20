@@ -1144,6 +1144,12 @@ TEST_F(DeviceKernelOpTest, TestGetKernelInfo) {
     TF_Status* s = TF_NewStatus();
     int64_t dim[1] = {1};
     TF_AllocatorAttributes alloc_attrs;
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    alloc_attrs.on_host = 0;
+#else
+    alloc_attrs.on_host = 1;
+#endif
 
     // Test if the C API returns expected strings.
     TF_StringView sv = TF_GetOpKernelName(ctx);
