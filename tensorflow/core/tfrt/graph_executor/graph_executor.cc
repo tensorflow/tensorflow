@@ -375,10 +375,11 @@ tensorflow::Status GraphExecutor::Run(
   std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
 
   // Load the client graph.
-  TF_ASSIGN_OR_RETURN(const LoadedClientGraph& loaded_client_graph,
-                      GetOrCreateLoadedClientGraph(
-                          sorted_input_names, sorted_input_dtypes,
-                          sorted_output_names, sorted_target_node_names));
+  TF_ASSIGN_OR_RETURN(
+      const LoadedClientGraph& loaded_client_graph,
+      GetOrCreateLoadedClientGraph(
+          sorted_input_names, sorted_input_dtypes, sorted_output_names,
+          sorted_target_node_names, run_options.work_queue));
 
   const auto* func = loaded_client_graph.bef_file->GetFunction(
       tensorflow::kImportModelDefaultGraphFuncName);
@@ -447,7 +448,9 @@ GraphExecutor::ImportAndCompileClientGraph(
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
-GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
+GraphExecutor::LoadClientGraph(
+    const GraphExecutor::ClientGraph& client_graph,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
   LOG(INFO) << "TFRT loading client graph (" << &client_graph << ") "
             << client_graph.name;
   TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
@@ -459,7 +462,8 @@ GraphExecutor::LoadClientGraph(const GraphExecutor::ClientGraph& client_graph) {
       loaded_client_graph->bef_file,
       tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));
   RETURN_IF_ERROR_IN_INIT(InitBef(loaded_client_graph->bef_file.get(),
-                                  loaded_client_graph->resource_context.get()));
+                                  loaded_client_graph->resource_context.get(),
+                                  work_queue));
   auto init_duration = absl::Now() - init_start_time;
   LOG(INFO) << "TFRT finished initializing client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(init_duration)
@@ -509,13 +513,14 @@ StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
 }
 
 tensorflow::Status GraphExecutor::InitBef(
-    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context) {
+    tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
   auto* host = runtime().core_runtime()->GetHostContext();
   TF_ASSIGN_OR_RETURN(
       auto request_info,
       SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, host,
-                          runtime().work_queue(), resource_context,
-                          fallback_state_));
+                          work_queue ? work_queue : runtime().work_queue(),
+                          resource_context, fallback_state_));
 
   tfrt::ExecutionContext exec_ctx(request_info->tfrt_request_context);
 
@@ -539,7 +544,8 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     absl::Span<const std::string> input_tensor_names,
     absl::Span<const tensorflow::DataType> input_tensor_dtypes,
     absl::Span<const std::string> output_tensor_names,
-    absl::Span<const std::string> target_tensor_names) {
+    absl::Span<const std::string> target_tensor_names,
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
   // The format of the joined name is illustrated as in the following example:
   // input1-input2^output1-output2^target1-target2
   const auto joined_name = absl::StrCat(
@@ -572,7 +578,8 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
       std::move(input_nodes),
       {output_tensor_names.begin(), output_tensor_names.end()},
       {target_tensor_names.begin(), target_tensor_names.end()}};
-  TF_ASSIGN_OR_RETURN(auto loaded_client_graph, LoadClientGraph(client_graph));
+  TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
+                      LoadClientGraph(client_graph, work_queue));
 
   // Store the new loaded client graph in cache and return.
   const auto* loaded_client_graph_ptr = loaded_client_graph.get();
