@@ -6591,6 +6591,35 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "select_and_scatter_expander",
+    srcs = ["select_and_scatter_expander.cc"],
+    hdrs = ["select_and_scatter_expander.h"],
+    deps = [
+        ":call_inliner",
+        ":hlo",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal_util",
+    ],
+)
+
+tf_cc_test(
+    name = "select_and_scatter_expander_test",
+    srcs = ["select_and_scatter_expander_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":select_and_scatter_expander",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "layout_normalization_test",
     srcs = [
