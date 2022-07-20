@@ -1493,11 +1493,11 @@ class OpConverterTest : public ::testing::Test {
     }
 
     status = RunValidation(node);
+    // If conversion fails, it should fail already during valiadation.
+    EXPECT_THAT(status,
+                StatusIs(expected_code, HasSubstr(expected_msg_substr)));
     if (should_run_conversion && status.ok()) {
       RunConversion(node, expected_code, expected_msg_substr);
-    } else {
-      EXPECT_THAT(status,
-                  StatusIs(expected_code, HasSubstr(expected_msg_substr)));
     }
   }
 
