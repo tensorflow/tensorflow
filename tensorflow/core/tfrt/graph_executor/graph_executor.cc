@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/native_lowering/saved_model/saved_model_translate.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
@@ -436,9 +437,22 @@ GraphExecutor::ImportAndCompileClientGraph(
 
   // Step 2 of loading: Compile the MLIR module from TF dialect to TFRT dialect
   // (in BEF).
+  // TODO(b/229261464): Unify the sync and async lowering passes so we do not
+  // need this branch.
   auto compile_start_time = absl::Now();
-  ASSIGN_OR_RETURN_IN_COMPILE(loaded_client_graph->bef,
-                              CompileMlirModuleToBef(module.get()));
+  if (options_.compile_options.compile_to_sync_tfrt_dialect) {
+    auto bef_status = tfrt::CompileTfMlirModuleToSyncBef(module.get());
+    if (!bef_status) {
+      return tensorflow::errors::Internal("Failed to compile module to BEF.");
+    }
+    loaded_client_graph->bef = std::move(*bef_status);
+  } else {
+    ASSIGN_OR_RETURN_IN_COMPILE(loaded_client_graph->bef,
+                                CompileMlirModuleToBef(module.get()));
+  }
+  ASSIGN_OR_RETURN_IN_COMPILE(
+      loaded_client_graph->bef_file,
+      tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(compile_duration)
@@ -458,9 +472,6 @@ GraphExecutor::LoadClientGraph(
 
   // Step 3 of loading: Initialize runtime states using special BEF functions.
   auto init_start_time = absl::Now();
-  ASSIGN_OR_RETURN_IN_INIT(
-      loaded_client_graph->bef_file,
-      tfrt::CreateBefFileFromBefBuffer(runtime(), loaded_client_graph->bef));
   RETURN_IF_ERROR_IN_INIT(InitBef(loaded_client_graph->bef_file.get(),
                                   loaded_client_graph->resource_context.get(),
                                   work_queue));
