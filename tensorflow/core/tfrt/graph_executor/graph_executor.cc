@@ -441,11 +441,9 @@ GraphExecutor::ImportAndCompileClientGraph(
   // need this branch.
   auto compile_start_time = absl::Now();
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
-    auto bef_status = tfrt::CompileTfMlirModuleToSyncBef(module.get());
-    if (!bef_status) {
-      return tensorflow::errors::Internal("Failed to compile module to BEF.");
-    }
-    loaded_client_graph->bef = std::move(*bef_status);
+    ASSIGN_OR_RETURN_IN_COMPILE(
+        loaded_client_graph->bef,
+        tfrt::CompileTfMlirModuleToSyncBef(module.get()));
   } else {
     ASSIGN_OR_RETURN_IN_COMPILE(loaded_client_graph->bef,
                                 CompileMlirModuleToBef(module.get()));
