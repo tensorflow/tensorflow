@@ -1281,12 +1281,16 @@ bool FindMulAndMaximum(RemapperContext* ctx, int node_index,
       const auto* regular_node_view = regular_fanin_0.node_view();
       const auto* const_node = regular_node_view->node();
       if (const_node != nullptr && const_node->op() == "Const") {
-        alpha_val = const_node->attr().at("value").tensor().float_val(0);
+        Tensor alpha_tensor;
+        alpha_tensor.FromProto(const_node->attr().at("value").tensor());
+        alpha_val = alpha_tensor.flat<float>()(0);
       } else {
         return false;
       }
     } else if (alpha_node_def->op() == "Const") {
-      alpha_val = alpha_node_def->attr().at("value").tensor().float_val(0);
+      Tensor alpha_tensor;
+      alpha_tensor.FromProto(alpha_node_def->attr().at("value").tensor());
+      alpha_val = alpha_tensor.flat<float>()(0);
     } else {
       return false;
     }
@@ -2597,14 +2601,19 @@ Status ReplaceMulMaximumWithLeakyRelu(
 
   // BF16 adds a cast before the const alpha, so accessing the const node
   // using the cast node to retrieve the value of alpha.
+  float alpha_val;
   if (alpha_node_def->op() == "Cast") {
     const auto& regular_fanin_0 = alpha_node_view->GetRegularFanin(0);
     const auto* regular_node_view = regular_fanin_0.node_view();
     const auto* const_node = regular_node_view->node();
-    auto alpha_val = const_node->attr().at("value").tensor().float_val(0);
+    Tensor alpha_tensor;
+    alpha_tensor.FromProto(const_node->attr().at("value").tensor());
+    alpha_val = alpha_tensor.flat<float>()(0);
     SetAttrValue(alpha_val, &(*attr)["alpha"]);
   } else {
-    auto alpha_val = alpha_node_def->attr().at("value").tensor().float_val(0);
+    Tensor alpha_tensor;
+    alpha_tensor.FromProto(alpha_node_def->attr().at("value").tensor());
+    alpha_val = alpha_tensor.flat<float>()(0);
     SetAttrValue(alpha_val, &(*attr)["alpha"]);
   }
 
