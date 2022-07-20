@@ -535,6 +535,27 @@ TEST_F(HloModuleTest, TwoComputationsFilterexecution_threads) {
                                      main_thread_computation));
   EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
               ::testing::ElementsAre(parallel_thread_computation));
+  // Test that computations(execution_thread) return the expected values.
+  int num_all_computations = 0;
+  for ([[maybe_unused]] const HloComputation* comp :
+       module->computations(/*execution_threads=*/{})) {
+    ++num_all_computations;
+  }
+  EXPECT_EQ(num_all_computations, 2);
+  int num_main_computations = 0;
+  for (const HloComputation* comp :
+       module->computations({HloInstruction::kMainExecutionThread})) {
+    ++num_main_computations;
+    EXPECT_EQ(comp->execution_thread(), HloInstruction::kMainExecutionThread);
+  }
+  EXPECT_EQ(num_main_computations, 1);
+  int num_parallel_computations = 0;
+  for (const HloComputation* comp :
+       module->computations({kParallelThreadName})) {
+    ++num_parallel_computations;
+    EXPECT_EQ(comp->execution_thread(), kParallelThreadName);
+  }
+  EXPECT_EQ(num_parallel_computations, 1);
 }
 
 }  // namespace

@@ -205,24 +205,25 @@ class HloModule {
             MakeUnwrappingIterator(computations_.end())};
   }
 
-  // Similar as above, but return a vector of computations for specified
+  // Similar as above, but return a filtered view of computations for specified
   // `execution_threads`. Empty `execution_threads` list means all execution
   // threads are included.
-  std::vector<HloComputation*> computations(
+  tensorflow::gtl::iterator_range<FilteringUnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator,
+      std::function<bool(const HloComputation*)>>>
+  computations(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-    std::vector<HloComputation*> computations;
-    if (execution_threads.empty()) {
-      computations.assign(MakeUnwrappingIterator(computations_.begin()),
-                          MakeUnwrappingIterator(computations_.end()));
-      return computations;
-    }
-    for (auto& computation : computations_) {
-      if (execution_threads.find(computation->execution_thread()) !=
-          execution_threads.end()) {
-        computations.push_back(computation.get());
-      }
-    }
-    return computations;
+    // Pass execution_threads by value to the predicate to ensure it lives
+    // beyond this function.
+    std::function<bool(const HloComputation*)> pred =
+        [execution_threads](const HloComputation* computation) {
+          if (execution_threads.empty()) {
+            return true;
+          }
+          return execution_threads.contains(computation->execution_thread());
+        };
+    return MakeFilteringUnwrappingIteratorRange(computations_.begin(),
+                                                computations_.end(), pred);
   }
 
   // Returns the computation in this module that has the name `name`.  Returns
