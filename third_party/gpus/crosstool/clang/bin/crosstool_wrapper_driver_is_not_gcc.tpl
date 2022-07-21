@@ -211,8 +211,10 @@ def InvokeNvcc(argv, log=False):
   if len(out_file) != 1:
     return 1
 
-  opt = (' -O2' if (len(opt_option) > 0 and int(opt_option[0]) > 0)
-         else ' -g')
+  opt = (' -O2' if
+    (len(opt_option) > 0 and opt_option[0].isnumeric() and
+    int(opt_option[0]) > 0)
+    else ' -g')
 
   includes = (' -I ' + ' -I '.join(include_options)
               if len(include_options) > 0
