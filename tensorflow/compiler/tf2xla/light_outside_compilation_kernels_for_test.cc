@@ -272,15 +272,12 @@ class TestTfMustBeConstantOp : public OpKernel {
     AllocatorAttributes pinned_alloc_attrs;
     pinned_alloc_attrs.set_on_host(true);
     pinned_alloc_attrs.set_gpu_compatible(true);
-    TF_CHECK_OK(ctx->allocate_temp(DataType::DT_FLOAT,
-                                   TensorShape({input.NumElements()}), &tmp,
+    TF_CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
                                    pinned_alloc_attrs));
 
-    se::DeviceMemoryBase tmp_wrapper{tmp.flat<float>().data(),
-                                     tmp.AllocatedBytes()};
-    stream->ThenMemcpyD2D(&tmp_wrapper,
-                          se::DeviceMemoryBase{input.data(), allocated_size},
-                          allocated_size);
+    stream->ThenMemcpy(tmp.data(),
+                       se::DeviceMemoryBase{input.data(), allocated_size},
+                       allocated_size);
 
     OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
 
@@ -293,8 +290,7 @@ class TestTfMustBeConstantOp : public OpKernel {
                                              &out_tensor));
     se::DeviceMemoryBase gpu_dst{out_tensor->data(),
                                  static_cast<uint64_t>(allocated_size)};
-
-    stream->ThenMemcpyD2D(&gpu_dst, tmp_wrapper, /*size=*/allocated_size);
+    stream->ThenMemcpy(&gpu_dst, tmp.data(), allocated_size);
   }
 };
 
