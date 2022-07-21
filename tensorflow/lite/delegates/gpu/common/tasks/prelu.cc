@@ -77,14 +77,14 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
       result.args_.AddHalf("clip", half(attr.clip));
     }
     result.code_ = alpha_read +
-                   "in_out_value = clamp(in_out_value, INIT_FLT4(0.0f), "
+                   "out_value = clamp(in_value, INIT_FLT4(0.0f), "
                    "INIT_FLT4(args.clip)) + "
-                   "min(INIT_FLT4(0.0f), in_out_value) * alpha_val;";
+                   "min(INIT_FLT4(0.0f), in_value) * alpha_val;";
   } else {
     result.code_ = alpha_read +
-                   "in_out_value = max(INIT_FLT4(0.0f), in_out_value) + "
+                   "out_value = max(INIT_FLT4(0.0f), in_value) + "
                    "min(INIT_FLT4(0.0f), "
-                   "in_out_value) * alpha_val;";
+                   "in_value) * alpha_val;";
   }
 
   return result;

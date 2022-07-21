@@ -33,6 +33,7 @@ GPUOperation CreateAdd(const OperationDef& definition,
   if (src0_depth < dst_depth) {
     add.check_src_channels_size_ = true;
   }
+  add.code_ += "  out_value = in_value;\n";
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_data_", i);
     auto src_desc = definition.src_tensors[i];
@@ -41,7 +42,7 @@ GPUOperation CreateAdd(const OperationDef& definition,
     }
     add.AddSrcTensor(tensor_name, src_desc);
     add.code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
-    add.code_ += "  in_out_value += args." + tensor_name +
+    add.code_ += "  out_value += args." + tensor_name +
                  ".Read(X_COORD, Y_COORD, S_COORD);\n";
     add.code_ += "}\n";
   }
