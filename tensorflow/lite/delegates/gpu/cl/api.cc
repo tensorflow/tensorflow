@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <variant>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
@@ -195,13 +196,12 @@ class DefaultTensorTie : public TensorTie {
       case ObjectType::OPENCL_BUFFER: {
         auto& dims = d.dimensions;
         const BHWC shape(dims.b, dims.h, dims.w, dims.c);
-        const TensorDescriptor desc{
-            d.object_def.data_type,
-            ToTensorStorageType(d.object_def.object_type,
-                                d.object_def.data_layout),
-            Layout::BHWC};
+        TensorStorageType storage_type = ToTensorStorageType(
+            d.object_def.object_type, d.object_def.data_layout);
+        TensorDescriptor desc = CreateBhwcTensorDescriptor(
+            d.object_def.data_type, storage_type, shape);
         RETURN_IF_ERROR(
-            AllocateTensorMemory(env->context(), shape, desc, &cl_memory_));
+            AllocateTensorMemory(env->context(), desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {

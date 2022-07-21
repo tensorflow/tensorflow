@@ -267,6 +267,13 @@ class TensorDescriptor : public GPUObjectDescriptor {
   std::vector<uint8_t> data_;
 };
 
+TensorDescriptor CreateBhwcTensorDescriptor(DataType data_type,
+                                            TensorStorageType storage_type,
+                                            const BHWC& shape);
+TensorDescriptor CreateHwcTensorDescriptor(DataType data_type,
+                                           TensorStorageType storage_type,
+                                           const HWC& shape);
+
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
   shape_ = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);

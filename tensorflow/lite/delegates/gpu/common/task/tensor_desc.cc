@@ -1444,5 +1444,23 @@ absl::Status TensorDescriptor::UpdateToSupportedStorageType(
   storage_type_ = TensorStorageType::BUFFER;
   return CanCreateTensorWithShape(gpu_info, shape);
 }
+
+TensorDescriptor CreateBhwcTensorDescriptor(DataType data_type,
+                                            TensorStorageType storage_type,
+                                            const BHWC& shape) {
+  TensorDescriptor tensor_desc =
+      TensorDescriptor(data_type, storage_type, Layout::BHWC);
+  tensor_desc.SetBHWCShape(shape);
+  return tensor_desc;
+}
+
+TensorDescriptor CreateHwcTensorDescriptor(DataType data_type,
+                                           TensorStorageType storage_type,
+                                           const HWC& shape) {
+  TensorDescriptor tensor_desc =
+      TensorDescriptor(data_type, storage_type, Layout::HWC);
+  tensor_desc.SetBHWCShape(BHWC(1, shape.h, shape.w, shape.c));
+  return tensor_desc;
+}
 }  // namespace gpu
 }  // namespace tflite

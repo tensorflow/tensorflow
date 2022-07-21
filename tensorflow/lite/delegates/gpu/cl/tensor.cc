@@ -677,17 +677,11 @@ absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
   return absl::OkStatus();
 }
 
-absl::Status AllocateTensorMemory(const CLContext& context, const BHWC& shape,
+absl::Status AllocateTensorMemory(const CLContext& context,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result) {
-  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return AllocateTensorMemory(context, shape5D, descriptor, nullptr, result);
-}
-
-absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
-                                  const TensorDescriptor& descriptor,
-                                  CLMemory* result) {
-  return AllocateTensorMemory(context, shape, descriptor, nullptr, result);
+  return AllocateTensorMemory(context, descriptor.GetBHWDCShape(), descriptor,
+                              nullptr, result);
 }
 
 }  // namespace cl
