@@ -1061,6 +1061,7 @@ inline bool VerifyConstants(RemapperContext* ctx,
         }
         return true;
       }
+      return false;
     };
 
     if (node_def != nullptr && node_def->op() == "Cast") {
