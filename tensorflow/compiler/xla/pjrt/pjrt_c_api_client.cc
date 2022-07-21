@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
 
 // TODO(b/238999986): Remove this when we have decomposed shape.
@@ -519,6 +520,8 @@ void PjRtCApiBuffer::set_shape() {
     *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
   }
 
+  shape_ = trimmed_shape;
+
   // TODO(amangu): Refactor the deletion.
   if (args.dimensions.size > TPU_C_API_MAX_INLINED) {
     delete[] args.dimensions.heap;
@@ -528,15 +531,15 @@ void PjRtCApiBuffer::set_shape() {
     delete[] args.dynamic_dimensions.heap;
   }
 
-  if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
-    delete[] args.layout.minor_to_major.heap;
-  }
+  if (args.layout.format != xla::INVALID_FORMAT) {
+    if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
+      delete[] args.layout.minor_to_major.heap;
+    }
 
-  if (args.layout.tiles.size > TPU_C_API_MAX_INLINED) {
-    delete[] args.layout.tiles.heap;
+    if (args.layout.tiles.size > TPU_C_API_MAX_INLINED) {
+      delete[] args.layout.tiles.heap;
+    }
   }
-
-  shape_ = trimmed_shape;
 }
 
 StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
