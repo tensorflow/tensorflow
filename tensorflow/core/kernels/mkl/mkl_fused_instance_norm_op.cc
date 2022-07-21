@@ -102,12 +102,13 @@ class MklFusedInstanceNormOp : public OpKernel {
       void* src_buf =
           static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
-      memory::dims scale_shift_dims = {2, num_elements_scale};
+      memory::dims scale_shift_dims = {
+          2, static_cast<dnnl_dim_t>(num_elements_scale)};
       auto scale_shift_md = memory::desc(scale_shift_dims, MklDnnType<float>(),
                                          memory::format_tag::nc);
       Tensor scale_shift_tensor;
-      ctx->allocate_temp(DataTypeToEnum<float>::v(),
-                         {scale_shift_md.get_size() / sizeof(float)},
+      int64_t tensor_shape = scale_shift_md.get_size() / sizeof(float);
+      ctx->allocate_temp(DataTypeToEnum<float>::v(), {tensor_shape},
                          &scale_shift_tensor);
       void* scale_shift_buf =
           static_cast<void*>(scale_shift_tensor.flat<float>().data());
@@ -230,17 +231,18 @@ class MklFusedInstanceNormOp : public OpKernel {
     void* shift_buf_src =
         static_cast<void*>(const_cast<T*>(shift_tensor.flat<T>().data()));
     auto scale_offset = sizeof(float) * num_elements;
+    void* scale_buf_dst = scale_shift_buf;
+    void* shift_buf_dst = static_cast<char*>(scale_shift_buf) + scale_offset;
 
     if (std::is_same<T, float>::value) {
-      memcpy(scale_shift_buf, scale_buf_src, scale_offset);
-      memcpy((scale_shift_buf + scale_offset), shift_buf_src, scale_offset);
+      memcpy(scale_buf_dst, scale_buf_src, scale_offset);
+      memcpy(shift_buf_dst, shift_buf_src, scale_offset);
     } else {
       // oneDNN requires float type for scale_shift, need to convert to float
       // type
       auto scale_mem_src =
           memory({{num_elements}, MklDnnType<T>(), memory::format_tag::x},
                  cpu_engine_, scale_buf_src);
-      void* scale_buf_dst = scale_shift_buf;
       auto scale_mem_dst =
           memory({{num_elements}, MklDnnType<float>(), memory::format_tag::x},
                  cpu_engine_, scale_buf_dst);
@@ -253,7 +255,6 @@ class MklFusedInstanceNormOp : public OpKernel {
       auto shift_mem_src =
           memory({{num_elements}, MklDnnType<T>(), memory::format_tag::x},
                  cpu_engine_, shift_buf_src);
-      void* shift_buf_dst = scale_shift_buf + sizeof(float) * num_elements;
       auto shift_mem_dst =
           memory({{num_elements}, MklDnnType<float>(), memory::format_tag::x},
                  cpu_engine_, shift_buf_dst);
