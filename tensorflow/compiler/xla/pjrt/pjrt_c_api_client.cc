@@ -311,7 +311,7 @@ static std::vector<std::vector<PJRT_Buffer*>> Convert2DCppBuffersToCBuffers(
     auto& c_list = c_lists.emplace_back();
     c_list.reserve(cpp_list.size());
     for (PjRtBuffer* buffer : cpp_list) {
-      auto* c_api_argument = down_cast<PjRtCApiBuffer*>(buffer);
+      auto* c_api_argument = tensorflow::down_cast<PjRtCApiBuffer*>(buffer);
       c_list.push_back(c_api_argument->c_buffer());
     }
   }
