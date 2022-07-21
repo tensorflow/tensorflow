@@ -40,10 +40,10 @@ struct DimOpFissionPattern : public OpRewritePattern<tensor::ExtractOp> {
   LogicalResult matchAndRewrite(tensor::ExtractOp extract,
                                 PatternRewriter& rewriter) const override {
     auto shapeDef = llvm::dyn_cast_or_null<shape::ShapeOfOp>(
-        extract.tensor().getDefiningOp());
-    if (!shapeDef || extract.indices().size() != 1) return failure();
+        extract.getTensor().getDefiningOp());
+    if (!shapeDef || extract.getIndices().size() != 1) return failure();
     rewriter.replaceOpWithNewOp<tensor::DimOp>(extract, shapeDef.getArg(),
-                                               extract.indices().front());
+                                               extract.getIndices().front());
     return success();
   }
 };
@@ -55,7 +55,7 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
 
   LogicalResult matchAndRewrite(tensor::DimOp op,
                                 PatternRewriter& rewriter) const override {
-    Operation* def = op.source().getDefiningOp();
+    Operation* def = op.getSource().getDefiningOp();
     if (!def) return failure();
 
     // Case MaterializeOp.
@@ -63,7 +63,7 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
       assert(materializeOp->getNumResults() == 1 && "assume single result");
       Value set = materializeOp.set();
       if (!set.getType().isa<TileType>()) return failure();
-      rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.index());
+      rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.getIndex());
       return success();
     }
 
@@ -73,14 +73,15 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
         return failure();
       }
       Value outputOperand = genericOp.getOutputOperand(0)->get();
-      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, outputOperand, op.index());
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, outputOperand,
+                                                 op.getIndex());
       return success();
     }
 
     // Case InitTensorOp.
     if (auto initTensorOp = llvm::dyn_cast<linalg::InitTensorOp>(def)) {
       if (auto indexConstantOp = llvm::dyn_cast_or_null<arith::ConstantOp>(
-              op.index().getDefiningOp())) {
+              op.getIndex().getDefiningOp())) {
         int64_t idx =
             indexConstantOp.getValue().dyn_cast<IntegerAttr>().getInt();
         OpFoldResult dim = initTensorOp.getMixedSizes()[idx];
@@ -101,7 +102,8 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
 
     // Case DynamicBroadcastInDimOp.
     if (auto bcast = llvm::dyn_cast<DynamicBroadcastInDimOp>(def)) {
-      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.init(), op.index());
+      rewriter.replaceOpWithNewOp<tensor::DimOp>(op, bcast.init(),
+                                                 op.getIndex());
       return success();
     }
 
