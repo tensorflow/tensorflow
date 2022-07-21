@@ -76,10 +76,8 @@ def GMLST_GatherOp : GMLST_Op<"gather", [
 }
 
 def GMLST_ScatterOp : GMLST_Op<"scatter", [
-    NoSideEffect,
     TypesMatchWith<"result and init types match", "init", "result", "$_self">,
-    TypesMatchWith<"result and operand types match", "operand", "result",
-                   "$_self">]> {
+    NoSideEffect]> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
     Caveats:
@@ -88,21 +86,19 @@ def GMLST_ScatterOp : GMLST_Op<"scatter", [
     - Only point updates are supported
       - update_window_dims is []
       - inserted_window_dims is range(operand.shape.rank)
-      - scatter_dims_to_operand_dims is range(scatter_indices.shape.rank)
-      - index_vector_dim is scatter_indices.shape.rank-1
+      - scatter_dims_to_operand_dims is range(indices.shape.rank)
+      - index_vector_dim is indices.shape.rank-1
   }];
   let arguments = (ins
     // Input args
-    TensorOrMemref:$operand,
-    TensorOf<[I32, I64]>:$scatter_indices,
+    TensorOf<[I32, I64]>:$indices,
     TensorOrMemref:$updates,
     // Output arg
     TensorOrMemref:$init
   );
   let results = (outs AnyTensor:$result);
   let assemblyFormat = [{
-    `ins` `(` $operand `:` type($operand) `,`
-              $scatter_indices `:` type($scatter_indices) `,`
+    `ins` `(` $indices `:` type($indices) `,`
               $updates `:` type($updates) `)`
     `outs` `(` $init `:` type($init) `)`
     attr-dict
