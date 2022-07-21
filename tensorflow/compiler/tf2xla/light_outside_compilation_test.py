@@ -20,7 +20,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -182,29 +181,6 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
       self.assertFilecheck(
           hlo, r"""
           CHECK: f32[5]{0} custom-call(f32[10]{0} [[v:.*]]), custom_call_target="GenericTfCallbackGPU"
-          """)
-
-  def testFixedLayout(self):
-    """Test correct operand layout is fixed by the lowering."""
-
-    @def_function.function(jit_compile=True)
-    def compiled_f(conv_input):
-      filters = random_ops.random_uniform([2, 3, 3, 2])
-      conv = nn_ops.conv2d(
-          conv_input,
-          filters,
-          strides=[1, 1, 2, 1],
-          dilations=[1, 1, 1, 1],
-          padding='SAME',
-          data_format='NHWC')
-      return test_ops_for_light_outside_compilation.test_static_tf(conv)
-
-    with context.device('/gpu:0'):
-      hlo = compiled_f.experimental_get_compiler_ir(
-          random_ops.random_uniform([1, 3, 4, 3]))()
-      self.assertFilecheck(
-          hlo, r"""
-          CHECK: operand_layout_constraints={f32[1,3,2,2]{3,2,1,0}}
           """)
 
 

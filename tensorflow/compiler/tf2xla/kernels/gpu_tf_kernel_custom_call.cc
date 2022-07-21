@@ -100,7 +100,6 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
       XlaOpRegistry::CompileTimeConstantInputs(node_def, data->op_def));
   VLOG(1) << "Constant inputs we got: " << absl::StrJoin(constant_inputs, ", ");
 
-  std::vector<xla::Shape> operand_shapes_with_layout;
   std::vector<xla::XlaOp> operands;
   for (int i = 0; i < num_inputs; ++i) {
     TF_ASSIGN_OR_RETURN(xla::Shape xla_shape, ctx->InputXlaShape(i));
@@ -129,7 +128,6 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
     } else {
       input_tensors[i] = nullptr;
       operands.push_back(ctx->Input(i));
-      operand_shapes_with_layout.push_back(xla_shape);
     }
 
     *callback_data.add_inputs() = input_description;
@@ -213,9 +211,8 @@ Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
   TF_ASSIGN_OR_RETURN(std::string callback_data_serialized,
                       SerializeCallbackData(callback_data));
 
-  xla::XlaOp out = xla::CustomCallWithLayout(
+  xla::XlaOp out = xla::CustomCall(
       ctx->builder(), kTfCallbackCustomCall, operands, output_shape,
-      /*operand_shapes_with_layout=*/operand_shapes_with_layout,
       /*opaque=*/callback_data_serialized,
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{},
