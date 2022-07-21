@@ -2107,6 +2107,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tridiagonal_matmul_ops_test",
+    size = "medium",
+    srcs = ["tridiagonal_matmul_ops_test.py"],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "special_math_test",
     size = "medium",
     srcs = ["special_math_test.py"],
