@@ -37,6 +37,8 @@ enum ActivityCategory {
   kCollective = 0,
   kRemoteFunction = 1,
   kMisc = 2,
+  kDatasetOp = 3,
+  kTpuOp = 4,
 };
 
 static tensorflow::string ToString(ActivityCategory category) {
@@ -47,6 +49,10 @@ static tensorflow::string ToString(ActivityCategory category) {
       return "Remote Function";
     case ActivityCategory::kMisc:
       return "Miscellaneous";
+    case ActivityCategory::kDatasetOp:
+      return "Dataset Op";
+    case ActivityCategory::kTpuOp:
+      return "TPU Op";
   }
 }
 
@@ -74,6 +80,7 @@ struct Activity {
 // service and also fetch all workers' activities.
 void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent);
 
+#if !defined(IS_MOBILE_PLATFORM)
 namespace tfw_internal {
 
 // Records an activity start without checking whether the watcher is enabled.
@@ -89,6 +96,7 @@ inline bool WatcherEnabled(int level = 1) {
 }
 
 }  // namespace tfw_internal
+#endif
 
 template <typename F>
 constexpr bool is_activity_generator =
@@ -110,17 +118,21 @@ template <
     typename ActivityGenerator,
     std::enable_if_t<is_activity_generator<ActivityGenerator>, bool> = true>
 inline ActivityId ActivityStart(ActivityGenerator&& gen, int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(tfw_internal::WatcherEnabled(level))) {
     return tfw_internal::RecordActivityStart(
         std::forward<ActivityGenerator>(gen)());
   }
+#endif
   return kActivityNotRecorded;
 }
 
 inline void ActivityEnd(ActivityId id) {
+#if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(id != kActivityNotRecorded)) {
     tfw_internal::RecordActivityEnd(id);
   }
+#endif
 }
 
 // ActivityScope marks a scope as an activity and record it with a global
