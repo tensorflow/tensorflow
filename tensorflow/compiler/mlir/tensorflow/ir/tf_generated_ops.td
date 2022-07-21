@@ -19744,6 +19744,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_XlaConvV2Op : TF_Op<"XlaConvV2", [NoSideEffect, TF_NoConstantFold]> {
@@ -19776,6 +19778,8 @@ https://www.tensorflow.org/performance/xla/operation_semantics#conv_convolution
   TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedResultTypeAttr preferred_element_type = TF_DerivedResultTypeAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 def TF_XlaDotOp : TF_Op<"XlaDot", [NoSideEffect, TF_NoConstantFold]> {
