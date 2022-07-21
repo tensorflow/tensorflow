@@ -17,6 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 /// TODO(b/130756570): Support OpBase constraints in PatternRewrites.
 def SingleResultAndOperandHaveSameElementType : Constraint<
@@ -115,7 +116,7 @@ def BatchToSpaceToBatchToSpaceND :
 //===----------------------------------------------------------------------===//
 
 def BiasAddV1ToBiasAdd : Pat<(TF_BiasAddV1Op $arg0, $arg1),
-  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "NHWC">)>;
+  (TF_BiasAddOp $arg0, $arg1, ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">)>;
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.
@@ -204,6 +205,18 @@ def MatrixSetDiagV2ToV3 : Pat<(TF_MatrixSetDiagV2Op $input, $diag, $k),
                                 (GetStrAttr<"LEFT_LEFT">))>;
 
 //===----------------------------------------------------------------------===//
+// MatrixDiag Op.
+//===----------------------------------------------------------------------===//
+
+def MatrixDiagToV3 : Pat<(TF_MatrixDiagOp $diag),
+                         (TF_MatrixDiagV3Op $diag,
+                           (TF_ConstOp (GetI32Attr<0>)),
+                           (TF_ConstOp (GetI32Attr<-1>)),
+                           (TF_ConstOp (GetI32Attr<-1>)),
+                           (TF_ConstOp (GetScalarOfType<0> $diag)),
+                           (GetStrAttr<"RIGHT_LEFT">))>;
+
+//===----------------------------------------------------------------------===//
 // QuantizeAndDequantizeV2 op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -242,7 +255,12 @@ def ReshapeToSelfShape : Pat<(TF_ReshapeOp:$op $x, (TF_ShapeOp $x)),
 // Square op patterns.
 //===----------------------------------------------------------------------===//
 
-def SquareOfSub : Pat<(TF_SquareOp (TF_SubOp $arg0, $arg1)),
+// Restrict the pattern to the types supported by SquaredDifferenceOp.
+def TF_NumberTensorNoSmallInt: TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64,
+    TF_Float16, TF_Float32, TF_Int32, TF_Int64]>;
+
+def SquareOfSub : Pat<(TF_SquareOp (TF_SubOp TF_NumberTensorNoSmallInt:$arg0,
+                                    TF_NumberTensorNoSmallInt:$arg1)),
                       (TF_SquaredDifferenceOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
@@ -311,3 +329,19 @@ def HashTableAndLookupTableFindToV2 :
      (TF_HashTableV2Op $container, $shared_name, $use_node_name_sharing, $key_dtype, $value_dtype),
      $keys, $default_value)
  >;
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Maximum of zero to tf.Relu
+//===----------------------------------------------------------------------===//
+
+def MaximumOfZeroToRelu : Pat<(TF_MaximumOp $x, $y), (TF_ReluOp $x),
+                              [(IsConstantValueOf<0> $y)]>;
+
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Relu of Minimul six to tf.Relu6
+//===----------------------------------------------------------------------===//
+
+def ReluOfMinimum6ToRelu6 :
+  Pat<(TF_ReluOp (TF_MinimumOp $x, $y)),
+      (TF_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;

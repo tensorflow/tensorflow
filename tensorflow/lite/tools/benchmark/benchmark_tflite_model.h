@@ -27,15 +27,35 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/utils.h"
 
 namespace tflite {
 namespace benchmark {
+
+// Splits the input_layer_name and input_layer_value_files and stores them in
+// the name_file_pair. In the case of failures, return an error status, and the
+// the state of name_file_pair is unchanged.
+//
+// BenchmarkTfLiteModel takes --input_layer_value_files flag, which is a comma-
+// separated list of input_layer_name:input_value_file_path pairs,
+// e.g. input1:/tmp/path.
+//
+// As TensorFlow allows ':' in the tensor names (e.g. input:0 to denote the
+// output index), having ':' as the delimiter can break the benchmark code
+// unexpectedly. To avoid this issue, we allow escaping ':' char with '\:' for
+// this particular flag only. This function handles splitting the name and file
+// path that contains escaped colon.
+//
+// For example, "input\:0:/tmp/path" will be divided into input:0 and /tmp/path.
+TfLiteStatus SplitInputLayerNameAndValueFile(
+    const std::string& name_and_value_file,
+    std::pair<std::string, std::string>& name_file_pair);
 
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   struct InputLayerInfo {
-    InputLayerInfo() : has_value_range(false) {}
+    InputLayerInfo() : has_value_range(false), low(0), high(0) {}
 
     std::string name;
     std::vector<int> shape;
@@ -84,42 +104,18 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   void CleanUp();
 
-  // Implement type erasure with unique_ptr with custom deleter.
-  using VoidUniquePtr = std::unique_ptr<void, void (*)(void*)>;
-
-  struct InputTensorData {
-    InputTensorData() : data(nullptr, nullptr) {}
-
-    VoidUniquePtr data;
-    size_t bytes;
-  };
-
-  InputTensorData LoadInputTensorData(const TfLiteTensor& t,
-                                      const std::string& input_file_path);
+  utils::InputTensorData LoadInputTensorData(
+      const TfLiteTensor& t, const std::string& input_file_path);
 
   std::vector<InputLayerInfo> inputs_;
-  std::vector<InputTensorData> inputs_data_;
+  std::vector<utils::InputTensorData> inputs_data_;
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<tflite::ExternalCpuBackendContext> external_context_;
 
  private:
-  template <typename T, typename Distribution>
-  inline InputTensorData CreateInputTensorData(int num_elements,
-                                               Distribution distribution) {
-    InputTensorData tmp;
-    tmp.bytes = sizeof(T) * num_elements;
-    T* raw = new T[num_elements];
-    std::generate_n(raw, num_elements, [&]() {
-      return static_cast<T>(distribution(random_engine_));
-    });
-    tmp.data = VoidUniquePtr(static_cast<void*>(raw),
-                             [](void* ptr) { delete[] static_cast<T*>(ptr); });
-    return tmp;
-  }
-
-  InputTensorData CreateRandomTensorData(const TfLiteTensor& t,
-                                         const InputLayerInfo* layer_info);
+  utils::InputTensorData CreateRandomTensorData(
+      const TfLiteTensor& t, const InputLayerInfo* layer_info);
 
   void AddOwnedListener(std::unique_ptr<BenchmarkListener> listener) {
     if (listener == nullptr) return;

@@ -18,7 +18,7 @@ following Colab which is part of the *Hello World* example:
 
 To convert a trained TensorFlow model to run on microcontrollers, you should use
 the
-[TensorFlow Lite converter Python API](https://www.tensorflow.org/lite/convert/).
+[TensorFlow Lite converter Python API](https://www.tensorflow.org/lite/models/convert/).
 This will convert the model into a
 [`FlatBuffer`](https://google.github.io/flatbuffers/), reducing the model size,
 and modify it to use TensorFlow Lite operations.

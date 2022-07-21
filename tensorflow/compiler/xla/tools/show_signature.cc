@@ -50,9 +50,9 @@ void RealMain(absl::Span<char* const> args) {
     HloSnapshot module;
     TF_CHECK_OK(
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
-    auto computation = client->LoadSnapshot(module).ConsumeValueOrDie();
+    auto computation = client->LoadSnapshot(module).value();
     std::unique_ptr<ProgramShape> shape =
-        client->GetComputationShape(computation).ConsumeValueOrDie();
+        client->GetComputationShape(computation).value();
     fprintf(stdout, "%s: %s :: %s\n", arg,
             module.hlo().hlo_module().name().c_str(),
             ShapeUtil::HumanString(*shape).c_str());

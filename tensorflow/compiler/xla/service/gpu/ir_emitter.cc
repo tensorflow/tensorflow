@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
-#include <string>
-#include <unordered_map>
-#include <utility>
-
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
@@ -30,14 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -60,8 +53,8 @@ static llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type =
-        arg_type->getPointerElementType()->getPointerTo(0);
+    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
+        llvm::cast<llvm::PointerType>(arg_type), 0);
     llvm::Value* addrspacecast_arg =
         b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
@@ -98,59 +91,8 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
-Status IrEmitter::EmitConstants(const HloComputation& computation) {
-  for (HloInstruction* instr : computation.instructions()) {
-    if (instr->opcode() != HloOpcode::kConstant) {
-      continue;
-    }
-    Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
-    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
-    llvm::ArrayType* global_type =
-        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
-    llvm::Constant* initializer =
-        should_emit_initializer
-            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
-            : llvm::ConstantAggregateZero::get(global_type);
-    if (should_emit_initializer) {
-      VLOG(3) << "Emitted initializer for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-    }
-
-    // These globals will be looked up by name by GpuExecutable so we need to
-    // give them an external linkage.  Not all of their uses are visible in
-    // the LLVM IR (e.g. TupleThunk) so we can't give then a linkage that
-    // merely preserves their names (like available_externally), we also need
-    // to ensure that they stick around even if they're "unused".
-    //
-    // We may have to be more clever here in the future if we notice that we're
-    // keeping around too many globals because of their linkage.
-    std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
-
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        global_type, /*isConstant=*/should_emit_initializer,
-        llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/initializer, global_name,
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/0,
-        /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
-        global_for_const);
-
-    GpuExecutable::ConstantInfo info;
-    info.symbol_name = global_name;
-
-    if (!should_emit_initializer) {
-      auto base = static_cast<const uint8*>(literal.untyped_data());
-      info.content.assign(base, base + literal.size_bytes());
-    }
-    ir_emitter_context_->constants().push_back(std::move(info));
-  }
-  return Status::OK();
-}
-
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
@@ -162,7 +104,7 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
@@ -174,8 +116,9 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           get_tuple_element->shape(), get_tuple_element->tuple_index(),
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
-          /*alignment=*/1, GetBasePointer(*operand), &b_));
-  return Status::OK();
+          /*alignment=*/1, GetBasePointer(*operand),
+          llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
+  return OkStatus();
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
@@ -204,7 +147,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitCallToNestedComputation(
@@ -235,7 +178,7 @@ Status IrEmitter::EmitCallToNestedComputation(
 
   Call(emitted_function, arguments);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IrEmitter::MaybeEmitDirectAtomicOperation(
@@ -248,7 +191,9 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       computation.root_instruction()->shape().element_type();
   bool is_atomic_integral = element_type == S32 || element_type == U32 ||
                             element_type == S64 || element_type == U64;
-  llvm::Value* source = Load(source_address, "source");
+  llvm::Value* source =
+      Load(llvm_ir::PrimitiveTypeToIrType(element_type, module_),
+           source_address, "source");
 
   // Just passing along RHS -> atomic store.
   if (computation.instruction_count() == 2 &&
@@ -290,11 +235,17 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
       }
     }
 
+    if (IsEmittingForAMDGPU() &&
+        (element_type == F32)) /* is atomic add supported? */ {
+      EmitAMDGPUAtomicAdd(output_address, source);
+      return true;
+    }
+
     if (is_atomic_integral) {
       // integral + integral
-      AtomicRMW(llvm::AtomicRMWInst::Add, output_address, source,
-                llvm::MaybeAlign(),
-                llvm::AtomicOrdering::SequentiallyConsistent);
+      AtomicRMW(
+          llvm::AtomicRMWInst::Add, output_address, source, llvm::MaybeAlign(),
+          llvm::AtomicOrdering::SequentiallyConsistent, DetermineSyncScope());
       return true;
     }
   }
@@ -306,7 +257,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                       ? llvm::AtomicRMWInst::Max
                       : llvm::AtomicRMWInst::UMax;
     AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
-              llvm::AtomicOrdering::SequentiallyConsistent);
+              llvm::AtomicOrdering::SequentiallyConsistent,
+              DetermineSyncScope());
     return true;
   }
 
@@ -316,7 +268,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                       ? llvm::AtomicRMWInst::Min
                       : llvm::AtomicRMWInst::UMin;
     AtomicRMW(opcode, output_address, source, llvm::MaybeAlign(),
-              llvm::AtomicOrdering::SequentiallyConsistent);
+              llvm::AtomicOrdering::SequentiallyConsistent,
+              DetermineSyncScope());
     return true;
   }
 
@@ -341,13 +294,14 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 // On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
 // the element type of the binary operation is 32 bits or 64 bits, the integer
 // type of the same size is used for the atomicCAS operation. On the other hand,
-// if the element type is smaller than 32 bits, int32 is used for the atomicCAS
-// operation. In this case, atomicCAS reads and writes 32 bit values from
-// the memory, which is larger than the memory size required by the original
-// atomic binary operation. We mask off the last two bits of the output_address
-// and use the result as an address to read the 32 bit values from the memory.
-// This can avoid out of bound memory accesses if tensor buffers are 4 byte
-// aligned and have a size of 4N, an assumption that the runtime can guarantee.
+// if the element type is smaller than 32 bits, int32_t is used for the
+// atomicCAS operation. In this case, atomicCAS reads and writes 32 bit values
+// from the memory, which is larger than the memory size required by the
+// original atomic binary operation. We mask off the last two bits of the
+// output_address and use the result as an address to read the 32 bit values
+// from the memory. This can avoid out of bound memory accesses if tensor
+// buffers are 4 byte aligned and have a size of 4N, an assumption that the
+// runtime can guarantee.
 //
 // The pseudo code is shown below. Variables *_address are pointers to a memory
 // region with a size equal to the size of the atomicCAS operation, with the
@@ -359,7 +313,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //   cas_new_output_address = alloca(atomic_size);
 //   cas_old_output_address = alloca(atomic_size);
 //   if (atomic_size != element_size) {
-//     atomic_address = output_address & ((int64)(-4));
+//     atomic_address = output_address & ((int64_t)(-4));
 //     new_output_address = cas_new_output_address + (output_address & 3);
 //   } else {
 //     atomic_address = output_address;
@@ -377,13 +331,13 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //
 Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
                                               llvm::Value* output_address,
-                                              llvm::Value* source_address) {
+                                              llvm::Value* source_address,
+                                              llvm::Type* element_type) {
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
+  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
 
-  // element_type is the data type for the binary operation.
-  llvm::Type* element_type = output_address_type->getPointerElementType();
   int element_size = llvm_ir::GetSizeInBits(element_type);
 
   int atomic_size = (element_size < 32) ? 32 : element_size;
@@ -394,9 +348,9 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // cas_old_output_address and cas_new_output_address point to the scratch
   // memory where we store the old and new values for the repeated atomicCAS
   // operations.
-  llvm::Value* cas_old_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* cas_old_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
       atomic_type, "cas_old_output_address", &b_);
-  llvm::Value* cas_new_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
+  llvm::AllocaInst* cas_new_output_address = llvm_ir::EmitAllocaAtFunctionEntry(
       atomic_type, "cas_new_output_address", &b_);
 
   // Emit preparation code to the preheader.
@@ -437,7 +391,8 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
 
   // Use the value from the memory that atomicCAS operates on to initialize
   // cas_old_output.
-  llvm::Value* cas_old_output = Load(atomic_memory_address, "cas_old_output");
+  llvm::Value* cas_old_output =
+      Load(atomic_type, atomic_memory_address, "cas_old_output");
   Store(cas_old_output, cas_old_output_address);
 
   llvm::BasicBlock* loop_exit_bb = loop_preheader_bb->splitBasicBlock(
@@ -451,14 +406,16 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Emit the body of the loop that repeatedly invokes atomicCAS.
   //
   // Use cas_old_output to initialize cas_new_output.
-  cas_old_output = Load(cas_old_output_address, "cas_old_output");
+  cas_old_output = Load(cas_old_output_address->getAllocatedType(),
+                        cas_old_output_address, "cas_old_output");
   Store(cas_old_output, cas_new_output_address);
   // Emits code to calculate new_output = operation(old_output, source);
   TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
       computation, {binop_output_address, source_address},
       binop_output_address));
 
-  llvm::Value* cas_new_output = Load(cas_new_output_address, "cas_new_output");
+  llvm::Value* cas_new_output = Load(cas_new_output_address->getAllocatedType(),
+                                     cas_new_output_address, "cas_new_output");
 
   // If cas_new_output == cas_old_output, we're not asking for anything to
   // change, so we're done here!
@@ -474,7 +431,7 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   llvm::Value* ret_value = AtomicCmpXchg(
       atomic_memory_address, cas_old_output, cas_new_output, llvm::MaybeAlign(),
       llvm::AtomicOrdering::SequentiallyConsistent,
-      llvm::AtomicOrdering::SequentiallyConsistent);
+      llvm::AtomicOrdering::SequentiallyConsistent, DetermineSyncScope());
 
   // Extract the memory value returned from atomicCAS and store it as
   // cas_old_output.
@@ -486,12 +443,12 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   // Set the insertion point to the exit basic block so that the caller of
   // this method can continue emitting code to the right place.
   SetToFirstInsertPoint(loop_exit_bb, &b_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitAtomicOperationForNestedComputation(
     const HloComputation& computation, llvm::Value* output_address,
-    llvm::Value* source_address) {
+    llvm::Value* source_address, llvm::Type* element_type) {
   if (computation.num_parameters() != 2) {
     // TODO(b/30258929): We only accept binary computations so far.
     return Unimplemented(
@@ -502,17 +459,47 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
   if (MaybeEmitDirectAtomicOperation(computation, output_address,
                                      source_address)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return EmitAtomicOperationUsingCAS(computation, output_address,
-                                     source_address);
+                                     source_address, element_type);
 }
 
-Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
-  return InternalError(
-      "Dynamic selection of tuples is not supported. Please file a bug against "
-      "XLA/GPU if you need it");
+bool IrEmitter::IsEmittingForAMDGPU() const {
+  llvm::Triple target_triple = llvm::Triple(module_->getTargetTriple());
+  return target_triple.isAMDGPU();
+}
+
+void IrEmitter::EmitAMDGPUAtomicAdd(llvm::Value* output_address,
+                                    llvm::Value* source) {
+  CHECK(IsEmittingForAMDGPU());
+  auto output_address_type =
+      llvm::dyn_cast<llvm::PointerType>(output_address->getType());
+  CHECK_NE(output_address_type, nullptr);
+
+  auto output_ptr =
+      (output_address_type->getPointerAddressSpace() != 3)
+          ?
+          // the compiler will only generate a global_atomic_fadd if the pointer
+          // is in global addrspace (1)
+          b_.CreateAddrSpaceCast(
+              output_address,
+              llvm::PointerType::getWithSamePointeeType(output_address_type,
+                                                        /*AddressSpace=*/1))
+          :
+          // adds to shared memory are always atomic.
+          output_address;
+
+  AtomicRMW(llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),
+            llvm::AtomicOrdering::SequentiallyConsistent,
+            b_.getContext().getOrInsertSyncScopeID("agent"));
+}
+
+llvm::SyncScope::ID IrEmitter::DetermineSyncScope() const {
+  return (IsEmittingForAMDGPU())
+             ? b_.getContext().getOrInsertSyncScopeID("agent")
+             : llvm::SyncScope::System;
 }
 
 namespace {
@@ -544,7 +531,7 @@ std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
-    return Status::OK();
+    return OkStatus();
   }
   // TODO(b/31409998): Support convolution with dilation.
   return Unimplemented(
@@ -554,7 +541,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 Status IrEmitter::HandleFft(HloInstruction* fft) {
   if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
-    return Status::OK();
+    return OkStatus();
   }
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
@@ -565,7 +552,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
@@ -574,10 +561,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elemental_emitter);
+  FusedIrEmitter fused_emitter(elemental_emitter);
   BindFusionArguments(fusion, &fused_emitter);
   TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                          fusion->fused_expression_root()));
+                                          *fusion->fused_expression_root()));
   return EmitTargetElementLoop(*fusion, generator);
 }
 
@@ -608,23 +595,20 @@ Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
-      "CudnnBatchNormRewriter.");
+      "BatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormTraining directly.  It "
       "should be lowered before IR emission to HLO-soup using "
-      "BatchNormRewriter or to a cudnn CustomCall using "
-      "CudnnBatchNormRewriter.");
+      "BatchNormRewriter.");
 }
 
 Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormGrad directly.  It should "
-      "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
-      "to a cudnn CustomCall using CudnnBatchNormRewriter.");
+      "be lowered before IR emission to HLO-soup using BatchNormRewriter.");
 }
 
 StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElement(
@@ -644,8 +628,10 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
   const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Type* return_buffer_type =
+      llvm_ir::ShapeToIrType(return_shape, module_);
   llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
+      return_buffer_type, "return_buffer", &b_);
 
   std::vector<llvm::Value*> allocas_for_returned_scalars;
   if (!return_shape.IsTuple()) {
@@ -653,7 +639,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
   } else {
     allocas_for_returned_scalars =
         llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, &b_);
-    llvm_ir::IrArray tuple_array(return_buffer, return_shape);
+    llvm_ir::IrArray tuple_array(return_buffer, return_buffer_type,
+                                 return_shape);
 
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
@@ -664,7 +651,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
   std::vector<llvm::Value*> returned_scalars;
   returned_scalars.reserve(allocas_for_returned_scalars.size());
   for (llvm::Value* addr : allocas_for_returned_scalars) {
-    returned_scalars.push_back(Load(addr));
+    auto alloca = llvm::cast<llvm::AllocaInst>(addr);
+    returned_scalars.push_back(Load(alloca->getAllocatedType(), alloca));
   }
   return returned_scalars;
 }
@@ -689,7 +677,7 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
   for (int i = 0; i < fusion->operand_count(); i++) {
     const HloInstruction* operand = fusion->operand(i);
     fused_emitter->BindGenerator(
-        fusion->fused_parameter(i),
+        *fusion->fused_parameter(i),
         [this, operand, fusion](llvm_ir::IrArray::Index index) {
           return GetIrArray(*operand, *fusion)
               .EmitReadArrayElement(index, &b_, operand->name());

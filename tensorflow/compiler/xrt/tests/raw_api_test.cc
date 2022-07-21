@@ -371,8 +371,7 @@ xla::ProgramShape XlaCompiledProgramShape(
     parameters_shapes.push_back(&input_program_shape.parameters(i));
   }
   std::vector<std::unique_ptr<xla::LocalExecutable>> local_executables =
-      client->Compile(computation, parameters_shapes, exec_options)
-          .ConsumeValueOrDie();
+      client->Compile(computation, parameters_shapes, exec_options).value();
   EXPECT_EQ(local_executables.size(), 1);
   std::unique_ptr<xla::LocalExecutable> local_executable =
       std::move(local_executables[0]);
@@ -1126,7 +1125,7 @@ TEST(RawApiTest, DynamicR1Test) {
   xrt::XLAAllocation p1;
   *p1.mutable_value() = FloatVector({1.0f, -1.0f, 2.5f, 1.17f});
   xrt::XLAAllocation p2;
-  *p2.mutable_value() = CreateR0<xla::int32>(2);
+  *p2.mutable_value() = CreateR0<int32_t>(2);
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
@@ -1182,7 +1181,7 @@ TEST(RawApiTest, DynamicR2Test) {
                                                     {1.2f, -1.6f, 2.8f, 1.24f}})
                             .ToProto();
   xrt::XLAAllocation p2;
-  *p2.mutable_value() = CreateR0<xla::int32>(2);
+  *p2.mutable_value() = CreateR0<int32_t>(2);
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
@@ -1235,7 +1234,7 @@ TEST(RawApiTest, DynamicR1TupleTest) {
   xrt::XLAAllocation p1;
   *p1.mutable_value() = FloatVector({1.0f, -1.0f, -0.5f, 1.0f});
   xrt::XLAAllocation p2;
-  *p2.mutable_value() = CreateR0<xla::int32>(2);
+  *p2.mutable_value() = CreateR0<int32_t>(2);
 
   xrt::XLAComputation c;
   auto config = c.mutable_config();
@@ -2175,7 +2174,7 @@ TEST(RawApiTest, TestDeviceMemorySwap) {
 
   // Trigger computations on XRT handles to verify the swap-out/swap-in logic,
   // by comparing sequential couple of tensors.
-  auto zero_literal = xla::LiteralUtil::CreateR0<xla::int32>(0);
+  auto zero_literal = xla::LiteralUtil::CreateR0<int32_t>(0);
   for (size_t i = 0; i + 1 < device_handles.size(); ++i) {
     auto exec_op = ops::XRTExecute(
         root, c_equal_handle.handle, e_config,

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -92,6 +93,17 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
            "this full error message and we'll contact nvidia.";
     LOG(ERROR) << rz_check_status.RedzoneFailureMsg();
   }
+}
+
+bool EnableCublasLtGemm() {
+  static const bool enable_cublaslt_gemm = [] {
+    bool cublaslt_gemm = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_CUBLASLT",
+                                               /*default_val=*/false,
+                                               &cublaslt_gemm));
+    return cublaslt_gemm;
+  }();
+  return enable_cublaslt_gemm;
 }
 
 namespace {
@@ -213,10 +225,9 @@ void LogFusedConvForwardAutotuneResults(
   Logger::GetSingleton()->LogProto(log);
 }
 
-Status BestCudnnConvAlgorithm(
-    absl::Span<const AutotuneResult> results,
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
-    se::dnn::AlgorithmConfig* algo) {
+namespace {
+StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+    absl::Span<const AutotuneResult> results) {
   auto compare_run_times = [](const AutotuneResult& lhs,
                               const AutotuneResult& rhs) {
     return proto_utils::FromDurationProto(lhs.run_time()) <
@@ -226,6 +237,12 @@ Status BestCudnnConvAlgorithm(
   int idx_no_scratch = -1;
   for (int i = 0; i < results.size(); i++) {
     if (!results[i].has_failure()) {
+      if (OpDeterminismRequired()) {
+        // When determinism is enabled, choose first working algorithm, and
+        // don't choose a no_scratch algorithm.
+        idx = i;
+        break;
+      }
       if (idx == -1 || compare_run_times(results[i], results[idx])) {
         idx = i;
       }
@@ -238,42 +255,78 @@ Status BestCudnnConvAlgorithm(
   }
 
   if (idx == -1) {
-    return errors::NotFound("No algorithm worked!");
+    std::ostringstream msg;
+    msg << "No algorithm worked!  Error messages:";
+    // TODO(awpr): identify the algorithm as part of this error message, too.
+    for (const auto& result : results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return errors::NotFound(msg.str());
   }
 
-  if (!plans || plans->empty()) {
-    VLOG(2) << "fastest algorithm: "
-            << proto_utils::FromDurationProto(results[idx].run_time())
-            << " with algo " << results[idx].conv().algorithm()
-            << ", workspace bytes " << results[idx].scratch_bytes();
-    algo->set_algorithm({results[idx].conv().algorithm(),
-                         results[idx].conv().tensor_ops_enabled()});
-    algo->set_scratch_size(results[idx].scratch_bytes());
-    if (idx_no_scratch != -1) {
-      algo->set_algorithm_no_scratch(
-          {results[idx_no_scratch].conv().algorithm(),
-           results[idx_no_scratch].conv().tensor_ops_enabled()});
-    }
-  } else {
-    VLOG(2) << "fastest algorithm: "
-            << proto_utils::FromDurationProto(results[idx].run_time())
-            << " with algo " << (*plans)[idx]->getTag() << ", workspace bytes "
-            << (*plans)[idx]->getWorkspaceSize();
-    algo->set_algorithm(
-        {(*plans)[idx]->getTag(), (*plans)[idx]->get_raw_desc()});
-    algo->set_scratch_size((*plans)[idx]->getWorkspaceSize());
-    if (idx_no_scratch != -1) {
-      algo->set_algorithm_no_scratch(
-          {(*plans)[idx_no_scratch]->getTag(),
-           (*plans)[idx_no_scratch]->get_raw_desc()});
-    }
-    algo->set_plan((*plans)[idx]);
-    if (idx_no_scratch != -1 && idx_no_scratch != idx) {
-      algo->set_plan_no_scratch((*plans)[idx_no_scratch]);
-    }
-  }
-  return Status::OK();
+  return std::make_tuple(idx, idx_no_scratch);
 }
+}  // namespace
+
+StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results) {
+  int idx;
+  int idx_no_scratch;
+  TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
+                      BestCudnnConvAlgorithmIndices(results));
+  VLOG(2) << "fastest algorithm: "
+          << proto_utils::FromDurationProto(results[idx].run_time())
+          << " with algo " << results[idx].algorithm().algo_id()
+          << ", workspace bytes " << results[idx].scratch_bytes();
+
+  se::dnn::AlgorithmConfig result(
+      se::dnn::AlgorithmDesc(results[idx].algorithm()),
+      results[idx].scratch_bytes());
+
+  if (idx_no_scratch != -1) {
+    result.set_algorithm_no_scratch(
+        se::dnn::AlgorithmDesc(results[idx_no_scratch].algorithm()));
+  }
+  return result;
+}
+
+template <typename Op>
+StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
+        runners) {
+  if (runners.size() != results.size()) {
+    return errors::Internal(
+        "Mismatched size of autotune results and runners vectors.");
+  }
+  int idx;
+  int idx_no_scratch;
+  TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
+                      BestCudnnConvAlgorithmIndices(results));
+  VLOG(2) << "fastest algorithm: "
+          << proto_utils::FromDurationProto(results[idx].run_time())
+          << " with algo " << runners[idx]->ToString() << ", workspace bytes "
+          << results[idx].scratch_bytes();
+  return AutotuneEntry<Op>::FromOpRunners(
+      std::move(runners[idx]), idx_no_scratch == -1 || idx_no_scratch == idx
+                                   ? nullptr
+                                   : std::move(runners[idx_no_scratch]));
+}
+
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
+BestCudnnConvAlgorithm<se::dnn::ConvOp>(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::ConvSignature>>>
+        runners);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
+        runners);
 
 }  // namespace tensorflow
 

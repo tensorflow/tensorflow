@@ -14,10 +14,6 @@
 # ==============================================================================
 """Feature configuration for tf.io.parse_example."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 
@@ -353,7 +349,7 @@ class FixedLenSequenceFeature(collections.namedtuple(
         cls, shape, dtype, allow_missing, default_value)
 
 
-class _ParseOpParams(object):
+class _ParseOpParams:
   """Raw parameters used by `gen_parsing_ops`.
 
   Attributes:

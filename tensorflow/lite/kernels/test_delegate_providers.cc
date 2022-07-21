@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 
+#include <string>
+
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/tool_params.h"
@@ -41,7 +43,7 @@ bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
         this->params_.Set<bool>(kUseSimpleAllocator, val, argv_position);
       },
       false, "Use Simple Memory Allocator for SingleOpModel", Flag::kOptional)};
-  delegate_list_util_.AppendCmdlineFlags(&flags);
+  delegate_list_util_.AppendCmdlineFlags(flags);
 
   bool parse_result = tflite::Flags::Parse(argc, argv, flags);
   if (!parse_result || params_.Get<bool>("help")) {

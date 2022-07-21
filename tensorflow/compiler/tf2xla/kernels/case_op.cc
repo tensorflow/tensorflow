@@ -162,6 +162,10 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx,
                    compiler->CompileFunction(options, branches[j], arguments,
                                              &branch_results[j]));
+    OP_REQUIRES_OK(
+        ctx,
+        ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+            branch_results[j]));
   }
 
   bool has_tensor_array_gradients = false;
@@ -275,6 +279,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     if (has_token_input_output_ && i == num_inputs - 1) {
       // Set token input for this "case" op.
       std::vector<xla::XlaOp> token_inputs;
+      token_inputs.reserve(token_input_nodes_.size());
       for (const string& node_name : token_input_nodes_) {
         auto token_or = compiler->GetNodeToken(node_name);
         OP_REQUIRES_OK(ctx, token_or.status());

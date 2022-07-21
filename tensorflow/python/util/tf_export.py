@@ -37,10 +37,6 @@ foo = 1
 tf_export('consts.foo').export_constant(__name__, 'foo')
 ```
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import sys
@@ -105,6 +101,18 @@ def get_canonical_name_for_symbol(
     symbol, api_name=TENSORFLOW_API_NAME,
     add_prefix_to_v1_names=False):
   """Get canonical name for the API symbol.
+
+  Example:
+  ```python
+  from tensorflow.python.util import tf_export
+  cls = tf_export.get_symbol_from_name('keras.optimizers.Adam')
+
+  # Gives `<class 'keras.optimizer_v2.adam.Adam'>`
+  print(cls)
+
+  # Gives `keras.optimizers.Adam`
+  print(tf_export.get_canonical_name_for_symbol(cls, api_name='keras'))
+  ```
 
   Args:
     symbol: API function or class.

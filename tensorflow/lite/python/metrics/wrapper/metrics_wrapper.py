@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Stub to make pywrap metrics wrapper accessible."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.python.metrics import converter_error_data_pb2

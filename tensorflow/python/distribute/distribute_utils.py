@@ -14,10 +14,6 @@
 # ==============================================================================
 """Class implementing utilities used by tf.distribute.Strategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import abc
 import contextlib
 import threading
@@ -60,7 +56,9 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
   if isinstance(v0, tuple):
     for v in values[1:]:
       assert isinstance(v, tuple)
-      assert len(v) == len(v0)
+      assert len(v) == len(v0), ("Values to regroup had different lengths: "
+                                 f"len(v) == {len(v)}, len(v0) == {len(v0)}, "
+                                 f"v: {v}, v0: {v0}")
     regrouped_tuple = tuple(
         regroup(tuple(v[i] for v in values), wrap_class, always_wrap)
         for i in range(len(v0)))
@@ -220,13 +218,12 @@ def value_container(val):
 
 def is_distributed_variable(v):
   """Determine if a variable is ds variable or TPU mirrored variable."""
-  return isinstance(v, values_lib.DistributedVariable)
+  return getattr(v, "is_distributed_variable", False)
 
 
 def is_distributed_table(v):
   """Determine if an object is a DistributedTable."""
-  return v.__class__.__name__ in ("DistributedTable",
-                                  "RestoredDistributedTable")
+  return getattr(v, "is_distributed_table", False)
 
 
 def _validate_colocate_extended(v, extended):

@@ -54,8 +54,8 @@ StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(const std::string& address,
                               const std::string& protocol,
                               const std::string& transfer_protocol) {
-  auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol,
-                                                           transfer_protocol);
+  auto client = std::make_unique<DataServiceWorkerClient>(address, protocol,
+                                                          transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
   return client;
 }
@@ -69,11 +69,11 @@ Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
 Status DataServiceWorkerClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (client_) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(DataTransferClient::Build(
       GetDataTransferProtocol(), {protocol_, address_}, &client_));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
@@ -141,7 +141,7 @@ class GrpcDataTransferClient : public DataTransferClient {
     if (!s.ok()) {
       return grpc_util::WrapError("Failed to get element", s);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   void TryCancel() override {
@@ -176,7 +176,7 @@ class GrpcTransferClientRegistrar {
               config.protocol, &credentials));
           *out = std::make_unique<GrpcDataTransferClient>(credentials,
                                                           config.address);
-          return Status::OK();
+          return OkStatus();
         });
   }
 };
@@ -216,7 +216,7 @@ class LocalDataTransferClient : public DataTransferClient {
       return errors::Cancelled(absl::Substitute(
           "Client for worker $0 has been cancelled.", worker_address_));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
@@ -244,8 +244,8 @@ class LocalTransferClientRegistrar {
     DataTransferClient::Register(
         kLocalTransferProtocol, [](DataTransferClient::Config config,
                                    std::unique_ptr<DataTransferClient>* out) {
-          *out = absl::make_unique<LocalDataTransferClient>(config.address);
-          return Status::OK();
+          *out = std::make_unique<LocalDataTransferClient>(config.address);
+          return OkStatus();
         });
   }
 };

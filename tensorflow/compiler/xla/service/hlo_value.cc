@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -45,8 +45,8 @@ const Shape& HloPosition::shape() const {
   return ShapeUtil::GetSubshape(instruction->shape(), index);
 }
 
-string HloPosition::ToString() const {
-  string index_str =
+std::string HloPosition::ToString() const {
+  std::string index_str =
       instruction->shape().IsTuple() ? (" " + index.ToString()) : "";
   return StrCat(instruction->name(), index_str);
 }
@@ -56,10 +56,11 @@ std::ostream& operator<<(std::ostream& out, const HloPosition& position) {
   return out;
 }
 
-string HloUse::ToString() const {
-  string index_str = instruction->operand(operand_number)->shape().IsTuple()
-                         ? (" " + operand_index.ToString())
-                         : "";
+std::string HloUse::ToString() const {
+  std::string index_str =
+      instruction->operand(operand_number)->shape().IsTuple()
+          ? (" " + operand_index.ToString())
+          : "";
   return StrCat(instruction->name(), ", operand ", operand_number, index_str);
 }
 
@@ -75,34 +76,22 @@ HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
   positions_.push_back(HloPosition{instruction, index});
 }
 
-bool HloValue::operator==(const HloValue& other) const {
-  bool equal = defining_instruction() == other.defining_instruction() &&
-               defining_index() == other.defining_index();
-  // If the values are equal they must both be phi (or non phi).
-  CHECK(!(equal && is_phi() != other.is_phi()));
-  return equal;
-}
-
-bool HloValue::operator!=(const HloValue& other) const {
-  return !(*this == other);
-}
-
-string HloValue::ToShortString() const {
+std::string HloValue::ToShortString() const {
   return absl::StrFormat(
       "<%d %s%s%s%s>", id(), instruction()->name(),
       instruction()->shape().IsTuple() ? index().ToString() : "",
       is_phi() ? " (phi)" : "", has_color() ? StrCat(" @", color()) : "");
 }
 
-string HloValue::ToString(int indent) const {
-  string indentation(indent, ' ');
-  string out =
+std::string HloValue::ToString(int indent) const {
+  std::string indentation(indent, ' ');
+  std::string out =
       StrCat(indentation, ToShortString(), "\n", indentation, " positions:\n");
   for (const HloPosition& position : positions()) {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
   StrAppend(&out, indentation, " uses:\n");
-  for (const HloUse& use : uses()) {
+  for (const HloUse& use : GetUses()) {
     StrAppend(&out, indentation, "  ", use.ToString(), "\n");
   }
   StrAppend(&out, indentation, " from instruction:", instruction()->ToString(),
@@ -126,13 +115,6 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
       // transparently.
       CHECK_EQ(operand_number, 0);
       return index.empty();
-    case HloOpcode::kTupleSelect:
-      // Select does not use any nested elements of its selected-from operands
-      // (operand 1 and 2)
-      CHECK_GE(operand_number, 0);
-      CHECK_LE(operand_number, 2);
-      return operand_number == 0 || index.empty();
-
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
@@ -151,8 +133,7 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
 
 }  // namespace
 
-void HloValue::SetPositionsAndComputeUses(
-    absl::Span<const HloPosition> positions) {
+void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
   CHECK_EQ(positions_.size(), 1) << "SetPositions should only be called once.";
 
   // The positions must be unique and should not contain the defining position
@@ -167,12 +148,16 @@ void HloValue::SetPositionsAndComputeUses(
   }
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
+  // Update liveout status of this HloValue.
+  live_out_of_module_ |=
+      IsRootOf(defining_instruction()->GetModule()->entry_computation());
+}
 
+void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
   // Gather the computation roots at which this value appears.
   absl::flat_hash_set<HloInstruction*> root_positions;
   for (const HloPosition& position : positions_) {
-    if (position.instruction ==
-        position.instruction->parent()->root_instruction()) {
+    if (position.instruction->IsRoot()) {
       root_positions.insert(position.instruction);
     }
   }
@@ -188,26 +173,26 @@ void HloValue::SetPositionsAndComputeUses(
         // Root instructions of computations are considered to be uses whether
         // or not the root instruction itself actually uses the value.
         if (MayUseOperandValue(i, position.index, user) ||
-            ContainsKey(root_positions, user)) {
+            root_positions.contains(user)) {
           HloUse new_use{user, i, position.index};
 
-          // The new use must not already exist in uses_.
-          for (const HloUse& use : uses_) {
+          // The new use must not already exist in uses.
+          for (const HloUse& use : uses) {
             DCHECK_NE(use, new_use);
           }
 
-          uses_.push_back(std::move(new_use));
+          uses.push_back(std::move(new_use));
         }
       }
     }
-
-    // Update liveout status of this HloValue.
-    const HloModule& module = *position.instruction->parent()->parent();
-    if (position.instruction ==
-        module.entry_computation()->root_instruction()) {
-      live_out_of_module_ = true;
-    }
   }
+}
+
+bool HloValue::IsRootOf(const HloComputation* computation) const {
+  return absl::c_any_of(positions_, [&](const HloPosition& position) {
+    return position.instruction->IsRoot() &&
+           position.instruction->parent() == computation;
+  });
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {
@@ -215,18 +200,28 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
   return out;
 }
 
-void HloValueSet::SortAndUniquifyValues() {
-  absl::c_sort(values_, HloValue::IdLessThan);
-  values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
-                values_.end());
+HloValueSet::HloValueSet(absl::Span<const HloValue* const> values)
+    : values_(values.begin(), values.end()) {
+  SortAndUniquifyValues();
 }
 
-string HloValueSet::ToString() const {
-  return StrCat(
-      "HloValueSet: ",
-      absl::StrJoin(values_, ", ", [](string* result, const HloValue* value) {
-        result->append(value->ToShortString());
-      }));
+HloValueSet::HloValueSet(const absl::flat_hash_set<const HloValue*>& values)
+    : values_(values.begin(), values.end()) {
+  // Values are already unique, so only need to sort.
+  absl::c_sort(values_, HloValue::IdLessThan);
+}
+
+void HloValueSet::SortAndUniquifyValues() {
+  absl::c_sort(values_, HloValue::IdLessThan);
+  values_.erase(std::unique(values_.begin(), values_.end()), values_.end());
+}
+
+std::string HloValueSet::ToString() const {
+  return StrCat("HloValueSet: ",
+                absl::StrJoin(values_, ", ",
+                              [](std::string* result, const HloValue* value) {
+                                result->append(value->ToShortString());
+                              }));
 }
 
 bool HloValueSet::AssignUnionOf(absl::Span<const HloValueSet* const> inputs) {
@@ -288,14 +283,28 @@ bool InstructionValueSet::AssignUnionOf(
   return changed;
 }
 
+bool InstructionValueSet::AssignUnionOf(const InstructionValueSet& input,
+                                        ShapeIndexView input_index) {
+  bool changed = false;
+  for (auto& [index, value_set] : *this) {
+    ShapeIndex source_index(input_index);
+    for (auto i : index) {
+      source_index.push_back(i);
+    }
+    changed |= value_set.AssignUnionOf({&input.element(source_index)});
+  }
+
+  return changed;
+}
+
 std::ostream& operator<<(std::ostream& out,
                          const InstructionValueSet& instruction_value_set) {
   out << instruction_value_set.ToString();
   return out;
 }
 
-string InstructionValueSet::ToString() const {
-  string out =
+std::string InstructionValueSet::ToString() const {
+  std::string out =
       StrCat("InstructionValueSet(", ShapeUtil::HumanString(shape()), ")\n");
   ForEachElement([&out](const ShapeIndex& index, const HloValueSet& value_set) {
     StrAppend(&out, "  ", index.ToString(), " : ", value_set.ToString(), "\n");

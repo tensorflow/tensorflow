@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",
         "@com_google_absl//absl/strings",

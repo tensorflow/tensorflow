@@ -40,16 +40,18 @@ namespace metal {
 class ComputeTask {
  public:
   ComputeTask() = default;
+  ~ComputeTask();
 
   // Move only
-  ComputeTask(ComputeTask&& args) = default;
-  ComputeTask& operator=(ComputeTask&& args) = default;
+  ComputeTask(ComputeTask&& task);
+  ComputeTask& operator=(ComputeTask&& task);
   ComputeTask(const ComputeTask&) = delete;
   ComputeTask& operator=(const ComputeTask&) = delete;
 
   void Init(std::unique_ptr<GPUOperation>&& operation);
 
   const OperationDef& GetDefinition() const;
+  const GPUOperation& GetGpuOperation() const { return *operation_; }
   bool IsLinkable() const;
 
   absl::Status AddTask(ComputeTask* task);
@@ -61,20 +63,48 @@ class ComputeTask {
 
   void Encode(id<MTLComputeCommandEncoder> encoder);
 
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void EncodeToICB(id<MTLIndirectComputeCommand> icb_command);
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void AddResourcesToEncoder(id<MTLComputeCommandEncoder> encoder) const;
+
+  void Update();
+
   void SetSrcTensor(MetalSpatialTensor* tensor, int index);
 
   void SetDstTensor(MetalSpatialTensor* tensor, int index);
 
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
+  int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
+  void SetWorkGroupSize(const int3& work_group_size);
+
+  const std::string& GetCode() const { return operation_->code_; }
+  const std::map<std::string, std::string>& GetDefines() const {
+    return defines_;
+  }
+
+  absl::Status Init(MetalDevice* device, const std::string& code,
+                    const std::map<std::string, std::string>& defines);
+  absl::Status RestoreDeserialized(MetalDevice* device);
+
  private:
-  absl::Status CompileProgram(MetalDevice* device,
-                              CalculationsPrecision precision,
-                              const std::string& kernel_code);
+  absl::Status CompileProgram(
+      MetalDevice* device, const std::string& code,
+      const std::map<std::string, std::string>& defines);
+  void Release();
 
   std::unique_ptr<GPUOperation> operation_;
-  id<MTLComputePipelineState> program_;
+  id<MTLComputePipelineState> program_ = nullptr;
   MetalArguments metal_args_;
+
+  bool use_arguments_buffer_ = false;  // optional
+  bool need_icb_support_ = false;      // optional
+  id<MTLArgumentEncoder> arguments_encoder_ = nullptr;
+  id<MTLBuffer> arg_buffer_ = nullptr;
+
+  // for serialization
+  std::map<std::string, std::string> defines_;
 };
 
 }  // namespace metal

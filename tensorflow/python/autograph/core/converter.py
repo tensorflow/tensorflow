@@ -59,10 +59,6 @@ These implement transformer.Base, rather than converter.Base, to avoid a
 dependency on AutoGraph.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 
 from tensorflow.python.autograph.pyct import anno
@@ -102,9 +98,8 @@ class Feature(enum.Enum):
     ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
     BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
       their TF counterparts.
-    EQUALITY_OPERATORS: Whether to convert the comparison operators, like
-      equality. This is soon to be deprecated as support is being added to the
-      Tensor class.
+    EQUALITY_OPERATORS: Whether to convert the equality operator ('==') to
+      tf.math.equal.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
     NAME_SCOPES: Insert name scopes that name ops according to context, like the
       function they were defined in.

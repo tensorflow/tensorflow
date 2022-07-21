@@ -31,41 +31,45 @@ class HloDomainVerifier::RunContext {
   RunContext(HloModule* module, HloDomainVerifier* verifier)
       : module_(module), verifier_(verifier) {}
 
-  Status Run();
+  Status Run(const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // If the verifier caller passed an empty vector for kinds, we collect all the
   // available domain types.
-  Status PopulateDomainKinds();
+  Status PopulateDomainKinds(
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   HloModule* module_;
   HloDomainVerifier* verifier_;
 };
 
-Status HloDomainVerifier::RunContext::PopulateDomainKinds() {
+Status HloDomainVerifier::RunContext::PopulateDomainKinds(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (verifier_->kinds_.empty()) {
     // The caller specified no domain kinds, collect all the ones available.
-    std::set<string> kinds;
-    for (HloComputation* computation : module_->computations()) {
+    std::set<std::string> kinds;
+    for (HloComputation* computation :
+         module_->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kDomain) {
           TF_RET_CHECK(instruction->user_side_metadata().Kind() ==
                        instruction->operand_side_metadata().Kind())
               << instruction->ToString();
-          kinds.insert(string(instruction->user_side_metadata().Kind()));
+          kinds.insert(std::string(instruction->user_side_metadata().Kind()));
         }
       }
     }
     verifier_->kinds_.insert(verifier_->kinds_.end(), kinds.begin(),
                              kinds.end());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-Status HloDomainVerifier::RunContext::Run() {
+Status HloDomainVerifier::RunContext::Run(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Running HLO Domain Verifier";
-  TF_RETURN_IF_ERROR(PopulateDomainKinds());
-  for (HloComputation* computation : module_->computations()) {
+  TF_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
+  for (HloComputation* computation : module_->computations(execution_threads)) {
     for (auto& kind : verifier_->kinds_) {
       // First create the domain instruction sets. A domain instruction set is
       // the set of instructions whose edges never cross a kDomain instruction.
@@ -77,12 +81,14 @@ Status HloDomainVerifier::RunContext::Run() {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<bool> HloDomainVerifier::Run(HloModule* module) {
+StatusOr<bool> HloDomainVerifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  TF_RETURN_IF_ERROR(run_context.Run());
+  TF_RETURN_IF_ERROR(run_context.Run(execution_threads));
   return false;
 }
 

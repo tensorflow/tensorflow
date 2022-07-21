@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
+
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
@@ -66,8 +68,13 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_test.py"],
+    tags = [
+        "noasan",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notap",  # TODO(b/231479582): re-enable after flakiness resolved.
+        "notsan",  # TODO(b/206452257): re-enable after flakiness resolved.
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -103,14 +110,14 @@ tf_py_test(
     grpc_enabled = True,
     deps = [
         ":test_base",
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -128,20 +135,23 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//tensorflow/python/training:saver",
+        "//tensorflow/python/util",
         "//third_party/py/numpy",
     ],
 )
 
 tf_py_test(
     name = "concatenate_test",
-    size = "small",
+    size = "medium",
     srcs = ["concatenate_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -172,7 +182,7 @@ tf_py_test(
 
 tf_py_test(
     name = "dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["dataset_test.py"],
     deps = [
         ":test_base",
@@ -210,7 +220,7 @@ tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -228,7 +238,7 @@ tf_py_test(
 
 tf_py_test(
     name = "fixed_length_record_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["fixed_length_record_dataset_test.py"],
     shard_count = 4,
     deps = [
@@ -255,6 +265,9 @@ tf_py_test(
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
+    tags = [
+        "noasan",  # TODO(b/235095716): Test timing out.
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -324,7 +337,7 @@ tf_py_test(
 
 tf_py_test(
     name = "from_tensor_slices_test",
-    size = "small",
+    size = "medium",
     srcs = ["from_tensor_slices_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -388,7 +401,7 @@ tf_py_test(
 
 tf_py_test(
     name = "group_by_window_test",
-    size = "small",
+    size = "medium",
     srcs = ["group_by_window_test.py"],
     shard_count = 4,
     deps = [
@@ -491,13 +504,13 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -533,7 +546,7 @@ tf_py_test(
 
 tf_py_test(
     name = "map_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_test.py"],
     shard_count = 19,
     deps = [
@@ -569,7 +582,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "memory_cleanup_test",
-    size = "small",
+    size = "medium",
     srcs = ["memory_cleanup_test.py"],
     shard_count = 12,
     tags = [
@@ -655,7 +668,7 @@ tf_py_test(
 
 tf_py_test(
     name = "padded_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["padded_batch_test.py"],
     shard_count = 2,
     deps = [
@@ -698,7 +711,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "prefetch_test",
-    size = "small",
+    size = "medium",
     srcs = ["prefetch_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -728,7 +741,7 @@ tf_py_test(
 
 tf_py_test(
     name = "range_test",
-    size = "small",
+    size = "medium",
     srcs = ["range_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -744,7 +757,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "reduce_test",
-    size = "small",
+    size = "medium",
     srcs = ["reduce_test.py"],
     tags = [
         "no_cuda_asan",  # times out
@@ -786,7 +799,7 @@ tf_py_test(
 
 tf_py_test(
     name = "repeat_test",
-    size = "small",
+    size = "medium",
     srcs = ["repeat_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -802,7 +815,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "scan_test",
-    size = "small",
+    size = "medium",
     srcs = ["scan_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -826,9 +839,9 @@ cuda_py_test(
 
 tf_py_test(
     name = "shard_test",
-    size = "small",
+    size = "medium",
     srcs = ["shard_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -880,7 +893,7 @@ tf_py_test(
 
 tf_py_test(
     name = "snapshot_test",
-    size = "small",
+    size = "medium",
     srcs = ["snapshot_test.py"],
     shard_count = 16,
     tags = [
@@ -956,6 +969,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
@@ -1030,7 +1044,7 @@ py_library(
 
 tf_py_test(
     name = "unbatch_test",
-    size = "small",
+    size = "medium",
     srcs = ["unbatch_test.py"],
     deps = [
         ":checkpoint_test_base",
@@ -1069,9 +1083,26 @@ tf_py_test(
     ],
 )
 
+py_strict_test(
+    name = "io_test",
+    srcs = ["io_test.py"],
+    deps = [
+        ":checkpoint_test_base",
+        ":test_base",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:io",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "window_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_test.py"],
     shard_count = 2,
     deps = [

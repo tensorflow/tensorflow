@@ -131,4 +131,23 @@ def TF_ResourceHandleAllocatorInterface : OpInterface<"ResourceHandleAllocatorIn
   ];
 }
 
+def TF_GetResourceInstanceInterface : OpInterface<"GetResourceInstanceInterface"> {
+  let description = [{Returns a string corresponding to the resource instance
+                      accessed by this op}];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/[{Returns a string corresponding to the resource instance
+                 accessed by this op. The implementation must guarantee that the
+                 mapping between resource instances and strings is bijective,
+                 i.e., two op instances should return the same string if and
+                 only if they access the same resource. The interface should
+                 only be used for ops that access exactly one resource.}],
+      /*retTy=*/"std::string",
+      /*methodName=*/"GetResourceInstanceStr",
+      /*args=*/(ins)
+    >,
+  ];
+}
+
 #endif // TF_OP_INTERFACES

@@ -17,7 +17,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
@@ -30,20 +31,22 @@ namespace {
 class OptimizeMhloPass : public OptimizeMhloPassBase<OptimizeMhloPass> {
  public:
   /// Performs the lowering to MHLO dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 // Lowers the complex operations that can be represented using other operations.
-void OptimizeMhloPass::runOnFunction() {
+void OptimizeMhloPass::runOnOperation() {
   // Add lowering patterns to the list.
-  OwningRewritePatternList patterns(&getContext());
-  PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
+  RewritePatternSet patterns(&getContext());
+  populateOptimizeMhloPatterns(&getContext(), &patterns);
 
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 }  // end anonymous namespace
 }  // namespace mhlo
 }  // namespace mlir
 
-std::unique_ptr<mlir::FunctionPass> mlir::mhlo::createOptimizeMhloPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+mlir::mhlo::createOptimizeMhloPass() {
   return std::make_unique<mlir::mhlo::OptimizeMhloPass>();
 }

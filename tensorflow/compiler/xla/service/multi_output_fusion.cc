@@ -24,14 +24,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
+StatusOr<bool> MultiOutputFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     computation_ = computation;
     candidates_.clear();
     candidates_index_.clear();
@@ -71,7 +73,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
         const int64_t kUserSliceSize = 128;
 
         const int64_t user_slice_begin =
-            RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
+            RoundDownTo(operand->UserId(instruction), kUserSliceSize);
 
         const int64_t user_slice_end =
             std::min(static_cast<int64_t>(operand->users().size()),
@@ -131,7 +133,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
   reachability_.reset();
   if (changed) {
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return changed;
 }
@@ -307,7 +309,7 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
 
   // Fusing nodes with 0 users makes no sense and the rest of the implementation
   // doesn't support it either.
-  if (instr1->user_count() == 0 || instr2->user_count() == 0) {
+  if (instr1->IsDead() || instr2->IsDead()) {
     return false;
   }
 

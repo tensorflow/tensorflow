@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """A library of common shape functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import six
 
 from tensorflow.python.framework import tensor_shape
@@ -103,8 +99,8 @@ def broadcast_shape(shape_x, shape_y):
     return tensor_shape.unknown_shape()
   return_dims = _broadcast_shape_helper(shape_x, shape_y)
   if return_dims is None:
-    raise ValueError('Incompatible shapes for broadcasting. Two shapes are'
-                     'compatible if for each dimension pair they are either'
+    raise ValueError('Incompatible shapes for broadcasting. Two shapes are '
+                     'compatible if for each dimension pair they are either '
                      'equal or one of them is 1. '
                      f'Received: {shape_x} and {shape_y}.')
   return tensor_shape.TensorShape(return_dims)

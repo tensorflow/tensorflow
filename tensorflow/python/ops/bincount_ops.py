@@ -14,10 +14,6 @@
 # ==============================================================================
 """bincount ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -138,6 +134,7 @@ def bincount(arr,
         weights = ops.convert_to_tensor(weights, name="weights")
         return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
       weights = constant_op.constant([], dtype)
+      arr = array_ops.reshape(arr, [-1])
       return gen_math_ops.bincount(arr, output_size, weights)
 
     if not isinstance(arr, sparse_tensor.SparseTensor):
@@ -293,6 +290,8 @@ def sparse_bincount(values,
       * `0` (if `values` is empty);
       * `reduce_max(values) + 1` otherwise.
 
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
 
   Examples:
 

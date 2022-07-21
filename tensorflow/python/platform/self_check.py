@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Platform-specific code for checking the integrity of the TensorFlow build."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import os
 
@@ -60,10 +56,9 @@ def preload_check():
             "https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads"
             % " or ".join(missing))
   else:
-    # Load a library that performs CPU feature guard checking as a part of its
-    # static initialization. Doing this here as a preload check makes it more
-    # likely that we detect any CPU feature incompatibilities before we trigger
-    # them (which would typically result in SIGILL).
-    cpu_feature_guard_library = os.path.join(
-        os.path.dirname(__file__), "../../core/platform/_cpu_feature_guard.so")
-    ctypes.CDLL(cpu_feature_guard_library)
+    # Load a library that performs CPU feature guard checking.  Doing this here
+    # as a preload check makes it more likely that we detect any CPU feature
+    # incompatibilities before we trigger them (which would typically result in
+    # SIGILL).
+    from tensorflow.python.platform import _pywrap_cpu_feature_guard
+    _pywrap_cpu_feature_guard.InfoAboutUnusedCPUFeatures()

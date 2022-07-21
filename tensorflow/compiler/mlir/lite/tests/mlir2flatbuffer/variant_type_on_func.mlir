@@ -11,7 +11,8 @@
 // CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0 ],
 // CHECK-NEXT:    outputs: [ 0 ],
@@ -32,6 +33,6 @@
 // CHECK-NEXT:  } ],
 // CHECK-NEXT:  signature_defs: [  ]
 // CHECK-NEXT: }
-func @main(%arg0 : tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>> {
-  return %arg0 : tensor<!tf_type.variant<tensor<2xi32>>>
+func.func @main(%arg0 : tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>> {
+  func.return %arg0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }

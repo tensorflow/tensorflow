@@ -26,13 +26,14 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -53,6 +53,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
+namespace {
+
 // NOLINTNEXTLINE
 llvm::cl::opt<std::string> input_types(
     "tf-xla-input-types",
@@ -60,6 +62,18 @@ llvm::cl::opt<std::string> input_types(
                    "Supported types include ['parameter', 'resource']. If "
                    "empty, all arguments are assumed to be parameters."),
     llvm::cl::init(""));
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> emit_use_tuple_arg(
+    "tf-xla-emit-use-tuple-args",
+    llvm::cl::desc(
+        "Emit HLO modules using tuples as args for the entry computation"),
+    llvm::cl::init(false));
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> emit_return_tuple(
+    "tf-xla-emit-return-tuple",
+    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
+    llvm::cl::init(false));
+}  // namespace
 
 namespace tensorflow {
 
@@ -122,7 +136,7 @@ Status ParseArgumentShapes(
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
   for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
-    if (!shape.value().hasValue()) {
+    if (!shape.value().has_value()) {
       TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
           static_cast<int*>(nullptr), 0, &arg_shapes[shape.index()].shape));
       continue;
@@ -131,7 +145,7 @@ Status ParseArgumentShapes(
         shape.value().getValue(), &arg_shapes[shape.index()].shape));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseDataTypes(absl::string_view data_types_str,
@@ -154,14 +168,14 @@ Status ParseDataTypes(absl::string_view data_types_str,
                                      data_type.value());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseArgumentKinds(
     absl::string_view input_types_str,
     llvm::SmallVectorImpl<XlaArgument::Kind>& argument_kinds) {
   argument_kinds.clear();
-  if (input_types_str.empty()) return Status::OK();
+  if (input_types_str.empty()) return OkStatus();
 
   std::vector<absl::string_view> argument_kind_strs =
       absl::StrSplit(input_types_str, ',');
@@ -179,7 +193,7 @@ Status ParseArgumentKinds(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseXlaArguments(absl::string_view input_shapes_str,
@@ -217,7 +231,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     XlaArgument& arg = std::get<0>(arg_components);
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
-    if (input_shapes.hasValue()) {
+    if (input_shapes.has_value()) {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
     } else {
@@ -229,7 +243,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     arg.kind = std::get<3>(arg_components);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace
@@ -247,7 +261,7 @@ Status CompileMlirToXlaHloViaBuilder(
   // have the proper shapes.
   TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
 
-  mlir::FuncOp main = module_op.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module_op.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 
@@ -285,9 +299,11 @@ Status CompileMlirToXlaHloViaBuilder(
 
   XlaHelpers::ShapeRepresentationFn shape_representation_fn =
       IdentityShapeRepresentationFn();
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   return PopulateResultIOInfo(module_op, arg_shapes, /*use_tuple_args=*/false,
                               /*use_resource_updates_for_aliases=*/false,
-                              shape_representation_fn, compilation_result);
+                              shape_determination_fns, compilation_result);
 }
 
 static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
@@ -314,7 +330,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
                         module_op, arg_shapes, device_type, emit_use_tuple_arg,
                         /*analyse_graph=*/false, emit_return_tuple,
                         /*use_resource_updates_for_aliases=*/true,
-                        IdentityShapeRepresentationFn(), &compilation_result,
+                        /*shape_determination_fns=*/{}, &compilation_result,
                         custom_legalization_passes);
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
@@ -343,7 +359,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       CompileGraphToXlaHlo(module_op, xla_arguments,
                            /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
                            /*analyse_graph=*/false, emit_return_tuple,
-                           IdentityShapeRepresentationFn(), &compilation_result,
+                           /*shape_determination_fns=*/{}, &compilation_result,
                            /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
@@ -355,7 +371,8 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect>();
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+                  mlir::TF::TensorFlowDialect>();
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
@@ -363,8 +380,9 @@ static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
 }
 
-static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+static mlir::OwningOpRef<mlir::ModuleOp>
+SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
+                                              mlir::MLIRContext* context) {
   mlir::Attribute attr = mlir::parseAttribute(input, context);
   if (!attr || !attr.isa<mlir::StringAttr>()) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
@@ -375,7 +393,7 @@ static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
   mlir::DialectRegistry registry;
   RegisterMlirInputDialects(registry);
   context->appendDialectRegistry(registry);
-  mlir::OwningModuleRef module_ref;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref;
   auto status =
       DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
   if (!status.ok()) {

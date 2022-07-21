@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
+
+#include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -28,32 +30,21 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
-class TreeReductionRewriterTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_deterministic_reductions(true);
-    return debug_options;
-  }
-
- protected:
-  void EnsureDeterminism(absl::string_view hlo_text) {
-    std::vector<ExecutionProfile> profiles;
-    profiles.emplace_back();
-    profiles.emplace_back();
-    EXPECT_TRUE(RunMultipleTimes(hlo_text,
-                                 /*run_hlo_passes=*/true,
-                                 /*profiles=*/&profiles,
-                                 /*backend_config=*/"",
-                                 /*assert_determinism=*/true));
+class TreeReductionRewriterTest : public HloTestBase {
+ public:
+  void CheckTreeRewriter(absl::string_view hlo,
+                         std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(
+        hlo, gpu::GpuTreeReductionRewriter{se::CudaComputeCapability{8, 1}},
+        expected);
   }
 };
 
 TEST_F(TreeReductionRewriterTest, RowReductionSingleDimensionNoBatched) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -69,30 +60,17 @@ ENTRY main {
 }
 )";
 
-  // TODO(cheshire): a more generic check, do not hardcode the names.
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[50000]) -> f32[224] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[50000]{0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[] constant(0)
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[50176]{0} pad(f32[50000]{0} [[INSTR_0]], f32[] [[INSTR_1]]), padding=0_176
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[224,224]{1,0} bitcast(f32[50176]{0} [[INSTR_2]])
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[224]{0} reduce(f32[224,224]{1,0} [[INSTR_3]], f32[] [[INSTR_1]]), dimensions={1}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[50000]) -> f32[] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[50000]{0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[224]{0} fusion(f32[50000]{0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce(f32[224]{0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK: [[pad_0:%[^ ]+]] = f32[50176]{0} pad([[input_1:%[^ ]+]], [[zero_2:%[^ ]+]]), padding=0_176
+// CHECK: [[bitcast_3:%[^ ]+]] = f32[224,224]{1,0} bitcast([[pad_0]])
+// CHECK: [[reduce_4:%[^ ]+]] = f32[224]{0} reduce([[bitcast_3]], [[zero_2]]), dimensions={1}, to_apply=[[add_5:%[^ ]+]]
+// CHECK: ROOT [[out_1_6:%[^ ]+]] = f32[] reduce([[reduce_4]], [[zero_2]]), dimensions={0}, to_apply=[[add_5]]
       )");
-
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, RowReductionWeirdOutputLayout) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -109,18 +87,15 @@ ENTRY main {
 )";
 
   // Check that we preserve the layout.
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: reduce.1 = f32[2,4]{0,1}
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK: f32[2,4]{0,1} reduce(
       )");
-
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest,
        RowReductionSingleDimensionNoBatchedDivisible) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -136,28 +111,18 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[49952]) -> f32[223] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[49952]{0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[223,224]{1,0} bitcast(f32[49952]{0} [[INSTR_0]])
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_3:%[^ ]+]] = f32[223]{0} reduce(f32[223,224]{1,0} [[INSTR_1]], f32[] [[INSTR_2]]), dimensions={1}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[49952]) -> f32[] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[49952]{0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[223]{0} fusion(f32[49952]{0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce(f32[223]{0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK: [[input_0:%[^ ]+]] = f32[49952]{0} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[223,224]{1,0} bitcast([[input_0]])
+// CHECK: [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK: [[reduce_3:%[^ ]+]] = f32[223]{0} reduce([[bitcast_1]], [[zero_2]]), dimensions={1}, to_apply=[[add_4:%[^ ]+]]
+// CHECK: ROOT [[out_1_5:%[^ ]+]] = f32[] reduce([[reduce_3]], [[zero_2]]), dimensions={0}, to_apply=[[add_4]]
       )");
-
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, RowReductionNoBatched) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -173,30 +138,18 @@ ENTRY main {
 }
 )";
 
-  EnsureDeterminism(hlo_text);
-
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[100,10,90000]) -> f32[100,10,300] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[100,10,90000]{2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,10,300,300]{3,2,1,0} bitcast(f32[100,10,90000]{2,1,0} [[INSTR_0]])
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_3:%[^ ]+]] = f32[100,10,300]{2,1,0} reduce(f32[100,10,300,300]{3,2,1,0} [[INSTR_1]], f32[] [[INSTR_2]]), dimensions={3}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[100,10,90000]) -> f32[100,10] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[100,10,90000]{2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,10,300]{2,1,0} fusion(f32[100,10,90000]{2,1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[100,10]{1,0} reduce(f32[100,10,300]{2,1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={2}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK: [[bitcast_0:%[^ ]+]] = f32[100,10,300,300]{3,2,1,0} bitcast([[input_1:%[^ ]+]])
+// CHECK: [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK: [[reduce_3:%[^ ]+]] = f32[100,10,300]{2,1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={3}, to_apply=[[add_4:%[^ ]+]]
+// CHECK: ROOT [[out_1_5:%[^ ]+]] = f32[100,10]{1,0} reduce([[reduce_3]], [[zero_2]]), dimensions={2}, to_apply=[[add_4]]
       )");
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest,
        RowReductionSingleDimensionNoBatchedLargeInput) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -212,28 +165,18 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[1000000]) -> f32[1000] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[1000000]{0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[1000,1000]{1,0} bitcast(f32[1000000]{0} [[INSTR_0]])
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_3:%[^ ]+]] = f32[1000]{0} reduce(f32[1000,1000]{1,0} [[INSTR_1]], f32[] [[INSTR_2]]), dimensions={1}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[1000000]) -> f32[] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[1000000]{0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[1000]{0} fusion(f32[1000000]{0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce(f32[1000]{0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK:  [[input_0:%[^ ]+]] = f32[1000000]{0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1000,1000]{1,0} bitcast([[input_0]])
+// CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK:  [[reduce_3:%[^ ]+]] = f32[1000]{0} reduce([[bitcast_1]], [[zero_2]]), dimensions={1}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[] reduce([[reduce_3]], [[zero_2]]), dimensions={0}, to_apply=[[add_4]]
       )");
-
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, RowReductionBatchedDimensionFits) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -249,29 +192,17 @@ ENTRY main {
 }
 )";
 
-  EnsureDeterminism(hlo_text);
-
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[8,100,90000]) -> f32[100,300] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[8,100,90000]{2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[8,100,300,300]{3,2,1,0} bitcast(f32[8,100,90000]{2,1,0} [[INSTR_0]])
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_3:%[^ ]+]] = f32[100,300]{1,0} reduce(f32[8,100,300,300]{3,2,1,0} [[INSTR_1]], f32[] [[INSTR_2]]), dimensions={3,0}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[8,100,90000]) -> f32[100] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[8,100,90000]{2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,300]{1,0} fusion(f32[8,100,90000]{2,1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[100]{0} reduce(f32[100,300]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={1}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK:  [[bitcast_0:%[^ ]+]] = f32[8,100,300,300]{3,2,1,0} bitcast([[input_1:%[^ ]+]])
+// CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK:  [[reduce_3:%[^ ]+]] = f32[100,300]{1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={3,0}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[100]{0} reduce([[reduce_3]], [[zero_2]]), dimensions={1}, to_apply=[[add_4]]
       )");
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, RowReductionBatchedDimensionDoesNotFit) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -287,32 +218,15 @@ ENTRY main {
 }
 )";
 
-  EnsureDeterminism(hlo_text);
-
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[32,100,90000]) -> f32[32,100,300] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[32,100,90000]{2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[32,100,300,300]{3,2,1,0} bitcast(f32[32,100,90000]{2,1,0} [[INSTR_0]])
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_3:%[^ ]+]] = f32[32,100,300]{2,1,0} reduce(f32[32,100,300,300]{3,2,1,0} [[INSTR_1]], f32[] [[INSTR_2]]), dimensions={3}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[32,100,90000]) -> f32[100] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[32,100,90000]{2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[32,100,300]{2,1,0} fusion(f32[32,100,90000]{2,1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   [[INSTR_4:%[^ ]+]] = f32[32,100]{1,0} reduce(f32[32,100,300]{2,1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={2}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK:   ROOT [[INSTR_6:%[^ ]+]] = f32[100]{0} reduce(f32[32,100]{1,0} [[INSTR_4]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK: [[reduce_0:%[^ ]+]] = f32[32,100]{1,0} reduce([[input_1:%[^ ]+]], [[zero_2:%[^ ]+]]), dimensions={2}, to_apply=[[add_3:%[^ ]+]]
+// CHECK:  ROOT [[out_1_4:%[^ ]+]] = f32[100]{0} reduce([[reduce_0]], [[zero_2]]), dimensions={0}, to_apply=[[add_3]]
       )");
-
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, ColumnReductionSimple) {
-  // TODO(cheshire): reduce duplication for HLO text, factor out the common
-  // part.
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -328,29 +242,18 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[10000,100]) -> f32[100,100] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[10000,100]{1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,100,100]{2,1,0} bitcast(f32[10000,100]{1,0}
-// %param_0.2)
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_1:%[^ ]+]] = f32[100,100]{1,0} reduce(f32[100,100,100]{2,1,0} [[INSTR_2:%[^ ]+]], f32[] [[INSTR_0]]), dimensions={0}, to_apply=[[INSTR_3:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[10000,100]) -> f32[100] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[10000,100]{1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,100]{1,0} fusion(f32[10000,100]{1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[100]{0} reduce(f32[100,100]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
-      )");
+  CheckTreeRewriter(hlo,
+                    R"(
 
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+// CHECK:  [[input_0:%[^ ]+]] = f32[10000,100]{1,0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[100,100,100]{2,1,0} bitcast([[input_0]])
+// CHECK:  [[reduce_2:%[^ ]+]] = f32[100,100]{1,0} reduce([[bitcast_1]], [[zero_3:%[^ ]+]]), dimensions={0}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[100]{0} reduce([[reduce_2]], [[zero_3]]), dimensions={0}, to_apply=[[add_4]]
+      )");
 }
 
 TEST_F(TreeReductionRewriterTest, ColumnReductionSimpleNoSquareDivisible) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -366,29 +269,18 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[10302,100]) -> f32[102,100] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[10302,100]{1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[101,102,100]{2,1,0} bitcast(f32[10302,100]{1,0}
-// %param_0.2)
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_1:%[^ ]+]] = f32[102,100]{1,0} reduce(f32[101,102,100]{2,1,0} [[INSTR_2:%[^ ]+]], f32[] [[INSTR_0]]), dimensions={0}, to_apply=[[INSTR_3:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[10302,100]) -> f32[100] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[10302,100]{1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[102,100]{1,0} fusion(f32[10302,100]{1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[100]{0} reduce(f32[102,100]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK:  [[input_0:%[^ ]+]] = f32[10302,100]{1,0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[101,102,100]{2,1,0} bitcast([[input_0]])
+// CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK:  [[reduce_3:%[^ ]+]] = f32[102,100]{1,0} reduce([[bitcast_1]], [[zero_2]]), dimensions={0}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[100]{0} reduce([[reduce_3]], [[zero_2]]), dimensions={0}, to_apply=[[add_4]]
       )");
-
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, ColumnReductionOtherIndex) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -404,30 +296,18 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[10000,2,2,2]) -> f32[100,2,2,2] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[10000,2,2,2]{3,2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,100,2,2,2]{4,3,2,1,0} bitcast(f32[10000,2,2,2]{3,2,1,0} [[INSTR_0]])
-// CHECK:   [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_3:%[^ ]+]] = f32[100,2,2,2]{3,2,1,0} reduce(f32[100,100,2,2,2]{4,3,2,1,0} [[INSTR_1]], f32[] [[INSTR_2]]), dimensions={0}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[10000,2,2,2]) -> f32[2,2,2] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[10000,2,2,2]{3,2,1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[100,2,2,2]{3,2,1,0} fusion(f32[10000,2,2,2]{3,2,1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[2,2,2]{2,1,0} reduce(f32[100,2,2,2]{3,2,1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK:  [[input_0:%[^ ]+]] = f32[10000,2,2,2]{3,2,1,0} parameter(0)
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[100,100,2,2,2]{4,3,2,1,0} bitcast([[input_0]])
+// CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK:  [[reduce_3:%[^ ]+]] = f32[100,2,2,2]{3,2,1,0} reduce([[bitcast_1]], [[zero_2]]), dimensions={0}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[2,2,2]{2,1,0} reduce([[reduce_3]], [[zero_2]]), dimensions={0}, to_apply=[[add_4]]
       )");
-
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, ColumnReductionVeryLargeInput) {
-  // TODO(cheshire): reduce duplication for HLO text, factor out the common
-  // part.
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithPadding
 
 add {
@@ -443,29 +323,18 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation (param_0.2: f32[1000000,5]) -> f32[1000,5] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[1000000,5]{1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[1000,1000,5]{2,1,0} bitcast(f32[1000000,5]{1,0}
-// %param_0.2)
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_1:%[^ ]+]] = f32[1000,5]{1,0} reduce(f32[1000,1000,5]{2,1,0} [[INSTR_2:%[^ ]+]], f32[] [[INSTR_0]]), dimensions={0}, to_apply=[[INSTR_3:%[^ ]+]]
-// CHECK: }
-// CHECK: ENTRY %main (input: f32[1000000,5]) -> f32[5] {
-// CHECK:   [[INSTR_0:%[^ ]+]] = f32[1000000,5]{1,0} parameter(0)
-// CHECK:   [[INSTR_1:%[^ ]+]] = f32[1000,5]{1,0} fusion(f32[1000000,5]{1,0} [[INSTR_0]]), kind=kInput, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:   [[INSTR_3:%[^ ]+]] = f32[] constant(0)
-// CHECK:   ROOT [[INSTR_4:%[^ ]+]] = f32[5]{0} reduce(f32[1000,5]{1,0} [[INSTR_1]], f32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_5:%[^ ]+]]
-// CHECK: }
-      )");
+  CheckTreeRewriter(hlo,
+                    R"(
 
-  EnsureDeterminism(hlo_text);
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+// CHECK:  [[bitcast_0:%[^ ]+]] = f32[1000,1000,5]{2,1,0} bitcast([[input_1:%[^ ]+]])
+// CHECK:  [[zero_2:%[^ ]+]] = f32[] constant(0)
+// CHECK:  [[reduce_3:%[^ ]+]] = f32[1000,5]{1,0} reduce([[bitcast_0]], [[zero_2]]), dimensions={0}, to_apply=[[add_4:%[^ ]+]]
+// CHECK:  ROOT [[out_1_5:%[^ ]+]] = f32[5]{0} reduce([[reduce_3]], [[zero_2]]), dimensions={0}, to_apply=[[add_4]]
+      )");
 }
 
 TEST_F(TreeReductionRewriterTest, VariadicReductionLargeRow) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule Reduce_R1x2_to_R0x2_argmax
 
 argmax {
@@ -498,40 +367,22 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation () -> u32[2,317,317] {
-// CHECK:  [[INSTR_0:%[^ ]+]] = u32[2,100000]{1,0} iota(), iota_dimension=0
-// CHECK:  [[INSTR_1:%[^ ]+]] = u32[] constant(0)
-// CHECK:  [[INSTR_2:%[^ ]+]] = u32[2,100489]{1,0} pad(u32[2,100000]{1,0} [[INSTR_0]], u32[] [[INSTR_1]]), padding=0_0x0_489
-// CHECK:  ROOT [[INSTR_3:%[^ ]+]] = u32[2,317,317]{2,1,0} bitcast(u32[2,100489]{1,0} [[INSTR_2]])
-// CHECK: }
-// CHECK
-// CHECK: %fused_computation.1 (param_0.4: f32[2,100000]) -> f32[2,317,317] {
-// CHECK:  [[INSTR_0:%[^ ]+]] = f32[2,100000]{1,0} parameter(0)
-// CHECK:  [[INSTR_1:%[^ ]+]] = f32[] constant(0)
-// CHECK:  [[INSTR_2:%[^ ]+]] = f32[2,100489]{1,0} pad(f32[2,100000]{1,0} [[INSTR_0]], f32[] [[INSTR_1]]), padding=0_0x0_489
-// CHECK:  ROOT [[INSTR_3:%[^ ]+]] = f32[2,317,317]{2,1,0} bitcast(f32[2,100489]{1,0} [[INSTR_2]])
-// CHECK: }
-// CHECK
-// CHECK: ENTRY %main (input: f32[2,100000]) -> (f32[2], u32[2]) {
-// CHECK:  [[INSTR_0:%[^ ]+]] = f32[2,100000]{1,0} parameter(0)
-// CHECK:  [[INSTR_1:%[^ ]+]] = f32[2,317,317]{2,1,0} fusion(f32[2,100000]{1,0} [[INSTR_0]]), kind=kLoop, calls=[[INSTR_2:%[^ ]+]]
-// CHECK:  [[INSTR_3:%[^ ]+]] = u32[2,317,317]{2,1,0} fusion(), kind=kLoop, calls=[[INSTR_4:%[^ ]+]]
-// CHECK:  [[INSTR_5:%[^ ]+]] = f32[] constant(0)
-// CHECK:  [[INSTR_6:%[^ ]+]] = u32[] constant(0)
-// CHECK:  {{.*}} = (f32[2,317]{1,0}, u32[2,317]{1,0}) reduce(f32[2,317,317]{2,1,0} [[INSTR_1]], u32[2,317,317]{2,1,0} [[INSTR_3]], f32[] [[INSTR_5]], u32[] [[INSTR_6]]), dimensions={2}, to_apply=[[INSTR_7:%[^ ]+]]
-// CHECK:  [[INSTR_8:%[^ ]+]]-tuple-element = f32[2,317]{1,0} get-tuple-element((f32[2,317]{1,0}, u32[2,317]{1,0}) {{.*}}), index=0
-// CHECK:  [[INSTR_8]]-tuple-element.1 = u32[2,317]{1,0} get-tuple-element((f32[2,317]{1,0}, u32[2,317]{1,0}) {{.*}}), index=1
-// CHECK:  ROOT {{.*}} = (f32[2]{0}, u32[2]{0}) reduce(f32[2,317]{1,0} [[INSTR_8]]-tuple-element, u32[2,317]{1,0} [[INSTR_8]]-tuple-element.1, f32[] [[INSTR_5]], u32[] [[INSTR_6]]), dimensions={1}, to_apply=[[INSTR_7]]
-// CHECK: }
-
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK:  [[pad_0:%[^ ]+]] = f32[2,100489]{1,0} pad([[input_1:%[^ ]+]], [[zero_2:%[^ ]+]]), padding=0_0x0_489
+// CHECK:  [[bitcast_3:%[^ ]+]] = f32[2,317,317]{2,1,0} bitcast([[pad_0]])
+// CHECK:  [[zero_idx_4:%[^ ]+]] = u32[] constant(0)
+// CHECK:  [[pad_1_5:%[^ ]+]] = u32[2,100489]{1,0} pad([[idxs_6:%[^ ]+]], [[zero_idx_4]]), padding=0_0x0_489
+// CHECK:  [[bitcast_1_7:%[^ ]+]] = u32[2,317,317]{2,1,0} bitcast([[pad_1_5]])
+// CHECK:  [[reduce_8:%[^ ]+]] = (f32[2,317]{1,0}, u32[2,317]{1,0}) reduce([[bitcast_3]], [[bitcast_1_7]], [[zero_2]], [[zero_idx_4]]), dimensions={2}, to_apply=[[argmax_9:%[^ ]+]]
+// CHECK:  [[get_tuple_element_10:%[^ ]+]] = f32[2,317]{1,0} get-tuple-element([[reduce_8]]), index=0
+// CHECK:  [[get_tuple_element_1_11:%[^ ]+]] = u32[2,317]{1,0} get-tuple-element([[reduce_8]]), index=1
+// CHECK:  ROOT [[out_1_12:%[^ ]+]] = (f32[2]{0}, u32[2]{0}) reduce([[get_tuple_element_10]], [[get_tuple_element_1_11]], [[zero_2]], [[zero_idx_4]]), dimensions={1}, to_apply=[[argmax_9]]
       )");
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(TreeReductionRewriterTest, VariadicReductionLargeBatchSize) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule Reduce_R1x2_to_R0x2_argmax
 
 argmax {
@@ -564,41 +415,14 @@ ENTRY main {
 }
 )";
 
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: %fused_computation.1 (param_0.3: f32[], param_1.3: f32[], param_2.4: u32[], param_3.2: u32[]) -> (f32[], u32[]) {
-// CHECK:  [[INSTR_0:%[^ ]+]] = f32[] parameter(0)
-// CHECK:  [[INSTR_1:%[^ ]+]] = f32[] parameter(1)
-// CHECK:  [[INSTR_2:%[^ ]+]] = pred[] compare(f32[] [[INSTR_0]], f32[] [[INSTR_1]]), direction=GT
-// CHECK:  [[INSTR_3:%[^ ]+]] = f32[] select(pred[] [[INSTR_2]], f32[] [[INSTR_0]], f32[] [[INSTR_1]])
-// CHECK:  [[INSTR_4:%[^ ]+]] = u32[] parameter(2)
-// CHECK:  [[INSTR_5:%[^ ]+]] = u32[] parameter(3)
-// CHECK:  [[INSTR_6:%[^ ]+]].clone.1 = u32[] select(pred[] [[INSTR_2]], u32[] [[INSTR_4]], u32[] [[INSTR_5]])
-// CHECK:  ROOT [[INSTR_7:%[^ ]+]] = (f32[], u32[]) tuple(f32[] [[INSTR_3]], u32[] [[INSTR_6]].clone.1)
-// CHECK: }
-//
-// CHECK: %argmax (running_max: f32[], running_max_idx: u32[], current_value: f32[], current_value_idx: u32[]) -> (f32[], u32[]) {
-// CHECK:  [[INSTR_0:%[^ ]+]] = f32[] parameter(2)
-// CHECK:  [[INSTR_1:%[^ ]+]] = f32[] parameter(0)
-// CHECK:  [[INSTR_2:%[^ ]+]] = u32[] parameter(3)
-// CHECK:  [[INSTR_3:%[^ ]+]] = u32[] parameter(1)
-// CHECK:  ROOT [[INSTR_4:%[^ ]+]] = (f32[], u32[]) fusion(f32[] [[INSTR_0]], f32[] [[INSTR_1]], u32[] [[INSTR_2]], u32[] [[INSTR_3]]), kind=kLoop, calls=[[INSTR_5:%[^ ]+]]
-// CHECK: }
-//
-// CHECK: ENTRY %main (input: f32[20,2,100]) -> (f32[2], u32[2]) {
-// CHECK:  [[INSTR_0:%[^ ]+]] = f32[20,2,100]{2,1,0} parameter(0)
-// CHECK:  [[INSTR_1:%[^ ]+]] = u32[20,2,100]{2,1,0} iota(), iota_dimension=0
-// CHECK:  [[INSTR_2:%[^ ]+]] = f32[] constant(0)
-// CHECK:  [[INSTR_3:%[^ ]+]] = u32[] constant(0)
-// CHECK:  {{.*}} = (f32[20,2]{1,0}, u32[20,2]{1,0}) reduce(f32[20,2,100]{2,1,0} [[INSTR_0]], u32[20,2,100]{2,1,0} [[INSTR_1]], f32[] [[INSTR_2]], u32[] [[INSTR_3]]), dimensions={2}, to_apply=[[INSTR_4:%[^ ]+]]
-// CHECK:  [[INSTR_5:%[^ ]+]]-tuple-element = f32[20,2]{1,0} get-tuple-element((f32[20,2]{1,0}, u32[20,2]{1,0}) {{.*}}), index=0
-// CHECK:  [[INSTR_5]]-tuple-element.1 = u32[20,2]{1,0} get-tuple-element((f32[20,2]{1,0}, u32[20,2]{1,0}) {{.*}}), index=1
-// CHECK:  ROOT {{.*}} = (f32[2]{0}, u32[2]{0}) reduce(f32[20,2]{1,0} [[INSTR_5]]-tuple-element, u32[20,2]{1,0} [[INSTR_5]]-tuple-element.1, f32[] [[INSTR_2]], u32[] [[INSTR_3]]), dimensions={0}, to_apply=[[INSTR_4]]
-// CHECK: }
+  CheckTreeRewriter(hlo,
+                    R"(
+// CHECK:  [[reduce_0:%[^ ]+]] = (f32[20,2]{1,0}, u32[20,2]{1,0}) reduce([[input_1:%[^ ]+]], [[idxs_2:%[^ ]+]], [[zero_3:%[^ ]+]], [[zero_idx_4:%[^ ]+]]), dimensions={2}, to_apply=[[argmax_5:%[^ ]+]]
+// CHECK:  [[get_tuple_element_6:%[^ ]+]] = f32[20,2]{1,0} get-tuple-element([[reduce_0]]), index=0
+// CHECK:  [[get_tuple_element_1_7:%[^ ]+]] = u32[20,2]{1,0} get-tuple-element([[reduce_0]]), index=1
+// CHECK:  ROOT [[out_1_8:%[^ ]+]] = (f32[2]{0}, u32[2]{0}) reduce([[get_tuple_element_6]], [[get_tuple_element_1_7]], [[zero_3]], [[zero_idx_4]]), dimensions={0}, to_apply=[[argmax_5]]
       )");
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

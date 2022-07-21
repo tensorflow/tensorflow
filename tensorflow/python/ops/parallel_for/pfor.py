@@ -15,17 +15,13 @@
 """Compiled parallel-for loop."""
 # pylint: disable=missing-docstring,g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import string
 import sys
 import traceback
 
 import numpy as np
-import six
+from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -209,7 +205,7 @@ def _is_stateful_pfor_op(op):
 
 
 # pylint: disable=protected-access
-class WhileOp(object):
+class WhileOp:
   """Object for storing state for converting the outputs of a while_loop."""
 
   def __init__(self, exit_node, pfor_ops, fallback_to_while_loop, pfor_config):
@@ -784,7 +780,7 @@ class ConversionNotImplementedError(Exception):
   pass
 
 
-class _PforInput(object):
+class _PforInput:
   """Input object passed to registered pfor converters."""
 
   __slots__ = ["pfor", "_op", "_inputs"]
@@ -921,7 +917,7 @@ class _PforInput(object):
 _pfor_converter_registry = {}
 
 
-class RegisterPFor(object):
+class RegisterPFor:
   """Utility to register converters for pfor.
 
   Usage:
@@ -1081,9 +1077,10 @@ def _wrap_and_tile_variants(tensor, length):
   return wrap(tensor)
 
 
-def _fallback_converter(pfor_input, warn=True):
+def _fallback_converter(pfor_input, root_cause="", warn=True):
   if warn:
-    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning("Using a while_loop for converting %s cause %s",
+                    pfor_input.op_type, root_cause)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1113,7 +1110,7 @@ def _fallback_converter(pfor_input, warn=True):
   return tuple([wrap(ta.concat(), True) for ta in ta_list])
 
 
-class PForConfig(object):
+class PForConfig:
   """A configuration object used to communicate with loop body function."""
 
   def __init__(self):
@@ -1239,7 +1236,7 @@ class PForConfig(object):
     return self._reduce_map.get(t.op)
 
 
-class PFor(object):
+class PFor:
   """Implementation of rewrite of parallel-for loops.
 
   This class takes a DAG or a set of DAGs representing the body of a
@@ -1279,7 +1276,8 @@ class PFor(object):
                fallback_to_while_loop,
                all_indices=None,
                all_indices_partitioned=False,
-               pfor_config=None):
+               pfor_config=None,
+               warn=False):
     """Creates an object to rewrite a parallel-for loop.
 
     Args:
@@ -1299,6 +1297,7 @@ class PFor(object):
         control flow construct where not all the pfor iterations are guaranteed
         to be active.
       pfor_config: PForConfig object used while constructing the loop body.
+      warn: Whether or not to warn on while loop conversions.
     """
     assert isinstance(loop_var, ops.Tensor)
     assert loop_var.op.type == "PlaceholderWithDefault"
@@ -1318,6 +1317,7 @@ class PFor(object):
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
     self._fallback_to_while_loop = fallback_to_while_loop
+    self._warn = warn
     self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):
@@ -1596,6 +1596,7 @@ class PFor(object):
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
+            root_cause = (f"there is no registered converter for this op.")
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
             has_vectorized_variant_inputs = any(
@@ -1603,7 +1604,8 @@ class PFor(object):
                 y_op.inputs)
             if (self._fallback_to_while_loop and not has_variant_outputs
                 and not has_vectorized_variant_inputs):
-              converter = _fallback_converter
+              converter = partial(
+                  _fallback_converter, root_cause=root_cause, warn=self._warn)
             else:
               message = (f"No pfor vectorization defined for {y_op.type}\n"
                          f"{y_op}\n inputs: {converted_inputs}.")
@@ -1624,9 +1626,10 @@ class PFor(object):
                   y_op.inputs)
               if (self._fallback_to_while_loop
                   and not has_vectorized_variant_inputs):
-                new_outputs = _fallback_converter(pfor_inputs)
+                new_outputs = _fallback_converter(
+                    pfor_inputs, root_cause=str(e))
               else:
-                six.reraise(ValueError, ValueError(str(e)), sys.exc_info()[2])
+                raise ValueError(str(e)).with_traceback(sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
             logging.error(
                 f"Got error while pfor was converting op {y_op} with inputs "
@@ -1638,7 +1641,7 @@ class PFor(object):
                   "%s\ncreated at:\n  %s", original_op,
                   "  ".join(traceback.format_list(original_op.traceback)))
               original_op = original_op._original_op
-            six.reraise(e.__class__, e, sys.exc_info()[2])
+            raise
 
           if isinstance(new_outputs, WrappedTensor):
             new_outputs = [new_outputs]
@@ -2537,11 +2540,12 @@ def _convert_gather(pfor_input):
   if param_stacked:
     pfor_input.stack_inputs(stack_indices=[1])
     indices = pfor_input.stacked_input(1)
-
-    output = array_ops.gather(
-        param, indices,
-        axis=array_ops.where(axis >= 0, axis + 1, axis),
-        batch_dims=(batch_dims + 1 if batch_dims >= 0 else batch_dims))
+    if isinstance(axis, ops.Tensor):
+      axis = array_ops.where(axis >= 0, axis + 1, axis)
+    else:
+      axis = axis + 1 if axis >= 0 else axis
+    batch_dims = batch_dims + 1 if batch_dims >= 0 else batch_dims
+    output = array_ops.gather(param, indices, axis=axis, batch_dims=batch_dims)
     return wrap(output, True)
 
 
@@ -3288,9 +3292,11 @@ def _convert_random(pfor_input, op_type, *args, **kw_args):
   # inputs[0] is "shape"
   inputs[0] = array_ops.concat([pfor_input.pfor.loop_len_vector, inputs[0]],
                                axis=0)
-  logging.warning(
-      "Note that %s inside pfor op may not give same output as "
-      "inside a sequential loop.", op_type)
+  # TODO(b/222761732): Turn this warning back on when legacy RNGs are
+  #   deprecated.
+  # logging.warning(
+  #     "Note that %s inside pfor op may not give same output as "
+  #     "inside a sequential loop.", op_type)
   outputs = _create_op(
       op_type,
       inputs, [x.dtype for x in pfor_input.outputs],
@@ -3304,9 +3310,11 @@ def _convert_random_with_param(pfor_input):
   shape = pfor_input.unstacked_input(0)
   # param is lam (Poisson rate) or alpha (Gamma shape).
   param, param_stacked, _ = pfor_input.input(1)
-  logging.warning(
-      "Note that %s inside pfor op may not give same output as "
-      "inside a sequential loop.", pfor_input.op_type)
+  # TODO(b/222761732): Turn this warning back on when legacy RNGs are
+  #   deprecated.
+  # logging.warning(
+  #     "Note that %s inside pfor op may not give same output as "
+  #     "inside a sequential loop.", pfor_input.op_type)
 
   if param_stacked:
     samples = _create_op(
@@ -3334,9 +3342,11 @@ def _convert_multinomial(pfor_input):
   seed = pfor_input.get_attr("seed")
   seed2 = pfor_input.get_attr("seed2")
   output_dtype = pfor_input.get_attr("output_dtype")
-  logging.warning(
-      "Note that Multinomial inside pfor op may not give same output as "
-      "inside a sequential loop.")
+  # TODO(b/222761732): Turn this warning back on when legacy RNGs are
+  #   deprecated.
+  # logging.warning(
+  #     "Note that Multinomial inside pfor op may not give same output as "
+  #     "inside a sequential loop.")
 
   n = pfor_input.pfor.loop_len_vector[0]
   if logits_stacked:
@@ -4236,6 +4246,35 @@ def _convert_tensor_list_from_tensor(pfor_input):
   return wrap(_tile_variant(handle, pfor_input), True)
 
 
+@RegisterPFor("TensorScatterUpdate")
+def _convert_tensor_scatter_update(pfor_input):
+  pfor_input.stack_inputs([0, 1, 2])
+  tensor = pfor_input.stacked_input(0)
+  indices = pfor_input.stacked_input(1)
+  updates = pfor_input.stacked_input(2)
+
+  indices_shape = array_ops.shape(indices)
+  indices_rank = array_ops.rank(indices)
+  loop_length = indices_shape[0]
+
+  # Create a loop count range and extend its dimensions to match `indices`.
+  loop_count_shape = array_ops.tensor_scatter_nd_update(
+      array_ops.ones([indices_rank], dtype=dtypes.int32), [[0]], [loop_length])
+  loop_count = array_ops.reshape(math_ops.range(loop_length), loop_count_shape)
+
+  # Tile the loop count range for the batch dimensions (all except the first and
+  # last dimensions of indices).
+  # Rank(indices) >= 3 always for this function so we always have atleast 1.
+  tile_multiplier = array_ops.tensor_scatter_nd_update(
+      indices_shape, [[0], [indices_rank - 1]], [1, 1])
+  meta_index = array_ops.tile(loop_count, tile_multiplier)
+
+  # Insert the loop-identifying index.
+  indices = array_ops.concat([meta_index, indices], axis=-1)
+
+  result = array_ops.tensor_scatter_nd_update(tensor, indices, updates)
+  return wrap(result, True)
+
 # StackV2 conversion is tricky since we don't have arrays of StackV2. So similar
 # to TensorArrays, we convert them by changing the dimension of the elements
 # inside the stack.
@@ -4554,7 +4593,7 @@ def _convert_if(pfor_input):
     return [wrap(t, True) for t in outputs]
 
 
-class WhileV2(object):
+class WhileV2:
   """Object for vectorizing V2 while_loop op."""
 
   def __init__(self, pfor_input):
@@ -4617,6 +4656,7 @@ class WhileV2(object):
                 "While loop conversion is only supported for TensorLists. Got "
                 f"another variant {inp.t}, probably an optional. Please file "
                 "a bug.")
+
           # For TensorLists, the input format is:
           #
           #   List[user_list_len, Tensor[loop_len, ...]]
@@ -4629,7 +4669,7 @@ class WhileV2(object):
           # vectorization" format, so we want to keep it that way as much as
           # possible. We'll accumulate finished iterations (only relevant for
           # pfor-loop-variant while_loop conditions) in an accumulator with
-          # type:
+          # type :
           #
           #   List[user_list_len, List[loop_len, Tensor[...]]]
           #

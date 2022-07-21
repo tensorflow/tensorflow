@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResourceAccumulatorNumAccumulated"
   input_arg {
     name: "handle"

@@ -47,7 +47,7 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
   TF_RETURN_IF_ERROR(
       op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
   *result = outputs[0];
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -59,7 +59,7 @@ Status GradientRegistry::Register(
     return errors::AlreadyExists(error_msg);
   }
   registry_.insert({op_name, gradient_function_factory});
-  return Status::OK();
+  return OkStatus();
 }
 Status GradientRegistry::Lookup(
     const ForwardOperation& op,
@@ -70,7 +70,7 @@ Status GradientRegistry::Lookup(
     return errors::NotFound(error_msg);
   }
   gradient_function->reset(iter->second(op));
-  return Status::OK();
+  return OkStatus();
 }
 
 TapeTensor::TapeTensor(AbstractTensorHandle* handle) : handle_(handle) {
@@ -200,7 +200,7 @@ Status TapeVSpace::BuildOnesLike(const TapeTensor& t,
   TF_RETURN_IF_ERROR(
       op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
   *result = outputs[0];
-  return Status::OK();
+  return OkStatus();
 }
 
 // Looks up the ID of a Gradient.
@@ -233,6 +233,7 @@ void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
     input_dtypes[i] = inputs[i]->DataType();
   }
   std::vector<TapeTensor> tape_tensors;
+  tape_tensors.reserve(outputs.size());
   for (auto t : outputs) {
     tape_tensors.push_back(TapeTensor(t));
   }
@@ -291,7 +292,7 @@ Status Tape::ComputeGradient(
   TF_RETURN_IF_ERROR(GradientTape::ComputeGradient(
       vspace, target_tensor_ids, source_tensor_ids, sources_that_are_targets,
       output_gradients, result, /*build_default_zeros_grads*/ false));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Helper functions which delegate to `AbstractOperation`, update
@@ -308,7 +309,7 @@ Status AddInput(AbstractOperation* op_, AbstractTensorHandle* input,
                 ForwardOperation* forward_op_) {
   TF_RETURN_IF_ERROR(op_->AddInput(input));
   forward_op_->inputs.push_back(input);
-  return Status::OK();
+  return OkStatus();
 }
 Status AddInputList(AbstractOperation* op_,
                     absl::Span<AbstractTensorHandle* const> inputs,
@@ -317,7 +318,7 @@ Status AddInputList(AbstractOperation* op_,
   for (auto input : inputs) {
     forward_op_->inputs.push_back(input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SetAttrString(AbstractOperation* op_, const char* attr_name,
@@ -481,7 +482,7 @@ Status Execute(AbstractOperation* op_, AbstractContext* ctx,
   TF_RETURN_IF_ERROR(registry.Lookup(*forward_op_, &gradient_fn));
   tape->RecordOperation(forward_op_->inputs, retvals, gradient_fn.release(),
                         op_->Name());
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace internal
 

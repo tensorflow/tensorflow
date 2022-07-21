@@ -30,9 +30,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -228,7 +229,8 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
     PatternRewriter& rewriter, TFRFuncOp signature, CallOp call_op,
     SmallVectorImpl<Value>* inputs, NamedAttrList* arg_attrs,
     llvm::StringMap<Attribute>* derived_attrs) const {
-  for (const auto& operand : llvm::enumerate(signature.getType().getInputs())) {
+  for (const auto& operand :
+       llvm::enumerate(signature.getFunctionType().getInputs())) {
     // If the index is larger than the operand number of the call_op, the
     // default value of the operand needs to be used.
     if (operand.index() >= call_op.getNumOperands()) {
@@ -244,7 +246,8 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
     // The index is valid for the call_op.
     Value input = call_op.getOperand(operand.index());
     Operation* input_op = input.getDefiningOp();
-    auto input_tfr_type = signature.getType().getInputs()[operand.index()];
+    auto input_tfr_type =
+        signature.getFunctionType().getInputs()[operand.index()];
 
     // There are three cases for the preceding input_op:
 
@@ -378,7 +381,7 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
   rewriter.setInsertionPointAfter(call_op);
   std::string tf_op_name = GetTFOpName(call_op.callee());
   OperationState new_state(loc, tf_op_name, inputs, output_types, attr_list);
-  Operation* new_op = rewriter.createOperation(new_state);
+  Operation* new_op = rewriter.create(new_state);
   if (materialize_derived_attrs_) {
     for (const auto& attr : derived_attrs) {
       // Add or update the derived attribute with the value. Skip the fixed
@@ -445,13 +448,13 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 
   // Merge the attributes from the argument list to the derived ones.
   for (auto& attr : argument_attrs) {
-    derived_attrs.insert({attr.first, attr.second});
+    derived_attrs.insert({attr.getName(), attr.getValue()});
   }
 
   // Derive the output types by using the attributes attached to the tfr
   // types.
-  if (failed(DeriveOutputTypes(call_op->getLoc(), func.getType(), derived_attrs,
-                               &output_types))) {
+  if (failed(DeriveOutputTypes(call_op->getLoc(), func.getFunctionType(),
+                               derived_attrs, &output_types))) {
     return failure();
   }
 
@@ -461,11 +464,14 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 }
 
 // Raise TFR call ops to the TF ops.
-class RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
+class RaiseToTFOpsPass
+    : public PassWrapper<RaiseToTFOpsPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseToTFOpsPass)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
-                    StandardOpsDialect>();
+                    arith::ArithmeticDialect, func::FuncDialect>();
   }
 
   explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,
@@ -479,22 +485,22 @@ class RaiseToTFOpsPass : public PassWrapper<RaiseToTFOpsPass, FunctionPass> {
     return "Raise all the TFR call ops to TF ops.";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   llvm::Optional<ModuleOp> external_tfr_module_;
   const bool materialize_derived_attrs_;
 };
 
-void RaiseToTFOpsPass::runOnFunction() {
-  FuncOp func = getFunction();
+void RaiseToTFOpsPass::runOnOperation() {
+  func::FuncOp func = getOperation();
   MLIRContext* ctx = &getContext();
-  SymbolTable table(external_tfr_module_.hasValue()
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
-  OwningRewritePatternList patterns(&getContext());
-  patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
+  RewritePatternSet patterns(&getContext());
+  patterns.add<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs_);
 
   populateCanonicalizationPatterns(func, patterns);
 
@@ -503,7 +509,7 @@ void RaiseToTFOpsPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the pass to raise TFR call ops to the TF ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseToTFOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseToTFOpsPass(
     llvm::Optional<ModuleOp> tfr_module, bool materialize_derived_attrs) {
   return std::make_unique<RaiseToTFOpsPass>(tfr_module,
                                             materialize_derived_attrs);

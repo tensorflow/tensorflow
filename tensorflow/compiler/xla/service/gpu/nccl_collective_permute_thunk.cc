@@ -16,17 +16,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 
 #include <map>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
+#if XLA_ENABLE_XCCL
+#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -35,10 +40,11 @@ namespace gpu {
 NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
     mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
     int64_t partition_count) {
-  NcclCollectivePermuteConfig config;
+  NcclCollectivePermuteConfig collective_permute_config;
+  auto& config = collective_permute_config.config;
 
   config.operand_count = 1;
-  const Shape shape = GetShape(op.operand());
+  const Shape shape = GetShape(op.getOperand());
   config.operand_element_type.push_back(shape.element_type());
   config.SetCollectiveOpKindAndID(op);
   config.group_mode = GetGroupMode(op);
@@ -56,19 +62,19 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
   }
 
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.source_target_pairs()).ValueOrDie();
+      ConvertNx2Attribute(op.getSourceTargetPairs()).ValueOrDie();
 
   for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
     int64_t source = source_target.first;
     int64_t target = source_target.second;
 
-    config.id_to_source_target.insert({target, {}}).first->second.source =
-        source;
-    config.id_to_source_target.insert({source, {}}).first->second.target =
-        target;
+    collective_permute_config.id_to_source_target.insert({target, {}})
+        .first->second.source = source;
+    collective_permute_config.id_to_source_target.insert({source, {}})
+        .first->second.target = target;
   }
 
-  return config;
+  return collective_permute_config;
 }
 
 // The collective permute is degenerate if all source-target pairs are identity,
@@ -77,12 +83,12 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
     mlir::lmhlo::CollectivePermuteOp op, int64_t replica_count,
     int64_t partition_count) {
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.source_target_pairs()).ValueOrDie();
+      ConvertNx2Attribute(op.getSourceTargetPairs()).ValueOrDie();
   // Each ID can appear only once as a source and as a target. So if all pairs
   // are identity, all IDs must appear in the list is the size == number of
   // replicas/partitions.
   const int64_t expected_size =
-      op.channel_id() ? partition_count : replica_count;
+      op.getChannelId() ? partition_count : replica_count;
   return source_target_pairs.size() == expected_size &&
          absl::c_all_of(source_target_pairs,
                         [](const std::pair<int64_t, int64_t>& source_target) {
@@ -92,7 +98,7 @@ NcclCollectivePermuteThunk::GetNcclCollectivePermuteConfig(
 
 /*static*/ bool NcclCollectivePermuteThunk::CanImplement(
     mlir::lmhlo::CollectivePermuteOp op) {
-  const Shape shape = GetShape(op.operand());
+  const Shape shape = GetShape(op.getOperand());
   return IsTypeSupportedByNccl(shape.element_type());
 }
 
@@ -106,6 +112,36 @@ NcclCollectivePermuteThunk::NcclCollectivePermuteThunk(
 
 Status NcclCollectivePermuteThunk::RunNcclCollective(
     const ExecuteParams& params, ncclComm_t comm) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, {buffer_},
+                             config_.config.operand_element_type));
+  if (device_buffers.size() != 1)
+    return FailedPrecondition("Expected a single input-output buffer pair.");
+
+  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
+                      params.nccl_params.GetGlobalDeviceId());
+  TF_ASSIGN_OR_RETURN(
+      const DeviceAssignment::LogicalID current_logical_id,
+      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+  const int64_t current_id =
+      config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
+          ? current_logical_id.replica_id
+          : current_logical_id.computation_id;
+  std::string device_string = GetDeviceString(params.nccl_params);
+
+  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
+      NcclCollectivePermuteConfig::GetSourceTarget(config_.id_to_source_target,
+                                                   current_id);
+
+  return RunCollectivePermute(source_target, device_buffers[0], *params.stream,
+                              comm, device_string, current_id);
+}
+
+Status RunCollectivePermute(
+    NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
+    absl::string_view device_string, int64_t current_id) {
 #if XLA_ENABLE_XCCL
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
@@ -131,23 +167,12 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
   //
   //
 
-  int device_ordinal = params.stream->parent()->device_ordinal();
+  int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal;
 
-  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
-                      params.device_assn->LogicalIdForDevice(global_device_id));
-  const int64_t current_id =
-      config_.group_mode == CollectiveOpGroupMode::kCrossReplica
-          ? current_logical_id.replica_id
-          : current_logical_id.computation_id;
-
-  const NcclCollectivePermuteConfig::SourceTargetMapEntry source_target =
-      config_.GetSourceTarget(current_id);
-  const absl::optional<int64_t> source_id = source_target.source;
-  const absl::optional<int64_t> target_id = source_target.target;
+  const std::optional<int64_t> source_id = source_target.source;
+  const std::optional<int64_t> target_id = source_target.target;
 
   // NCCL 2.8.x has an issue with point-to-point communication primitives if
   // different ranks process different amounts of data. This can happen in the
@@ -164,35 +189,31 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
     });
   }
 
-  se::DeviceMemoryBase src_addr =
-      params.buffer_allocations->GetDeviceAddress(buffer_.source_buffer);
-  se::DeviceMemoryBase dest_addr =
-      params.buffer_allocations->GetDeviceAddress(buffer_.destination_buffer);
+  se::DeviceMemoryBase src_addr = buffer.source_buffer;
+  se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
 
   VLOG(3) << absl::StreamFormat("%s : id = %d, source_id = %d, target_id = %d",
-                                GetDeviceString(params), current_id,
+                                device_string, current_id,
                                 source_id.value_or(-1), target_id.value_or(-1));
 
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
 
-  PrimitiveType element_type = config_.operand_element_type[0];
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(element_type));
+                      ToNcclDataTypeAndCountMultiplier(buffer.element_type));
   ncclDataType_t dtype = dtype_and_multiplier.first;
-  int element_count = buffer_.element_count * dtype_and_multiplier.second;
+  int element_count = buffer.element_count * dtype_and_multiplier.second;
 
-  cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
-      params.stream->implementation()->GpuStreamMemberHack());
+  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   // send source buffer to target peer if needed.
   if (target_id) {
     VLOG(3) << absl::StreamFormat(
         "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
         "comm=%p, stream=%p)",
-        GetDeviceString(params), src_addr.opaque(), element_count, *target_id,
-        static_cast<const void*>(comm), *cu_stream);
+        device_string, src_addr.opaque(), element_count, *target_id,
+        static_cast<const void*>(comm), gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
-                                      *target_id, comm, *cu_stream));
+                                      *target_id, comm, gpu_stream));
   }
 
   // Receive data from the source peer to the destination buffer.
@@ -200,10 +221,10 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
     VLOG(3) << absl::StreamFormat(
         "%s : Calling ncclRecv(recvbuff=%p, count=%d, peer=%d comm=%p, "
         "stream=%p)",
-        GetDeviceString(params), dest_addr.opaque(), element_count, *source_id,
-        static_cast<const void*>(comm), *cu_stream);
+        device_string, dest_addr.opaque(), element_count, *source_id,
+        static_cast<const void*>(comm), gpu_stream);
     XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
-                                      *source_id, comm, *cu_stream));
+                                      *source_id, comm, gpu_stream));
   }
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
@@ -211,10 +232,10 @@ Status NcclCollectivePermuteThunk::RunNcclCollective(
     // If there is no source peer, i.e. no one send us any data, zero out dest
     // buffer.
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
-                                  GetDeviceString(params));
-    params.stream->ThenMemZero(&dest_addr, dest_addr.size());
+                                  device_string);
+    stream.ThenMemZero(&dest_addr, dest_addr.size());
   }
-  return Status::OK();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

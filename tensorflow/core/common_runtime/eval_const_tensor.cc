@@ -41,7 +41,7 @@ Status EvaluateConstantNode(const Node& node, Tensor* output, bool* success) {
       *success = true;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the int value corresponding to the input src at the i'th edge if the
@@ -57,12 +57,12 @@ Status EvaluateConstantIntFromScalarEdge(const Node& node, int input_idx,
     if (scalar.dtype() == DT_INT32) {
       *output = scalar.scalar<int32>()();
     } else if (scalar.dtype() == DT_INT64) {
-      *output = scalar.scalar<int64>()();
+      *output = scalar.scalar<int64_t>()();
     } else {
       *success = false;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Tries to infer the tensor output based on the input dims of a
@@ -78,11 +78,11 @@ Status TryToInferTensorOutputFromShapeNode(const Node& shape_node,
                                            Tensor* output, bool* success,
                                            bool allow_partial = false) {
   *success = false;
-  if (shape_node.type_string() != "Shape") return Status::OK();
-  if (shape_c == nullptr) return Status::OK();
+  if (shape_node.type_string() != "Shape") return OkStatus();
+  if (shape_c == nullptr) return OkStatus();
   if (!shape_c->FullyDefined(shape_c->input(0)) && !allow_partial)
-    return Status::OK();
-  if (!shape_c->RankKnown(shape_c->input(0))) return Status::OK();
+    return OkStatus();
+  if (!shape_c->RankKnown(shape_c->input(0))) return OkStatus();
 
   int src_rank = shape_c->Rank(shape_c->input(0));
   Tensor t(shape_node.output_type(0), TensorShape({src_rank}));
@@ -117,7 +117,7 @@ Status TryToInferTensorOutputFromShapeNode(const Node& shape_node,
   }
   *output = t;
   *success = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Tries to infer the tensor output of a StridedSlice node. This can be done
@@ -138,21 +138,21 @@ Status TryToInferTensorOutputFromStridedSliceNode(const Node& node,
   InferenceContext* shape_c = refiner.GetContext(shape_node);
   InferenceContext* stride_c = refiner.GetContext(stride_node);
 
-  if (stride_c == nullptr || shape_c == nullptr) return Status::OK();
-  if (stride_node == nullptr || shape_node == nullptr) return Status::OK();
-  if (stride_node->type_string() != "StridedSlice") return Status::OK();
-  if (shape_node->type_string() != "Shape") return Status::OK();
+  if (stride_c == nullptr || shape_c == nullptr) return OkStatus();
+  if (stride_node == nullptr || shape_node == nullptr) return OkStatus();
+  if (stride_node->type_string() != "StridedSlice") return OkStatus();
+  if (shape_node->type_string() != "Shape") return OkStatus();
 
   // Only attempt to evaluate if the rank of the inputs to the Shape node are
   // known.
-  if (!shape_c->RankKnown(shape_c->input(0))) return Status::OK();
+  if (!shape_c->RankKnown(shape_c->input(0))) return OkStatus();
 
   // Only attempt to evaluate if begin/end/strides values of the StridedSlice
   // node are all scalars.
   for (int i = 1; i <= 3; ++i) {
     ShapeHandle input_shape = stride_c->input(i);
     if (stride_c->Value(stride_c->Dim(input_shape, 0)) != 1) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -170,13 +170,13 @@ Status TryToInferTensorOutputFromStridedSliceNode(const Node& node,
                                  ellipsis_mask == 0 && new_axis_mask == 0 &&
                                  shrink_axis_mask == 1;
 
-  if (!accesses_single_element) return Status::OK();
+  if (!accesses_single_element) return OkStatus();
 
   // Calculate the output tensor from the Shape node.
   Tensor shape_output;
   TF_RETURN_IF_ERROR(TryToInferTensorOutputFromShapeNode(
       *shape_node, shape_c, &shape_output, success, /*allow_partial=*/true));
-  if (!success) return Status::OK();
+  if (!success) return OkStatus();
 
   // Discard the output tensor computed above if the StridedSlice points to an
   // unknown dimension.
@@ -204,7 +204,7 @@ Status TryToInferTensorOutputFromStridedSliceNode(const Node& node,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Tries to infer tensor output based on the input shapes of the node. In some
@@ -221,7 +221,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
     // An input without context is a soft failure; we sometimes need to break
     // control flow loops by running shape inference on a node without first
     // adding its input.
-    return Status::OK();
+    return OkStatus();
   }
 
   if (node->type_string() == "StridedSlice") {
@@ -267,7 +267,7 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
       *success = true;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns true if 'node' has a registered CPU kernel.
@@ -285,7 +285,7 @@ Status GetArgNodeIndex(const Node* node, int num_function_inputs, int* index) {
         "Function instantiation included invalid input index: ", index,
         " not in [0, ", num_function_inputs, ").");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Extracts the subgraph ending at 'target_node' that is statically computable
@@ -300,21 +300,21 @@ Status ExtractConstantSubgraph(
   *is_constant_graph = false;
   std::unordered_set<string> const_inputs_added;
   if (target_node.op_def().is_stateful()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (IsMerge(&target_node)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (target_node.type_string() == "PlaceholderWithDefault") {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Since constant-folding runs on the CPU, do not attempt to constant-fold
   // operators that have no CPU kernel.
   if (!HasCpuKernel(target_node)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // TODO(skyewm): should more of the filtering applied in input nodes below be
@@ -356,7 +356,7 @@ Status ExtractConstantSubgraph(
     // an Arg node which is handled later on.
     if (!current_node->IsArg() && current_node->op_def().is_stateful()) {
       *is_constant_graph = false;
-      return Status::OK();
+      return OkStatus();
     }
 
     // During construction or import from GraphConstructor, back edges may not
@@ -365,14 +365,14 @@ Status ExtractConstantSubgraph(
     // merges at all for now.
     if (IsMerge(current_node)) {
       *is_constant_graph = false;
-      return Status::OK();
+      return OkStatus();
     }
 
     // Don't constant fold enter/exit currently either, as it's easy to end
     // up with a partial frame.
     if (IsEnter(current_node) || IsExit(current_node)) {
       *is_constant_graph = false;
-      return Status::OK();
+      return OkStatus();
     }
 
     // Placeholders should never be constant folded because their outputs are
@@ -380,12 +380,12 @@ Status ExtractConstantSubgraph(
     // handled below.
     if (current_node->type_string() == "PlaceholderWithDefault") {
       *is_constant_graph = false;
-      return Status::OK();
+      return OkStatus();
     }
 
     if (!HasCpuKernel(*current_node)) {
       *is_constant_graph = false;
-      return Status::OK();
+      return OkStatus();
     }
 
     // If there is nothing more to recurse down, see if
@@ -411,14 +411,14 @@ Status ExtractConstantSubgraph(
             // this function with this tensor's value.
             outer_context->request_input_tensor(index);
             *is_constant_graph = false;
-            return Status::OK();
+            return OkStatus();
           }
         }
       } else if (!current_node->IsConstant()) {
         // Generator node is not a constant, so subgraph is not
         // constant.
         *is_constant_graph = false;
-        return Status::OK();
+        return OkStatus();
       }
     }
 
@@ -491,7 +491,7 @@ Status ExtractConstantSubgraph(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -509,7 +509,7 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
 
   // Simple case: the source node is a constant
   TF_RETURN_IF_ERROR(EvaluateConstantNode(*src, result, evaluated));
-  if (*evaluated) return Status::OK();
+  if (*evaluated) return OkStatus();
 
   // Shape Slice: the source node is slicing a single value of a shape
   // This is needed to handle the case where the StridedSlice is the only
@@ -523,7 +523,7 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
         *src, refiner, &slice_output, evaluated));
     if (*evaluated) {
       *result = slice_output;
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -540,11 +540,11 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
     } else {
       outer_context->request_input_tensor(index);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   if (disable_constant_propagation) {
-    return Status::OK();
+    return OkStatus();
   }
 
   bool is_constant_graph = false;
@@ -558,7 +558,7 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
                                              &subgraph, &is_constant_graph,
                                              &const_inputs, outer_context));
   if (!is_constant_graph) {
-    return Status::OK();
+    return OkStatus();
   }
   const string output_tensor_name =
       strings::StrCat(src->name(), ":", tensor.index);
@@ -593,7 +593,7 @@ Status EvaluateConstantTensor(OutputTensor tensor, const ShapeRefiner& refiner,
       (*cached_values)[output_tensor_name] = outputs[0];
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

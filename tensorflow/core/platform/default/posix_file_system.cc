@@ -31,7 +31,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/default/posix_file_system.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
@@ -40,6 +39,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
+
+using ::tensorflow::errors::IOError;
 
 // 128KB of copy buffer
 constexpr size_t kPosixCopyFileBufferSize = 128 * 1024;
@@ -61,7 +62,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
@@ -98,7 +99,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
 #if defined(TF_CORD_SUPPORT)
   Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
     if (n == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     if (n < 0) {
       return errors::InvalidArgument(
@@ -145,7 +146,7 @@ class PosixWritableFile : public WritableFile {
     if (r != data.size()) {
       return IOError(filename_, errno);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
 #if defined(TF_CORD_SUPPORT)
@@ -157,7 +158,7 @@ class PosixWritableFile : public WritableFile {
         return IOError(filename_, errno);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 #endif
 
@@ -177,12 +178,12 @@ class PosixWritableFile : public WritableFile {
     if (fflush(file_) != 0) {
       return IOError(filename_, errno);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Sync() override {
@@ -266,7 +267,7 @@ Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string translated_fname = TranslateName(fname);
-  Status s = Status::OK();
+  Status s = OkStatus();
   int fd = open(translated_fname.c_str(), O_RDONLY);
   if (fd < 0) {
     s = IOError(fname, errno);
@@ -290,7 +291,7 @@ Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
 Status PosixFileSystem::FileExists(const string& fname,
                                    TransactionToken* token) {
   if (access(TranslateName(fname).c_str(), F_OK) == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::NotFound(fname, " not found");
 }
@@ -313,7 +314,7 @@ Status PosixFileSystem::GetChildren(const string& dir, TransactionToken* token,
   if (closedir(d) < 0) {
     return IOError(dir, errno);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PosixFileSystem::GetMatchingPaths(const string& pattern,
@@ -339,7 +340,7 @@ Status PosixFileSystem::CreateDir(const string& name, TransactionToken* token) {
   if (mkdir(translated.c_str(), 0755) != 0) {
     return IOError(name, errno);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PosixFileSystem::DeleteDir(const string& name, TransactionToken* token) {
@@ -436,18 +437,18 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target,
     }
   }
 
-  Status result = Status::OK();
+  Status result = OkStatus();
   if (rc < 0) {
     result = IOError(target, errno);
   }
 
   // Keep the error code
   rc = close(target_fd);
-  if (rc < 0 && result == Status::OK()) {
+  if (rc < 0 && result == OkStatus()) {
     result = IOError(target, errno);
   }
   rc = close(src_fd);
-  if (rc < 0 && result == Status::OK()) {
+  if (rc < 0 && result == OkStatus()) {
     result = IOError(target, errno);
   }
 

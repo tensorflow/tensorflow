@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FP16_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FP16_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 // Converts an F32 value to a F16.
-extern "C" tensorflow::uint16 __gnu_f2h_ieee(float);
+extern "C" uint16_t __gnu_f2h_ieee(float);
 
 // Converts an F16 value to a F32.
-extern "C" float __gnu_h2f_ieee(tensorflow::uint16);
+extern "C" float __gnu_h2f_ieee(uint16_t);
 
 // Converts an F64 value to a F16.
-extern "C" tensorflow::uint16 __truncdfhf2(double);
+extern "C" uint16_t __truncdfhf2(double);
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FP16_H_

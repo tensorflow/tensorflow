@@ -14,10 +14,6 @@
 # ==============================================================================
 """Exception types for TensorFlow errors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import traceback
 import warnings
 
@@ -128,7 +124,7 @@ class OpError(Exception):
               self._op.name,
           )
       ]
-      curr_traceback_list = traceback.format_list(self._op.traceback)
+      curr_traceback_list = traceback.format_list(self._op.traceback or [])
       output.extend(curr_traceback_list)
       # pylint: disable=protected-access
       original_op = self._op._original_op
@@ -138,7 +134,7 @@ class OpError(Exception):
             "\n...which was originally created as op %r, defined at:\n" %
             (original_op.name,))
         prev_traceback_list = curr_traceback_list
-        curr_traceback_list = traceback.format_list(original_op.traceback)
+        curr_traceback_list = traceback.format_list(original_op.traceback or [])
 
         # Attempt to elide large common subsequences of the subsequent
         # stack traces.

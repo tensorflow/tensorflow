@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_GRPC_UTIL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_GRPC_UTIL_H_
 
+#include <functional>
+#include <string>
+
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/platform/status.h"
 

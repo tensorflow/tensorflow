@@ -34,7 +34,7 @@ struct AllocatorStats {
 
   // The upper limit of bytes of user allocatable device memory, if such a limit
   // is known.
-  absl::optional<int64_t> bytes_limit;
+  std::optional<int64_t> bytes_limit;
 
   // Stack related memory usage.
   int64_t bytes_reserved;  // Number of bytes reserved on the stack.
@@ -42,7 +42,7 @@ struct AllocatorStats {
       peak_bytes_reserved;  // The peak number of bytes reserved on the stack.
   // The upper limit on the number bytes of reservable memory on the stack,
   // if such a limit is known.
-  absl::optional<int64_t> bytes_reservable_limit;
+  std::optional<int64_t> bytes_reservable_limit;
 
   int64_t largest_free_block_bytes;  // Largest free block's size in heap.
 

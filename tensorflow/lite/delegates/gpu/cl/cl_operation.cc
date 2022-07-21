@@ -21,33 +21,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
-                        const int3& work_group_size,
-                        const int3& work_group_launch_order) {
-  int3 work_groups_count;
-  if (grid_dimension == 1) {
-    work_groups_count.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    work_groups_count.y = 1;
-    work_groups_count.z = 1;
-  } else if (grid_dimension == 2) {
-    int3 wgs;
-    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
-    work_groups_count.x = wgs[work_group_launch_order[0]];
-    work_groups_count.y = wgs[work_group_launch_order[1]];
-    work_groups_count.z = 1;
-  } else {  // grid_dimension == 3
-    int3 wgs;
-    wgs.x = DivideRoundUp(grid_size.x, work_group_size.x);
-    wgs.y = DivideRoundUp(grid_size.y, work_group_size.y);
-    wgs.z = DivideRoundUp(grid_size.z, work_group_size.z);
-    work_groups_count.x = wgs[work_group_launch_order[0]];
-    work_groups_count.y = wgs[work_group_launch_order[1]];
-    work_groups_count.z = wgs[work_group_launch_order[2]];
-  }
-  return work_groups_count;
-}
-
 std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   std::string result;
 
@@ -83,9 +56,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define INIT_INT2v2(v0, v1) (int2)(v0, v1)\n";
   result += "#define INIT_INT4v4(v0, v1, v2, v3) (int4)(v0, v1, v2, v3)\n";
   result += "#define CONVERT_TO_INT4(value) convert_int4(value)\n";
-  result +=
-      "#define SELECT_BY_INDEX_FROM_FLT4(value, index) (FLT[4]){(value).x, "
-      "(value).y, (value).z, (value).w}[index]\n";
   switch (precision) {
     case CalculationsPrecision::F32:
       result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
@@ -145,6 +115,18 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
       result += "#define INIT_FLT4v4(v0, v1, v2, v3) (half4)(v0, v1, v2, v3)\n";
       break;
   }
+  result += "#define bool2 uchar2\n";
+  result += "#define bool3 uchar3\n";
+  result += "#define bool4 uchar4\n";
+  result +=
+      "#define convert_bool2(value) (convert_uchar2((value) != 0) & (uchar2) "
+      "1)\n";
+  result +=
+      "#define convert_bool3(value) (convert_uchar3((value) != 0) & (uchar3) "
+      "1)\n";
+  result +=
+      "#define convert_bool4(value) (convert_uchar4((value) != 0) & (uchar4) "
+      "1)\n";
   return result;
 }
 }  // namespace
@@ -154,41 +136,48 @@ absl::Status ClOperation::AddOperation(ClOperation* operation) {
 }
 
 absl::Status ClOperation::UpdateParams() {
-  for (int i = 0; i < operation_->src_tensors_names_.size(); ++i) {
+  for (int i = 0; i < operation_->GetSrcTensorsNames().size(); ++i) {
     const auto* cl_spatial_tensor =
-        dynamic_cast<const Tensor*>(operation_->src_[i]);
+        dynamic_cast<const Tensor*>(operation_->GetSrcTensors()[i]);
     if (!cl_spatial_tensor) {
       return absl::InvalidArgumentError("Expected CLSpatialTensor.");
     }
-    RETURN_IF_ERROR(cl_args_.SetObjectRef(operation_->src_tensors_names_[i],
+    RETURN_IF_ERROR(cl_args_.SetObjectRef(operation_->GetSrcTensorsNames()[i],
                                           cl_spatial_tensor));
   }
-  for (int i = 0; i < operation_->dst_tensors_names_.size(); ++i) {
+  for (int i = 0; i < operation_->GetDstTensorsNames().size(); ++i) {
     const auto* cl_spatial_tensor =
-        dynamic_cast<const Tensor*>(operation_->dst_[i]);
+        dynamic_cast<const Tensor*>(operation_->GetDstTensors()[i]);
     if (!cl_spatial_tensor) {
       return absl::InvalidArgumentError("Expected CLSpatialTensor.");
     }
-    RETURN_IF_ERROR(cl_args_.SetObjectRef(operation_->dst_tensors_names_[i],
+    RETURN_IF_ERROR(cl_args_.SetObjectRef(operation_->GetDstTensorsNames()[i],
                                           cl_spatial_tensor));
   }
   RETURN_IF_ERROR(operation_->BindArguments(&cl_args_));
-  operation_->grid_size_ = operation_->GetGridSize();
-  operation_->work_groups_count_ = GetWorkGroupsCount(
-      operation_->grid_dimension_, operation_->grid_size_,
-      operation_->work_group_size_, operation_->work_group_launch_order_);
+  operation_->RecalculateGridSize();
+  operation_->RecalculateWorkGroupsCount();
   return absl::OkStatus();
 }
 
+absl::Status ClOperation::SetSrcTensor(int index, Tensor* tensor) {
+  operation_->SetSrc(tensor, index);
+  return cl_args_.SetObjectRef(operation_->GetSrcTensorsNames()[index], tensor);
+}
+
+absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
+  operation_->SetDst(tensor, index);
+  return cl_args_.SetObjectRef(operation_->GetDstTensorsNames()[index], tensor);
+}
+
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
-  operation_->AssembleCode(creation_context.GetGpuInfo());
   operation_->code_ =
-      GetCommonOpenCLDefines(operation_->definition_.precision) +
+      GetCommonOpenCLDefines(operation_->GetDefinition().precision) +
       operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
-      {{operation_->dst_tensors_names_[0], operation_->elementwise_code_}},
       creation_context.context, &operation_->args_, &operation_->code_));
+  operation_->args_.ReleaseCPURepresentation();
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,
       *creation_context.context, *creation_context.device, &kernel_,
@@ -197,50 +186,47 @@ absl::Status ClOperation::Compile(const CreationContext& creation_context) {
                                       kernel_.info_);
 }
 
-absl::Status ClOperation::InitFromCache(uint64_t fingerprint,
-                                        const ProgramCache& program_cache) {
+absl::Status ClOperation::RestoreDeserialized(const ProgramCache& program_cache,
+                                              uint64_t fingerprint,
+                                              const GpuInfo& gpu_info,
+                                              const int3& work_group_size,
+                                              CLContext* context) {
   kernel_fingerprint_ = fingerprint;
-  return program_cache.GetKernel(kernel_fingerprint_, "main_function",
-                                 &kernel_);
-}
-
-absl::Status ClOperation::RestoreDeserialized(
-    const CreationContext& creation_context) {
-  return cl_args_.Init(creation_context.GetGpuInfo(), &operation_->args_,
-                       creation_context.context);
+  RETURN_IF_ERROR(
+      program_cache.GetKernel(kernel_fingerprint_, "main_function", &kernel_));
+  operation_->work_group_size_ = work_group_size;
+  operation_->RecalculateWorkGroupsCount();
+  RETURN_IF_ERROR(cl_args_.Init(gpu_info, &operation_->args_, context));
+  operation_->args_.ReleaseCPURepresentation();
+  return absl::OkStatus();
 }
 
 absl::Status ClOperation::Tune(TuningType tuning_type, const GpuInfo& gpu_info,
                                ProfilingCommandQueue* profiling_queue) {
-  std::vector<int3> possible_work_groups;
-  operation_->GetPossibleKernelWorkGroups(tuning_type, gpu_info, kernel_.info_,
-                                          &possible_work_groups);
-  if (possible_work_groups.empty()) {
-    return absl::NotFoundError(
-        "Can not found work_group size to launch kernel");
+  std::vector<GPUOperation::DispatchInfo> possible_dispatches;
+  operation_->GetPossibleDispatches(tuning_type, gpu_info, kernel_.info_,
+                                    &possible_dispatches);
+  if (possible_dispatches.empty()) {
+    return absl::NotFoundError("No dispatch parameters to launch kernel");
   }
-  if (possible_work_groups.size() == 1) {
-    operation_->work_group_size_ = possible_work_groups[0];
-    operation_->work_groups_count_ = GetWorkGroupsCount(
-        operation_->grid_dimension_, operation_->grid_size_,
-        operation_->work_group_size_, operation_->work_group_launch_order_);
+  if (possible_dispatches.size() == 1) {
+    operation_->work_group_size_ = possible_dispatches[0].work_group_size;
+    operation_->RecalculateWorkGroupsCount();
     return absl::OkStatus();
   } else {
-    std::vector<int3> work_groups_count(possible_work_groups.size());
-    for (int i = 0; i < work_groups_count.size(); ++i) {
-      work_groups_count[i] = GetWorkGroupsCount(
-          operation_->grid_dimension_, operation_->grid_size_,
-          possible_work_groups[i], operation_->work_group_launch_order_);
+    std::vector<int3> work_group_sizes(possible_dispatches.size());
+    std::vector<int3> work_groups_counts(possible_dispatches.size());
+    for (int i = 0; i < possible_dispatches.size(); ++i) {
+      work_group_sizes[i] = possible_dispatches[i].work_group_size;
+      work_groups_counts[i] = possible_dispatches[i].work_groups_count;
     }
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     int best_work_group_index;
     RETURN_IF_ERROR(profiling_queue->GetBestWorkGroupIndex(
-        kernel_, gpu_info, work_groups_count, possible_work_groups,
+        kernel_, gpu_info, work_groups_counts, work_group_sizes,
         &best_work_group_index));
-    operation_->work_group_size_ = possible_work_groups[best_work_group_index];
-    operation_->work_groups_count_ = GetWorkGroupsCount(
-        operation_->grid_dimension_, operation_->grid_size_,
-        operation_->work_group_size_, operation_->work_group_launch_order_);
+    operation_->work_group_size_ = work_group_sizes[best_work_group_index];
+    operation_->RecalculateWorkGroupsCount();
     return absl::OkStatus();
   }
 }

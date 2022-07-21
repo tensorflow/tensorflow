@@ -38,7 +38,7 @@ Status SwitchShape(InferenceContext* c) {
     c->set_output_handle_shapes_and_types(0, *handle_data);
     c->set_output_handle_shapes_and_types(1, *handle_data);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SwitchNShape(InferenceContext* c) {
@@ -58,7 +58,7 @@ Status SwitchNShape(InferenceContext* c) {
       c->set_output_handle_shapes_and_types(i, *handle_data);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -69,7 +69,7 @@ REGISTER_OP("Switch")
     .Output("output_false: T")
     .Output("output_true: T")
     .Attr("T: type")
-    .SetForwardTypeFn(full_type::ReplicateInputs(2))
+    .SetForwardTypeFn(full_type::ReplicateInput(0, 2))
     .SetShapeFn(SwitchShape);
 
 REGISTER_OP("RefSwitch")
@@ -102,7 +102,7 @@ REGISTER_OP("RefSelect")
       ShapeHandle first_input = c->input(1);
       if (!c->FullyDefined(first_input)) {
         c->set_output(0, c->UnknownShape());
-        return Status::OK();
+        return OkStatus();
       }
       // If any inputs aren't fully defined or don't match, we return unknown.
       for (int i = 2; i < c->num_inputs(); ++i) {
@@ -110,11 +110,11 @@ REGISTER_OP("RefSelect")
         if (!c->FullyDefined(input) ||
             !c->Merge(first_input, input, &unused).ok()) {
           c->set_output(0, c->UnknownShape());
-          return Status::OK();
+          return OkStatus();
         }
       }
       c->set_output(0, first_input);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -141,7 +141,7 @@ Status MergeShape(InferenceContext* c) {
   }
   c->set_output(0, out);
   c->set_output(1, c->Scalar());
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -151,7 +151,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
-    .SetForwardTypeFn(full_type::ReplicateIdenticalInputs())
+    .SetForwardTypeFn(full_type::Merge())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")
@@ -170,6 +170,7 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
 
@@ -185,7 +186,7 @@ REGISTER_OP("Enter")
         c->set_output(0, c->input(0));
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -203,6 +204,7 @@ REGISTER_OP("Exit")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RefExit")
@@ -216,6 +218,7 @@ REGISTER_OP("NextIteration")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RefNextIteration")

@@ -40,7 +40,6 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite/core/api",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -181,6 +180,7 @@ cc_test(
     srcs = ["profile_summary_formatter_test.cc"],
     deps = [
         ":profile_summary_formatter",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -197,6 +197,25 @@ cc_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "root_profiler",
+    srcs = ["root_profiler.cc"],
+    hdrs = ["root_profiler.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = common_copts,
+    deps = ["//tensorflow/lite/core/api"],
+)
+
+cc_test(
+    name = "root_profiler_test",
+    srcs = ["root_profiler_test.cc"],
+    deps = [
+        ":root_profiler",
+        "//tensorflow/lite/core/api",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

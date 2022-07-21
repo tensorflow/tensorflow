@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -38,10 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
@@ -52,6 +51,8 @@ namespace xla {
 // computation.
 using ObjectFileData = std::vector<char>;
 
+class Compiler;
+
 // Abstract superclass describing the result of an ahead-of-time compilation.
 class AotCompilationResult {
  public:
@@ -59,6 +60,15 @@ class AotCompilationResult {
   AotCompilationResult& operator=(AotCompilationResult const&) = delete;
 
   virtual ~AotCompilationResult() = default;
+
+  virtual StatusOr<std::string> SerializeAsString() const {
+    return Unimplemented("SerializeAsString unimplemented.");
+  }
+
+  virtual StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const {
+    return Unimplemented("LoadExecutable unimplemented.");
+  }
 
  protected:
   AotCompilationResult() = default;
@@ -70,15 +80,27 @@ class AotCompilationOptions {
   AotCompilationOptions(const AotCompilationOptions&) = delete;
   AotCompilationOptions& operator=(AotCompilationOptions const&) = delete;
 
+  explicit AotCompilationOptions(se::Platform::Id platform_id)
+      : platform_id_(platform_id), debug_options_(GetDebugOptionsFromFlags()) {}
   virtual ~AotCompilationOptions() = default;
 
   // Returns the ID of the platform to which these options apply.
-  virtual se::Platform::Id PlatformId() const = 0;
+  virtual se::Platform::Id PlatformId() const { return platform_id_; }
 
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool use_auto_spmd_partitioning() const { return false; }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return {};
+  }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return {};
+  }
   virtual bool deduplicate_hlo() const { return false; }
+  virtual PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return PrecisionConfig::DEFAULT;
+  }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
@@ -118,16 +140,56 @@ class AotCompilationOptions {
     fusion_config_ = fusion_config;
   }
 
+  se::StreamExecutor* executor() const { return executor_; }
+  void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
+
+  // Optional profile_version and cache key may be used to trigger recompilation
+  // when a compilation cache is used.
+  int64_t profile_version() const { return profile_version_; }
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
+  }
+
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
+  bool run_backend_only() const { return run_backend_only_; }
+  void set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+  }
+
+  bool sanitize_dataflow() const { return sanitize_dataflow_; }
+  void set_sanitize_dataflow(bool sanitize_dataflow) {
+    sanitize_dataflow_ = sanitize_dataflow;
+  }
+
+  const std::vector<std::string>& sanitize_abilists_dataflow() const {
+    return sanitize_abilists_dataflow_;
+  }
+  void set_sanitize_abilists_dataflow(
+      const std::vector<std::string>& abilists) {
+    sanitize_abilists_dataflow_ = abilists;
+  }
+
  protected:
   AotCompilationOptions();
 
  private:
+  se::Platform::Id platform_id_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
-  absl::optional<DeviceAssignment> static_device_assignment_;
+  std::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
+  se::StreamExecutor* executor_ = nullptr;
+  int64_t profile_version_ = 0;
+  std::string cache_key_;
+  bool run_backend_only_ = false;
+  bool sanitize_dataflow_ = false;
+  std::vector<std::string> sanitize_abilists_dataflow_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -215,6 +277,13 @@ class Compiler {
                       CompileOptions{device_allocator});
   }
 
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  virtual StatusOr<std::unique_ptr<AotCompilationResult>>
+  LoadAotCompilationResult(const std::string& serialized_aot_result) {
+    return Unimplemented("LoadAotCompilationResult unimplemented.");
+  }
+
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
   // sequence of executable objects.
@@ -296,13 +365,13 @@ class Compiler {
     };
   }
 
-  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+  virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
   }
 
  private:
   // Mutex that guards the platform-compiler map.
-  static tensorflow::mutex platform_compiler_mutex_;
+  static absl::Mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
   static std::map<se::Platform::Id, CompilerFactory>*

@@ -14,11 +14,9 @@
 # ==============================================================================
 """Support for ragged tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import functools
 import typing
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -701,11 +699,19 @@ def reduce_variance(input_tensor: ragged_tensor.Ragged,
                     name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   with ops.name_scope(name, 'RaggedReduceVariance', [input_tensor, axis]):
+    input_tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        input_tensor, name='input_tensor')
+    if input_tensor.dtype.is_complex:
+      raise ValueError(
+          'reduce_variance is not supported for RaggedTensors with complex dtypes.'
+      )
     square_of_input = math_ops.square(input_tensor)
     mean_of_square = reduce_mean(square_of_input, axis=axis, keepdims=keepdims)
     mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
     square_of_mean = math_ops.square(mean)
-    return mean_of_square - square_of_mean
+    # Note: the above method of computing variance is not numerically stable,
+    # and can result in negative variances.  Here we clip to >= 0.
+    return math_ops.maximum(mean_of_square - square_of_mean, 0)
 
 
 @dispatch.dispatch_for_api(math_ops.reduce_std)
@@ -950,7 +956,14 @@ def _matmul_3d_with_map_fn(a, b, **kwargs):
   Returns:
     A 3D RaggedTensor with `shape=[B, (I), (K)]`.
   """
-  if isinstance(b, ragged_tensor.RaggedTensor) and b.ragged_rank == 2:
+  # Determine the ragged rank of the result.  In the normal case, we have:
+  #   [B, I, J] * [B, J, K] -> [B, I, K]
+  # Or if we're using transpose_b, then we have:
+  #   [B, I, J] * [B, K, J] -> [B, I, K]
+  # In either case, output_ragged_rank=2 iff the K dimension is ragged.
+  if (isinstance(b, ragged_tensor.RaggedTensor) and
+      (b.ragged_rank == 2 or kwargs.get('transpose_b') or
+       kwargs.get('adjoint_b'))):
     output_ragged_rank = 2
   else:
     output_ragged_rank = 1
@@ -1053,7 +1066,8 @@ def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
     axis = -1
 
   with ops.name_scope(name, 'RaggedSoftmax', [logits]) as name:
-    logits_exp = math_ops.exp(logits)
+    max_input = reduce_max(logits, axis=axis, keepdims=True)
+    logits_exp = math_ops.exp(math_ops.subtract(logits, max_input))
     denominator = reduce_sum(logits_exp, axis=axis, keepdims=True)
     return math_ops.divide(logits_exp, denominator)
 
@@ -1105,6 +1119,23 @@ def dropout_v2(x: ragged_tensor.Ragged,
         nn_ops.dropout_v2(x.flat_values, rate=rate, seed=seed))
 
 
+@dispatch.dispatch_for_api(nn_ops.stateless_dropout)
+def stateless_dropout(x: ragged_tensor.Ragged,
+                      rate,
+                      seed,
+                      rng_alg=None,
+                      noise_shape=None,
+                      name=None):
+  """Ragged dispatch target for tf.nn.experimental.stateless_dropout."""
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNStatelessDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(
+        nn_ops.stateless_dropout(
+            x.flat_values, rate=rate, seed=seed, rng_alg=rng_alg))
+
+
 #===============================================================================
 # Ragged version of Tensor.__eq__ and Tensor.__ne__
 #===============================================================================
@@ -1143,3 +1174,75 @@ def _use_legacy_mode_for_tensor_equality(self):
   return not (ops.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
               ops.executing_eagerly_outside_functions() and
               (g is None or g.building_function))
+
+
+def _cumsum_flat_values_at_ragged_rank(last_rp, flat_values, exclusive=False,
+                                       reverse=False):
+  """Calculate flat_values for math_ops.cumsum when axis==ragged_rank."""
+  if not exclusive:
+    partial = _cumsum_flat_values_at_ragged_rank(
+        last_rp, flat_values, exclusive=True, reverse=reverse)
+    return partial + flat_values
+
+  if reverse:
+    youngest_sibling = array_ops.gather(
+        params=last_rp.row_splits(), indices=last_rp.value_rowids() + 1) - 1
+    new_flat_values = math_ops.cumsum(flat_values, exclusive=True, reverse=True)
+    initial_values = array_ops.gather(params=new_flat_values,
+                                      indices=youngest_sibling)
+
+    return new_flat_values - initial_values
+  else:
+    eldest_sibling = array_ops.gather(
+        params=last_rp.row_splits(), indices=last_rp.value_rowids())
+    new_flat_values = math_ops.cumsum(flat_values, exclusive=True)
+    initial_values = array_ops.gather(params=new_flat_values,
+                                      indices=eldest_sibling)
+    return new_flat_values - initial_values
+
+
+@dispatch.dispatch_for_api(math_ops.cumsum)
+def ragged_cumsum(x: ragged_tensor.Ragged,
+                  axis: int = 0,
+                  exclusive: bool = False,
+                  reverse: bool = False,
+                  name: typing.Optional[str] = None):
+  """Calculate math_ops.cumsum for a RaggedTensor.
+
+  Given a ragged tensor `x`, the `result` is a ragged tensor with the same
+  shape. One can calculate the value of `result[i_1...i_k]` as follows:
+  ```
+  dense_result=tf.math.cumsum(rt.to_tensor(), axis=axis, exclusive=exclusive,
+                              reverse=reverse)
+  result[i_1...i_k]=dense_result[i_1...i_k]
+  ```
+
+  Args:
+    x: the original ragged tensor to sum.
+    axis: the axis along which to sum, can range -rank<=axis<rank.
+    exclusive: is the sum exclusive or inclusive? If True, then result[0]=0.
+        If False, then result[0]=x[0].
+    reverse: If True, sum from back to front.
+    name: the name of the op.
+  Returns:
+    the cumulative sum.
+  """
+  with ops.name_scope(name, 'RaggedCumSum', [x, axis, exclusive, reverse]):
+    axis = array_ops.get_positive_axis(axis, x.shape.rank, ndims_name='rank')
+    if axis == x.ragged_rank:
+      last_rp = x._nested_row_partitions[-1]  # pylint: disable=protected-access
+      return x.with_flat_values(
+          _cumsum_flat_values_at_ragged_rank(last_rp, x.flat_values,
+                                             exclusive=exclusive,
+                                             reverse=reverse))
+    elif axis > x.ragged_rank:
+      new_axis = axis - x.ragged_rank
+      cumsum_bound = functools.partial(
+          math_ops.cumsum, axis=new_axis, exclusive=exclusive, reverse=reverse)
+      return ragged_functional_ops.map_flat_values(cumsum_bound, x)
+    else:
+      dense_version = x.to_tensor()
+      result = math_ops.cumsum(
+          dense_version, axis, exclusive=exclusive, reverse=reverse, name=name)
+      return ragged_tensor.RaggedTensor.from_tensor(
+          result, lengths=x.nested_row_lengths())

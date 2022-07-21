@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.map()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import threading
@@ -29,6 +25,8 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -61,8 +59,6 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -1499,24 +1495,30 @@ class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(self.evaluate(random_access.at(dataset, index=i)), i * 3)
 
   @combinations.generate(
-      combinations.times(test_base.v2_only_combinations(),
-                         combinations.combine(elements=[0, 10, 20, 40])))
-  def testMultipleCombinations(self, elements):
-    dataset = dataset_ops.Dataset.range(elements).map(lambda x: x // 2)
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              elements=[0, 10, 20, 40], num_parallel_calls=[None, 2])))
+  def testMultipleCombinations(self, elements, num_parallel_calls):
+    dataset = dataset_ops.Dataset.range(elements).map(
+        lambda x: x // 2, num_parallel_calls=num_parallel_calls)
     for i in range(elements):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)), i // 2)
 
   @combinations.generate(
-      combinations.times(test_base.v2_only_combinations(),
-                         combinations.combine(elements=[0, 10, 20, 40])))
-  def testMapFnInFunction(self, elements):
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              elements=[0, 10, 20, 40], num_parallel_calls=[None, 2])))
+  def testMapFnInFunction(self, elements, num_parallel_calls):
 
     @def_function.function
     def _map_fn(x):
       return math_ops.square(x)
 
-    dataset = dataset_ops.Dataset.range(elements).map(_map_fn)
+    dataset = dataset_ops.Dataset.range(elements).map(
+        _map_fn, num_parallel_calls=num_parallel_calls)
     for i in range(elements):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)),

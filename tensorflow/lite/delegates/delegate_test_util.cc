@@ -115,8 +115,13 @@ void TestDelegation::SetUpSubgraph(Subgraph* subgraph) {
                                   &node_index_ignored);
 }
 
+void TestDelegation::AddSubgraphs(int subgraphs_to_add,
+                                  int* first_new_subgraph_index) {
+  interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
+}
+
 void TestDelegate::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   SetUpSubgraph(&interpreter_->primary_subgraph());
 }
 
@@ -129,7 +134,7 @@ void TestDelegate::TearDown() {
 }
 
 void TestTwoDelegates::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   SetUpSubgraph(&interpreter_->primary_subgraph());
 }
 
@@ -272,7 +277,10 @@ TfLiteRegistration SimpleDelegate::FakeFusedRegistration() {
     };
   } else {
     reg.invoke = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-      // Copy input data to output data.
+      // Compute output data as elementwise sum of the two input arguments:
+      //   func(x, y) = x + y
+      // or for a single argument compute 2 * x:
+      //   func(x) = x + x
       const TfLiteTensor* a0;
       const TfLiteTensor* a1;
       if (node->inputs->size == 2) {
@@ -355,24 +363,24 @@ std::unique_ptr<SimpleDelegate>
 SimpleDelegate::DelegateWithRuntimeShapePropagation(
     const std::vector<int>& nodes, int64_t delegate_flags,
     int min_ops_per_subset) {
-  return std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+  return std::make_unique<SimpleDelegate>(
       nodes, delegate_flags, false /**fail_node_prepare**/,
       min_ops_per_subset /**min_ops_per_subset**/, false /**fail_node_invoke**/,
-      true /**automatic_shape_propagation**/));
+      true /**automatic_shape_propagation**/);
 }
 
 std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
     const std::vector<int>& nodes) {
   // All params default except nodes & set_output_tensor_dynamic.
-  return std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+  return std::make_unique<SimpleDelegate>(
       nodes, kTfLiteDelegateFlagsAllowDynamicTensors,
       false /**fail_node_prepare**/, 0 /**min_ops_per_subset**/,
       false /**fail_node_invoke**/, false /**automatic_shape_propagation**/,
-      true /**custom_op**/, true /**set_output_tensor_dynamic**/));
+      true /**custom_op**/, true /**set_output_tensor_dynamic**/);
 }
 
 void TestFP16Delegation::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   interpreter_->AddTensors(13);
   interpreter_->SetInputs({0});
   interpreter_->SetOutputs({12});

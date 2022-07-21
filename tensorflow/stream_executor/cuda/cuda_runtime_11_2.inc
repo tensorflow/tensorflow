@@ -494,6 +494,31 @@ extern __host__ cudaError_t CUDARTAPI cudaStreamGetCaptureInfo(
   return func_ptr(stream, pCaptureStatus, pId);
 }
 
+extern __host__ cudaError_t CUDARTAPI cudaStreamGetCaptureInfo_v2(
+    cudaStream_t stream, enum cudaStreamCaptureStatus *captureStatus_out,
+    unsigned long long *id_out __dv(0), cudaGraph_t *graph_out __dv(0),
+    const cudaGraphNode_t **dependencies_out __dv(0),
+    size_t *numDependencies_out __dv(0)) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(
+      cudaStream_t, enum cudaStreamCaptureStatus *, unsigned long long *,
+      cudaGraph_t *, const cudaGraphNode_t **, size_t *);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaStreamGetCaptureInfo_v2");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(stream, captureStatus_out, id_out, graph_out,
+                  dependencies_out, numDependencies_out);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaStreamUpdateCaptureDependencies(
+    cudaStream_t stream, cudaGraphNode_t *dependencies, size_t numDependencies,
+    unsigned int flags __dv(0)) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaStream_t, cudaGraphNode_t *,
+                                           size_t, unsigned int);
+  static auto func_ptr =
+      LoadSymbol<FuncPtr>("cudaStreamUpdateCaptureDependencies");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(stream, dependencies, numDependencies, flags);
+}
+
 extern __host__ cudaError_t CUDARTAPI cudaEventCreate(cudaEvent_t *event) {
   using FuncPtr = cudaError_t(CUDARTAPI *)(cudaEvent_t *);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaEventCreate");
@@ -2147,6 +2172,64 @@ cudaGetFuncBySymbol(cudaFunction_t *functionPtr, const void *symbolPtr) {
   static auto func_ptr = LoadSymbol<FuncPtr>("_CDECL cudaGetFuncBySymbol");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(functionPtr, symbolPtr);
+}
+
+#if CUDA_VERSION >= 11030
+
+extern __host__ cudaError_t CUDARTAPI cudaUserObjectCreate(
+    cudaUserObject_t *object_out, void *ptr, cudaHostFn_t destroy,
+    unsigned int initialRefcount, unsigned int flags) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(
+      cudaUserObject_t *, void *, cudaHostFn_t, unsigned int, unsigned int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaUserObjectCreate");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(object_out, ptr, destroy, initialRefcount, flags);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaUserObjectRetain(cudaUserObject_t object, unsigned int count __dv(1)) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaUserObject_t, unsigned int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaUserObjectRetain");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(object, count);
+}
+
+extern __host__ cudaError_t CUDARTAPI
+cudaUserObjectRelease(cudaUserObject_t object, unsigned int count __dv(1)) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaUserObject_t, unsigned int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaUserObjectRelease");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(object, count);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphRetainUserObject(
+    cudaGraph_t graph, cudaUserObject_t object, unsigned int count __dv(1),
+    unsigned int flags __dv(0)) {
+  using FuncPtr = cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaUserObject_t,
+                                           unsigned int, unsigned int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphRetainUserObject");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, object, count, flags);
+}
+
+extern __host__ cudaError_t CUDARTAPI cudaGraphReleaseUserObject(
+    cudaGraph_t graph, cudaUserObject_t object, unsigned int count __dv(1)) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(cudaGraph_t, cudaUserObject_t, unsigned int);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGraphReleaseUserObject");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(graph, object, count);
+}
+
+#endif  // CUDA_VERSION >= 11030
+
+extern __host__ cudaError_t CUDARTAPI cudaGetDriverEntryPoint(
+    const char *symbol, void **funcPtr, unsigned long long flags) {
+  using FuncPtr =
+      cudaError_t(CUDARTAPI *)(const char *, void **, unsigned long long);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDriverEntryPoint");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(symbol, funcPtr, flags);
 }
 
 }  // extern "C"

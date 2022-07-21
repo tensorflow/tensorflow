@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
+func.func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
 ^bb0(%arg0: tensor<1x224x224x3xf32>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
@@ -20,14 +20,16 @@ func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 32 ],
   // CHECK-NEXT:      buffer: 2,
   // CHECK-NEXT:      name: "Const",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 32, 3, 3, 3 ],
   // CHECK-NEXT:      type: UINT8,
@@ -36,21 +38,24 @@ func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   // CHECK-NEXT:      quantization: {
   // CHECK-NEXT:        scale: [ 0.021827 ],
   // CHECK-NEXT:        zero_point: [ 151 ]
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 32, 3, 3, 3 ],
   // CHECK-NEXT:      buffer: 4,
   // CHECK-NEXT:      name: "tfl.dequantize",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 1, 112, 112, 32 ],
   // CHECK-NEXT:      buffer: 5,
   // CHECK-NEXT:      name: "tfl.depthwise_conv_2d",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    } ],
   // CHECK-NEXT:    inputs: [ 0 ],
   // CHECK-NEXT:    outputs: [ 4 ],
@@ -101,5 +106,5 @@ func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
   %2 = "tfl.dequantize"(%1) : (tensor<32x3x3x3x!quant.uniform<u8<1:255>:f32, 0.021826678373682216:151>>) -> tensor<32x3x3x3xf32>
   %3 = "tfl.depthwise_conv_2d"(%arg0, %2, %0) {depth_multiplier = 4 : i32, dilation_h_factor = 2 : i32, dilation_w_factor = 2 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
 
-  return %3 : tensor<1x112x112x32xf32>
+  func.return %3 : tensor<1x112x112x32xf32>
 }

@@ -22,6 +22,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_compiler {
 
+inline llvm::StringRef GetDefaultCpuDeviceName() {
+  static constexpr char kCpuDeviceName[] =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  return kCpuDeviceName;
+}
+
 class FallbackConverter : public mlir::TypeConverter {
  public:
   explicit FallbackConverter(mlir::MLIRContext *context);
@@ -64,15 +70,14 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
 // Convert operands that might be !tfrt_fallback.tf_tensor for corert operations
 // that take only !corert.tensorhandle.
 mlir::LogicalResult ConvertCoreRTOperands(
-    mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter);
 
 // Convert operands that might be !corert.tensorhandle for fallback operations
 // that take only !tfrt_fallback.tf_tensor.
 mlir::LogicalResult ConvertFallbackOperands(
-    mlir::Operation *op, llvm::StringRef device,
-    llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, llvm::StringRef device, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter);
 

@@ -58,16 +58,6 @@ class CloneConstantsForBetterClusteringPass : public GraphOptimizationPass {
   CloneConstantsForBetterClusteringPass() = default;
 
   Status Run(const GraphOptimizationPassOptions& options) override;
-
- private:
-  Status CloneSmallHostConstantInputs(
-      Graph* g, const absl::flat_hash_set<string>& name_set, Node* n);
-  string GenerateUniqueName(const absl::flat_hash_set<string>& name_set,
-                            absl::string_view prefix);
-  se::port::StatusOr<Node*> CloneNode(
-      Graph* g, const absl::flat_hash_set<string>& name_set, Node* n);
-
-  int unique_name_counter_ = 0;
 };
 }  // namespace tensorflow
 

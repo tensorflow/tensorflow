@@ -37,6 +37,30 @@ namespace {
 // The maximum number of Kernels displayed on Kernel Stats page.
 const int kMaxNumOfKernels = 1000;
 
+// A list of patterns to help determine if a kernel uses Tensor Core.
+// A kernel uses Tensor Core if its kernel name contains any of these patterns.
+// Some examples of kernel names: volta_h884gemm, turing_fp16_s1688cudnn_fp16
+constexpr absl::string_view kTensorCoreKernelNamePatterns[] = {
+    "16816",
+    "c1688",
+    "conv1x1",
+    "conv2d_c1_k1",
+    "dgrad_1x1_stride_2x2",
+    "direct_group",
+    "first_layer_wgrad_kernel",
+    "h1688",
+    "h884",
+    "hmma",
+    "i16832",
+    "i8816",
+    "s884",
+    "s1688",
+    "xmma_gemm",
+    "xmma_implicit_gemm",
+    "xmma_sparse_conv",
+    "xmma_sparse_gemm",
+    "xmma_warp_specialized_implicit_gemm"};
+
 }  // namespace
 
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
@@ -93,30 +117,13 @@ void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
 }
 
 bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
-  // Some examples: volta_h884gemm, volta_fp16_s884gemm,
-  // turing_fp16_s1688cudnn_fp16
-  bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
-                                absl::StrContains(kernel_name, "1688") ||
-                                absl::StrContains(kernel_name, "hmma") ||
-                                absl::StrContains(kernel_name, "xmma");
-  if (possible_tensor_kernel) {
-    VLOG(3) << "Possible tensor kernel: " << kernel_name;
+  VLOG(1) << "kernel name: " << kernel_name;
+  for (absl::string_view pattern : kTensorCoreKernelNamePatterns) {
+    if (absl::StrContains(kernel_name, pattern)) {
+      return true;
+    }
   }
-
-  return (absl::StartsWith(kernel_name, "volta_i884") ||
-          absl::StartsWith(kernel_name, "volta_h884") ||
-          absl::StartsWith(kernel_name, "volta_s884") ||
-          absl::StartsWith(kernel_name, "volta_fp16_i884") ||
-          absl::StartsWith(kernel_name, "volta_fp16_h884") ||
-          absl::StartsWith(kernel_name, "volta_fp16_s884") ||
-          absl::StartsWith(kernel_name, "turing_i1688") ||
-          absl::StartsWith(kernel_name, "turing_h1688") ||
-          absl::StartsWith(kernel_name, "turing_s1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_i1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_h1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_s1688") ||
-          absl::StrContains(kernel_name, "hmma") ||
-          absl::StrContains(kernel_name, "xmma"));
+  return false;
 }
 
 // This list is not exhaustive.

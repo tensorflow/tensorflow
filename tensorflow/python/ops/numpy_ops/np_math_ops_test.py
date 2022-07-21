@@ -14,14 +14,9 @@
 # ==============================================================================
 """Tests for tf numpy mathematical methods."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops

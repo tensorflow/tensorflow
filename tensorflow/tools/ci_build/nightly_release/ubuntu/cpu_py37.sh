@@ -18,11 +18,12 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.7
-
 install_bazelisk
 
-export PYTHON_BIN_PATH=$(which python3.7)
+# Setup virtual environment and install dependencies
+setup_venv_ubuntu python3.7
+
+export PYTHON_BIN_PATH=$(which python)
 "$PYTHON_BIN_PATH" tensorflow/tools/ci_build/update_version.py --nightly
 
 # Build the pip package
@@ -33,29 +34,8 @@ bazel build \
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 
-# Upload the built packages to pypi.
-for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
+# Upload wheel files
+upload_wheel_cpu_ubuntu
 
-  WHL_DIR=$(dirname "${WHL_PATH}")
-  WHL_BASE_NAME=$(basename "${WHL_PATH}")
-  AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
-  auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
-
-  # test the whl pip package
-  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
-  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
-  RETVAL=$?
-
-  # Upload the PIP package if whl test passes.
-  if [ ${RETVAL} -eq 0 ]; then
-    echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
-    # Although the python version installing twine is independent of python
-    # version of the binary it pushes, unsure which python versions are
-    # available to user.
-    python3.7 -m pip install twine
-    python3.7 -m twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
-  else
-    echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
-    return 1
-  fi
-done
+# Remove and cleanup virtual environment
+remove_venv_ubuntu

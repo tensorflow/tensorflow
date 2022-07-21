@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
@@ -147,7 +148,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   // doesn't hurt to also deregister the callback in the failure case; the
   // CancellationManager ensures that already-registered callbacks will be run
   // once cancellation has started.
-  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+  auto cancellation_cleanup = absl::MakeCleanup([ctx, token, done] {
     ctx->cancellation_manager()->DeregisterCallback(token);
     done->store(true);
   });

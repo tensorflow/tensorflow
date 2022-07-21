@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
+
 #if !defined(_WIN32)
 #include <dirent.h>
 #endif
@@ -27,14 +29,6 @@ limitations under the License.
 
 namespace tflite {
 namespace evaluation {
-
-namespace {
-
-TfLiteDelegatePtr CreateNullDelegate() {
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
-}
-
-}  // namespace
 
 std::string StripTrailingSlashes(const std::string& path) {
   int end = path.size();
@@ -100,7 +94,7 @@ TfLiteDelegatePtr CreateNNAPIDelegate() {
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 #else
-  return CreateNullDelegate();
+  return tools::CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
@@ -111,7 +105,7 @@ TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
 #else
-  return CreateNullDelegate();
+  return tools::CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
@@ -131,22 +125,22 @@ TfLiteDelegatePtr CreateGPUDelegate() {
 
   return CreateGPUDelegate(&options);
 #else
-  return CreateNullDelegate();
+  return tools::CreateNullDelegate();
 #endif  // TFLITE_SUPPORTS_GPU_DELEGATE
 }
 
 TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling) {
-#if !defined(__APPLE__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
   TfLiteHexagonDelegateOptions options = {0};
   options.print_graph_profile = profiling;
   return CreateHexagonDelegate(&options, library_directory_path);
 #else
-  return CreateNullDelegate();
-#endif  // defined(__arm__)
+  return tools::CreateNullDelegate();
+#endif  // TFLITE_ENABLE_HEXAGON
 }
 
-#if !defined(__APPLE__) && (defined(__arm__) || defined(__aarch64__))
+#if TFLITE_ENABLE_HEXAGON
 TfLiteDelegatePtr CreateHexagonDelegate(
     const TfLiteHexagonDelegateOptions* options,
     const std::string& library_directory_path) {
@@ -159,7 +153,7 @@ TfLiteDelegatePtr CreateHexagonDelegate(
   TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(options);
   if (!delegate) {
     TfLiteHexagonTearDown();
-    return CreateNullDelegate();
+    return tools::CreateNullDelegate();
   }
   return TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
     TfLiteHexagonDelegateDelete(delegate);
@@ -168,9 +162,9 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 }
 #endif
 
-#if defined(TFLITE_WITHOUT_XNNPACK)
+#if defined(__s390x__) || defined(TFLITE_WITHOUT_XNNPACK)
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
-  return CreateNullDelegate();
+  return tools::CreateNullDelegate();
 }
 #else
 TfLiteDelegatePtr CreateXNNPACKDelegate() {

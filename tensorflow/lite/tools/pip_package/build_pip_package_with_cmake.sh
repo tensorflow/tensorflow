@@ -22,6 +22,7 @@ export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
 TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_package/setup.py" | cut -d= -f2 | sed "s/[ '-]//g")
 export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
+export PROJECT_NAME=${WHEEL_PROJECT_NAME:-tflite_runtime}
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"
 TENSORFLOW_TARGET=${TENSORFLOW_TARGET:-$1}
 if [ "${TENSORFLOW_TARGET}" = "rpi" ]; then
@@ -29,12 +30,13 @@ if [ "${TENSORFLOW_TARGET}" = "rpi" ]; then
 fi
 PYTHON_INCLUDE=$(${PYTHON} -c "from sysconfig import get_paths as gp; print(gp()['include'])")
 PYBIND11_INCLUDE=$(${PYTHON} -c "import pybind11; print (pybind11.get_include())")
+NUMPY_INCLUDE=$(${PYTHON} -c "import numpy; print (numpy.get_include())")
 export CROSSTOOL_PYTHON_INCLUDE_PATH=${PYTHON_INCLUDE}
 
 # Fix container image for cross build.
 if [ ! -z "${CI_BUILD_HOME}" ] && [ `pwd` = "/workspace" ]; then
   # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
-  if [ "${TENSORFLOW_TARGET}" = "armhf" ]; then
+  if [ "${TENSORFLOW_TARGET}" = "armhf" ] && [ -f /usr/include/curl/curlbuild.h ]; then
     sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
     sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
   fi
@@ -68,7 +70,7 @@ echo "Building for ${TENSORFLOW_TARGET}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
     eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
-    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE}"
+    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
     cmake \
       -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
       -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
@@ -76,11 +78,12 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+      -DTFLITE_ENABLE_XNNPACK=OFF \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   rpi0)
     eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
-    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE}"
+    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
     cmake \
       -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
       -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
@@ -93,7 +96,7 @@ case "${TENSORFLOW_TARGET}" in
     ;;
   aarch64)
     eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
-    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE}"
+    ARMCC_FLAGS="${ARMCC_FLAGS} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
     cmake \
       -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
       -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
@@ -104,14 +107,14 @@ case "${TENSORFLOW_TARGET}" in
       "${TENSORFLOW_LITE_DIR}"
     ;;
   native)
-    BUILD_FLAGS=${BUILD_FLAGS:-"-march=native -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE}"}
+    BUILD_FLAGS=${BUILD_FLAGS:-"-march=native -I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}
     cmake \
       -DCMAKE_C_FLAGS="${BUILD_FLAGS}" \
       -DCMAKE_CXX_FLAGS="${BUILD_FLAGS}" \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   *)
-    BUILD_FLAGS=${BUILD_FLAGS:-"-I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE}"}
+    BUILD_FLAGS=${BUILD_FLAGS:-"-I${PYTHON_INCLUDE} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"}
     cmake \
       -DCMAKE_C_FLAGS="${BUILD_FLAGS}" \
       -DCMAKE_CXX_FLAGS="${BUILD_FLAGS}" \
@@ -142,21 +145,24 @@ chmod u+w "${BUILD_DIR}/tflite_runtime/_pywrap_tensorflow_interpreter_wrapper${L
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
   armhf)
-    ${PYTHON} setup.py bdist --plat-name=linux-armv7l \
-                       bdist_wheel --plat-name=linux-armv7l
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv7l}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   rpi0)
-    ${PYTHON} setup.py bdist --plat-name=linux_armv6l \
-                       bdist_wheel --plat-name=linux-armv6l
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv6l}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   aarch64)
-    ${PYTHON} setup.py bdist --plat-name=linux-aarch64 \
-                       bdist_wheel --plat-name=linux-aarch64
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-aarch64}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     ;;
   *)
-    if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
-      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
-                         bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
+    if [[ -n "${WHEEL_PLATFORM_NAME}" ]]; then
+      ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                         bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
     else
       ${PYTHON} setup.py bdist bdist_wheel
     fi

@@ -50,7 +50,7 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
     case DT_BOOL:
     case DT_UINT8:
     case DT_INT8:
-      return Status::OK();
+      return OkStatus();
 
     // 16-bit types
     case DT_BFLOAT16:
@@ -106,7 +106,7 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
   }
 
   TF_RETURN_IF_ERROR(ByteSwapArray(buff, bytes_per_elem, array_len));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -114,25 +114,25 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
 Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
   if (bytes_per_elem == 1) {
     // No-op
-    return Status::OK();
+    return OkStatus();
   } else if (bytes_per_elem == 2) {
     auto array_16 = reinterpret_cast<uint16_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_16[i] = BYTE_SWAP_16(array_16[i]);
     }
-    return Status::OK();
+    return OkStatus();
   } else if (bytes_per_elem == 4) {
     auto array_32 = reinterpret_cast<uint32_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_32[i] = BYTE_SWAP_32(array_32[i]);
     }
-    return Status::OK();
+    return OkStatus();
   } else if (bytes_per_elem == 8) {
     auto array_64 = reinterpret_cast<uint64_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_64[i] = BYTE_SWAP_64(array_64[i]);
     }
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::Unimplemented("Byte-swapping of ", bytes_per_elem,
                                  "-byte values not supported.");
@@ -189,7 +189,7 @@ Status ByteSwapTensorContent(MetaGraphDef* meta_graph_def) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

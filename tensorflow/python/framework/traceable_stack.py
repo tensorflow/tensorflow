@@ -14,10 +14,6 @@
 # ==============================================================================
 """A simple stack that associates filename and line numbers with each object."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import inspect
 
 

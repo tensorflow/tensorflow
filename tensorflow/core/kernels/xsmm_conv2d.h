@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_XSMM_CONV2D_H_
 #define TENSORFLOW_CORE_KERNELS_XSMM_CONV2D_H_
 
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/util/tensor_format.h"
-
 #include "include/libxsmm.h"
 #include "include/libxsmm_dnn.h"
+#include "include/libxsmm_dnn_convolution.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.gather."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -27,6 +23,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -158,7 +155,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
               # For axis 0, we are able to create an efficient IndexedSlices for
               # the gradient.
               if axis == 0:
-                self.assertEqual(type(params_grad), ops.IndexedSlices)
+                self.assertEqual(
+                    type(params_grad), indexed_slices.IndexedSlices)
                 params_grad = ops.convert_to_tensor(params_grad)
               correct_params_grad = np.zeros(shape).astype(dtype.as_numpy_dtype)
               outer_dims = axis
@@ -227,7 +225,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             # For axis 0, we are able to create an efficient IndexedSlices for
             # the gradient.
             if axis == 0:
-              self.assertEqual(type(params_grad), ops.IndexedSlices)
+              self.assertEqual(type(params_grad), indexed_slices.IndexedSlices)
               params_grad = ops.convert_to_tensor(params_grad)
             correct_params_grad = np.zeros(shape).astype(dtype.as_numpy_dtype)
             outer_dims = axis
@@ -288,7 +286,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testBadIndicesType(self):
     with self.assertRaisesRegex(
         (TypeError, errors.InvalidArgumentError),
-        "float.* not in.* list of allowed values: int32, int64"):
+        "float.* not in.* list of allowed values: int16, int32, int64"):
       self.evaluate(array_ops.gather([0], 0.))
 
   @test_util.disable_xla(

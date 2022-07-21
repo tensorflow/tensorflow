@@ -26,10 +26,6 @@ TODO: this works fine but there is an issue with exporting
 'const char * const' and importing it from a user_ops. The problem is
 on the importing end and using __declspec(dllimport) works around it.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import io
 import os

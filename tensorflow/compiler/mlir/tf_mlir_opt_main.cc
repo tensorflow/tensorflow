@@ -16,20 +16,26 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
+#include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/core/platform/init_main.h"
 
 int main(int argc, char **argv) {
@@ -39,9 +45,11 @@ int main(int argc, char **argv) {
   mlir::registerTensorFlowPasses();
   mlir::TFDevice::registerTensorFlowDevicePasses();
   mlir::tf_saved_model::registerTensorFlowSavedModelPasses();
+  mlir::TFL::registerTensorFlowLitePasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
   // These are in compiler/mlir/xla and not part of the above MHLO passes.
+  mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();
   mlir::mhlo::registerLegalizeTFControlFlowPass();
@@ -49,7 +57,10 @@ int main(int argc, char **argv) {
   mlir::tosa::registerLegalizeTosaPasses();
   mlir::tosa::registerTFtoTOSALegalizationPipeline();
   mlir::tosa::registerTFLtoTOSALegalizationPipeline();
+  mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
   mlir::tf_test::registerTensorFlowTestPasses();
+  tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
+  tensorflow::RegisterGraphOptimizationPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -58,7 +69,6 @@ int main(int argc, char **argv) {
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
-  return failed(mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n",
-                                  registry,
-                                  /*preloadDialectsInContext=*/false));
+  return failed(
+      mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
 }

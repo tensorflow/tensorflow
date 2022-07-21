@@ -47,11 +47,10 @@ class ConcatBaseOp : public OpKernel {
 
   explicit ConcatBaseOp(OpKernelConstruction* c)
       : OpKernel(c),
-        axis_attribute_name_(AxisArgName == NAME_IS_AXIS
-                                 ? "axis"
-                                 : AxisArgName == NAME_IS_CONCAT_DIM
-                                       ? "concat_dim"
-                                       : "<invalid>") {
+        axis_attribute_name_(AxisArgName == NAME_IS_AXIS ? "axis"
+                             : AxisArgName == NAME_IS_CONCAT_DIM
+                                 ? "concat_dim"
+                                 : "<invalid>") {
     int unused;
     OP_REQUIRES_OK(
         c, InputRange(axis_attribute_name_, &axis_input_index_, &unused));
@@ -133,10 +132,11 @@ class ConcatBaseOp : public OpKernel {
         }
         OP_REQUIRES(
             c, in.dim_size(j) == input_shape.dim_size(j),
-            errors::InvalidArgument(
-                "ConcatOp : Dimensions of inputs should match: shape[0] = ",
-                input_shape.DebugString(), " vs. shape[", i,
-                "] = ", in.shape().DebugString()));
+            errors::InvalidArgument("ConcatOp : Dimension ", j,
+                                    " in both shapes must be equal: "
+                                    "shape[0] = ",
+                                    input_shape.DebugString(), " vs. shape[", i,
+                                    "] = ", in.shape().DebugString()));
       }
       if (in.NumElements() > 0) {
         int64_t inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
@@ -221,26 +221,25 @@ TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
-// A special GPU kernel for int32.
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Concat")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("concat_dim")
                             .HostMemory("values")
                             .HostMemory("output"),
                         ConcatOp<CPUDevice, int32>);
 REGISTER_KERNEL_BUILDER(Name("ConcatV2")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("values")
                             .HostMemory("axis")
                             .HostMemory("output"),
                         ConcatV2Op<CPUDevice, int32>);
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 class ConcatOffsetOp : public OpKernel {
  public:
@@ -320,9 +319,8 @@ class ConcatOffsetOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset").Device(DEVICE_CPU),
                         ConcatOffsetOp);
-
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),

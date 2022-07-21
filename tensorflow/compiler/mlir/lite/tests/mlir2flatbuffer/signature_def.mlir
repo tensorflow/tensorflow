@@ -15,7 +15,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 384 ]
+// CHECK-NEXT:      shape_signature: [ -1, 384 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 384 ],
 // CHECK-NEXT:      buffer: 2,
@@ -23,28 +24,32 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 384 ]
+// CHECK-NEXT:      shape_signature: [ -1, 384 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 5 ],
 // CHECK-NEXT:      buffer: 3,
-// CHECK-NEXT:      name: "std.constant",
+// CHECK-NEXT:      name: "arith.constant",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 5, 384 ],
 // CHECK-NEXT:      buffer: 4,
-// CHECK-NEXT:      name: "std.constant1",
+// CHECK-NEXT:      name: "arith.constant1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 5, 384 ],
 // CHECK-NEXT:      buffer: 5,
-// CHECK-NEXT:      name: "std.constant2",
+// CHECK-NEXT:      name: "arith.constant2",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 5 ],
 // CHECK-NEXT:      buffer: 6,
@@ -52,7 +57,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 5 ]
+// CHECK-NEXT:      shape_signature: [ -1, 5 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1, 5 ],
 // CHECK-NEXT:      buffer: 7,
@@ -60,7 +66,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1, 5 ]
+// CHECK-NEXT:      shape_signature: [ -1, 5 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 6, 5 ],
@@ -105,12 +112,12 @@
 // CHECK-NEXT:  } ]
 // CHECK-NEXT:}
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 554 : i32}, tf_saved_model.semantics} {
-  func @main(%arg0: tensor<?x384xf32> {tf_saved_model.index_path = ["input2"]}, %arg1: tensor<?x384xf32> {tf_saved_model.index_path = ["input1"]}) -> (tensor<?x5xf32> {tf_saved_model.index_path = ["start_logits"]}, tensor<?x5xf32> {tf_saved_model.index_path = ["end_logits"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input2:0,serving_default_input1:0", outputs = "StatefulPartitionedCall:1,StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
-    %cst = constant dense<0.000000e+00> : tensor<5xf32>
-    %cst_0 = constant dense<1.0> : tensor<5x384xf32>
-    %cst_1 = constant dense<1.0> : tensor<5x384xf32>
+  func.func @main(%arg0: tensor<?x384xf32> {tf_saved_model.index_path = ["input2"]}, %arg1: tensor<?x384xf32> {tf_saved_model.index_path = ["input1"]}) -> (tensor<?x5xf32> {tf_saved_model.index_path = ["start_logits"]}, tensor<?x5xf32> {tf_saved_model.index_path = ["end_logits"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input2:0,serving_default_input1:0", outputs = "StatefulPartitionedCall:1,StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %cst = arith.constant dense<0.000000e+00> : tensor<5xf32>
+    %cst_0 = arith.constant dense<1.0> : tensor<5x384xf32>
+    %cst_1 = arith.constant dense<1.0> : tensor<5x384xf32>
     %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<?x384xf32>, tensor<5x384xf32>, tensor<5xf32>) -> tensor<?x5xf32>
     %1 = "tfl.fully_connected"(%arg0, %cst_1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<?x384xf32>, tensor<5x384xf32>, tensor<5xf32>) -> tensor<?x5xf32>
-    return %1, %0 : tensor<?x5xf32>, tensor<?x5xf32>
+    func.return %1, %0 : tensor<?x5xf32>, tensor<?x5xf32>
   }
 }

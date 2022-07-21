@@ -36,11 +36,11 @@ class HloLivenessAnalysisTest : public HloTestBase {
   // Run liveness analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
   const HloLivenessAnalysis& RunLiveness(HloModule* module) {
-    liveness_ = HloLivenessAnalysis::Run(*module).ConsumeValueOrDie();
+    liveness_ = HloLivenessAnalysis::Run(*module).value();
     return *liveness_;
   }
 
-  HloInstruction* GetInstruction(HloModule* module, const string& name) {
+  HloInstruction* GetInstruction(HloModule* module, const std::string& name) {
     HloInstruction* to_return = nullptr;
     for (auto* comp : module->computations()) {
       for (auto* inst : comp->instructions()) {

@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -30,15 +31,15 @@ constexpr int kMaxInfeedsInFlight = 8;
 
 InfeedManager::InfeedManager(se::StreamExecutor* executor)
     : BlockingXfeedQueue(/*max_pending_xfeeds=*/kMaxInfeedsInFlight),
-      stream_(absl::make_unique<se::Stream>(executor)) {
+      stream_(std::make_unique<se::Stream>(executor)) {
   stream_->Init();
 }
 
-static StatusOr<se::ScopedDeviceMemory<uint8>> CopyBufferToDevice(
+static StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
     se::Stream* stream, int64_t size, const void* source) {
-  if (size > std::numeric_limits<int32>::max()) {
+  if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
-                           size, std::numeric_limits<int32>::max());
+                           size, std::numeric_limits<int32_t>::max());
   }
 
   if (size == 0) {
@@ -46,8 +47,8 @@ static StatusOr<se::ScopedDeviceMemory<uint8>> CopyBufferToDevice(
   }
 
   se::StreamExecutor* executor = stream->parent();
-  se::ScopedDeviceMemory<uint8> buffer(executor,
-                                       executor->AllocateArray<uint8>(size));
+  se::ScopedDeviceMemory<uint8_t> buffer(
+      executor, executor->AllocateArray<uint8_t>(size));
   stream->ThenMemcpy(buffer.ptr(), source, size);
 
   return std::move(buffer);
@@ -63,7 +64,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
 
   // For a tuple, we transfer each of its elements to the device and enqueue the
   // resulting destination device addresses with the infeed manager.
-  ShapeTree<se::ScopedDeviceMemory<uint8>> buffer_tree(literal_shape);
+  ShapeTree<se::ScopedDeviceMemory<uint8_t>> buffer_tree(literal_shape);
   for (auto& leaf : buffer_tree.leaves()) {
     const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
     CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);
@@ -83,14 +84,14 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   }
 
   EnqueueDestination(std::move(buffer_tree));
-  return Status::OK();
+  return OkStatus();
 }
 
-InfeedManager *GetOrCreateInfeedManager(se::StreamExecutor *executor) {
+InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  stream_executor::gpu::GpuExecutor *gpu_executor =
+  stream_executor::gpu::GpuExecutor* gpu_executor =
       stream_executor::gpu::ExtractGpuExecutor(executor);
-  auto *xla_state =
+  auto* xla_state =
       gpu_executor->getOrCreateXLAState<GpuExecutorXLAState>(executor);
   return xla_state->getOrCreateInfeedManager(executor);
 #else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

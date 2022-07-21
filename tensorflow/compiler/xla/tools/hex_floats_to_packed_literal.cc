@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdio.h>
+
 #include <string>
 #include <vector>
 
@@ -28,17 +29,17 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
-using xla::string;
+using std::string;
 
 int main(int argc, char** argv) {
   // Flags
-  string input_file = "";
-  string output_file = "";
+  std::string input_file = "";
+  std::string output_file = "";
   const std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("input_file", &input_file, "file to convert"),
       tensorflow::Flag("output_file", &output_file, "converted file"),
   };
-  string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc != 1 || !parse_ok) {
@@ -57,18 +58,18 @@ int main(int argc, char** argv) {
       tensorflow::Env::Default()->NewRandomAccessFile(input_file, &file));
 
   std::vector<float> floats;
-  string line;
+  std::string line;
   tensorflow::io::RandomAccessInputStream stream(file.get());
   tensorflow::io::BufferedInputStream buf(&stream, 1048576);
   while (buf.ReadLine(&line).ok()) {
     float value;
-    QCHECK(sscanf(line.c_str(), "%f", &value) != 1) << "invalid float value: "
-                                                    << line;
+    QCHECK(sscanf(line.c_str(), "%f", &value) != 1)
+        << "invalid float value: " << line;
     floats.push_back(value);
   }
 
-  tensorflow::StringPiece content(absl::bit_cast<const char*>(floats.data()),
-                                  floats.size() * sizeof(float));
+  absl::string_view content(absl::bit_cast<const char*>(floats.data()),
+                            floats.size() * sizeof(float));
   TF_CHECK_OK(tensorflow::WriteStringToFile(tensorflow::Env::Default(),
                                             output_file, content));
   return 0;

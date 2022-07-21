@@ -17,10 +17,6 @@
 Adapted from Tangent.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import inspect
 import linecache
@@ -39,8 +35,6 @@ from tensorflow.python.util import tf_inspect
 
 
 PY2_PREAMBLE = textwrap.dedent("""
-from __future__ import division
-from __future__ import print_function
 """)
 PY3_PREAMBLE = ''
 MAX_SIZE = 0

@@ -74,10 +74,15 @@ std::pair<std::string, bool> ConvertMultiXSpacesToOverviewPage(
                  << status.error_message();
     return std::make_pair("", false);
   }
-  // TODO(profiler): xspace should tell whether this is sampling mode.
-  return std::make_pair(
-      ConvertOpStatsToOverviewPage(combined_op_stats).SerializeAsString(),
-      true);
+  OverviewPage overview_page_db;
+  if (xspaces.size() == 1) {
+    overview_page_db =
+        ConvertOpStatsToOverviewPage(combined_op_stats, xspaces.at(0));
+  } else {
+    // TODO(profiler): xspace should tell whether this is sampling mode.
+    overview_page_db = ConvertOpStatsToOverviewPage(combined_op_stats);
+  }
+  return std::make_pair(overview_page_db.SerializeAsString(), true);
 }
 
 std::pair<std::string, bool> ConvertMultiXSpacesToInputPipeline(

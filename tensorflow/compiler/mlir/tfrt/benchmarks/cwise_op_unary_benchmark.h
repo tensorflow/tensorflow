@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -34,13 +35,14 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::cpu::jit::Executable;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::ReturnValueConverter;
+using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::ReturnValueConverter;
 
 // -------------------------------------------------------------------------- //
-// Run benchmark by compiling MLIR function using TFRT CPURT API.
+// Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
 template <typename T, int rank>
@@ -48,6 +50,7 @@ struct MlirBenchmark {
   std::unique_ptr<HostContext> host;
   const Executable* executable;
   tfrt::ExecutionContext exec_ctx;
+  std::unique_ptr<ResultConversionCtx> conversion_ctx;
   ReturnValueConverter<ResultConversionCtx> converter;
 };
 
@@ -55,15 +58,16 @@ template <typename T, int rank>
 MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
     llvm::StringRef mlir_input, llvm::StringRef function_name,
     std::array<MemrefDesc, 1>& operands, size_t num_threads,
-    bool lower_from_tensorflow) {
+    bool lower_from_tensorflow, bool vectorize) {
   static_assert(rank >= 1 && rank <= 4, "We do only support ranks 1 to 4");
   std::unique_ptr<HostContext> host =
       num_threads > 0 ? CreateMultiThreadedHostContext(num_threads)
                       : CreateSingleThreadedHostContext();
 
-  TfCpuRtPipelineOptions tf_cpurt_opts;
+  TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = vectorize;
   JitExecutable& jit_executable = CreateJitExecutable(
-      *host, mlir_input, function_name, lower_from_tensorflow, tf_cpurt_opts);
+      *host, mlir_input, function_name, lower_from_tensorflow, tf_jitrt_opts);
 
   // Build an ExecutionContext from the HostContext.
   llvm::Expected<RCReference<RequestContext>> req_ctx =
@@ -73,28 +77,39 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   auto result_values = std::array<RCReference<AsyncValue>, 1>{{}};
   RemainingResults results(result_values);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
+  for (auto& operand : operands) {
+    input_ptrs.push_back(operand.data());
+  }
+
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  auto ctx = std::make_unique<ResultConversionCtx>(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, *ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Get an executable that might be specialized to the operands.
-  AsyncValuePtr<Executable> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+  llvm::Expected<AsyncValuePtr<Executable>> executable =
+      jit_executable.GetExecutable(operands);
+  if (auto err = executable.takeError())
+    LOG(FATAL) << "Failed to specialize executable";
 
   // Wait for the compilation completion.
-  host->Await({executable.CopyRef()});
+  host->Await({executable->CopyRef()});
 
-  CHECK(!executable.IsError())
-      << "Failed to get executable: " << StrCat(executable.GetError());
-  CHECK(!executable->IsAsync()) << "async results are not supported";
+  CHECK(!executable->IsError())
+      << "Failed to get executable: " << StrCat(executable->GetError());
+  CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
-  return {std::move(host), &executable.get(), exec_ctx, std::move(converter)};
+  return {std::move(host), &executable->get(), exec_ctx, std::move(ctx),
+          std::move(converter)};
 }
 
 template <typename T, int rank>
 void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
                             llvm::StringRef function_name, T scale, T offset,
-                            size_t num_threads, bool lower_from_tensorflow) {
+                            size_t num_threads, bool lower_from_tensorflow,
+                            bool vectorize) {
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d)
     input_dims[d] = 10;  // The value here does not matter.
@@ -105,16 +120,21 @@ void TestUnaryMlirBenchmark(llvm::StringRef mlir_input,
   std::array<MemrefDesc, 1> operands = {TensorToMemrefDesc(input)};
 
   MlirBenchmark<T, rank> b = PrepareUnaryMlirBenchmark<T, rank>(
-      mlir_input, function_name, operands, num_threads, lower_from_tensorflow);
+      mlir_input, function_name, operands, num_threads, lower_from_tensorflow,
+      vectorize);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
+  opts.async_task_runner = &async_task_runner;
+
   // Execute once.
-  b.executable->Execute(call_frame, b.exec_ctx);
+  b.executable->Execute(call_frame, opts);
   if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
     LOG(FATAL) << "Failed to return compiled kernel results";
 }
@@ -123,7 +143,8 @@ template <typename T, int rank>
 void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
                            llvm::StringRef mlir_input,
                            llvm::StringRef function_name, T scale, T offset,
-                           size_t num_threads, bool lower_from_tensorflow) {
+                           size_t num_threads, bool lower_from_tensorflow,
+                           bool vectorize) {
   std::array<ssize_t, rank> input_dims;
   for (int d = 0; d < rank; ++d) input_dims[d] = state.range(d);
   // Generate random input data.
@@ -132,16 +153,22 @@ void RunUnaryMlirBenchmark(::testing::benchmark::State& state,
   std::array<MemrefDesc, 1> operands = {TensorToMemrefDesc(input)};
 
   MlirBenchmark<T, rank> b = PrepareUnaryMlirBenchmark<T, rank>(
-      mlir_input, function_name, operands, num_threads, lower_from_tensorflow);
+      mlir_input, function_name, operands, num_threads, lower_from_tensorflow,
+      vectorize);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err =
-          b.executable->InitializeCallFrame(operands, &call_frame, nullptr))
+  if (auto err = b.executable->InitializeCallFrame(operands, &call_frame))
     LOG(FATAL) << "Failed to initialize call frame";
 
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(b.exec_ctx.host());
+  opts.async_task_runner = &async_task_runner;
+
   for (auto _ : state) {
-    b.executable->Execute(call_frame, b.exec_ctx);
+    call_frame.args[0] = nullptr;  // reset kernel context argument
+    b.executable->Execute(call_frame, opts);
     if (auto err = b.executable->ReturnResults(b.converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
@@ -179,7 +206,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 
     using Dst = decltype(dst);
     using Expr = decltype(expr);
-    if (multiThreadedDevice.hasValue()) {
+    if (multiThreadedDevice.has_value()) {
       ExecuteAssignOp</*vectorize=*/true, Eigen::ThreadPoolDevice, Dst,
                       Expr>::run(*multiThreadedDevice, dst, expr);
     } else {
@@ -200,32 +227,47 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 // For MLIR benchmarks, we also generate a unit test to detect regressions.
 // -------------------------------------------------------------------------- //
 
-#define BM_TFMlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET,          \
-                  NUM_THREADS)                                              \
-  TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                \
-    TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,       \
-                                       NUM_THREADS,                         \
-                                       /*lower_from_tensorflow=*/true);     \
-  }                                                                         \
-  static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(                      \
-      ::testing::benchmark::State& state) {                                 \
-    RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET, \
-                                      NUM_THREADS,                          \
-                                      /*lower_from_tensorflow=*/true);      \
-  }                                                                         \
+#define BM_TFMlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, \
+                  NUM_THREADS)                                     \
+  TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {       \
+    TestUnaryMlirBenchmark<TYPE, RANK>(                            \
+        MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/false);      \
+  }                                                                \
+  static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(             \
+      ::testing::benchmark::State& state) {                        \
+    RunUnaryMlirBenchmark<TYPE, RANK>(                             \
+        state, MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,         \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/false);      \
+  }                                                                \
   BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
+
+#define BM_TFMlirVectorized(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, \
+                            NUM_THREADS)                                     \
+  TEST(Test_mlir_v_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {               \
+    TestUnaryMlirBenchmark<TYPE, RANK>(                                      \
+        MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                          \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/true);                 \
+  }                                                                          \
+  static void BM_mlir_v_##NAME##_##TYPE##_##NUM_THREADS(                     \
+      ::testing::benchmark::State& state) {                                  \
+    RunUnaryMlirBenchmark<TYPE, RANK>(                                       \
+        state, MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                   \
+        /*lower_from_tensorflow=*/true, /*vectorize=*/true);                 \
+  }                                                                          \
+  BENCHMARK(BM_mlir_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
 #define BM_Mlir(NAME, MLIR_INPUT, FN, RANK, TYPE, SCALE, OFFSET, NUM_THREADS) \
   TEST(Test_mlir_##NAME##_##TYPE##_##NUM_THREADS, RunOnce) {                  \
-    TestUnaryMlirBenchmark<TYPE, RANK>(MLIR_INPUT, FN, SCALE, OFFSET,         \
-                                       NUM_THREADS,                           \
-                                       /*lower_from_tensorflow=*/false);      \
+    TestUnaryMlirBenchmark<TYPE, RANK>(                                       \
+        MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                           \
+        /*lower_from_tensorflow=*/false, /*vectorize=*/false);                \
   }                                                                           \
   static void BM_mlir_##NAME##_##TYPE##_##NUM_THREADS(                        \
       ::testing::benchmark::State& state) {                                   \
-    RunUnaryMlirBenchmark<TYPE, RANK>(state, MLIR_INPUT, FN, SCALE, OFFSET,   \
-                                      NUM_THREADS,                            \
-                                      /*lower_from_tensorflow=*/false);       \
+    RunUnaryMlirBenchmark<TYPE, RANK>(                                        \
+        state, MLIR_INPUT, FN, SCALE, OFFSET, NUM_THREADS,                    \
+        /*lower_from_tensorflow=*/false, /*vectorize=*/false);                \
   }                                                                           \
   BENCHMARK(BM_mlir_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 

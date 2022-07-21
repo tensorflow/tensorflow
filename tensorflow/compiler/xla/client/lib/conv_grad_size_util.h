@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CONV_GRAD_SIZE_UTIL_H_
 
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 

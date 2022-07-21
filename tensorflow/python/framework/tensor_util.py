@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities to create TensorProtos."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1120,3 +1117,18 @@ def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
     shape = shape_tensor(shape)
     const_shape = constant_value_as_shape(shape)
     tensor.set_shape(const_shape)
+
+
+def try_evaluate_constant(tensor):  # pylint: disable=invalid-name
+  """Evaluates a symbolic tensor as a constant.
+
+  Args:
+    tensor: a symbolic Tensor.
+
+  Returns:
+    ndarray if the evaluation succeeds, or None if it fails.
+  """
+  # pylint: disable=protected-access
+  with tensor.graph._c_graph.get() as c_graph:
+    return c_api.TF_TryEvaluateConstant_wrapper(c_graph, tensor._as_tf_output())
+  # pylint: enable=protected-access

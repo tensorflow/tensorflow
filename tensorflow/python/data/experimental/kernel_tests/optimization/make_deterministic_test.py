@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the `MakeDeterministic` optimization."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -37,8 +33,11 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -110,6 +109,46 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.map(map_fn, num_parallel_calls=5)
       self.evaluate(variables.global_variables_initializer())
       expected_output = list(zip(range(0, 5), range(1, 6)))
+      self.assertDatasetProduces(
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def test_stateful_ops_map_with_random_ops(self):
+    with test_util.deterministic_ops():
+
+      def map_fn(x):
+        return x + random_ops.random_uniform(
+            (), 0, 2, dtype=dtypes.int64, seed=1)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.apply(testing.assert_next(["Map", "ParallelMap"]))
+      dataset = dataset.map(map_fn, num_parallel_calls=5)
+      get_next = self.getNext(dataset, requires_initialization=True)
+      for i in range(5):
+        self.assertIn(self.evaluate(get_next()), [i, i + 1])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(use_function=[False, True])))
+  def test_stateful_ops_map_ignore_input(self, use_function):
+    with test_util.deterministic_ops():
+
+      v = variables.Variable(0.)
+
+      def map_fn(x):
+        del x
+        v.assign_add(1.)
+        return math_ops.constant_op.constant(1.)
+
+      if use_function:
+        map_fn = def_function.function(map_fn)
+
+      dataset = dataset_ops.Dataset.range(5)
+      dataset = dataset.map(map_fn, num_parallel_calls=5)
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [1.] * 5
       self.assertDatasetProduces(
           dataset,
           expected_output=expected_output,
@@ -232,9 +271,11 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(dataset, expected_output=expected_output)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(use_function=[False, True])))
-  def test_text_line_dataset(self, use_function):
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              use_function=[False, True], use_control_flow=[False, True])))
+  def test_text_line_dataset(self, use_function, use_control_flow):
     self._set_seed()
     with test_util.deterministic_ops():
 
@@ -248,8 +289,17 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
       f2 = write_nums_to_file("f2", (4, 5, 6))
       f3 = write_nums_to_file("f3", (7, 8, 9))
 
-      def interleave_fn(filename):
-        return reader_ops.TextLineDataset(filename)
+      if use_control_flow:
+        def interleave_fn(filename):
+          # Test function that uses control flow. The True branch is never taken
+          concat = string_ops.string_join([filename, "abc"])
+          return control_flow_ops.cond(
+              math_ops.equal(filename, "abc"),
+              lambda: reader_ops.TextLineDataset(concat),
+              lambda: reader_ops.TextLineDataset(filename))
+      else:
+        def interleave_fn(filename):
+          return reader_ops.TextLineDataset(filename)
 
       if use_function:
         interleave_fn = def_function.function(interleave_fn)

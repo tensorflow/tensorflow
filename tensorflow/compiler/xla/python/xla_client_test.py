@@ -69,7 +69,7 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_]
+  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
     """Base class for running an XLA Computation through the local client."""
@@ -380,16 +380,45 @@ def TestFactory(xla_backend,
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-          ])
+          ],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING)
       self._ExecuteAndCompareClose(c, expected=[0.75])
+
+    def testCustomCallWithUnifiedApi(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+      for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
+        xla_client.register_custom_call_target(name, fn, platform="cpu")
+
+      opaque_str = b"foo"
+      ops.CustomCallWithLayout(
+          c,
+          b"test_add_input_and_opaque_len",
+          operands=[
+              ops.Constant(c, np.float32(1.25)),
+              ops.Constant(c, np.float32(0.5))
+          ],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()),
+          operand_shapes_with_layout=[
+              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+          ],
+          # With opaque length = 3.0
+          opaque=opaque_str,
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING_UNIFIED)
+      self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
 
   tests.append(ComputationsWithConstantsTest)
 
   class PythonCallbackTest(ComputationTest):
 
     def testPythonCallback(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       f = lambda x, y: (x + y, x - y)
@@ -406,9 +435,28 @@ def TestFactory(xla_backend,
           c, arguments=[arg0, arg1], expected=[arg0 + arg1, arg0 - arg1])
       del out, keepalive
 
+    def testPythonCallbackCanHandleExceptions(self):
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x):
+        raise ValueError("Value error raised!")
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      shape = shape.with_major_to_minor_layout_if_absent()
+      p0 = ops.Parameter(c, 0, shape)
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0], [shape], has_side_effects=True)
+      with self.assertRaisesRegex(xla_client.XlaRuntimeError,
+                                  "Value error raised!"):
+        self._Execute(c, [arg0])
+      del out, keepalive
+
     def testTokens(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x, y):
@@ -427,8 +475,8 @@ def TestFactory(xla_backend,
       del out, keepalive
 
     def testStriding(self):
-      if self.backend.platform != "cpu":
-        self.skipTest("Test requires cpu platform")
+      if self.backend.platform not in {"cpu", "gpu"}:
+        self.skipTest("Test requires cpu or gpu platform")
       c = self._NewComputation()
 
       def _Callback(x):
@@ -544,7 +592,7 @@ def TestFactory(xla_backend,
       compiled_c = self.backend.compile(c.build())
       arg_buffer = self.backend.buffer_from_pyval(arg)
       arg_buffer.delete()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         compiled_c.execute([arg_buffer])
 
     def testXlaShape(self):
@@ -561,14 +609,29 @@ def TestFactory(xla_backend,
       self.assertEqual(a, b)
       self.assertNotEqual(b, c)
 
-    def testBlockHostUntilReadyWorks(self):
+    def testLayout(self):
+      f32 = xla_client.PrimitiveType.F32
+      a = xla_client.Shape.array_shape(f32, (2, 3), (0, 1)).layout()
+      b = xla_client.Shape.array_shape(f32, (2, 3), (0, 1)).layout()
+      c = xla_client.Shape.array_shape(f32, (2, 3), (1, 0)).layout()
+      self.assertEqual(a.minor_to_major(), (0, 1))
+      self.assertEqual(b.minor_to_major(), (0, 1))
+      self.assertEqual(c.minor_to_major(), (1, 0))
+      self.assertEqual(a, b)
+      self.assertNotEqual(a, c)
+      self.assertNotEqual(b, c)
+      self.assertEqual(hash(a), hash(b))
+      self.assertNotEqual(hash(a), hash(c))
+      self.assertNotEqual(hash(b), hash(c))
+
+    def testBlockUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)
-      arg_buffer.block_host_until_ready()
+      arg_buffer.block_until_ready()
       # This test merely checks that nothing goes awry when we call
-      # block_host_until_ready(); it's difficult to test anything else.
+      # block_until_ready(); it's difficult to test anything else.
 
-    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+    def testBlockUntilReadyRaisesOnDeletedBuffer(self):
       arg = np.array([[1., 2.]], np.float32)
       buffer = self.backend.buffer_from_pyval(arg)
       buffer.delete()
@@ -576,7 +639,7 @@ def TestFactory(xla_backend,
           RuntimeError,
           re.escape(
               "BlockHostUntilReady() called on deleted or donated buffer")):
-        buffer.block_host_until_ready()
+        buffer.block_until_ready()
 
     def testDeviceArrayBaseSignatures(self):
       # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
@@ -595,9 +658,12 @@ def TestFactory(xla_backend,
       self.assertEqual(buffer.ndim, 2)
 
       self.assertIs(buffer, buffer.block_until_ready())
+      self.assertTrue(buffer.is_ready())
       buffer.delete()
-      with self.assertRaises(RuntimeError):
+      with self.assertRaises(xla_client.XlaRuntimeError):
         buffer.block_until_ready()
+      with self.assertRaises(xla_client.XlaRuntimeError):
+        buffer.is_ready()
 
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
@@ -990,6 +1056,35 @@ def TestFactory(xla_backend,
           [330., 380., 160.],
           [0., 0., 0.],
           [480., 530., 220.],
+      ]]])
+      self._ExecuteAndCompareClose(c, expected=[result])
+
+    def testConvGeneralDilatedWindowReversalF32(self):
+      c = self._NewComputation()
+      a = lambda *dims: np.arange(np.prod(dims)).reshape(dims).astype("float32")
+      lhs = a(1, 1, 2, 3)
+      rhs = a(1, 1, 1, 2) * 10
+      strides = [1, 1]
+      pads = [(1, 0), (0, 1)]
+      lhs_dilation = (2, 1)
+      rhs_dilation = (1, 1)
+      window_reversal = [False, True]
+      dimension_numbers = xla_client.make_convolution_dimension_numbers(
+          ("NCHW", "OIHW", "NCHW"), 2)
+      ops.ConvGeneralDilated(
+          ops.Constant(c, lhs),
+          ops.Constant(c, rhs),
+          strides,
+          pads,
+          lhs_dilation,
+          rhs_dilation,
+          dimension_numbers,
+          window_reversal=window_reversal)
+      result = np.array([[[
+          [0., 0., 0.],
+          [0., 10., 20.],
+          [0., 0., 0.],
+          [30., 40., 50.],
       ]]])
       self._ExecuteAndCompareClose(c, expected=[result])
 
@@ -1503,6 +1598,57 @@ def TestFactory(xla_backend,
                        dtype=np.float32)
           ],
           rtol=1e-4)
+
+    def testApproxTopK(self):
+      if self.backend.platform != "tpu":
+        self.skipTest("ApproxTopK is only supported on TPU")
+      k = 10
+      qy_size = 256
+      db_size = 3000
+      feature = 128
+      recall_target = 0.95
+      b = self._NewComputation()
+      p0 = ops.Parameter(b, 0, xla_client.shape_from_pyval(NumpyArrayF32(0)))
+      q0 = ops.Parameter(b, 1, xla_client.shape_from_pyval(NumpyArrayF32(0)))
+      ops.Parameter(b, 2, xla_client.shape_from_pyval(NumpyArrayS32(0)))
+      ops.Parameter(b, 3, xla_client.shape_from_pyval(NumpyArrayS32(0)))
+      ops.Gt(p0, q0)
+      comparator = b.build()
+      qy_shape = [qy_size, feature]
+      db_shape = [feature, db_size]
+      rng = np.random.RandomState(0)
+      qy_arg = rng.randn(*qy_shape).astype(np.float32)
+      db_arg = rng.randn(*db_shape).astype(np.float32)
+      b = self._NewComputation()
+      qy = ops.Parameter(b, 0, xla_client.shape_from_pyval(qy_arg))
+      db = ops.Parameter(b, 1, xla_client.shape_from_pyval(db_arg))
+      scores = ops.Dot(qy, db)
+      iota = ops.Iota(
+          b,
+          xla_client.Shape.array_shape(xla_client.PrimitiveType.S32,
+                                       (qy_size, db_size)), 1)
+      init_val = ops.Constant(b, np.float32(-1))
+      init_arg = ops.Constant(b, np.int32(-1))
+      ground_truth = ops.TopK(scores, k=k)
+      approx_topk = ops.ApproxTopK(
+          b, [scores, iota], [init_val, init_arg],
+          top_k=k,
+          reduction_dim=1,
+          comparator=comparator,
+          recall_target=recall_target)
+      ops.Tuple(b, [
+          ops.GetTupleElement(ground_truth, 1),
+          ops.GetTupleElement(approx_topk, 1)
+      ])
+      results = self._Execute(b, [qy_arg, db_arg])
+      ground_truth_docids = [set(x) for x in results[0]]
+      hits = sum(
+          len(
+              list(x
+                   for x in approx_topk_per_q
+                   if x in ground_truth_docids[q]))
+          for q, approx_topk_per_q in enumerate(results[1]))
+      self.assertGreater(hits / (qy_size * k), recall_target)
 
     def testIsConstant(self):
       c = self._NewComputation()
@@ -2146,6 +2292,12 @@ def TestFactory(xla_backend,
       self.gpu_backend = (
           self.backend if self.backend.platform == "gpu" else None)
 
+    def tearDown(self):
+      super().tearDown()
+      del self.backend
+      del self.cpu_backend
+      del self.gpu_backend
+
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
@@ -2490,6 +2642,125 @@ def TestFactory(xla_backend,
       self.assertNotEmpty(serialized)
 
   tests.append(DeviceAssignmentTest)
+
+  class HostCallbackTest(ComputationTest):
+    """Tests related to HostCallback."""
+
+    @unittest.skipIf(not tfrt_tpu, "not implemented")
+    def testHostCallback(self):
+
+      c = self._NewComputation()
+      token = ops.CreateToken(c)
+
+      frontend_attributes = xla_client._xla.FrontendAttributes()
+      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
+      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
+      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
+      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
+      c.set_frontend_attributes(frontend_attributes)
+
+      send_channel_handle = self.backend.create_channel_handle()
+      send_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
+      send_channel_handle.handle = 1
+      ops.SendToHost(
+          ops.Constant(c, np.float32(1.25)),
+          token,
+          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
+          handle=send_channel_handle)
+
+      recv_channel_handle = self.backend.create_channel_handle()
+      recv_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
+      recv_channel_handle.handle = 2
+      data = ops.RecvFromHost(
+          token,
+          shape=xla_client.Shape.scalar_shape(np.dtype(np.float32)),
+          handle=recv_channel_handle)
+      ops.GetTupleElement(data, 0)
+
+      def Identity(x):
+        return (x,)
+
+      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
+          Identity,
+          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
+          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.float32))],
+          send_channel_ids=[1],
+          recv_channel_ids=[2])
+
+      compiled_c = self.backend.compile(
+          c.build(), host_callbacks=[host_callback])
+      c.clear_frontend_attributes()
+
+      results = compiled_c.execute([])
+      self.assertLen(results, 1)
+
+      np.testing.assert_equal(results[0].to_py(), np.float32(1.25))
+
+  tests.append(HostCallbackTest)
+
+  class HostCallbackMultiReplicaTest(ComputationTest):
+    """Tests related to HostCallback for multi-replica execution."""
+
+    @unittest.skipIf(not tfrt_tpu, "not implemented")
+    def testHostCallbackMultiReplica(self):
+
+      c = self._NewComputation()
+      token = ops.CreateToken(c)
+
+      frontend_attributes = xla_client._xla.FrontendAttributes()
+      frontend_attributes["_xla_host_transfer_rendezvous"] = "undef"
+      frontend_attributes["_xla_host_transfer_original_type"] = "u32"
+      frontend_attributes["_xla_host_transfer_is_lower_bits"] = "false"
+      frontend_attributes["_xla_host_transfer_handler_name"] = "undef"
+      c.set_frontend_attributes(frontend_attributes)
+
+      send_channel_handle = self.backend.create_channel_handle()
+      send_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.DEVICE_TO_HOST)
+      send_channel_handle.handle = 1
+      ops.SendToHost(
+          ops.ReplicaId(c),
+          token,
+          shape_with_layout=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
+          handle=send_channel_handle)
+
+      recv_channel_handle = self.backend.create_channel_handle()
+      recv_channel_handle.type = (
+          xla_client._xla.ChannelHandle_ChannelType.HOST_TO_DEVICE)
+      recv_channel_handle.handle = 2
+      data = ops.RecvFromHost(
+          token,
+          shape=xla_client.Shape.scalar_shape(np.dtype(np.uint32)),
+          handle=recv_channel_handle)
+      ops.GetTupleElement(data, 0)
+
+      def Identity(x):
+        return (x,)
+
+      host_callback = self.backend.make_python_callback_from_host_send_and_recv(
+          Identity,
+          operand_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
+          result_shapes=[xla_client.Shape.scalar_shape(np.dtype(np.uint32))],
+          send_channel_ids=[1],
+          recv_channel_ids=[2])
+
+      num_replicas = 2
+      options = xla_client.CompileOptions()
+      options.num_replicas = num_replicas
+      compiled_c = self.backend.compile(
+          c.build(), compile_options=options, host_callbacks=[host_callback])
+      c.clear_frontend_attributes()
+
+      results = compiled_c.execute_sharded_on_local_devices([])
+      self.assertLen(results, 1)
+      self.assertLen(results[0], num_replicas)
+
+      for i in range(num_replicas):
+        np.testing.assert_equal(results[0][i].to_py(), np.uint32(i))
+
+  tests.append(HostCallbackMultiReplicaTest)
 
   return tests
 

@@ -15,10 +15,6 @@
 # ==============================================================================
 """Utilities for collectives."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import enum
 
@@ -96,8 +92,8 @@ class _OptionsExported(object):
     Args:
       bytes_per_pack: a non-negative integer. Breaks collective operations into
         packs of certain size. If it's zero, the value is determined
-        automatically. This only applies to all-reduce with
-        `MultiWorkerMirroredStrategy` currently.
+        automatically. This hint is respected by all multi-replica strategies
+        except `TPUStrategy`.
       timeout_seconds: a float or None, timeout in seconds. If not None, the
         collective raises `tf.errors.DeadlineExceededError` if it takes longer
         than this timeout. Zero disables timeout. This can be useful when
@@ -162,6 +158,11 @@ class Options(object):
     if options.implementation != CommunicationImplementation.AUTO:
       merged.implementation = options.implementation
     return merged
+
+  def __str__(self):
+    return (f"Options(bytes_per_pack={self.bytes_per_pack},"
+            f"timeout_seconds={self.timeout_seconds}, "
+            f"implementation={self.implementation})")
 
 
 @tf_export("distribute.experimental.CollectiveHints")

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -82,7 +81,7 @@ Status BFloat16ConversionFoldingVisitor::FoldOutputConversions(
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(hlo));
     changed_ = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
@@ -93,7 +92,7 @@ Status BFloat16ConversionFoldingVisitor::FoldOperandConversion(
   TF_RETURN_IF_ERROR(
       hlo->ReplaceOperandWith(operand_index, operand->mutable_operand(0)));
   changed_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -144,7 +143,7 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
         (!fold_output_conversion && hlo->shape().element_type() == F32)) {
       // Some of the operands/output will remain F32, but we cannot use mixed
       // precisions, so we cannot do anything here.
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -155,7 +154,7 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
   for (int64_t i : bf16_to_f32_operands) {
     TF_RETURN_IF_ERROR(FoldOperandConversion(hlo, i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
@@ -175,14 +174,14 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kConditional ||                //
       HloDataflowAnalysis::IsInPlaceOperation(hlo->opcode()) ||  //
       hlo->HasSideEffectNoRecurse()) {
-    return Status::OK();
+    return OkStatus();
   }
   if (hlo == computation_->root_instruction() &&
       !bfloat16_support_->SupportsMixedPrecisions(*hlo)) {
     // If hlo is the root instruction, we cannot change its output, so folding
     // can only happen when it supports mixed precision so that we can change
     // its operands.
-    return Status::OK();
+    return OkStatus();
   }
   return TryFoldBF16Conversions(hlo);
 }
@@ -190,26 +189,26 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
 Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
   if (crs->HasSideEffectNoRecurse()) {
     // Do not perform optimization on side-effected AllReduce.
-    return Status::OK();
+    return OkStatus();
   }
   // First use DefaultAction() to handle the operands. It can't handle
   // tuple-shaped output.
   TF_RETURN_IF_ERROR(DefaultAction(crs));
 
   if (!bfloat16_support_->SupportsMixedPrecisions(*crs)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If the output is not a tuple, we don't need special handling.
   if (!crs->shape().IsTuple()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If crs is the root instruction, we should keep its original output type.
   // The root instruction implicitly has a use from being the result of the
   // computation, and the code below does not take this use into account.
   if (crs == computation_->root_instruction()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Then do per-tuple-element handling on the output.
@@ -217,7 +216,7 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
       crs->operand_count());
   for (auto user : crs->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
-      return Status::OK();
+      return OkStatus();
     }
     per_tuple_element_gtes[user->tuple_index()].push_back(user);
   }
@@ -250,14 +249,16 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<bool> BFloat16ConversionFolding::Run(HloModule* module) {
+StatusOr<bool> BFloat16ConversionFolding::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "BFloat16ConversionFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (BFloat16ConversionFoldingVisitor::Run(comp, bfloat16_support_, this)) {
       changed = true;
     }

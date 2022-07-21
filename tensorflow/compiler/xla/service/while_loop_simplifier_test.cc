@@ -45,19 +45,19 @@ HloInstruction* FindFirstWhile(HloModule* m) {
 class WhileLoopSimplifierTest : public HloTestBase {
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
-  TF_MUST_USE_RESULT std::unique_ptr<VerifiedHloModule>
-  MakeModuleWithSimpleLoop(int num_iters);
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule> MakeModuleWithSimpleLoop(
+      int num_iters);
 
   // Similar to MakeModuleWithSimpleLoop except that the loop bound is passed to
   // the loop-condition through an element of a tuple which is the
   // loop-condition parameter.
-  TF_MUST_USE_RESULT std::unique_ptr<VerifiedHloModule>
+  [[nodiscard]] std::unique_ptr<VerifiedHloModule>
   MakeModuleWithSimpleLoopTupleElementLoopBound(int num_iters);
 };
 
 std::unique_ptr<VerifiedHloModule>
 WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
-  string hlo_string_template = R"(
+  std::string hlo_string_template = R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -83,7 +83,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
   }
   )";
 
-  string hlo_string = absl::StrReplaceAll(
+  std::string hlo_string = absl::StrReplaceAll(
       hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(42 + num_iters)}});
   return ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
 }
@@ -91,7 +91,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
 std::unique_ptr<VerifiedHloModule>
 WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
     int num_iters) {
-  string hlo_string_template = R"(
+  std::string hlo_string_template = R"(
   HloModule SimpleLoopWithIndirectLoopBound
   SimpleLoopWithIndirectLoopBound.body {
     loop_var.1 = (s32[], s32[3]{0}, s32[]) parameter(0)
@@ -121,7 +121,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
   }
   )";
 
-  string hlo_string = absl::StrReplaceAll(
+  std::string hlo_string = absl::StrReplaceAll(
       hlo_string_template, {{"{{LOOP_BOUND}}", absl::StrCat(42 + num_iters)}});
   return ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
 }
@@ -240,7 +240,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedInCondNotSimplified) {
 
 // A non-tuple shaped loop shouldn't be simplified or crash the compiler.
 TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
  HloModule NonTupleShapedLoop
  NonTupleShapedLoop.body {
    loop_var.1 = s32[] parameter(0)
@@ -268,7 +268,7 @@ TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
 // can't be simplified as the result of the swapping is visible to users of the
 // loop.
 TEST_F(WhileLoopSimplifierTest, LoopSwappingTupleElementsNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule SwappingTupleElements
   SwappingTupleElements.body {
     loop_var = (s32[], s32[]) parameter(0)
@@ -301,7 +301,7 @@ TEST_F(WhileLoopSimplifierTest, LoopSwappingTupleElementsNotSimplified) {
 // value.
 TEST_F(WhileLoopSimplifierTest,
        LoopWithUnusedButModifiedTupleElementNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule UnusedButModifiedTupleElement
   UnusedButModifiedTupleElement.body {
     loop_var = (s32[]) parameter(0)
@@ -330,7 +330,7 @@ TEST_F(WhileLoopSimplifierTest,
 // outside the loop.
 TEST_F(WhileLoopSimplifierTest,
        LoopWithUnusedOutsideLoopButModifiedTupleElementSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule UnusedButModifiedTupleElement
   UnusedButModifiedTupleElement.body {
     loop_var = (s32[], s32[]) parameter(0)
@@ -364,7 +364,7 @@ TEST_F(WhileLoopSimplifierTest,
 
 // Nothing to simplify in a while loop whose tuple has 0 elements.
 TEST_F(WhileLoopSimplifierTest, LoopWithEmptyTupleNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule EmptyTuple
   EmptyTuple.body {
     loop_var = () parameter(0)
@@ -388,7 +388,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithEmptyTupleNotSimplified) {
 // While loop where one tuple element is used twice in the body, and thus can't
 // be simplified away.
 TEST_F(WhileLoopSimplifierTest, LoopWithElemUsedTwiceNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule ElemUsedTwice
   ElemUsedTwice.body {
     param0 = (s32[], s32[]) parameter(0)
@@ -417,7 +417,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithElemUsedTwiceNotSimplified) {
 // removed. Element 1 is used by the loop body, and element 2 is used by the
 // loop condition; these two should stay.
 TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule RemoveUnusedOperands
   RemoveUnusedOperands.body {
     loop_var = (s32[], s32[], s32[]) parameter(0)
@@ -485,7 +485,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
 // side-effecting instruction.
 TEST_F(WhileLoopSimplifierTest,
        RemoveUnusedLoopOperandsDespiteSideEffectingOps) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule RemoveUnusedOperands
   body {
     loop_var = (s32[]) parameter(0)
@@ -523,7 +523,7 @@ TEST_F(WhileLoopSimplifierTest,
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule BodyHasNonTupleRoot
   BodyHasNonTupleRoot.passthrough {
     ROOT param = (s32[], s32[]) parameter(0)
@@ -546,7 +546,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {
 
 TEST_F(WhileLoopSimplifierTest,
        LoopWithNonTupleBodyRootInstructionNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}) parameter(0)
@@ -578,7 +578,7 @@ TEST_F(WhileLoopSimplifierTest,
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule SimpleLoop
   SimpleLoop.body {
     loop_var.1 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
@@ -610,7 +610,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
 }
 
 TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule Test
   Body {
     param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
@@ -664,7 +664,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
 // leaving us with a nullary loop.  This is a special case, we just replace the
 // loop with its init.
 TEST_F(WhileLoopSimplifierTest, OnlyConstantsInLoopCarry) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule Test
   Body {
     param = (s32[1]) parameter(0)
@@ -690,7 +690,7 @@ TEST_F(WhileLoopSimplifierTest, OnlyConstantsInLoopCarry) {
 }
 
 TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule Test
   Body {
     param = (s32[1], s32[2], s32[3]) parameter(0)
@@ -787,8 +787,8 @@ const char* const kSimpleMergeInductionVariablesModule = R"(
   })";
 
 TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_Simple) {
-  string hlo_string = absl::StrReplaceAll(kSimpleMergeInductionVariablesModule,
-                                          {{"TYPE", "s32"}});
+  std::string hlo_string = absl::StrReplaceAll(
+      kSimpleMergeInductionVariablesModule, {{"TYPE", "s32"}});
 
   auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
@@ -825,8 +825,8 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_Simple) {
 // We shouldn't merge S16 induction variables; we can't create constants of this
 // type because S16 literals are not implemented.
 TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_SkipS16) {
-  string hlo_string = absl::StrReplaceAll(kSimpleMergeInductionVariablesModule,
-                                          {{"TYPE", "s16"}});
+  std::string hlo_string = absl::StrReplaceAll(
+      kSimpleMergeInductionVariablesModule, {{"TYPE", "s16"}});
   EXPECT_FALSE(
       WhileLoopSimplifier()
           .Run(ParseAndReturnVerifiedModule(hlo_string).ValueOrDie().get())
@@ -834,7 +834,7 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_SkipS16) {
 }
 
 TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule SwappingTupleElements
 
   SwappingTupleElements.body {
@@ -877,6 +877,82 @@ TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
+}
+
+// A group of elements are inter-dependent, but unused as by the output.
+TEST_F(WhileLoopSimplifierTest, LoopWithUnusedGroupSimplified) {
+  const std::string hlo_string = R"(
+  HloModule LoopWithUnusedGroupSimplified
+  LoopWithUnusedGroupSimplified.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    constant.1 = s32[] constant(1)
+    gte0 = s32[] get-tuple-element(loop_var), index=1
+    gte1 = s32[] get-tuple-element(loop_var), index=2
+    add = s32[] add(gte0, gte1)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(constant.1, add, add)
+  }
+  LoopWithUnusedGroupSimplified.cond {
+    param = (s32[], s32[], s32[]) parameter(0)
+    gte.cond = s32[] get-tuple-element(param), index=0
+    constant.3 = s32[] constant(1)
+    ROOT lt = pred[] compare(gte.cond, constant.3), direction=LT
+  }
+  ENTRY  LoopWithUnusedGroupSimplified {
+    constant.2 = s32[] constant(0)
+    tuple.1 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+    while = (s32[], s32[], s32[]) while(tuple.1),
+      condition=LoopWithUnusedGroupSimplified.cond,
+      body=LoopWithUnusedGroupSimplified.body
+    ROOT gte = s32[] get-tuple-element(while), index=0
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+  EXPECT_TRUE(HloDCE().Run(m.get()).ok());
+  auto m_while = AllOf(op::While(), op::Shape("(s32[])"));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              op::GetTupleElement(m_while));
+}
+
+// An element is not a passthrough, but it's not used by other elements.
+TEST_F(WhileLoopSimplifierTest, LoopWithUnusedNonPassthroughElementSimplified) {
+  const std::string hlo_string = R"(
+  HloModule LoopWithUnusedNonPassthroughElementSimplified
+  LoopWithUnusedNonPassthroughElementSimplified.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    constant.1 = s32[] constant(1)
+    gte0 = s32[] get-tuple-element(loop_var), index=1
+    gte1 = s32[] get-tuple-element(loop_var), index=2
+    add = s32[] add(gte0, gte1)
+    add2 = s32[] add(gte0, gte0)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(constant.1, add2, add)
+  }
+  LoopWithUnusedNonPassthroughElementSimplified.cond {
+    param = (s32[], s32[], s32[]) parameter(0)
+    gte.cond = s32[] get-tuple-element(param), index=0
+    constant.3 = s32[] constant(1)
+    ROOT lt = pred[] compare(gte.cond, constant.3), direction=LT
+  }
+  ENTRY  LoopWithUnusedNonPassthroughElementSimplified {
+    constant.2 = s32[] constant(0)
+    tuple.1 = (s32[], s32[], s32[]) tuple(constant.2, constant.2, constant.2)
+    while = (s32[], s32[], s32[]) while(tuple.1),
+      condition=LoopWithUnusedNonPassthroughElementSimplified.cond,
+      body=LoopWithUnusedNonPassthroughElementSimplified.body
+    gte2 = s32[] get-tuple-element(while), index=0
+    gte3 = s32[] get-tuple-element(while), index=1
+    ROOT tuple.2 = (s32[], s32[]) tuple(gte2, gte3)
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+  EXPECT_TRUE(HloDCE().Run(m.get()).ok());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              AllOf(op::While(), op::Shape("(s32[], s32[])")));
 }
 
 }  // namespace

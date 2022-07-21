@@ -20,10 +20,6 @@ See the [Inputs and
 Readers](https://tensorflow.org/api_guides/python/io_ops) guide.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -218,7 +214,7 @@ def serialize_tensor(tensor, name=None):
 
 
 @tf_export(v1=["ReaderBase"])
-class ReaderBase(object):
+class ReaderBase:
   """Base class for different Reader types, that produce a record every step.
 
   Conceptually, Readers convert string 'work units' into records (key,

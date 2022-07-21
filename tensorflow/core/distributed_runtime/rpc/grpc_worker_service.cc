@@ -432,7 +432,7 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
 
 void GrpcWorker::EnableResponseCache() {
   VLOG(3) << "Enabling gRPC tensor response cache.";
-  response_cache_ = absl::make_unique<GrpcResponseCache>();
+  response_cache_ = std::make_unique<GrpcResponseCache>();
 }
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
@@ -502,13 +502,17 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
   }
 
   // Request the tensor associated with the rendezvous key.
-  // Note that we log the cancellation here but do not abort the current step.
-  // gRPC can generate cancellations in response to transient network failures,
-  // and aborting the step eliminates the opportunity for client side retries.
-  // Repeated client failures will eventually cause the step to be aborted by
-  // the client.
-  opts->SetCancelCallback(
-      [step_id]() { LOG(WARNING) << "RecvTensor cancelled for " << step_id; });
+  // Any time while waiting for the tensor to be produced, up until the start of
+  // execution of the callback lambda body below, an RPC cancellation should
+  // abort the rendezvous.
+  // Note that gRPC can generate cancellations in response to transient network
+  // failures, and the client might not observe any errors or cancellations but
+  // simply waits for the responses. Aborting the step would report an error to
+  // the client, and avoid permanent hanging in distributed function execution.
+  opts->SetCancelCallback([this, step_id]() {
+    LOG(WARNING) << "RecvTensor cancelled for " << step_id;
+    AbortStep(step_id);
+  });
   env_->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
       [opts, rendezvous_done, src_dev, request](
@@ -526,7 +530,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
           const bool on_host = send_args.alloc_attrs.on_host();
           {
             // Non-DMA cases.
-            if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
+            if (src_dev->tensorflow_accelerator_device_info() && (!on_host)) {
               DeviceContext* send_dev_context = send_args.device_context;
               AllocatorAttributes alloc_attrs;
               alloc_attrs.set_gpu_compatible(true);
@@ -534,8 +538,8 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
               Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
               Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
               CHECK(send_dev_context)
-                  << "send dev name: " << src_dev->name()
-                  << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
+                  << "send dev name: " << src_dev->name() << " gpu_info: "
+                  << src_dev->tensorflow_accelerator_device_info();
               // "val" is on an accelerator device. Uses the device_context to
               // fill the copy on host.
               StatusCallback copy_ready = [rendezvous_done, copy,
@@ -726,7 +730,7 @@ void GrpcWorker::LoggingAsync(const LoggingRequest* request,
       }
     }
   }
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void GrpcWorker::CleanupGraphAsync(const CleanupGraphRequest* request,

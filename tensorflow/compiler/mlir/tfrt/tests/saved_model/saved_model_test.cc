@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -34,7 +34,8 @@ TEST(SavedModelTest, MapSignatures) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
-  auto module = mlir::parseSourceFile(saved_model_mlir_path, &context);
+  auto module =
+      mlir::parseSourceFile<mlir::ModuleOp>(saved_model_mlir_path, &context);
   ASSERT_TRUE(module);
 
   std::vector<std::string> inputs;
@@ -91,7 +92,8 @@ TEST(SavedModelTest, CompileToBEF) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
-  auto module = mlir::parseSourceFile(saved_model_mlir_path, &context);
+  auto module =
+      mlir::parseSourceFile<mlir::ModuleOp>(saved_model_mlir_path, &context);
   ASSERT_TRUE(module);
 
   tfrt::BefBuffer bef_buffer;

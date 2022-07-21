@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
@@ -150,7 +151,7 @@ class BatchResource : public serving::BatchResourceBase {
                                allowed_batch_sizes,
                                enable_large_batch_splitting),
         allowed_batch_sizes));
-    return Status::OK();
+    return OkStatus();
   }
 
   static Status Create(
@@ -170,7 +171,7 @@ class BatchResource : public serving::BatchResourceBase {
             max_batch_size, batch_timeout_micros, max_enqueued_batches,
             true /* enable large batch split */, allowed_batch_sizes),
         allowed_batch_sizes));
-    return Status::OK();
+    return OkStatus();
   }
 
   string DebugString() const final { return "BatchResource"; }
@@ -333,7 +334,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           handle, flib_, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
   } else {
     creator = [this, handle](BatchResource** r) {
@@ -343,7 +344,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           max_enqueued_batches_, allowed_batch_sizes_, handle, flib_,
           enable_large_batch_splitting_, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
   }
 
@@ -428,7 +429,7 @@ Status BatchFunctionKernel::GetOrCreateFunctionHandle(
   } else {
     *handle = fhandle_.value();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates 'allowed_batch_sizes_'. The entries must increase monotonically.
@@ -437,7 +438,7 @@ Status BatchFunctionKernel::GetOrCreateFunctionHandle(
 // to `max_batch_size_`.
 Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
   if (allowed_batch_sizes_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   int32_t last_size = 0;
   for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -456,7 +457,7 @@ Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
 
     last_size = size;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Initialize vars by reading from op-kernel-construction.
@@ -528,6 +529,12 @@ REGISTER_KERNEL_BUILDER(Name("BatchFunction")
                             .HostMemory("captured_tensors")
                             .HostMemory("out_tensors"),
                         BatchFunctionKernel);
+REGISTER_KERNEL_BUILDER(Name("BatchFunction")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("in_tensors")
+                            .HostMemory("captured_tensors")
+                            .HostMemory("out_tensors"),
+                        BatchFunctionKernel);
 
 class BatchKernel : public AsyncOpKernel {
  public:
@@ -559,7 +566,7 @@ class BatchKernel : public AsyncOpKernel {
           max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
           /*flib=*/nullptr, false, &new_resource));
       *r = new_resource.release();
-      return Status::OK();
+      return OkStatus();
     };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
@@ -576,7 +583,7 @@ class BatchKernel : public AsyncOpKernel {
   // monotonically, and the last one must equal 'max_batch_size_'.
   Status ValidateAllowedBatchSizes() const {
     if (allowed_batch_sizes_.empty()) {
-      return Status::OK();
+      return OkStatus();
     }
     int32_t last_size = 0;
     for (size_t i = 0; i < allowed_batch_sizes_.size(); ++i) {
@@ -591,7 +598,7 @@ class BatchKernel : public AsyncOpKernel {
       }
       last_size = size;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -648,6 +655,12 @@ class UnbatchResource : public ResourceBase {
           batch_index_t.shape().dim_size(1), ".");
     }
 
+    if (!TensorShapeUtils::IsScalar(context->input(2).shape())) {
+      return errors::InvalidArgument(
+          "Input id should be scalar; "
+          "Got: ",
+          context->input(2).DebugString(), ".");
+    }
     const int64_t batch_key = context->input(2).scalar<int64_t>()();
     const bool nonempty_input = batch_index_t.dim_size(0) > 0;
 
@@ -679,7 +692,7 @@ class UnbatchResource : public ResourceBase {
         context->set_output(0, tensor_it->second.tensor);
         waiting_tensors_.erase(tensor_it);
         done_callbacks_to_call.push_back(done);
-        return Status::OK();
+        return OkStatus();
       }
 
       const uint64 deadline_micros =
@@ -718,7 +731,7 @@ class UnbatchResource : public ResourceBase {
         }
       }
 
-      return Status::OK();
+      return OkStatus();
     }();
 
     for (const AsyncOpKernel::DoneCallback& done_callback :
@@ -811,7 +824,7 @@ class UnbatchKernel : public AsyncOpKernel {
     std::function<Status(UnbatchResource**)> creator =
         [this](UnbatchResource** r) {
           *r = new UnbatchResource(timeout_micros_);
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
@@ -870,7 +883,7 @@ class UnbatchGradResource : public ResourceBase {
         return errors::InvalidArgument("Unsupported data type: ", type);
     }
     done();
-    return Status::OK();
+    return OkStatus();
   }
 
   // Ingests data from one invocation of the op.
@@ -879,8 +892,13 @@ class UnbatchGradResource : public ResourceBase {
     const Tensor& data_t = context->input(0);
     const Tensor& batch_index_t = context->input(1);
     const Tensor& grad_t = context->input(2);
+    const Tensor& batch_key_t = context->input(3);
 
     mutex_lock ml(mu_);
+    if (batch_key_t.NumElements() != 1) {
+      return errors::InvalidArgument("Expected `id` to be scalar. Received ",
+                                     batch_key_t.DebugString());
+    }
 
     const int64_t batch_key = context->input(3).scalar<int64_t>()();
     // Mark our tensor as available.
@@ -896,6 +914,11 @@ class UnbatchGradResource : public ResourceBase {
             "batch_index is empty while the tensor isn't.");
       }
       std::unordered_set<int64_t> missing_tensors;
+      if (batch_index_t.NumElements() != batch_index_t.dim_size(0) * 3) {
+        return errors::InvalidArgument(
+            "batch_index should contain ", batch_index_t.dim_size(0) * 3,
+            " elements. Received ", batch_index_t.NumElements());
+      }
       const auto batch_index =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
@@ -947,7 +970,7 @@ class UnbatchGradResource : public ResourceBase {
         available_batches_.erase(batch_it);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -997,7 +1020,7 @@ class UnbatchGradKernel : public AsyncOpKernel {
     std::function<Status(UnbatchGradResource**)> creator =
         [](UnbatchGradResource** r) {
           *r = new UnbatchGradResource();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(

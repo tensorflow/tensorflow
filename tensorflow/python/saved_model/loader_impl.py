@@ -15,10 +15,6 @@
 """Loader implementation for SavedModel with hermetic, language-neutral exports.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 
@@ -58,7 +54,7 @@ def parse_saved_model_with_debug_info(export_dir):
     IOError: If the saved model file does not exist, or cannot be successfully
     parsed. Missing graph debug info file is fine.
   """
-  saved_model = _parse_saved_model(export_dir)
+  saved_model = parse_saved_model(export_dir)
 
   debug_info_path = file_io.join(
       saved_model_utils.get_debug_dir(export_dir),
@@ -120,11 +116,6 @@ def parse_saved_model(export_dir):
         f"SavedModel file does not exist at: {export_dir}{os.path.sep}"
         f"{{{constants.SAVED_MODEL_FILENAME_PBTXT}|"
         f"{constants.SAVED_MODEL_FILENAME_PB}}}")
-
-
-# TODO(b/120594573): Make this symbol also available as private, so that
-# tensorflow_transform and tensorflow_estimator do not break.
-_parse_saved_model = parse_saved_model
 
 
 def get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
@@ -265,12 +256,14 @@ def contains_saved_model(export_dir):
   provides no guarantee that it can be loaded.
 
   Args:
-    export_dir: Absolute string path to possible export location. For example,
+    export_dir: Absolute path to possible export location. For example,
                 '/my/foo/model'.
 
   Returns:
     True if the export directory contains SavedModel files, False otherwise.
   """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
   return maybe_saved_model_directory(export_dir)
 
 

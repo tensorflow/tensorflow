@@ -23,11 +23,13 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_test_util.h"
 
 namespace tflite {
 namespace subgraph_test_util {
@@ -121,18 +123,15 @@ class SubgraphBuilder {
   std::vector<void*> buffers_;
 };
 
-class ControlFlowOpTest : public ::testing::Test {
+class ControlFlowOpTest : public InterpreterTest {
  public:
-  ControlFlowOpTest()
-      : interpreter_(new Interpreter), builder_(new SubgraphBuilder) {}
+  ControlFlowOpTest() : builder_(new SubgraphBuilder) {}
 
   ~ControlFlowOpTest() override {
-    interpreter_.reset();
     builder_.reset();
   }
 
  protected:
-  std::unique_ptr<Interpreter> interpreter_;
   std::unique_ptr<SubgraphBuilder> builder_;
 };
 

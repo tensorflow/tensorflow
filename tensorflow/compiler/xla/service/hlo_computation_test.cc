@@ -146,24 +146,6 @@ TEST_F(HloComputationTest, PostOrderSimple) {
               ElementsAre(constant, negate1, negate2));
 }
 
-TEST_F(HloComputationTest, PostOrderTrace) {
-  // Test GetInstructionPostOrder for a computation with a trace instruction.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto negate1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
-  auto trace =
-      builder.AddInstruction(HloInstruction::CreateTrace("foobar", negate1));
-  auto negate2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  // Trace instructions should be at the end of the sort.
-  EXPECT_THAT(computation->MakeInstructionPostOrder(),
-              ElementsAre(constant, negate1, negate2, trace));
-}
-
 TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   // Test GetInstructionPostOrder for a computation with multiple instructions
   // which are not connected.
@@ -235,13 +217,13 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
       EXPECT_FALSE(visited_set_.contains(hlo_instruction));
       visited_set_.insert(hlo_instruction);
       last_visited_ = hlo_instruction;
-      return Status::OK();
+      return OkStatus();
     }
 
     Status FinishVisit(HloInstruction* root) override {
       EXPECT_EQ(computation_->root_instruction(), root);
       ++finish_visit_calls_;
-      return Status::OK();
+      return OkStatus();
     }
 
     HloComputation* computation_;
@@ -432,7 +414,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   EXPECT_EQ(3, instructions.size());
 
   FunctionVisitor visitor(
-      [](HloInstruction* instruction) { return Status::OK(); });
+      [](HloInstruction* instruction) { return OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
   ASSERT_THAT(visit_status.error_message(),
@@ -521,8 +503,8 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
                        HloInstruction::CreateParameter(2, r0s32, "p.1"));
   auto param3 = HloInstruction::CreateParameter(3, r0u32, "p.2");
   std::vector<const HloInstruction*> extra_parameters{param3.get()};
-  auto clone = computation->CloneWithReplacements(std::move(replacements),
-                                                  extra_parameters);
+  auto clone =
+      computation->CloneWithReplacements(&replacements, extra_parameters);
   ASSERT_EQ(clone->num_parameters(), 4);
   EXPECT_TRUE(
       ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
@@ -557,15 +539,16 @@ TEST_F(HloComputationTest, Stringification) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetExecutionThread("MainThread");
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  const string expected_computation =
+  const std::string expected_computation =
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
@@ -592,16 +575,17 @@ TEST_F(HloComputationTest, StringificationIndent) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetExecutionThread("MainThread");
 
   auto options =
       HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
-  const string expected_computation =
+  const std::string expected_computation =
       R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
       %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
       ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
+    }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
@@ -628,24 +612,25 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetExecutionThread("MainThread");
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  const string expected_computation1 =
+  const std::string expected_computation1 =
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
   options = HloPrintOptions().Canonical();
-  const string expected_computation2 = R"(TransposeDot {
+  const std::string expected_computation2 = R"(TransposeDot {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 

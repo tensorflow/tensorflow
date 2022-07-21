@@ -29,11 +29,13 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
+StatusOr<bool> DynamicIndexSplitter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   std::vector<HloComputation*> computations =
-      module->MakeNonfusionComputations();
+      module->MakeNonfusionComputations(execution_threads);
   for (HloComputation* computation : computations) {
     for (HloInstruction* dynamic_op : computation->MakeInstructionPostOrder()) {
       switch (dynamic_op->opcode()) {
@@ -72,6 +74,7 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
       TF_RET_CHECK(index_operand->shape().rank() == 1);
       auto index_element_type = index_operand->shape().element_type();
       std::vector<HloInstruction*> index_array;
+      index_array.reserve(num_indices);
       for (int64_t dim = 0; dim < num_indices; ++dim) {
         auto slice = parent->AddInstruction(HloInstruction::CreateSlice(
             ShapeUtil::MakeShape(index_element_type, {1}), index_operand, {dim},

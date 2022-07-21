@@ -18,9 +18,9 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* mlir_input = R"(
-func @rsqrt_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @rsqrt_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "tf.Rsqrt"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 )";
 
@@ -30,6 +30,13 @@ using f32 = float;
 #define EXPR_BUILDER [](auto& in) { return in.rsqrt(); }
 
 BM_TFMlir(Rsqrt, mlir_input, "rsqrt_1d", 1, f32, 1.0, 0.0, /* num_threads */ 0)
+    ->Arg(10)
+    ->Arg(100)
+    ->Arg(1024)
+    ->Arg(10 * 1024);
+
+BM_TFMlirVectorized(Rsqrt, mlir_input, "rsqrt_1d", 1, f32, 1.0, 0.0,
+                    /* num_threads */ 0)
     ->Arg(10)
     ->Arg(100)
     ->Arg(1024)

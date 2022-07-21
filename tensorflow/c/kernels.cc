@@ -187,9 +187,37 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
                               TF_Status* status) {
   using tensorflow::register_kernel::Name;
 
+  TF_RegisterKernelBuilderWithKernelDef(
+      /*serialized_kernel_def=*/nullptr, name, builder, status);
+}
+
+void TF_RegisterKernelBuilderWithKernelDef(const char* serialized_kernel_def,
+                                           const char* name,
+                                           TF_KernelBuilder* builder,
+                                           TF_Status* status) {
+  using tensorflow::register_kernel::Name;
+  if (serialized_kernel_def == nullptr) {
+    // If user doesn't provide a serialized KernelDef, use the kernel builder
+    // to build a new one.
+    tensorflow::kernel_factory::OpKernelRegistrar(
+        builder->cc_builder->Build(), name,
+        std::make_unique<tensorflow::KernelBuilderFactory>(builder));
+
+    TF_SetStatus(status, TF_OK, "");
+    return;
+  }
+
+  tensorflow::KernelDef* kernel_def = new tensorflow::KernelDef();
+  bool success = kernel_def->ParsePartialFromString(serialized_kernel_def);
+  if (!success) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Error parsing serialized KernelDef.");
+    return;
+  }
+
   tensorflow::kernel_factory::OpKernelRegistrar(
-      builder->cc_builder->Build(), name,
-      absl::make_unique<tensorflow::KernelBuilderFactory>(builder));
+      kernel_def, name,
+      std::make_unique<tensorflow::KernelBuilderFactory>(builder));
 
   TF_SetStatus(status, TF_OK, "");
 }
@@ -436,6 +464,38 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
   }
 }
 
+void TF_OpKernelConstruction_GetAttrTensor(TF_OpKernelConstruction* ctx,
+                                           const char* attr_name,
+                                           TF_Tensor** val, TF_Status* status) {
+  *val = nullptr;
+  ::tensorflow::Tensor t;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &t);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  *val = TF_TensorFromTensor(t, &status->status);
+}
+
+void TF_OpKernelConstruction_GetAttrTensorList(TF_OpKernelConstruction* ctx,
+                                               const char* attr_name,
+                                               TF_Tensor** vals, int max_values,
+                                               TF_Status* status) {
+  std::vector<::tensorflow::Tensor> v;
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
+  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
+
+  if (!status->status.ok()) return;
+
+  const auto len = std::min(max_values, static_cast<int>(v.size()));
+  for (int i = 0; i < len; ++i) {
+    vals[i] = TF_TensorFromTensor(v[i], &status->status);
+    if (!status->status.ok()) return;
+  }
+}
+
 bool TF_OpKernelConstruction_HasAttr(TF_OpKernelConstruction* ctx,
                                      const char* attr_name, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
@@ -452,12 +512,15 @@ TF_StringView TF_OpKernelConstruction_GetName(TF_OpKernelConstruction* ctx) {
 
 TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(i, 0);
+  CHECK_LT(i, cc_ctx->num_outputs());
   return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
 }
 
 int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
 }
+
 
 TF_Buffer* TF_OpKernelConstruction_GetNodeDef(TF_OpKernelConstruction* ctx,
                                               TF_Status* status) {
@@ -469,6 +532,22 @@ TF_Buffer* TF_OpKernelConstruction_GetNodeDef(TF_OpKernelConstruction* ctx,
     return nullptr;
   }
   return ret;
+
+TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
+  auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_StringView opkernel_name_sv;
+  opkernel_name_sv.data = cc_ctx->op_kernel().name().data();
+  opkernel_name_sv.len = cc_ctx->op_kernel().name().length();
+  return opkernel_name_sv;
+}
+
+TF_StringView TF_GetOpKernelRequestedInput(TF_OpKernelContext* ctx,
+                                           size_t index) {
+  auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_StringView requested_input_sv;
+  requested_input_sv.data = cc_ctx->op_kernel().requested_input(index).data();
+  requested_input_sv.len = cc_ctx->op_kernel().requested_input(index).length();
+  return requested_input_sv;
 }
 
 TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
@@ -496,7 +575,7 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 }
 
 TF_Tensor* TF_ForwardInputOrAllocateOutput(
-    TF_OpKernelContext* context, int* candidate_input_indices,
+    TF_OpKernelContext* context, const int* candidate_input_indices,
     int num_candidate_input_indices, int output_index,
     const int64_t* output_dims, int output_num_dims, int* forwarded_input,
     TF_Status* status) {

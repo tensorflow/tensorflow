@@ -35,10 +35,6 @@ update_mavg = mavg.assign_sub((mavg - var) * (1 - decay))
 """
 # pylint: disable=g-bad-name
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.ops import array_ops

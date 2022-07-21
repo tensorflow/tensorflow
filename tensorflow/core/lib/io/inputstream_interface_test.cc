@@ -34,14 +34,14 @@ class TestStringStream : public InputStreamInterface {
     }
     *result = content_.substr(pos_, bytes_to_read);
     pos_ += bytes_to_read;
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t Tell() const override { return pos_; }
 
   Status Reset() override {
     pos_ = 0;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

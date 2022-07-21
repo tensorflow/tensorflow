@@ -57,7 +57,7 @@ TEST_F(QuantizeDownAndShrinkRangeTest, HandCrafted) {
   AddInputFromArray<float>(TensorShape({1}), {256.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({value_count}));
-  test::FillValues<quint8>(&expected, {0, 127, 255});
+  test::FillValues<quint8>(&expected, {0, 128, 255});
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
   Tensor expected_min(allocator(), DT_FLOAT, TensorShape({}));
   test::FillValues<float>(&expected_min, {-1.0f});

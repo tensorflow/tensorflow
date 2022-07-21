@@ -36,9 +36,7 @@ namespace {
 
 class CategoricalOp : public XlaOpKernel {
  public:
-  explicit CategoricalOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx),
-        is_gpu_(ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT) {}
+  explicit CategoricalOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
     // Get the logits
@@ -113,14 +111,8 @@ class CategoricalOp : public XlaOpKernel {
     xla::PrimitiveType xla_output_type;
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(output_type(0), &xla_output_type));
-    xla::XlaOp argmax;
-    if (is_gpu_) {
-      argmax = xla::ArgMaxTwoPass(softmax_entries, xla_output_type,
-                                  /*axis=*/class_dimension);
-    } else {
-      argmax = xla::ArgMax(softmax_entries, xla_output_type,
-                           /*axis=*/class_dimension, /*stable=*/true);
-    }
+    xla::XlaOp argmax = xla::ArgMax(softmax_entries, xla_output_type,
+                                    /*axis=*/class_dimension);
 
     if (num_samples == 1 && !num_samples_is_dynamic) {
       argmax = xla::Reshape(argmax, {batch_size, 1});
@@ -145,7 +137,6 @@ class CategoricalOp : public XlaOpKernel {
   }
 
  private:
-  bool is_gpu_;
   TF_DISALLOW_COPY_AND_ASSIGN(CategoricalOp);
 };
 

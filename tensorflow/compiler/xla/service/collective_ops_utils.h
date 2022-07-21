@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -33,11 +35,11 @@ namespace xla {
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
 // Attempts to match instruction to one of the possible cases for ReductionKind.
-absl::optional<ReductionKind> MatchReductionInstruction(
+std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
 // Attempts to match computation to one of the possible cases in ReductionKind.
-absl::optional<ReductionKind> MatchReductionComputation(
+std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which IDs are participating in the collective subgroup.
@@ -45,7 +47,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
 // groups cannot be empty, so `total_participant_count` is an optional.
 StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, absl::optional<int> total_participant_count,
+    int current_id, std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups);
 
 // There are broadly 4 modes that collective communication ops use to describe
@@ -94,7 +96,7 @@ absl::string_view CollectiveOpGroupModeToString(
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    bool has_channel_id, absl::optional<bool> use_global_device_ids);
+    bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
 // group_mode.
@@ -123,6 +125,13 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 // Returns true if the two replica group are orthogonal.
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
                              absl::Span<const ReplicaGroup> second);
+
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op.
+constexpr char kNopCustomCallTarget[] = "AllocateBuffer";
+
+// Returns true if instruction is a collective op or a collective fusion.
+bool IsCollective(const HloInstruction* instruction);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -166,8 +175,7 @@ struct RendezvousKey {
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
     return H::combine(std::move(h), k.run_id, k.global_devices,
-                      k.num_local_participants,
-                      static_cast<int>(k.collective_op_kind), k.op_id);
+                      k.num_local_participants, k.collective_op_kind, k.op_id);
   }
   friend bool operator==(const RendezvousKey& a, const RendezvousKey& b) {
     return a.run_id == b.run_id && a.global_devices == b.global_devices &&
@@ -188,7 +196,7 @@ struct RendezvousKey {
     }
   }
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
         "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
@@ -261,7 +269,7 @@ struct AllReduceParticipantData : ParticipantData {
   // pair for the participant. Participants are in no particular order.
   std::vector<std::pair<GlobalDeviceId, int64_t>> local_devices;
 
-  string ToString() const override {
+  std::string ToString() const override {
     std::vector<std::string> buffer_strs;
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
@@ -328,7 +336,7 @@ class Rendezvous {
   // Initialize the rendezvous by the first ("primary") thread which reaches the
   // barrier. Returns whether this thread is primary.
   bool InitializationBarrier() {
-    tensorflow::mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     if (!initialized_) {
       initialized_ = true;
       return true;
@@ -336,11 +344,11 @@ class Rendezvous {
     return false;
   }
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
-  bool initialized_ TF_GUARDED_BY(mu_) = false;
+  bool initialized_ ABSL_GUARDED_BY(mu_) = false;
 
-  std::vector<I> participants_ TF_GUARDED_BY(mu_);
+  std::vector<I> participants_ ABSL_GUARDED_BY(mu_);
 
  private:
   // Runs the all-reduce on the given thread.  If successful, returns
@@ -352,7 +360,7 @@ class Rendezvous {
   StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
   SubmitParticipant(const I& participant) {
     {
-      tensorflow::mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       CHECK(!initialized_);
 
       // Spot check for consistent replica counts among submitting threads.

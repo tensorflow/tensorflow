@@ -1,3 +1,6 @@
+#ifndef MLIR_HLO_UTILS_PLACEMENT_UTILS_H
+#define MLIR_HLO_UTILS_PLACEMENT_UTILS_H
+
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,11 +25,13 @@ namespace mlir {
 namespace mhlo {
 namespace placement_utils {
 
-constexpr llvm::StringRef c_cpu = "cpu";
-constexpr llvm::StringRef c_gpu = "gpu";
+constexpr llvm::StringRef cCpu = "cpu";
+constexpr llvm::StringRef cGpu = "gpu";
 
 }  // namespace placement_utils
 }  // namespace mhlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_PLACEMENT_UTIL_H_
+
+#endif

@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 
+#include <algorithm>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -37,7 +42,7 @@ using ScalarIndexedArray = Analysis::ScalarIndexedArray;
 using absl::StrJoin;
 }  // namespace
 
-string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
+std::string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
   switch (root->kind()) {
     case Array::kUnknown: {
       auto* unknown_tensor = root->as<UnknownArray>();
@@ -46,7 +51,7 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
 
     case Array::kConstant: {
       if (print_constants) {
-        string contents = root->as<ConstantArray>()->literal()->ToString();
+        std::string contents = root->as<ConstantArray>()->literal()->ToString();
         return absl::StrCat("(constant ", ShapeUtil::HumanString(root->shape()),
                             " ", contents, ")");
       }
@@ -64,9 +69,9 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
     case Array::kScalarIndexedConstant:
     case Array::kScalarIndexed: {
       auto* indexed_array = root->as<ScalarIndexedArray>();
-      string name = root->kind() == Array::kScalarIndexedConstant
-                        ? "scalar-indexed-const"
-                        : "scalar-indexed";
+      std::string name = root->kind() == Array::kScalarIndexedConstant
+                             ? "scalar-indexed-const"
+                             : "scalar-indexed";
       return absl::StrCat(
           "(", name, " ", ToString(indexed_array->source(), print_constants),
           " ", ToString(indexed_array->indices(), print_constants), " ",
@@ -129,7 +134,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     }
   } while (!stack.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
@@ -393,7 +398,7 @@ std::vector<ReshapePassthroughDimPair> ComputeReshapePassthroughDimPairs(
   absl::c_reverse(result);
 
   if (VLOG_IS_ON(3)) {
-    std::vector<string> result_strings;
+    std::vector<std::string> result_strings;
     absl::c_transform(result, std::back_inserter(result_strings),
                       [](ReshapePassthroughDimPair value) {
                         return absl::StrCat(value.result_dim, "->",
@@ -689,8 +694,8 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
 
   std::vector<ReshapePassthroughDimPair> reshape_passthrough_dims =
       ComputeReshapePassthroughDimPairs(
-          /*operand_shape=*/AsInt64Slice(scalar_indexed->shape().dimensions()),
-          /*result_shape=*/AsInt64Slice(shape.dimensions()));
+          /*operand_shape=*/scalar_indexed->shape().dimensions(),
+          /*result_shape=*/shape.dimensions());
 
   auto is_reshape_passthrough_operand_dim = [&](int64_t operand_dim) {
     return IsReshapePassthroughOperandDim(reshape_passthrough_dims,
@@ -726,8 +731,7 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
 
   int64_t source_dim_for_new_scalar_indexed_node =
       FindSourcePositionForPassthroughResultDim(
-          /*operand_shape=*/AsInt64Slice(
-              scalar_indexed_source_shape.dimensions()),
+          /*operand_shape=*/scalar_indexed_source_shape.dimensions(),
           /*result_shape=*/new_scalar_indexed_source_shape,
           scalar_indexed->source_dim());
 
@@ -772,8 +776,7 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
 
   CHECK(IsReshapePassthroughOperandDim(
       ComputeReshapePassthroughDimPairs(
-          /*operand_shape=*/AsInt64Slice(
-              scalar_indexed_source_shape.dimensions()),
+          /*operand_shape=*/scalar_indexed_source_shape.dimensions(),
           /*result_shape=*/new_scalar_indexed_source_shape),
       scalar_indexed->source_dim()));
 
@@ -816,9 +819,9 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForReshape(
   }
 
   if (auto* constant_array = dynamic_cast<ConstantArray*>(operand)) {
-    TF_ASSIGN_OR_RETURN(Literal* const new_literal,
-                        TakeOwnership(constant_array->literal()->Reshape(
-                            AsInt64Slice(shape.dimensions()))));
+    TF_ASSIGN_OR_RETURN(
+        Literal* const new_literal,
+        TakeOwnership(constant_array->literal()->Reshape(shape.dimensions())));
     return Construct<ConstantArray>(new_literal);
   }
 
@@ -973,15 +976,15 @@ namespace {
 
 // Returns the non-contracting non-batch dimension (as per `contracting_dims`
 // and `batch_dims`) if there is exactly one, otherwise returns nullopt.
-absl::optional<int64_t> GetOnlyNonContractingNonBatchDim(
+std::optional<int64_t> GetOnlyNonContractingNonBatchDim(
     int64_t rank, absl::Span<const int64_t> contracting_dims,
     absl::Span<const int64_t> batch_dims) {
-  absl::optional<int64_t> result;
+  std::optional<int64_t> result;
   for (int64_t dim = 0; dim < rank; dim++) {
     if (!absl::c_linear_search(contracting_dims, dim) &&
         !absl::c_linear_search(batch_dims, dim)) {
       if (result.has_value()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       result = dim;
     }
@@ -1001,7 +1004,7 @@ bool CanFoldDotIntoIndexedArray(
     absl::string_view tag, Analysis::ScalarIndexedConstantArray* indexed_array,
     absl::Span<const int64_t> contracting_dims,
     absl::Span<const int64_t> batch_dims) {
-  absl::optional<int64_t> non_contracting_non_batch_dim =
+  std::optional<int64_t> non_contracting_non_batch_dim =
       GetOnlyNonContractingNonBatchDim(indexed_array->shape().rank(),
                                        contracting_dims, batch_dims);
   if (!non_contracting_non_batch_dim.has_value()) {
@@ -1038,8 +1041,8 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
           << ToString(rhs);
   if (!CanFoldDotIntoIndexedArray(
           "ComputeArrayForDotWithIndexedLhs", lhs, /*contracting_dims=*/
-          AsInt64Slice(dim_numbers.lhs_contracting_dimensions()),
-          /*batch_dims=*/AsInt64Slice(dim_numbers.lhs_batch_dimensions()))) {
+          dim_numbers.lhs_contracting_dimensions(),
+          /*batch_dims=*/dim_numbers.lhs_batch_dimensions())) {
     return nullptr;
   }
 
@@ -1073,8 +1076,8 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
           << ToString(rhs);
   if (!CanFoldDotIntoIndexedArray(
           "ComputeArrayForDotWithIndexedRhs", rhs, /*contracting_dims=*/
-          AsInt64Slice(dim_numbers.rhs_contracting_dimensions()),
-          /*batch_dims=*/AsInt64Slice(dim_numbers.rhs_batch_dimensions()))) {
+          dim_numbers.rhs_contracting_dimensions(),
+          /*batch_dims=*/dim_numbers.rhs_batch_dimensions())) {
     return nullptr;
   }
 
@@ -1146,13 +1149,16 @@ absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
   return "indexed-array-analysis-printer-pass";
 }
 
-StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(HloModule* module) {
+StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!VLOG_IS_ON(2)) {
     return false;
   }
 
   IndexedArrayAnalysis analysis;
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instr : computation->instructions()) {
       TF_ASSIGN_OR_RETURN(Analysis::Array * t, analysis.GetArrayFor(instr));
       if (!dynamic_cast<UnknownArray*>(t) && !dynamic_cast<ConstantArray*>(t)) {

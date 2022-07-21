@@ -25,7 +25,7 @@ Status ValidateSparseMatrixShardingConfig(const Tensor& config) {
   if (TensorShapeUtils::IsScalar(config.shape())) {
     const float scalar_config = config.template scalar<float>()();
     if (0 < scalar_config && scalar_config <= 1.0) {
-      return Status::OK();
+      return OkStatus();
     }
     return Status(
         error::INVALID_ARGUMENT,
@@ -69,7 +69,7 @@ Status ValidateSparseMatrixShardingConfig(const Tensor& config) {
           config_matrix(i, 2), " in row ", i);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename MatrixType, typename K>
@@ -89,7 +89,7 @@ Status ValidateScalarQuantityShardingConfig(const Tensor& config) {
   if (TensorShapeUtils::IsScalar(config.shape())) {
     const float scalar_config = config.template scalar<float>()();
     if (0 < scalar_config && scalar_config <= 1.0) {
-      return Status::OK();
+      return OkStatus();
     }
     return Status(
         error::INVALID_ARGUMENT,
@@ -126,7 +126,7 @@ Status ValidateScalarQuantityShardingConfig(const Tensor& config) {
           config_matrix(i, 1), " in row ", i);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename MatrixType, typename K>
@@ -159,14 +159,14 @@ Tindices GetPowerBucket(const Tindices value, const Tindices bucket_size) {
          1;
 }
 
-#define REGISTER_SPARSE_UTIL_FUNCTIONS(TypeIndex)                           \
-  template float FindConfigValueForKey<float, TypeIndex>(                   \
-      const TTypes<float>::ConstMatrix& config_mat,                         \
-      const std::pair<TypeIndex, TypeIndex>& key);                          \
-  template float FindConfigValueForKey<float, TypeIndex>(                   \
-      const TTypes<float>::ConstMatrix& config_mat, const TypeIndex key);   \
-  template int64 FindConfigValueForKey<int64, TypeIndex>(                   \
-      const TTypes<int64>::ConstMatrix& config_mat, const TypeIndex key);
+#define REGISTER_SPARSE_UTIL_FUNCTIONS(TypeIndex)                         \
+  template float FindConfigValueForKey<float, TypeIndex>(                 \
+      const TTypes<float>::ConstMatrix& config_mat,                       \
+      const std::pair<TypeIndex, TypeIndex>& key);                        \
+  template float FindConfigValueForKey<float, TypeIndex>(                 \
+      const TTypes<float>::ConstMatrix& config_mat, const TypeIndex key); \
+  template int64 FindConfigValueForKey<int64, TypeIndex>(                 \
+      const TTypes<int64_t>::ConstMatrix& config_mat, const TypeIndex key);
 
 REGISTER_SPARSE_UTIL_FUNCTIONS(int32);
 REGISTER_SPARSE_UTIL_FUNCTIONS(int64);

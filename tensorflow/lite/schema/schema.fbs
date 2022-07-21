@@ -53,6 +53,7 @@ enum TensorType : byte {
   RESOURCE = 13,
   VARIANT = 14,
   UINT32 = 15,
+  UINT16 = 16
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -219,6 +220,10 @@ table Tensor {
   // Encodes `shape` with unknown dimensions. Unknown dimensions are
   // represented with -1.
   shape_signature:[int]; // Optional.
+
+  // If false, the rank or the number of tensor dimensions is unknown.
+  // If false, "shape" must be [].
+  has_rank: bool = false;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
@@ -380,6 +385,16 @@ enum BuiltinOperator : int32 {
   ASSIGN_VARIABLE = 144,
   BROADCAST_ARGS = 145,
   RANDOM_STANDARD_NORMAL = 146,
+  BUCKETIZE = 147,
+  RANDOM_UNIFORM = 148,
+  MULTINOMIAL = 149,
+  GELU = 150,
+  DYNAMIC_UPDATE_SLICE = 151,
+  RELU_0_TO_1 = 152,
+  UNSORTED_SEGMENT_PROD = 153,
+  UNSORTED_SEGMENT_MAX = 154,
+  UNSORTED_SEGMENT_SUM = 155,
+  ATAN2 = 156
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -499,10 +514,20 @@ union BuiltinOptions {
   ReadVariableOptions,
   AssignVariableOptions,
   RandomOptions,
+  BucketizeOptions,
+  GeluOptions,
+  DynamicUpdateSliceOptions,
+  UnsortedSegmentProdOptions,
+  UnsortedSegmentMaxOptions,
+  UnsortedSegmentSumOptions,
+  ATan2Options
 }
 
+// LINT.IfChange
 enum Padding : byte { SAME, VALID }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
+// LINT.IfChange
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
@@ -511,6 +536,7 @@ enum ActivationFunctionType : byte {
   TANH = 4,
   SIGN_BIT = 5,
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 table Conv2DOptions {
   padding:Padding;
@@ -602,10 +628,12 @@ table BidirectionalSequenceRNNOptions {
   asymmetric_quantize_inputs:bool;
 }
 
+// LINT.IfChange
 enum FullyConnectedOptionsWeightsFormat: byte {
   DEFAULT = 0,
   SHUFFLED4x16INT8 = 1,
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
@@ -658,12 +686,14 @@ table LocalResponseNormalizationOptions {
   beta:float;
 }
 
+// LINT.IfChange
 enum LSTMKernelType : byte {
   // Full LSTM kernel which supports peephole and projection.
   FULL = 0,
   // Basic LSTM kernels. Equivalent to TensorFlow BasicLSTMCell.
   BASIC = 1,
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 // An implementation of TensorFlow LSTMCell and CoupledInputForgetGateLSTMCell
 table LSTMOptions {
@@ -963,12 +993,14 @@ table LeakyReluOptions {
 table SquaredDifferenceOptions {
 }
 
+// LINT.IfChange
 enum MirrorPadMode : byte {
   // Doesn't include borders.
   REFLECT = 0,
   // Includes borders.
   SYMMETRIC = 1,
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 table MirrorPadOptions {
   mode:MirrorPadMode;
@@ -1085,9 +1117,33 @@ table AssignVariableOptions {
 }
 
 table RandomOptions {
-  seed: int;
-  seed2: int;
+  seed: long;
+  seed2: long;
 }
+
+table BucketizeOptions {
+  boundaries: [float];  // The bucket boundaries.
+}
+
+table GeluOptions {
+  approximate: bool;
+}
+
+table DynamicUpdateSliceOptions {
+}
+
+table UnsortedSegmentProdOptions {
+}
+
+table UnsortedSegmentMaxOptions {
+}
+
+table UnsortedSegmentSumOptions {
+}
+
+table ATan2Options {
+}
+
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.

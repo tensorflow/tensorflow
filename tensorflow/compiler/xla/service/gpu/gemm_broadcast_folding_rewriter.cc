@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -53,12 +54,21 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
                             bcast->operand(0)->shape().dimensions_size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
+      const tensorflow::protobuf::RepeatedField<int64_t> &batch_dimensions =
+          (bcast_operand_index == 1) ? dim_nums->rhs_batch_dimensions()
+                                     : dim_nums->lhs_batch_dimensions();
       // This optimization is only valid if the set of broadcasted dimensions
       // is exactly the set of batch dimensions. First, check that all newly
-      // broadcast dimensions have been inserted on the left.
+      // broadcast dimensions have been inserted on the left i.e. all new
+      // dimensions must be in [0, num_bcast_dims) or equivalently all original
+      // dimensions are >= num_bcast_dims.
       for (int64_t bcast_dim : bcast->dimensions()) {
         if (bcast_dim < num_bcast_dims) {
-          return Status::OK();
+          return OkStatus();
+        }
+        // bcast_dim should not be in batch_dimensions.
+        if (absl::c_linear_search(batch_dimensions, bcast_dim)) {
+          return OkStatus();
         }
       }
 
@@ -66,17 +76,15 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // there is at least one batch dimension.
       CHECK_GT(num_bcast_dims, 0);
       if (num_bcast_dims != num_batch_dims) {
-        return Status::OK();
+        return OkStatus();
       }
 
       if (bcast_operand_index == 1) {
-        config.set_rhs_stride(0);
         CHECK_EQ(dim_nums->rhs_contracting_dimensions_size(), 1);
         dim_nums->set_rhs_contracting_dimensions(
             0, dim_nums->rhs_contracting_dimensions(0) - num_batch_dims);
         dim_nums->clear_rhs_batch_dimensions();
       } else {
-        config.set_lhs_stride(0);
         CHECK_EQ(dim_nums->lhs_contracting_dimensions_size(), 1);
         dim_nums->set_lhs_contracting_dimensions(
             0, dim_nums->lhs_contracting_dimensions(0) - num_batch_dims);
@@ -86,7 +94,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
           bcast_operand_index, bcast->mutable_operand(0)));
       TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -96,9 +104,12 @@ static StatusOr<bool> RunOnComputation(HloComputation *computation) {
   return visitor.changed();
 }
 
-StatusOr<bool> GemmBroadcastFoldingRewriter::Run(HloModule *module) {
+StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;
-  for (HloComputation *computation : module->MakeNonfusionComputations()) {
+  for (HloComputation *computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }

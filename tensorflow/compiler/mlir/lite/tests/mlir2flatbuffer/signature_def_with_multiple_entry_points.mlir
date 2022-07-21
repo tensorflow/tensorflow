@@ -17,7 +17,8 @@
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 2,
@@ -25,7 +26,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 3,
@@ -33,7 +35,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 4,
@@ -41,7 +44,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 3 ],
@@ -69,7 +73,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 6,
@@ -77,7 +82,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 1 ],
 // CHECK-NEXT:      buffer: 7,
@@ -85,7 +91,8 @@
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      },
-// CHECK-NEXT:      shape_signature: [ -1 ]
+// CHECK-NEXT:      shape_signature: [ -1 ],
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [ 0, 1 ],
 // CHECK-NEXT:    outputs: [ 2 ],
@@ -152,14 +159,14 @@
 // CHECK-NEXT:  } ]
 // CHECK-NEXT: }
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 554 : i32}, tf_saved_model.semantics} {
-  func @add(%arg0: tensor<?xf32> {tf_saved_model.index_path = ["input1"]}, %arg1: tensor<?xf32> {tf_saved_model.index_path = ["input2"]}) -> (tensor<?xf32> {tf_saved_model.index_path = ["result"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "input1:0,input2:0", outputs = "result:0"}, tf_saved_model.exported_names = ["add"]} {
+  func.func @add(%arg0: tensor<?xf32> {tf_saved_model.index_path = ["input1"]}, %arg1: tensor<?xf32> {tf_saved_model.index_path = ["input2"]}) -> (tensor<?xf32> {tf_saved_model.index_path = ["result"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "input1:0,input2:0", outputs = "result:0"}, tf_saved_model.exported_names = ["add"]} {
     %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<?xf32>
     %1 = tfl.add %0, %0 {fused_activation_function = "NONE"} : tensor<?xf32>
-    return %1 : tensor<?xf32>
+    func.return %1 : tensor<?xf32>
   }
 
-  func @sub(%arg0: tensor<?xf32> {tf_saved_model.index_path = ["input2"]}, %arg1: tensor<?xf32> {tf_saved_model.index_path = ["input1"]}) -> (tensor<?xf32> {tf_saved_model.index_path = ["result"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "input2:0,input1:0", outputs = "result:0"}, tf_saved_model.exported_names = ["sub"]} {
+  func.func @sub(%arg0: tensor<?xf32> {tf_saved_model.index_path = ["input2"]}, %arg1: tensor<?xf32> {tf_saved_model.index_path = ["input1"]}) -> (tensor<?xf32> {tf_saved_model.index_path = ["result"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "input2:0,input1:0", outputs = "result:0"}, tf_saved_model.exported_names = ["sub"]} {
     %0 = tfl.sub %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }
 }

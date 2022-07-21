@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -25,6 +26,8 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -44,26 +47,34 @@ class XlaBuilderTest : public ::testing::Test {
       : name_(SetupTest()),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(&context_))),
         builder_(&module_->getBodyRegion()),
-        xla_builder_(name_, builder_, module_->getLoc()) {
+        xla_builder_(name_, builder_, module_->getLoc(),
+                     /*build_functions=*/true) {
     context_.loadDialect<mlir::mhlo::MhloDialect>();
   }
 
-  string SetupTest() {
+  std::string SetupTest() {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
   // Retuns the MLIR op string representation of the given XlaOp.
-  string GetMlirOpString(XlaOp xla_op) {
-    string str;
+  std::string GetMlirOpString(XlaOp xla_op) {
+    std::string str;
     llvm::raw_string_ostream ostream{str};
     xla_builder_.GetValue(xla_op).print(ostream);
     ostream.flush();
     return str;
   }
 
-  string name_;
+  std::string GetMlirOpString(mlir::func::FuncOp func_op) {
+    std::string func_op_mlir_str;
+    llvm::raw_string_ostream ostream{func_op_mlir_str};
+    func_op.print(ostream);
+    return func_op_mlir_str;
+  }
+
+  std::string name_;
   mlir::MLIRContext context_;
-  mlir::OwningModuleRef module_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
   mlir::OpBuilder builder_;
   MlirHloBuilder xla_builder_;
 };
@@ -85,7 +96,7 @@ TEST_F(XlaBuilderTest, Infeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(infeed),
-      R"("mhlo.infeed"(%0) {infeed_config = ""} : (!mhlo.token) -> tuple<tensor<4x8xf32>, !mhlo.token>)");
+      R"("mhlo.tuple"(%1#0, %1#1) : (tensor<4x8xf32>, !mhlo.token) -> tuple<tensor<4x8xf32>)");
 }
 
 TEST_F(XlaBuilderTest, Outfeed) {
@@ -173,6 +184,43 @@ TEST_F(XlaBuilderTest, Pad) {
   ExpectHasSubstr(
       GetMlirOpString(pad),
       R"("mhlo.pad"(%0, %1) {edge_padding_high = dense<[2, 0]> : tensor<2xi64>, edge_padding_low = dense<[1, 3]> : tensor<2xi64>, interior_padding = dense<[0, 1]> : tensor<2xi64>} : (tensor<3x7xf32>, tensor<f32>) -> tensor<6x16xf32>)");
+}
+
+TEST_F(XlaBuilderTest, CustomCallWithComputation) {
+  // Create a test comparator computation to use as the custom computation.
+  // auto cmp_builder = main_func_builder.CreateSubBuilder("test_comparator");
+  auto cmp_builder = xla_builder_.CreateSubBuilder("test_comparator");
+  auto p0 = Parameter(cmp_builder.get(), 0,
+                      xla::ShapeUtil::MakeScalarShape(xla::F32), "p0");
+  auto p1 = Parameter(cmp_builder.get(), 1,
+                      xla::ShapeUtil::MakeScalarShape(xla::F32), "p1");
+  auto gt = Gt(p0, p1);
+  StatusOr<Shape> output_shape_or = cmp_builder->GetShape(gt);
+  TF_ASSERT_OK(output_shape_or.status());
+  XlaComputation test_comparator = cmp_builder->BuildAndNoteError();
+
+  // Finally, add the CustomCallOp (with computation) to the module.
+  auto custom_call = CustomCallWithComputation(
+      &xla_builder_, "test_call_target", {}, test_comparator,
+      output_shape_or.ValueOrDie(),
+      "{\"option1\": foo, \"option2\": bar, \"option3\": \"baz\"}");
+
+  TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
+
+  ExpectHasSubstr(
+      GetMlirOpString(custom_call),
+      R"("mhlo.custom_call"() {api_version = 1 : i32, backend_config = "{\22option1\22: foo, \22option2\22: bar, \22option3\22: \22baz\22}", call_target_name = "test_call_target", called_computations = [@test_comparator.4], has_side_effect = false} : () -> tensor<i1>)");
+
+  // We should also expect there to be a new function added for the comparator.
+  auto actual_func_op = module_->lookupSymbol<mlir::func::FuncOp>(
+      test_comparator.proto().computations().at(0).name());
+  EXPECT_TRUE(actual_func_op);
+  EXPECT_EQ(
+      GetMlirOpString(actual_func_op),
+      R"(func.func private @test_comparator.4(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<i1> {
+  %1 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  return %1 : tensor<i1>
+})");
 }
 
 }  // namespace

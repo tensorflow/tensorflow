@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <locale>
 #include <string>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace text {
@@ -47,8 +50,14 @@ class StringNGramsOp : public tensorflow::OpKernel {
                     ngram_width - 1);
   }
 
-  int get_num_ngrams(const int length, const int ngram_width) const {
+  StatusOr<int> get_num_ngrams(const int length, const int ngram_width) const {
+    int64 limit = kint32max;
     int pad_width = get_pad_width(ngram_width);
+    if (pad_width > limit / 2 - length) {
+      return errors::InvalidArgument(
+          "Pad width could lead to integer overflow, got pad_width = ",
+          pad_width);
+    }
     return std::max(0, ((length + 2 * pad_width) - ngram_width) + 1);
   }
 
@@ -112,8 +121,11 @@ class StringNGramsOp : public tensorflow::OpKernel {
     for (int i = 1; i <= num_batch_items; ++i) {
       int length = splits_vec(i) - splits_vec(i - 1);
       int num_ngrams = 0;
-      for (int ngram_width : ngram_widths_)
-        num_ngrams += get_num_ngrams(length, ngram_width);
+      for (int ngram_width : ngram_widths_) {
+        auto ngrams_or = get_num_ngrams(length, ngram_width);
+        OP_REQUIRES_OK(context, ngrams_or.status());
+        num_ngrams += ngrams_or.ValueOrDie();
+      }
       if (preserve_short_ && length > 0 && num_ngrams == 0) {
         num_ngrams = 1;
       }
@@ -133,7 +145,9 @@ class StringNGramsOp : public tensorflow::OpKernel {
       for (int ngram_width : ngram_widths_) {
         auto output_start = &ngrams_data[output_start_idx];
         int length = splits_vec(i + 1) - splits_vec(i);
-        int num_ngrams = get_num_ngrams(length, ngram_width);
+        auto ngrams_or = get_num_ngrams(length, ngram_width);
+        OP_REQUIRES_OK(context, ngrams_or.status());
+        int num_ngrams = ngrams_or.ValueOrDie();
         CreateNgrams(data_start, output_start, num_ngrams, ngram_width);
         output_start_idx += num_ngrams;
       }
@@ -152,6 +166,16 @@ class StringNGramsOp : public tensorflow::OpKernel {
         // We don't have to worry about dynamic padding sizes here: if padding
         // was dynamic, every sequence would have had sufficient padding to
         // generate at least one ngram.
+
+        // If reached here, pad_width should be > 0, pad_width_ = -1,
+        // which indicates max(ngram_widths) - 1 cannot be used here since
+        // ngram_width is not known.
+        OP_REQUIRES(
+            context, pad_width_ >= 0,
+            errors::InvalidArgument("Pad width should be >= 0 when "
+                                    "preserve_short_sequences is True and "
+                                    "ngram_widths are not provided, got ",
+                                    pad_width_));
         int ngram_width = data_length + 2 * pad_width_;
         auto output_start = &ngrams_data[output_start_idx];
         int num_ngrams = 1;
@@ -245,7 +269,7 @@ REGISTER_KERNEL_BUILDER(Name("StringNGrams")
 REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                             .Device(tensorflow::DEVICE_CPU)
                             .TypeConstraint<int64_t>("Tsplits"),
-                        StringNGramsOp<int64>);
+                        StringNGramsOp<int64_t>);
 
 }  // namespace text
 }  // namespace tensorflow

@@ -9,6 +9,8 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -17,6 +19,7 @@ package(
 
 DEFAULT_COPTS = [
     "-Wno-shorten-64-to-32",
+    "-std=c++17",
 ]
 
 objc_library(
@@ -75,6 +78,7 @@ objc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -85,7 +89,6 @@ objc_library(
     sdk_frameworks = ["XCTest"],
     deps = [
         ":common",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
     ],
 )
 
@@ -146,11 +149,15 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    features = ["-layering_check"],
     sdk_frameworks = ["Metal"],
     deps = [
         ":compute_task",
+        ":inference_context_cc_fbs",
         ":metal_device",
         ":metal_spatial_tensor",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
@@ -163,13 +170,25 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:special_selector",
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base",
         "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
         "//tensorflow/lite/delegates/gpu/common/task:tuning_type",
-        "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
-        "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
-        "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+    ],
+)
+
+flatbuffer_cc_library(
+    name = "inference_context_cc_fbs",
+    srcs = ["inference_context.fbs"],
+    flatc_args = [
+        "--scoped-enums",
+        "-I " + workspace_root,
+    ],
+    includes = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs_includes",
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
     ],
 )
 
@@ -224,9 +243,7 @@ objc_library(
         "-ObjC++",
     ],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu/common:gpu_info"],
 )
 
 objc_library(
@@ -333,15 +350,11 @@ objc_library(
     ],
     sdk_frameworks = ["XCTest"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/metal:buffer",
         "//tensorflow/lite/delegates/gpu/metal:common",
-        "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/metal:texture2d",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
-        "@com_google_absl//absl/memory",
     ],
 )
 

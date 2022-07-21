@@ -14,31 +14,31 @@
 # ==============================================================================
 """Tests tf.random.Generator with distribution strategies."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import values as dist_values
+from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
+from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_combinations as combinations
+from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import stateful_random_ops as rng
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import util as tracking_util
+from tensorflow.python.util import deprecation
 
 
 def get_num_local_replicas(strat, values=None):
@@ -53,24 +53,25 @@ def get_num_local_replicas(strat, values=None):
 
 
 ps_strategies = [
-    # (TODO(b/195770530): Re-enable PS Strategy combinations after using
-    # coordinator.
-    # strategy_combinations.parameter_server_strategy_fn(
-    #     "ParameterServer3Worker2PSCPUNoShard",
-    #     num_workers=3, num_ps=2, variable_partitioner=None),
-    # strategy_combinations.parameter_server_strategy_fn(
-    #     "ParameterServer1Worker2PSCPUNoShard",
-    #     num_workers=1, num_ps=2, variable_partitioner=None),
-    # strategy_combinations.parameter_server_strategy_fn(
-    #     "ParameterServer3Worker2PS1GPUNoShard",
-    #     num_workers=3, num_ps=2, required_gpus=1, variable_partitioner=None),
-    # strategy_combinations.parameter_server_strategy_fn(
-    #     "ParameterServer1Worker2PS1GPUNoShard",
-    #     num_workers=1, num_ps=2, required_gpus=1, variable_partitioner=None),
+    strategy_combinations.parameter_server_strategy_3worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_cpu,
+    strategy_combinations.parameter_server_strategy_3worker_2ps_1gpu,
+    strategy_combinations.parameter_server_strategy_1worker_2ps_1gpu,
 ]
 all_strategies = (strategy_combinations.all_strategies +
                   strategy_combinations.multiworker_strategies +
                   ps_strategies)
+
+
+def run_on_strategy(replica_fn, strat, coord):
+  def distributed_fn():
+    return strat.run(replica_fn)
+  if coord is not None:
+    results = coord.schedule(
+        def_function.function(distributed_fn)).fetch()
+  else:
+    results = distributed_fn()
+  return results
 
 
 class GeneratorTest(test.TestCase, parameterized.TestCase):
@@ -78,7 +79,6 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
   def setUp(self):
     super(GeneratorTest, self).setUp()
     v2_compat.enable_v2_behavior()
-    config.set_soft_device_placement(False)
 
   def assertAllDifferent(self, tensors):
     """Checks that there are no duplicate elements anywhere among the tensors.
@@ -91,6 +91,58 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
     values = self.evaluate(values)
     values = values.tolist()
     self.assertAllEqual(len(values), len(set(values)))
+
+  @test_util.run_v2_only
+  def testCreateOutsideMirroredStrat(self):
+    """Tests RNG/MirrorStrategy interaction #1.
+
+    If an RNG is created outside a DS scope, all replicas will access the
+    same RNG object, and accesses are serialized.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    gen = rng.Generator.from_seed(1234)
+    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
+    with strat.scope():
+
+      def f():
+        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t = array_ops.stack([t1, t2])
+        return t
+
+      results = strat.extended.call_for_each_replica(fn=f)
+      values = results.values
+      self.assertAllEqual(2, len(values))
+      self.assertAllDifferent(values)
+
+  @test_util.run_v2_only
+  def testMirroredStratParaAsync(self):
+    """Tests RNG/MirrorStrategy interaction #2.
+
+    The user can create n independent RNGs outside strategy.scope(), where n
+    is the number of replicas, and give one to each replica. The replicas can
+    thus get different random-number streams.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    gens = rng.get_global_generator().split(count=2)
+    devices = ["cpu:0", "cpu:1"]
+    strat = MirroredStrategy(devices=devices)
+    # Use `PerReplica` to specify which `gen` is sent to which replica
+    gens = dist_values.PerReplica([[g] for g in gens])
+    with strat.scope():
+
+      def f(gen):
+        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t = array_ops.stack([t1, t2])
+        return t
+
+      results = strat.extended.call_for_each_replica(fn=f, args=gens)
+      local_results = strat.experimental_local_results(results)
+      self.assertAllEqual(2, len(local_results))
+      self.assertAllDifferent(local_results)
 
   @ds_combinations.generate(
       combinations.combine(
@@ -125,6 +177,9 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
       self.skipTest(
           "TPUStrategy requires the replica function (the function passed to "
           "strategy.run) to be decorated with tf.function")
+    coord = None
+    if "ParameterServer" in strat_name:
+      coord = coordinator_lib.ClusterCoordinator(strat)
     creators = {
         True: functools.partial(rng.Generator.from_seed, 1234),
         False: rng.Generator.from_non_deterministic_state,
@@ -140,7 +195,7 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
         t = array_ops.stack([t1, t2])
         return t
       replica_fn = def_function.function(f) if jit_replica_fn else f
-      results = strat.run(replica_fn)
+      results = run_on_strategy(replica_fn, strat, coord)
       values = strat.experimental_local_results(results)
       n = get_num_local_replicas(strat, values)
       self.assertAllEqual(n, len(values))
@@ -149,7 +204,11 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
   @ds_combinations.generate(
       combinations.combine(
           strat=[
-              strategy_combinations.parameter_server_strategy_1worker_2ps_cpu
+              strategy_combinations.parameter_server_strategy_fn(
+                  "ParameterServer1Worker2PSCPUFixedShards",
+                  num_workers=1, num_ps=2,
+                  variable_partitioner=(
+                      sharded_variable.FixedShardsPartitioner(2)))
           ],
           mode=["eager"]))
   def testShardedError(self, strat):
@@ -176,6 +235,9 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
       self.skipTest(
           "TPUStrategy requires the replica function (the function passed to "
           "strategy.run) to be decorated with tf.function")
+    coord = None
+    if "ParameterServer" in strat_name:
+      coord = coordinator_lib.ClusterCoordinator(strat)
     shape = [3, 4]
     dtype = dtypes.int32
     with strat.scope():
@@ -190,7 +252,7 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
         return f(gen)
       replica_fn = def_function.function(g) if jit_replica_fn else g
       for _ in range(2):
-        results = strat.run(replica_fn)
+        results = run_on_strategy(replica_fn, strat, coord)
         values = strat.experimental_local_results(results)
         n = get_num_local_replicas(strat, values)
         self.assertAllEqual(n, len(values))
@@ -220,12 +282,18 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
       self.skipTest(
           "TPUStrategy requires the replica function (the function passed to "
           "strategy.run) to be decorated with tf.function")
+    coord1 = None
+    if "ParameterServer" in strat1_name:
+      coord1 = coordinator_lib.ClusterCoordinator(strat1)
+    coord2 = None
+    if "ParameterServer" in strat2_name:
+      coord2 = coordinator_lib.ClusterCoordinator(strat2)
     fname = os.path.join(self.get_temp_dir(), "checkpoint")
-    def uniform(strat, g):
+    def uniform(strat, coord, g):
       def f():
         return g.uniform_full_int([3], dtype=dtypes.int32)
       replica_fn = def_function.function(f) if jit_replica_fn else f
-      result = strat.run(replica_fn)
+      result = run_on_strategy(replica_fn, strat, coord)
       return strat.experimental_local_results(result)
     with strat1.scope():
       g1 = rng.Generator.from_seed(1)
@@ -235,9 +303,9 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
     cp2 = tracking_util.Checkpoint(g=g2)
     def write_restore_compare():
       cp1.write(fname)
-      r1 = uniform(strat1, g1)
+      r1 = uniform(strat1, coord1, g1)
       cp2.restore(fname)
-      r2 = uniform(strat2, g2)
+      r2 = uniform(strat2, coord2, g2)
       # Tests that overlapping replicas are properly restored.
       n1 = get_num_local_replicas(strat1)
       n2 = get_num_local_replicas(strat2)
@@ -291,4 +359,5 @@ class GeneratorTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  multi_process_runner.test_main()
+  with deprecation.silence():
+    multi_process_runner.test_main()

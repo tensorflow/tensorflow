@@ -35,9 +35,10 @@ namespace ops {
 Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
                    DataType dtype, const PartialTensorShape shape,
                    const char* container, const char* shared_name,
-                   absl::Span<string const> allowed_devices, const char* name) {
+                   absl::Span<string const> allowed_devices, const char* name,
+                   const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(
       op_ptr->SetAttrString("container", container, strlen(container)));
@@ -64,10 +65,9 @@ Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
 Status ReadVariableOp(AbstractContext* ctx,
                       AbstractTensorHandle* const resource,
                       AbstractTensorHandle** value, DataType dtype,
-                      const char* name) {
+                      const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      op_ptr->Reset("ReadVariableOp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("ReadVariableOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(resource));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrType("dtype", dtype));
@@ -83,13 +83,14 @@ Status ReadVariableOp(AbstractContext* ctx,
 //   return this value or a subsequent newer value of the variable.
 Status AssignVariableOp(AbstractContext* ctx,
                         AbstractTensorHandle* const resource,
-                        AbstractTensorHandle* const value, const char* name) {
+                        AbstractTensorHandle* const value, bool validate_shape,
+                        const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      op_ptr->Reset("AssignVariableOp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("AssignVariableOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(resource));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(value));
+  TF_RETURN_IF_ERROR(op_ptr->SetAttrBool("validate_shape", validate_shape));
   int num_retvals = 0;
   std::vector<AbstractTensorHandle*> dummy_outputs;
   return op_ptr->Execute(absl::MakeSpan(dummy_outputs), &num_retvals);
@@ -103,10 +104,10 @@ Status AssignVariableOp(AbstractContext* ctx,
 //   error status.
 Status DestroyResourceOp(AbstractContext* ctx,
                          AbstractTensorHandle* const resource,
-                         bool ignore_lookup_error, const char* name) {
+                         bool ignore_lookup_error, const char* name,
+                         const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      op_ptr->Reset("DestroyResourceOp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("DestroyResourceOp", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(resource));
   TF_RETURN_IF_ERROR(

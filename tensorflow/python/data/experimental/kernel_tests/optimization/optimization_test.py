@@ -13,12 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the static tf.data optimizations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
-import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -209,30 +204,31 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(existing_prefetch=[True, False]),
                          combinations.combine(autotune=[True, False]),
-                         combinations.combine(set_env=[True, False])))
-  def testOptimizationInjectPrefetch(self, autotune, set_env):
-    if set_env:
-      os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "inject_prefetch"
-      os.environ["TF_JOB_NAME"] = "test_job"
-
+                         combinations.combine(inject_prefetch=[True, False])))
+  def testOptimizationInjectPrefetch(self, existing_prefetch, autotune,
+                                     inject_prefetch):
     dataset = dataset_ops.Dataset.range(5)
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
-    if autotune and set_env:
-      dataset = dataset.apply(testing.assert_next(["Prefetch"]))
+    dataset = dataset.batch(1)
+    if existing_prefetch:
+      dataset = dataset.prefetch(1)
+    if autotune and inject_prefetch and not existing_prefetch:
+      dataset = dataset.apply(testing.assert_next(["Prefetch", "Root"]))
     else:
       dataset = dataset.apply(testing.assert_next(["Root"]))
 
     options = options_lib.Options()
     options.autotune.enabled = autotune
+    options.experimental_optimization.map_and_batch_fusion = False
+    if inject_prefetch:
+      options.experimental_optimization.inject_prefetch = True
     dataset = dataset.with_options(options)
 
-    self.assertDatasetProduces(dataset, expected_output=list(range(1, 6)))
-
-    if set_env:
-      del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
-      del os.environ["TF_JOB_NAME"]
+    self.assertDatasetProduces(dataset, expected_output=[np.array([x]) for x in
+                                                         range(1, 6)])
 
   # Reference variables are not supported in eager mode.
   @combinations.generate(

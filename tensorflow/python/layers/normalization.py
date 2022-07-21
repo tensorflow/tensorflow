@@ -15,17 +15,20 @@
 
 """Contains the normalization layer classes and their functional aliases.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
+from tensorflow.python.util import lazy_loader
+
+normalization = lazy_loader.LazyLoader(
+    'normalization', globals(),
+    'keras.legacy_tf_layers.normalization')
 
 
-from tensorflow.python.keras.legacy_tf_layers import normalization
-
-
-BatchNormalization = normalization.BatchNormalization
-batch_normalization = normalization.batch_normalization
-# Aliases
-
-BatchNorm = BatchNormalization
-batch_norm = batch_normalization
+# pylint: disable=invalid-name
+# lazy load all the attributes until they are accessed for the first time
+def __getattr__(name):
+  if name in ['BatchNormalization', 'BatchNorm']:
+    return normalization.BatchNormalization
+  elif name in ['batch_normalization', 'batch_norm']:
+    return normalization.batch_normalization
+  else:
+    raise AttributeError(f'module {__name__} doesn\'t have attribute {name}')

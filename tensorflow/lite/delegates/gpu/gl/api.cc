@@ -18,8 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <mutex>  // NOLINT
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -250,7 +253,7 @@ class CompiledModelImpl
     if (dynamic_batch_) {
       // Runtime is using objects from refs that will point to provided objects.
       // At this point just create 0 batch slice references.
-      refs = absl::make_unique<ObjectManager>();
+      refs = std::make_unique<ObjectManager>();
       for (const auto& s : object_sizes_) {
         auto buffer = objects->FindBuffer(s.first);
         if (!buffer) continue;
@@ -259,8 +262,8 @@ class CompiledModelImpl
         RETURN_IF_ERROR(refs->RegisterBuffer(s.first, std::move(ref)));
       }
     }
-    auto runtime = absl::make_unique<Runtime>(options, gpu_info_, command_queue,
-                                              refs ? refs.get() : objects);
+    auto runtime = std::make_unique<Runtime>(options, gpu_info_, command_queue,
+                                             refs ? refs.get() : objects);
     for (auto& program : programs_) {
       RETURN_IF_ERROR(runtime->AddProgram(shaders_[program.shader_idx],
                                           program.parameters, program.objects,
@@ -268,11 +271,11 @@ class CompiledModelImpl
     }
     RETURN_IF_ERROR(runtime->PrepareForExecution());
     if (dynamic_batch_) {
-      *inference_context = absl::make_unique<InferenceContextWithBatchImpl>(
+      *inference_context = std::make_unique<InferenceContextWithBatchImpl>(
           object_sizes_, objects, std::move(refs), std::move(runtime));
     } else {
       *inference_context =
-          absl::make_unique<InferenceContextImpl>(std::move(runtime));
+          std::make_unique<InferenceContextImpl>(std::move(runtime));
     }
     return absl::OkStatus();
   }
@@ -379,17 +382,14 @@ absl::Status Compile(const CompilationOptions& options,
                      const NodeShader& node_shader,
                      const WorkgroupsCalculator& workgroup_calculator,
                      std::unique_ptr<CompiledModel>* compiled_model) {
-  if (!IsBatchMatchesForAllValues(model)) {
-    return absl::InvalidArgumentError(
-        "Only identical batch dimension is supported");
-  }
+  RETURN_IF_ERROR(CheckBatchSizeForAllValues(model));
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
   if (!gpu_info.IsApiOpenGl31OrAbove()) {
     return absl::InternalError(
         "OpenGL ES 3.1 or above is required to use OpenGL inference.");
   }
-  auto compiled_model_impl = absl::make_unique<CompiledModelImpl>(gpu_info);
+  auto compiled_model_impl = std::make_unique<CompiledModelImpl>(gpu_info);
   compiled_model_impl->set_dynamic_batch(options.dynamic_batch);
   auto compiler = NewCompiler(&node_shader, &gpu_info, options);
   RETURN_IF_ERROR(compiler->Compile(
@@ -410,7 +410,7 @@ absl::Status ReadSerializedModel(
     return absl::InternalError(
         "OpenGL ES 3.1 or above is required to use OpenGL inference.");
   }
-  auto compiled_model_impl = absl::make_unique<CompiledModelImpl>(gpu_info);
+  auto compiled_model_impl = std::make_unique<CompiledModelImpl>(gpu_info);
   RETURN_IF_ERROR(DeserializeCompiledModel(
       absl::MakeConstSpan(serialized_model), compiled_model_impl.get()));
   *compiled_model = std::move(compiled_model_impl);

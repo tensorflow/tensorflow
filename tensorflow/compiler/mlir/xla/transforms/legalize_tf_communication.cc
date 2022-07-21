@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -38,17 +38,23 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/side_effect_util.h"
 
 namespace mlir {
+
+using func::FuncOp;
+
 namespace mhlo {
 
 namespace {
 constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+// TPU core that sends to and receives from host.
+constexpr int64_t kShardingTpuCore = 0;
 
 // A pass that legalizes TF/XLA communication ops, propagate their respective
 // tokens (for ordering), and rewrite their respective functions and control
@@ -56,19 +62,7 @@ constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
 // Note, this currently does not handle nested modules/functions or region based
 // ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
-    : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-
- public:
-  StringRef getArgument() const final {
-    return "xla-legalize-tf-communication";
-  }
-  StringRef getDescription() const final {
-    return "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
-           "dialect";
-  }
+    : public LegalizeTFCommunicationPassBase<LegalizeTFCommunication> {
   void runOnOperation() override;
 };
 
@@ -89,11 +83,11 @@ LogicalResult GetControlFlowAncestors(
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
   Block* block = op->getBlock();
   Operation* parent = block->getParentOp();
-  while (block && parent && !isa<FuncOp>(parent)) {
+  while (block && parent && !isa<func::FuncOp>(parent)) {
     if (!IsControlFlowOp(parent))
       return op->emitOpError()
              << "expects ancestor(s) to be of ['" << IfOp::getOperationName()
-             << "', '" << FuncOp::getOperationName() << "']";
+             << "', '" << func::FuncOp::getOperationName() << "']";
 
     if (!llvm::hasSingleElement(block->getParent()->getBlocks()))
       return op->emitOpError() << "expects single block region ancestor(s)";
@@ -111,7 +105,7 @@ LogicalResult GetControlFlowAncestors(
 // `control_flow_blocks` will be populated with control flow op ancestors for
 // every communication op.
 LogicalResult FindCommunicationOps(
-    FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
+    func::FuncOp func, llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks,
     bool& has_communication_ops) {
   auto result = func.walk([&](Operation* op) {
@@ -130,10 +124,10 @@ LogicalResult FindCommunicationOps(
 // (transitively), and an optional clone of itself. If `clone` is set, function
 // calls to `original` will be replaced with `clone`.
 struct FuncToRewrite {
-  FuncOp original;
+  func::FuncOp original;
   llvm::SmallPtrSet<Operation*, 4> control_flow_ops;
   llvm::SmallPtrSet<Block*, 4> control_flow_blocks;
-  FuncOp clone;
+  func::FuncOp clone;
 };
 
 // Finds all functions that need to be rewritten with communication ops and
@@ -142,8 +136,8 @@ LogicalResult GetFunctionsToRewrite(
     ModuleOp module,
     llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
   // Find functions containing communication ops.
-  SmallVector<FuncOp, 4> funcs_to_visit;
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  SmallVector<func::FuncOp, 4> funcs_to_visit;
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     FuncToRewrite func_to_rewrite{/*original=*/func, /*control_flow_ops=*/{},
                                   /*control_flow_blocks=*/{},
                                   /*clone=*/nullptr};
@@ -160,15 +154,16 @@ LogicalResult GetFunctionsToRewrite(
 
   // Find functions that call functions with communication ops, transitively.
   while (!funcs_to_visit.empty()) {
-    SmallVector<FuncOp, 4> new_funcs_to_visit;
-    for (FuncOp& func : funcs_to_visit) {
+    SmallVector<func::FuncOp, 4> new_funcs_to_visit;
+    for (func::FuncOp& func : funcs_to_visit) {
       auto uses = func.getSymbolUses(module);
       if (!uses) continue;
       for (auto& use : *uses) {
-        // Only `mlir::CallOp` is supported as this requires knowing how to
-        // rewrite arguments and results to a function.
-        if (!isa<mlir::CallOp>(use.getUser())) continue;
-        auto caller_parent_func = use.getUser()->getParentOfType<FuncOp>();
+        // Only `mlir::func::CallOp` is supported as this requires knowing how
+        // to rewrite arguments and results to a function.
+        if (!isa<mlir::func::CallOp>(use.getUser())) continue;
+        auto caller_parent_func =
+            use.getUser()->getParentOfType<func::FuncOp>();
         if (!caller_parent_func) continue;
 
         FuncToRewrite func_to_rewrite{/*original=*/caller_parent_func,
@@ -214,10 +209,11 @@ LogicalResult GetFunctionsToRewrite(
   return success();
 }
 
-// Assigns op sharding to an op for a given device core.
-void SetOpSharding(Operation* op, int64_t tpu_core) {
+// Assigns op sharding to full tensor on `kShardingTpuCore`.
+void SetOpSharding(Operation* op) {
   std::string sharding_serialized =
-      ::xla::sharding_builder::AssignDevice(tpu_core).SerializeAsString();
+      ::xla::sharding_builder::AssignDevice(kShardingTpuCore)
+          .SerializeAsString();
   op->setAttr(kShardingAttr,
               StringAttr::get(op->getContext(), sharding_serialized));
 }
@@ -236,7 +232,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 
   auto rendezvous_name = StringAttr::get(context, formatted_key);
   auto rendezvous_name_attr = NamedAttribute(
-      Identifier::get(xla::kXlaHostTransferRendezvousNameAttr, context),
+      StringAttr::get(context, xla::kXlaHostTransferRendezvousNameAttr),
       rendezvous_name);
 
   auto element_type = getElementTypeOrSelf(type);
@@ -245,13 +241,13 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
       ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
   auto original_type = StringAttr::get(context, xla_element_type_str);
   auto original_type_attr = NamedAttribute(
-      Identifier::get(xla::kXlaHostTransferOriginalTypeAttr, context),
+      StringAttr::get(context, xla::kXlaHostTransferOriginalTypeAttr),
       original_type);
 
   auto host_handler_name_value =
       StringAttr::get(context, host_handler_name.str());
   auto host_handler_name_attr = NamedAttribute(
-      Identifier::get(xla::kXlaHostTransferHandlerNameAttr, context),
+      StringAttr::get(context, xla::kXlaHostTransferHandlerNameAttr),
       host_handler_name_value);
 
   auto frontend_attributes = DictionaryAttr::get(
@@ -261,16 +257,14 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
-// Creates a `mhlo.send` op for sending value `operand`. If `tpu_core` is set,
-// op sharding for the respective device will be set.
+// Creates a `mhlo.send` op for sending value `operand`.
 Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value operand, StringRef key, size_t index,
-                   const Optional<int64_t>& tpu_core, Value token,
+                   Value operand, StringRef key, size_t index, Value token,
                    StringRef host_handler_name) {
   // type 2 == DEVICE_TO_HOST
-  auto channel_handle = ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id++),
-      /*type=*/builder.getI64IntegerAttr(2), builder.getContext());
+  auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
+                                               /*handle=*/channel_id++,
+                                               /*type=*/2);
   auto send = builder.create<SendOp>(
       loc, token.getType(), operand, token, channel_handle,
       /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -278,24 +272,21 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   SetFrontendAttributes(send, index, key, operand.getType(),
                         /*device_to_host=*/true, host_handler_name);
 
-  if (tpu_core) SetOpSharding(send, *tpu_core);
+  SetOpSharding(send);
 
   return send.getResult();
 }
 
-// Creates a `mhlo.recv` op for receiving a value. If `tpu_core` is set, op
-// sharding for the respective device will be set.
+// Creates a `mhlo.recv` op for receiving a value.
 Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value result, StringRef key, size_t index,
-                   const Optional<int64_t>& tpu_core, Value token,
+                   Value result, StringRef key, size_t index, Value token,
                    StringRef host_handler_name) {
   // type 3 == HOST_TO_DEVICE
-  auto channel_handle = ChannelHandle::get(
-      /*handle=*/builder.getI64IntegerAttr(channel_id++),
-      /*type=*/builder.getI64IntegerAttr(3), builder.getContext());
+  auto channel_handle = ChannelHandleAttr::get(builder.getContext(),
+                                               /*handle=*/channel_id++,
+                                               /*type=*/3);
   auto result_type = result.getType();
-  auto recv_result_type =
-      TupleType::get(builder.getContext(), {result_type, token.getType()});
+  SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
   auto recv =
       builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -303,19 +294,11 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   SetFrontendAttributes(recv, index, key, result_type,
                         /*device_to_host=*/false, host_handler_name);
 
-  if (tpu_core) SetOpSharding(recv, *tpu_core);
+  SetOpSharding(recv);
 
-  auto get_tuple_element =
-      builder.create<GetTupleElementOp>(loc, recv.getResult(), /*index=*/0);
-  if (tpu_core) SetOpSharding(get_tuple_element, *tpu_core);
+  result.replaceAllUsesWith(recv.getResult(0));
 
-  result.replaceAllUsesWith(get_tuple_element);
-
-  auto new_token = builder.create<GetTupleElementOp>(loc, recv.getResult(),
-                                                     /*index=*/1);
-  if (tpu_core) SetOpSharding(new_token, *tpu_core);
-
-  return new_token.getResult();
+  return recv.getResult(1);
 }
 
 // Creates a new token if necessary, acting as a sink to previous tokens. If
@@ -334,7 +317,7 @@ Value CreateSinkToken(OpBuilder& builder, Location loc, ArrayRef<Value> tokens,
 }
 
 // Replaces `tf._XlaHostComputeMlir` with individual `mhlo.send` and `mhlo.recv`
-// ops per operand and result. Unique Channel Id's are assigned per transfer.
+// ops per operand and result. Unique Channel IDs are assigned per transfer.
 // Sink tokens are created across all `mhlo.send` ops first and then by
 // all `mhlo.recv` ops.
 Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
@@ -342,24 +325,21 @@ Value RewriteHostComputeOp(OpBuilder& builder, int64_t& channel_id,
                            Value token) {
   builder.setInsertionPoint(host_compute);
   Location loc = host_compute.getLoc();
-  int64_t tpu_core = host_compute.tpu_coreAttr().getInt();
 
   SmallVector<Value, 4> send_tokens;
   for (auto operand : llvm::enumerate(host_compute.inputs())) {
-    auto send_token =
-        CreateSendOp(builder, channel_id, loc, operand.value(),
-                     host_compute.send_key(), operand.index(), tpu_core, token,
-                     xla::kXlaHostTransferTfRendezvousHandlerName);
+    auto send_token = CreateSendOp(
+        builder, channel_id, loc, operand.value(), host_compute.send_key(),
+        operand.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     send_tokens.push_back(send_token);
   }
   token = CreateSinkToken(builder, loc, send_tokens, token);
 
   SmallVector<Value, 4> recv_tokens;
   for (auto result : llvm::enumerate(host_compute.outputs())) {
-    auto recv_token =
-        CreateRecvOp(builder, channel_id, loc, result.value(),
-                     host_compute.recv_key(), result.index(), tpu_core, token,
-                     xla::kXlaHostTransferTfRendezvousHandlerName);
+    auto recv_token = CreateRecvOp(
+        builder, channel_id, loc, result.value(), host_compute.recv_key(),
+        result.index(), token, xla::kXlaHostTransferTfRendezvousHandlerName);
     recv_tokens.push_back(recv_token);
   }
   token = CreateSinkToken(builder, loc, recv_tokens, token);
@@ -374,7 +354,7 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(send_to_host);
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
                        send_to_host.input(), send_to_host.key(),
-                       /*index=*/0, /*tpu_core=*/llvm::None, token,
+                       /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
   send_to_host.erase();
@@ -387,26 +367,26 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(recv_from_host);
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
                        recv_from_host.output(), recv_from_host.key(),
-                       /*index=*/0, /*tpu_core=*/llvm::None, token,
+                       /*index=*/0, token,
                        xla::kXlaHostTransferTfRendezvousHandlerName);
 
   recv_from_host.erase();
   return token;
 }
 
-// Replaces a `mlir::CallOp` with one that has an extra `!mhlo.token` operand
-// and `!mhlo.token` result. If `new_symbol` is set, the new call will be
-// updated to call the `new_symbol` instead.
-Value RewriteCallOp(OpBuilder& builder, CallOp call,
+// Replaces a `mlir::func::CallOp` with one that has an extra `!mhlo.token`
+// operand and `!mhlo.token` result. If `new_symbol` is set, the new call will
+// be updated to call the `new_symbol` instead.
+Value RewriteCallOp(OpBuilder& builder, func::CallOp call,
                     const Optional<StringRef>& new_symbol, Value token) {
   builder.setInsertionPoint(call);
-  auto new_operands = llvm::to_vector<4>(call.getArgOperands());
+  auto new_operands = llvm::to_vector(call.getArgOperands());
   new_operands.push_back(token);
-  auto new_result_types = llvm::to_vector<4>(call.getResultTypes());
+  auto new_result_types = llvm::to_vector(call.getResultTypes());
   new_result_types.push_back(token.getType());
-  auto new_call = builder.create<CallOp>(
-      call.getLoc(), new_result_types, new_symbol ? *new_symbol : call.callee(),
-      new_operands);
+  auto new_call = builder.create<func::CallOp>(
+      call.getLoc(), new_result_types,
+      new_symbol ? *new_symbol : call.getCallee(), new_operands);
 
   for (auto results : llvm::zip(call.getResults(), new_call.getResults()))
     std::get<0>(results).replaceAllUsesWith(std::get<1>(results));
@@ -429,14 +409,23 @@ Value CreateTuple(OpBuilder& builder, Location loc, ArrayRef<Value> operands) {
   return builder.create<TupleOp>(loc, operands).getResult();
 }
 
-// Replaces a value `value` with a new value but the token attached. If `value`
-// is not a tuple, a new tuple is formed with `token`. If `value` is a tuple,
-// `value` is extended instead. New tuple values created are cached.
-Value GetValueWithToken(OpBuilder& builder, Value value, Value token,
-                        llvm::SmallDenseMap<Value, Value>& rewritten_values) {
+// Extends `values` with the value `token` attached. If `flatten_tuple` is
+// false, `values` will have a single element, say `value`. If `value` is not a
+// tuple, a new tuple is formed with `token`. If `values` is a tuple, it is
+// extended instead. New tuple values created are cached.
+SmallVector<Value> GetValueWithToken(
+    OpBuilder& builder, ArrayRef<Value> values, Value token,
+    llvm::SmallDenseMap<Value, Value>& rewritten_values, bool flatten_tuple) {
+  if (flatten_tuple) {
+    auto operands = llvm::to_vector(values);
+    operands.push_back(token);
+    return operands;
+  }
+
+  auto value = values[0];
   // If value with token already exists, reuse it.
   auto it = rewritten_values.find(value);
-  if (it != rewritten_values.end()) return it->getSecond();
+  if (it != rewritten_values.end()) return {it->getSecond()};
 
   auto create_tuple = [&](ArrayRef<Value> operands) {
     auto new_result = CreateTuple(builder, value.getLoc(), operands);
@@ -446,15 +435,15 @@ Value GetValueWithToken(OpBuilder& builder, Value value, Value token,
 
   auto tuple_type = value.getType().dyn_cast<TupleType>();
   // `value` is not a tuple, create a new tuple.
-  if (!tuple_type) return create_tuple({value, token});
+  if (!tuple_type) return {create_tuple({value, token})};
 
   // Extend tuple if `value` is a tuple.
   // If `value` is an op result and the owner is a `mhlo.tuple`, simply unpack
   // the tuple.
   if (auto tuple_op = value.getDefiningOp<TupleOp>()) {
-    auto tuple_operands = llvm::to_vector<4>(tuple_op.getOperands());
+    auto tuple_operands = llvm::to_vector(tuple_op.getOperands());
     tuple_operands.push_back(token);
-    return create_tuple(tuple_operands);
+    return {create_tuple(tuple_operands)};
   }
 
   // `value` is not created via a `mhlo.tuple` directly, unpack individual
@@ -466,20 +455,32 @@ Value GetValueWithToken(OpBuilder& builder, Value value, Value token,
             .getResult());
 
   tuple_operands.push_back(token);
-  return create_tuple(tuple_operands);
+  return {create_tuple(tuple_operands)};
 }
 
-// Extends a type to include a `mhlo.token` type. If `type` is not a tuple type,
-// a new tuple type with `type` and `mhlo.token` type is created instead.
-TupleType GetTypeWithToken(OpBuilder& builder, Type type) {
+// Extends the 'types' to include a `mhlo.token` type. If `flatten_tuple` is
+// false, `types` will have a single element, say `type`. If `type` is not a
+// tuple type, a new tuple type with `type` and `mhlo.token` type is created
+// instead.
+SmallVector<Type> GetTypeWithToken(OpBuilder& builder, ArrayRef<Type> types,
+                                   bool flatten_tuple) {
+  SmallVector<Type> new_result_types;
   auto token_type = TokenType::get(builder.getContext());
-  if (auto tuple_type = type.dyn_cast<TupleType>()) {
-    auto result_types = llvm::to_vector<4>(tuple_type.getTypes());
+
+  if (flatten_tuple) {
+    auto result_types = llvm::to_vector(types);
     result_types.push_back(token_type);
-    return builder.getTupleType(result_types);
+    return result_types;
   }
 
-  return builder.getTupleType({type, token_type});
+  auto type = types[0];
+  if (auto tuple_type = type.dyn_cast<TupleType>()) {
+    auto result_types = llvm::to_vector(tuple_type.getTypes());
+    result_types.push_back(token_type);
+    return {builder.getTupleType(result_types)};
+  }
+
+  return {builder.getTupleType({type, token_type})};
 }
 
 // Creates a slice of a tuple `value` with `mhlo.get_tuple_element` from index 0
@@ -494,13 +495,22 @@ Value CreateSubTuple(OpBuilder& builder, Value value, size_t end) {
   return CreateTuple(builder, value.getLoc(), tuple_operands);
 }
 
-// Replaces uses of `value` with `replacement`. If `value` is not a tuple type,
-// an explicit `mhlo.get_tuple_element` is created to unpack the tuple and
+// Replaces uses of `values` with `replacements`. If `flatten_tuple` is false,
+// `values` will have a single element, say `value`. If `value` is not a tuple
+// type, an explicit `mhlo.get_tuple_element` is created to unpack the tuple and
 // return the first element. Otherwise, `mhlo.get_tuple_element` users are
 // simply updated with `replacement`, and all other users are updated with a
 // slice of `replacement`.
-void ReplaceWithTupleResult(OpBuilder& builder, Value value,
-                            Value replacement) {
+void ReplaceWithTupleResult(OpBuilder& builder, ArrayRef<Value> values,
+                            ArrayRef<Value> replacements, bool flatten_tuple) {
+  if (flatten_tuple) {
+    for (size_t result_index = 0; result_index < values.size(); result_index++)
+      values[result_index].replaceAllUsesWith(replacements[result_index]);
+    return;
+  }
+
+  auto value = values[0];
+  auto replacement = replacements[0];
   auto tuple_type = value.getType().dyn_cast<TupleType>();
   if (!tuple_type) {
     if (!value.use_empty()) {
@@ -525,29 +535,38 @@ void ReplaceWithTupleResult(OpBuilder& builder, Value value,
   }
 }
 
-// Replaces control flow op block single block argument with new block argument
-// of type `new_type` (tuple type). The last element of the new block argument
-// (token) is returned.
+// Replaces control flow op block arguments with new block arguments
+// of types `types`. The last element of the new block argument (token) is
+// returned.
 Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
-                                         Type token_type) {
-  assert(block.getNumArguments() == 1);
+                                         ArrayRef<Type> types) {
   builder.setInsertionPointToStart(&block);
-  auto new_arg = block.addArgument(token_type);
-  ReplaceWithTupleResult(builder, block.getArgument(0), new_arg);
-  block.eraseArgument(0);
-  return builder
-      .create<GetTupleElementOp>(new_arg.getLoc(), new_arg,
-                                 token_type.cast<TupleType>().size() - 1)
-      .getResult();
+
+  auto old_args_size = block.getNumArguments();
+
+  block.addArguments(
+      types, SmallVector<Location>(types.size(), block.getParent()->getLoc()));
+
+  auto old_args = ArrayRef<Value>(block.getArguments().begin(),
+                                  block.getArguments().begin() + old_args_size);
+  auto new_args = ArrayRef<Value>(block.getArguments().begin() + old_args_size,
+                                  block.getArguments().end());
+  assert(!new_args.empty());
+
+  ReplaceWithTupleResult(builder, old_args, new_args, /*flatten_tuple=*/true);
+  auto new_arg = new_args[new_args.size() - 1];
+
+  block.eraseArguments(
+      llvm::to_vector(llvm::seq((unsigned)0, (unsigned)old_args_size)));
+
+  return new_arg;
 }
 
-// Updates control flow op terminator with an extra element `token`. If the
-// original return value is not a tuple, a new tuple is formed. Otherwise the
-// tuple is extended.
+// Updates control flow op terminator with an extra element `token`.
 void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
-                                  Value token) {
-  assert(terminator->getNumOperands() == 1);
-  assert(terminator->getBlock()->getNumArguments() == 1);
+                                  Value token, bool flatten_tuple) {
+  assert(flatten_tuple || terminator->getNumOperands() == 1);
+  assert(flatten_tuple || terminator->getBlock()->getNumArguments() == 1);
   // `mhlo.while` cond terminator does not need to be rewritten as it always
   // returns a tensor<i1> predicate value.
   if (auto while_parent = dyn_cast_or_null<WhileOp>(terminator->getParentOp()))
@@ -555,53 +574,47 @@ void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
 
   builder.setInsertionPoint(terminator);
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
-  Value new_result = GetValueWithToken(builder, terminator->getOperand(0),
-                                       token, rewritten_operands);
-  terminator->setOperand(0, new_result);
+  auto new_results =
+      GetValueWithToken(builder, llvm::to_vector(terminator->getOperands()),
+                        token, rewritten_operands, flatten_tuple);
+  terminator->setOperands(new_results);
 }
 
-// Rewrites a `mhlo.if` op to receive and forward a `mhlo.token`. Operands to
-// the op for all of its regions are extended to have an extra operand `token`.
+// Rewrites a `mhlo.if` op to receive and forward a `mhlo.token`. As If op does
+// not have any operands other than the predicate, hence we implicitly capture
+// the parent token. Also we use the same implicit token for use in the If op's
+// regions.
 void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
                        SmallVectorImpl<OpVisitorState>& ops_to_visit,
                        Value token) {
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
 
-  // Rewrite all region operands to have an extra operand `token`.
-  Value new_true_operand = GetValueWithToken(builder, region_if.true_arg(),
-                                             token, rewritten_operands);
-  Value new_false_operand = GetValueWithToken(builder, region_if.false_arg(),
-                                              token, rewritten_operands);
-
-  auto new_result_type = GetTypeWithToken(builder, region_if.getType());
+  auto new_result_types =
+      GetTypeWithToken(builder, llvm::to_vector(region_if.getResultTypes()),
+                       /*flatten_tuple=*/true);
 
   // Create new `mhlo.if` op with extra token operands and result.
-  auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_type,
-                                     region_if.pred(), new_true_operand,
-                                     new_false_operand);
+  auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_types,
+                                     region_if.pred());
 
   // Move all regions from the old `mhlo.if` op to its replacement.
   new_if.true_branch().takeBody(region_if.true_branch());
   new_if.false_branch().takeBody(region_if.false_branch());
 
-  // Forward result from old `mhlo.if` with replacement, and unpack result when
-  // necessary.
-  ReplaceWithTupleResult(builder, region_if.getResult(), new_if.getResult());
+  // Forward result from old `mhlo.if` with replacement.
+  SmallVector<Value> old_if_results = region_if.getResults();
+  SmallVector<Value> new_if_results = new_if.getResults();
 
-  auto new_token = builder.create<GetTupleElementOp>(
-      new_if.getLoc(), new_if.getResult(),
-      new_if.getResult().getType().cast<TupleType>().size() - 1);
+  ReplaceWithTupleResult(builder, old_if_results, new_if_results,
+                         /*flatten_tuple=*/true);
+
+  // auto new_token = new_if_results[new_if_results.size() - 1];
 
   region_if.erase();
 
-  // Remove leftover operands to old `mhlo.if` if they have no uses.
-  for (auto& rewritten_operand : rewritten_operands)
-    if (auto tuple_op = rewritten_operand.getFirst().getDefiningOp<TupleOp>())
-      if (tuple_op.use_empty()) tuple_op.erase();
-
-  // Next op to visit. The replacement is visited but at its first region. The
-  // token result of the new region if is propagated.
-  ops_to_visit.push_back({/*region_idx=*/0, new_token, new_if});
+  // Next op to visit. The replacement is visited but at its first region.
+  // The new region use the same implicit token used by the If op.
+  ops_to_visit.push_back({/*region_idx=*/0, token, new_if});
 }
 
 // Rewrites a `mhlo.if`/`mhlo.while` region to receive and forward a
@@ -611,7 +624,8 @@ void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
 // `token`.
 void RewriteControlFlowOpRegion(
     OpBuilder& builder, Operation* region_op, unsigned region_idx,
-    Type block_arg_type, SmallVectorImpl<OpVisitorState>& ops_to_visit,
+    ArrayRef<Type> block_arg_types,
+    SmallVectorImpl<OpVisitorState>& ops_to_visit,
     const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token) {
   ops_to_visit.push_back({region_idx + 1, token, region_op});
 
@@ -619,16 +633,32 @@ void RewriteControlFlowOpRegion(
   assert(llvm::hasSingleElement(region));
 
   auto block_token = UpdateControlFlowBlockArgWithToken(builder, region.front(),
-                                                        block_arg_type);
+                                                        block_arg_types);
 
   if (control_flow_blocks.contains(&region.front())) {
-    ops_to_visit.push_back({/*region_idx=*/llvm::None, block_token,
-                            block_token.getDefiningOp()->getNextNode()});
+      ops_to_visit.push_back(
+          {/*region_idx=*/llvm::None, block_token, &region.front().front()});
     return;
   }
 
   RewriteControlFlowTerminator(builder, region.front().getTerminator(),
-                               block_token);
+                               block_token, /*flatten_tuple=*/true);
+}
+
+// For mlir::IfOp or mlir::CaseOp, replace the use of their region's block
+// argument (of type token) with 'implicit_operand'.
+void ReplaceBlockArgumentsWithImplicitOperands(mlir::Operation* op,
+                                               unsigned region_idx,
+                                               Value implicit_operand) {
+  assert((mlir::dyn_cast<mlir::mhlo::IfOp>(*op) ||
+          mlir::dyn_cast<mlir::mhlo::CaseOp>(*op)) &&
+         "Unexpected mlir op in "
+         "HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands!");
+
+  auto& region = op->getRegion(region_idx);
+  region.getArgument(0).replaceAllUsesWith(implicit_operand);
+  region.front().eraseArguments(
+      llvm::to_vector(llvm::seq<unsigned>(0, region.getNumArguments())));
 }
 
 // Rewrites an `mhlo.if` op or its region. If `region_idx` is not set, the op
@@ -648,9 +678,24 @@ bool ProcessRegionIfOp(OpBuilder& builder, IfOp region_if,
   }
 
   if (*region_idx < region_if.getNumRegions()) {
+    // For the region-blocks of If op, we create a dummy token argument. Later
+    // we replace that block-argument's uses with the same (implicitly captured)
+    // token 'token', used for If op, and erase the argument.
+    // Note that 'RewriteControlFlowOpRegion' sets the token, used for the first
+    // operation of region_idx'th region, to the dummy block-argument. As we
+    // erase that argument, we also need to make sure that the token used for
+    // the next operation is set to 'token'.
     RewriteControlFlowOpRegion(builder, region_if, *region_idx,
-                               region_if.getOperand(*region_idx + 1).getType(),
-                               ops_to_visit, control_flow_blocks, token);
+                               {token.getType()}, ops_to_visit,
+                               control_flow_blocks, token);
+
+    ReplaceBlockArgumentsWithImplicitOperands(region_if.getOperation(),
+                                              *region_idx, token);
+
+    auto next_visitor_state = ops_to_visit.back();
+    next_visitor_state.token = token;
+    ops_to_visit.pop_back();
+    ops_to_visit.push_back(next_visitor_state);
     return true;
   }
 
@@ -665,36 +710,33 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
 
   // Rewrite region operand to have an extra operand `token`.
-  // TODO(jpienaar): Support multi-operand while op.
-  Value new_val_operand = GetValueWithToken(builder, region_while.arg()[0],
-                                            token, rewritten_operands);
+  auto new_val_operands =
+      GetValueWithToken(builder, llvm::to_vector(region_while.getOperands()),
+                        token, rewritten_operands,
+                        /*flatten_tuple=*/true);
 
-  auto new_result_type = GetTypeWithToken(builder, region_while.getType(0));
+  auto new_result_types =
+      GetTypeWithToken(builder, llvm::to_vector(region_while.getResultTypes()),
+                       /*flatten_tuple*/ true);
 
   // Create new `mhlo.while` op with extra token operand and result.
   auto new_while = builder.create<WhileOp>(region_while.getLoc(),
-                                           new_result_type, new_val_operand);
+                                           new_result_types, new_val_operands);
 
   // Move all regions from the old `mhlo.while` op to its replacement.
   new_while.cond().takeBody(region_while.cond());
   new_while.body().takeBody(region_while.body());
 
-  // Forward result from old `mhlo.while` with replacement, and unpack result
-  // when necessary.
-  // TODO(jpienaar): Support multi-operand while op.
-  ReplaceWithTupleResult(builder, region_while.getResult(0),
-                         new_while.getResult(0));
+  // Forward result from old `mhlo.while` with replacement.
+  SmallVector<Value> old_while_results = region_while.getResults();
+  SmallVector<Value> new_while_results = new_while.getResults();
 
-  auto new_token = builder.create<GetTupleElementOp>(
-      new_while.getLoc(), new_while.getResult(0),
-      new_while.getType(0).cast<TupleType>().size() - 1);
+  ReplaceWithTupleResult(builder, old_while_results, new_while_results,
+                         /*flatten_tuple*/ true);
+
+  auto new_token = new_while_results[new_while_results.size() - 1];
 
   region_while.erase();
-
-  // Remove leftover operands to old `mhlo.while` if they have no uses.
-  for (auto& rewritten_operand : rewritten_operands)
-    if (auto tuple_op = rewritten_operand.getFirst().getDefiningOp<TupleOp>())
-      if (tuple_op.use_empty()) tuple_op.erase();
 
   // Next op to visit. The replacement is visited but at its first region. The
   // token result of the new region if is propagated.
@@ -717,10 +759,12 @@ bool ProcessRegionWhileOp(
   }
 
   if (*region_idx < region_while.getNumRegions()) {
-    // TODO(jpienaar): Support multi-operand while op.
+    SmallVector<Type> operand_types;
+    for (auto operand : region_while.operand())
+      operand_types.push_back(operand.getType());
     RewriteControlFlowOpRegion(builder, region_while, *region_idx,
-                               region_while.arg()[0].getType(), ops_to_visit,
-                               control_flow_blocks, token);
+                               operand_types, ops_to_visit, control_flow_blocks,
+                               token);
     return true;
   }
 
@@ -729,22 +773,23 @@ bool ProcessRegionWhileOp(
 
 // Updates function type based on current function body block arguments and
 // terminator operand types.
-void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
-  auto new_argument_types = llvm::to_vector<4>(func_body.getArgumentTypes());
+void UpdateFunctionType(OpBuilder& builder, func::FuncOp func,
+                        Block& func_body) {
+  auto new_argument_types = llvm::to_vector(func_body.getArgumentTypes());
   auto new_result_types =
-      llvm::to_vector<4>(func_body.getTerminator()->getOperandTypes());
+      llvm::to_vector(func_body.getTerminator()->getOperandTypes());
   func.setType(FunctionType::get(builder.getContext(), new_argument_types,
                                  new_result_types));
 }
 
 // Replaces a function terminator `return` with another `return` that has an
 // extra `mhlo.token` operand.
-void RewriteFunctionTerminator(OpBuilder& builder, mlir::ReturnOp terminator,
-                               Value token) {
-  auto new_results = llvm::to_vector<4>(terminator.getOperands());
+void RewriteFunctionTerminator(OpBuilder& builder,
+                               mlir::func::ReturnOp terminator, Value token) {
+  auto new_results = llvm::to_vector(terminator.getOperands());
   new_results.push_back(token);
   builder.setInsertionPoint(terminator);
-  builder.create<mlir::ReturnOp>(terminator.getLoc(), new_results);
+  builder.create<mlir::func::ReturnOp>(terminator.getLoc(), new_results);
   terminator.erase();
 }
 
@@ -772,7 +817,7 @@ LogicalResult RewriteFunction(
   // If a function is public, it's signature should not be modified, and instead
   // a token will be created. Otherwise a token block argument is inserted.
   Value init_token =
-      rewrite_block ? func_body.addArgument(token_type)
+      rewrite_block ? func_body.addArgument(token_type, func.getLoc())
                     : builder.create<CreateTokenOp>(func.getLoc(), token_type)
                           .getResult();
 
@@ -795,12 +840,12 @@ LogicalResult RewriteFunction(
       token = RewriteSendToHostOp(builder, channel_id, send_to_host, token);
     } else if (auto recv_from_host = dyn_cast<TF::XlaRecvFromHostOp>(curr_op)) {
       token = RewriteRecvFromHostOp(builder, channel_id, recv_from_host, token);
-    } else if (auto call = dyn_cast<mlir::CallOp>(curr_op)) {
-      // Only `mlir::CallOp` is supported as this requires knowing how to
+    } else if (auto call = dyn_cast<mlir::func::CallOp>(curr_op)) {
+      // Only `mlir::func::CallOp` is supported as this requires knowing how to
       // rewrite arguments and results to a function.
       auto it = funcs.find(call.getCallee());
       if (it != funcs.end()) {
-        FuncOp clone = it->getSecond().clone;
+        func::FuncOp clone = it->getSecond().clone;
         Optional<StringRef> symbol_name =
             clone ? Optional<StringRef>(clone.getName()) : llvm::None;
         // If the function being called is to be cloned, update the call to also
@@ -808,26 +853,39 @@ LogicalResult RewriteFunction(
         token = RewriteCallOp(builder, call, symbol_name, token);
       }
     } else if (auto region_if = dyn_cast<IfOp>(curr_op)) {
-      if (op_to_visit.region_idx || control_flow_ops.contains(region_if))
-        if (ProcessRegionIfOp(builder, region_if, op_to_visit.region_idx,
-                              ops_to_visit, control_flow_blocks, token))
+      if (op_to_visit.region_idx || control_flow_ops.contains(region_if)) {
+        auto exist_unprocessed_region =
+            ProcessRegionIfOp(builder, region_if, op_to_visit.region_idx,
+                              ops_to_visit, control_flow_blocks, token);
+
+        // Once all the IfOp regions are processed (i.e.
+        // 'exist_unprocessed_region' == false), select returned token-value
+        // from IfOp as the token to be used for the following op.
+        if (!exist_unprocessed_region) {
+          token = curr_op->getResult(curr_op->getNumResults() - 1);
+        } else {
           continue;
+        }
+      }
     } else if (auto region_while = dyn_cast<WhileOp>(curr_op)) {
       if (op_to_visit.region_idx || control_flow_ops.contains(region_while))
         if (ProcessRegionWhileOp(builder, region_while, op_to_visit.region_idx,
                                  ops_to_visit, control_flow_blocks, token))
           continue;
     } else if (auto region_terminator = dyn_cast<mhlo::ReturnOp>(curr_op)) {
-      RewriteControlFlowTerminator(builder, region_terminator, token);
-      // There is no next op afer the control flow op terminator, simply let
+      bool flatten_tuple = isa<mhlo::WhileOp, mhlo::IfOp, mhlo::CaseOp>(
+          region_terminator->getParentOp());
+      RewriteControlFlowTerminator(builder, region_terminator, token,
+                                   flatten_tuple);
+      // There is no next op after the control flow op terminator, simply let
       // stack have one less element.
       continue;
-    } else if (auto func_terminator = dyn_cast<mlir::ReturnOp>(curr_op)) {
+    } else if (auto func_terminator = dyn_cast<mlir::func::ReturnOp>(curr_op)) {
       if (rewrite_block)
         RewriteFunctionTerminator(builder, func_terminator, token);
 
-      // There is no next op afer the function terminator, simply let stack have
-      // one less element/be empty.
+      // There is no next op after the function terminator, simply let stack
+      // have one less element/be empty.
       continue;
     }
 
@@ -844,8 +902,8 @@ LogicalResult RewriteFunction(
 bool IsFunctionCallWithCommunication(
     Operation* op,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
-  if (auto call = dyn_cast<mlir::CallOp>(op))
-    return funcs_to_rewrite.count(call.callee());
+  if (auto call = dyn_cast<mlir::func::CallOp>(op))
+    return funcs_to_rewrite.count(call.getCallee());
 
   return false;
 }
@@ -853,7 +911,7 @@ bool IsFunctionCallWithCommunication(
 // Collects all control flow op ancestors of communication ops or function calls
 // with communication ops (transitively).
 void GetCommunicationControlFlowOps(
-    FuncOp func,
+    func::FuncOp func,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite,
     llvm::SmallPtrSetImpl<Operation*>& control_flow_ops,
     llvm::SmallPtrSetImpl<Block*>& control_flow_blocks) {
@@ -874,12 +932,12 @@ void LegalizeTFCommunication::runOnOperation() {
   if (failed(GetFunctionsToRewrite(module, funcs_to_rewrite)))
     return signalPassFailure();
 
-  // Module level counter to make sure Channel Id's are unique.
+  // Module level counter to make sure Channel IDs are unique.
   int64_t channel_id = 1;
   OpBuilder builder(&getContext());
   for (const auto& func_and_name : funcs_to_rewrite) {
     const auto& func_to_rewrite = func_and_name.getSecond();
-    FuncOp func = func_to_rewrite.original;
+    func::FuncOp func = func_to_rewrite.original;
     if (failed(RewriteFunction(builder, channel_id, module, func,
                                funcs_to_rewrite,
                                func_to_rewrite.control_flow_ops,
@@ -887,7 +945,7 @@ void LegalizeTFCommunication::runOnOperation() {
                                /*is_clone=*/false)))
       return signalPassFailure();
 
-    FuncOp clone = func_and_name.getSecond().clone;
+    func::FuncOp clone = func_and_name.getSecond().clone;
     if (!clone) continue;
     llvm::SmallPtrSet<Operation*, 4> clone_control_flow_ops;
     llvm::SmallPtrSet<Block*, 4> clone_control_flow_blocks;
@@ -903,7 +961,6 @@ void LegalizeTFCommunication::runOnOperation() {
   }
 }
 
-static PassRegistration<LegalizeTFCommunication> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass() {

@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -282,7 +282,7 @@ LogicalResult RegionResourceHoister::Analyze() {
   bool is_func = false;
   // For functions, the resources to analyze are the function arguments.
   // Otherwise, its the region captures.
-  if (FuncOp func = dyn_cast<FuncOp>(op_)) {
+  if (func::FuncOp func = dyn_cast<func::FuncOp>(op_)) {
     is_func = true;
     Region& body = func.getBody();
     for (BlockArgument arg : body.getArguments()) {
@@ -313,7 +313,7 @@ LogicalResult RegionResourceHoister::Analyze() {
 
       // For functions, if the resource is used as a return operand, use that
       // as its result index.
-      if (is_func && isa<ReturnOp>(user)) {
+      if (is_func && isa<func::ReturnOp>(user)) {
         assert(!info.IsResultIndexAssigned() &&
                "Expect resource argument to returned no more than once");
         info.result_index = use.getOperandNumber();
@@ -567,8 +567,10 @@ LogicalResult RegionResourceHoister::HoistResourcesOutOfWhileRegion(
   // Patch the cond and body regions to have additional arguments, and replace
   // the remaining resource reads (which will be resource reads for written
   // resources) with these arguments.
+  Location loc = op.getLoc();
   for (Region* region : op.getRegions()) {
-    region->addArguments(new_result_types);
+    region->addArguments(new_result_types,
+                         SmallVector<Location>(new_result_types.size(), loc));
     // Point hoisted read for written resources to the region's arguments.
     for (auto& it : hoister.GetResources()) {
       if (!it.second.is_written) continue;
@@ -608,7 +610,8 @@ struct ResourceArgUseInfo {
 // as a use. This doesn't support nesting of ops, so before calling this, nested
 // ops/functions need to be already resource-lifted.
 LogicalResult FindResourceArgUseInfo(
-    FuncOp func_op, llvm::SmallDenseMap<int64_t, ResourceArgUseInfo>* result) {
+    func::FuncOp func_op,
+    llvm::SmallDenseMap<int64_t, ResourceArgUseInfo>* result) {
   auto return_op = func_op.front().getTerminator();
   for (auto arg : TF::filter_resources(func_op.getArguments())) {
     ResourceArgUseInfo info;
@@ -675,7 +678,7 @@ llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> MergeArgResourceUseInfo(
 // removing unused ones.
 void RemoveUnusedResourceArgumentsAndForwardedRetvals(
     const llvm::SmallDenseMap<int64_t, ResourceArgUseInfo>& infos,
-    FuncOp func_op,
+    func::FuncOp func_op,
     llvm::SmallVector<int64_t, 4>* old_to_new_arg_indices = nullptr,
     llvm::SmallDenseMap<int64_t, Type>* remaining_resource_data_types =
         nullptr) {
@@ -692,13 +695,13 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
       }
     }
   }
-  llvm::SmallVector<unsigned int, 4> indices_to_erase;
+  llvm::BitVector indices_to_erase(func_op.getNumArguments());
   llvm::SmallVector<Type, 4> new_types;
   int64_t skipped_args = 0;
   for (auto arg : func_op.getArguments()) {
     auto it = infos.find(arg.getArgNumber());
     if (it != infos.end() && !it->getSecond().used) {
-      indices_to_erase.push_back(arg.getArgNumber());
+      indices_to_erase.set(arg.getArgNumber());
       skipped_args++;
       if (old_to_new_arg_indices != nullptr) {
         old_to_new_arg_indices->push_back(-1);
@@ -725,7 +728,7 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
 // resource argument. handle_updated_arg_value is a caller-provided function
 // that handles the updated value for an resource argument.
 LogicalResult LiftArgRetResourcesForFunction(
-    FuncOp func_op,
+    func::FuncOp func_op,
     const llvm::SmallDenseMap<int64_t, Type>& resource_data_types,
     llvm::function_ref<void(int64_t, Value)> handle_updated_arg_value) {
   RegionResourceHoister hoister(func_op);
@@ -823,7 +826,8 @@ void AddLoadsStoresOutsideControlFlowOp(
 }
 
 // Lifts loads/stores from while loop's body and cond functions.
-LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
+LogicalResult HandleWhileLoop(TF::WhileOp while_op, func::FuncOp body,
+                              func::FuncOp cond) {
   auto return_op = body.front().getTerminator();
   llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> body_use_info;
   llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> cond_use_info;
@@ -857,7 +861,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_while = builder.create<TF::WhileOp>(
-      while_op.getLoc(), body.getType().getResults(),
+      while_op.getLoc(), body.getFunctionType().getResults(),
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
       while_op->getAttrs());
@@ -887,7 +891,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
 
 // Lifts loads/stores from an IfOp or CaseOp's branches.
 template <class CaseOrIfOp>
-LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
+LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<func::FuncOp> branches) {
   // For canonicalized If/Case, there should not be any resource outputs
   int64_t non_resource_results = op.getNumResults();
 
@@ -946,7 +950,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);
     auto new_return =
-        builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
+        builder.create<func::ReturnOp>(old_return->getLoc(), new_retvals);
     old_return->erase();
     (void)LiftArgRetResourcesForFunction(
         branch, remaining_resource_data_types, [&](int64_t index, Value value) {
@@ -961,10 +965,10 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   auto new_operands =
       FilterRange<Value, OperandRange>(op.input(), resource_arg_uses);
   new_operands.insert(new_operands.begin(), op.getOperand(0));
-  FuncOp first_func = branches.front();
-  auto new_op =
-      builder.create<CaseOrIfOp>(op.getLoc(), first_func.getType().getResults(),
-                                 new_operands, op->getAttrs());
+  func::FuncOp first_func = branches.front();
+  auto new_op = builder.create<CaseOrIfOp>(
+      op.getLoc(), first_func.getFunctionType().getResults(), new_operands,
+      op->getAttrs());
   // Prepare for AddLoadsStoresOutsideControlFlowOp()
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
@@ -988,7 +992,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
 // information about the lifting changes.
 struct PartitionedCallLiftingInfo {
   // Function with resources lifted. Can be nullptr if nothing needs to change.
-  FuncOp lifted_callee;
+  func::FuncOp lifted_callee;
   // Mapping from old resource outputs to their aliasing output inputs.
   llvm::SmallDenseMap<int64_t, int64_t> old_outputs_aliasing_old_inputs;
   // Mapping from old to new output indices in case any output is removed.
@@ -1004,7 +1008,7 @@ struct PartitionedCallLiftingInfo {
 // needs to be changed, the original function will be preserved, and the lifting
 // happens on a clone, which will be stored in `result`.
 LogicalResult HandlePartitionedCallOpCallee(
-    FuncOp callee, PartitionedCallLiftingInfo* result) {
+    func::FuncOp callee, PartitionedCallLiftingInfo* result) {
   // Sanity check: return of resources should be aliases of inputs. Such outputs
   // will be removed later.
   int64_t non_resource_results = 0;
@@ -1080,11 +1084,11 @@ LogicalResult HandlePartitionedCallOpCallee(
   // Replace old return with the new ones with update values.
   OpBuilder builder(old_return);
   auto new_return =
-      builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
+      builder.create<func::ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
-  callee.setType(
-      FunctionType::get(callee.getContext(), callee.getType().getInputs(),
-                        llvm::to_vector<4>(new_return.getOperandTypes())));
+  callee.setType(FunctionType::get(
+      callee.getContext(), callee.getFunctionType().getInputs(),
+      llvm::to_vector<4>(new_return.getOperandTypes())));
   return success();
 }
 
@@ -1107,8 +1111,9 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_operands =
       FilterRange<Value, OperandRange>(call_op.args(), lifting_info.use_info);
   auto new_call = builder.create<CallOpType>(
-      call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
-      new_operands, call_op->getAttrs());
+      call_op.getLoc(),
+      lifting_info.lifted_callee.getFunctionType().getResults(), new_operands,
+      call_op->getAttrs());
   new_call->setAttr("f",
                     SymbolRefAttr::get(builder.getContext(),
                                        lifting_info.lifted_callee.getName()));
@@ -1135,7 +1140,8 @@ LogicalResult HoistForControlFlow(
 // flow, then performs lifting on the callee.
 template <typename CallOpType>
 LogicalResult HandlePartitionedCallOp(
-    CallOpType call_op, FuncOp callee, ModuleOp module, bool vars_initialized,
+    CallOpType call_op, func::FuncOp callee, ModuleOp module,
+    bool vars_initialized,
     llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*
         lifted_callees) {
   auto emplace_res = lifted_callees->try_emplace(callee.getName(),
@@ -1184,9 +1190,9 @@ LogicalResult HoistForControlFlow(
       if (failed(HandleCaseOrIfOp(if_op, {then_branch, else_branch})))
         return failure();
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
-      SmallVector<FuncOp, 4> branch_functions;
+      SmallVector<func::FuncOp, 4> branch_functions;
       case_op.get_branch_functions(branch_functions);
-      for (FuncOp func : branch_functions) {
+      for (func::FuncOp func : branch_functions) {
         // Recursively handle the nested control flow.
         (void)HoistForControlFlow(&func.front(), module, vars_initialized,
                                   lifted_partitioned_call_callees);
@@ -1238,7 +1244,7 @@ void ResourceOpLiftingPass::runOnOperation() {
   if (failed(TF::CleanupAndCanonicalizeForResourceOpLifting(module)))
     return signalPassFailure();
 
-  auto walk_result = module.walk([&](FuncOp func_op) {
+  auto walk_result = module.walk([&](func::FuncOp func_op) {
     return func_op.walk([&](tf_device::ClusterOp cluster) {
       LogicalResult result = HoistForControlFlow(
           &cluster.GetBody(), module, /*vars_initialized=*/true,
@@ -1261,7 +1267,7 @@ struct ResourceOpLiftingForMainFunctionPass
 
 void ResourceOpLiftingForMainFunctionPass::runOnOperation() {
   ModuleOp module = getOperation();
-  FuncOp main_func = module.lookupSymbol<FuncOp>("main");
+  func::FuncOp main_func = module.lookupSymbol<func::FuncOp>("main");
   if (!main_func) {
     return;
   }
@@ -1286,7 +1292,7 @@ CreateResourceOpLiftingForMainFunctionPass() {
 }  // namespace TFDevice
 
 namespace TF {
-LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
+LogicalResult ResourceLiftingForFunctionalControlFlow(func::FuncOp function) {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.

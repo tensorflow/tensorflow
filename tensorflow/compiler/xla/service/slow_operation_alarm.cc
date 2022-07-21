@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 
+#include <functional>
+#include <iterator>
 #include <list>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/memory/memory.h"
+#include "absl/numeric/bits.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace xla {
@@ -33,7 +40,9 @@ absl::once_flag init_flag;
 std::list<SlowOperationAlarm*>* outstanding_alarms ABSL_PT_GUARDED_BY(mu) =
     nullptr;
 
-void AlarmLoop() {
+}  // namespace
+
+void SlowOperationAlarm::AlarmLoop() {
   while (true) {
     absl::MutexLock lock(&mu);
 
@@ -46,10 +55,11 @@ void AlarmLoop() {
       // Fire the alarm if applicable.
       if (alarm->deadline() <= now) {
         outstanding_alarms->erase(it);
-        int64_t count =
+        const int64_t count =
             alarm->counter() == nullptr ? 0 : alarm->counter()->fetch_add(1);
         // If the alarm has a counter, only fire if the count is a power of 2.
-        if (count == 0 || (count & (count - 1)) == 0) {
+        if (count == 0 || absl::has_single_bit<uint64_t>(count) == 0) {
+          alarm->fired_.store(true);
           // We fire alarms with LOG(ERROR) because otherwise it might not show
           // up without --logtostderr.
           LOG(ERROR) << alarm->msg();
@@ -58,21 +68,20 @@ void AlarmLoop() {
       it = next;
     }
 
-    if (outstanding_alarms->empty()) {
-      ready->Wait(&mu);
-      continue;
-    }
-
-    SlowOperationAlarm* next_alarm = *absl::c_min_element(
+    auto next_alarm = absl::c_min_element(
         *outstanding_alarms,
         [](const SlowOperationAlarm* a, const SlowOperationAlarm* b) {
           return a->deadline() < b->deadline();
         });
-    ready->WaitWithDeadline(&mu, next_alarm->deadline());
+    const absl::Time deadline = next_alarm != outstanding_alarms->end()
+                                    ? (*next_alarm)->deadline()
+                                    : absl::InfiniteFuture();
+
+    ready->WaitWithDeadline(&mu, deadline);
   }
 }
 
-void ScheduleAlarm(SlowOperationAlarm* alarm) {
+void SlowOperationAlarm::ScheduleAlarm(SlowOperationAlarm* alarm) {
   absl::call_once(init_flag, [] {
     ready = new absl::CondVar();
     outstanding_alarms = new std::list<SlowOperationAlarm*>();
@@ -85,7 +94,7 @@ void ScheduleAlarm(SlowOperationAlarm* alarm) {
   ready->Signal();
 }
 
-void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
+void SlowOperationAlarm::UnscheduleAlarm(const SlowOperationAlarm* alarm) {
   absl::MutexLock lock(&mu);
   CHECK(outstanding_alarms != nullptr);
   auto it = absl::c_find(*outstanding_alarms, alarm);
@@ -93,50 +102,75 @@ void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
     outstanding_alarms->erase(it);
   }
 }
-
-}  // namespace
+SlowOperationAlarm::SlowOperationAlarm(
+    absl::Duration timeout, std::string msg,
+    std::atomic<int64_t>* counter /*=nullptr*/,
+    absl::string_view context /*=""*/)
+    : SlowOperationAlarm(
+          timeout,                                 //
+          [msg = std::move(msg)] { return msg; },  //
+          counter, std::move(context)) {}
 
 SlowOperationAlarm::SlowOperationAlarm(
-    absl::Duration timeout, string msg,
-    std::atomic<int64_t>* counter /*=nullptr*/)
-    : deadline_(absl::Now() + timeout),
-      msg_(std::move(msg)),
+    absl::Duration timeout, std::function<std::string()> msg_fn,
+    std::atomic<int64_t>* counter /*=nullptr*/,
+    absl::string_view context /*=""*/)
+    : start_(absl::Now()),
+      deadline_(start_ + timeout),
+      context_(std::move(context)),
+      msg_fn_(std::move(msg_fn)),
       counter_(counter) {
   ScheduleAlarm(this);
 }
 
-SlowOperationAlarm::~SlowOperationAlarm() { UnscheduleAlarm(this); }
+SlowOperationAlarm::~SlowOperationAlarm() {
+  UnscheduleAlarm(this);
+
+  absl::Time now = absl::Now();
+  if (deadline() <= now) {
+    absl::Duration duration = now - start_;
+    if (context_.empty()) {
+      LOG(ERROR) << "The operation took " << absl::FormatDuration(duration)
+                 << "\n"
+                 << msg_fn_();
+    } else {
+      LOG(ERROR) << "[" << context_ << "] The operation took "
+                 << absl::FormatDuration(duration) << "\n"
+                 << msg_fn_();
+    }
+  }
+}
 
 std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
-    absl::string_view msg) {
+    absl::string_view context) {
   // Pass a counter to these alarms so they only log once every power-of-two
   // occurrences.
   static auto* counter = new std::atomic<int64_t>(0);
 
   const char* separator = "\n********************************";
 
-  std::string msg_suffix;
-  if (!msg.empty()) {
-    msg_suffix = absl::StrCat("\n", msg);
+  std::string context_msg;
+  if (!context.empty()) {
+    context_msg = absl::StrCat("[", context, "] ");
   }
 
 #if NDEBUG
-  return absl::make_unique<SlowOperationAlarm>(
+  return std::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Minutes(2)),
       absl::StrCat(
-          separator,
-          "\nVery slow compile?  If you want to file a bug, run with envvar "
+          separator, "\n", context_msg,
+          "Very slow compile?  If you want to file a bug, run with envvar "
           "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
-          msg_suffix, separator),
+          separator),
       counter);
 #else
-  return absl::make_unique<SlowOperationAlarm>(
+  return std::make_unique<SlowOperationAlarm>(
       absl::Duration(absl::Seconds(10)),
       absl::StrCat(
-          separator,
-          "\nSlow compile?  XLA was built without compiler optimizations, "
+          separator, "\n", context_msg,
+          "Slow compile?  XLA was built without compiler optimizations, "
           "which can be slow.  Try rebuilding with -c opt.",
-          msg_suffix, separator),
+          separator),
       counter);
 #endif
 }

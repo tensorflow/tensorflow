@@ -28,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -36,6 +37,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
+@test_util.with_eager_op_as_function
 class RpcOpsTest(test.TestCase):
 
   def setUp(self):
@@ -136,7 +138,7 @@ class RpcOpsTest(test.TestCase):
     self.assertEqual(client1.multiply.__doc__,
                      "RPC Call for multiply method to server " + address)
 
-  def test_rpc_ops_wrapper(self):
+  def test_rpc_ops_call_method(self):
 
     @eager_def_function.function(input_signature=[
         tensor_spec.TensorSpec([], dtypes.int32),
@@ -193,13 +195,60 @@ class RpcOpsTest(test.TestCase):
     self.assertAllEqual(mul_or.is_ok(), True)
     self.assertAllEqual(mul_or.get_value(), 6)
 
-    # Test without output_spec
-    mul_or = client1.multiply(a, b)
+  def test_rpc_ops_non_blocking_convenience_methods(self):
+    @eager_def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_spec.TensorSpec([], dtypes.int32)
+    ])
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.GrpcServer(address)
+
+    # Register TF function
+    server_resource.register("multiply", _remote_fn)
+
+    server_resource.start()
+    a = variables.Variable(2, dtype=dtypes.int32)
+    b = variables.Variable(3, dtype=dtypes.int32)
+
+    client = rpc_ops.GrpcClient(address, list_registered_methods=True)
+
+    mul_or = client.multiply(a, b)
     self.assertAllEqual(mul_or.is_ok(), True)
     self.assertAllEqual(mul_or.get_value(), 6)
 
-    self.assertEqual(client1.multiply.__doc__,
+    self.assertEqual(client.multiply.__doc__,
                      "RPC Call for multiply method to server " + address)
+
+  def test_rpc_ops_blocking_convenience_methods(self):
+    @eager_def_function.function(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.int32),
+        tensor_spec.TensorSpec([], dtypes.int32)
+    ])
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    port = portpicker.pick_unused_port()
+    address = "localhost:{}".format(port)
+    server_resource = rpc_ops.GrpcServer(address)
+
+    # Register TF function
+    server_resource.register("multiply", _remote_fn)
+
+    server_resource.start()
+
+    client = rpc_ops.GrpcClient(address, list_registered_methods=True)
+
+    a = variables.Variable(2, dtype=dtypes.int32)
+    b = variables.Variable(3, dtype=dtypes.int32)
+    self.assertAllEqual(client.multiply_blocking(a, b), 6)
+
+    self.assertEqual(
+        client.multiply_blocking.__doc__,
+        "RPC Call for multiply method to server " + address)
 
   def test_output_specs(self):
 
@@ -244,7 +293,9 @@ class RpcOpsTest(test.TestCase):
     self.assertAllEqual(result_or.is_ok(), True)
     nest.map_structure(self.assertAllEqual, result_or.get_value(), {"key": 2})
 
-    self.assertTrue(client.is_positive(a))
+    result_or = client.is_positive(a)
+    self.assertTrue(result_or.is_ok())
+    self.assertTrue(result_or.get_value())
 
     result_or = client.test_nested_structure(a)
     self.assertAllEqual(result_or.is_ok(), True)
@@ -375,6 +426,22 @@ class RpcOpsTest(test.TestCase):
     t = threading.Thread(target=start_server)
     t.start()
 
+    def ensure_server_is_ready(client):
+      server_ready = False
+      while not server_ready:
+        result_or = client.call(
+            "add", [constant_op.constant(20),
+                    constant_op.constant(30)])
+        if result_or.is_ok():
+          server_ready = True
+        else:
+          error_code, _ = result_or.get_error()
+          if error_code == errors.UNAVAILABLE:
+            server_ready = False
+          else:
+            server_ready = True
+      return
+
     # Create client with list_registered_methods fails before server is started.
     with self.assertRaises(errors.DeadlineExceededError):
       rpc_ops.GrpcClient(
@@ -388,14 +455,17 @@ class RpcOpsTest(test.TestCase):
     client = rpc_ops.GrpcClient(
         address, name="client1", list_registered_methods=False, timeout_in_ms=1)
 
-    # Make explicit RPC call, the default timeout of 1 ms should lead to
+    ensure_server_is_ready(client)
+    # Make explicit RPC call, the timeout of 1 ms should lead to
     # deadline exceeded error.
+
     result_or = client.call(
         "add", [constant_op.constant(20),
-                constant_op.constant(30)])
+                constant_op.constant(30)],
+        timeout_in_ms=1)
     self.assertAllEqual(result_or.is_ok(), False)
-    error_code, _ = result_or.get_error()
-    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED)
+    error_code, error_message = result_or.get_error()
+    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED, error_message)
 
     # Specifying reasonable timeout for call should succeed.
     result_or = client.call(
@@ -407,22 +477,15 @@ class RpcOpsTest(test.TestCase):
 
     # Test timeouts for convenience methods
 
-    # Client with no default timeout.
-    client = rpc_ops.GrpcClient(
-        address, name="client2", list_registered_methods=True)
-
     # Restart server again with delay to simulate deadline exceeded.
     del server
     server = rpc_ops.GrpcServer(address)
     t = threading.Thread(target=start_server)
     t.start()
 
-    # Call fails with 1 ms timeout.
-    result_or = client.add(
-        constant_op.constant(20), constant_op.constant(30), timeout_in_ms=1)
-    self.assertAllEqual(result_or.is_ok(), False)
-    error_code, _ = result_or.get_error()
-    self.assertAllEqual(error_code, errors.DEADLINE_EXCEEDED)
+    # Client with no default timeout.
+    client = rpc_ops.GrpcClient(
+        address, name="client2", list_registered_methods=True)
 
     # Succeeds with reasonable timeout.
     result_or = client.add(
@@ -630,6 +693,11 @@ class RpcOpsTest(test.TestCase):
     self.assertAllEqual(result_or.is_ok(), False)
     error_code, _ = result_or.get_error()
     self.assertAllEqual(error_code, errors.INVALID_ARGUMENT)
+
+    del server
+    with self.assertRaises(errors.DeadlineExceededError):
+      _ = client.assign_add_blocking(
+          variables.Variable(2, dtype=dtypes.int64), timeout_in_ms=1)
 
   def test_captured_inputs(self):
     v = variables.Variable(initial_value=0, dtype=dtypes.int64)

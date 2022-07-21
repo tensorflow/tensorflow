@@ -18,9 +18,10 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.8
-# Update bazel
-update_bazel_linux
+install_bazelisk
+
+# Setup virtual environment and install dependencies
+setup_venv_ubuntu python3.8
 
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 
@@ -32,7 +33,7 @@ tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py38,-no_cuda1
 test +e
 bazel test \
   --config=release_gpu_linux \
-  --repo_env=PYTHON_BIN_PATH="$(which python3.8)" \
+  --repo_env=PYTHON_BIN_PATH="$(which python)" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_lang_filters=py \
@@ -41,3 +42,6 @@ bazel test \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
 test_xml_summary_exit
+
+# Remove and cleanup virtual environment
+remove_venv_ubuntu

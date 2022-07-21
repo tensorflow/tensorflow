@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <set>
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
@@ -107,6 +108,20 @@ std::map<Axis, int> GetSizesFromShape(const std::set<Axis>& axis,
   return result;
 }
 
+DataType GetAccumType(DataType src_type) {
+  if (src_type == DataType::FLOAT32 || src_type == DataType::FLOAT16) {
+    return DataType::FLOAT32;
+  } else if (src_type == DataType::INT32 || src_type == DataType::INT16 ||
+             src_type == DataType::INT8) {
+    return DataType::INT32;
+  } else if (src_type == DataType::UINT32 || src_type == DataType::UINT16 ||
+             src_type == DataType::UINT8) {
+    return DataType::UINT32;
+  } else {
+    return src_type;
+  }
+}
+
 }  // namespace
 
 Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
@@ -141,7 +156,7 @@ Reduce::Reduce(const std::map<Axis, int>& axis_to_reduce, OperationType op_type,
     use_wg_reduction_ = true;
     work_group_size_ = current_wg_size;
   }
-  code_ = GetReduceKernelCode(definition_, work_group_size_,
+  code_ = GetReduceKernelCode(definition_, gpu_info, work_group_size_,
                               ordered_axis_to_reduce, op_type);
 }
 
@@ -158,6 +173,7 @@ Reduce& Reduce::operator=(Reduce&& operation) {
 }
 
 std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
+                                        const GpuInfo& gpu_info,
                                         const int3& work_group_size,
                                         const std::vector<Axis>& axis_to_reduce,
                                         OperationType op_type) {
@@ -165,10 +181,6 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
   args_.AddFloat("inv_multiplier_1");
   args_.AddFloat("inv_multiplier_2");
-  args_.AddFloat("mask_x");
-  args_.AddFloat("mask_y");
-  args_.AddFloat("mask_z");
-  args_.AddFloat("mask_w");
 
   std::set<Axis> axis_to_leave;
   const std::vector<Axis> all_axis = {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH,
@@ -200,6 +212,18 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   };
 
+  auto accum_type = GetAccumType(op_def.src_tensors[0].GetDataType());
+  const std::string accum_type_decl =
+      GetTypeDeclaration(gpu_info, accum_type, 4);
+  std::string read_as_template;
+  if (accum_type == DataType::FLOAT32) {
+    read_as_template = "<float>";
+  } else if (accum_type == DataType::INT32) {
+    read_as_template = "<int>";
+  } else if (accum_type == DataType::UINT32) {
+    read_as_template = "<uint>";
+  }
+
   std::string c;
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
@@ -208,7 +232,8 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       work_group_size.x * work_group_size.y * work_group_size.z;
   c += "MAIN_FUNCTION($0) {\n";
   if (use_wg_reduction_) {
-    c += "  __local float4 accum[" + std::to_string(wg_total_size) + "];\n";
+    c += "  __local " + accum_type_decl + " accum[" +
+         std::to_string(wg_total_size) + "];\n";
     if (wg_dims == 1) {
       c += "  int local_x = LOCAL_ID_0;\n";
       c += "  int local_id = local_x;\n";
@@ -287,13 +312,15 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     }
   }
   if (op_type == OperationType::REDUCE_SUM || op_type == OperationType::MEAN) {
-    c += "  float4 reducer = INIT_FLOAT4(0.0f);\n";
+    c += "  " + accum_type_decl +
+         " reducer = " + GetZeroValue(gpu_info, accum_type, 4) + ";\n";
   } else if (op_type == OperationType::REDUCE_PRODUCT) {
-    c += "  float4 reducer = INIT_FLOAT4(1.0f);\n";
+    c += "  " + accum_type_decl +
+         " reducer = " + GetOneValue(gpu_info, accum_type, 4) + ";\n";
   } else if (op_type == OperationType::REDUCE_MAXIMUM ||
              op_type == OperationType::REDUCE_MINIMUM) {
-    c += "  float4 reducer = args.src_tensor.Read<float>(" + src_coordinates +
-         ");\n";
+    c += "  " + accum_type_decl + " reducer = args.src_tensor.Read" +
+         read_as_template + "(" + src_coordinates + ");\n";
     if (channels_reductin) {
       c += "  reducer.y = reducer.x;\n";
       c += "  reducer.z = reducer.x;\n";
@@ -302,6 +329,26 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
   }
   const std::vector<std::string> local_ids = {"local_x", "local_y", "local_z"};
   const std::vector<std::string> local_sizes = {wg_x, wg_y, wg_z};
+  for (const auto& axis : axis_to_reduce) {
+    if (axis == Axis::CHANNELS) {
+      c += "  " + accum_type_decl + " mask;\n";
+      const std::string one_or_zero_value =
+          GetOneValue(gpu_info, accum_type, 1) + " : " +
+          GetZeroValue(gpu_info, accum_type, 1);
+      c += "  mask.x = (args.src_tensor.Slices() - 1) * 4 + 0 < "
+           "args.src_tensor.Channels() ? " +
+           one_or_zero_value + ";\n";
+      c += "  mask.y = (args.src_tensor.Slices() - 1) * 4 + 1 < "
+           "args.src_tensor.Channels() ? " +
+           one_or_zero_value + ";\n";
+      c += "  mask.z = (args.src_tensor.Slices() - 1) * 4 + 2 < "
+           "args.src_tensor.Channels() ? " +
+           one_or_zero_value + ";\n";
+      c += "  mask.w = (args.src_tensor.Slices() - 1) * 4 + 3 < "
+           "args.src_tensor.Channels() ? " +
+           one_or_zero_value + ";\n";
+    }
+  }
   for (int i = 0; i < axis_to_reduce.size(); ++i) {
     const auto& axis = axis_to_reduce[i];
     const int index = axis_to_reduce.size() - 1 - i;
@@ -314,12 +361,15 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
          " += " + step + ") {\n";
     if (axis == Axis::CHANNELS) {
       c += "    bool last = SRC_S == args.src_tensor.Slices() - 1;\n";
-      c += "    float4 mask_a = last ? INIT_FLOAT4v4(args.mask_x, args.mask_y, "
-           "args.mask_z, args.mask_w) : INIT_FLOAT4(1.0f);\n";
+      c += "    " + accum_type_decl +
+           " mask_a = last ? mask : " + GetOneValue(gpu_info, accum_type, 4) +
+           ";\n";
       if (op_type == OperationType::REDUCE_PRODUCT ||
           op_type == OperationType::REDUCE_MAXIMUM ||
           op_type == OperationType::REDUCE_MINIMUM) {
-        c += "    float4 mask_b = INIT_FLOAT4(1.0f) - mask_a;\n";
+        c += "    " + accum_type_decl +
+             " mask_b = " + GetOneValue(gpu_info, accum_type, 4) +
+             " - mask_a;\n";
       }
     }
   }
@@ -332,8 +382,8 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       src_coordinates += src_coords[a];
     }
   }
-  c += "    float4 src_val = args.src_tensor.Read<float>(" + src_coordinates +
-       ");\n";
+  c += "    " + accum_type_decl + " src_val = args.src_tensor.Read" +
+       read_as_template + "(" + src_coordinates + ");\n";
   if (channels_reductin) {
     if (op_type == OperationType::REDUCE_SUM ||
         op_type == OperationType::MEAN) {
@@ -362,7 +412,8 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
     for (; reminder >= 8; reminder /= 4, offset *= 4) {
       c += "  if (local_id < " + std::to_string(reminder) + ") {\n";
       c += "    int t = local_id * " + std::to_string(offset * 4) + ";\n";
-      c += "    float4 sum = accum[t + " + std::to_string(offset) + "];\n";
+      c += "    " + accum_type_decl + " sum = accum[t + " +
+           std::to_string(offset) + "];\n";
       c += "    sum = " +
            MakeOp(op_type, "sum",
                   "accum[t + " + std::to_string(offset * 2) + "]") +
@@ -403,7 +454,13 @@ std::string Reduce::GetReduceKernelCode(const OperationDef& op_def,
       c += "  reducer.x = min(reducer.x, reducer.w);\n";
     }
   }
-  c += "  FLT4 result = TO_FLT4(reducer);\n";
+  const std::string conversion = GetTypeConversion(
+      gpu_info, accum_type, op_def.src_tensors[0].GetDataType(), 4);
+  if (conversion.empty()) {
+    c += "  args.src_tensor::type result = reducer;\n";
+  } else {
+    c += "  args.src_tensor::type result = " + conversion + "(reducer);\n";
+  }
   std::string dst_coordinates;
   for (const auto& a : all_axis) {
     if (op_def.dst_tensors[0].HasAxis(a)) {
@@ -440,11 +497,6 @@ absl::Status Reduce::BindArguments(ArgumentsBinder* args) {
     RETURN_IF_ERROR(args->SetFloat("inv_multiplier_1", 1.0 / reduction_size));
     RETURN_IF_ERROR(args->SetFloat("inv_multiplier_2", 1.0));
   }
-  float4 mask = GetMaskForLastPlane(src_[0]->Channels());
-  RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
-  RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
-  RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
-  RETURN_IF_ERROR(args->SetFloat("mask_w", mask.w));
   return absl::OkStatus();
 }
 

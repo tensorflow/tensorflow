@@ -17,15 +17,10 @@
 Requires qualified name annotations (see qual_names.py).
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import weakref
 
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import qual_names
@@ -290,11 +285,7 @@ class ActivityAnalyzer(transformer.Base):
       # In comprehensions, modified symbols are the comprehension targets.
       if self.state[_Comprehension].level > 0:
         self.state[_Comprehension].targets.add(qn)
-        # List comprehension targets leak in Python 2.
-        # For details, see:
-        # https://stackoverflow.com/questions/4198906/list-comprehension-rebinds-names-even-after-scope-of-comprehension-is-this-righ
-        if not (six.PY2 and self.state[_Comprehension].is_list_comp):
-          return
+        return
 
       self.scope.modified.add(qn)
       self.scope.bound.add(qn)
@@ -391,7 +382,11 @@ class ActivityAnalyzer(transformer.Base):
   def visit_AnnAssign(self, node):
     self._enter_scope(False)
     node.target = self.visit(node.target)
-    node.value = self.visit(node.value)
+    if node.value is not None:
+      # Can be None for pure declarations, e.g. `n: int`. This is a new thing
+      # enabled by type annotations, but does not influence static analysis
+      # (declarations are not definitions).
+      node.value = self.visit(node.value)
     if node.annotation:
       node.annotation = self._process_annotation(node.annotation)
     self._exit_and_record_scope(node)

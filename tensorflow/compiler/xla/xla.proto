@@ -107,10 +107,7 @@ message DebugOptions {
   bool xla_hlo_graph_sharding_color = 92;
 
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
-
-  // If true, the GPU backend is free to use cudnn for HLO batch normalization
-  // ops.
-  bool xla_gpu_use_cudnn_batchnorm = 94;
+  reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
 
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
@@ -193,6 +190,29 @@ message DebugOptions {
 
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_gpuasm_optimizations = 103;
+
+  enum ShapeChecks {
+    // Do not insert any shape checks for dynamically shaped operations; output
+    // buffers might contain garbage data if shapes don't match.
+    IGNORE = 0;
+
+    // Check shapes at runtime, will insert an extra synchronization if shapes
+    // cannot be proven correct at compile time.
+    RUNTIME = 1;
+
+    // Will refuse to compile any program where shape correctness can not be
+    // established at compile time.
+    COMPILE_TIME = 2;
+  }
+
+  ShapeChecks xla_gpu_shape_checks = 170;
+
+  // Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters.
+  bool xla_cpu_enable_mlir_lowering = 171;
+
+  // If true, use MLIR instead of IR emitter to generate device code for
+  // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
+  bool xla_gpu_enable_mlir_lowering = 173;
 
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
@@ -277,6 +297,9 @@ message DebugOptions {
   // GZip-compress protos dumped via --xla_dump_hlo_as_proto.
   bool xla_dump_compress_protos = 151;
 
+  // Dump HLO in long text format. Ignored unless xla_dump_hlo_as_text is true.
+  bool xla_dump_hlo_as_long_text = 164;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -294,8 +317,7 @@ message DebugOptions {
   // Denylist for cuDNN convolutions.
   string xla_gpu_algorithm_denylist_path = 128;
 
-  // Guarantee run-to-run determinism from reductions on XLA:GPU.
-  bool xla_gpu_deterministic_reductions = 130;
+  reserved 130;  // Was xla_gpu_deterministic_reductions
 
   // Debug options that trigger execution errors when NaN or Inf are detected.
   bool xla_tpu_detect_nan = 135;
@@ -329,6 +351,9 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
+  // Simplify all Scatter ops to the form described in scatter_simplifier.h.
+  bool xla_gpu_simplify_scatters = 176;
+
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
@@ -337,6 +362,19 @@ message DebugOptions {
 
   // Size threshold (in bytes) for the GPU all-reduce combiner.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+
+  // Combine GPU all-reduces into a single operation over a contiguous buffer.
+  bool xla_gpu_all_reduce_contiguous = 158;
+
+  // Number of devices per host for first stage of BlueConnect decomposition
+  // pass. The pass will attempt to decompose all-reduces ops into a
+  // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
+  // being performed over all of the devices in the same host. Set to < 1 to
+  // disable all-reduce decomposition.
+  int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
+
+  // Whether to use the cuDNN frontend API for convolutions when possible.
+  bool xla_gpu_enable_cudnn_frontend = 160;
 
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
@@ -350,7 +388,51 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // Next id: 158
+  // If true, enable XLIR to compile gpu programs to TFRT BEF.
+  bool xla_gpu_bef_executable = 161;
+
+  // If true, enable XLIR to compile thunks to TFRT BEF.
+  // This flag has no effect when xla_gpu_bef_executable is true.
+  bool xla_gpu_bef_thunk = 162;
+
+  // If true, enable XLIR to compile gpu programs to JitRt.
+  bool xla_gpu_jitrt_executable = 169;
+
+  // Timeout in seconds before terminating jobs that are stuck in a NCCL
+  // Rendezvous. Negative value disables the timeout and will not terminate.
+  int64 xla_gpu_nccl_termination_timeout_seconds = 163;
+
+  // Enables shared constants for XLA/GPU. This allows large constants to be
+  // shared among multiple GPU executables.
+  bool xla_gpu_enable_shared_constants = 165;
+
+  // Whether to use cuBLASLt for GEMMs on GPUs.
+  bool xla_gpu_enable_cublaslt = 166;
+
+  // Size threshold (in megabytes) for the GPU redzone scratch allocator.
+  int64 xla_gpu_redzone_scratch_max_megabytes = 167;
+
+  // Allows all floating-point conversions to be simplified, including those
+  // that affect the numerics. The `BFloat16Normalization` pass inserts many
+  // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
+  // `AlgebraicSimplifier`, as that will only simplify conversions that are
+  // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
+  bool xla_gpu_simplify_all_fp_conversions = 168;
+
+  // An experimental option to force all layouts present in the
+  // after-optimizations HLO to be descending, e.g.
+  // ShapeUtil::MakeShapeWithDescendingLayout is an identity on all
+  // instructions.
+  bool xla_gpu_normalize_layouts = 172;
+
+  // Generate calls to Arm Compute Library in the CPU backend.
+  bool xla_cpu_use_acl = 174;
+
+  // By default, XLA:CPU will run fp16 dot/conv as fp32, as this is generally
+  // (much) faster on our hardware.  Set this flag to disable this behavior.
+  bool xla_cpu_strict_dot_conv_math = 175;
+
+  // Next id: 177
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -409,6 +491,17 @@ message ExecutionOptions {
   // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
   // num_partitions > 1 and XLA is requested to partition the input program.
   bool use_spmd_partitioning = 11;
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning = 15;
+
+  // Device mesh shape used to create the sharding search space when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Device mesh ids compatible with the above mesh_shape used when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.

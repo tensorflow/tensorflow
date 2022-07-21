@@ -10,10 +10,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_DIALECTS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_DIALECTS_H_
+#ifndef MLIR_HLO_C_DIALECTS_H
+#define MLIR_HLO_C_DIALECTS_H
 
-#include "mlir-c/Registration.h"
+#include "mlir-c/RegisterEverything.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,4 +26,4 @@ MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Mhlo, mhlo);
 }
 #endif
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_DIALECTS_H_
+#endif  // MLIR_HLO_C_DIALECTS_H

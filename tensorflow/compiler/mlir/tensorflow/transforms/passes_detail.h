@@ -16,15 +16,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_PASS_DETAIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_PASS_DETAIL_H_
 
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
+namespace scf {
+class SCFDialect;
+}
+namespace tensor {
+class TensorDialect;
+}
 namespace tf_device {
 class TensorFlowDeviceDialect;
 }
+namespace tf_executor {
+class TensorFlowExecutorDialect;
+}
 namespace TF {
+class TensorFlowDialect;
+// Direction in which to move transposes in MoveTransposePass.
+enum MoveTransposeDirection { kBegin, kEnd };
 
 #define GEN_PASS_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"

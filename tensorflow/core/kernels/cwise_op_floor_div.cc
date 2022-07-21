@@ -23,9 +23,9 @@ REGISTER4(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, bfloat16, double);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64_t);
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 #endif

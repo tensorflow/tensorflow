@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -111,8 +111,8 @@ TEST_F(GpuConvRewriterTest, BackwardFilterConvolve) {
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
-          /*preferred_element_type=*/absl::nullopt)
-          .ConsumeValueOrDie(),
+          /*preferred_element_type=*/std::nullopt)
+          .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
@@ -152,8 +152,8 @@ TEST_F(GpuConvRewriterTest,
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
-          /*preferred_element_type=*/absl::nullopt)
-          .ConsumeValueOrDie(),
+          /*preferred_element_type=*/std::nullopt)
+          .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
@@ -298,7 +298,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveEvenPadding) {
       ShapeInference::InferConvolveShape(
           output->shape(), reverse_kernel->shape(),
           /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
-          conv_dnums, /*preferred_element_type=*/absl::nullopt)
+          conv_dnums, /*preferred_element_type=*/std::nullopt)
           .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -345,8 +345,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolve1x1Filter) {
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_input_,
-          /*preferred_element_type=*/absl::nullopt)
-          .ConsumeValueOrDie(),
+          /*preferred_element_type=*/std::nullopt)
+          .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
@@ -380,8 +380,8 @@ TEST_F(GpuConvRewriterTest,
           output->shape(), kernel->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, default_conv_window_,
           tf_default_dnums_for_backward_input_,
-          /*preferred_element_type=*/absl::nullopt)
-          .ConsumeValueOrDie(),
+          /*preferred_element_type=*/std::nullopt)
+          .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, default_conv_window_,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
@@ -438,7 +438,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
                          conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/absl::nullopt)
+                         /*preferred_element_type=*/std::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -489,7 +489,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
                          conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/absl::nullopt)
+                         /*preferred_element_type=*/std::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -544,7 +544,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
                          conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/absl::nullopt)
+                         /*preferred_element_type=*/std::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -600,7 +600,7 @@ TEST_F(GpuConvRewriterTest,
                          output->shape(), reverse_kernel->shape(),
                          /*feature_group_count=*/1, /*batch_group_count=*/1,
                          conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/absl::nullopt)
+                         /*preferred_element_type=*/std::nullopt)
                          .ValueOrDie()));
 
   auto module = CreateNewVerifiedModule();
@@ -617,10 +617,10 @@ TEST_F(GpuConvRewriterTest,
 TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
   Array4D<float> constant_arr(4, 4, 2, 2);
   constant_arr.FillIota(0);
-  string constant_str =
+  std::string constant_str =
       LiteralUtil::CreateR4FromArray4D(constant_arr).ToStringWithoutShape();
 
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule test
 
     ENTRY entry_computation {
@@ -630,7 +630,7 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
           window={size=4x4 pad=2_2x2_2 lhs_dilate=2x2},
           dim_labels=bf01_01oi->bf01, feature_group_count=1
     })",
-                                            constant_str);
+                                                 constant_str);
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   EXPECT_TRUE(RunPass(m.get()));
@@ -641,24 +641,8 @@ TEST_F(GpuConvRewriterTest, BackwardInputConvolveConstantFilter) {
                           0));
 }
 
-// Check that a forward convolution instruction with int8 inputs is not allowed
-TEST_F(GpuConvRewriterTest, TestForwardInt8Convolution) {
-  const string module_str = absl::StrFormat(R"(
-    HloModule Test
-
-    ENTRY Test {
-      input = s8[1,2,3,3] parameter(0)
-      filter = s8[3,3,2,5] parameter(1)
-
-      ROOT conv = s8[1,5,3,3] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
-    })");
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-
-  ASSERT_FALSE(GpuConvRewriter().Run(m.get()).ok());
-}
-
 TEST_F(GpuConvRewriterTest, TestBackwardFilterPattern) {
-  const string module_str = absl::StrFormat(R"(
+  const std::string module_str = absl::StrFormat(R"(
     HloModule Test
 
     ENTRY Test {

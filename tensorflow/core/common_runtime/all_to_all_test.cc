@@ -63,6 +63,38 @@ TEST_F(AllToAllTest, Success) {
                                   test::AsTensor<double>({3., 6., 9.}));
 }
 
+TEST_F(AllToAllTest, SuccessDifferentRank) {
+  test_env_ = CreateCollectiveTestEnv(/*num_workers*/ 1,
+                                      /*num_devices_per_worker*/ 3, DEVICE_CPU);
+  std::vector<Tensor> tensors = {
+      test::AsTensor<double>({1., 2., 3.}),
+      test::AsTensor<double>({4., 5., 6.}),
+      test::AsTensor<double>({7., 8., 9.}),
+  };
+  std::vector<std::vector<int32>> device_ranks = {{2, 1, 0}};
+  BlockingCounter counter(3);
+  for (int i = 0; i < 3; ++i) {
+    SchedClosure([this, &tensors, &device_ranks, i, &counter]() {
+      auto col_params = CreateCollectiveParams(
+          *test_env_, i, "AllToAll", ALL_TO_ALL_COLLECTIVE, DT_DOUBLE,
+          tensors[i].shape(), device_ranks);
+      Device* device = nullptr;
+      TF_CHECK_OK(test_env_->device_mgr->LookupDevice(
+          col_params->group.members[i].device.name(), &device));
+      TF_CHECK_OK(RunCollective(test_env_.get(), col_params.get(), device,
+                                &tensors[i], &tensors[i]));
+      counter.DecrementCount();
+    });
+  }
+  counter.Wait();
+  test::ExpectTensorEqual<double>(tensors[0],
+                                  test::AsTensor<double>({7., 4., 1.}));
+  test::ExpectTensorEqual<double>(tensors[1],
+                                  test::AsTensor<double>({8., 5., 2.}));
+  test::ExpectTensorEqual<double>(tensors[2],
+                                  test::AsTensor<double>({9., 6., 3.}));
+}
+
 TEST_F(AllToAllTest, Failure) {
   test_env_ = CreateCollectiveTestEnv(/*num_workers*/ 1,
                                       /*num_devices_per_worker*/ 3, DEVICE_CPU);

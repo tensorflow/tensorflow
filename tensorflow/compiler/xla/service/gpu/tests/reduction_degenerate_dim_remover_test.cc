@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
+
+#include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -28,23 +29,20 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
-class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {
-  DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
-    debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
-    debug_options.add_xla_disable_hlo_passes("reduction-splitter");
-    debug_options.add_xla_disable_hlo_passes("gpu-tree-reduction-rewriter");
-    return debug_options;
+class ReductionDegenerateDimRemoverTest : public HloTestBase {
+ public:
+  void CheckDegenerateDimRemover(absl::string_view hlo,
+                                 std::optional<absl::string_view> expected) {
+    RunAndFilecheckHloRewrite(hlo, gpu::ReductionDegenerateDimRemover{},
+                              expected);
   }
 };
 
 TEST_F(ReductionDegenerateDimRemoverTest, ReductionWithDegenerateDimensions) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithDegenerateDimensions
 
 add {
@@ -62,16 +60,16 @@ ENTRY main {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: f32[] reduce(f32[3,4,5]{2,1,0} {{.+}}, f32[] {{.+}}), dimensions={0,1,2}, to_apply=%add
-      )");
+  CheckDegenerateDimRemover(hlo, R"(
+// CHECK: [[bitcast_0:%[^ ]+]] = f32[3,4,5]{2,1,0} bitcast([[input_1:%[^ ]+]])
+// CHECK: [[reduce_2:%[^ ]+]] = f32[] reduce([[bitcast_0]], [[zero_3:%[^ ]+]]), dimensions={0,1,2}, to_apply=[[add_4:%[^ ]+]]
+// CHECK: ROOT [[bitcast_1_5:%[^ ]+]] = f32[1,1,1,1]{3,2,1,0} bitcast([[reduce_2]])
+  )");
 }
 
 TEST_F(ReductionDegenerateDimRemoverTest,
        ReductionWithDegenerateDimensionsVariadic) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithDegenerateDimensions
 
 argmax {
@@ -102,15 +100,20 @@ ENTRY main {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: (f32[], u32[]) reduce(f32[3,4,5]{2,1,0} %bitcast, u32[3,4,5]{2,1,0} %bitcast.1, f32[] %zero, u32[] %zero_idx), dimensions={0,1,2}
+  CheckDegenerateDimRemover(hlo, R"(
+// CHECK:  [[bitcast_0:%[^ ]+]] = f32[3,4,5]{2,1,0} bitcast([[input_1:%[^ ]+]])
+// CHECK:  [[bitcast_1_2:%[^ ]+]] = u32[3,4,5]{2,1,0} bitcast([[idxs_3:%[^ ]+]])
+// CHECK:  [[reduce_4:%[^ ]+]] = (f32[], u32[]) reduce([[bitcast_0]], [[bitcast_1_2]], [[zero_5:%[^ ]+]], [[zero_idx_6:%[^ ]+]]), dimensions={0,1,2}, to_apply=[[argmax_7:%[^ ]+]]
+// CHECK-NEXT:  [[get_tuple_element_8:%[^ ]+]] = f32[] get-tuple-element([[reduce_4]]), index=0
+// CHECK-NEXT:  [[bitcast_2_9:%[^ ]+]] = f32[1,1,1,1]{3,2,1,0} bitcast([[get_tuple_element_8]])
+// CHECK-NEXT:  [[get_tuple_element_1_10:%[^ ]+]] = u32[] get-tuple-element([[reduce_4]]), index=1
+// CHECK-NEXT:  [[bitcast_3_11:%[^ ]+]] = u32[1,1,1,1]{3,2,1,0} bitcast([[get_tuple_element_1_10]])
+// CHECK-NEXT:  ROOT [[tuple_12:%[^ ]+]] = (f32[1,1,1,1]{3,2,1,0}, u32[1,1,1,1]{3,2,1,0}) tuple([[bitcast_2_9]], [[bitcast_3_11]])
 )");
 }
 
 TEST_F(ReductionDegenerateDimRemoverTest, DegenerateWithEmptyDimension) {
-  const char* hlo_text = R"(
+  const char* hlo = R"(
 HloModule ReduceWithDegenerateDimensions
 
 add {
@@ -125,22 +128,13 @@ ENTRY main {
 
   ROOT out = f32[3,4,5,1] reduce(input, zero), dimensions={0,2,4}, to_apply=add
 }
-
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  // Copy instruction is added after bitcast because of copy-insertion pass,
-  // so we check the entire hlo module to verify there is no reduce instruction
-  // in this case.
-  MatchOptimizedHloWithShapes(hlo_text,
-                              R"(
-// CHECK: ENTRY %main (input: f32[1,3,1,4,1,5,1]) -> f32[3,4,5,1] {
-// CHECK:   %input = f32[1,3,1,4,1,5,1]{6,5,4,3,2,1,0} parameter(0)
-// CHECK:   %bitcast{{.+}} = f32[3,4,5,1]{3,2,1,0} bitcast(f32[1,3,1,4,1,5,1]{6,5,4,3,2,1,0} %input)
-// CHECK:   ROOT %copy{{.+}} = f32[3,4,5,1]{3,2,1,0} copy(f32[3,4,5,1]{3,2,1,0} %bitcast{{.+}})
+  CheckDegenerateDimRemover(hlo,
+                            R"(
+// CHECK: ROOT [[bitcast_0:%[^ ]+]] = f32[3,4,5,1]{3,2,1,0} bitcast([[input_1:%[^ ]+]])
       )");
 }
 
 }  // namespace
-}  // namespace gpu
 }  // namespace xla

@@ -3,7 +3,7 @@
 // including constants retaining their shape
 // and the module including the TFLite version.
 
-func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
+func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<3x2xi32>):
   // CHECK: module attributes {tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}
 
@@ -15,7 +15,7 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
 
   %0 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32> loc("Const")
   %1 = "tfl.sub" (%arg0, %0) {fused_activation_function = "RELU6"} : (tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("sub")
-  %2 = "std.constant" () {value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("Const2")
+  %2 = "arith.constant" () {value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("Const2")
   %3 = "tfl.add" (%2, %1) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("add")
-  return %3 : tensor<3x2xi32>
+  func.return %3 : tensor<3x2xi32>
 }

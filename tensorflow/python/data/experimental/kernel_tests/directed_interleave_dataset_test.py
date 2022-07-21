@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the experimental input pipeline ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -289,7 +285,7 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
            dataset_ops.Dataset.range(20)],
           weights=[1, 1])
 
-    with self.assertRaisesRegex(TypeError, "must have the same type"):
+    with self.assertRaisesRegex(TypeError, "must have compatible"):
       dataset_ops.Dataset.sample_from_datasets([
           dataset_ops.Dataset.from_tensors(0),
           dataset_ops.Dataset.from_tensors(0.0)

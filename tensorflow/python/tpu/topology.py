@@ -14,12 +14,7 @@
 # ======================================
 """Defines the `Topology` class, that describes a TPU fabric topology."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf.tpu import topology_pb2
 from tensorflow.python.util.tf_export import tf_export
@@ -62,16 +57,22 @@ class Topology(object):
       mesh_shape: A sequence of 4 positive integers, or `None`. If not `None`,
         the shape of the TPU topology, in number of cores. Ignored if
         `serialized` is not `None`.
-      device_coordinates: A rank 4 numpy array that describes the mapping from
-        TensorFlow TPU devices to TPU fabric coordinates, or `None`. Ignored
-        if `serialized is not `None`.
+      device_coordinates: A rank 3 numpy array that describes the mapping from
+        TensorFlow TPU devices to TPU fabric coordinates, or `None`. If
+        specified, array is a rank 3 int32 array with shape
+        `[tasks, devices, axis]`.  `tasks` is the number of tasks in the TPU
+        cluster, `devices` is the number of TPU devices per task, and `axis` is
+        the number of axes in the TPU cluster topology. Each entry gives the
+        `axis`-th coordinate in the topology of a task/device pair. TPU
+        topologies are 4-dimensional, with dimensions `(x, y, z, core number)`.
+        This arg is ignored if `serialized is not `None`.
 
     Raises:
       ValueError: If `serialized` does not describe a well-formed topology.
       ValueError: If `serialized` is `None` and `mesh_shape` is not a sequence
         of 4 positive integers.
       ValueError: If `serialized` is `None` and `device_coordinates` is not a
-        rank 4 numpy int32 array that describes a valid coordinate mapping.
+        rank 3 numpy int32 array that describes a valid coordinate mapping.
     """
 
     self._serialized = serialized
@@ -90,7 +91,7 @@ class Topology(object):
         raise ValueError(
             "`device_coordinates` must be a rank 3 int32 array "
             "with minor dimension equal to the `mesh_shape` rank"
-            "got device_coordinates={} len(device_coordinates)={} device_coordinates.shape[2]={} mesh_shape={}, len(mesh_shape)={}"
+            "got device_coordinates.shape={} len(device_coordinates.shape)={} device_coordinates.shape[2]={} mesh_shape={}, len(mesh_shape)={}"
             .format(self._device_coordinates.shape,
                     len(self._device_coordinates.shape),
                     self._device_coordinates.shape[2], self._mesh_shape,
@@ -142,8 +143,8 @@ class Topology(object):
     """Inverts a [task,device,axis] topology to [x,y,z] -> task/device maps."""
     tasks = np.full(list(self.mesh_shape), -1, dtype=np.int32)
     devices = np.full(list(self.mesh_shape), -1, dtype=np.int32)
-    for task in xrange(self.device_coordinates.shape[0]):
-      for device in xrange(self.device_coordinates.shape[1]):
+    for task in range(self.device_coordinates.shape[0]):
+      for device in range(self.device_coordinates.shape[1]):
         x, y, z, core = self.device_coordinates[task, device, :]
         tasks[x, y, z, core] = task
         devices[x, y, z, core] = device

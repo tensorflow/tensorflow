@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -83,7 +84,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
   for (int i = 0; i < filenames.size(); ++i) {
     TF_RETURN_IF_ERROR(WriteDataToFile(filenames[i], contents[i].data()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -91,11 +92,11 @@ DatasetDef RangeDataset(int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(
       {NDef("start", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(0)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(0)}, {"dtype", DT_INT64}}),
        NDef("stop", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(range)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(range)}, {"dtype", DT_INT64}}),
        NDef("step", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(1)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(1)}, {"dtype", DT_INT64}}),
        NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
             {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
              {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
@@ -128,18 +129,18 @@ DatasetDef RangeDatasetWithShardHint(const int64_t range) {
   DatasetDef dataset_def;
   *dataset_def.mutable_graph() = GDef(
       {NDef("start", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(0)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(0)}, {"dtype", DT_INT64}}),
        NDef("stop", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(range)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(range)}, {"dtype", DT_INT64}}),
        NDef("step", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(1)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(1)}, {"dtype", DT_INT64}}),
        NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
             {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
              {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
        NDef("num_shards", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(kShardHint)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(kShardHint)}, {"dtype", DT_INT64}}),
        NDef("index", "Const", /*inputs=*/{},
-            {{"value", AsScalar<int64>(kShardHint)}, {"dtype", DT_INT64}}),
+            {{"value", AsScalar<int64_t>(kShardHint)}, {"dtype", DT_INT64}}),
        NDef("ShardDataset", "ShardDataset",
             /*inputs=*/{"range", "num_shards", "index"},
             {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
@@ -161,7 +162,7 @@ StatusOr<DatasetDef> InterleaveTextlineDataset(
       ReadTextProto(Env::Default(), graph_file, dataset.mutable_graph()));
 
   Tensor filenames_tensor = test::AsTensor<tstring>(
-      filenames, TensorShape({static_cast<int64>(filenames.size())}));
+      filenames, TensorShape({static_cast<int64_t>(filenames.size())}));
   filenames_tensor.AsProtoTensorContent(
       (*dataset.mutable_graph()->mutable_node(0)->mutable_attr())["value"]
           .mutable_tensor());
@@ -172,7 +173,7 @@ Status WaitWhile(std::function<StatusOr<bool>()> f) {
   while (true) {
     TF_ASSIGN_OR_RETURN(bool result, f());
     if (!result) {
-      return Status::OK();
+      return OkStatus();
     }
     Env::Default()->SleepForMicroseconds(10 * 1000);  // 10ms.
   }

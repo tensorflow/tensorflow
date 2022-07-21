@@ -49,8 +49,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt8 &&
       input->type != kTfLiteInt16 && input->type != kTfLiteBool) {
-    context->ReportError(context, "Type '%s' is not supported by unpack.",
-                         TfLiteTypeGetName(input->type));
+    TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",
+                       TfLiteTypeGetName(input->type));
     return kTfLiteError;
   }
 
@@ -128,8 +128,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by unpack.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }

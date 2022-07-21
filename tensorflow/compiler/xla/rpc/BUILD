@@ -25,7 +25,7 @@ tf_proto_library(
     srcs = ["xla_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
+    create_grpc_library = True,
     create_service = True,
     protodeps = [
         "//tensorflow/compiler/xla:xla_proto",
@@ -41,8 +41,9 @@ cc_library(
     deps = [
         ":xla_service_proto_cc",
         "//tensorflow/compiler/xla:service_interface",
+        "//tensorflow/compiler/xla:xla_data_cc_grpc_proto",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:lib",
+        "//tensorflow/compiler/xla/rpc:xla_service_cc_grpc_proto",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ],
 )
@@ -95,6 +96,7 @@ cc_library(
     hdrs = ["grpc_service.h"],
     deps = [
         ":xla_service_proto_cc",
+        ":xla_service_cc_grpc_proto",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",

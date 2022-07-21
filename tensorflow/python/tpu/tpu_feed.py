@@ -16,14 +16,9 @@
 """Helper library for handling infeed between hosts and TPUs.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
 from tensorflow.python.framework import dtypes
@@ -190,12 +185,11 @@ class InfeedQueue(object):
             "number of tuple elements cannot be inferred from InfeedQueue "
             "constructor")
     if number_of_tuple_elements <= 0:
-      raise ValueError("number_of_tuple_elements %d must be > 0" %
-                       number_of_tuple_elements)
+      raise ValueError(f"number_of_tuple_elements {number_of_tuple_elements} "
+                       "must be > 0")
     # Make an empty sharding policy for each tuple element.
     self._sharding_policies = [
-        tpu_sharding.ShardingPolicy()
-        for _ in xrange(number_of_tuple_elements)
+        tpu_sharding.ShardingPolicy() for _ in range(number_of_tuple_elements)
     ]
     if tuple_types is not None:
       self.set_tuple_types(tuple_types)
@@ -247,22 +241,24 @@ class InfeedQueue(object):
         dtype.
     """
     if len(tuple_types) != self.number_of_tuple_elements:
-      raise ValueError("tuple_types is %s, but must be a list of length %d" %
-                       (str(tuple_types), self.number_of_tuple_elements))
+      raise ValueError(
+          f"tuple_types is {str(tuple_types)}, but must be a list of "
+          f"length {self.number_of_tuple_elements}"
+      )
     if self._frozen:
       for (frozen, updated) in zip(self._tuple_types, tuple_types):
         if frozen != updated:
           raise ValueError(
               "Trying to update InfeedQueue with frozen configuration with an "
-              "incompatible type. Frozen types are %s, updated types are %s" % (
-                  str(self._tuple_types), str(tuple_types)))
+              f"incompatible type. Frozen types are {str(self._tuple_types)}, "
+              f"updated types are {str(tuple_types)}")
     else:
       try:
         self._tuple_types = [dtypes.as_dtype(t) for t in tuple_types]
       except (TypeError) as e:
         raise TypeError(
-            "tuple_types is %s, but must be a list of elements each "
-            "convertible to dtype: got error %s" % (str(tuple_types), str(e)))
+            f"tuple_types is {str(tuple_types)}, but must be a list of "
+            f"elements each convertible to dtype: got error {str(e)}") from e
 
   @property
   def tuple_shapes(self):
@@ -286,22 +282,26 @@ class InfeedQueue(object):
         a TensorShape.
     """
     if len(tuple_shapes) != self.number_of_tuple_elements:
-      raise ValueError("tuple_shapes is %s, but must be a list of length %d" %
-                       (str(tuple_shapes), self.number_of_tuple_elements))
+      raise ValueError(
+          f"tuple_shapes is {str(tuple_shapes)}, but must be a list of "
+          f"length {self.number_of_tuple_elements}"
+      )
     try:
       tuple_shapes = [tensor_shape.as_shape(shape) for shape in tuple_shapes]
     except (ValueError, TypeError) as e:
       raise TypeError(
-          "tuple_shapes is %s, but must be a list of elements each "
-          "convertible to TensorShape: got error %s" % (str(tuple_shapes),
-                                                        str(e)))
+          f"tuple_shapes is {str(tuple_shapes)}, but must be a list of "
+          "elements each convertible to TensorShape: got error "
+          f"{str(e)}") from e
     if self._frozen:
       for (frozen, updated) in zip(self._tuple_shapes, tuple_shapes):
         if frozen != updated:
           raise ValueError(
               "Trying to update InfeedQueue with frozen configuration with an "
-              "incompatible shape. Frozen shapes are %s, updated shapes are %s"
-              % (str(self._tuple_shapes), str(tuple_shapes)))
+              "incompatible shape. Frozen shapes are "
+              f"{str(self._tuple_shapes)}, updated shapes are "
+              f"{str(tuple_shapes)}")
+
     else:
       self._tuple_shapes = tuple_shapes
     self._validate()
@@ -341,9 +341,8 @@ class InfeedQueue(object):
         range for the corresponding tuple element shape.
     """
     if len(shard_dimensions) != self.number_of_tuple_elements:
-      raise ValueError("shard_dimensions is %s, but must be a list of length %d"
-                       % (str(shard_dimensions),
-                          self.number_of_tuple_elements))
+      raise ValueError(f"shard_dimensions is {str(shard_dimensions)}, but must "
+                       f"be a list of length {self.number_of_tuple_elements}")
     for (policy, dimension) in zip(self._sharding_policies, shard_dimensions):
       policy.set_shard_dimension(dimension)
     self._validate()
@@ -389,8 +388,8 @@ class InfeedQueue(object):
         self.number_of_tuple_elements
     """
     if len(input_tensors) != self.number_of_tuple_elements:
-      raise ValueError("input_tensors is %s, but should be a list of %d Tensors"
-                       % (str(input_tensors), self.number_of_tuple_elements))
+      raise ValueError(f"input_tensors is {str(input_tensors)}, but should be "
+                       f"a list of {self.number_of_tuple_elements} Tensors")
     self.set_tuple_shapes([t.shape for t in input_tensors])
     self.set_tuple_types([t.dtype for t in input_tensors])
 
@@ -423,25 +422,26 @@ class InfeedQueue(object):
     for t in input_tensors:
       if len(t) != self.number_of_tuple_elements:
         raise ValueError(
-            "input_tensors is %s but must be a list of lists, where each inner"
-            " list has length number_of_tuple_elements=%d" % (
-                str(input_tensors), self.number_of_tuple_elements))
+            f"input_tensors is {str(input_tensors)} but must be a list of "
+            "lists, where each inner list has length "
+            f"number_of_tuple_elements={self.number_of_tuple_elements}")
     # Transpose the inputs to make a list of shard shapes for each tuple
     # element.
-    sharded_shapes = [[t[i].shape for t in input_tensors]
-                      for i in xrange(self.number_of_tuple_elements)]
+    sharded_shapes = [[t[i].shape
+                       for t in input_tensors]
+                      for i in range(self.number_of_tuple_elements)]
     # For each tuple, get the unsharded shape using that tuple's policy.
     unsharded_shapes = [
         policy.get_unsharded_shape(s)
         for (policy, s) in zip(self._sharding_policies, sharded_shapes)
     ]
     self.set_tuple_shapes(unsharded_shapes)
-    for i in xrange(1, self.number_of_shards):
+    for i in range(1, self.number_of_shards):
       for (t1, t2) in zip(input_tensors[0], input_tensors[i]):
         if t1.dtype != t2.dtype:
           raise TypeError(
-              "types of the tuple elements of input_tensors %s are not "
-              "consistent" % str(input_tensors))
+              "types of the tuple elements of input_tensors "
+              f"{str(input_tensors)} are not consistent")
     self.set_tuple_types([t.dtype for t in input_tensors[0]])
 
   def freeze(self):
@@ -493,7 +493,7 @@ class InfeedQueue(object):
       set; or if a dequeue op has already been generated.
     """
     self.freeze()
-    if self._generated_dequeue_op:
+    if self._generated_dequeue_op and not ops.inside_function():
       raise ValueError("Can't generate two dequeue Ops from the same queue")
     self._generated_dequeue_op = True
     full_name = "%s/dequeue" % self._name
@@ -550,11 +550,11 @@ class InfeedQueue(object):
     shapes = [t.shape for t in inputs]
     if device is None:
       devices = [t.device for t in inputs]
-      for i in xrange(1, self.number_of_tuple_elements):
+      for i in range(1, self.number_of_tuple_elements):
         if devices[0] != devices[i]:
           raise ValueError(
-              "input devices for shard %d are %s, but should all be the same" %
-              (index, str(devices)))
+              f"input devices for shard {index} are {str(devices)}, but should "
+              "all be the same")
       with ops.colocate_with(inputs[0]):
         return tpu_ops.infeed_enqueue_tuple(
             inputs=inputs,
@@ -615,7 +615,7 @@ class InfeedQueue(object):
     """
     self.set_configuration_from_sharded_input_tensors(sharded_inputs)
     self.freeze()
-    if self._generated_enqueue_ops:
+    if self._generated_enqueue_ops and not ops.inside_function():
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
     if tpu_ordinal_function is None:
@@ -628,7 +628,7 @@ class InfeedQueue(object):
             index,
             tpu_ordinal=tpu_ordinal_function(index),
             device=placement_function(index) if placement_function else None)
-        for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
+        for (shard, index) in zip(sharded_inputs, range(self.number_of_shards))
     ]
 
   # TODO(misard) Generalize this to the case of systems that don't
@@ -715,7 +715,7 @@ class InfeedQueue(object):
         tpu_ordinal_function = _ordinal_function_from_map
     self.set_configuration_from_input_tensors(inputs)
     self.freeze()
-    if self._generated_enqueue_ops:
+    if self._generated_enqueue_ops and not ops.inside_function():
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
     split_name_prefix = "%s/split" % self._name
@@ -734,10 +734,11 @@ class InfeedQueue(object):
               axis=policy.shard_dimension,
               name="%s/%d" % (split_name_prefix, index))
           for (inp, policy, index) in zip(inputs, self._sharding_policies,
-                                          xrange(self.number_of_tuple_elements))
+                                          range(self.number_of_tuple_elements))
       ]
-    sharded_inputs = [[shard[i] for shard in transposed_sharded_inputs]
-                      for i in xrange(self.number_of_shards)]
+    sharded_inputs = [[shard[i]
+                       for shard in transposed_sharded_inputs]
+                      for i in range(self.number_of_shards)]
     name_prefix = "%s/enqueue" % self._name
     return [
         self._generate_enqueue_op(
@@ -746,7 +747,7 @@ class InfeedQueue(object):
             index,
             device=placement_function(index),
             tpu_ordinal=tpu_ordinal_function(index))
-        for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
+        for (shard, index) in zip(sharded_inputs, range(self.number_of_shards))
     ]
 
 
@@ -800,7 +801,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
       set; or if a dequeue op has already been generated.
     """
     self.freeze()
-    if self._generated_dequeue_op:
+    if self._generated_dequeue_op and not ops.inside_function():
       raise ValueError("Can't generate two dequeue Ops from the same queue")
     self._generated_dequeue_op = True
     full_name = "%s/dequeue" % self._name
@@ -875,7 +876,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
       # input_fn).
       replica_id = self._device_assignment.lookup_replicas(
           task_id=self._host_id, logical_core=0)[replica_index]
-      for logical_core in xrange(self._device_assignment.num_cores_per_replica):
+      for logical_core in range(self._device_assignment.num_cores_per_replica):
         # Places different partitions to different logic cores.
         # Since there can be multiple hosts per replica, we need to find
         # the actual host (device) of this logical core.

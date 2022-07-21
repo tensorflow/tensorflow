@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow collective Ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.ops import gen_collective_ops
 
 
@@ -72,6 +68,30 @@ def all_reduce(t,
       timeout_seconds=timeout)
 
 
+def assign_group_v2(group_assignment, device_index, base_key):
+  """Assign group key based on group_assignment.
+
+  Args:
+    group_assignment: a 2 dimensional integer Tensor that encodes which devices
+      belong to the same group. The values are indices of the devices within 0
+      to number of devices.
+    device_index: integer for the index of the current device
+    base_key: integer to offset the resulted group_key. The base key shall be
+      unique for different values of group_assignment in the same tf.function.
+  Notes: The device_index argument must be consistent with the index of the
+    device of this Op in the device assignment list. The behavior of this Op is
+    undefined if they are inconsistent.
+
+  Returns:
+    group_size, group_key: The group size and group key for the current device.
+  """
+  group_size, group_key = gen_collective_ops.collective_assign_group_v2(
+      group_assignment=group_assignment,
+      device_index=device_index,
+      base_key=base_key)
+  return group_size, group_key
+
+
 def all_reduce_v2(t,
                   group_size,
                   group_key,
@@ -81,7 +101,8 @@ def all_reduce_v2(t,
                   communication_hint='auto',
                   timeout=0,
                   ordering_token=None,
-                  max_subdivs_per_device=-1):
+                  max_subdivs_per_device=-1,
+                  name=None):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -101,20 +122,26 @@ def all_reduce_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
       timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
+    ordering_token: a resource tensor on the same device as the op to order
+      the collectives in a per-device manner by auto control dependency.
+      This argument can be omited when there is one collective Op per
+      `tf.function`, or when explicit control dependency is used instead of
+      auto control dependency.
     max_subdivs_per_device: int specifying the maximum number of subdivisions a
       tensor on a device can be divided into. The runtime uses this contraint to
       parallelize processing of each per-device tensor. Setting to -1 disables
       subdivision and reverts to previous behavior of not sub-dividing tensor.
       Setting to 0 uses sytem defaults.
+    name: name of the Op.
 
   Returns:
     An Op implementing the distributed reduction.
   """
   if ordering_token is not None:
     ordering_token = [ordering_token]
+  else:
+    ordering_token = []
+
   return gen_collective_ops.collective_reduce_v2(
       t,
       group_size=group_size,
@@ -124,8 +151,9 @@ def all_reduce_v2(t,
       final_op=final_op,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [],
-      max_subdivs_per_device=max_subdivs_per_device)
+      ordering_token=ordering_token,
+      max_subdivs_per_device=max_subdivs_per_device,
+      name=name)
 
 
 def all_gather(t,
@@ -174,7 +202,8 @@ def all_gather_v2(t,
                   instance_key,
                   communication_hint='auto',
                   timeout=0,
-                  ordering_token=None):
+                  ordering_token=None,
+                  name=None):
   """Accumulates tensors collectively, across devices, along first dimension.
 
   Args:
@@ -190,15 +219,21 @@ def all_gather_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness. If the timer goes off, a DeadlineExceededError is raised. The
       timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
+    ordering_token: a resource tensor on the same device as the op to order
+      the collectives in a per-device manner by auto control dependency.
+      This argument can be omited when there is one collective Op per
+      `tf.function`, or when explicit control dependency is used instead of
+      auto control dependency.
+    name: name of the Op.
 
   Returns:
     An Op implementing the distributed operation.
   """
   if ordering_token is not None:
     ordering_token = [ordering_token]
+  else:
+    ordering_token = []
+
   return gen_collective_ops.collective_gather_v2(
       t,
       group_size=group_size,
@@ -206,7 +241,8 @@ def all_gather_v2(t,
       instance_key=instance_key,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [])
+      ordering_token=ordering_token,
+      name=name)
 
 
 def broadcast_send(t,
@@ -396,12 +432,12 @@ def initialize_communicator(group_key,
   """Initializes a collective communicator.
 
   This creates a collective communicator, which represents membership to a
-  collective group. It should be called once per member of the group, and each
-  member needs to be on a different device. It blocks until all members of the
-  group run this op.
+  collective group identified by the group_key. It should be called once per
+  member of the group, and each member needs to be on a different device.
+  It blocks until all members of the group run this op.
 
   Communicators of a group can only be initialized once. Trying to initialize
-  communicators of an existing group will result in an error.
+  communicators for an existing group key will result in an error.
 
   Args:
     group_key: an int32 `tf.Tensor` identifying the group.

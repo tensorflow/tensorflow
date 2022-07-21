@@ -185,6 +185,10 @@ There are two ways to run TensorFlow unit tests.
     Once you have the packages installed, you can run a specific unit test in
     bazel by doing as follows:
 
+    ```bash
+    export flags="--config=opt -k"
+    ```
+
     If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
     the `cuda` option flag
 
@@ -205,6 +209,23 @@ There are two ways to run TensorFlow unit tests.
     ```bash
     bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
     ```
+
+    For a single/parameterized test e.g. `test_capture_variables` in
+    `tensorflow/python/saved_model/load_test.py`:
+
+    (Requires `python>=3.7`)
+
+    ```bash
+    bazel test ${flags} //tensorflow/python/saved_model:load_test --test_filter=*LoadTest.test_capture_variables*
+    ```
+
+    **Note:** You can add `--test_sharding_strategy=disabled` to the `flags` to
+    disable the sharding so that all the test outputs are in one file. However,
+    it may slow down the tests for not running in parallel and may cause the
+    test to timeout but it could be useful when you need to execute a single
+    test or more in general your filtered/selected tests have a very low
+    execution time and the sharding
+    [could create an overhead on the test execution](https://github.com/bazelbuild/bazel/issues/2113#issuecomment-264054799).
 
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 

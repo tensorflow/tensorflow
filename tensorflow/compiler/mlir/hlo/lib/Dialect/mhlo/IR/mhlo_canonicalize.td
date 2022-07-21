@@ -22,11 +22,14 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 def UnaryToBinaryEinsumEq : NativeCodeCall<
   "$_builder.getStringAttr(\",\" + $0.getValue().str())">;
 
+def GetI64DenseElementsAttr : NativeCodeCall<
+  "$0.mapValues($_builder.getI64Type(), [](llvm::APInt x) { return x.sext(64); })">;
+
 // Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
 // operand.
 def UnaryEinsumToEinsum : Pat<
   (HLO_UnaryEinsumOp $operand, $equation),
-  (HLO_EinsumOp (HLO_ConstOp (GetScalarOfType<1> $operand)),
+  (HLO_EinsumOp (HLO_ConstantOp (GetScalarOfType<1> $operand)),
                 $operand, (UnaryToBinaryEinsumEq $equation))>;
 
 // A dynamic reshape of a dynamic reshape is a dynamic reshape.
@@ -39,30 +42,33 @@ def RemoveRedundantDynamicReshape : Pat<
 def RemoveRedundantDynamicBroadcast : Pat<
   (HLO_DynamicBroadcastInDimOp
     (HLO_DynamicReshapeOp $operand, $shape),
-     $shape, IdentityBroadcastDims:$dims),
+    $shape,
+    IdentityBroadcastDims,
+    $known_expanding_dimensions,
+    $known_nonexpanding_dimensions),
   (HLO_DynamicReshapeOp $operand, $shape)>;
 
 
 // Convert DPad to Pad if edge_padding_low, edge_padding_high and
-// interior_paddin are HLO_ConstOp
+// interior_padding are HLO_ConstantOp
 def DPadToPad: Pat<
           (HLO_DynamicPadOp HLO_Tensor:$input,
             HLO_Tensor:$padding_value,
-            (HLO_ConstOp I64ElementsAttr:$edge_padding_low),
-            (HLO_ConstOp I64ElementsAttr:$edge_padding_high),
-            (HLO_ConstOp I64ElementsAttr:$interior_paddin)),
+            (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_low),
+            (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_high),
+            (ConstantLikeMatcher AnyIntElementsAttr:$interior_padding)),
           (HLO_PadOp $input, $padding_value,
-            (CastIntElementsAttr $edge_padding_low),
-            (CastIntElementsAttr $edge_padding_high),
-            (CastIntElementsAttr $interior_paddin))>;
+            (GetI64DenseElementsAttr (CastIntElementsAttr $edge_padding_low)),
+            (GetI64DenseElementsAttr (CastIntElementsAttr $edge_padding_high)),
+            (GetI64DenseElementsAttr (CastIntElementsAttr $interior_padding)))>;
 
 // Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
-// strides are HLO_ConstOp
+// strides are HLO_ConstantOp
 def RealDSliceToSlice: Pat<
           (HLO_RealDynamicSliceOp HLO_Tensor:$operand,
-            (HLO_ConstOp I64ElementsAttr:$start_indices),
-            (HLO_ConstOp I64ElementsAttr:$limit_indices),
-            (HLO_ConstOp I64ElementsAttr:$strides)),
+            (HLO_ConstantOp I64ElementsAttr:$start_indices),
+            (HLO_ConstantOp I64ElementsAttr:$limit_indices),
+            (HLO_ConstantOp I64ElementsAttr:$strides)),
           (HLO_SliceOp $operand,
             (CastIntElementsAttr $start_indices),
             (CastIntElementsAttr $limit_indices),

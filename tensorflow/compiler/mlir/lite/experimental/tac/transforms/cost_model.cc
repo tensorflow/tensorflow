@@ -18,14 +18,18 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -49,7 +53,8 @@ constexpr float kRequantCost = 2.0;
 // well.
 
 // Get total bytes transferred.
-int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
+int64_t GetTransferredTensorBytes(func::CallOp from_graph,
+                                  func::CallOp to_graph) {
   int64_t total_size_transferred = 0;
   for (auto input : to_graph.getOperands()) {
     Operation* input_op = input.getDefiningOp();
@@ -60,7 +65,7 @@ int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
       if (IsQUI8Type(input_type) || IsQI8Type(input_type)) {
         total_size_transferred += input_type.getNumElements() * 8;
       } else {
-        total_size_transferred += input_type.getSizeInBits();
+        total_size_transferred += input_type.cast<ShapedType>().getSizeInBits();
       }
     }
   }
@@ -68,7 +73,8 @@ int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
 }
 
 // Get total tensor element size transferred.
-int64_t GetTransferredElementCount(CallOp from_graph, CallOp to_graph) {
+int64_t GetTransferredElementCount(func::CallOp from_graph,
+                                   func::CallOp to_graph) {
   int64_t total_element_count = 0;
   for (auto input : to_graph.getOperands()) {
     Operation* input_op = input.getDefiningOp();
@@ -81,20 +87,25 @@ int64_t GetTransferredElementCount(CallOp from_graph, CallOp to_graph) {
   return total_element_count;
 }
 
-struct GetOpCostPass : mlir::PassWrapper<GetOpCostPass, FunctionPass> {
+struct GetOpCostPass
+    : mlir::PassWrapper<GetOpCostPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetOpCostPass)
+
   llvm::StringRef getArgument() const final { return "tfl-get-op-cost"; }
   llvm::StringRef getDescription() const final {
     return "Get cost for every op";
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void GetOpCostPass::runOnFunction() {
-  auto func = getFunction();
+void GetOpCostPass::runOnOperation() {
+  auto func = getOperation();
   OpBuilder builder(func);
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
+      if (!hardware) return;
       float cost = GetCostForOp(op, hardware.getValue());
       UpdateCost(op, cost, &builder);
     }
@@ -112,7 +123,7 @@ float GetCostForOp(Operation* op, const std::string& hardware) {
   return device_hardware->GetOpCost(op);
 }
 
-float GetCostForFunc(FuncOp* func, const std::string& hardware) {
+float GetCostForFunc(func::FuncOp* func, const std::string& hardware) {
   auto* device_hardware = GetTargetHardware(hardware);
   if (device_hardware == nullptr) {
     return kDefaultFixedValuedCost;
@@ -122,8 +133,8 @@ float GetCostForFunc(FuncOp* func, const std::string& hardware) {
 }
 
 float GetTransferCost(const std::string& from_hardware_str,
-                      const std::string& to_hardware_str, CallOp from_graph,
-                      CallOp to_graph) {
+                      const std::string& to_hardware_str,
+                      func::CallOp from_graph, func::CallOp to_graph) {
   auto from_hardware = GetTargetHardware(from_hardware_str);
   auto to_hardware = GetTargetHardware(to_hardware_str);
   if (from_hardware == nullptr) {
@@ -143,8 +154,8 @@ float GetTransferCost(const std::string& from_hardware_str,
 }
 
 float GetQuantDequantCost(InferenceType from_inference_type,
-                          InferenceType to_inference_type, CallOp from_graph,
-                          CallOp to_graph) {
+                          InferenceType to_inference_type,
+                          func::CallOp from_graph, func::CallOp to_graph) {
   // Same inference type, no dequant/quant happens.
   if (from_inference_type == to_inference_type) return 0;
 
@@ -178,7 +189,7 @@ float GetQuantDequantCost(InferenceType from_inference_type,
   return kDefaultFixedValuedCost;
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateGetOpCostPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetOpCostPass() {
   return std::make_unique<GetOpCostPass>();
 }
 

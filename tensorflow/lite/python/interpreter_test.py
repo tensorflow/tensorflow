@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python Interface: Sanity check."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import io
 import sys
-
 from unittest import mock
 
 import numpy as np
 import six
+import tensorflow as tf
 
 # Force loaded shared object symbols to be globally visible. This is needed so
 # that the interpreter_wrapper, in one .so file, can see the test_registerer,
@@ -35,16 +30,11 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.lite.python import interpreter as interpreter_wrapper
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
-try:
-  from tensorflow.lite.python.metrics import metrics_portable
-  metrics = metrics_portable
-except ImportError:
-  from tensorflow.lite.python.metrics import metrics_nonportable
-  metrics = metrics_nonportable
 # pylint: enable=g-import-not-at-top
 
 
@@ -352,6 +342,25 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
       interpreter._get_tensor_details(4)
     with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
+
+  def testEmptyInputTensor(self):
+
+    class TestModel(tf.keras.models.Model):
+
+      @tf.function(
+          input_signature=[tf.TensorSpec(shape=[None], dtype=tf.float32)])
+      def TestSum(self, x):
+        return tf.raw_ops.Sum(input=x, axis=[0])
+
+    test_model = TestModel()
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([
+        test_model.TestSum.get_concrete_function(
+            tf.TensorSpec([None], tf.float32))
+    ], test_model)
+    model = converter.convert()
+    interpreter = tf.lite.Interpreter(model_content=model)
+    # Make sure that passing empty tensor doesn't cause any errors.
+    interpreter.get_signature_runner()(x=tf.zeros([0], tf.float32))
 
 
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):

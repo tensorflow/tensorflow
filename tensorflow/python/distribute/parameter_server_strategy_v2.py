@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +17,7 @@
 This is currently under development and the API is subject to change.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import functools
 import os
 import threading
 
@@ -29,6 +25,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
@@ -40,10 +37,12 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -62,7 +61,10 @@ load_context = LazyLoader(
 )
 
 
-@tf_export("distribute.experimental.ParameterServerStrategy", v1=[])
+@tf_export(
+    "distribute.experimental.ParameterServerStrategy",
+    "distribute.ParameterServerStrategy",
+    v1=[])
 class ParameterServerStrategyV2(distribute_lib.Strategy):
   """An multi-worker tf.distribute strategy with parameter servers.
 
@@ -532,9 +534,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
     # The following checks if the task types are allowed (chief, ps, worker).
     multi_worker_util._validate_cluster_spec(  # pylint: disable=protected-access
-        cluster_spec,
-        cluster_resolver.task_type,
-        cluster_resolver.task_id)
+        cluster_spec, cluster_resolver.task_type, cluster_resolver.task_id)
 
     if multi_worker_util.task_count(cluster_spec, "ps") < 1:
       raise ValueError("There must be at least one ps.")
@@ -614,19 +614,19 @@ class ParameterServerStrategyV2Extended(
       return wrapped
 
     if self._num_replicas_in_sync > 1:
-      if aggregation not in (
-          vs.VariableAggregation.NONE,
-          vs.VariableAggregation.SUM,
-          vs.VariableAggregation.MEAN,
-          vs.VariableAggregation.ONLY_FIRST_REPLICA
-      ):
+      if aggregation not in (vs.VariableAggregation.NONE,
+                             vs.VariableAggregation.SUM,
+                             vs.VariableAggregation.MEAN,
+                             vs.VariableAggregation.ONLY_FIRST_REPLICA):
         raise ValueError("Invalid variable aggregation mode: " + aggregation +
                          " for variable: " + kwargs["name"])
       return var_creator
     else:
+
       def variable_creator_single_replica(**kwargs):
         v = next_creator(**kwargs)
         return ps_values.CachingVariable(v)
+
       return variable_creator_single_replica
 
   def _create_variable(self, next_creator, **kwargs):
@@ -666,15 +666,29 @@ class ParameterServerStrategyV2Extended(
       return self._create_variable_round_robin(var_creator, **kwargs)
 
     name = kwargs.get("name", None)
+    dtype = kwargs.get("dtype", None)
+    shape = kwargs.get("shape", None)
     initial_value = kwargs.get("initial_value", None)
     if initial_value is None:
-      raise ValueError(
-          "It looks like you are using `ParameterServerStrategy` with a "
-          "`variable_partitioner`, and trying to create a variable without "
-          "specifying `initial_value`. This is not allowed. Please specify the "
-          "`initial_value`. This can also happen if you are trying to load a "
-          "saved_model within a `ParameterServerStrategy` scope. Loading a "
-          "saved_model with `variable_partitioner` is not supported.")
+      # If we are loading, next_creator will return an UninitializedVariable
+      v = next_creator(**kwargs)
+      if not isinstance(v, resource_variable_ops.UninitializedVariable):
+        raise ValueError(
+            "It looks like you are using `ParameterServerStrategy` with a "
+            "`variable_partitioner`, and trying to create a variable without "
+            "specifying `initial_value`. This is not allowed. Please specify the "
+            "`initial_value`.")
+      elif shape is None or dtype is None:
+        raise ValueError(
+            "It looks like you are trying to load a `SavedModel` using "
+            "`tf.saved_model.load` within a `ParameterServerStrategy` scope, "
+            "but the `SavedModel` is missing shape or dtype information.")
+      else:
+        def initializer(shape, dtype, **kwargs):
+          if "partition_shape" in kwargs:
+            shape = kwargs["partition_shape"]
+          return array_ops.zeros(shape, dtype)
+        initial_value = functools.partial(initializer, shape=shape, dtype=dtype)
 
     # Two cases where initial_value can be a callable:
     #   1. initial_value is passed as a callable, e.g, an `initializer` class.
@@ -682,8 +696,6 @@ class ParameterServerStrategyV2Extended(
     #     "CheckpointInitialValueCallable".
     init_from_fn = callable(initial_value)
 
-    dtype = kwargs.get("dtype", None)
-    shape = kwargs.get("shape", None)
     if init_from_fn and (shape is None or dtype is None):
       init_from_fn = False
       initial_value = initial_value()
@@ -787,8 +799,8 @@ class ParameterServerStrategyV2Extended(
         var = next_creator(**kwargs)
         logging.debug(
             "Creating variable (name:%s, shape:%r) on "
-            "/job:ps/task:%d/device:CPU:0",
-            var.name, var.shape, (self._variable_count % self._num_ps))
+            "/job:ps/task:%d/device:CPU:0", var.name, var.shape,
+            (self._variable_count % self._num_ps))
         self._variable_count += 1
         return var
 
@@ -810,7 +822,7 @@ class ParameterServerStrategyV2Extended(
     # the coordinator which incurs worker-coordinator communication overhead.
 
     def lookup_creator(next_creator, *args, **kwargs):
-      if load_context.in_load_context:
+      if load_context.in_load_context():
         return (ps_values.RestoredDistributedTable(
             self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
       else:
@@ -821,9 +833,11 @@ class ParameterServerStrategyV2Extended(
       return (ps_values.RestoredDistributedTable(
           self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
 
-    return [ops.resource_creator_scope("StaticHashTable", lookup_creator),
-            ops.resource_creator_scope("RestoredStaticHashTable",
-                                       restored_lookup_creator)]
+    return [
+        ops.resource_creator_scope("StaticHashTable", lookup_creator),
+        ops.resource_creator_scope("RestoredStaticHashTable",
+                                   restored_lookup_creator)
+    ]
 
   def _assert_used_with_cluster_coordinator(self):
     if (not self._used_with_coordinator and
@@ -838,20 +852,18 @@ class ParameterServerStrategyV2Extended(
   def _assert_being_scheduled_by_cluster_coordinator(self):
     if not self._being_scheduled and not self._allow_run_without_coordinator:
       logging.warning(
-          "It is detected that a function used with "
-          "`tf.distribute.experimental.ParameterServerStrategy` "
-          "is executed locally on the coordinator. This is inefficient but may "
-          "be valid for one-off tasks such as inferring output signature. "
-          "To properly distribute functions to run on workers, `run` or "
-          "`reduce` should be used within a function passed to `"
-          "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."
-      )
+          "A `tf.distribute.experimental.ParameterServerStrategy` method is "
+          "invoked without using `ClusterCoordinator.schedule`. If you are not "
+          "tracing a tf.function, this method is possibly executed on the "
+          "coordinator, which can be slow. To properly dispatch functions to "
+          "run on workers, methods like `run` or `reduce` should be used "
+          "within a function passed to `tf.distribute.experimental.coordinator."
+          "ClusterCoordinator.schedule`.")
 
   # options is not used right now. But we may want to support options while
   # creating InputWorkers in future, similar to MirroredStrategy.
   def _input_workers_with_options(self, options=None):
-    input_workers_devices = (
-        ("/device:CPU:0", self.worker_devices),)
+    input_workers_devices = (("/device:CPU:0", self.worker_devices),)
     return input_lib.InputWorkers(
         input_workers_devices, canonicalize_devices=False)
 
@@ -861,7 +873,7 @@ class ParameterServerStrategyV2Extended(
     # If this DistributedDataset is created outside ClusterCoordinator, i,e,
     # outside a tf.function, we don't build its underlying datasets immediately
     # until it is passed to ClusterCoordinator.create_per_worker_dataset.
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         input_workers_devices,
         self._container_strategy(),
@@ -884,10 +896,9 @@ class ParameterServerStrategyV2Extended(
     # ClusterCoordinator, i,e, outside a tf.function, we don't build its
     # underlying datasets immediately until it is passed to
     # ClusterCoordinator.create_per_worker_dataset.
-    return input_lib.get_distributed_datasets_from_function(
+    return input_util.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers_with_options(options),
-        [input_context],
+        self._input_workers_with_options(options), [input_context],
         self._container_strategy(),
         options=options,
         build=ops.inside_function())  # will be built by ClusterCoordinator

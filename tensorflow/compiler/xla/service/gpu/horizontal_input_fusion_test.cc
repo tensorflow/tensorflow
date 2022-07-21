@@ -133,7 +133,7 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   // Verify that horizontal fusion is kicked in. Check that there are multiple
   // `reduce` instructions fused into the same fusion. 6 is just a randomly
   // picked number as we don't exactly know how large the fusion will be
-  // created due to the `FusionWouldBeTooLarge` constraint.
+  // created due to the `FusionFitsInBudget` constraint.
   CompileAndVerifyIr(module->Clone(), R"(CHECK: reduce-group-6)",
                      /*match_optimized_ir=*/false);
 

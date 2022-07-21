@@ -57,10 +57,11 @@ void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
 }
 
 class GPUBFCAllocatorTest
-    : public ::testing::TestWithParam<SubAllocator* (*)(size_t)> {};
+    : public ::testing::TestWithParam<std::unique_ptr<SubAllocator> (*)(
+          size_t)> {};
 
 #if CUDA_VERSION >= 10020
-SubAllocator* CreateVirtualMemorySubAllocator(
+std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
     size_t virtual_address_space_size = 1ull << 32) {
   PlatformDeviceId gpu_id(0);
   auto executor =
@@ -70,22 +71,20 @@ SubAllocator* CreateVirtualMemorySubAllocator(
       executor->implementation()->GpuContextHack());
   return GpuVirtualMemAllocator::Create({}, {}, *gpu_context, gpu_id,
                                         virtual_address_space_size, {})
-      .ValueOrDie()
-      .release();
+      .ValueOrDie();
 }
 #endif
 
-SubAllocator* CreateGPUMemAllocator(size_t) {
+std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
   PlatformDeviceId gpu_id(0);
-  return new DeviceMemAllocator(
+  return absl::WrapUnique(new DeviceMemAllocator(
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .ValueOrDie(),
-      gpu_id,
-      /*use_unified_memory=*/false, {}, {});
+      gpu_id, /*use_unified_memory=*/false, {}, {}));
 }
 
-SubAllocator* CreateSubAllocator(size_t virtual_address_space_size = 1ull
-                                                                     << 32) {
+std::unique_ptr<SubAllocator> CreateSubAllocator(
+    size_t virtual_address_space_size = 1ull << 32) {
 #if CUDA_VERSION >= 10020
   return CreateVirtualMemorySubAllocator(virtual_address_space_size);
 #else
@@ -103,7 +102,7 @@ auto TestSuiteValues() {
 }
 
 TEST_P(GPUBFCAllocatorTest, NoDups) {
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   CheckStats(&a, 0, 0, 0, 0);
 
   // Allocate a lot of raw pointers
@@ -132,7 +131,7 @@ TEST_P(GPUBFCAllocatorTest, NoDups) {
 }
 
 TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   // Allocate 256 raw pointers of sizes between 100 bytes and about
   // a meg
   random::PhiloxRandom philox(123, 17);
@@ -190,7 +189,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 }
 
 TEST_P(GPUBFCAllocatorTest, ExerciseCoalescing) {
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   CheckStats(&a, 0, 0, 0, 0);
 
   float* first_ptr = TypedAllocator::Allocate<float>(&a, 1024, {});
@@ -225,18 +224,18 @@ TEST_P(GPUBFCAllocatorTest, ExerciseCoalescing) {
 }
 
 TEST_P(GPUBFCAllocatorTest, AllocateZeroBufSize) {
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   float* ptr = TypedAllocator::Allocate<float>(&a, 0, {});
   EXPECT_EQ(nullptr, ptr);
 }
 
 TEST_P(GPUBFCAllocatorTest, TracksSizes) {
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST_P(GPUBFCAllocatorTest, AllocatedVsRequested) {
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
@@ -245,7 +244,7 @@ TEST_P(GPUBFCAllocatorTest, AllocatedVsRequested) {
 
 TEST_P(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
   // Configure a 2MiB byte limit
-  GPUBFCAllocator a(GetParam()(1ull << 32), 2 << 20, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 2 << 20, "GPU_0_bfc", {});
 
   float* first_ptr = TypedAllocator::Allocate<float>(&a, 1 << 6, {});
   float* second_ptr = TypedAllocator::Allocate<float>(&a, 2 << 20, {});
@@ -260,7 +259,7 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   options.set_allow_growth(true);
 
   // Max of 2GiB, but starts out small.
-  GPUBFCAllocator a(GetParam()(1ull << 32), 1LL << 31, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ull << 32), 1LL << 31, "GPU_0_bfc", {});
 
   // Allocate 10 raw pointers of sizes between 100 bytes and about
   // 64 megs.
@@ -322,8 +321,8 @@ TEST_P(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST_P(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
-  GPUBFCAllocator a(GetParam()(1ul << 62), 1UL << 60, "GPU_0_bfc");
-  GPUBFCAllocator b(GetParam()(1ul << 62), 1UL << 60, "GPU_0_bfc");
+  GPUBFCAllocator a(GetParam()(1ul << 62), 1UL << 60, "GPU_0_bfc", {});
+  GPUBFCAllocator b(GetParam()(1ul << 62), 1UL << 60, "GPU_0_bfc", {});
   void* amem = a.AllocateRaw(1, 1);
   void* bmem = b.AllocateRaw(1, 1 << 30);
   a.DeallocateRaw(amem);
@@ -334,7 +333,7 @@ INSTANTIATE_TEST_SUITE_P(GPUBFCAllocatorTestSuite, GPUBFCAllocatorTest,
                          TestSuiteValues());
 
 static void BM_Allocation(::testing::benchmark::State& state) {
-  GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc");
+  GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc", {});
   // Exercise a few different allocation sizes
   std::vector<size_t> sizes = {256,        4096,      16384,    524288,
                                512,        1048576,   10485760, 104857600,
@@ -355,7 +354,8 @@ static void BM_AllocationThreaded(::testing::benchmark::State& state) {
 
   for (auto s : state) {
     state.PauseTiming();
-    GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc");
+    GPUBFCAllocator a(CreateSubAllocator(1ul << 36), 1uLL << 33, "GPU_0_bfc",
+                      {});
     thread::ThreadPool pool(Env::Default(), "test", num_threads);
 
     std::atomic_int_fast32_t count(sub_iters);
@@ -396,7 +396,7 @@ BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
 // "delay" allocations.
 static void BM_AllocationDelayed(::testing::benchmark::State& state) {
   int delay = state.range(0);
-  GPUBFCAllocator a(CreateSubAllocator(1ull << 32), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(CreateSubAllocator(1ull << 32), 1 << 30, "GPU_0_bfc", {});
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
   int size_index = 0;
@@ -428,7 +428,8 @@ BENCHMARK(BM_AllocationDelayed)->Arg(1)->Arg(10)->Arg(100)->Arg(1000);
 }  // namespace
 
 class GPUBFCAllocatorPrivateMethodsTest
-    : public ::testing::TestWithParam<SubAllocator* (*)(size_t)> {
+    : public ::testing::TestWithParam<std::unique_ptr<SubAllocator> (*)(
+          size_t)> {
  protected:
   void SetUp() override { CHECK_EQ(unsetenv("TF_FORCE_GPU_ALLOW_GROWTH"), 0); }
 
@@ -437,7 +438,7 @@ class GPUBFCAllocatorPrivateMethodsTest
   // only methods inside this class can access private members of BFCAllocator.
 
   void TestBinDebugInfo() {
-    GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc");
+    GPUBFCAllocator a(GetParam()(1ull << 32), 1 << 30, "GPU_0_bfc", {});
 
     std::vector<void*> initial_ptrs;
     std::vector<size_t> initial_ptrs_allocated_sizes;
@@ -533,8 +534,8 @@ class GPUBFCAllocatorPrivateMethodsTest
   }
 
   void TestLog2FloorNonZeroSlow() {
-    GPUBFCAllocator a(GetParam()(1ull << 32), 1 /* total_memory */,
-                      "GPU_0_bfc");
+    GPUBFCAllocator a(GetParam()(1ull << 32), 1 /* total_memory */, "GPU_0_bfc",
+                      {});
     EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
     EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
     EXPECT_EQ(1, a.Log2FloorNonZeroSlow(2));
@@ -545,38 +546,37 @@ class GPUBFCAllocatorPrivateMethodsTest
   }
 
   void TestForceAllowGrowth() {
-    GPUOptions options;
     // Unset flag value uses provided option.
     unsetenv("TF_FORCE_GPU_ALLOW_GROWTH");
-    options.set_allow_growth(true);
+    GPUBFCAllocator::Options opts;
+    opts.allow_growth = true;
     GPUBFCAllocator unset_flag_allocator(GetParam()(1ull << 32), 1LL << 31,
-                                         options, "GPU_0_bfc");
+                                         "GPU_0_bfc", opts);
     EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{2 << 20}),
               unset_flag_allocator.curr_region_allocation_bytes_);
 
     // Unparseable flag value uses provided option.
     setenv("TF_FORCE_GPU_ALLOW_GROWTH", "unparseable", 1);
-    options.set_allow_growth(true);
     GPUBFCAllocator unparsable_flag_allocator(GetParam()(1ull << 32), 1LL << 31,
-                                              options, "GPU_1_bfc");
+                                              "GPU_1_bfc", opts);
     EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{2 << 20}),
               unparsable_flag_allocator.curr_region_allocation_bytes_);
 
     // Max of 2GiB total memory. Env variable set forces allow_growth, which
     // does an initial allocation of 1MiB.
     setenv("TF_FORCE_GPU_ALLOW_GROWTH", "true", 1);
-    options.set_allow_growth(false);
-    GPUBFCAllocator force_allow_growth_allocator(
-        GetParam()(1ull << 32), 1LL << 31, options, "GPU_2_bfc");
+    opts.allow_growth = false;
+    GPUBFCAllocator force_allow_growth_allocator(GetParam()(1ull << 32),
+                                                 1LL << 31, "GPU_2_bfc", opts);
     EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{2 << 20}),
               force_allow_growth_allocator.curr_region_allocation_bytes_);
 
     // If env variable forces allow_growth disabled, all available memory is
     // allocated.
     setenv("TF_FORCE_GPU_ALLOW_GROWTH", "false", 1);
-    options.set_allow_growth(true);
+    opts.allow_growth = true;
     GPUBFCAllocator force_no_allow_growth_allocator(
-        GetParam()(1ull << 32), 1LL << 31, options, "GPU_3_bfc");
+        GetParam()(1ull << 32), 1LL << 31, "GPU_3_bfc", opts);
     EXPECT_EQ(GPUBFCAllocator::RoundedBytes(1LL << 31),
               force_no_allow_growth_allocator.curr_region_allocation_bytes_);
   }
@@ -602,14 +602,14 @@ class GPUBFCAllocatorTest_SubAllocatorSpecific : public ::testing::Test {};
 // Benchmark for measuring "high water mark" for BFCAllocator owned memory.
 TEST_F(GPUBFCAllocatorTest_SubAllocatorSpecific,
        VirtualAllocatorPromotesReuse) {
-  GPUOptions options;
-  options.set_allow_growth(true);
+  GPUBFCAllocator::Options options;
+  options.allow_growth = true;
 
   constexpr size_t k512MiB = 512ull << 20;
 
   // 512 MiB allocator.
   GPUBFCAllocator a(CreateVirtualMemorySubAllocator(1ull << 32), k512MiB,
-                    options, "GPU_0_bfc");
+                    "GPU_0_bfc", options);
   // Allocate 128 raw pointers of 4 megs.
   const size_t size = 1LL << 22;
   std::vector<void*> initial_ptrs;
@@ -628,14 +628,15 @@ TEST_F(GPUBFCAllocatorTest_SubAllocatorSpecific,
 
 TEST_F(GPUBFCAllocatorTest_SubAllocatorSpecific,
        PhysicalAllocatorOomsFragmentation) {
-  GPUOptions options;
-  options.set_allow_growth(true);
+  GPUBFCAllocator::Options options;
+  options.allow_growth = true;
+
   constexpr size_t k512MiB = 512ull << 20;
 
   // 512 MiB allocator. Garbage Collection turned off to simulate a situation
   // where there is memory pressure.
-  GPUBFCAllocator a(CreateGPUMemAllocator(/*ignored*/ 0), k512MiB, options,
-                    "GPU_0_bfc");
+  GPUBFCAllocator a(CreateGPUMemAllocator(/*ignored*/ 0), k512MiB, "GPU_0_bfc",
+                    options);
   // Allocate 128 raw pointers of 4 megs.
   const size_t size = 1LL << 22;
   std::vector<void*> initial_ptrs;
@@ -659,12 +660,12 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
   void SetUp() override { CHECK_EQ(unsetenv("TF_FORCE_GPU_ALLOW_GROWTH"), 0); }
 
   void TestRegionDeallocation() {
-    GPUOptions options;
-    options.set_allow_growth(true);
+    GPUBFCAllocator::Options options;
+    options.allow_growth = true;
 
     // Max of 2GiB, but starts out small.
-    GPUBFCAllocator a(CreateGPUMemAllocator(/*ignored*/ 0), 1LL << 31, options,
-                      "GPU_0_bfc");
+    GPUBFCAllocator a(CreateGPUMemAllocator(/*ignored*/ 0), 1LL << 31,
+                      "GPU_0_bfc", options);
 
     // Allocate 128 raw pointers of 4 megs.
     const size_t size = 1LL << 22;
@@ -706,12 +707,12 @@ class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific
   // Here we expect no deallocations because all allocations are coalesced into
   // a single region.
   void TestNoRegionDeallocation() {
-    GPUOptions options;
-    options.set_allow_growth(true);
+    GPUBFCAllocator::Options options;
+    options.allow_growth = true;
 
     // Max of 2GiB, but starts out small.
     GPUBFCAllocator a(CreateVirtualMemorySubAllocator(1uLL << 32), 1LL << 31,
-                      options, "GPU_0_bfc");
+                      "GPU_0_bfc", options);
 
     // Allocate 128 raw pointers of 4 megs.
     const size_t size = 1LL << 22;

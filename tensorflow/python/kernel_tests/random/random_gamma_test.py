@@ -14,12 +14,7 @@
 # ==============================================================================
 """Tests for tensorflow.ops.random_ops.random_gamma."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -47,7 +42,7 @@ class RandomGammaTest(test.TestCase):
         rng = random_ops.random_gamma(
             [num], alpha, beta=beta, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
-        for i in xrange(10):
+        for i in range(10):
           ret[i, :] = self.evaluate(rng)
       return ret
 

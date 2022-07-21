@@ -47,6 +47,55 @@ class WhileOpTest : public OpsTestBase {
   SP_TimerFns timer_fns_;
 };
 
+FunctionDef LessThanOrEqualToNWithCast(int64_t N) {
+  typedef FunctionDefHelper FDH;
+  const Tensor kN = test::AsScalar<int64_t>(N);
+  return FDH::Define(
+      // Name
+      "LessThanOrEqualToNWithCast",
+      // Args
+      {"x: T"},
+      // Return values
+      {"z: bool"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"N"}, "Const", {}, {{"value", kN}, {"dtype", DT_INT64}}},
+          {{"y"}, "_HostCast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", DT_INT32}}},
+          {{"x_cst"}, "_HostCast", {"x"}, {{"SrcT", "$T"}, {"DstT", DT_INT32}}},
+          {{"z"}, "LessEqual", {"x_cst", "y"}, {{"T", DT_INT32}}},
+      });
+}
+
+FunctionDef XTimesTwoWithCast() {
+  typedef FunctionDefHelper FDH;
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  return FDH::Define(
+      // Name
+      "XTimesTwoWithCast",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"two_cst"},
+           "_HostCast",
+           {"two"},
+           {{"SrcT", DT_INT64}, {"DstT", DT_INT32}}},
+          {{"x_cst"}, "_HostCast", {"x"}, {{"SrcT", "$T"}, {"DstT", DT_INT32}}},
+          {{"y_cast"}, "Mul", {"x_cst", "two_cst"}, {{"T", DT_INT32}}},
+          {{"y"},
+           "_HostCast",
+           {"y_cast"},
+           {{"SrcT", DT_INT32}, {"DstT", "$T"}}},
+      });
+}
+
 TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   const std::string platform_name = "MY_TEST";
   const std::string platform_type = "FAKE";
@@ -71,7 +120,11 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   };
 
   se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
     return malloc(size);
+#else
+    return tensorflow::port::AlignedMalloc(size, EIGEN_MAX_ALIGN_BYTES);
+#endif
   };
   se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
     free(mem);
@@ -80,7 +133,11 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   se_.allocate = [](const SP_Device* const device, uint64_t size,
                     int64_t memory_space, SP_DeviceMemoryBase* const mem) {
     mem->struct_size = SP_DEVICE_MEMORY_BASE_STRUCT_SIZE;
+#if EIGEN_MAX_ALIGN_BYTES == 0
     mem->opaque = malloc(size);
+#else
+    mem->opaque = tensorflow::port::AlignedMalloc(size, EIGEN_MAX_ALIGN_BYTES);
+#endif
     mem->size = size;
   };
   se_.deallocate = [](const SP_Device* const device,
@@ -120,8 +177,8 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   OpsTestBase::SetDevice(platform_type.c_str(), std::move(plug_device));
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   Scope root = Scope::NewRootScope().ExitOnError();
-  FunctionDef x_times_two = test::function::XTimesTwo();
-  FunctionDef less_than_or_eq = test::function::LessThanOrEqualToN(8);
+  FunctionDef x_times_two = XTimesTwoWithCast();
+  FunctionDef less_than_or_eq = LessThanOrEqualToNWithCast(8);
 
   FunctionDefLibrary f_lib_proto;
   *f_lib_proto.add_function() = x_times_two;
@@ -130,10 +187,10 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
   auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT);
   AttrValue cond_func;
-  cond_func.mutable_func()->set_name("LessThanOrEqualToN");
+  cond_func.mutable_func()->set_name("LessThanOrEqualToNWithCast");
   (*cond_func.mutable_func()->mutable_attr())["T"].set_type(DT_FLOAT);
   AttrValue body_func;
-  body_func.mutable_func()->set_name("XTimesTwo");
+  body_func.mutable_func()->set_name("XTimesTwoWithCast");
   (*body_func.mutable_func()->mutable_attr())["T"].set_type(DT_FLOAT);
 
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});

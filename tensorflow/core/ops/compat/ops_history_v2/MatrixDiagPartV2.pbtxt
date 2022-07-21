@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MatrixDiagPartV2"
   input_arg {
     name: "input"

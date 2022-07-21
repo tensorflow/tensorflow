@@ -36,7 +36,7 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 18> kTFDataOptimizations = {
+constexpr std::array<const char*, 19> kTFDataOptimizations = {
     "noop_elimination",
     "disable_intra_op_parallelism",
     "use_private_thread_pool",
@@ -47,6 +47,7 @@ constexpr std::array<const char*, 18> kTFDataOptimizations = {
     "map_parallelization",
     "map_and_batch_fusion",
     "batch_parallelization",
+    "filter_parallelization",
     "make_sloppy",
     "parallel_batch",
     "slack",
@@ -62,7 +63,7 @@ Status ToConfigMap(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config,
     ConfigMap* result) {
   auto found = gtl::FindOrNull(config->parameter_map(), "optimizer_configs");
-  if (!found) return Status::OK();
+  if (!found) return OkStatus();
 
   auto& options = found->list().s();
   for (const auto& option_string : options) {
@@ -90,7 +91,7 @@ Status ToConfigMap(
         config_value);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -102,10 +103,11 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Perform optimizations in a meaningful order.
   for (const auto& optimization : kTFDataOptimizations) {
-    const uint64 pass_start_us = Env::Default()->NowMicros();
+    tensorflow::metrics::ScopedCounter<2> timings(
+        tensorflow::metrics::GetGraphOptimizationCounter(),
+        {"TFData", optimization});
     Status status = ApplyOptimization(optimization, cluster, &optimized_item);
-    const uint64 pass_end_us = Env::Default()->NowMicros();
-    metrics::UpdateTFDataPassTime(optimization, pass_end_us - pass_start_us);
+    timings.ReportAndStop();
     if (!status.ok()) return status;
   }
 
@@ -154,7 +156,7 @@ Status TFDataMetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (optimized_functions) {
     *output->mutable_library() = flib.ToProto();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
@@ -164,7 +166,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
   const auto* optimizer = gtl::FindOrNull(enabled_optimizers_, name);
   if (!optimizer) {
-    return Status::OK();
+    return OkStatus();
   }
 
   GraphDef result;
@@ -177,7 +179,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
     // A status of errors::Aborted just means that the optimizer was a no-op and
     // did not populate result. Swallow the error status and leave the original
     // graph in item.
-    status = Status::OK();
+    status = OkStatus();
   }
 
   return status;
@@ -185,7 +187,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
 
 Status TFDataMetaOptimizer::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
-  if (!config) return Status::OK();
+  if (!config) return OkStatus();
 
   // Initialize custom tf.data optimizers based on config.
   auto& optimizers = config->parameter_map().at("optimizers").list().s();
@@ -207,7 +209,7 @@ Status TFDataMetaOptimizer::Init(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(TFDataMetaOptimizer, "tf_data_meta_optimizer");

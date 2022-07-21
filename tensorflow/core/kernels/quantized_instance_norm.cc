@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 
 #ifdef USE_NEON
@@ -274,8 +274,16 @@ class QuantizedInstanceNorm : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
 
-    float input_min = context->input(1).flat<float>()(0);
-    float input_max = context->input(2).flat<float>()(0);
+    const Tensor& x_min = context->input(1);
+    const Tensor& x_max = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(x_min.shape()),
+                errors::InvalidArgument("`x_min` must be rank 0 but is rank ",
+                                        x_min.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(x_max.shape()),
+                errors::InvalidArgument("`x_max` must be rank 0 but is rank ",
+                                        x_max.dims()));
+    float input_min = x_min.scalar<float>()();
+    float input_max = x_max.scalar<float>()();
     float input_scale = (input_max - input_min) / 255.0f;
 
     OP_REQUIRES(context, input_min < input_max,
@@ -300,7 +308,6 @@ class QuantizedInstanceNorm : public OpKernel {
 
     typedef TTypes<float>::Tensor::Index Index;
 
-#if defined(EIGEN_HAS_INDEX_LIST)
     const Eigen::IndexList<Eigen::type2index<1>, Eigen::type2index<2>>
         reduction_indices;
     Eigen::IndexList<Eigen::type2index<1>, Index, Index, Eigen::type2index<1>>
@@ -311,11 +318,6 @@ class QuantizedInstanceNorm : public OpKernel {
         expand_spec;
     expand_spec.set(0, N);
     expand_spec.set(3, C);
-#else
-    const Eigen::array<Index, 2> reduction_indices{1, 2};
-    const Eigen::array<Index, 4> broadcast_spec{1, H, W, 1};
-    const Eigen::array<Index, 4> expand_spec{N, 1, 1, C};
-#endif
 
     Eigen::Tensor<float, 2, Eigen::RowMajor> float_mean(N, C);
     Eigen::Tensor<float, 2, Eigen::RowMajor> float_variance(N, C);

@@ -44,7 +44,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
     absl::InlinedVector<HloInstruction *, 2> canonical_reduce_inputs;
     absl::InlinedVector<Shape, 2> new_reduce_shapes;
 
-    absl::InlinedVector<int64_t, 6> out_reduce_dimensions;
+    DimensionVector out_reduce_dimensions;
     const Shape &first_instruction_shape = reduce->inputs()[0]->shape();
 
     for (HloInstruction *operand : reduce->inputs()) {
@@ -73,15 +73,14 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
           reduce->shape().IsTuple() ? reduce->shape().tuple_shapes(operand_idx)
                                     : reduce->shape();
 
-      absl::InlinedVector<int64_t, 6> new_reduce_dimensions;
-      absl::InlinedVector<int64_t, 6> new_operand_shape_data;
-      absl::InlinedVector<int64_t, 6> new_reduce_shape_data;
+      DimensionVector new_reduce_dimensions;
+      DimensionVector new_operand_shape_data;
+      DimensionVector new_reduce_shape_data;
 
       // The layout order of the reduction output can be different to the
       // ordering of kept dimensions in the input operand, thus we need to
       // calculate the new layout.
-      absl::InlinedVector<int64_t, 6> new_reduce_shape_layout(
-          reduce_shape.rank());
+      DimensionVector new_reduce_shape_layout(reduce_shape.rank());
       std::vector<int64_t> reduce_shape_logical_to_physical =
           LayoutUtil::MakeLogicalToPhysical(reduce_shape.layout());
 
@@ -125,7 +124,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
           new_reduce_shape_layout);
 
       if (new_operand_shape == operand_shape && reduce->inputs().size() == 1) {
-        return Status::OK();
+        return OkStatus();
       }
 
       HloInstruction *canonical_reduce_input =
@@ -180,9 +179,12 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionLayoutNormalizer::Run(HloModule *module) {
+StatusOr<bool> ReductionLayoutNormalizer::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed,
-                      EnforceMinorToMajorReduceOpVisitor().RunOnModule(module));
+                      EnforceMinorToMajorReduceOpVisitor().RunOnModule(
+                          module, execution_threads));
   return changed;
 }
 

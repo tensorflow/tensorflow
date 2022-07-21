@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -31,7 +32,8 @@ using ::testing::ElementsAre;
 class DelegateTest : public testing::FlexModelTest {
  public:
   DelegateTest() : delegate_(FlexDelegate::Create()) {
-    interpreter_.reset(new Interpreter(&error_reporter_));
+    flex_delegate_ = static_cast<FlexDelegate*>(delegate_->data_);
+    interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
   }
 
   ~DelegateTest() override {
@@ -42,12 +44,17 @@ class DelegateTest : public testing::FlexModelTest {
   }
 
   void ConfigureDelegate() {
+    interpreter_->SetCancellationFunction(flex_delegate_,
+                                          FlexDelegate::HasCancelled);
     ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(delegate_.get()),
               kTfLiteOk);
   }
 
+  void Cancel() { flex_delegate_->Cancel(); }
+
  private:
   std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)> delegate_;
+  FlexDelegate* flex_delegate_;
 };
 
 TEST_F(DelegateTest, FullGraph) {
@@ -397,6 +404,86 @@ TEST_F(DelegateTest, DynamicOutputAfterReshape) {
   ASSERT_EQ(GetType(8), kTfLiteFloat32);
   // Since shapes are inconsistent, dynamic output tensor is used.
   ASSERT_TRUE(IsDynamicTensor(8));
+}
+
+TEST_F(DelegateTest, TestCancellation1) {
+  AddTensors(3, {0, 1}, {2}, kTfLiteInt32, {2});
+
+  AddTfOp(testing::kAdd, {0, 1}, {2});
+
+  ConfigureDelegate();
+
+  SetShape(0, {2, 2});
+  SetTypedValues<int>(0, {1, 2, 3, 4});
+  SetShape(1, {2, 2});
+  SetTypedValues<int>(1, {4, 3, 2, 1});
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(2), ElementsAre(2, 2));
+  ASSERT_THAT(GetTypedValues<int>(2), ElementsAre(5, 5, 5, 5));
+  ASSERT_EQ(GetType(2), kTfLiteInt32);
+
+  Cancel();
+  // Op should be cancelled.
+  ASSERT_FALSE(Invoke());
+  // TODO(b/205345340): We shouldn't do raw string matching here. Instead we
+  // need to introduce fine-grained error codes to represent cancellation
+  // status.
+  EXPECT_EQ(error_reporter_.error_messages(),
+            "Client requested cancel during Invoke()");
+}
+
+TEST_F(DelegateTest, TestCancellation2) {
+  // Define the graph.
+  AddTensors(2, {0}, {1}, kTfLiteBool, {1});
+
+  // We need an op that checks the CancellationManager status.
+  AddTfOp(testing::kLoopCond, {0}, {1});
+
+  // Apply the delegate.
+  ConfigureDelegate();
+
+  // Define inputs.
+  SetShape(0, {1});
+
+  ASSERT_TRUE(Invoke());
+
+  Cancel();
+  // Op should be cancelled.
+  ASSERT_FALSE(Invoke());
+  // TODO(b/205345340): We shouldn't do raw string matching here. Instead we
+  // need to introduce fine-grained error codes to represent cancellation
+  // status.
+  EXPECT_EQ(error_reporter_.error_messages(),
+            "Client requested cancel during Invoke()");
+}
+
+TEST_F(DelegateTest, TestCancellationTwoThreads) {
+  AddTensors(3, {0, 1}, {2}, kTfLiteInt32, {2});
+
+  AddTfOp(testing::kAdd, {0, 1}, {2});
+
+  ConfigureDelegate();
+
+  SetShape(0, {2, 2});
+  SetTypedValues<int>(0, {1, 2, 3, 4});
+  SetShape(1, {2, 2});
+  SetTypedValues<int>(1, {4, 3, 2, 1});
+
+  std::thread invoke_thread([this]() {
+    bool result = true;
+    result = this->Invoke();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    result = this->Invoke();
+    ASSERT_FALSE(result);
+    // TODO(b/205345340): Check returned error code.
+  });
+
+  std::thread cancel_thread([this]() { this->Cancel(); });
+
+  invoke_thread.join();
+  cancel_thread.join();
 }
 
 }  // namespace

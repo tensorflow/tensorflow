@@ -14,10 +14,6 @@
 # ==============================================================================
 """Model script to test TF-TensorRT integration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from unittest import SkipTest  # pylint: disable=g-importing-member
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
@@ -92,9 +88,9 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     In explicit batch mode the whole graph is converted using a single engine.
     """
     if run_params.dynamic_shape:
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
     else:
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
 
 class StaticInputTest(TrtModeTestBase):

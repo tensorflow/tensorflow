@@ -15,10 +15,6 @@
 # pylint: disable=unidiomatic-typecheck
 """Prototype decorator for defining legacy-graph-mode functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import weakref
 
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -38,7 +34,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
-from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -109,10 +105,9 @@ def _get_element_from_tensor_info(tensor_info, graph):
         graph.get_tensor_by_name(
             tensor_info.coo_sparse.dense_shape_tensor_name))
   elif encoding == "composite_tensor":
-    struct_coder = nested_structure_coder.StructureCoder()
     spec_proto = struct_pb2.StructuredValue(
         type_spec_value=tensor_info.composite_tensor.type_spec)
-    spec = struct_coder.decode_proto(spec_proto)
+    spec = nested_structure_coder.decode_proto(spec_proto)
     components = [graph.get_tensor_by_name(component.name) for component in
                   tensor_info.composite_tensor.components]
     return spec._from_components(components)  # pylint: disable=protected-access

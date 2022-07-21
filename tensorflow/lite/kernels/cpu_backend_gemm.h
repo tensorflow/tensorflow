@@ -171,6 +171,29 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
                                      dst_params, dst_data, params, context);
 }
 
+// Special path for 16x8 quant gemm.
+template <QuantizationFlavor quantization_flavor>
+void Gemm(const MatrixParams<int8_t>& lhs_params, const int8_t* lhs_data,
+          const MatrixParams<int16_t>& rhs_params, const int16_t* rhs_data,
+          const MatrixParams<int16_t>& dst_params, int16_t* dst_data,
+          const GemmParams<int32_t, int16, quantization_flavor>& params,
+          CpuBackendContext* context) {
+  ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
+  ValidateParams(lhs_params, rhs_params, dst_params, params);
+  if (!IsValidGemm(lhs_params, rhs_params, dst_params)) {
+    TFLITE_DCHECK(false);
+    return;
+  }
+
+  // Currently, only Ruy backend supports 16x8 quant gemm so we use ruy
+  // only.
+  detail::GemmImplUsingRuy<int8_t, int16_t, int32_t, int16,
+                           quantization_flavor>::Run(lhs_params, lhs_data,
+                                                     rhs_params, rhs_data,
+                                                     dst_params, dst_data,
+                                                     params, context);
+}
+
 // Special path for gemm with raw accumulator case. i.e. AccumScalar ==
 // DstScalar == int32 case.
 template <typename LhsScalar, typename RhsScalar,

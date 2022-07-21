@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.tf.scatter_nd."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from absl.testing import parameterized
@@ -39,7 +35,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-
 GRADIENT_TESTS_DTYPES = (dtypes.float16, dtypes.float32, dtypes.float64)
 
 
@@ -49,16 +44,16 @@ def _AsType(v, vtype):
 
 def _FlatInnerDims(tensor, ndims=2):
   shape = list(tensor.shape)
-  return tensor.reshape([
-      functools.reduce(lambda x, y: x * y, shape[:-ndims + 1], 1)
-  ] + shape[-ndims + 1:])
+  return tensor.reshape(
+      [functools.reduce(lambda x, y: x * y, shape[:-ndims + 1], 1)] +
+      shape[-ndims + 1:])
 
 
 def _FlatOuterDims(tensor, ndims=2):
   shape = list(tensor.shape)
-  return tensor.reshape(shape[:ndims - 1] + [
-      functools.reduce(lambda x, y: x * y, shape[ndims - 1:], 1)
-  ])
+  return tensor.reshape(
+      shape[:ndims - 1] +
+      [functools.reduce(lambda x, y: x * y, shape[ndims - 1:], 1)])
 
 
 def _NumpyScatterNd(ref, indices, updates, op):
@@ -106,6 +101,7 @@ def _NumpyMax(ref, indices, updates):
   return _NumpyScatterNd(ref, indices, updates, np.maximum)
 
 
+@test_util.with_eager_op_as_function
 class StatefulScatterNdTest(test.TestCase):
 
   def _VariableRankTest(self,
@@ -126,8 +122,7 @@ class StatefulScatterNdTest(test.TestCase):
         for i in range(ixdim):
           indexable_area_shape += (ref_shape[i],)
         all_indices = [
-            list(coord)
-            for coord, _ in np.ndenumerate(
+            list(coord) for coord, _ in np.ndenumerate(
                 np.empty(indexable_area_shape, vtype))
         ]
         np.random.shuffle(all_indices)
@@ -186,8 +181,9 @@ class StatefulScatterNdTest(test.TestCase):
     updates = constant_op.constant(["aa", "dd", "cc", "bb"])
     update = state_ops.scatter_nd_update(ref, indices, updates)
     self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual(self.evaluate(update),
-                        [b"qq", b"cc", b"ee", b"dd", b"aa", b"", b"", b"bb"])
+    self.assertAllEqual(
+        self.evaluate(update),
+        [b"qq", b"cc", b"ee", b"dd", b"aa", b"", b"", b"bb"])
 
   def testSimpleResource(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
@@ -206,8 +202,8 @@ class StatefulScatterNdTest(test.TestCase):
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
     updates = constant_op.constant([11., 12.], dtype=dtypes.float32)
-    ref = variables.Variable(
-        [[0., 0.], [0., 0.], [0., 0.]], dtype=dtypes.float32)
+    ref = variables.Variable([[0., 0.], [0., 0.], [0., 0.]],
+                             dtype=dtypes.float32)
     expected = np.array([[0., 0.], [11., 12.], [0., 0.]])
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
@@ -220,8 +216,8 @@ class StatefulScatterNdTest(test.TestCase):
   def testSimple3(self):
     indices = constant_op.constant([[1]], dtype=dtypes.int32)
     updates = constant_op.constant([[11., 12.]], dtype=dtypes.float32)
-    ref = variables.Variable(
-        [[0., 0.], [0., 0.], [0., 0.]], dtype=dtypes.float32)
+    ref = variables.Variable([[0., 0.], [0., 0.], [0., 0.]],
+                             dtype=dtypes.float32)
     expected = np.array([[0., 0.], [11., 12.], [0., 0.]])
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
@@ -275,6 +271,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.disable_xla("b/205330448")
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
@@ -473,7 +470,6 @@ class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):
     super().tearDown()
     config.disable_op_determinism()
 
-  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
   def testDeterminism(self):
     ref = variables.Variable(array_ops.zeros([1]))
     indices = array_ops.zeros([100000, 1], dtypes.int32)
@@ -487,6 +483,7 @@ class StatefulScatterNdDeterminismTest(StatefulScatterNdTest):
       self.assertAllEqual(val, val2)
 
 
+@test_util.with_eager_op_as_function
 class ScatterNdTest(test.TestCase, parameterized.TestCase):
   non_aliasing_add_test = False
 
@@ -496,23 +493,18 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBool(self):
-    indices = constant_op.constant(
-        [[4], [3], [1], [7]], dtype=dtypes.int32)
-    updates = constant_op.constant(
-        [False, True, False, True], dtype=dtypes.bool)
-    expected = np.array(
-        [False, False, False, True, False, False, False, True])
+    indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant([False, True, False, True],
+                                   dtype=dtypes.bool)
+    expected = np.array([False, False, False, True, False, False, False, True])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     result = self.evaluate(scatter)
     self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by same value.
-    indices = constant_op.constant(
-        [[4], [3], [3], [7]], dtype=dtypes.int32)
-    updates = constant_op.constant(
-        [False, True, True, True], dtype=dtypes.bool)
-    expected = np.array([
-        False, False, False, True, False, False, False, True])
+    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant([False, True, True, True], dtype=dtypes.bool)
+    expected = np.array([False, False, False, True, False, False, False, True])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     result = self.evaluate(scatter)
     self.assertAllEqual(expected, result)
@@ -520,29 +512,27 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testInvalidShape(self):
     # TODO(apassos) figure out how to unify these errors
-    with self.assertRaises(errors.InvalidArgumentError
-                           if context.executing_eagerly() else ValueError):
-      array_ops.scatter_nd(indices=[0],  # this should be indices=[[0]]
-                           updates=[0.0],
-                           shape=[1])
+    with self.assertRaises(errors.InvalidArgumentError if context
+                           .executing_eagerly() else ValueError):
+      array_ops.scatter_nd(
+          indices=[0],  # this should be indices=[[0]]
+          updates=[0.0],
+          shape=[1])
 
   def testString(self):
-    indices = constant_op.constant([[4], [3], [1], [7]],
-                                   dtype=dtypes.int32)
+    indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
     updates = constant_op.constant(["four", "three", "one", "seven"],
                                    dtype=dtypes.string)
-    expected = np.array([b"", b"one", b"", b"three", b"four",
-                         b"", b"", b"seven"])
+    expected = np.array(
+        [b"", b"one", b"", b"three", b"four", b"", b"", b"seven"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.cached_session() as sess:
       result = self.evaluate(scatter)
       self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by same value.
-    indices = constant_op.constant([[4], [3], [3], [7]],
-                                   dtype=dtypes.int32)
-    updates = constant_op.constant(["a", "b", "b", "c"],
-                                   dtype=dtypes.string)
+    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "b", "c"], dtype=dtypes.string)
     expected = np.array([b"", b"", b"", b"bb", b"a", b"", b"", b"c"])
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.cached_session() as sess:
@@ -550,17 +540,18 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(expected, result)
 
     # Same indice is updated twice by different value.
-    indices = constant_op.constant([[4], [3], [3], [7]],
-                                   dtype=dtypes.int32)
-    updates = constant_op.constant(["a", "b", "c", "d"],
-                                   dtype=dtypes.string)
-    expected = [np.array([b"", b"", b"", b"bc", b"a", b"", b"", b"d"]),
-                np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])]
+    indices = constant_op.constant([[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(["a", "b", "c", "d"], dtype=dtypes.string)
+    expected = [
+        np.array([b"", b"", b"", b"bc", b"a", b"", b"", b"d"]),
+        np.array([b"", b"", b"", b"cb", b"a", b"", b"", b"d"])
+    ]
     scatter = self.scatter_nd(indices, updates, shape=(8,))
     with self.cached_session() as sess:
       result = self.evaluate(scatter)
-      self.assertTrue(np.array_equal(result, expected[0]) or
-                      np.array_equal(result, expected[1]))
+      self.assertTrue(
+          np.array_equal(result, expected[0]) or
+          np.array_equal(result, expected[1]))
 
   def testRank3ValidShape(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
@@ -792,11 +783,17 @@ class ScatterNdNonAliasingAddTest(ScatterNdTest):
   non_aliasing_add_test = True
 
   def scatter_nd(self, indices, updates, shape, input_=None):
-    input_ = (input_ if input_ is not None else array_ops.zeros(
-        shape, dtype=updates.dtype))
+    input_ = (
+        input_ if input_ is not None else array_ops.zeros(
+            shape, dtype=updates.dtype))
     return array_ops.scatter_nd_non_aliasing_add(input_, indices, updates)
 
   def testString(self):
+    # Not supported yet.
+    pass
+
+  # TODO(testString): Enable this test when the above testString is enabled.
+  def testStringWithEagerOpAsFunctionEnabled(self):
     # Not supported yet.
     pass
 
@@ -811,7 +808,6 @@ class ScatterNdDeterminismTest(ScatterNdTest):
     super().tearDown()
     config.disable_op_determinism()
 
-  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
   def testDeterminism(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
@@ -893,9 +889,11 @@ class ScatterNdTensorTest(test.TestCase):
                           constant_op.constant([1, 1, 1, 2, 1, 1, 1, 2]))
 
   def testUpdateMinMaxGradients(self):
-    with self.cached_session():
+
+    # Loop body as a function to avoid go/gpylint-faq#cell-var-from-loop.
+    def _TestFn(dtype):
       x = array_ops.ones([4], dtype=dtypes.float32)
-      indices = constant_op.constant([[1], [2], [3], [3]])
+      indices = constant_op.constant([[1], [2], [3], [3]], dtype=dtype)
       updates = constant_op.constant([2.0, 0.5, 1.0, 1.0], dtype=dtypes.float32)
 
       theoretical, _ = gradient_checker_v2.compute_gradient(
@@ -930,6 +928,10 @@ class ScatterNdTensorTest(test.TestCase):
             [0.0, 0.0, 0.3333, 0.3333]]],
           dtype=dtypes.float32)
       self.assertAllClose(theoretical, manual, 5e-4, 5e-4)
+
+    with self.cached_session():
+      for dtype in (dtypes.int32, dtypes.int64):
+        _TestFn(dtype)
 
   def testTensorScatterUpdateWithForwarding(self):
     for dtype in (dtypes.int32, dtypes.float32):
@@ -984,8 +986,8 @@ class ScatterNdTensorTest(test.TestCase):
          math_ops.range(10, 20)])
     self.assertAllEqual(
         b[6],
-        constant_op.constant(
-            [10., 11., 12., 13., 14., 15., 16., 17., 18., 19.]))
+        constant_op.constant([10., 11., 12., 13., 14., 15., 16., 17., 18.,
+                              19.]))
 
 
 class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
@@ -998,7 +1000,6 @@ class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
     super().tearDown()
     config.disable_op_determinism()
 
-  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
   def testDeterminism(self):
     a = array_ops.zeros([1])
     indices = array_ops.zeros([100000, 1], dtypes.int32)

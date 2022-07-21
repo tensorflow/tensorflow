@@ -1,6 +1,7 @@
-Keras is an object-oriented API for defining and training neural networks.
+## STOP!
 
-This module contains a pure-TensorFlow implementation of the Keras API,
-allowing for deep integration with TensorFlow functionality.
+This folder contains the legacy Keras code which is stale and about to be
+deleted. The current Keras code lives in
+[github/keras-team/keras](https://github.com/keras-team/keras).
 
-See [keras.io](https://keras.io) for complete documentation and user guides.
+Please do not use the code from this folder.

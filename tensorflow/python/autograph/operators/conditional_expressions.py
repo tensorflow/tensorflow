@@ -14,10 +14,6 @@
 # ==============================================================================
 """Conditional expressions (e.g. the ternary if statement)."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.autograph.utils import tensors

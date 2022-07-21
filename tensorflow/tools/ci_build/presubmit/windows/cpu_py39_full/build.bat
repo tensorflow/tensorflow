@@ -43,4 +43,7 @@ echo exit %RC% >> %GEN_SCRIPT%
 chmod +x %GEN_SCRIPT%
 
 @REM Run bazel test command.
-%PY_EXE% %BAZEL_WRAPPER_PATH% --output_user_root=%TMPDIR% --host_jvm_args=-Dbazel.DigestFunction=SHA256 test %BUILD_PATH%:%WIN_OUT_TARGET% --test_output=all
+%PY_EXE% %BAZEL_WRAPPER_PATH% --output_user_root=%TMPDIR% ^
+  --host_jvm_args=-Dbazel.DigestFunction=SHA256 test ^
+  %BUILD_PATH%:%WIN_OUT_TARGET% --test_output=all ^
+  --experimental_ui_max_stdouterr_bytes=-1

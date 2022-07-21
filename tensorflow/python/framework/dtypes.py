@@ -13,9 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Library of dtypes (Tensor element types)."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import abc
+from typing import Type, Sequence, Optional
 
 import numpy as np
 from six.moves import builtins
@@ -29,16 +28,26 @@ from tensorflow.python.framework import _dtypes
 from tensorflow.python.types import doc_typealias
 from tensorflow.python.lib.core import _pywrap_bfloat16
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.types import trace
+from tensorflow.core.function import trace_type
 
 _np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
+class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
+  pass
+
+
 @tf_export("dtypes.DType", "DType")
-class DType(_dtypes.DType):
+class DType(
+    _dtypes.DType,
+    trace.TraceType,
+    trace_type.Serializable,
+    metaclass=DTypeMeta):
   """Represents the type of the elements in a `Tensor`.
 
-  `DType`s are used to specify the output data type for operations which
-  require it, or to inspect the data type of existing `Tensor`s.
+  `DType`'s are used to specify the output data type for operations which
+  require it, or to inspect the data type of existing `Tensor`'s.
 
   Examples:
 
@@ -47,7 +56,7 @@ class DType(_dtypes.DType):
   >>> tf.constant(1.0).dtype
   tf.float32
 
-  See `tf.dtypes` for a complete list of `DType`s defined.
+  See `tf.dtypes` for a complete list of `DType`'s defined.
   """
   __slots__ = ()
 
@@ -151,7 +160,11 @@ class DType(_dtypes.DType):
         values. Returns
       min, max : tuple Lower and upper intensity limits.
     """
-    min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+    if self.as_numpy_dtype in dtype_range:
+      min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
+    else:
+      raise ValueError(str(self) + " does not have defined limits.")
+
     if clip_negative:
       min = 0  # pylint: disable=redefined-builtin
     return min, max
@@ -175,6 +188,29 @@ class DType(_dtypes.DType):
     other = as_dtype(other)
     return self._type_enum in (other.as_datatype_enum,
                                other.base_dtype.as_datatype_enum)
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See tf.types.experimental.TraceType base class."""
+    return self == other
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["DType"]:
+    """See tf.types.experimental.TraceType base class."""
+    return self if all(self == other for other in types) else None
+
+  @classmethod
+  def experimental_type_proto(cls) -> Type[types_pb2.SerializedDType]:
+    """Returns the type of proto associated with DType serialization."""
+    return types_pb2.SerializedDType
+
+  @classmethod
+  def experimental_from_proto(cls, proto: types_pb2.SerializedDType) -> "DType":
+    """Returns a Dtype instance based on the serialized proto."""
+    return DType(proto.datatype)
+
+  def experimental_as_proto(self) -> types_pb2.SerializedDType:
+    """Returns a proto representation of the Dtype instance."""
+    return types_pb2.SerializedDType(datatype=self._type_enum)
 
   def __eq__(self, other):
     """Returns True iff this DType refers to the same type as `other`."""
@@ -202,6 +238,7 @@ class DType(_dtypes.DType):
   def __reduce__(self):
     return as_dtype, (self.name,)
 
+trace_type.register_serializable(DType)
 
 # Define data type range of numpy dtype
 dtype_range = {
@@ -246,7 +283,7 @@ tf_export("dtypes.uint16", "uint16").export_constant(__name__, "uint16")
 
 uint32 = DType(types_pb2.DT_UINT32)
 doc_typealias.document(
-    obj=uint16,
+    obj=uint32,
     doc="Unsigned 32-bit (dword) integer.")
 tf_export("dtypes.uint32", "uint32").export_constant(__name__, "uint32")
 
@@ -722,4 +759,5 @@ def as_dtype(type_value):
   if isinstance(type_value, _dtypes.DType):
     return _INTERN_TABLE[type_value.as_datatype_enum]
 
-  raise TypeError(f"Cannot convert value {type_value!r} to a TensorFlow DType.")
+  raise TypeError(f"Cannot convert the argument `type_value`: {type_value!r} "
+                  "to a TensorFlow DType.")

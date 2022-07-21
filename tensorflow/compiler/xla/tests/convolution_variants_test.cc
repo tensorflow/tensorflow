@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -1334,18 +1333,15 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
   XlaBuilder builder(TestName());
 
   auto gradients_flat = LiteralUtil::CreateR1<float>({1});
-  auto gradients_literal =
-      gradients_flat.Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
+  auto gradients_literal = gradients_flat.Reshape({1, 1, 1, 1, 1}).value();
   auto gradients = ConstantLiteral(&builder, gradients_literal);
 
   auto weights_flat = LiteralUtil::CreateR1<float>({1, 10, 100});
-  auto weights_literal =
-      weights_flat.Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
+  auto weights_literal = weights_flat.Reshape({1, 1, 1, 1, 3}).value();
   auto weights = ConstantLiteral(&builder, weights_literal);
 
   auto expected_flat = LiteralUtil::CreateR1<float>({10});
-  auto expected_literal =
-      expected_flat.Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
+  auto expected_literal = expected_flat.Reshape({1, 1, 1, 1, 1}).value();
 
   auto mirrored_weights = Rev(weights, {2, 3, 4});
   ConvWithGeneralPadding(gradients, mirrored_weights,
@@ -1358,18 +1354,15 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
   XlaBuilder builder(TestName());
 
   auto activations_flat = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
-  auto activations_literal =
-      activations_flat.Reshape({1, 1, 1, 1, 4}).ConsumeValueOrDie();
+  auto activations_literal = activations_flat.Reshape({1, 1, 1, 1, 4}).value();
   auto activations = ConstantLiteral(&builder, activations_literal);
 
   auto gradients_flat = LiteralUtil::CreateR1<float>({100, 10, 1});
-  auto gradients_literal =
-      gradients_flat.Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
+  auto gradients_literal = gradients_flat.Reshape({1, 1, 1, 1, 3}).value();
   auto gradients = ConstantLiteral(&builder, gradients_literal);
 
   auto expected_flat = LiteralUtil::CreateR1<float>({13, 24, 130});
-  auto expected_literal =
-      expected_flat.Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
+  auto expected_literal = expected_flat.Reshape({1, 1, 1, 1, 3}).value();
 
   auto forward_conv =
       ConvGeneralDilated(activations, gradients,

@@ -24,7 +24,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -42,7 +43,8 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
+func::FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln,
+                                     bool cifg) {
   SmallVector<int64_t, 2> input_shape{1, 2};
   SmallVector<int64_t, 2> weight_shape{3, 12};
   SmallVector<int64_t, 1> bias_shape{2};
@@ -62,9 +64,9 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
                                          layer_norm_scale_type};
   auto func_type = builder->getFunctionType(input_types, output_type);
 
-  auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func")),
-                     "fused_func", func_type, {});
+  auto func = func::FuncOp::create(
+      mlir::NameLoc::get(builder->getStringAttr("fused_func")), "fused_func",
+      func_type, {});
   func.addEntryBlock();
 
   std::vector<std::string> attributes;
@@ -91,9 +93,10 @@ class LstmUtilsTest : public ::testing::Test {
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
-    context_->loadDialect<mlir::StandardOpsDialect, tensor::TensorDialect,
-                          mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
-    builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
+    context_->loadDialect<arith::ArithmeticDialect, mlir::func::FuncDialect,
+                          tensor::TensorDialect, mlir::TF::TensorFlowDialect,
+                          TensorFlowLiteDialect>();
+    builder_ = std::make_unique<mlir::Builder>(context_.get());
     fused_lstm_func_ = createLstmCompositeFunc(builder_.get(), false, false);
     fused_lstm_func_cifg_ =
         createLstmCompositeFunc(builder_.get(), false, true);
@@ -107,9 +110,9 @@ class LstmUtilsTest : public ::testing::Test {
     builder_.reset();
   }
 
-  FuncOp fused_lstm_func_;
-  FuncOp fused_lstm_func_cifg_;
-  FuncOp fused_ln_lstm_func_;
+  func::FuncOp fused_lstm_func_;
+  func::FuncOp fused_lstm_func_cifg_;
+  func::FuncOp fused_ln_lstm_func_;
   std::unique_ptr<mlir::MLIRContext> context_;
   std::unique_ptr<mlir::Builder> builder_;
 };
@@ -126,7 +129,7 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
       fused_lstm_func_->getAttrOfType<StringAttr>(kTFImplements).getValue(),
       convert.GetCompositeOpName());
   EXPECT_EQ(fused_lstm_func_.getNumArguments(), 5);
-  EXPECT_EQ(fused_lstm_func_.getType().getNumResults(), 1);
+  EXPECT_EQ(fused_lstm_func_.getFunctionType().getNumResults(), 1);
 
   auto transpose_op = fused_lstm_func_.getBody().front().begin();
   transpose_op++;
@@ -148,7 +151,8 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
       3);
 
   auto it = fused_lstm_func_.getBody().back().rbegin();
-  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  EXPECT_EQ(it->getName().getStringRef(),
+            mlir::func::ReturnOp::getOperationName());
   it++;  // tensor_cast
   it++;  // lstm
   EXPECT_EQ(it->getName().getStringRef(),
@@ -168,16 +172,16 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   // output gate bias is 0 since it is out of bounds of the bias tensor, so
   // we set its value as a const tensor of specified size and value 0.
-  EXPECT_TRUE(
-      mlir::cast<mlir::ConstantOp>(it->getOpOperand(15).get().getDefiningOp())
-          .getValue()
-          .cast<ElementsAttr>()
-          .getValue<FloatAttr>(0)
-          .getValue()
-          .isExactlyValue(0.0f));
+  EXPECT_TRUE(mlir::cast<mlir::arith::ConstantOp>(
+                  it->getOpOperand(15).get().getDefiningOp())
+                  .getValue()
+                  .cast<ElementsAttr>()
+                  .getValues<FloatAttr>()[0]
+                  .getValue()
+                  .isExactlyValue(0.0f));
 
-  EXPECT_EQ(fused_lstm_func_.getType().getNumResults(), 1);
-  auto output_types = fused_lstm_func_.getType().getResults();
+  EXPECT_EQ(fused_lstm_func_.getFunctionType().getNumResults(), 1);
+  auto output_types = fused_lstm_func_.getFunctionType().getResults();
   SmallVector<int64_t, 2> output_shape{1, -1};
   EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
             output_shape.size());
@@ -201,7 +205,8 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
             llvm::join(attributes, ","));
 
   auto it = fused_lstm_func_cifg_.getBody().back().rbegin();
-  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  EXPECT_EQ(it->getName().getStringRef(),
+            mlir::func::ReturnOp::getOperationName());
   it++;
   it++;
   EXPECT_EQ(it->getName().getStringRef(),
@@ -224,10 +229,11 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
       fused_ln_lstm_func_->getAttrOfType<StringAttr>(kTFImplements).getValue(),
       convert.GetCompositeOpName());
   EXPECT_EQ(fused_ln_lstm_func_.getNumArguments(), 5);
-  EXPECT_EQ(fused_ln_lstm_func_.getType().getNumResults(), 1);
+  EXPECT_EQ(fused_ln_lstm_func_.getFunctionType().getNumResults(), 1);
 
   auto it = fused_ln_lstm_func_.getBody().back().rbegin();
-  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  EXPECT_EQ(it->getName().getStringRef(),
+            mlir::func::ReturnOp::getOperationName());
   it++;
   it++;
   EXPECT_EQ(it->getName().getStringRef(),
@@ -245,8 +251,8 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
   EXPECT_EQ(it->getOperand(20).getType().cast<RankedTensorType>().getDimSize(0),
             3);
 
-  EXPECT_EQ(fused_ln_lstm_func_.getType().getNumResults(), 1);
-  auto output_types = fused_ln_lstm_func_.getType().getResults();
+  EXPECT_EQ(fused_ln_lstm_func_.getFunctionType().getNumResults(), 1);
+  auto output_types = fused_ln_lstm_func_.getFunctionType().getResults();
   SmallVector<int64_t, 2> output_shape{1, -1};
   EXPECT_EQ(output_types[0].cast<RankedTensorType>().getShape().size(),
             output_shape.size());

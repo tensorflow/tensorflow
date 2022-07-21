@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -29,6 +31,7 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
@@ -45,6 +48,7 @@ const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
 const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
 const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 
@@ -74,7 +78,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"RunGraph", kRunGraph},
       {"RunGraphDone", kRunGraphDone},
       {"TfOpRun", kTfOpRun},
-      {"EagerKernelExecute", kEagerKernelExecute},
+      {"EagerExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},
       {"MemoryAllocation", kMemoryAllocation},
@@ -89,20 +93,12 @@ const HostEventTypeMap& GetHostEventTypeMap() {
        kTfDataCapturedFunctionRunInstantiated},
       {"InstantiatedCapturedFunction::RunAsync",
        kTfDataCapturedFunctionRunAsync},
-      // Functional ops.
-      {"CallOp", kCallOp},
+      // Loop ops.
       {"ParallelForOp", kParallelForOp},
       {"ForeverOp", kForeverOp},
-      {"NumericalGradientOp-EvalRight", kNumericalGradientOpEvalRight},
-      {"NumericalGradientOp-EvalLeft", kNumericalGradientOpEvalLeft},
-      {"SymbolicGradientOp", kSymbolicGradientOp},
-      {"RemoteCallOp", kRemoteCallOp},
-      {"IfOp", kIfOp},
-      {"CaseOp", kCaseOp},
       {"WhileOp-EvalCond", kWhileOpEvalCond},
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
-      {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -138,6 +134,43 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
+      // TPU related.
+      {"EnqueueRequestLocked", kEnqueueRequestLocked},
+      {"RunProgramRequest", kRunProgramRequest},
+      {"HostCallbackRequest", kHostCallbackRequest},
+      {"TransferH2DRequest", kTransferH2DRequest},
+      {"TransferPreprocessedH2DRequest", kTransferPreprocessedH2DRequest},
+      {"TransferD2HRequest", kTransferD2HRequest},
+      {"OnDeviceSendRequest", kOnDeviceSendRequest},
+      {"OnDeviceRecvRequest", kOnDeviceRecvRequest},
+      {"OnDeviceSendRecvLocalRequest", kOnDeviceSendRecvLocalRequest},
+      {"CustomWait", kCustomWait},
+      {"OnDeviceSendRequestMulti", kOnDeviceSendRequestMulti},
+      {"OnDeviceRecvRequestMulti", kOnDeviceRecvRequestMulti},
+      {"PjrtAsyncWait", kPjrtAsyncWait},
+      {"DoEnqueueProgram", kDoEnqueueProgram},
+      {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
+      {"WriteHbm", kWriteHbm},
+      {"ReadHbm", kReadHbm},
+      {"TpuExecuteOp", kTpuExecuteOp},
+      {"CompleteCallbacks", kCompleteCallbacks},
+      {"TPUPartitionedCallOp-InitializeVarOnTPU",
+       kTpuPartitionedCallOpInitializeVarOnTpu},
+      {"TPUPartitionedCallOp-ExecuteRemote",
+       kTpuPartitionedCallOpExecuteRemote},
+      {"TPUPartitionedCallOp-ExecuteLocal", kTpuPartitionedCallOpExecuteLocal},
+      {"Linearize", kLinearize},
+      {"Delinearize", kDelinearize},
+      {"TransferBufferFromDevice-FastPath", kTransferBufferFromDeviceFastPath},
+      {"tpu::System::TransferToDevice=>IssueEvent",
+       kTransferToDeviceIssueEvent},
+      {"tpu::System::TransferToDevice=>IssueEvent=>Done",
+       kTransferToDeviceDone},
+      {"tpu::System::TransferFromDevice=>IssueEvent",
+       kTransferFromDeviceIssueEvent},
+      {"tpu::System::TransferFromDevice=>IssueEvent=>Done",
+       kTransferFromDeviceDone},
+      {"tpu::System::Execute", kTpuSystemExecute},
   });
   DCHECK_EQ(host_event_type_map->size(), kNumHostEventTypes);
   return *host_event_type_map;
@@ -148,15 +181,15 @@ const StatTypeMap& GetStatTypeMap() {
       {"UnknownStatType", kUnknownStatType},
       // TraceMe arguments.
       {"id", kStepId},
-      {"parent_step_id", kParentStepId},
-      {"function_step_id", kFunctionStepId},
       {"device_ordinal", kDeviceOrdinal},
       {"chip_ordinal", kChipOrdinal},
       {"node_ordinal", kNodeOrdinal},
       {"model_id", kModelId},
       {"queue_addr", kQueueAddr},
+      {"queue_id", kQueueId},
       {"request_id", kRequestId},
       {"run_id", kRunId},
+      {"replica_id", kReplicaId},
       {"graph_type", kGraphType},
       {"step_num", kStepNum},
       {"iter_num", kIterNum},
@@ -187,6 +220,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"_a", kIsAsync},
       // Device trace arguments.
       {"device_id", kDeviceId},
+      {"device_type_string", kDeviceTypeString},
       {"context_id", kContextId},
       {"correlation_id", kCorrelationId},
       {"memcpy_details", kMemcpyDetails},
@@ -195,34 +229,35 @@ const StatTypeMap& GetStatTypeMap() {
       {"Memset_details", kMemsetDetails},
       {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
-      {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
       {"flow", kFlow},
       {"step_name", kStepName},
-      {"level 0", kLevel0},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
+      {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
+      {"is_func", kIsFunc},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
-      {"selected_group_ids", kSelectedGroupIds},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
+      {"bytes_transferred", kBytesTransferred},
+      {"queue", kDmaQueue},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
+      {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
       // XLA metadata map related.
-      {"SELF_DURATION_PS", kSelfDurationPs},
-      {"MIN_DURATION_PS", kMinDurationPs},
       {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
@@ -231,6 +266,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"memory_size", kDevCapMemorySize},
       {"compute_cap_major", kDevCapComputeCapMajor},
       {"compute_cap_minor", kDevCapComputeCapMinor},
+      {"peak_teraflops_per_second", kDevCapPeakTeraflopsPerSecond},
+      {"peak_hbm_bw_gigabytes_per_second", kDevCapPeakHbmBwGigabytesPerSecond},
       {"device_vendor", kDevVendor},
       // Batching related.
       {"batch_size_after_padding", kBatchSizeAfterPadding},
@@ -240,6 +277,16 @@ const StatTypeMap& GetStatTypeMap() {
       {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
       {"occupancy_min_grid_size", kOccupancyMinGridSize},
       {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
+      // Aggregrated Stat
+      {"self_duration_ps", kSelfDurationPs},
+      {"min_duration_ps", kMinDurationPs},
+      {"max_iteration_num", kMaxIterationNum},
+      {"device_type", kDeviceType},
+      {"uses_megacore", kUsesMegaCore},
+      {"symbol_id", kSymbolId},
+      {"hlo_category", kHloCategory},
+      {"tf_op_name", kTfOpName},
+      {"dma_stall_duration_ps", kDmaStallDurationPs},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
@@ -322,13 +369,11 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
     case StatType::kKernelDetails:
-    case StatType::kLevel0:
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:
     case StatType::kConsumerId:
     case StatType::kIsRoot:
-    case StatType::kIsAsync:
     case StatType::kFlops:
     case StatType::kBytesAccessed:
       return true;
@@ -336,6 +381,8 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
       return false;
   }
 }
+
+/*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);
 
 }  // namespace profiler
 }  // namespace tensorflow

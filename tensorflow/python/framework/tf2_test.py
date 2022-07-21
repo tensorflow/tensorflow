@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for enabling and disabling TF2 behavior."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python import tf2

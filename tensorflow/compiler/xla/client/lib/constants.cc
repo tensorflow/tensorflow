@@ -25,8 +25,7 @@ XlaOp Zero(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp Zeros(XlaBuilder* builder, const Shape& shape) {
-  return Broadcast(Zero(builder, shape.element_type()),
-                   AsInt64Slice(shape.dimensions()));
+  return Broadcast(Zero(builder, shape.element_type()), shape.dimensions());
 }
 
 XlaOp ZerosLike(XlaOp prototype) {

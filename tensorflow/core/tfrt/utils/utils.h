@@ -17,16 +17,21 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {
 class Device;
 class EagerContext;
-}
+}  // namespace tensorflow
 
 namespace tfrt {
 
@@ -45,8 +50,8 @@ Expected<const char*> ConvertTfDeviceNameToTfrt(
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);
 
-// Run the runtime initialization function. A runtime initialization function is
-// added by runtime/compiler workflow and is not present in the original
+// Runs the runtime initialization function. A runtime initialization function
+// is added by runtime/compiler workflow and is not present in the original
 // savedmodel.
 //
 // TODO(b/178714905): We should avoid special handling on initialization by
@@ -55,16 +60,75 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
                                          tfrt::BEFFile* bef_file,
                                          absl::string_view fallback_init_func);
 
-// Create dummy TF devices from the input device names. Currently this method
+// Creates dummy TF devices from the input device names. Currently this method
 // is used to create the TPU_SYSTEM device for worker server.
 void CreateDummyTfDevices(
     const std::vector<std::string>& device_names,
     std::vector<std::unique_ptr<tensorflow::Device>>* dummy_tf_devices);
 
-// Create and add dummy TFRT devices from the input device names. Currently
+// Creates and add dummy TFRT devices from the input device names. Currently
 // this method is used to create the TPU_SYSTEM device for worker server.
 void AddDummyTfrtDevices(const std::vector<std::string>& device_names,
-                         HostContext* host_ctx);
+                         tfrt::HostContext* host_ctx);
+
+// Creates a BEF file from a BEF buffer. `runtime` is used to provide host
+// context for opening `bef`.
+tensorflow::StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
+    const tensorflow::tfrt_stub::Runtime& runtime, const tfrt::BefBuffer& bef);
+
+// Returns a unique integer within this process.
+int64_t GetUniqueInt();
+
+// A list of macros similar to `TF_RETURN_IF_ERROR`, with additional model
+// loading stage info.
+#define RETURN_IF_ERROR_IN_IMPORT(...) \
+  RETURN_IF_ERROR_WITH_STAGE_INFO("GraphDef proto -> MLIR", __VA_ARGS__)
+
+#define RETURN_IF_ERROR_IN_COMPILE(...)                                       \
+  RETURN_IF_ERROR_WITH_STAGE_INFO(                                            \
+      "TF dialect -> TFRT dialect, compiler issue, please contact MLIR team", \
+      __VA_ARGS__)
+
+#define RETURN_IF_ERROR_IN_INIT(...) \
+  RETURN_IF_ERROR_WITH_STAGE_INFO("Initialize TFRT", __VA_ARGS__)
+
+#define RETURN_IF_ERROR_WITH_STAGE_INFO(stage, ...)                         \
+  do {                                                                      \
+    ::tensorflow::Status _status = (__VA_ARGS__);                           \
+    if (TF_PREDICT_FALSE(!_status.ok())) {                                  \
+      return ::tensorflow::errors::CreateWithUpdatedMessage(                \
+          _status, ::tensorflow::strings::StrCat(stage, ": ",               \
+                                                 _status.error_message())); \
+    }                                                                       \
+  } while (0)
+
+// A list of macros similar to `TF_ASSIGN_OR_RETURN`, with additional model
+// loading stage info.
+#define ASSIGN_OR_RETURN_IN_IMPORT(lhs, rexpr) \
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO("GraphDef proto -> MLIR", lhs, rexpr)
+
+#define ASSIGN_OR_RETURN_IN_COMPILE(lhs, rexpr)                               \
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO(                                           \
+      "TF dialect -> TFRT dialect, compiler issue, please contact MLIR team", \
+      lhs, rexpr)
+
+#define ASSIGN_OR_RETURN_IN_INIT(lhs, rexpr) \
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO("Initialize TFRT", lhs, rexpr)
+
+#define ASSIGN_OR_RETURN_WITH_STAGE_INFO(stage, lhs, rexpr)                    \
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO_IMPL(                                       \
+      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), stage, lhs, \
+      rexpr)
+
+#define ASSIGN_OR_RETURN_WITH_STAGE_INFO_IMPL(statusor, stage, lhs, rexpr)    \
+  auto statusor = (rexpr);                                                    \
+  if (TF_PREDICT_FALSE(!statusor.ok())) {                                     \
+    const auto& _status = statusor.status();                                  \
+    return ::tensorflow::errors::CreateWithUpdatedMessage(                    \
+        _status,                                                              \
+        ::tensorflow::strings::StrCat(stage, ": ", _status.error_message())); \
+  }                                                                           \
+  lhs = std::move(statusor.ValueOrDie())
 
 }  // namespace tfrt
 

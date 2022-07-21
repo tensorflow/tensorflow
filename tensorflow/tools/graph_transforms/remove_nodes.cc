@@ -76,7 +76,7 @@ Status RemoveNodes(const GraphDef& input_graph_def,
               if (required_nodes.count(replace_node.name())) {
                 LOG(INFO) << "Skipping replacement for " << replace_node.name();
                 CopyOriginalMatch(match, new_nodes);
-                return Status::OK();
+                return OkStatus();
               }
               const NodeDef& input_node = match.inputs[0].node;
               string target_name = input_node.name();
@@ -94,7 +94,7 @@ Status RemoveNodes(const GraphDef& input_graph_def,
                   "^" + input_node.name();
               new_nodes->push_back(input_node);
               any_nodes_removed = true;
-              return Status::OK();
+              return OkStatus();
             },
             {true}, &replaced_graph_def));
         // Make sure all references to removed nodes now point to their inputs.
@@ -106,7 +106,7 @@ Status RemoveNodes(const GraphDef& input_graph_def,
   }
 
   *output_graph_def = current_graph_def;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("remove_nodes", RemoveNodes);

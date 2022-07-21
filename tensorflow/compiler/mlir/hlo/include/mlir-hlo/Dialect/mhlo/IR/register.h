@@ -20,9 +20,9 @@ namespace mlir {
 class DialectRegistry;
 namespace mhlo {
 
-// Add chlo, mhlo, lmhlo dialects to the provided registry.
+// Add chlo and mhlo dialects to the provided registry.
 void registerAllMhloDialects(DialectRegistry &registry);
-}
+}  // namespace mhlo
 }  // namespace mlir
 
 #endif  // MLIR_HLO_DIALECT_MHLO_IR_REGISTER_H_

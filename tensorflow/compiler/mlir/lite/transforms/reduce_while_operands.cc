@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -51,23 +51,21 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct ReduceWhileOperandsPass
-    : public PassWrapper<ReduceWhileOperandsPass, FunctionPass> {
+    : public ReduceWhileOperandsPassBase<ReduceWhileOperandsPass> {
  public:
-  StringRef getArgument() const final { return "tfl-reduce-while"; }
-  StringRef getDescription() const final {
-    // TODO(b/200919263): Declare Reduce While Operands Pass in Table-Gen
-    return "Reduce the number of operands and results of a whlieOp.";
-  }
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceWhileOperandsPass)
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect, TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void FindImplicityProducers(
+LogicalResult FindImplicityProducers(
     const std::vector<uint64_t> &explicitly_consumed_ids,
     std::vector<bool> &is_consumed_id,
     const std::vector<std::vector<uint64_t>> &dependency_graph) {
@@ -80,12 +78,21 @@ void FindImplicityProducers(
   while (!queue.empty()) {
     auto i = queue.back();
     queue.pop_back();
-    for (auto j : dependency_graph[i]) {
+
+    // If there is a consumer which cannot be found in dependency graph, return
+    // false.
+    if (i >= dependency_graph.size()) {
+      return failure();
+    }
+
+    for (auto j : dependency_graph.at(i)) {
       if (is_consumed_id[j]) continue;
       queue.push_back(j);
       is_consumed_id[j] = true;
     }
   }
+
+  return success();
 }
 
 void FindProducers(Value start_node, std::vector<uint64_t> &neighbors) {
@@ -218,8 +225,10 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   }
 
   std::vector<bool> is_consumed_id(n, false);
-  FindImplicityProducers(explicitly_consumed_ids, is_consumed_id,
-                         dependency_graph);
+  if (failed(FindImplicityProducers(explicitly_consumed_ids, is_consumed_id,
+                                    dependency_graph))) {
+    return false;
+  }
 
   // Find all consumed operations in while body.
   llvm::DenseSet<Operation *> consumed_ops;
@@ -277,15 +286,15 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   return erase_indices.any();
 }
 
-void ReduceWhileOperandsPass::runOnFunction() {
-  auto fn = getFunction();
+void ReduceWhileOperandsPass::runOnOperation() {
+  auto fn = getOperation();
   fn.walk([&](TFL::WhileOp while_op) { ReduceWhileOperands(while_op); });
 }
 
 static PassRegistration<ReduceWhileOperandsPass> pass;
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass() {
   return std::make_unique<ReduceWhileOperandsPass>();
 }
 

@@ -14,17 +14,11 @@
 # ==============================================================================
 """Tests for tf numpy array methods."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import operator
 import sys
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
-from six.moves import zip
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function

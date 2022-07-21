@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.random_seed."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util

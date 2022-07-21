@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONSTANT_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONSTANT_UTILS_H_
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -27,7 +28,7 @@ namespace mlir {
 namespace TFL {
 
 // Returns a Constant op with a single value.
-stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
+stream_executor::port::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type, int value);
 
 }  // namespace TFL

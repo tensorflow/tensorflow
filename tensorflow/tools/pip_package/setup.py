@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,10 +28,6 @@ learning and deep learning and the flexible numerical computation core is used
 across many other scientific domains.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import fnmatch
 import os
 import re
@@ -50,7 +45,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.8.0'
+_VERSION = '2.10.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -63,83 +58,65 @@ if '--project_name' in sys.argv:
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
 
+# Returns standard if a tensorflow-* package is being built, and nightly if a
+# tf_nightly-* package is being built.
+def standard_or_nightly(standard, nightly):
+  return nightly if 'tf_nightly' in project_name else standard
 
-# All versions of TF need these packages. We use the `~=` syntax to pin packages
-# to the latest major.minor release accepting all other patches on top of that.
-# If we already know of a patched version, we pin to that.
+# All versions of TF need these packages. We indicate the widest possible range
+# of package releases possible to be as up-to-date as possible as well as to
+# accomodate as many pre-installed packages as possible.
 # For packages that don't have yet a stable release, we pin using `~= 0.x` which
 # means we accept any `0.y` version (y >= x) but not the first major release. We
 # will need additional testing for that.
 # NOTE: This assumes that all packages follow SemVer. If a package follows a
 # different versioning scheme (e.g., PVP), we use different bound specifier and
 # comment the versioning scheme.
-# NOTE: Please add test only packages to `TEST_PACKAGES` below.
 REQUIRED_PACKAGES = [
-    # NOTE: As numpy has releases that break semver guarantees and several other
-    # deps depend on numpy without an upper bound, we must install numpy before
-    # everything else.
-    'numpy ~= 1.19.2',
-    # Install other dependencies
-    'absl-py ~= 0.10',
-    'astunparse ~= 1.6.3',
-    'libclang ~= 11.1.0',
-    'flatbuffers ~= 2.0',
-    'google_pasta ~= 0.2',
-    'h5py ~= 3.1.0',
-    'keras_preprocessing ~= 1.1.2',
-    'opt_einsum ~= 3.3.0',
-    'protobuf >= 3.9.2',
-    'six ~= 1.15.0',
-    'termcolor ~= 1.1.0',
-    'typing_extensions ~= 3.7.4',
-    'wheel ~= 0.35',
-    'wrapt ~= 1.12.1',
-    # These packages need to be pinned exactly as newer versions are
-    # incompatible with the rest of the ecosystem
-    'gast == 0.4.0',
-    # TensorFlow ecosystem packages that TF exposes API for
-    # These need to be in sync with the existing TF version
-    # They are updated during the release process
-    # When updating these, please also update the nightly versions below
-    'tensorboard ~= 2.6',
-    'tensorflow_estimator ~= 2.6',
-    'keras ~= 2.6',
-    'tensorflow-io-gcs-filesystem >= 0.20.0',
+    'absl-py >= 1.0.0',
+    'astunparse >= 1.6.0',
+    'flatbuffers >= 2.0',
+    # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
+    'gast >= 0.2.1, <= 0.4.0',
+    'google_pasta >= 0.1.1',
+    'h5py >= 2.9.0',
+    'keras_preprocessing >= 1.1.1',  # 1.1.0 needs tensorflow==1.7
+    'libclang >= 13.0.0',
+    'numpy >= 1.20',
+    'opt_einsum >= 2.3.2',
+    'packaging',
+    # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
+    # Protobuf 4.0 is binary incompatible with what C++ TF uses.
+    # We need ~1 quarter to update properly.
+    # See also: https://github.com/tensorflow/tensorflow/issues/53234
+    # See also: https://github.com/protocolbuffers/protobuf/issues/9954
+    # See also: https://github.com/tensorflow/tensorflow/issues/56077
+    # This is a temporary patch for now, to patch previous TF releases.
+    'protobuf >= 3.9.2, < 3.20',
+    'setuptools',
+    'six >= 1.12.0',
+    'termcolor >= 1.1.0',
+    'typing_extensions >= 3.6.6',
+    'wrapt >= 1.11.0',
+    'tensorflow-io-gcs-filesystem >= 0.23.1',
+    # grpcio does not build correctly on big-endian machines due to lack of
+    # BoringSSL support.
+    # See https://github.com/tensorflow/tensorflow/issues/17882.
+    'grpcio >= 1.24.3, < 2.0' if sys.byteorder == 'little' else None,
+    # TensorFlow exposes the TF API for certain TF ecosystem packages like
+    # keras.  When TF depends on those packages, the package version needs to
+    # match the current TF version. For tf_nightly, we install the nightly
+    # variant of each package instead, which must be one version ahead of the
+    # current release version. These also usually have "alpha" or "dev" in their
+    # version name.
+    # These are all updated during the TF release process.
+    standard_or_nightly('tensorboard >= 2.9, < 2.10', 'tb-nightly ~= 2.10.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.9.0rc0, < 2.10',
+                        'tf-estimator-nightly ~= 2.10.0.dev'),
+    standard_or_nightly('keras >= 2.9.0rc0, < 2.10',
+                        'keras-nightly ~= 2.10.0.dev'),
 ]
-
-
-# For nightly packages, instead of depending on tensorboard,
-# tensorflow_estimator and keras, we depend on their nightly equivalent.
-# When updating these, make sure to also update the release versions above.
-# NOTE: the nightly versions are one version ahead of the release ones!
-# NOTE: the nightly versions specify alpha/dev!
-if 'tf_nightly' in project_name:
-  for i, pkg in enumerate(REQUIRED_PACKAGES):
-    if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.7.0.a'
-    elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.7.0.dev'
-    elif 'keras' in pkg and 'keras_preprocessing' not in pkg:
-      REQUIRED_PACKAGES[i] = 'keras-nightly ~= 2.7.0.dev'
-
-
-# grpcio does not build correctly on big-endian machines due to lack of
-# BoringSSL support.
-# See https://github.com/tensorflow/tensorflow/issues/17882.
-if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio >= 1.37.0, < 2.0')
-
-
-# Packages which are only needed for testing code.
-# Please don't add test-only packages to `REQUIRED_PACKAGES`!
-# Follows the same conventions as `REQUIRED_PACKAGES`
-TEST_PACKAGES = [
-    'portpicker ~= 1.3.1',
-    'scipy ~= 1.5.2',
-    'tblib ~= 1.7.0',
-    'dill ~= 0.3.2',
-]
-
+REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
 
 DOCLINES = __doc__.split('\n')
 if project_name.endswith('-gpu'):
@@ -162,16 +139,14 @@ CONSOLE_SCRIPTS = [
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
-    'tensorboard = tensorboard.main:run_main',
+    # We exclude it anyway if building tf_nightly.
+    standard_or_nightly('tensorboard = tensorboard.main:run_main', None),
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
     'estimator_ckpt_converter = '
     'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
+CONSOLE_SCRIPTS = [ s for s in CONSOLE_SCRIPTS if s is not None ]
 # pylint: enable=line-too-long
-
-# remove the tensorboard console script if building tf_nightly
-if 'tf_nightly' in project_name:
-  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:run_main')
 
 
 class BinaryDistribution(Distribution):
@@ -308,7 +283,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
-    long_description_content_type="text/markdown",
+    long_description_content_type='text/markdown',
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',
@@ -320,7 +295,6 @@ setup(
     },
     headers=headers,
     install_requires=REQUIRED_PACKAGES,
-    tests_require=REQUIRED_PACKAGES + TEST_PACKAGES,
     # Add in any packaged data.
     include_package_data=True,
     package_data={
@@ -334,6 +308,8 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
+    # Supported Python versions
+    python_requires='>=3.7',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
@@ -347,6 +323,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

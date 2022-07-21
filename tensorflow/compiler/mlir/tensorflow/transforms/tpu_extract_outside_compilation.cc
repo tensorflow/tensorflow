@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -64,9 +64,9 @@ struct TPUExtractOutsideCompilation
 // Build a function containing `ops` with `inputs` and `outputs` using
 // `builder`.  The `ops` are cloned and modified to use the function arguments
 // as inputs.
-FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
-                     llvm::ArrayRef<Value> inputs,
-                     llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
+func::FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
+                           llvm::ArrayRef<Value> inputs,
+                           llvm::ArrayRef<Value> outputs, OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(inputs.size());
   for (Value v : inputs) operand_types.emplace_back(v.getType());
@@ -76,8 +76,8 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
 
   auto func_type = builder->getFunctionType(operand_types, output_types);
 
-  FuncOp outlined_func =
-      FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
+  func::FuncOp outlined_func =
+      func::FuncOp::create(ops.front()->getLoc(), kHostFunctionAttr, func_type);
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();
@@ -96,16 +96,16 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
     results_after_mapping.push_back(mapping.lookupOrDefault(result));
   }
 
-  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  builder->create<func::ReturnOp>(ops.front()->getLoc(), results_after_mapping);
   return outlined_func;
 }
 
 // Encapsulates `func` in a module and serializes that module.
 // `serialized_func_module` is set to the serialized module.
-void EncapsulateFuncAndSerialize(FuncOp func,
+void EncapsulateFuncAndSerialize(func::FuncOp func,
                                  std::string* serialized_func_module) {
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(func.getContext()));
   SymbolTable symbol_table(module_for_func.get());
 
@@ -407,7 +407,6 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
       loc, device_output_types, inputs.getArrayRef(),
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
-      /*tpu_core=*/builder.getI64IntegerAttr(0),
       /*host_mlir_module=*/builder.getStringAttr(serialized_func_module));
   return host_compute;
 }
@@ -529,9 +528,9 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 
   std::string serialized_func_module;
   if (HasDynamicOutputs(external_outputs.getArrayRef())) {
-    FuncOp shape_op = BuildFunction(clustered_ops.getArrayRef(),
-                                    external_operands.getArrayRef(),
-                                    external_outputs.getArrayRef(), &builder);
+    func::FuncOp shape_op = BuildFunction(
+        clustered_ops.getArrayRef(), external_operands.getArrayRef(),
+        external_outputs.getArrayRef(), &builder);
     EncapsulateFuncAndSerialize(shape_op, &serialized_func_module);
   }
 
@@ -553,7 +552,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   Operation* after_op = recv_at_host;
   for (Operation* cluster_op : clustered_ops) {
     cluster_op->moveAfter(after_op);
-    cluster_op->removeAttr(Identifier::get(kDeviceAttr, op.getContext()));
+    cluster_op->removeAttr(StringAttr::get(op.getContext(), kDeviceAttr));
     after_op = cluster_op;
   }
 
@@ -581,7 +580,7 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
   }
 }
 
-// Move outside compiled ops in `src` to to `insertion_point` in host
+// Move outside compiled ops in `src` to `insertion_point` in host
 // computation (may be temporarily with `tpu_cluster` but moved in subsequent
 // call to this method).  Communication ops are added in both `src` and at
 // `insertion_point` using `compilation_key`, `device_ordinal` and
@@ -711,7 +710,7 @@ void RemoveOutsideCompilation(tf_device::LaunchOp host_launch_op) {
   host_launch_op.GetBody().walk([&](Operation* op) {
     if (op->hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
       op->removeAttr(
-          Identifier::get(kXlaOutsideCompilationAttr, op->getContext()));
+          StringAttr::get(op->getContext(), kXlaOutsideCompilationAttr));
     }
   });
 }
@@ -817,7 +816,7 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   // Remove `_xla_outside_compilation` attribute from all ops.  These ops will
   // be outside of the device cluster. The `_xla_outside_compilation` attribute
   // on ops outside of tf_device.cluster don't have any meaning and can lead to
-  // errors later on.  These ops were likely lifted out of the the
+  // errors later on.  These ops were likely lifted out of the
   // tf_device.cluster in an earlier pass.
   module.walk(
       [](Operation* op) { op->removeAttr("_xla_outside_compilation"); });

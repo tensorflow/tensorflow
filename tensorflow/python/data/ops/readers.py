@@ -13,16 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for reader Datasets."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
-from tensorflow.core.framework import dataset_metadata_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -155,17 +150,13 @@ class _TextLineDataset(dataset_ops.DatasetSource):
         "buffer_size",
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = dataset_ops._validate_and_encode(name)
-    kwargs = {}
-    if name or compat.forward_compatible(2021, 9, 30):
-      kwargs["metadata"] = self._metadata.SerializeToString()
+    self._name = name
 
-    variant_tensor = gen_dataset_ops.text_line_dataset(self._filenames,
-                                                       self._compression_type,
-                                                       self._buffer_size,
-                                                       **kwargs)
+    variant_tensor = gen_dataset_ops.text_line_dataset(
+        self._filenames,
+        self._compression_type,
+        self._buffer_size,
+        metadata=self._metadata.SerializeToString())
     super(_TextLineDataset, self).__init__(variant_tensor)
 
   @property
@@ -311,17 +302,11 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
         "buffer_size",
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = dataset_ops._validate_and_encode(name)
-    kwargs = {}
-    if name or compat.forward_compatible(2021, 9, 30):
-      kwargs["metadata"] = self._metadata.SerializeToString()
+    self._name = name
 
-    variant_tensor = gen_dataset_ops.tf_record_dataset(self._filenames,
-                                                       self._compression_type,
-                                                       self._buffer_size,
-                                                       **kwargs)
+    variant_tensor = gen_dataset_ops.tf_record_dataset(
+        self._filenames, self._compression_type, self._buffer_size,
+        metadata=self._metadata.SerializeToString())
     super(_TFRecordDataset, self).__init__(variant_tensor)
 
   @property
@@ -343,7 +328,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
                name=None):
     """See `tf.data.experimental.parallel_interleave()` for details."""
     self._input_dataset = input_dataset
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
       raise TypeError(
@@ -368,12 +353,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
       self._deterministic = "false"
     else:
       self._deterministic = "true"
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = dataset_ops._validate_and_encode(name)
-    kwargs = self._flat_structure
-    if name or compat.forward_compatible(2021, 9, 30):
-      kwargs["metadata"] = self._metadata.SerializeToString()
+    self._name = name
 
     variant_tensor = ged_ops.legacy_parallel_interleave_dataset_v2(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -384,7 +364,7 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         self._prefetch_input_elements,
         f=self._map_func.function,
         deterministic=self._deterministic,
-        **kwargs)
+        **self._common_args)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -565,16 +545,16 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
-    self._metadata = dataset_metadata_pb2.Metadata()
-    if name:
-      self._metadata.name = dataset_ops._validate_and_encode(name)
-    kwargs = {}
-    if name or compat.forward_compatible(2021, 9, 30):
-      kwargs["metadata"] = self._metadata.SerializeToString()
+    self._name = name
 
     variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
-        self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes, self._buffer_size, self._compression_type, **kwargs)
+        self._filenames,
+        self._header_bytes,
+        self._record_bytes,
+        self._footer_bytes,
+        self._buffer_size,
+        self._compression_type,
+        metadata=self._metadata.SerializeToString())
     super(_FixedLengthRecordDataset, self).__init__(variant_tensor)
 
   @property

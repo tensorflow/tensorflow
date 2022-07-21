@@ -1,7 +1,5 @@
-// RUN: lhlo-tfrt-opt %s    \
-// RUN:   -lmhlo-to-gpu     \
-// RUN:   -gpu-async-region \
-// RUN:   -gpu-to-tfrt-gpu  \
+// RUN: lhlo-tfrt-opt %s     \
+// RUN:   -lmhlo-to-tfrt-gpu \
 // RUN: | FileCheck %s
 
 // CHECK:      func @view(
@@ -11,12 +9,12 @@
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>) {
+func.func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
   // CHECK-NOT: memref.view
 
-  %c0 = constant 0 : index
+  %c0 = arith.constant 0 : index
   %view = memref.view %output[%c0][] : memref<100xi8> to memref<5x5xf32>
 
   // CHECK: tfrt_gpu.blas.gemm
@@ -29,6 +27,7 @@ func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>)
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 20,
     rhs_stride = 20
@@ -46,12 +45,12 @@ func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100xi8>)
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
+func.func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
   // CHECK-NOT: memref.reinterpret_cast
 
-  %cast = memref.reinterpret_cast %lhs to offset: [0], sizes: [5, 4], strides: [5, 4] : memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>> to memref<5x4xf32>
+  %cast = memref.reinterpret_cast %lhs to offset: [0], sizes: [5, 4], strides: [4, 1] : memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2)>> to memref<5x4xf32>
 
   // CHECK: tfrt_gpu.blas.gemm
   "lmhlo_gpu.gemm"(%cast, %rhs, %output) {
@@ -63,6 +62,7 @@ func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 20,
     rhs_stride = 20
@@ -78,7 +78,7 @@ func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d1 * 2
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @two_ops(%memref: memref<4x4xf32>) {
+func.func @two_ops(%memref: memref<4x4xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -93,6 +93,7 @@ func @two_ops(%memref: memref<4x4xf32>) {
     >,
     alpha_real = 3.14159274,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16
@@ -109,6 +110,7 @@ func @two_ops(%memref: memref<4x4xf32>) {
     >,
     alpha_real = 2.71828175,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16
@@ -124,7 +126,7 @@ func @two_ops(%memref: memref<4x4xf32>) {
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> (!tfrt.chain, !tfrt_gpu.buffer)
-func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
+func.func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -138,6 +140,7 @@ func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
     >,
     alpha_real = 1.0,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16
@@ -145,5 +148,5 @@ func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return {{.*}}, %arg2 : !tfrt.chain, !tfrt_gpu.buffer
-  return %memref : memref<4x4xf32>
+  func.return %memref : memref<4x4xf32>
 }

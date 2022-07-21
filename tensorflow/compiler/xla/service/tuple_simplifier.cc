@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -34,39 +33,38 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
     : exclude_entry_computation_(exclude_entry_computation) {}
 
 StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
-  bool changed = false;
   HloInstruction* top_tuple = nullptr;
-  bool can_simplify = true;
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);
     if (operand->opcode() != HloOpcode::kGetTupleElement ||
         operand->tuple_index() != operand_number) {
-      can_simplify = false;
-      break;
+      return false;
     }
     if (top_tuple == nullptr) {
       top_tuple = operand->mutable_operand(0);
       if (!ShapeUtil::Compatible(top_tuple->shape(), tuple->shape())) {
-        can_simplify = false;
-        break;
+        return false;
       }
     } else if (top_tuple != operand->operand(0)) {
-      can_simplify = false;
-      break;
+      return false;
     }
   }
-  if (can_simplify && top_tuple != nullptr) {
-    changed = true;
-    TF_RETURN_IF_ERROR(tuple->parent()->ReplaceInstruction(tuple, top_tuple));
+  if (top_tuple == nullptr) {
+    return false;
   }
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      tuple->parent()->ReplaceInstruction(
+                          tuple, top_tuple, /*preserve_sharding=*/true));
   return changed;
 }
 
-StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
+StatusOr<bool> TupleSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.
   bool changed = false;
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     if (exclude_entry_computation_ &&
         computation == module->entry_computation()) {
       continue;
@@ -98,16 +96,19 @@ StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
         // if only a subset of tuple's elements are used, this transform
         // optimizes them one at a time, and after the last use is optimized,
         // the Tuple will also be deleted.
+        HloInstruction* replacement = nullptr;
         if (ShapeUtil::Compatible(ancestor.first->shape(),
                                   instruction->shape())) {
-          changed = true;
-          TF_RETURN_IF_ERROR(
-              computation->ReplaceInstruction(instruction, ancestor.first));
+          replacement = ancestor.first;
         } else if (ancestor.first->opcode() == HloOpcode::kTuple) {
-          changed = true;
-          TF_RETURN_IF_ERROR(computation->ReplaceInstruction(
-              instruction,
-              ancestor.first->mutable_operand(ancestor.second[0])));
+          replacement = ancestor.first->mutable_operand(ancestor.second[0]);
+        }
+
+        if (replacement) {
+          TF_ASSIGN_OR_RETURN(bool replaced, computation->ReplaceInstruction(
+                                                 instruction, replacement,
+                                                 /*preserve_sharding=*/true));
+          changed |= replaced;
         }
       }
     }

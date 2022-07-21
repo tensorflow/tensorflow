@@ -38,7 +38,7 @@ Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,
-    absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr) {
+    std::optional<se::DeviceMemoryBase> cross_program_prefetch_addr) {
   SE_DeviceMemoryBase* arguments_bases = nullptr;
   if (!arguments.empty()) {
     arguments_bases = new SE_DeviceMemoryBase[arguments.size()];
@@ -110,8 +110,8 @@ xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
   tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(&c_host_shape,
                                                            &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Free(&c_host_shape);
-  ApiConverter::Free(&c_device_shape);
+  ApiConverter::Destroy(&c_host_shape);
+  ApiConverter::Destroy(&c_device_shape);
   return device_shape;
 }
 
@@ -119,7 +119,7 @@ int64_t TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
   int64_t size = tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 

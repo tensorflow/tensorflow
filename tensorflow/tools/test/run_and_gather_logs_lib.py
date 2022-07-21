@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Library for getting system information during TensorFlow tests."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 import re
@@ -98,8 +93,11 @@ def process_benchmarks(log_files):
   return benchmarks
 
 
-def run_and_gather_logs(name, test_name, test_args,
-                        benchmark_type):
+def run_and_gather_logs(name,
+                        test_name,
+                        test_args,
+                        benchmark_type,
+                        skip_processing_logs=False):
   """Run the bazel test given by test_name.  Gather and return the logs.
 
   Args:
@@ -108,10 +106,13 @@ def run_and_gather_logs(name, test_name, test_args,
     test_args: A string containing all arguments to run the target with.
     benchmark_type: A string representing the BenchmarkType enum; the
       benchmark type for this target.
+    skip_processing_logs: Whether to skip processing test results from log
+      files.
 
   Returns:
     A tuple (test_results, mangled_test_name), where
-    test_results: A test_log_pb2.TestResults proto
+    test_results: A test_log_pb2.TestResults proto, or None if log processing
+      is skipped.
     test_adjusted_name: Unique benchmark name that consists of
       benchmark name optionally followed by GPU type.
 
@@ -169,6 +170,8 @@ def run_and_gather_logs(name, test_name, test_args,
     os.environ["TEST_REPORT_FILE_PREFIX"] = test_file_prefix
     start_time = time.time()
     subprocess.check_call([test_executable] + test_args)
+    if skip_processing_logs:
+      return None, test_adjusted_name
     run_time = time.time() - start_time
     log_files = gfile.Glob("{}*".format(test_file_prefix))
     if not log_files:

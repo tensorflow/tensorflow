@@ -40,7 +40,7 @@ namespace gpu {
 // compiler is allowed to create.
 class CustomCallThunk : public Thunk {
  public:
-  using OptionalSlice = ::absl::optional<BufferAllocation::Slice>;
+  using OptionalSlice = ::std::optional<BufferAllocation::Slice>;
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   using Stream = stream_executor::gpu::GpuStreamHandle;
@@ -62,15 +62,6 @@ class CustomCallThunk : public Thunk {
   const std::vector<OptionalSlice> operands_;
   const std::vector<OptionalSlice> results_;
   const std::string opaque_;
-};
-
-// Resources needed to execute a CustomCall BefThunk.
-struct CustomCallContext {
-  explicit CustomCallContext(
-      const CustomCallThunk::CustomCallTarget& call_target)
-      : call_target(call_target) {}
-
-  const CustomCallThunk::CustomCallTarget& call_target;
 };
 
 }  // namespace gpu

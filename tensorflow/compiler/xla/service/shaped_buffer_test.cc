@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -35,7 +37,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
-  auto scoped_buffer = absl::make_unique<xla::ScopedShapedBuffer>(
+  auto scoped_buffer = std::make_unique<xla::ScopedShapedBuffer>(
       shape, shape, &allocator, kDeviceOrdinal);
   std::unique_ptr<xla::ShapedBuffer> buffer = std::move(scoped_buffer);
   buffer = nullptr;
@@ -56,7 +58,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   // Pull in two-arg overload of Allocate.
   using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                             bool /*retry_on_failure*/,
                                             int64_t /*memory_space*/) override {
     // By contract, we must return null if size == 0.
@@ -71,7 +73,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
     if (mem.is_null()) {
-      return Status::OK();
+      return OkStatus();
     }
 
     auto it = allocations_.find({device_ordinal, mem.opaque()});
@@ -81,7 +83,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
       free(mem.opaque());
       allocations_.erase(it);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   bool AllowsAsynchronousDeallocation() const override { return false; }
@@ -141,14 +143,15 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
     }
     EXPECT_TRUE(buffers.find(orig_index)->second.IsSameAs(buffer));
   });
-  sb.buffers().ForEachElement(
-      [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
-        if (ShapeIndexView(index).StartsWith(subtree_index)) {
-          EXPECT_TRUE(buffer.is_null());
-        } else {
-          EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
-        }
-      });
+  sb.buffers().ForEachElement([&](const xla::ShapeIndex& index,
+                                  const se::DeviceMemoryBase& buffer) {
+    if ((index.size() >= subtree_index.size()) &&
+        ShapeIndexView(index).first(subtree_index.size()) == subtree_index) {
+      EXPECT_TRUE(buffer.is_null());
+    } else {
+      EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
+    }
+  });
 }
 
 TEST(ScopedShapedBufferTest, TestSubShapeTree) {
@@ -166,7 +169,7 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
       });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());
-  auto ssb = ssb_statusor.ConsumeValueOrDie();
+  auto ssb = std::move(ssb_statusor).value();
   EXPECT_EQ(ssb.on_host_shape(), array_shape);
   EXPECT_EQ(ssb.on_device_shape(), array_shape);
 }

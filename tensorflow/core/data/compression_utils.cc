@@ -70,7 +70,7 @@ Status CompressElement(const std::vector<Tensor>& element,
   }
   if (total_size > kuint32max) {
     return errors::OutOfRange("Encountered dataset element of size ",
-                              total_size, ", exceeding the 4GB limit.");
+                              total_size, ", exceeding the 4GB Snappy limit.");
   }
   DCHECK_EQ(position, uncompressed.mdata() + total_size);
 
@@ -80,7 +80,7 @@ Status CompressElement(const std::vector<Tensor>& element,
   }
   VLOG(3) << "Compressed element from " << total_size << " bytes to "
           << out->data().size() << " bytes";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UncompressElement(const CompressedElement& compressed,
@@ -158,7 +158,7 @@ Status UncompressElement(const CompressedElement& compressed,
       return errors::Internal("Could not parse Tensor");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace data

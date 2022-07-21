@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the distributed values library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
 
@@ -37,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -63,6 +60,7 @@ def mirrored_and_tpu_strategy_combinations():
           strategy_combinations.mirrored_strategy_with_two_gpus_no_merge_call,
           strategy_combinations.tpu_strategy,
           strategy_combinations.tpu_strategy_packed_var,
+          strategy_combinations.tpu_strategy_spmd,
       ],
       mode=["graph", "eager"])
 
@@ -283,6 +281,31 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
                           worker_devices[i])
 
 
+class PerReplicaTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ] + strategy_combinations.multiworker_strategies,
+          mode=["eager"]))
+  def testUsePerReplicaInvalidContextGivesError(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    multiple_values = range(distribution.num_replicas_in_sync)
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id_in_sync_group]
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    with self.assertRaisesRegex(ValueError, "not inside a replica context"):
+      math_ops.cast(distributed_values, dtypes.float32)
+
+
 class PerWorkerResourceTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
@@ -415,7 +438,7 @@ def _make_replica_local(method, strategy=None):
   return v, replica_local
 
 
-class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
+class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, v, new):
     for var, n in zip(v, new):
@@ -524,6 +547,59 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     distribution.run(replica_fn)
     sum_v = v1 + v2
     self.assertEqual(sum_v, 6.0)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.tpu_strategy_packed_var,
+          ],
+          mode=["eager"]))
+  def testValueInFunctionCrossReplicaContext(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          0.0,
+          aggregation=variables_lib.VariableAggregation.NONE,
+          synchronization=variables_lib.VariableSynchronization.ON_WRITE)
+
+    @def_function.function
+    def assign_fn():
+      v1.assign(1.0)
+
+    assign_fn()
+    self.assertEqual(v1, 1.0)
+
+    # Make sure the function graph has composite variable as inputs.
+    graph_def = assign_fn.get_concrete_function().graph.as_graph_def()
+    self.assertRegex(str(graph_def), "device:COMPOSITE:0")
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.tpu_strategy_packed_var,
+          ],
+          mode=["eager"]))
+  def testReplicatedValueNameDeterministic(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(0.0, name="test_var_1")
+      v2 = variables_lib.Variable(0.0, name="test_var_2")
+
+    def fn():
+      v1.assign_add(1.0)
+      v2.assign_add(2.0)
+      return v1 + v2
+
+    @def_function.function
+    def dist_run_fn():
+      a = distribution.run(fn)
+      return a
+
+    concrete_fn = dist_run_fn.get_concrete_function()
+    inputs = concrete_fn.graph.inputs
+    self.assertLen(inputs, 2)
+    # Before cl/433948982, input name will include a non-deterministic uid,
+    # e.g. "test_var_1_139726389910864/handle/inputs_0:0"
+    self.assertEqual(inputs[0].name, "test_var_1/handle/inputs_0:0")
+    self.assertEqual(inputs[1].name, "test_var_2/handle/inputs_0:0")
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):

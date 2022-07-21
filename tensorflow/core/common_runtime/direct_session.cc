@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/local_session_selection.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -107,7 +108,7 @@ Status NewThreadPoolFromThreadPoolOptions(
         num_threads, !options.config.experimental().disable_thread_spinning(),
         /*allocator=*/nullptr);
     *owned = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Global, named threadpool.
@@ -134,7 +135,7 @@ Status NewThreadPoolFromThreadPoolOptions(
   }
   *owned = false;
   *pool = mvalue->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
@@ -162,7 +163,9 @@ class DirectSessionFactory : public SessionFactory {
   DirectSessionFactory() {}
 
   bool AcceptsOptions(const SessionOptions& options) override {
-    return options.target.empty();
+    return options.target.empty() &&
+           !options.config.experimental().use_tfrt() &&
+           GetDefaultLocalSessionImpl() == LocalSessionImpl::kDirectSession;
   }
 
   Status NewSession(const SessionOptions& options,
@@ -199,7 +202,7 @@ class DirectSessionFactory : public SessionFactory {
       sessions_.push_back(session);
     }
     *out_session = session;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Reset(const SessionOptions& options,
@@ -417,7 +420,7 @@ Status DirectSession::Create(GraphDef&& graph) {
     }
     return ExtendLocked(std::move(graph));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::Extend(const GraphDef& graph) {
@@ -430,33 +433,35 @@ Status DirectSession::Extend(GraphDef&& graph) {
   return ExtendLocked(std::move(graph));
 }
 
-Status DirectSession::ExtendLocked(GraphDef graph) {
+Status DirectSession::ExtendLocked(GraphDef&& graph) {
   if (finalized_) {
     return errors::FailedPrecondition("Session has been finalized.");
   }
   if (!(flib_def_ && execution_state_)) {
     // If this is the first call, we can initialize the execution state
     // with `graph` and do not need to call `Extend()`.
-    // NOTE(mrry): The function library created here will be used for
-    // all subsequent extensions of the graph.
-    flib_def_.reset(
-        new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
     GraphExecutionStateOptions options;
     options.device_set = &device_set_;
     options.session_options = &options_;
     options.session_handle = session_handle_;
     TF_RETURN_IF_ERROR(GraphExecutionState::MakeForBaseGraph(
         std::move(graph), options, &execution_state_));
+    // NOTE(mrry): The function library created here will be used for
+    // all subsequent extensions of the graph. Also, note how using the copy
+    // constructor of FunctionLibraryDefinition avoids duplicating the memory
+    // that is occupied by its shared_ptr members.
+    flib_def_.reset(
+        new FunctionLibraryDefinition(execution_state_->flib_def()));
     graph_created_ = true;
   } else {
-    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<GraphExecutionState> state;
     // TODO(mrry): Rewrite GraphExecutionState::Extend() to take `graph` by
     // value and move `graph` in here.
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::Run(const NamedTensorList& inputs,
@@ -484,7 +489,7 @@ Status DirectSession::CreateDebuggerState(
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
       global_step, session_run_index, executor_step_index, input_names,
       output_names, target_names));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::DecorateAndPublishGraphForDebug(
@@ -495,7 +500,7 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
 
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
   TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::RunInternal(
@@ -535,6 +540,12 @@ Status DirectSession::RunInternal(
         CreateDebuggerState(executors_and_keys->callable_options,
                             run_options.debug_options().global_step(), step_id,
                             executor_step_count, &debugger_state));
+  }
+
+  if (run_metadata != nullptr &&
+      options_.config.experimental().has_session_metadata()) {
+    *run_metadata->mutable_session_metadata() =
+        options_.config.experimental().session_metadata();
   }
 
 #ifndef __ANDROID__
@@ -581,7 +592,7 @@ Status DirectSession::RunInternal(
       pool = nullptr;
     }
   } else if (threadpool_options.inter_op_threadpool != nullptr) {
-    threadpool_wrapper = absl::make_unique<thread::ThreadPool>(
+    threadpool_wrapper = std::make_unique<thread::ThreadPool>(
         threadpool_options.inter_op_threadpool);
     pool = threadpool_wrapper.get();
   } else {
@@ -819,7 +830,7 @@ Status DirectSession::RunInternal(
   }
   metrics::UpdateGraphExecTime(options_.env->NowMicros() - start_time_usecs);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::Run(const RunOptions& run_options,
@@ -940,7 +951,7 @@ Status DirectSession::Run(const RunOptions& run_options,
     metrics::RecordGraphOutputTensors(output_size);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::PRunSetup(const std::vector<string>& input_names,
@@ -1019,7 +1030,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   *handle = run_state_args.handle;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
@@ -1185,7 +1196,7 @@ Status DirectSession::SendPRunInputs(const NamedTensorList& inputs,
       return s;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::RecvPRunOutputs(
@@ -1230,7 +1241,7 @@ Status DirectSession::RecvPRunOutputs(
 
     (*outputs)[output_offset] = output_tensor;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
@@ -1291,7 +1302,7 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::CreateExecutors(
@@ -1355,7 +1366,7 @@ Status DirectSession::CreateExecutors(
       Rendezvous::Factory{
           [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
             *r = new IntraProcessRendezvous(device_mgr);
-            return Status::OK();
+            return OkStatus();
           }}));
 
   GraphOptimizer optimizer(optimizer_opts);
@@ -1464,7 +1475,7 @@ Status DirectSession::CreateExecutors(
 
   *out_executors_and_keys = std::move(ek);
   *out_func_info = std::move(func_info);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::GetOrCreateExecutors(
@@ -1499,7 +1510,7 @@ Status DirectSession::GetOrCreateExecutors(
     auto it = executors_.find(key);
     if (it != executors_.end()) {
       *executors_and_keys = it->second.get();
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -1532,7 +1543,7 @@ Status DirectSession::GetOrCreateExecutors(
     auto it = executors_.find(sorted_key);
     if (it != executors_.end()) {
       *executors_and_keys = it->second.get();
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -1578,7 +1589,7 @@ Status DirectSession::GetOrCreateExecutors(
   executors_.emplace(key, insert_result.first->second);
   *executors_and_keys = insert_result.first->second.get();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::CreateGraphs(
@@ -1749,24 +1760,24 @@ Status DirectSession::CreateGraphs(
     const DeviceAttributes& attrs = d->attributes();
     response->emplace_back(attrs);
   }
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 ::tensorflow::Status DirectSession::Reset(
     const std::vector<string>& containers) {
   device_mgr_->ClearContainers(containers);
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 ::tensorflow::Status DirectSession::Close() {
   cancellation_manager_->StartCancel();
   {
     mutex_lock l(closed_lock_);
-    if (closed_) return ::tensorflow::Status::OK();
+    if (closed_) return OkStatus();
     closed_ = true;
   }
   if (factory_ != nullptr) factory_->Deregister(this);
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 DirectSession::RunState::RunState(int64_t step_id,
@@ -1842,7 +1853,7 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
   } else {
     notification->WaitForNotification();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::MakeCallable(const CallableOptions& callable_options,
@@ -1860,7 +1871,7 @@ Status DirectSession::MakeCallable(const CallableOptions& callable_options,
     *out_handle = next_callable_handle_++;
     callables_[*out_handle] = {std::move(ek), std::move(func_info)};
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 class DirectSession::RunCallableCallFrame : public CallFrameInterface {
@@ -1887,7 +1898,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     } else {
       *val = &(*feed_tensors_)[index];
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status SetRetval(int index, const Tensor& val) override {
@@ -1895,7 +1906,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
       return errors::Internal("RetVal index out of bounds: ", index);
     }
     (*fetch_tensors_)[index] = val;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1969,7 +1980,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
   const std::vector<Tensor>* actual_feed_tensors;
 
   if (TF_PREDICT_FALSE(any_resource_feeds)) {
-    converted_feed_tensors = absl::make_unique<std::vector<Tensor>>();
+    converted_feed_tensors = std::make_unique<std::vector<Tensor>>();
     converted_feed_tensors->reserve(feed_tensors.size());
     for (const Tensor& t : feed_tensors) {
       if (t.dtype() == DT_RESOURCE) {
@@ -2006,7 +2017,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     metrics::RecordGraphOutputTensors(output_size);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 ::tensorflow::Status DirectSession::ReleaseCallable(CallableHandle handle) {
@@ -2015,7 +2026,7 @@ class DirectSession::RunCallableCallFrame : public CallFrameInterface {
     return errors::InvalidArgument("No such callable handle: ", handle);
   }
   callables_.erase(handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DirectSession::Finalize() {
@@ -2029,7 +2040,7 @@ Status DirectSession::Finalize() {
   execution_state_.reset();
   flib_def_.reset();
   finalized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 DirectSession::Callable::~Callable() {

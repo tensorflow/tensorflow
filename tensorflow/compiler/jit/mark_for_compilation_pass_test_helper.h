@@ -25,11 +25,13 @@ class MarkForCompilationPassTestHelper {
     bool enable_global_jit;
     bool disable_deadness_analysis;
     bool enable_cluster_scoping;
+    bool deterministic_cluster_names;
 
     Options()
         : enable_global_jit(true),
           disable_deadness_analysis(true),
-          enable_cluster_scoping(true) {}
+          enable_cluster_scoping(true),
+          deterministic_cluster_names(false) {}
 
     Options WithNoGlobalJit() {
       Options copy = *this;
@@ -46,6 +48,12 @@ class MarkForCompilationPassTestHelper {
     Options WithNoClusterScoping() {
       Options copy = *this;
       copy.enable_cluster_scoping = false;
+      return copy;
+    }
+
+    Options WithDeterministicClusterNames() {
+      Options copy = *this;
+      copy.deterministic_cluster_names = true;
       return copy;
     }
   };

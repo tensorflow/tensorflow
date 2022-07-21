@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_UTILS_H_
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
@@ -23,14 +27,22 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 
-inline bool IsTFLDialectNonConstOp(Operation* op) {
-  if (op->getDialect() == nullptr) return false;
-  if (op->getDialect()->getNamespace() != "tfl") return false;
+// Returns true if 'op' is non const op. Returns false otherwise or if
+// 'op' is null.
+inline bool IsNonConstOp(Operation* op) {
+  if (!op) return false;
+  if (llvm::isa<arith::ConstantOp, mlir::func::ConstantOp>(op)) return false;
+  if (op->hasTrait<OpTrait::ConstantLike>()) return false;
   if (llvm::isa<TFL::ConstOp, TFL::QConstOp>(op)) return false;
   return true;
 }
 
-bool IsTFLNonQuantDequantizeOp(Operation* op);
+// Returns true if 'op' is a terminator op, otherwise false.
+bool IsTerminatorOp(Operation* op);
+
+// Returns true if 'op' is not TFL Quant / Dequant op. Returns False otherwise
+// or if 'op' is null.
+bool NotTFLQuantDequantizeOp(Operation* op);
 
 // Returns true if it is a shaped type of f32 elements.
 inline bool IsF32ShapedType(Type t) {

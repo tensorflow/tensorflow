@@ -83,7 +83,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
           is_full_size_default ? default_flat(i) : default_flat(0));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
@@ -98,7 +98,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
       gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
                           SubtleMustCopyIfIntegral(value_values(i)));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Insert(OpKernelContext* ctx, const Tensor& keys,
@@ -113,7 +113,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     for (int64_t i = 0; i < key_values.size(); ++i) {
       table_.erase(SubtleMustCopyIfIntegral(key_values(i)));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
@@ -132,7 +132,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
     TF_RETURN_IF_ERROR(
         ctx->allocate_output("values", TensorShape({size}), &values));
     ExportKeysAndValues(keys, values);
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -191,7 +191,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
                            .WithAttr("Tout", value_dtype()));
     *out = ops::UnaryOp("Identity", table,
                         builder->opts().WithControlInput(import_table));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -264,7 +264,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DoInsert(bool clear, const Tensor& keys, const Tensor& values) {
@@ -285,7 +285,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
       gtl::InsertOrUpdate(&table_, SubtleMustCopyIfIntegral(key_values(i)),
                           value_vec);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Insert(OpKernelContext* ctx, const Tensor& keys,
@@ -300,7 +300,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     for (int64_t i = 0; i < key_values.size(); ++i) {
       table_.erase(SubtleMustCopyIfIntegral(key_values(i)));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
@@ -320,7 +320,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
     TF_RETURN_IF_ERROR(ctx->allocate_output(
         "values", TensorShape({size, value_dim}), &values));
     ExportKeysAndValues(keys, values);
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -380,7 +380,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
                            .WithAttr("Tout", value_dtype()));
     *out = ops::UnaryOp("Identity", table,
                         builder->opts().WithControlInput(import_table));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -560,7 +560,7 @@ class MutableDenseHashTable final : public LookupInterface {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Insert(OpKernelContext* ctx, const Tensor& key,
@@ -623,14 +623,14 @@ class MutableDenseHashTable final : public LookupInterface {
         ++num_entries_;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ExportValues(OpKernelContext* ctx) override TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     TF_RETURN_IF_ERROR(ctx->set_output("keys", key_buckets_));
     TF_RETURN_IF_ERROR(ctx->set_output("values", value_buckets_));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
@@ -655,7 +655,7 @@ class MutableDenseHashTable final : public LookupInterface {
           "Expected shape ", expected_value_shape.DebugString(),
           " for value, got ", values.shape().DebugString());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -740,7 +740,7 @@ class MutableDenseHashTable final : public LookupInterface {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DoRemove(OpKernelContext* ctx, const Tensor& key)
@@ -791,7 +791,7 @@ class MutableDenseHashTable final : public LookupInterface {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status AllocateBuckets(OpKernelContext* ctx, int64_t new_num_buckets)
@@ -829,7 +829,7 @@ class MutableDenseHashTable final : public LookupInterface {
         value_buckets_matrix(i, j) = V();
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Rebucket(OpKernelContext* ctx, int64_t num_new_buckets)
@@ -1133,7 +1133,15 @@ REGISTER_KERNEL(tstring, tstring);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AnonymousMutableHashTable")                                        \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      AnonymousLookupTableOp<                                                  \
+          lookup::MutableHashTableOfScalars<key_dtype, value_dtype>,           \
+          key_dtype, value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
@@ -1167,7 +1175,15 @@ REGISTER_KERNEL(tstring, int64_t);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AnonymousMutableHashTableOfTensors")                               \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      AnonymousLookupTableOp<                                                  \
+          lookup::MutableHashTableOfTensors<key_dtype, value_dtype>,           \
+          key_dtype, value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);
@@ -1186,21 +1202,29 @@ REGISTER_KERNEL(tstring, int64_t);
 #undef REGISTER_KERNEL
 
 // Register the MutableDenseHashTable op.
-#define REGISTER_KERNEL(key_dtype, value_dtype)                            \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MutableDenseHashTable")                                        \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<key_dtype>("key_dtype")                          \
-          .TypeConstraint<value_dtype>("value_dtype"),                     \
-      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)                               \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("MutableDenseHashTableV2")                                      \
-          .Device(DEVICE_CPU)                                              \
-          .TypeConstraint<key_dtype>("key_dtype")                          \
-          .TypeConstraint<value_dtype>("value_dtype"),                     \
-      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
-                    key_dtype, value_dtype>)
+#define REGISTER_KERNEL(key_dtype, value_dtype)                             \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("MutableDenseHashTable")                                         \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<key_dtype>("key_dtype")                           \
+          .TypeConstraint<value_dtype>("value_dtype"),                      \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>,  \
+                    key_dtype, value_dtype>)                                \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("MutableDenseHashTableV2")                                       \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<key_dtype>("key_dtype")                           \
+          .TypeConstraint<value_dtype>("value_dtype"),                      \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>,  \
+                    key_dtype, value_dtype>)                                \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("AnonymousMutableDenseHashTable")                                \
+          .Device(DEVICE_CPU)                                               \
+          .TypeConstraint<key_dtype>("key_dtype")                           \
+          .TypeConstraint<value_dtype>("value_dtype"),                      \
+      AnonymousLookupTableOp<                                               \
+          lookup::MutableDenseHashTable<key_dtype, value_dtype>, key_dtype, \
+          value_dtype>)
 
 REGISTER_KERNEL(int32, double);
 REGISTER_KERNEL(int32, float);

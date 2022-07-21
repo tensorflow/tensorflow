@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Standalone utility to generate some test saved models."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import os
 
@@ -36,7 +31,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import asset
 
 
 class VarsAndArithmeticObjectGraph(module.Module):
@@ -76,7 +71,7 @@ class CyclicModule(module.Module):
 class AssetModule(module.Module):
 
   def __init__(self):
-    self.asset = tracking.Asset(
+    self.asset = asset.Asset(
         test.test_src_dir_path("cc/saved_model/testdata/test_asset.txt"))
 
   @def_function.function(input_signature=[])
@@ -88,7 +83,7 @@ class StaticHashTableModule(module.Module):
   """A module with an Asset, StaticHashTable, and a lookup function."""
 
   def __init__(self):
-    self.asset = tracking.Asset(
+    self.asset = asset.Asset(
         test.test_src_dir_path(
             "cc/saved_model/testdata/static_hashtable_asset.txt"))
     self.table = lookup_ops.StaticHashTable(

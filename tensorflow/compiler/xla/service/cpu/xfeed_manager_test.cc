@@ -39,7 +39,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
         expect_shape_match_(expect_shape_match) {}
   ~TestInfeedBuffer() override { EXPECT_TRUE(done_called_); }
 
-  int32 length() override { return length_; }
+  int32_t length() override { return length_; }
   void* data() override { return nullptr; }
   void Done(StatusOr<Shape> shape) override {
     CHECK(!done_called_);
@@ -56,7 +56,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
  private:
   Shape shape_;
   bool done_called_;
-  int32 length_;
+  int32_t length_;
   bool expect_shape_match_;
 };
 
@@ -64,7 +64,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 // code would in the process of executing the infeed operation.
 void ProcessNextBuffer(int32_t length) {
   auto shape = ShapeUtil::MakeShape(U8, {length});
-  string bytes = shape.SerializeAsString();
+  std::string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
       /*run_options=*/nullptr, length, bytes.data(), bytes.size());
   __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
@@ -74,7 +74,7 @@ void ProcessNextBuffer(int32_t length) {
 // Performs the acquire/release sequence on the outfeed, as the generated CPU
 // code would in the process of executing the outfeed operation.
 void ProcessNextOutfeedBuffer(int32_t length, const Shape& shape) {
-  string bytes = shape.SerializeAsString();
+  std::string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
       /*run_options=*/nullptr, length, bytes.data(), bytes.size());
   __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(

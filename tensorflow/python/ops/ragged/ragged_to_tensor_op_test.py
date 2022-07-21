@@ -14,22 +14,17 @@
 # ==============================================================================
 """Tests for ragged.to_tensor."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -359,8 +354,8 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
       {
           'rt_input': [[1, 2, 3]],
           'default': [0],
-          'error': r'default_value\.shape=\[1\] and '
-                   r'rt_input\.flat_values\.shape=\[3\] are incompatible: '
+          'error': r'default_value\.shape=.* and '
+                   r'rt_input\.flat_values\.shape=.* are incompatible: '
                    r'default_value\.rank = 1  must be less than '
                    r'rt_input\.flat_values\.rank = 1'
       },
@@ -368,8 +363,8 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           'rt_input': [[[1, 2], [3, 4]], [[5, 6]]],
           'ragged_rank': 1,
           'default': [7, 8, 9],
-          'error': r'default_value\.shape=\[3\] and '
-                   r'rt_input\.flat_values\.shape=\[3,2\] are incompatible: '
+          'error': r'default_value\.shape.* and '
+                   r'rt_input\.flat_values\.shape.* are incompatible: '
                    r'default_value\.shape\[-1\] = 3 but '
                    r'rt_input\.flat_values\.shape\[-1\] = 2'
       },
@@ -634,9 +629,6 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
         `rt_grad` and `default_grad`).  Corresponds 1:1 with `output_value`.
       ragged_rank: Ragged rank for `rt_value`.
     """
-    if context.executing_eagerly():
-      return
-
     rt_value = ragged_factory_ops.constant(
         rt_value, dtype=dtypes.float32, ragged_rank=ragged_rank)
     rt_grad = ragged_factory_ops.constant(
@@ -653,28 +645,40 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
     # the RaggedTensor was created from row_splits or value_rowids.  Make sure
     # that we test both.
     for partition_type in ['row_splits', 'value_rowids']:
+      rt_val = self.rt_with_partition_type(rt_value, partition_type)
+      if context.executing_eagerly():
+        self._test_gradient_helper(rt_val, default_value, shape, output_grad,
+                                   output_value, rt_grad, default_grad)
+      else:
+        # There are different code paths when computing the gradient for
+        # default_value, depending on whether shape info is statically
+        # available; make sure that we test all code paths.
+        for shape_info in ['known', 'unknown_dims', 'unknown_rank']:
+          rt_val = self.wrap_in_placeholder(rt_val, shape_info)
+          default_val = self.wrap_in_placeholder(default_value, shape_info)
+          shape_val = self.wrap_in_placeholder(shape, shape_info)
+          self._test_gradient_helper(rt_val, default_val, shape_val,
+                                     output_grad, output_value, rt_grad,
+                                     default_grad)
 
-      # There are different code paths when computing the gradient for
-      # default_value, depending on whether shape info is statically available;
-      # make sure that we test all code paths.
-      for shape_info in ['known', 'unknown_dims', 'unknown_rank']:
-        rt_val = self.rt_with_partition_type(rt_value, partition_type)
-        rt_val = self.wrap_in_placeholder(rt_val, shape_info)
-        default_val = self.wrap_in_placeholder(default_value, shape_info)
-        shape_val = self.wrap_in_placeholder(shape, shape_info)
+  def _test_gradient_helper(self, rt_val, default_val, shape_val, output_grad,
+                            expected_output_val, expected_rt_grad,
+                            expected_default_grad):
+    if context.executing_eagerly():
+      with backprop.GradientTape() as tape:
+        tape.watch([rt_val, default_val])
         out = rt_val.to_tensor(default_val, shape=shape_val)
-        self.assertAllClose(out, output_value)
+        actual_rt_grad, actual_default_grad = tape.gradient(
+            out, (rt_val, default_val), output_gradients=output_grad)
+    else:
+      out = rt_val.to_tensor(default_val, shape=shape_val)
+      actual_rt_grad, actual_default_grad = gradients_impl.gradients(
+          ys=out, xs=(rt_val, default_val), grad_ys=output_grad)
 
-        actual_flat_values_grad, actual_default_grad = gradients_impl.gradients(
-            ys=out,
-            xs=(rt_value.flat_values, default_value),
-            grad_ys=output_grad)
-        self.assertIsInstance(actual_flat_values_grad,
-                              indexed_slices.IndexedSlices)
-        actual_flat_values_grad = ops.convert_to_tensor(actual_flat_values_grad)
-        actual_values_grad = rt_value.with_flat_values(actual_flat_values_grad)
-        self.assertAllClose(actual_values_grad, rt_grad)
-        self.assertAllClose(actual_default_grad, default_grad)
+    self.assertAllClose(out, expected_output_val)
+    self.assertIsInstance(actual_rt_grad, RaggedTensor)
+    self.assertAllClose(actual_rt_grad, expected_rt_grad)
+    self.assertAllClose(actual_default_grad, expected_default_grad)
 
   def rt_with_partition_type(self, rt, partition_type):
     if isinstance(rt, ops.Tensor):

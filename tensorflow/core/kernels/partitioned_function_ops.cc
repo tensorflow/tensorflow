@@ -163,7 +163,7 @@ Status PartitionedCallOp::FillOutputDevices(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
@@ -228,7 +228,7 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
 
   TF_RETURN_IF_ERROR(
       lib->Instantiate(func_->name(), AttrSlice(&func_->attr()), opts, handle));
-  return Status::OK();
+  return OkStatus();
 }
 
 void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
@@ -283,9 +283,9 @@ REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_CPU),
                         PartitionedCallOp);
 REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_CPU),
                         PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_DEFAULT),
                         PartitionedCallOp);
-REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_DEFAULT),
                         PartitionedCallOp);
 
 REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");

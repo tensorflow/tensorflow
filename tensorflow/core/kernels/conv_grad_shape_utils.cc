@@ -87,7 +87,7 @@ Status ConvBackpropExtractAndVerifyDimension(
           << ", pad_before = " << dim->pad_before
           << ", pad_after = " << dim->pad_after
           << ", dilation = " << dim->dilation << ", strides = " << dim->stride;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -154,7 +154,7 @@ Status ConvBackpropComputeDimensionsV2(
         strides, padding, padding_before, padding_after, image_dim, i,
         &dims->spatial_dims[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
@@ -193,7 +193,7 @@ Status Conv2DBackpropComputeInputShape(const Tensor& input_sizes,
     const int output_depth = filter_shape.dim_size(2);
     *input_shape = ShapeFromFormat(data_format, batch_size, output_height,
                                    output_width, output_depth);
-    return Status::OK();
+    return OkStatus();
   }
 
   return errors::InvalidArgument(

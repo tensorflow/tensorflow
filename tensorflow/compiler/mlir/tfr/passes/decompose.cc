@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
@@ -30,9 +31,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -84,13 +86,19 @@ Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
   int64_t zp = zp_attr.cast<IntegerAttr>().getInt();
 
   int quantized = static_cast<int>(std::round(value / scale) + zp);
+  quantized =
+      std::min(quantized, static_cast<int>(std::numeric_limits<int8_t>::max()));
+  quantized =
+      std::max(quantized, static_cast<int>(std::numeric_limits<int8_t>::min()));
   return builder.getI32IntegerAttr(quantized);
 }
 
 // Decompose the TF ops with the registered composition library.
 class DecomposeTFOpsPass
-    : public PassWrapper<DecomposeTFOpsPass, FunctionPass> {
+    : public PassWrapper<DecomposeTFOpsPass, OperationPass<func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeTFOpsPass)
+
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
       : external_tfr_module_(external_tfr_module) {}
 
@@ -100,7 +108,7 @@ class DecomposeTFOpsPass
     return "Decompose TF ops with the registered composition library.";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   // Apply canonicalization, mainly constant folding, on the function.
@@ -120,8 +128,8 @@ class DecomposeTFOpsPass
 #include "tensorflow/compiler/mlir/tfr/passes/generated_decompose.inc"
 
 void DecomposeTFOpsPass::ApplyCanonicalization() {
-  FuncOp func = getFunction();
-  OwningRewritePatternList patterns(&getContext());
+  func::FuncOp func = getOperation();
+  RewritePatternSet patterns(&getContext());
 
   populateWithGenerated(patterns);
   populateCanonicalizationPatterns(func, patterns);
@@ -130,8 +138,8 @@ void DecomposeTFOpsPass::ApplyCanonicalization() {
 }
 
 LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
-  FuncOp func = getFunction();
-  SymbolTable table(external_tfr_module_.hasValue()
+  func::FuncOp func = getOperation();
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
   OpBuilder builder(func);
@@ -165,7 +173,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     tensorflow::IncreaseOpExpansionExecuteCounterByOne(
         op->getName().getStringRef().str());
 
-    auto compose_func_type = compose_func.getType();
+    auto compose_func_type = compose_func.getFunctionType();
     builder.setInsertionPoint(op);
     TFRTensorType unconstrainted_tensor_type = builder.getType<TFRTensorType>();
 
@@ -216,7 +224,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
           attr_cst =
               builder.create<ConstOp>(op->getLoc(), output_type, attribute);
         } else {
-          attr_cst = builder.create<ConstantOp>(op->getLoc(), attribute);
+          attr_cst =
+              builder.create<mlir::arith::ConstantOp>(op->getLoc(), attribute);
         }
         new_operands.push_back(attr_cst);
       }
@@ -238,8 +247,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
         new_results.push_back(new_op.getResult(res.index()));
       } else if (auto list_type = res.value().dyn_cast<TFRTensorListType>()) {
         for (int i = res.index(), j = 0; i < op->getNumResults(); i++, j++) {
-          auto index =
-              builder.create<ConstantOp>(op->getLoc(), builder.getIndexAttr(j));
+          auto index = builder.create<mlir::arith::ConstantOp>(
+              op->getLoc(), builder.getIndexAttr(j));
           auto element_op = builder.create<GetElementOp>(
               op->getLoc(), unconstrainted_tensor_type,
               new_op.getResult(res.index()), index.getResult());
@@ -271,8 +280,8 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
 LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
-  FuncOp func = getFunction();
-  SymbolTable table(external_tfr_module_.hasValue()
+  func::FuncOp func = getOperation();
+  SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
                         : func->getParentOfType<ModuleOp>());
 
@@ -321,7 +330,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   return success(changed);
 }
 
-void DecomposeTFOpsPass::runOnFunction() {
+void DecomposeTFOpsPass::runOnOperation() {
   // Set a maximum iteration threshold in case there are infinite loops in the
   // call stack.
   int max_iterators = 10;
@@ -344,13 +353,14 @@ void DecomposeTFOpsPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the pass to decompose the TF ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeTFOpsPass(
     llvm::Optional<ModuleOp> tfr_module) {
   return std::make_unique<DecomposeTFOpsPass>(tfr_module);
 }
 
-static PassRegistration<DecomposeTFOpsPass> pass(
-    [] { return CreateDecomposeTFOpsPass(); });
+static PassRegistration<DecomposeTFOpsPass> pass([] {
+  return CreateDecomposeTFOpsPass();
+});
 
 }  // namespace TFR
 }  // namespace mlir

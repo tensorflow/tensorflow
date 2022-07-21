@@ -120,6 +120,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "disallow_retry_on_allocation_failure"
+        number: 12
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       nested_type {
         name: "VirtualDevices"
         field {
@@ -131,6 +137,12 @@ tf_proto {
         field {
           name: "priority"
           number: 2
+          label: LABEL_REPEATED
+          type: TYPE_INT32
+        }
+        field {
+          name: "device_ordinal"
+          number: 3
           label: LABEL_REPEATED
           type: TYPE_INT32
         }

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 

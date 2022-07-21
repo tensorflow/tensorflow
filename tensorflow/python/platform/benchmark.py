@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Utilities to run benchmarks."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 import numbers
 import os
@@ -56,33 +52,22 @@ OVERRIDE_GLOBAL_THREADPOOL = "TF_OVERRIDE_GLOBAL_THREADPOOL"
 def _rename_function(f, arg_num, name):
   """Rename the given function's name appears in the stack trace."""
   func_code = six.get_function_code(f)
-  if six.PY2:
-    new_code = types.CodeType(arg_num, func_code.co_nlocals,
+  if sys.version_info > (3, 8, 0, "alpha", 3):
+    # Python3.8 / PEP570 added co_posonlyargcount argument to CodeType.
+    new_code = types.CodeType(
+        arg_num, func_code.co_posonlyargcount, 0, func_code.co_nlocals,
+        func_code.co_stacksize, func_code.co_flags, func_code.co_code,
+        func_code.co_consts, func_code.co_names, func_code.co_varnames,
+        func_code.co_filename, name, func_code.co_firstlineno,
+        func_code.co_lnotab, func_code.co_freevars, func_code.co_cellvars)
+  else:
+    new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
                               func_code.co_stacksize, func_code.co_flags,
                               func_code.co_code, func_code.co_consts,
                               func_code.co_names, func_code.co_varnames,
                               func_code.co_filename, name,
                               func_code.co_firstlineno, func_code.co_lnotab,
                               func_code.co_freevars, func_code.co_cellvars)
-  else:
-    if sys.version_info > (3, 8, 0, "alpha", 3):
-      # Python3.8 / PEP570 added co_posonlyargcount argument to CodeType.
-      new_code = types.CodeType(arg_num, func_code.co_posonlyargcount,
-                                0, func_code.co_nlocals,
-                                func_code.co_stacksize, func_code.co_flags,
-                                func_code.co_code, func_code.co_consts,
-                                func_code.co_names, func_code.co_varnames,
-                                func_code.co_filename, name,
-                                func_code.co_firstlineno, func_code.co_lnotab,
-                                func_code.co_freevars, func_code.co_cellvars)
-    else:
-      new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
-                                func_code.co_stacksize, func_code.co_flags,
-                                func_code.co_code, func_code.co_consts,
-                                func_code.co_names, func_code.co_varnames,
-                                func_code.co_filename, name,
-                                func_code.co_firstlineno, func_code.co_lnotab,
-                                func_code.co_freevars, func_code.co_cellvars)
 
   return types.FunctionType(new_code, f.__globals__, name, f.__defaults__,
                             f.__closure__)

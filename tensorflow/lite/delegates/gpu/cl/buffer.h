@@ -43,7 +43,7 @@ class Buffer : public GPUObject {
   Buffer(const Buffer&) = delete;
   Buffer& operator=(const Buffer&) = delete;
 
-  virtual ~Buffer() { Release(); }
+  ~Buffer() override { Release(); }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const { return size_; }

@@ -36,4 +36,5 @@ message ConvMapProto {
 // TODO(b/189530096): Support autotune maps for more ops.
 message AutotuneMapsProto {
   ConvMapProto conv_map = 2;
+  ConvMapProto fused_conv_map = 3;
 }

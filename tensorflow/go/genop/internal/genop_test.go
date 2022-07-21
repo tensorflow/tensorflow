@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/prototext"
+
 	adpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
 	odpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
 )
@@ -48,8 +49,6 @@ func GetAPIDef(t *testing.T, opdef *odpb.OpDef, apidefText string) *adpb.ApiDef 
 // This test is disabled and should be rewritten. Serialized protocol buffers
 // are not stable, see https://github.com/golang/protobuf/issues/1121
 func TestGenerateOp(t *testing.T) {
-
-	t.Skip("this test is disabled")
 
 	// TestGenerateOp validates the generated source code for an op.
 	// The OpDef for the test cases are simplified forms of real ops.
@@ -726,7 +725,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 // SampleDistortedBoundingBoxAspectRatioRange sets the optional aspect_ratio_range attribute to value.
 //
 // value: Blah blah
-// If not specified, defaults to {f:0.75  f:1.33}
+// If not specified, defaults to {f:0.75 f:1.33}
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -736,7 +735,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 // SampleDistortedBoundingBoxAreaRange sets the optional area_range attribute to value.
 //
 // value: Blah blah
-// If not specified, defaults to {f:0.05  f:1}
+// If not specified, defaults to {f:0.05 f:1}
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value

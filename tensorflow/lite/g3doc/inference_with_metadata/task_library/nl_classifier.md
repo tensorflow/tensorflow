@@ -18,11 +18,11 @@ classification models.
 The following models are guaranteed to be compatible with the `NLClassifier`
 API.
 
-*   The <a href="../../models/text_classification/overview.md">movie review
+*   The <a href="../../examples/text_classification/overview">movie review
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -53,8 +53,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -66,8 +68,14 @@ anymore.
 
 ```java
 // Initialization, use NLClassifierOptions to configure input and output tensors
-NLClassifierOptions options = NLClassifierOptions.builder().setInputTensorName(INPUT_TENSOR_NAME).setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME).build();
-NLClassifier classifier = NLClassifier.createFromFileAndOptions(context, modelFile, options);
+NLClassifierOptions options =
+    NLClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setInputTensorName(INPUT_TENSOR_NAME)
+        .setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME)
+        .build();
+NLClassifier classifier =
+    NLClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Category> results = classifier.classify(input);
@@ -128,7 +136,7 @@ for more details.
 ## Example results
 
 Here is an example of the classification results of the
-[movie review model](https://www.tensorflow.org/lite/models/text_classification/overview).
+[movie review model](https://www.tensorflow.org/lite/examples/text_classification/overview).
 
 Input: "What a waste of my time."
 
@@ -146,9 +154,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata.md). See examples of
+or without [TFLite Model Metadata](../../models/convert/metadata). See examples of
 creating metadata for natural language classifiers using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
 The compatible models should meet the following requirements:
 
@@ -157,11 +165,11 @@ The compatible models should meet the following requirements:
     -   Input of the model should be either a kTfLiteString tensor raw input
         string or a kTfLiteInt32 tensor for regex tokenized indices of raw input
         string.
-    -   If input type is kTfLiteString, no [Metadata](../../convert/metadata.md)
+    -   If input type is kTfLiteString, no [Metadata](../../models/convert/metadata)
         is required for the model.
     -   If input type is kTfLiteInt32, a `RegexTokenizer` needs to be set up in
         the input tensor's
-        [Metadata](https://www.tensorflow.org/lite/convert/metadata_writer_tutorial#natural_language_classifiers).
+        [Metadata](https://www.tensorflow.org/lite/models/convert/metadata_writer_tutorial#natural_language_classifiers).
 
 *   Output score tensor:
     (kTfLiteUInt8/kTfLiteInt8/kTfLiteInt16/kTfLiteFloat32/kTfLiteFloat64)
@@ -172,11 +180,11 @@ The compatible models should meet the following requirements:
         corresponding platforms
 
     -   Can have an optional associated file in the output tensor's
-        corresponding [Metadata](../../convert/metadata.md) for category labels,
+        corresponding [Metadata](../../models/convert/metadata) for category labels,
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
         outputs. See the
-        [exmaple label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
+        [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
 
 *   Output label tensor: (kTfLiteString/kTfLiteInt32)
 

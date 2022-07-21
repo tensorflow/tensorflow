@@ -23,10 +23,9 @@ namespace {
 class StreamTest : public ::testing::Test {
  protected:
   std::unique_ptr<StreamExecutor> NewStreamExecutor() {
-    Platform* platform =
-        MultiPlatformManager::PlatformWithName("Host").ConsumeValueOrDie();
+    Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();
     StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetUncachedExecutor(config).ConsumeValueOrDie();
+    return platform->GetUncachedExecutor(config).value();
   }
 };
 

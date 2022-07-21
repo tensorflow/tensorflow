@@ -14,10 +14,6 @@
 # ==============================================================================
 """Register flops statistics for various TensorFlow operations.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 

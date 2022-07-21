@@ -12,13 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/delegates/flex/kernel.h"
+
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/test_util.h"
-
-extern const std::string GetDimsDebugString(const TfLiteIntArray* dims);
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace flex {
@@ -27,6 +33,8 @@ namespace testing {
 using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 
 // A testing flex delegate that supports every node regardless whether it's
 // actually supported or not. It's only for testing certain scenarios.
@@ -45,16 +53,25 @@ class KernelTest : public testing::FlexModelTest {
   static constexpr int kTwos = 2;  // This is the index of a tensor of 2's.
   static constexpr int kMaxTensors = 30;
 
-  KernelTest() { interpreter_.reset(new Interpreter(&error_reporter_)); }
+  KernelTest() {
+    interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
+  }
 
   void ApplyFlexDelegate(std::unique_ptr<FlexDelegate> delegate = nullptr) {
     auto flex_delegate = FlexDelegate::Create(std::move(delegate));
-    auto* delegate_data =
+    delegate_data_ =
         reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->mutable_data();
-    CHECK(delegate_data->Prepare(tensorflow::SessionOptions{}).ok());
+    CHECK(delegate_data_->Prepare(tensorflow::SessionOptions{}).ok());
     CHECK(interpreter_->ModifyGraphWithDelegate(std::move(flex_delegate)) ==
           kTfLiteOk);
   }
+
+  const std::map<int, int>& GetTensorReleaseMap(DelegateKernel* kernel) {
+    return kernel->GetTensorReleaseMap();
+  }
+
+ protected:
+  tflite::flex::DelegateData* delegate_data_;
 };
 
 TEST_F(KernelTest, FullGraph) {
@@ -92,6 +109,93 @@ TEST_F(KernelTest, FullGraph) {
   ASSERT_THAT(GetValues(8), ElementsAre(24.0f, 32.0f, 48.0f));
 }
 
+TEST_F(KernelTest, ValidateTensorReleaseMap) {
+  // Define the graph.
+  //        0           3
+  //        |           |
+  //      Unpack_0    Unpack_1
+  //       /  \        / \
+  //      1    2      4   5
+  //      |____|_______|__|
+  //         | |__________|
+  //         |      |
+  //        Add_2  Add_3
+  //         |      |
+  //         6      7
+  //         \______/
+  //             |
+  //            Mul_4
+  //             |
+  //             8
+  AddTensors(9, {0, 3}, {8}, kTfLiteFloat32, {3});
+  AddTfOp(testing::kUnpack, {0}, {1, 2});
+  AddTfOp(testing::kUnpack, {3}, {4, 5});
+  AddTfOp(testing::kAdd, {1, 4}, {6});
+  AddTfOp(testing::kAdd, {2, 5}, {7});
+  AddTfOp(testing::kMul, {6, 7}, {8});
+
+  ApplyFlexDelegate();
+
+  const int node_size = interpreter_->primary_subgraph().nodes_size();
+  const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
+      interpreter_->primary_subgraph().node_and_registration(node_size - 1);
+
+  DelegateKernel* delegate_kernel =
+      reinterpret_cast<DelegateKernel*>(node_and_reg->first.user_data);
+  const auto& tensor_release_map = GetTensorReleaseMap(delegate_kernel);
+  // Validate the tensor release mapping.
+  EXPECT_THAT(
+      tensor_release_map,
+      UnorderedElementsAre(Pair(0, 0), Pair(1, 2), Pair(2, 3), Pair(3, 1),
+                           Pair(4, 2), Pair(5, 3), Pair(6, 4), Pair(7, 4)));
+}
+
+TEST_F(KernelTest, PersistEagerTensor) {
+  // Define the graph.
+  //        0           3
+  //        |           |
+  //      Unpack_0    Unpack_1
+  //       /  \        / \
+  //      1    2      4   5
+  //      |____|_______|__|
+  //         | |__________|
+  //         |      |
+  //        Add_2  Add_3
+  //         |      |
+  //         6      7
+  //         | \   /
+  //         | TFL_MUL
+  //         |    |
+  //         |    8
+  //         |____|
+  //             AddN
+  //              |
+  //              9
+  AddTensors(10, {0, 3}, {9}, kTfLiteFloat32, {3});
+
+  AddTfOp(testing::kUnpack, {0}, {1, 2});
+  AddTfOp(testing::kUnpack, {3}, {4, 5});
+  AddTfOp(testing::kAdd, {1, 4}, {6});
+  AddTfOp(testing::kAdd, {2, 5}, {7});
+  AddTfLiteMulOp({6, 7}, {8});
+  AddTfOp(testing::kAdd, {6, 8}, {9});
+
+  ApplyFlexDelegate();
+
+  // Define inputs.
+  SetShape(0, {2, 2, 1});
+  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
+  SetShape(3, {2, 2, 1});
+  SetValues(3, {1.1f, 2.2f, 3.3f, 4.4f});
+
+  ASSERT_TRUE(Invoke());
+  // Validates that tensor 6 should be preserved in the buffer map.
+  auto* buffer_map =
+      delegate_data_->GetBufferMap(interpreter_->primary_subgraph().context());
+  EXPECT_TRUE(buffer_map->HasTensor(6));
+  EXPECT_FALSE(buffer_map->HasTensor(7));
+}
+
 TEST_F(KernelTest, BadTensorFlowOp) {
   AddTensors(2, {0}, {1}, kTfLiteFloat32, {3});
   AddTfOp(testing::kNonExistent, {0}, {1});
@@ -125,12 +229,9 @@ TEST_F(KernelTest, IncompatibleNodeDef) {
 
   ApplyFlexDelegate();
 
-  SetShape(0, {2, 2, 1});
-  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
-
-  ASSERT_FALSE(Invoke());
+  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("while executing 'Cast' via Eager"));
+              ContainsRegex("No attr named 'SrcT' in NodeDef"));
 }
 
 TEST_F(KernelTest, WrongSetOfNodes) {
@@ -388,24 +489,24 @@ TEST(ValidateOutputTensorShapeConsistencyTest, ShapeHandleDebugString) {
   EXPECT_EQ("?", c.DebugString(c.input(3)));
 }
 
-TEST(ValidateOutputTensorShapeConsistencyTest, GetDimsDebugString) {
+TEST(ValidateOutputTensorShapeConsistencyTest, GetShapeDebugString) {
   TfLiteIntArray* dims1 = TfLiteIntArrayCreate(1);
   dims1->data[0] = 1;
-  EXPECT_EQ("[1]", GetDimsDebugString(dims1));
-  free(dims1);
+  EXPECT_EQ("[1]", GetShapeDebugString(dims1));
+  TfLiteIntArrayFree(dims1);
 
   TfLiteIntArray* dims2 = TfLiteIntArrayCreate(2);
   dims2->data[0] = 2;
   dims2->data[1] = 3;
-  EXPECT_EQ("[2,3]", GetDimsDebugString(dims2));
-  free(dims2);
+  EXPECT_EQ("[2,3]", GetShapeDebugString(dims2));
+  TfLiteIntArrayFree(dims2);
 
   TfLiteIntArray* dims3 = TfLiteIntArrayCreate(3);
   dims3->data[0] = 4;
   dims3->data[1] = 5;
   dims3->data[2] = 6;
-  EXPECT_EQ("[4,5,6]", GetDimsDebugString(dims3));
-  free(dims3);
+  EXPECT_EQ("[4,5,6]", GetShapeDebugString(dims3));
+  TfLiteIntArrayFree(dims3);
 }
 
 }  // namespace testing

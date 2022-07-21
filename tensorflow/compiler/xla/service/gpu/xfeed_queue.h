@@ -18,13 +18,11 @@ limitations under the License.
 
 #include <deque>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 namespace gpu {
@@ -41,9 +39,9 @@ class XfeedQueue {
   // the elements of a tuple and may be nullptr if the buffer is a tuple index
   // buffer.
   void EnqueueDestination(BufferType buffers) {
-    tensorflow::mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     enqueued_buffers_.push_back(std::move(buffers));
-    enqueue_cv_.notify_one();
+    enqueue_cv_.Signal();
 
     EnqueueHook();
   }
@@ -58,9 +56,9 @@ class XfeedQueue {
     bool became_empty;
     BufferType current_buffer;
     {
-      tensorflow::mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       while (enqueued_buffers_.empty()) {
-        enqueue_cv_.wait(l);
+        enqueue_cv_.Wait(&mu_);
       }
       current_buffer = std::move(enqueued_buffers_.front());
       enqueued_buffers_.pop_front();
@@ -89,14 +87,14 @@ class XfeedQueue {
   virtual void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {}
   virtual void EnqueueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {}
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
   // The queue of trees of buffers. Buffer* queue contents are not owned.
   std::deque<BufferType> enqueued_buffers_ ABSL_GUARDED_BY(mu_);
 
  private:
   // Condition variable that is signaled every time a buffer is enqueued.
-  tensorflow::condition_variable enqueue_cv_;
+  absl::CondVar enqueue_cv_;
 
   // List of callbacks which will be called when 'enqueued_buffers_' becomes
   // empty.
@@ -123,13 +121,13 @@ class BlockingXfeedQueue : public XfeedQueue<BufferType> {
       : max_pending_xfeeds_(max_pending_xfeeds) {}
 
   void BlockUntilEnqueueSlotAvailable() {
-    tensorflow::mutex_lock l{this->mu_};
+    absl::MutexLock l{&this->mu_};
     while (pending_buffers_ + this->enqueued_buffers_.size() >=
            max_pending_xfeeds_) {
       VLOG(2) << "Capacity "
               << (pending_buffers_ + this->enqueued_buffers_.size())
               << " >= max capacity " << max_pending_xfeeds_;
-      dequeue_cv_.wait(l);
+      dequeue_cv_.Wait(&this->mu_);
     }
 
     pending_buffers_++;
@@ -141,14 +139,14 @@ class BlockingXfeedQueue : public XfeedQueue<BufferType> {
   }
 
   void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) override {
-    dequeue_cv_.notify_one();
+    dequeue_cv_.Signal();
   }
 
  private:
   const int max_pending_xfeeds_;
 
   // Condition variable that is signaled every time a buffer is dequeued.
-  tensorflow::condition_variable dequeue_cv_;
+  absl::CondVar dequeue_cv_;
 
   // Keeps track of the number of buffers reserved but not added to
   // enqueued_buffers_.

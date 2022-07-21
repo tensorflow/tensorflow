@@ -194,7 +194,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 #undef TF_LITE_DIV
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Unsupported combination of input and output types in Div.");
     return kTfLiteError;
   }
@@ -240,7 +240,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "Div only supports FLOAT32, INT32 and quantized UINT8 now, got %d.",
         output->type);

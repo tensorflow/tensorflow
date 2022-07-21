@@ -26,7 +26,9 @@ class StringRef;
 
 namespace mlir {
 class MLIRContext;
-class OwningModuleRef;
+class ModuleOp;
+template <typename OpTy>
+class OwningOpRef;
 }  // namespace mlir
 
 namespace xla {
@@ -35,7 +37,7 @@ namespace xla {
 // into a MLIR module. Creates MLIR entities into the given MLIR `context`.
 // If import_all_computation is set to true, imports all computations
 // irrespective if transitively called from entry computation.
-mlir::OwningModuleRef HloToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations = false);
 
@@ -44,7 +46,7 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 // MLIR `context`.
 // If import_all_computation is set to true, imports all computations
 // irrespective if transitively called from entry computation.
-mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
+mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
     bool import_all_computations = false);
 

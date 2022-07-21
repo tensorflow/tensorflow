@@ -13,11 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Grouping dataset transformations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -285,7 +282,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
-    self._key_func = dataset_ops.StructuredFunctionWrapper(
+    self._key_func = structured_function.StructuredFunctionWrapper(
         key_func, self._transformation_name(), dataset=input_dataset)
     if not self._key_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.int64)):
@@ -298,7 +295,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
-    self._init_func = dataset_ops.StructuredFunctionWrapper(
+    self._init_func = structured_function.StructuredFunctionWrapper(
         init_func,
         self._transformation_name(),
         input_structure=tensor_spec.TensorSpec([], dtypes.int64))
@@ -315,7 +312,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     need_to_rerun = True
     while need_to_rerun:
 
-      wrapped_func = dataset_ops.StructuredFunctionWrapper(
+      wrapped_func = structured_function.StructuredFunctionWrapper(
           reduce_func,
           self._transformation_name(),
           input_structure=(self._state_structure, input_dataset.element_spec),
@@ -370,8 +367,9 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_finalize_func(self, finalize_func):
     """Make wrapping defun for finalize_func."""
-    self._finalize_func = dataset_ops.StructuredFunctionWrapper(
-        finalize_func, self._transformation_name(),
+    self._finalize_func = structured_function.StructuredFunctionWrapper(
+        finalize_func,
+        self._transformation_name(),
         input_structure=self._state_structure)
 
   @property
@@ -392,9 +390,24 @@ class Reducer(object):
   """A reducer is used for reducing a set of elements.
 
   A reducer is represented as a tuple of the three functions:
-    1) initialization function: key => initial state
-    2) reduce function: (old state, input) => new state
-    3) finalization function: state => result
+  - init_func - to define initial value: key => initial state
+  - reducer_func - operation to perform on values with same key: (old state, input) => new state
+  - finalize_func - value to return in the end: state => result
+  
+  For example,
+  
+  ```
+  def init_func(_):
+    return (0.0, 0.0)
+
+  def reduce_func(state, value):
+    return (state[0] + value['features'], state[1] + 1)
+
+  def finalize_func(s, n):
+    return s / n
+
+  reducer = tf.data.experimental.Reducer(init_func, reduce_func, finalize_func)
+  ```
   """
 
   def __init__(self, init_func, reduce_func, finalize_func):

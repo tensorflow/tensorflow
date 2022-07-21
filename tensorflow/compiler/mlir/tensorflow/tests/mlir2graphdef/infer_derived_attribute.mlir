@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
   // The operation does not have any attributes, but TensorFlow OpDef expects
   // a `dtype` to be added on the NodeDef. We verify that we correctly use the
   // DerivedAttr to populate the NodeDef.
@@ -22,5 +22,5 @@ func @main() {
     %2:2 =  tf_executor.island(%1#1) wraps "tf.Const"() {value = dense<4.000000e+00> : tensor<f64>} : () -> tensor<f64>
     tf_executor.fetch
   }
-  return
+  func.return
 }

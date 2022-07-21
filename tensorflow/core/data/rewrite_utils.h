@@ -47,10 +47,12 @@ RewriterConfig CreateRewriterConfig(
     const absl::flat_hash_set<tstring>& optimizations,
     const absl::flat_hash_set<tstring>& optimizations_configs);
 
-// Rewrites the input dataset using the given config.
+// Rewrites the input dataset using the given config. The rewritten_input
+// stored in the core::RefCountPtr<DatasetBase>* output parameter is owned.
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool record_fingerprint, DatasetBase** rewritten_input);
+                      bool record_fingerprint,
+                      core::RefCountPtr<DatasetBase>* rewritten_input);
 
 // Creates a grappler item for `graph_def`, which is required for graph
 // optimization.
@@ -65,6 +67,21 @@ std::unique_ptr<tensorflow::grappler::GrapplerItem> GetGrapplerItem(
 // Returns the name of the node corresponding to the dataset. It is indicated by
 // the symbolic `_Retval` node.
 StatusOr<std::string> GetDatasetNode(const GraphDef& graph_def);
+
+// Like `GetDatasetNode` above, but returns the entire node object.
+StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def);
+
+// Determines which optimizations should be applied.
+//
+// The result will contain any optimizations that are explicitly enabled, any
+// default optimization that are not explicitly disabled, and any experiment
+// that corresponds to an optimization as long as the optimization is not
+// explicitly disabled.
+absl::flat_hash_set<tstring> SelectOptimizations(
+    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<tstring>& optimizations_enabled,
+    const absl::flat_hash_set<tstring>& optimizations_disabled,
+    const absl::flat_hash_set<tstring>& optimizations_default);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -65,6 +65,53 @@ ENTRY entry {
               op::Tuple(op::Add(_, op::Constant()), _));
 }
 
+TEST_F(WhileLoopConstantSinkingTest, SinkBroadcastOfConstant) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (f32[16],f32[16]) parameter(0)
+  p_body.0 = get-tuple-element(p_body), index=0
+  p_body.1 = get-tuple-element(p_body), index=1
+
+  add.0 = add(p_body.0, p_body.1)
+  ROOT root = tuple(add.0, p_body.1)
+}
+
+condition {
+  p_cond = (f32[16],f32[16]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  const_0 = f32[] constant(1)
+  const_1 = f32[] constant(2)
+  broadcast_0 = f32[16] broadcast(const_0), dimensions={}
+  broadcast_1 = f32[16] broadcast(const_1), dimensions={}
+  while_init = tuple(broadcast_0, broadcast_1)
+  ROOT while = while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/false)
+          .Run(module.get()));
+  ASSERT_FALSE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed, WhileLoopConstantSinking(/*sink_broadcast_of_constants=*/true)
+                   .Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  auto* while_body = module->GetComputationWithName("body");
+  EXPECT_THAT(while_body->root_instruction(),
+              op::Tuple(op::Add(_, op::Broadcast(op::Constant())), _));
+}
+
 TEST_F(WhileLoopConstantSinkingTest, KeepConstantsLoopInvariant) {
   const char* const hlo_string = R"(
 HloModule ModuleWithWhile

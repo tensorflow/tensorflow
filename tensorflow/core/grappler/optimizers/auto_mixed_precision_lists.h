@@ -126,6 +126,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "CudnnRNNV3",
         "Einsum",
         "FusedConv2DBiasActivation",
+        "FusedSparseConvGpuV2",
         "GRUBlockCell",
         "GRUBlockCellGrad",
         "LSTMBlockCell",

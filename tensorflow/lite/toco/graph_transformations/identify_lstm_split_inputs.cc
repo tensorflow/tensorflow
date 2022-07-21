@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -33,14 +35,14 @@ namespace toco {
   auto op_it = model->operators.begin() + op_index;
   auto curr_op = op_it->get();
   if (curr_op->type != OperatorType::kLstmCell) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const auto* curr_lstm_op = static_cast<LstmCellOperator*>(curr_op);
   // Already an extended LstmCell. Do not need to split cell inputs.
   if (curr_lstm_op->kernel_type != LstmCellOperator::KERNEL_BASIC ||
       curr_lstm_op->inputs.size() != LstmCellOperator::NUM_INPUTS) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Make sure the WEIGHTS_INPUT and BIASES_INPUT are constant arrays,
@@ -49,17 +51,17 @@ namespace toco {
           *model, curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT]) ||
       !IsConstantParameterArray(
           *model, curr_op->inputs[LstmCellOperator::BIASES_INPUT])) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Make sure propagate_fixed_sizes has defined the size of the output.
   if (!model->GetArray(curr_op->outputs[LstmCellOperator::ACTIV_OUTPUT])
            .has_shape()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Emplace a new LstmCell operator with extended inputs (kernel/lstm.cc).
-  auto lstm_cell_op = absl::make_unique<LstmCellOperator>();
+  auto lstm_cell_op = std::make_unique<LstmCellOperator>();
   lstm_cell_op->kernel_type = LstmCellOperator::KERNEL_FULL;
   lstm_cell_op->inputs.resize(kExtendedLstmInputCount);
   int num_input = model->GetArray(curr_op->inputs[LstmCellOperator::DATA_INPUT])
@@ -166,7 +168,7 @@ namespace toco {
   DeleteOpAndArrays(model, curr_op);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

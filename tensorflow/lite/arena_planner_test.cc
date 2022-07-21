@@ -177,9 +177,9 @@ class ArenaPlannerTest : public ::testing::Test {
   void SetGraph(TestGraph* graph, bool preserve_all_tensors = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
-    planner_.reset(new ArenaPlanner(
+    planner_ = std::make_unique<ArenaPlanner>(
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
-        preserve_all_tensors, kTensorAlignment));
+        preserve_all_tensors, kTensorAlignment);
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }

@@ -27,9 +27,11 @@ limitations under the License.
 #include <type_traits>
 #include <unordered_map>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -112,6 +114,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   port::Status LoadModule(const MultiModuleLoaderSpec& spec,
                           ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
+
+  // Allocates and initializes a new constant on the device with the given
+  // content. Or, if a device with identical content is already on-device,
+  // returns a pointer to that buffer with shared ownership.
+  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+      Stream* stream, const std::vector<uint8_t>& content) override;
 
   port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                       const BlockDim& block_dims, const KernelBase& k,
@@ -234,8 +242,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  // Search for the symbol and returns a device pointer and size.
-  // Returns false if symbol does not exist.
+  // Search for the symbol in the given module and returns a device pointer and
+  // size. Returns false if symbol does not exist. 'module_handle' must not
+  // be null.
   bool GetSymbol(const std::string& symbol_name, ModuleHandle module_handle,
                  void** mem, size_t* bytes) override;
 
@@ -289,6 +298,15 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   template <typename T>
   T* getOrCreateXLAState(StreamExecutor* se) {
     return xla_state_.getOrCreate<T>(se);
+  }
+
+  Stream* FindAllocatedStream(void* gpu_stream) override {
+    absl::MutexLock lock(&alive_gpu_streams_mu_);
+    auto it = alive_gpu_streams_.find(gpu_stream);
+    if (it == alive_gpu_streams_.end()) {
+      return nullptr;
+    }
+    return it->second;
   }
 
  private:
@@ -357,6 +375,13 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   std::map<const char*, GpuModuleHandle> in_memory_modules_
       TF_GUARDED_BY(in_memory_modules_mu_);
 
+  absl::Mutex shared_constants_mu_;
+  // On-device constants that can be shared between multiple executables. A
+  // pointer for a given constant will expire when no executables require use
+  // of that constant anymore.
+  std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
+      shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
+
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
   std::unordered_map<const KernelBase*, const void*> kernel_to_gpu_binary_
       TF_GUARDED_BY(in_memory_modules_mu_);
@@ -397,6 +422,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Type erased XLA specific state attached to GpuExecutor.
   Object xla_state_;
+
+  absl::Mutex alive_gpu_streams_mu_;
+
+  // Lookup map for alive streams, from raw stream pointers.
+  absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
+      TF_GUARDED_BY(alive_gpu_streams_mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
 };

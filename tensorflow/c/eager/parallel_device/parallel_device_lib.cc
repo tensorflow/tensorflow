@@ -68,14 +68,14 @@ class DeviceThread {
   // Starts a background thread waiting for `StartExecute`.
   explicit DeviceThread(const std::string& device, const bool is_async)
       : status_(TF_NewStatus()),
-        device_(device),
         // If the context's default exector is set to async, re-using that in
         // each thread would cause collectives to deadlock. For consistency we
         // create a new sync executor for every thread.
         //
         // TODO(allenl): We should have an async API that works with the
         // parallel device.
-        executor_(TFE_NewExecutor(is_async)),
+        device_(device),
+        executor_(TFE_NewExecutor(is_async, /*enable_streaming_enqueue=*/true)),
         op_(nullptr),
         thread_(tensorflow::Env::Default()->StartThread(
             tensorflow::ThreadOptions(), "parallel_device_execute",
@@ -93,7 +93,8 @@ class DeviceThread {
   void StartExecute(TFE_Context* context, const char* operation_name,
                     std::vector<TFE_TensorHandle*> inputs,
                     const TFE_OpAttrs* attributes, int expected_max_outputs,
-                    CancellationManager& cancellation_manager);
+                    CancellationManager& cancellation_manager,
+                    absl::optional<int64_t> step_id = absl::nullopt);
   // Block until the previous `StartExecute` operation has executed. Forwards
   // the status from `TFE_Execute` and returns outputs if the status is OK.
   std::vector<TensorHandlePtr> Join(TF_Status* status);
@@ -133,6 +134,8 @@ class DeviceThread {
   //   are expected to live at least until `Join` finishes:
   TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
   const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
+  absl::optional<int64_t> step_id_ TF_GUARDED_BY(execution_mutex_) =
+      absl::nullopt;
   std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
   const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
@@ -191,7 +194,8 @@ void DeviceThread::StartExecute(TFE_Context* context,
                                 std::vector<TFE_TensorHandle*> inputs,
                                 const TFE_OpAttrs* attributes,
                                 int expected_max_outputs,
-                                CancellationManager& cancellation_manager) {
+                                CancellationManager& cancellation_manager,
+                                absl::optional<int64_t> step_id) {
   {
     tensorflow::mutex_lock l(execution_mutex_);
     while (execution_state_ != ExecutionState::kIdle) {
@@ -201,6 +205,7 @@ void DeviceThread::StartExecute(TFE_Context* context,
     }
     context_ = context;
     operation_name_ = operation_name;
+    step_id_ = step_id;
     op_inputs_ = inputs;
     attributes_ = attributes;
     expected_max_outputs_ = expected_max_outputs;
@@ -257,6 +262,13 @@ void DeviceThread::Execute(TFE_Context* context, const char* operation_name,
   int real_num_outputs = expected_max_outputs;
   TFE_OpSetCancellationManager(op_.get(), wrap(cancellation_manager_), status);
   if (TF_GetCode(status) != TF_OK) return;
+
+  // unwrap op_ and set step_id only if valid step id value was set.
+  // Currently only required for non-TFRT use cases, e.g., EagerOp.
+  if (step_id_.has_value()) {
+    tensorflow::unwrap(op_.get())->SetStepId(step_id_.value());
+  }
+
   TFE_Execute(op_.get(), unwrapped_results.data(), &real_num_outputs, status);
   if (TF_GetCode(status) != TF_OK) {
     cancellation_manager_->StartCancel();
@@ -331,22 +343,25 @@ ParallelDevice::Execute(TFE_Context* context,
   return result;
 }
 
-void ParallelDevice::StartExecute(
-    TFE_Context* context, const std::vector<ParallelTensor*>& inputs,
-    const char* operation_name, const TFE_OpAttrs* attributes,
-    int expected_max_outputs, CancellationManager& cancellation_manager) const {
+void ParallelDevice::StartExecute(TFE_Context* context,
+                                  const std::vector<ParallelTensor*>& inputs,
+                                  const char* operation_name,
+                                  const TFE_OpAttrs* attributes,
+                                  int expected_max_outputs,
+                                  CancellationManager& cancellation_manager,
+                                  absl::optional<int64_t> step_id) const {
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
     std::vector<TFE_TensorHandle*> device_inputs;
-    device_inputs.reserve(device_inputs.size());
+    device_inputs.reserve(inputs.size());
     for (int input_index = 0; input_index < inputs.size(); ++input_index) {
       // Parallel tensors are divided between operations by device.
       device_inputs.push_back(inputs[input_index]->tensor(device_index));
     }
-    device_thread->StartExecute(context, operation_name,
-                                std::move(device_inputs), attributes,
-                                expected_max_outputs, cancellation_manager);
+    device_thread->StartExecute(
+        context, operation_name, std::move(device_inputs), attributes,
+        expected_max_outputs, cancellation_manager, step_id);
   }
 }
 
@@ -555,7 +570,7 @@ Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
     shape_ = std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
   }
   *shape = &*shape_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParallelTensor::SummarizeValue(std::string& summary) {
@@ -575,7 +590,7 @@ Status ParallelTensor::SummarizeValue(std::string& summary) {
                     "\": ", component_summary);
   }
   summary += "}";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace parallel_device

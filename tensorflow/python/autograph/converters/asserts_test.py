@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for asserts module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import functions
 from tensorflow.python.autograph.converters import return_statements

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
 // GpuInstructionFusion, FusionMerger, and GpuMultiOutputFusion.
@@ -25,7 +26,7 @@ namespace xla {
 namespace gpu {
 
 // Fusion passes frequently do checks across all pairs of "interesting" nodes.
-// Computing e.g. FusionWouldBeTooLarge(a, b) requires computing expensive
+// Computing e.g. FusionFitsInBudget(a, b) requires computing expensive
 // properties of `a` and `b` individually.  This cache lets us avoid recomputing
 // those properties n^2 times.
 //
@@ -39,26 +40,21 @@ struct FusionInfoCache {
     num_unnested_reductions.erase(instr);
   }
 
-  // The rest of the members of this this class are for internal use within
+  // The rest of the members of this class are for internal use within
   // gpu_fusible. You shouldn't need to use them yourself.
   absl::flat_hash_map<const HloInstruction*, int64_t> shared_memory_usage;
   absl::flat_hash_map<const HloInstruction*, int64_t> num_unnested_reductions;
 };
 
-constexpr int64_t kMaxOperandsAndOutputsPerFusion = 64;
+inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
 bool IsInputFusible(const HloInstruction& instr);
 
 bool IsLoopFusible(const HloInstruction& instr);
 
-// The code emitted for reduce-rooted input fusions (EmitReductionToVector)
-// suffers from poor data locality if the layouts of input parameters differ. In
-// such situations it is better not to fuse. Only input params with
-// maximum rank are considered. Params with smaller ranks will be broadcasted
-// and have not been observed to cause data locality issues.
-// TODO(b/111977086): Improve reduce emitters to remove this limitation.
-bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
-                                         const HloInstruction& reduce);
+// Whether the op tranposes the physical data layout. Fusing such ops may lead
+// to uncoalesced data access and may thus not be beneficial.
+bool IsPhysicallyTransposing(const HloInstruction& instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
@@ -78,15 +74,14 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 bool IsInputFusibleScatter(const HloInstruction& instr);
 
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
-// multi-output) fusion would be "too large" -- i.e., have more operands and
-// outputs than is allowed or occupy too much shared memory.
-// If the fusion is a producer/consumer fusion and instr1 is the
-// consumer and instr2 is the producer, set consumer_producer_fusion
-// to true to enable more fusion.
-bool FusionWouldBeTooLarge(const HloInstruction& instr1,
-                           const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion = false,
-                           FusionInfoCache* cache = nullptr);
+// multi-output) fusion fits within a "budget" -- i.e., does have more operands
+// and outputs than is allowed or occupy too much shared memory. If the fusion
+// is a producer/consumer fusion and `instr1` is the consumer and `instr2` is
+// the producer, set consumer_producer_fusion to true to enable more fusion.
+FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
+                                  const HloInstruction& instr2,
+                                  bool is_consumer_producer_fusion = false,
+                                  FusionInfoCache* cache = nullptr);
 
 // Check if fusing producer and consumer will generate a nested loop, e.g. both
 // producer and consumer are `reduce-window` HLO instructions.
@@ -111,8 +106,8 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and
 // they are not library calls.
-bool IsProducerConsumerFusible(const HloInstruction& producer,
-                               const HloInstruction& consumer);
+FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
+                                         const HloInstruction& consumer);
 
 // Whether the instructions are producer-consumer fusible with multiple outputs.
 // That is, the root tuple of the multi-output fusion will contain the results

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/eager/tfrt_context.h"
 
+#include <string>
+#include <utility>
+
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_op_handler.h"
@@ -41,6 +45,23 @@ TfrtContext::TfrtContext(
   auto eager_context_expected = eager_context_resource->GetTFEagerContext();
   DCHECK(eager_context_expected) << StrCat(eager_context_expected.takeError());
   eager_context_ = eager_context_expected.get();
+
+  eager_ctx_thread_pool_ = std::make_unique<ThreadPoolInterfaceWrapper>(
+      eager_context_->GetThreadPool()->AsEigenThreadPool());
+
+  local_thread_pool_.reset(tensorflow::NewThreadPoolFromSessionOptions(opts));
+
+  local_thread_pool_wrapper_ = std::make_unique<ThreadPoolInterfaceWrapper>(
+      local_thread_pool_->AsEigenThreadPool());
+
+  tf_thread_pool_work_queue_ =
+      std::make_unique<tensorflow::tfrt_stub::TfThreadPoolWorkQueue>(
+          /*intra_op_threadpool=*/local_thread_pool_wrapper_.get(),
+          /*inter_op_threadpool=*/eager_ctx_thread_pool_.get());
+  LOG(INFO) << "Created work queue from TF thread pool. inter op thread pool "
+            << "# threads: " << eager_ctx_thread_pool_->NumThreads()
+            << " intra op thread pool # threads: "
+            << local_thread_pool_wrapper_->NumThreads();
 
   // Default cpu device name is "/job:localhost/replica:0/task:0/device:CPU:0".
   const std::string& host_cpu_name = eager_context_->HostCPU()->name();

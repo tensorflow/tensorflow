@@ -15,7 +15,6 @@ py_library(
     ],
     deps = [
         ":baseline",
-        ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
         ":estimator",
@@ -105,33 +104,6 @@ py_library(
         ":optimizers",
         "//tensorflow:tensorflow_py_no_contrib",
         "@six_archive//:six",
-    ],
-)
-
-py_library(
-    name = "boosted_trees",
-    srcs = ["canned/boosted_trees.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":boosted_trees_utils",
-        ":estimator",
-        ":expect_tensorflow_estimator_installed",
-        ":head",
-        ":model_fn",
-        "//tensorflow:tensorflow_py_no_contrib",
-    ],
-)
-
-py_library(
-    name = "boosted_trees_utils",
-    srcs = ["canned/boosted_trees_utils.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":estimator",
-        ":expect_tensorflow_estimator_installed",
-        ":head",
-        ":model_fn",
-        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 

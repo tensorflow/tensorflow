@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -44,7 +43,7 @@ class HloAliasAnalysis {
       const HloModule* module,
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Return the buffer containing the given value.
   const HloBuffer& GetBufferContainingValue(const HloValue& value) const {
@@ -83,40 +82,20 @@ class HloAliasAnalysis {
   // Returns the underlying dataflow analysis used by this alias analysis.
   HloDataflowAnalysis& dataflow_analysis() const { return *dataflow_analysis_; }
 
-  // Returns true if any index in the output of the given instruction has more
-  // than one buffer. That is, ComputeBuffersAt returns a vector with more than
-  // one element.
-  bool InstructionBuffersAreAmbiguous(const HloInstruction* instruction) const;
-
-  // Returns true if no HloBuffer appears in more than one shape index in the
-  // output of the given instruction.
-  bool InstructionBuffersAreDistinct(const HloInstruction* instruction) const;
-
-  // Merge buffer `from` into buffer `to`. Caller has to make sure no
-  // interference will be introduced after merging. This rebuilds internal data
-  // structure, and invalidates references to all existing buffers.
-  void MergeBuffers(const HloBuffer& to, const HloBuffer& from);
-
-  // Returns true if any HLO values in the module have interfering live ranges
-  // assuming the given ordering.
-  bool HasLiveRangeInterference(const HloOrdering& ordering) const;
-
   // Returns true if a buffer lives out of the module.
   bool BufferLivesOut(const HloBuffer& buffer) const {
-    return live_out_buffers_.count(&buffer);
+    return live_out_buffers_.contains(&buffer);
   }
 
   // Returns true if a hlo value lives out of the module.
   bool ValueLivesOut(const HloValue& value) const {
-    return live_out_buffers_.count(&GetBufferContainingValue(value));
+    return live_out_buffers_.contains(&GetBufferContainingValue(value));
   }
 
   std::vector<const HloBuffer*> LiveOutBuffers() const {
     std::vector<const HloBuffer*> results(live_out_buffers_.begin(),
                                           live_out_buffers_.end());
-    absl::c_sort(results, [](const HloBuffer* a, const HloBuffer* b) {
-      return a->id() < b->id();
-    });
+    absl::c_sort(results, HloBuffer::IdLessThan);
     return results;
   }
 

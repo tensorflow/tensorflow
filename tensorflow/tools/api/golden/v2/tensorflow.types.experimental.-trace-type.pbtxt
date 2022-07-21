@@ -1,0 +1,16 @@
+path: "tensorflow.types.experimental.TraceType"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "is_subtype_of"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_common_supertype"
+    argspec: "args=[\'self\', \'others\'], varargs=None, keywords=None, defaults=None"
+  }
+}

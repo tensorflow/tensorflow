@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
@@ -82,7 +83,6 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   return config_set;
 }
 
-
 XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
   const DepthwiseConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
@@ -93,7 +93,7 @@ XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
   }
 #endif
 
-  const string hlo_text =
+  const std::string hlo_text =
       BuildHloTextDepthwiseConvolution2D(spec, use_bfloat16);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01},

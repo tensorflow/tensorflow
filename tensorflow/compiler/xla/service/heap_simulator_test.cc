@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -225,7 +224,7 @@ const char kShare[] = "Share";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const HloValue*>>;
+using CallSequence = std::vector<std::pair<std::string, const HloValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm<HloValue> {
@@ -283,26 +282,27 @@ class HeapSimulatorTracker {
 
   // Constructor for testing a single entry computation.
   explicit HeapSimulatorTracker(
-      const string& name, std::unique_ptr<HloComputation> entry_computation,
+      const std::string& name,
+      std::unique_ptr<HloComputation> entry_computation,
       const std::vector<HloInstruction*>& instruction_sequence,
       const std::vector<HloInstruction*>& must_alias_set = {},
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr) {
     HloModuleConfig config;
-    module_ = absl::make_unique<HloModule>(name, config);
+    module_ = std::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(entry_computation));
     Init(instruction_sequence, can_share_buffer);
   }
 
-  explicit HeapSimulatorTracker(const string& name) {
+  explicit HeapSimulatorTracker(const std::string& name) {
     HloModuleConfig config;
-    module_ = absl::make_unique<HloModule>(name, config);
+    module_ = std::make_unique<HloModule>(name, config);
   }
 
   // Similar to the single entry computation constructor above, but runs the
   // simulation over the entire module.
   void RunWholeModule(
       const std::vector<HloInstruction*>& full_module_sequence) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
@@ -321,10 +321,10 @@ class HeapSimulatorTracker {
     auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
     };
-    auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
+    auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
     result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
                                  *alias_analysis_, size_fn)
-                  .ConsumeValueOrDie();
+                  .value();
   }
 
   HloModule* module() { return module_.get(); }
@@ -383,7 +383,7 @@ class HeapSimulatorTracker {
     // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls
     // by buffer id, for determinism in the tests.
     auto zero_size = [](const BufferValue& buffer) { return 0; };
-    auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
+    auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
     alias_analysis_ =
         HloAliasAnalysis::Run(module_.get(), can_share_buffer).ValueOrDie();
@@ -394,7 +394,7 @@ class HeapSimulatorTracker {
         HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
                            HloInstructionSequence(instruction_sequence),
                            *alias_analysis_, zero_size, options)
-            .ConsumeValueOrDie();
+            .value();
   }
 
   std::unique_ptr<HloModule> module_;
@@ -499,15 +499,15 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   // Test that only one output of a fusion node will be shared with its operand.
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> absl::optional<bool> {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      return true;
-    }
-    return false;
+         const ShapeIndex& user_index) -> std::optional<bool> {
+    return instr->opcode() == HloOpcode::kFusion &&
+           operand->shape().IsArray() &&
+           ShapeUtil::Equal(operand->shape(),
+                            ShapeUtil::GetSubshape(instr->shape(), user_index));
   };
 
   HloModuleConfig config;
-  auto module = absl::make_unique<HloModule>(TestName(), config);
+  auto module = std::make_unique<HloModule>(TestName(), config);
 
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -573,7 +573,7 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
   // This variant of the test has a fusion node that dies immediately.
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
-         const ShapeIndex& user_index) -> absl::optional<bool> {
+         const ShapeIndex& user_index) -> std::optional<bool> {
     if (instr->opcode() == HloOpcode::kFusion) {
       return true;
     }
@@ -581,7 +581,7 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnceOutputShortLived) {
   };
 
   HloModuleConfig config;
-  auto module = absl::make_unique<HloModule>(TestName(), config);
+  auto module = std::make_unique<HloModule>(TestName(), config);
 
   auto builder = HloComputation::Builder(TestName());
   auto paramA = builder.AddInstruction(
@@ -968,8 +968,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
     const HloValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-    buffers_.emplace_back(
-        absl::make_unique<HloValue>(id, const0, ShapeIndex{}));
+    buffers_.emplace_back(std::make_unique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
 
@@ -1032,8 +1031,9 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
       buffer_interval_.end = end;
       chunk_candidate_ = GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
           buffer_interval_, preferred_offset);
-      EXPECT_EQ(chunk_candidate_.chunk.size, size);
-      return {chunk_candidate_.chunk.offset, chunk_candidate_.heap_size};
+      EXPECT_EQ(chunk_candidate_.size, size);
+      return {chunk_candidate_.offset,
+              result_.UpdatedHeapSize(chunk_candidate_)};
     }
 
     // Commits the previously found chunk candidate.
@@ -1044,7 +1044,7 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
 
    private:
     BufferInterval buffer_interval_;
-    ChunkCandidate chunk_candidate_;
+    Chunk chunk_candidate_;
   };
 
   InheritedGlobalDecreasingSizeBestFitHeap heap_;

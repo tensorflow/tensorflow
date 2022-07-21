@@ -26,10 +26,6 @@ The main responsibilities of this file are:
     test with a fresh local directory in $TEST_TMPDIR.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import importlib
 import os

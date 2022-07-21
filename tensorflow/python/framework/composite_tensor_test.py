@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.composite_tensor."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import sys
 import weakref
@@ -28,7 +24,7 @@ import numpy as np
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
@@ -378,12 +374,12 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
-      ('IndexedSlicesNoDenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesNoDenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]))),
-      ('IndexedSlicesInt32DenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesInt32DenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]),
           constant_op.constant([10], dtypes.int32))),
-      ('IndexedSlicesInt64DenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesInt64DenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([[1, 2], [3, 4]]), constant_op.constant([2, 8]),
           constant_op.constant([10, 2], dtypes.int64))),
       ('RaggedTensorRaggedRank1',
@@ -394,7 +390,7 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        lambda: sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])),
       ('Nested structure', lambda: {
           'a':
-              ops.IndexedSlices(
+              indexed_slices.IndexedSlices(
                   constant_op.constant([1, 2, 3]),
                   constant_op.constant([2, 8, 4])),
           'b': [
@@ -408,6 +404,14 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = nest.map_structure(type_spec.type_spec_from_value, value,
                               expand_composites=False)
     nest.assert_same_structure(value, spec, expand_composites=True)
+
+  def testConvertVariablesToTensors(self):
+    ct = CT(1)
+    result = ct._convert_variables_to_tensors()
+    self.assertIs(result, ct)
+
+    result2 = composite_tensor.convert_variables_to_tensors(ct)
+    self.assertIs(result2, ct)
 
 
 if __name__ == '__main__':

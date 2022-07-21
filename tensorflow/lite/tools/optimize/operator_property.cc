@@ -69,7 +69,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
-      property.restrict_same_input_output_scale = true;
       break;
     case BuiltinOperator_RSQRT:
       property.inputs = {{0, {}}};
@@ -91,7 +90,9 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_AVERAGE_POOL_2D:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_BATCH_MATMUL: {
@@ -107,20 +108,26 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       // We skip inputs 1 and 2 since they aren't real valued (they are shapes).
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       property.quantizable_int16 = false;
       break;
     case BuiltinOperator_BROADCAST_TO:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 3;
       break;
     case BuiltinOperator_DEPTH_TO_SPACE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       property.quantizable_int16 = false;
       break;
@@ -128,19 +135,25 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       // We skip input 0 since it is the split dim which is not real valued.
       property.inputs = {{1, {}}};
       property.arbitrary_outputs = true;
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_SPLIT_V:
       property.inputs = {{0, {}}};
       property.arbitrary_outputs = true;
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_CONCATENATION:
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_CONV_2D: {
@@ -195,12 +208,17 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       // hence does not need to be quantized.
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 1;
       break;
     case BuiltinOperator_FILL: {
       property.inputs = {{1, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 3;
       break;
     }
@@ -216,14 +234,18 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_GATHER:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.quantize_input_as_activations = true;
       property.version = 2;
       break;
     case BuiltinOperator_GATHER_ND:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 3;
       break;
     case BuiltinOperator_HARD_SWISH: {
@@ -821,13 +843,17 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_MAX_POOL_2D:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_MAXIMUM:
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.quantize_input_as_activations = true;
       property.version = 2;
       break;
@@ -839,7 +865,9 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_MINIMUM:
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.quantize_input_as_activations = true;
       property.version = 2;
       break;
@@ -852,14 +880,18 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_PACK:
       property.arbitrary_inputs = true;
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_QUANTIZE:
@@ -870,7 +902,6 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_PRELU:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = false;
       property.version = 1;
       property.quantizable_int16 = false;
       break;
@@ -894,32 +925,42 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 1;
       break;
     case BuiltinOperator_RESIZE_BILINEAR:
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_REVERSE_V2:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 3;
       break;
     case BuiltinOperator_SCATTER_ND:
       property.inputs = {{1, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 1;
       break;
     case BuiltinOperator_SELECT:
       property.inputs = {{1, {}}, {2, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 1;
       break;
     case BuiltinOperator_SHAPE:
@@ -932,13 +973,17 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       // index and size).
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_SQUEEZE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 1;
       break;
     case BuiltinOperator_SOFTMAX: {
@@ -955,7 +1000,9 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_STRIDED_SLICE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_SQUARED_DIFFERENCE:
@@ -969,6 +1016,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.restrict_same_input_output_scale = [](TensorType type) {
+        // Only eight bit tensors can have the non same scale and zero point.
+        if (type == TensorType_UINT8 || type == TensorType_INT8) return false;
+        return true;
+      };
       break;
     case BuiltinOperator_TANH: {
       property.inputs = {{0, {}}};
@@ -1005,22 +1057,39 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.quantizable_int16 = false;
       break;
     }
+    case BuiltinOperator_TILE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
+
+      property.version = 3;
+      break;
     case BuiltinOperator_TRANSPOSE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
+
       property.version = 2;
       break;
     case BuiltinOperator_UNPACK:
       property.inputs = {{0, {}}};
       property.arbitrary_outputs = true;
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
+
       property.version = 1;
       break;
     case BuiltinOperator_MIRROR_PAD:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       property.quantizable_int16 = false;
       break;
@@ -1033,7 +1102,9 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
     case BuiltinOperator_REDUCE_MIN:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.restrict_same_input_output_scale = true;
+      property.restrict_same_input_output_scale = [](TensorType) {
+        return true;
+      };
       property.version = 2;
       break;
     case BuiltinOperator_WHERE:
@@ -1052,6 +1123,11 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       break;
     case BuiltinOperator_VAR_HANDLE:
       property.version = 1;
+      break;
+    case BuiltinOperator_GELU:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
       break;
     default:
       // No quantized implementation exists for this operation.

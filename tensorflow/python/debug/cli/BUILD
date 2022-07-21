@@ -208,6 +208,7 @@ py_test(
     srcs = ["readline_ui_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/214427155)
     deps = [
         ":cli_config",
         ":debugger_cli_common",

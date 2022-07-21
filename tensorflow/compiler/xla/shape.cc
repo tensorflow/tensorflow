@@ -75,7 +75,7 @@ ShapeProto Shape::ToProto() const {
   return proto;
 }
 
-string Shape::ToString(bool print_layout) const {
+std::string Shape::ToString(bool print_layout) const {
   if (print_layout) {
     return ShapeUtil::HumanStringWithLayout(*this);
   } else {
@@ -217,7 +217,7 @@ ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
     *add_parameters() = Shape(shape_proto);
   }
   *mutable_result() = Shape(program_shape_proto.result());
-  for (const string& name : program_shape_proto.parameter_names()) {
+  for (const std::string& name : program_shape_proto.parameter_names()) {
     add_parameter_names(name);
   }
 }
@@ -228,14 +228,14 @@ ProgramShapeProto ProgramShape::ToProto() const {
     *proto.add_parameters() = shape.ToProto();
   }
   *proto.mutable_result() = result().ToProto();
-  for (const string& name : parameter_names()) {
+  for (const std::string& name : parameter_names()) {
     proto.add_parameter_names(name);
   }
   return proto;
 }
 
-string ProgramShape::ToString() const {
-  std::vector<string> parameter_strings(parameters_size());
+std::string ProgramShape::ToString() const {
+  std::vector<std::string> parameter_strings(parameters_size());
   for (int i = 0; i < parameters_size(); ++i) {
     parameter_strings[i] = absl::StrCat(
         i < parameter_names_size() ? parameter_names(i) : "(unknown)", ": ",

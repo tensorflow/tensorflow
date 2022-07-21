@@ -24,24 +24,67 @@ echo ""
 echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
+#default config
+DEFAULT_CONFIG="--config=cuda"
+OMPTHREADS="--action_env=OMP_NUM_THREADS=$N_JOBS"
+KMP_BLOCKTIME="--test_env=KMP_BLOCKTIME=0"
+
+#install packages needed
+
+pip install tensorflow-estimator tensorboard
+pip install --upgrade  tf-estimator-nightly
+pip install keras-nightly 
+
+pip list
+
 # Run configure.
-export PYTHON_BIN_PATH=`which python2`
-
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=9.0
-export TF_CUDNN_VERSION=7
-export TF_CUDA_COMPUTE_CAPABILITIES=3.7
-
-yes "" | $PYTHON_BIN_PATH configure.py
+export TF_CUDA_COMPUTE_CAPABILITIES=6.0
+export PYTHON_BIN_PATH=`which python`
+yes "" | TF_NEED_CUDA=1 TF_CUDA_COMPUTE_CAPABILITIES=6.0 $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 # Setting KMP_BLOCKTIME to 0 lets OpenMP threads to sleep right after parallel execution
 # in an MKL primitive. This reduces the effects of an oversubscription of OpenMP threads
 # caused by executing multiple tests concurrently.
-bazel test --config=cuda --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test \
-  --test_lang_filters=cc,py -k --jobs="${N_JOBS}" \
-  --test_timeout 300,450,1200,3600 --build_tests_only --test_env=KMP_BLOCKTIME=0\
-  --config=mkl --config=opt --test_output=errors --local_test_jobs=8 \
-  --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
-  //tensorflow/... -//tensorflow/compiler/...
 
+ENABLE_ONEDNN=""
+CONFIG=${DEFAULT_CONFIG}
+if [[ $# -ge 1 ]]; then
+  if [[ "$1" == "eigencuda" ]]; then
+     echo "uses all default values for eigen"
+     ENABLE_ONEDNN=""
+  else
+     ENABLE_ONEDNN="--action_env=TF_ENABLE_ONEDNN_OPTS=1"
+  fi
+fi
+
+#using default targets from tensorflow project
+source "./tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh"
+if [[ -z "$DEFAULT_BAZEL_TARGETS" ]]; then
+   DEFAULT_BAZEL_TARGETS="//tensorflow/...  -//tensorflow/compiler/...  -//tensorflow/lite/..."
+else
+   DEFAULT_BAZEL_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/..."
+fi
+echo "DEFAULT_BAZEL_TARGETS: $DEFAULT_BAZEL_TARGETS "
+
+echo ""
+echo "Bazel will test with CONFIG=${CONFIG}, ENABLE_ONEDNN=${ENABLE_ONEDNN}"
+echo ""
+#Bazel test command with two option eigencuda or dnllcuda
+
+bazel test \
+    --test_tag_filters=gpu,-no_gpu,-benchmark-test,-no_gpu_presubmit,-no_cuda11,-v1only,-no_oss,-oss_serial \
+    --build_tag_filters=gpu,-no_gpu,-benchark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-no_cuda11,-v1only \
+    --test_lang_filters=cc,py \
+    -c opt -k \
+    --test_timeout 300,450,1200,3600 \
+    --build_tests_only \
+    --local_test_jobs=1 \
+    --cache_test_results \
+    ${CONFIG} \
+    ${KMP_BLOCKTIME} \
+    ${OMPTHREADS} \
+    ${ENABLE_ONEDNN} \
+    --test_output=errors \
+    -- ${DEFAULT_BAZEL_TARGETS}

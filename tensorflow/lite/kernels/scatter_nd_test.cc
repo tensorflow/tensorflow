@@ -76,7 +76,7 @@ TEST(ScatterNdOpTest, ScatterElementIntoVector) {
   m.SetIndices<int32_t>({4, 3, 1, 7});
   m.SetUpdates<float>({9, 10, 11, 12});
   m.SetShape<int32_t>({8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({8}));
   EXPECT_THAT(m.GetOutput<float>(),
@@ -90,7 +90,7 @@ TEST(ScatterNdOpTest, ScatterMatrixIntoRank3Tensor) {
   m.SetUpdates<float>({5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8,
                        5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8});
   m.SetShape<int32_t>({4, 4, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 4, 4}));
   EXPECT_THAT(
@@ -110,7 +110,7 @@ TEST(ScatterNdOpTest, ScatterVectorIntoMatrix) {
                        /*2*/ 9, 10, 11, 12,
                        /*3*/ 13, 14, 15, 16});
   m.SetShape<int32_t>({10, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({10, 4}));
   EXPECT_THAT(m.GetOutput<float>(),
@@ -135,7 +135,7 @@ TEST(ScatterNdOpTest, ScatterMatricesIntoRank4Tensor) {
   m.SetUpdates<float>({/*0,0*/ 1, 2, 3, 4, /*0,1*/ 5, 6, 7, 8,
                        /*1,0*/ 9, 10, 11, 12, /*1,1*/ 13, 14, 15, 16});
   m.SetShape<int32_t>({2, 2, 2, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({/*0, 0*/ 9, 10, 11, 12,
@@ -153,7 +153,7 @@ TEST(ScatterNdOpTest, ScatterVectorIntoRank4Tensor) {
       {/*0,0*/ 1,  2,  3,  4,  5,  /*0,1*/ 6,  7,  8,  9,  10,
        /*1,0*/ 11, 12, 13, 14, 15, /*1,1*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({3, 3, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3, 5}));
   EXPECT_THAT(m.GetOutput<float>(),
@@ -196,7 +196,7 @@ TEST(ScatterNdOpTest, ScatterVectorIntoRank3Tensor) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<float>(),
@@ -216,7 +216,7 @@ TEST(ScatterNdOpTest, OverlappedIndicesSummed) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<float>(),
@@ -236,7 +236,7 @@ TEST(ScatterNdOpTest, Int32IndicesUint8Updates) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
@@ -256,7 +256,7 @@ TEST(ScatterNdOpTest, Int32IndicesInt8Updates) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<int8_t>(),
@@ -276,7 +276,7 @@ TEST(ScatterNdOpTest, Int32IndicesInt32Updates) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<int32_t>(),
@@ -296,7 +296,7 @@ TEST(ScatterNdOpTest, Int32IndicesInt64Updates) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<int64_t>(),
@@ -308,6 +308,20 @@ TEST(ScatterNdOpTest, Int32IndicesInt64Updates) {
                                 /*1, 2*/ 16, 17, 18, 19, 20}));
 }
 
+TEST(ScatterNdOpTest, Int32IndicesBoolUpdates) {
+  ScatterNdOpModel m({TensorType_INT32, {4, 1}}, {TensorType_BOOL, {4}},
+                     {TensorType_INT32, {1}});
+  m.SetIndices<int32_t>({4, 3, 1, 7});
+  m.SetUpdates<bool>({true, false, true, false});
+  m.SetShape<int32_t>({8});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({8}));
+  EXPECT_THAT(
+      m.GetOutput<bool>(),
+      ElementsAreArray({false, true, false, false, true, false, false, false}));
+}
+
 TEST(ScatterNdOpTest, DynamicShape) {
   ScatterNdOpModel m({TensorType_INT32, {4, 2}}, {TensorType_INT64, {4, 5}},
                      {TensorType_INT32, {3}});
@@ -316,7 +330,7 @@ TEST(ScatterNdOpTest, DynamicShape) {
       {/*0*/ 1,  2,  3,  4,  5,  /*1*/ 6,  7,  8,  9,  10,
        /*2*/ 11, 12, 13, 14, 15, /*3*/ 16, 17, 18, 19, 20});
   m.SetShape<int32_t>({2, 3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 5}));
   EXPECT_THAT(m.GetOutput<int64_t>(),
@@ -329,7 +343,7 @@ TEST(ScatterNdOpTest, DynamicShape) {
 
   m.SetIndices<int32_t>({/*0*/ 2, 3, /*1*/ 1, 0, /*2*/ 2, 0, /*3*/ 1, 2});
   m.SetShape<int32_t>({3, 4, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 4, 5}));
   EXPECT_THAT(m.GetOutput<int64_t>(),

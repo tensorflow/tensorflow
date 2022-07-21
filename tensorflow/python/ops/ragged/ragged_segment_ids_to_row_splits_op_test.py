@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the segment_id_ops.segment_ids_to_row_splits() op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import segment_id_ops

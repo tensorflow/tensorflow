@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Cardinality analysis of `Dataset` objects."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

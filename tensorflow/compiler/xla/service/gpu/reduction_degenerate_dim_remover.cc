@@ -51,7 +51,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
                                       : instr->shape();
 
       if (!ShapeUtil::HasDegenerateDimensions(reduced_op->shape())) {
-        return Status::OK();
+        return OkStatus();
       }
       Shape canonical_input_shape =
           ShapeUtil::DropDegenerateDimensions(input_shape);
@@ -59,7 +59,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
       Shape canonical_reduce_shape =
           ShapeUtil::DropDegenerateDimensions(reduce_shape);
 
-      const std::vector<int64_t> &reduced_dimensions = instr->dimensions();
+      auto reduced_dimensions = instr->dimensions();
       int64_t shift = 0;
 
       for (int dim = 0; dim < input_shape.rank(); dim++) {
@@ -114,9 +114,12 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionDegenerateDimRemover::Run(HloModule *module) {
-  TF_ASSIGN_OR_RETURN(
-      bool changed, ReductionDegenerateDimRemoverVisitor().RunOnModule(module));
+StatusOr<bool> ReductionDegenerateDimRemover::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionDegenerateDimRemoverVisitor().RunOnModule(
+                          module, execution_threads));
   return changed;
 }
 

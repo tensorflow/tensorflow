@@ -20,12 +20,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/device_profiler_session.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 
@@ -46,7 +48,7 @@ void Worker::GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
   for (auto& d : devices) {
     response->add_device_attributes()->Swap(&d);
   }
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
@@ -80,9 +82,9 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
   }
   if (s.ok()) {
     s = session->graph_mgr()->Register(
-        request->session_handle(), request->graph_def(), session.get(),
+        request->session_handle(), request->graph_def(),
         request->graph_options(), request->debug_options(),
-        request->config_proto(), request->collective_graph_key(),
+        request->config_proto(), request->collective_graph_key(), session.get(),
         session->cluster_flr(), response->mutable_graph_handle());
   }
   done(s);
@@ -107,7 +109,9 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
 }
 
 void Worker::AbortStep(int64_t step_id) {
-  Rendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
+  RemoteRendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
+  // Do not abort if it's a context global instance for eager op-by-op execution
+  if (rendez->IsRemoteEagerContextDefault()) return;
   SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
@@ -132,7 +136,7 @@ Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
   for (size_t i = 0; i < req->num_recvs(); ++i) {
     out->insert({req->recv_key(i), empty_tensor});
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
@@ -141,7 +145,7 @@ void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
   if (request->store_errors_in_response_body()) {
     done = [response, done](const Status& status) {
       response->set_status(status);
-      done(Status::OK());
+      done(OkStatus());
     };
   }
   if (request->is_partial()) {
@@ -221,8 +225,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   session->graph_mgr()->ExecuteAsync(
-      request->graph_handle(), step_id, session.get(), request->exec_opts(),
-      collector, response, cm, in,
+      request->graph_handle(), step_id, request->exec_opts(), in, session.get(),
+      collector, response, cm, env_->session_mgr->GetCoordinationServiceAgent(),
       [this, step_id, response, session, cm, out, token, collector,
        device_profiler_session, opts, done](const Status& status) {
         Status s = status;
@@ -313,8 +317,9 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     cancellation_manager_.RegisterCallback(token,
                                            [cm]() { cm->StartCancel(); });
     session->graph_mgr()->ExecuteAsync(
-        graph_handle, step_id, session.get(), request->exec_opts(),
-        nullptr /* collector */, nullptr /* response */, cm, in,
+        graph_handle, step_id, request->exec_opts(), in, session.get(),
+        /*collector=*/nullptr, /*response=*/nullptr, cm,
+        env_->session_mgr->GetCoordinationServiceAgent(),
         [this, token, step_id, session](Status s) {
           cancellation_manager_.DeregisterCallback(token);
           partial_run_mgr_.ExecutorDone(step_id, s);
@@ -360,7 +365,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
       sam->Cleanup(step_id);
     }
   }
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void Worker::CleanupAllAsync(const CleanupAllRequest* request,
@@ -369,7 +374,7 @@ void Worker::CleanupAllAsync(const CleanupAllRequest* request,
   std::vector<string> containers;
   for (const auto& c : request->container()) containers.push_back(c);
   env_->device_mgr->ClearContainers(containers);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void Worker::LoggingAsync(const LoggingRequest* request,
@@ -466,16 +471,19 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
 
   // Does the device have the right incarnation number we expect?
   if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {
-    return errors::Aborted(
-        "RecvTensor expects a different device incarnation: ",
-        parsed.src_incarnation, " vs. ", (*src_dev)->attributes().incarnation(),
-        ". Your worker job (\"",
-        env_->session_mgr->LegacySession()->worker_name(),
-        "\") was probably restarted. Check your "
-        "worker job for the reason why it was restarted.");
+    return errors::AbortedWithPayloads(
+        strings::StrCat("RecvTensor expects a different device incarnation: ",
+                        parsed.src_incarnation, " vs. ",
+                        (*src_dev)->attributes().incarnation(),
+                        ". Your worker job (\"",
+                        env_->session_mgr->LegacySession()->worker_name(),
+                        "\") was probably restarted. Check your "
+                        "worker job for the reason why it was restarted."),
+        {{kWorkerPossiblyRestarted,
+          distributed_runtime::WorkerPossiblyRestarted().SerializeAsString()}});
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void Worker::RecvTensorAsync(CallOptions* opts,

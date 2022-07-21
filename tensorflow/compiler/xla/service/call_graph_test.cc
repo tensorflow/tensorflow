@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -63,7 +64,7 @@ class CallGraphTest : public HloTestBase {
   // given computation with value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeCallingComputation(
       HloComputation* callee_computation, int64_t callsites,
-      const string& suffix = ".CallingComputation") {
+      const std::string& suffix = ".CallingComputation") {
     HloComputation::Builder builder(TestName() + suffix);
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
@@ -358,8 +359,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
   // Entry computation has one while instruction calling two computations
   // (cond_computation and a_computation).
   ASSERT_EQ(1, entry_node.callsites().size());
-  const std::vector<HloComputation*>& called_computations =
-      entry_node.callsites()[0].called_computations();
+  auto called_computations = entry_node.callsites()[0].called_computations();
   EXPECT_THAT(called_computations,
               UnorderedElementsAre(cond_computation, a_computation));
   EXPECT_EQ(CallContext::kControlFlow, entry_node.context());
@@ -374,12 +374,12 @@ TEST_F(CallGraphTest, ComplexGraph) {
   std::vector<const HloComputation*> visited;
   TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
-    return Status::OK();
+    return OkStatus();
   }));
   EXPECT_EQ(visited.size(), 5);
   // All values in visited should be unique.
   EXPECT_EQ(
-      std::unordered_set<const HloComputation*>(visited.begin(), visited.end())
+      absl::flat_hash_set<const HloComputation*>(visited.begin(), visited.end())
           .size(),
       5);
 
@@ -508,7 +508,7 @@ TEST_F(CallGraphTest, VisitSingletonComputation) {
   std::vector<HloComputation*> visited;
   TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
-    return Status::OK();
+    return OkStatus();
   }));
   EXPECT_THAT(visited, UnorderedElementsAre(computation));
 }
@@ -528,7 +528,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
     TF_ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
-          return Status::OK();
+          return OkStatus();
         },
         /*visit_unreachable_nodes=*/false));
     EXPECT_EQ(visited.size(), 1);
@@ -541,7 +541,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
     TF_ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
-          return Status::OK();
+          return OkStatus();
         },
         /*visit_unreachable_nodes=*/true));
     EXPECT_EQ(visited.size(), 2);

@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
@@ -239,7 +236,7 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,

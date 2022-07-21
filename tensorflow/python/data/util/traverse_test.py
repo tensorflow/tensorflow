@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests for utilities for traversing the dataset construction graph."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -114,8 +111,11 @@ class TraverseTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = ds.apply(
         data_service_ops.distribute("parallel_epochs", "grpc://foo:0"))
     ops = traverse.obtain_capture_by_value_ops(ds)
+    data_service_dataset_op = ("DataServiceDatasetV4"
+                               if compat.forward_compatible(2022, 8, 31) else
+                               "DataServiceDatasetV3")
     self.assertContainsSubset(
-        ["RangeDataset", "DataServiceDatasetV2", "DummyIterationCounter"],
+        ["RangeDataset", data_service_dataset_op, "DummyIterationCounter"],
         set(x.name for x in ops))
 
 

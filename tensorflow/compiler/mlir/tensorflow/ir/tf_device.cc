@@ -139,12 +139,11 @@ bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 // tf_device.parallel_execute
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-LogicalResult Verify(ParallelExecuteOp op) {
+LogicalResult ParallelExecuteOp::verify() {
+  ParallelExecuteOp op = *this;
   const auto& regions = op.getOperation()->getRegions();
-  if (regions.size() < 2) {
-    return op.emitOpError() << "must have at least two regions.";
+  if (regions.empty()) {
+    return op.emitOpError() << "must have at least one region.";
   }
 
   int output_index = 0;
@@ -175,12 +174,10 @@ LogicalResult Verify(ParallelExecuteOp op) {
   return success();
 }
 
-}  // namespace
-
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
                               int num_regions, TypeRange output_types) {
-  DCHECK_GE(num_regions, 2);
+  DCHECK_GE(num_regions, 1);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
     region->push_back(new Block);
@@ -216,10 +213,10 @@ bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
 namespace {
 ParseResult ParseReplicateOpOperands(
     OpAsmParser* parser, OperationState* state,
-    llvm::SmallVectorImpl<llvm::SmallVector<OpAsmParser::OperandType, 8>>*
+    llvm::SmallVectorImpl<llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8>>*
         replicated_inputs,
-    llvm::SmallVectorImpl<OpAsmParser::OperandType>* packed_inputs,
-    llvm::SmallVectorImpl<OpAsmParser::OperandType>* region_args,
+    llvm::SmallVectorImpl<OpAsmParser::UnresolvedOperand>* packed_inputs,
+    llvm::SmallVectorImpl<OpAsmParser::UnresolvedOperand>* region_args,
     llvm::SmallVectorImpl<Type>* region_arg_types) {
   // No operands or empty operand list.
   bool parsed_l_paren = succeeded(parser->parseOptionalLParen());
@@ -233,25 +230,26 @@ ParseResult ParseReplicateOpOperands(
   //     %b as %block_arg1: type
   //
   // Replicated inputs are placed before packed inputs when forming the op.
-  llvm::SmallVector<OpAsmParser::OperandType, 8> replicated_region_args;
-  llvm::SmallVector<OpAsmParser::OperandType, 8> packed_region_args;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> replicated_region_args;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> packed_region_args;
   llvm::SmallVector<Type, 8> replicated_region_arg_types;
   llvm::SmallVector<Type, 8> packed_region_arg_types;
   do {
-    OpAsmParser::OperandType operand_type;
+    OpAsmParser::UnresolvedOperand operand_type;
     if (parser->parseOptionalOperand(operand_type).hasValue()) {
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
-          parser->parseRegionArgument(packed_region_args.emplace_back()) ||
+          parser->parseOperand(packed_region_args.emplace_back(),
+                               /*allowResultNumber=*/false) ||
           parser->parseColonType(packed_region_arg_types.emplace_back()))
         return failure();
     } else if (parser->parseOperandList(replicated_inputs->emplace_back(),
                                         OpAsmParser::Delimiter::Square) ||
                parser->parseKeyword(
                    "as", " between replicated inputs and block argument") ||
-               parser->parseRegionArgument(
-                   replicated_region_args.emplace_back()) ||
+               parser->parseOperand(replicated_region_args.emplace_back(),
+                                    /*allowResultNumber=*/false) ||
                parser->parseColonType(
                    replicated_region_arg_types.emplace_back())) {
       return failure();
@@ -277,13 +275,13 @@ ParseResult ParseReplicateOpOperands(
 
 ParseResult SetReplicateOpOperands(
     llvm::SMLoc loc, OpAsmParser* parser, OperationState* state,
-    llvm::ArrayRef<llvm::SmallVector<OpAsmParser::OperandType, 8>>
+    llvm::ArrayRef<llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8>>
         replicated_inputs,
-    llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
+    llvm::ArrayRef<OpAsmParser::UnresolvedOperand> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
   for (const auto& attr : state->attributes)
-    if (attr.first.strref() == "n")
-      if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
+    if (attr.getName().strref() == "n")
+      if (auto n_attr = attr.getValue().dyn_cast<IntegerAttr>())
         *n = n_attr.getInt();
 
   if (*n < 2)
@@ -321,96 +319,109 @@ ParseResult SetReplicateOpOperands(
   return success();
 }
 
-constexpr char kOperandSegmentSizesAttr[] = "operand_segment_sizes";
+}  // namespace
 
-ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
-  llvm::SMLoc loc = parser->getCurrentLocation();
+static constexpr char kOperandSegmentSizesAttr[] = "operand_segment_sizes";
+
+ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
+  llvm::SMLoc loc = parser.getCurrentLocation();
 
   // Parse operands, attributes, and region of op.
-  llvm::SmallVector<llvm::SmallVector<OpAsmParser::OperandType, 8>, 8>
+  llvm::SmallVector<llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8>, 8>
       replicated_inputs;
-  llvm::SmallVector<OpAsmParser::OperandType, 8> packed_inputs;
-  llvm::SmallVector<OpAsmParser::OperandType, 8> region_args;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> packed_inputs;
+  llvm::SmallVector<OpAsmParser::UnresolvedOperand, 8> region_args;
   llvm::SmallVector<Type, 8> region_arg_types;
   int32_t n = 0;
-  Region& body = *state->addRegion();
-  if (ParseReplicateOpOperands(parser, state, &replicated_inputs,
+  Region& body = *result.addRegion();
+  if (ParseReplicateOpOperands(&parser, &result, &replicated_inputs,
                                &packed_inputs, &region_args,
                                &region_arg_types) ||
-      parser->parseOptionalAttrDict(state->attributes) ||
-      SetReplicateOpOperands(loc, parser, state, replicated_inputs,
-                             packed_inputs, region_arg_types, &n) ||
-      parser->parseRegion(body, region_args, region_arg_types))
+      parser.parseOptionalAttrDict(result.attributes) ||
+      SetReplicateOpOperands(loc, &parser, &result, replicated_inputs,
+                             packed_inputs, region_arg_types, &n))
     return failure();
 
+  SmallVector<OpAsmParser::Argument> packed_args;
+  for (auto argAndType : llvm::zip(region_args, region_arg_types)) {
+    auto& arg = packed_args.emplace_back();
+    arg.ssaName = std::get<0>(argAndType);
+    arg.type = std::get<1>(argAndType);
+  }
+  if (parser.parseRegion(body, packed_args)) return failure();
+
   // Add derived `operand_segment_sizes` attribute based on parsed operands.
-  if (!state->attributes.get(kOperandSegmentSizesAttr)) {
+  if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
     auto attr = DenseIntElementsAttr::get(
-        VectorType::get({2}, parser->getBuilder().getI32Type()),
+        VectorType::get({2}, parser.getBuilder().getI32Type()),
         {num_replicated_inputs, num_packed_inputs});
-    state->addAttribute(kOperandSegmentSizesAttr, attr);
+    result.addAttribute(kOperandSegmentSizesAttr, attr);
   }
 
   // Ensure that the region is well formed: it contains at least a block with
   // a ReturnOp terminator.
-  ReplicateOp::ensureTerminator(body, parser->getBuilder(), state->location);
+  ReplicateOp::ensureTerminator(body, parser.getBuilder(), result.location);
 
   if (!llvm::hasSingleElement(body))
-    return parser->emitError(loc) << "expects a single block region";
+    return parser.emitError(loc) << "expects a single block region";
 
   Operation& terminator = body.front().back();
   if (!isa<ReturnOp>(terminator))
-    return parser->emitError(loc) << "expects a tf_device.return terminator";
+    return parser.emitError(loc) << "expects a tf_device.return terminator";
 
   // Get the results type from the terminator type inside the replicate,
   // replicated each by `n`.
-  state->types.reserve(terminator.getNumOperands() * n);
+  result.types.reserve(terminator.getNumOperands() * n);
   for (const auto& type : terminator.getOperandTypes())
-    state->types.append(n, type);
+    result.types.append(n, type);
 
   return success();
 }
 
-void Print(ReplicateOp op, OpAsmPrinter* p) {
+void ReplicateOp::print(OpAsmPrinter& p) {
   // Print comma separated operands of the following format:
   //   replicated_input
   //     [%a, ...] as %block_arg0: type
   //   packed_input
   //     %b as %block_arg1: type
-  const int32_t n = op.n();
+  const int32_t n = this->n();
   const int32_t num_replicated_inputs =
-      (*op.operand_segment_sizes().value_begin<APInt>()).getSExtValue();
+      (*operand_segment_sizes().value_begin<APInt>()).getSExtValue();
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
-  if (op.getNumOperands()) {
-    *p << '(';
-    Block& block = op.body().front();
-    interleaveComma(block.getArguments(), *p, [&](BlockArgument arg) {
+  if (getNumOperands()) {
+    p << '(';
+    Block& block = body().front();
+    interleaveComma(block.getArguments(), p, [&](BlockArgument arg) {
       const int block_arg_num = arg.getArgNumber();
       if (block_arg_num < num_replicated_block_args) {
-        *p << '[';
-        p->printOperands(
-            std::next(op.replicated_inputs().begin(), block_arg_num * n),
-            std::next(op.replicated_inputs().begin(), (block_arg_num + 1) * n));
-        *p << "]";
+        p << '[';
+        p.printOperands(
+            std::next(replicated_inputs().begin(), block_arg_num * n),
+            std::next(replicated_inputs().begin(), (block_arg_num + 1) * n));
+        p << "]";
       } else {
-        p->printOperand(*std::next(op.packed_inputs().begin(),
-                                   block_arg_num - num_replicated_block_args));
+        p.printOperand(*std::next(packed_inputs().begin(),
+                                  block_arg_num - num_replicated_block_args));
       }
-      *p << " as " << arg << ": " << arg.getType();
+      p << " as " << arg << ": " << arg.getType();
     });
-    *p << ')';
+    p << ')';
   }
 
   // Skip derived `operand_segment_sizes` attribute as custom print format of
   // operands holds enough information to calculate these variadic operand list
   // lengths.
-  p->printOptionalAttrDict(op->getAttrs(), /*elidedAttrs=*/ArrayRef<StringRef>{
-                               kOperandSegmentSizesAttr});
-  p->printRegion(op.body(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict(
+      getOperation()->getAttrs(),
+      /*elidedAttrs=*/ArrayRef<StringRef>{kOperandSegmentSizesAttr});
+  p << ' ';
+  p.printRegion(body(), /*printEntryBlockArgs=*/false);
 }
+
+namespace {
 
 // Checks if two types are compatible (compatible shapes and same elemental
 // type).
@@ -422,13 +433,57 @@ LogicalResult VerifyCompatibleTypes(Type a, Type b) {
   return success();
 }
 
-LogicalResult Verify(ReplicateOp op) {
+void BuildReplicateOp(
+    Builder* builder, OperationState* state, int n,
+    llvm::Optional<DictionaryAttr> devices,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
+  DCHECK_GE(n, 2);
+  state->addAttribute("n", builder->getI32IntegerAttr(n));
+
+  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
+
+  Region* region = state->addRegion();
+  region->push_back(new Block);
+  Block& block = region->front();
+
+  for (auto& replicated_input : replicated_inputs) {
+    DCHECK_EQ(llvm::size(replicated_input.first), n);
+    for (auto input : replicated_input.first) {
+      DCHECK(succeeded(
+          VerifyCompatibleTypes(input.getType(), replicated_input.second)));
+      state->addOperands(input);
+    }
+    block.addArgument(replicated_input.second, state->location);
+  }
+
+  for (auto packed_input : packed_inputs) {
+    state->addOperands(packed_input);
+    block.addArgument(packed_input.getType(), state->location);
+  }
+
+  // Add derived `operand_segment_sizes` attribute.
+  int32_t num_replicated_inputs = replicated_inputs.size() * n;
+  int32_t num_packed_inputs = packed_inputs.size();
+  auto operand_segment_sizes =
+      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
+                                {num_replicated_inputs, num_packed_inputs});
+  state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
+
+  for (const auto& output_type : replica_output_types)
+    state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
+}
+
+}  // anonymous namespace
+
+LogicalResult ReplicateOp::verify() {
+  ReplicateOp op = *this;
   int32_t n = op.n();
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue()) {
+  if (op.devices().has_value()) {
     for (auto device_attr : op.devices().getValue().getValue()) {
-      auto device_list = device_attr.second.dyn_cast_or_null<ArrayAttr>();
+      auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()
                << "expects 'devices' to be a map alias and device name list.";
@@ -451,9 +506,9 @@ LogicalResult Verify(ReplicateOp op) {
 
   auto operand_segment_sizes = op.operand_segment_sizes();
   const int32_t num_replicated_inputs =
-      operand_segment_sizes.getValue<IntegerAttr>({0}).getInt();
+      operand_segment_sizes.getValues<APInt>()[0].getSExtValue();
   const int32_t num_packed_inputs =
-      operand_segment_sizes.getValue<IntegerAttr>({1}).getInt();
+      operand_segment_sizes.getValues<APInt>()[1].getSExtValue();
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()
@@ -513,48 +568,6 @@ LogicalResult Verify(ReplicateOp op) {
 
   return success();
 }
-
-void BuildReplicateOp(
-    Builder* builder, OperationState* state, int n,
-    llvm::Optional<DictionaryAttr> devices,
-    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
-    ValueRange packed_inputs, TypeRange replica_output_types) {
-  DCHECK_GE(n, 2);
-  state->addAttribute("n", builder->getI32IntegerAttr(n));
-
-  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
-
-  Region* region = state->addRegion();
-  region->push_back(new Block);
-  Block& block = region->front();
-
-  for (auto& replicated_input : replicated_inputs) {
-    DCHECK_EQ(llvm::size(replicated_input.first), n);
-    for (auto input : replicated_input.first) {
-      DCHECK(succeeded(
-          VerifyCompatibleTypes(input.getType(), replicated_input.second)));
-      state->addOperands(input);
-    }
-    block.addArgument(replicated_input.second);
-  }
-
-  for (auto packed_input : packed_inputs) {
-    state->addOperands(packed_input);
-    block.addArgument(packed_input.getType());
-  }
-
-  // Add derived `operand_segment_sizes` attribute.
-  int32_t num_replicated_inputs = replicated_inputs.size() * n;
-  int32_t num_packed_inputs = packed_inputs.size();
-  auto operand_segment_sizes =
-      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
-                                {num_replicated_inputs, num_packed_inputs});
-  state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
-
-  for (const auto& output_type : replica_output_types)
-    state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
-}
-}  // anonymous namespace
 
 void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
@@ -753,9 +766,9 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
 }
 }  // anonymous namespace
 
-void ClusterOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void ClusterOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                             MLIRContext* context) {
-  results.insert(EliminatePassThroughResults);
+  results.add(EliminatePassThroughResults);
 }
 
 //===----------------------------------------------------------------------===//
@@ -782,9 +795,9 @@ struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
 };
 }  // anonymous namespace
 
-void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+void LaunchOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.insert<DropEmptyLaunch>(context);
+  results.add<DropEmptyLaunch>(context);
 }
 
 }  // namespace tf_device

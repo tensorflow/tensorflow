@@ -4,6 +4,7 @@ package tensorflow.data;
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
+// Next tag: 2
 message ProcessingModeDef {
   // Specifies how data is sharded among tf.data service workers.
   enum ShardingPolicy {
@@ -45,4 +46,47 @@ message ProcessingModeDef {
     HINT = 5;
   }
   ShardingPolicy sharding_policy = 1;
+}
+
+// tf.data service deployment mode.
+enum DeploymentMode {
+  DEPLOYMENT_MODE_UNSPECIFIED = 0;
+  // tf.data service workers colocate with TF workers.
+  DEPLOYMENT_MODE_COLOCATED = 1;
+  // tf.data service workers run in dedicated tf.data hosts.
+  DEPLOYMENT_MODE_REMOTE = 2;
+  // tf.data service workers run in colocated TF hosts and dedicated tf.data
+  // hosts.
+  DEPLOYMENT_MODE_HYBRID = 3;
+}
+
+// Metadata related to tf.data service datasets.
+// Next tag: 4
+message DataServiceMetadata {
+  oneof optional_element_spec {
+    // Serialized element spec.
+    bytes element_spec = 1;
+  }
+
+  enum Compression {
+    COMPRESSION_UNSPECIFIED = 0;
+    // No compression.
+    COMPRESSION_OFF = 1;
+    // Snappy compression as defined in tensorflow/core/platform/snappy.h.
+    COMPRESSION_SNAPPY = 2;
+  }
+  Compression compression = 2;
+
+  // Cardinality of the dataset.
+  int64 cardinality = 3;
+}
+
+message CrossTrainerCacheOptions {
+  string trainer_id = 1;
+}
+
+// Data service config available to the client through GetDataServiceConfig RPC.
+// Next tag: 2
+message DataServiceConfig {
+  DeploymentMode deployment_mode = 1;
 }

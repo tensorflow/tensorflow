@@ -31,11 +31,15 @@ namespace xla {
 // surrounded by the same metadata.
 class HloDomainVerifier : public HloModulePass {
  public:
-  HloDomainVerifier(std::vector<string> kinds) : kinds_(std::move(kinds)) {}
+  HloDomainVerifier(std::vector<std::string> kinds)
+      : kinds_(std::move(kinds)) {}
 
   absl::string_view name() const override { return "domain_verifier"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Verify that the whole kDomain frontier bounding the instruction reach set,
   // has matching metadata.
@@ -57,7 +61,7 @@ class HloDomainVerifier : public HloModulePass {
  private:
   class RunContext;
 
-  std::vector<string> kinds_;
+  std::vector<std::string> kinds_;
 };
 
 }  // namespace xla

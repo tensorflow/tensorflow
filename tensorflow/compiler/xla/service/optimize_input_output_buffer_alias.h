@@ -16,19 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_OPTIMIZE_INPUT_OUTPUT_BUFFER_ALIAS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_OPTIMIZE_INPUT_OUTPUT_BUFFER_ALIAS_H_
 
-#include <memory>
-
-#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -53,7 +46,10 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
     return "optimize_input_output_buffer_alias.h";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   friend class OptimizeInputOutputBufferAliasTest;

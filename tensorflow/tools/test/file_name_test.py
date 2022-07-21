@@ -16,10 +16,6 @@
 #
 # Test that checks if we have any issues with case insensitive filesystems.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))

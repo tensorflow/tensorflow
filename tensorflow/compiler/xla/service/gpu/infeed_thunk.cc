@@ -35,14 +35,14 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Infeeding to GPU";
-  ShapeTree<se::ScopedDeviceMemory<uint8>> source_buffers =
+  ShapeTree<se::ScopedDeviceMemory<uint8_t>> source_buffers =
       GetOrCreateInfeedManager(stream.parent())->BlockingGetNextDestination();
 
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {
     // Assert that the shapes are compatible.
     const ShapeIndex& shape_index = source.first;
-    se::ScopedDeviceMemory<uint8>& buffer = source.second;
+    se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), shape_index);
     TF_RET_CHECK(ShapeUtil::Equal(dest_slices_[index].shape, source_shape))
@@ -66,7 +66,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(2) << "Infeeding to GPU complete";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

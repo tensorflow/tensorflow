@@ -56,16 +56,16 @@ class Timer;
 // An instance of this is returned from StreamExecutor::GetModule.
 class ModuleHandle {
  public:
-  /*implicit*/ ModuleHandle(void *id = nullptr) : id_(id) {}
+  /*implicit*/ ModuleHandle(void* id = nullptr) : id_(id) {}
 
   // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
   // null pointer.
-  void *id() const { return id_; }
+  void* id() const { return id_; }
 
   explicit operator bool() const { return id() != nullptr; }
 
  private:
-  void *id_;
+  void* id_;
 };
 
 namespace internal {
@@ -119,19 +119,12 @@ class StreamInterface {
   virtual ~StreamInterface() {}
 
   // Returns the GPU stream associated with this platform's stream
-  // implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
-  // causing a fatal error if it is not. This hack is made available solely for
-  // use from distbelief code, which temporarily has strong ties to CUDA or
-  // ROCm as a platform.
-  virtual void *GpuStreamHack() { return nullptr; }
+  // implementation, or nullptr otherwise.
+  virtual void* GpuStreamHack() { return nullptr; }
 
-  // See the above comment on GpuStreamHack -- this further breaks abstraction
-  // for Eigen within distbelief, which has strong ties to CUDA or ROCm as a
-  // platform, and a historical attachment to a programming model which takes a
-  // stream-slot rather than a stream-value.
-  virtual void **GpuStreamMemberHack() { return nullptr; }
+  // Returns a pointer to a GPU stream associated with this platform's stream,
+  // or a nullptr.
+  virtual void** GpuStreamMemberHack() { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
@@ -172,105 +165,109 @@ class StreamExecutorInterface {
 
   // Returns the (transitively) wrapped executor if this executor is
   // wrapping another executor; otherwise, returns this.
-  virtual StreamExecutorInterface *GetUnderlyingExecutor() { return this; }
+  virtual StreamExecutorInterface* GetUnderlyingExecutor() { return this; }
 
   // See the StreamExecutor interface for comments on the same-named methods.
   virtual port::Status Init(int device_ordinal,
                             DeviceOptions device_options) = 0;
 
-  virtual port::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                                 KernelBase *kernel) {
+  virtual port::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                                 KernelBase* kernel) {
     return port::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
-  virtual port::Status LoadModule(const MultiModuleLoaderSpec &spec,
-                                  ModuleHandle *module_handle) {
+  virtual port::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                                  ModuleHandle* module_handle) {
     return port::UnimplementedError("Not Implemented");
   }
-  virtual port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
-                              const BlockDim &block_dims, const KernelBase &k,
-                              const KernelArgsArrayBase &args) {
+  virtual port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+  CreateOrShareConstant(Stream* stream, const std::vector<uint8_t>& content) {
+    return port::UnimplementedError("Not Implemented");
+  }
+  virtual port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                              const BlockDim& block_dims, const KernelBase& k,
+                              const KernelArgsArrayBase& args) {
     return port::UnimplementedError("Not Implemented");
   }
 
   // Releases any state associated with the kernel.
-  virtual void UnloadKernel(const KernelBase *kernel) {}
+  virtual void UnloadKernel(const KernelBase* kernel) {}
   virtual DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) = 0;
   DeviceMemoryBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
-  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset,
+  virtual void* GetSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
                              uint64_t size) = 0;
-  virtual void Deallocate(DeviceMemoryBase *mem) = 0;
+  virtual void Deallocate(DeviceMemoryBase* mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
   // for more details on unified memory.
-  virtual void *UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
+  virtual void* UnifiedMemoryAllocate(uint64_t size) { return nullptr; }
 
   // Deallocates unified memory space previously allocated with
   // UnifiedMemoryAllocate.
-  virtual void UnifiedMemoryDeallocate(void *mem) {}
-  virtual void *HostMemoryAllocate(uint64_t size) = 0;
-  virtual void HostMemoryDeallocate(void *mem) = 0;
-  virtual bool HostMemoryRegister(void *mem, uint64_t size) = 0;
-  virtual bool HostMemoryUnregister(void *mem) = 0;
+  virtual void UnifiedMemoryDeallocate(void* mem) {}
+  virtual void* HostMemoryAllocate(uint64_t size) = 0;
+  virtual void HostMemoryDeallocate(void* mem) = 0;
+  virtual bool HostMemoryRegister(void* mem, uint64_t size) = 0;
+  virtual bool HostMemoryUnregister(void* mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
-  virtual port::Status SynchronousMemZero(DeviceMemoryBase *location,
+  virtual port::Status SynchronousMemZero(DeviceMemoryBase* location,
                                           uint64_t size) = 0;
-  virtual port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+  virtual port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                          uint64_t size) = 0;
-  virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                         const void *host_src,
+  virtual port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                         const void* host_src,
                                          uint64_t size) = 0;
-  virtual port::Status SynchronousMemcpy(void *host_dst,
-                                         const DeviceMemoryBase &gpu_src,
+  virtual port::Status SynchronousMemcpy(void* host_dst,
+                                         const DeviceMemoryBase& gpu_src,
                                          uint64_t size) = 0;
   virtual port::Status SynchronousMemcpyDeviceToDevice(
-      DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
+      DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src,
       uint64_t size) = 0;
-  virtual port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+  virtual port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
                                uint64_t size) = 0;
-  virtual port::Status Memset(Stream *stream, DeviceMemoryBase *location,
+  virtual port::Status Memset(Stream* stream, DeviceMemoryBase* location,
                               uint8 pattern, uint64_t size) {
     return port::InternalError("Not implemented");
   }
-  virtual port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+  virtual port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
                                 uint32 pattern, uint64_t size) = 0;
-  virtual bool Memcpy(Stream *stream, void *host_dst,
-                      const DeviceMemoryBase &gpu_src, uint64_t size) = 0;
-  virtual bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
-                      const void *host_src, uint64_t size) = 0;
-  virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
-                                    const DeviceMemoryBase &gpu_src,
+  virtual bool Memcpy(Stream* stream, void* host_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) = 0;
+  virtual bool Memcpy(Stream* stream, DeviceMemoryBase* gpu_dst,
+                      const void* host_src, uint64_t size) = 0;
+  virtual bool MemcpyDeviceToDevice(Stream* stream, DeviceMemoryBase* gpu_dst,
+                                    const DeviceMemoryBase& gpu_src,
                                     uint64_t size) = 0;
-  virtual bool HostCallback(Stream *stream, std::function<void()> callback);
-  virtual bool HostCallback(Stream *stream,
+  virtual bool HostCallback(Stream* stream, std::function<void()> callback);
+  virtual bool HostCallback(Stream* stream,
                             std::function<port::Status()> callback) = 0;
-  virtual port::Status AllocateEvent(Event *event) = 0;
-  virtual port::Status DeallocateEvent(Event *event) = 0;
-  virtual port::Status RecordEvent(Stream *stream, Event *event) = 0;
-  virtual port::Status WaitForEvent(Stream *stream, Event *event) = 0;
-  virtual Event::Status PollForEventStatus(Event *event) = 0;
-  virtual bool AllocateStream(Stream *stream) = 0;
-  virtual void DeallocateStream(Stream *stream) = 0;
-  virtual bool CreateStreamDependency(Stream *dependent, Stream *other) = 0;
-  virtual bool AllocateTimer(Timer *timer) = 0;
-  virtual void DeallocateTimer(Timer *timer) = 0;
-  virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
-  virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
-  virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
-  virtual port::Status GetStatus(Stream *stream) {
+  virtual port::Status AllocateEvent(Event* event) = 0;
+  virtual port::Status DeallocateEvent(Event* event) = 0;
+  virtual port::Status RecordEvent(Stream* stream, Event* event) = 0;
+  virtual port::Status WaitForEvent(Stream* stream, Event* event) = 0;
+  virtual Event::Status PollForEventStatus(Event* event) = 0;
+  virtual bool AllocateStream(Stream* stream) = 0;
+  virtual void DeallocateStream(Stream* stream) = 0;
+  virtual bool CreateStreamDependency(Stream* dependent, Stream* other) = 0;
+  virtual bool AllocateTimer(Timer* timer) = 0;
+  virtual void DeallocateTimer(Timer* timer) = 0;
+  virtual bool StartTimer(Stream* stream, Timer* timer) = 0;
+  virtual bool StopTimer(Stream* stream, Timer* timer) = 0;
+  virtual port::Status BlockHostUntilDone(Stream* stream) = 0;
+  virtual port::Status GetStatus(Stream* stream) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "GetStatus is not supported on this executor.");
   }
   virtual int PlatformDeviceCount() = 0;
-  virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
-  virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
+  virtual port::Status EnablePeerAccessTo(StreamExecutorInterface* other) = 0;
+  virtual bool CanEnablePeerAccessTo(StreamExecutorInterface* other) = 0;
 
   virtual int64_t GetDeviceLoad() { return -1; }
 
-  virtual bool DeviceMemoryUsage(int64_t *free, int64_t *total) const {
+  virtual bool DeviceMemoryUsage(int64_t* free, int64_t* total) const {
     return false;
   }
 
@@ -283,9 +280,9 @@ class StreamExecutorInterface {
   // If ModuleHandle is set then we search for `symbol_name` only within the
   // module corresponding to `module_handle`.  Otherwise all loaded modules are
   // searched.
-  virtual bool GetSymbol(const std::string &symbol_name,
-                         ModuleHandle module_handle, void **mem,
-                         size_t *bytes) {
+  virtual bool GetSymbol(const std::string& symbol_name,
+                         ModuleHandle module_handle, void** mem,
+                         size_t* bytes) {
     return false;
   }
 
@@ -302,11 +299,11 @@ class StreamExecutorInterface {
   // before dispatching events to it).
   // Returns true if the listener was successfully registered, false otherwise.
   // Does not take ownership of listener.
-  virtual bool RegisterTraceListener(TraceListener *listener) { return false; }
+  virtual bool RegisterTraceListener(TraceListener* listener) { return false; }
 
   // Unregisters the specified listener from the device-specific Executor.
   // Returns true if the listener was successfully registered, false otherwise.
-  virtual bool UnregisterTraceListener(TraceListener *listener) {
+  virtual bool UnregisterTraceListener(TraceListener* listener) {
     return false;
   }
 
@@ -319,7 +316,7 @@ class StreamExecutorInterface {
   //
   // If SupportsBlas() is true, this may return null, for example, if the BLAS
   // initialization fails.
-  virtual blas::BlasSupport *CreateBlas() { return nullptr; }
+  virtual blas::BlasSupport* CreateBlas() { return nullptr; }
 
   // Returns whether this StreamExecutor has FFT support for its underlying
   // platform.
@@ -331,7 +328,7 @@ class StreamExecutorInterface {
   //
   // If SupportsFft() is true, this may return null, for example, if the FFT
   // initialization fails.
-  virtual fft::FftSupport *CreateFft() { return nullptr; }
+  virtual fft::FftSupport* CreateFft() { return nullptr; }
 
   // Returns whether this StreamExecutor has Random Number Generation support
   // for
@@ -348,14 +345,14 @@ class StreamExecutorInterface {
   //
   // If SupportsRng() is true, this may return null, for example, if the RNG
   // initialization fails.
-  virtual rng::RngSupport *CreateRng() { return nullptr; }
+  virtual rng::RngSupport* CreateRng() { return nullptr; }
 
   // Creates a new DnnSupport object, ownership is transferred to the caller.
   // If SupportsDnn() is false, this will always return null.
   //
   // If SupportsDnn() is true, this may return null, for example, if the DNN
   // initialization fails.
-  virtual dnn::DnnSupport *CreateDnn() { return nullptr; }
+  virtual dnn::DnnSupport* CreateDnn() { return nullptr; }
 
   // Each call creates a new instance of the platform-specific implementation of
   // the corresponding interface type.
@@ -371,11 +368,11 @@ class StreamExecutorInterface {
   // causing a fatal error if it is not. This hack is made available solely for
   // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
   // as a platform.
-  virtual void *GpuContextHack() { return nullptr; }
+  virtual void* GpuContextHack() { return nullptr; }
 
   // Return allocator statistics.
-  virtual absl::optional<AllocatorStats> GetAllocatorStats() {
-    return absl::nullopt;
+  virtual std::optional<AllocatorStats> GetAllocatorStats() {
+    return std::nullopt;
   }
 
   // If implemented, clears the internal stats except for the `in_use` fields
@@ -388,7 +385,13 @@ class StreamExecutorInterface {
   // Clears the compilation cache from volatile memory. Returns OK if no
   // compilation cache exists or if clearing the compilation cache is
   // unsupported. Caches in non-volatile storage are unaffected.
-  virtual port::Status FlushCompilationCache() { return port::Status::OK(); }
+  virtual port::Status FlushCompilationCache() {
+    return ::tensorflow::OkStatus();
+  }
+
+  // Returns a stream allocated by this executor, or nullptr if not found.
+  // Performs linear search over alive GPU streams.
+  virtual Stream* FindAllocatedStream(void* /*gpu_stream*/) { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);

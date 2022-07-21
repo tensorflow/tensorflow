@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -35,7 +32,12 @@ class SquareLinearOperatorCompositionTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-4 and 2e-4.
     self._atol[dtypes.float32] = 2e-4
     self._atol[dtypes.complex64] = 1e-4
@@ -143,7 +145,12 @@ class NonSquareLinearOperatorCompositionTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-4
     self._atol[dtypes.float32] = 1e-4
     self._atol[dtypes.complex64] = 1e-4
@@ -163,10 +170,32 @@ class NonSquareLinearOperatorCompositionTest(
     shape_1 = batch_shape + [shape[-2], k]
     shape_2 = batch_shape + [k, shape[-1]]
 
+    # Ensure that the matrices are well-conditioned by generating
+    # random matrices whose singular values are close to 1.
+    # The reason to do this is because cond(AB) <= cond(A) * cond(B).
+    # By ensuring that each factor has condition number close to 1, we ensure
+    # that the condition number of the product isn't too far away from 1.
+    def generate_well_conditioned(shape, dtype):
+      m, n = shape[-2], shape[-1]
+      min_dim = min(m, n)
+      # Generate singular values that are close to 1.
+      d = linear_operator_test_util.random_normal(
+          shape[:-2] + [min_dim],
+          mean=1.,
+          stddev=0.1,
+          dtype=dtype)
+      zeros = array_ops.zeros(shape=shape[:-2] + [m, n], dtype=dtype)
+      d = linalg_lib.set_diag(zeros, d)
+      u, _ = linalg_lib.qr(linear_operator_test_util.random_normal(
+          shape[:-2] + [m, m], dtype=dtype))
+
+      v, _ = linalg_lib.qr(linear_operator_test_util.random_normal(
+          shape[:-2] + [n, n], dtype=dtype))
+      return math_ops.matmul(u, math_ops.matmul(d, v))
+
     matrices = [
-        linear_operator_test_util.random_normal(
-            shape_1, dtype=dtype), linear_operator_test_util.random_normal(
-                shape_2, dtype=dtype)
+        generate_well_conditioned(shape_1, dtype=dtype),
+        generate_well_conditioned(shape_2, dtype=dtype),
     ]
 
     lin_op_matrices = matrices

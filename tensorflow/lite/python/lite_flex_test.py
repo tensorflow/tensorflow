@@ -14,15 +14,10 @@
 # ==============================================================================
 """Tests for lite.py functionality related to select TF op usage."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
 import numpy as np
-
 import tensorflow as tf
 
 from tensorflow.core.framework import graph_pb2
@@ -39,11 +34,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class FromSessionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -135,7 +131,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
   @test_util.run_v2_only
   def testFloat(self, enable_mlir):
     input_data = constant_op.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -160,6 +156,49 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase,
     expected_output = np.array([24.0], dtype=np.float32)
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+  # Ensure that input TFLite buffer is not reused for ops such as
+  # `TensorListSetItem`. The example model has a while loop, and the while body
+  # has a `TensorListSetItem` op which takes the output from a `Where` op.
+  @test_util.run_v2_only
+  def testDisableFlexTensorMemoryReusing(self):
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[2, 3], dtype=tf.float32, name='x')
+    ])
+    def model(x):
+      l = list_ops.tensor_list_reserve(
+          element_dtype=tf.int64, element_shape=[None, 1], num_elements=2)
+      init_state = (0, x, l)
+      condition = lambda i, x, l: i < 2
+
+      def body(i, x, l):
+        element = tf.where(x[i])
+        l = list_ops.tensor_list_set_item(l, i, element)
+        return i + 1, x, l
+
+      _, _, l_final = tf.while_loop(condition, body, init_state)
+      return list_ops.tensor_list_stack(l_final, element_dtype=tf.int64)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [model.get_concrete_function()])
+    converter.target_spec.supported_ops = set(
+        [lite.OpsSet.TFLITE_BUILTINS, lite.OpsSet.SELECT_TF_OPS])
+    tflite_model = converter.convert()
+
+    # Check the model produces correct result.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[1.0, 2.0, 0.0], [0.0, 5.0, 6.0]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([0, 1, 1, 2], dtype=np.int64)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == np.ndarray.flatten(output_data)).all())
 
 
 class WithCustomOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -288,6 +327,119 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
         x=np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32))
     expected_output = np.array([[3.0, 4.0, 5.0, 6.0]], dtype=np.float32)
     self.assertTrue((expected_output == list(outputs.values())[0]).all)
+
+
+class TFQuantizationTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(('DefaultMode', 'DEFAULT'),
+                                  ('LegacyIntegerMode', 'LEGACY_INTEGER'))
+  def testAddOp(self, tf_quantization_mode):
+    root = autotrackable.AutoTrackable()
+    root.add_func = def_function.function(lambda x: x + x)
+    input_data = tf.reshape(tf.range(4, dtype=tf.float32), [1, 4])
+    concrete_func = root.add_func.get_concrete_function(input_data)
+
+    # Convert model and check if the op is not flex.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    converter._experimental_tf_quantization_mode = tf_quantization_mode
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    if tf_quantization_mode == 'LEGACY_INTEGER':
+      self.assertIn('ADD', tflite_test_util.get_ops_list(tflite_model))
+    else:
+      self.assertIn('FlexAddV2', tflite_test_util.get_ops_list(tflite_model))
+
+    # Check the model works.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[2.0, 4.0, 6.0, 8.0]], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
+
+  @parameterized.named_parameters(('DefaultMode', 'DEFAULT'),
+                                  ('LegacyIntegerMode', 'LEGACY_INTEGER'))
+  def testL2LossOp(self, tf_quantization_mode):
+    root = autotrackable.AutoTrackable()
+    root.l2_loss_func = def_function.function(lambda x: nn_ops.l2_loss(x))  # pylint: disable=unnecessary-lambda
+    input_data = tf.range(4, dtype=tf.float32)
+    concrete_func = root.l2_loss_func.get_concrete_function(input_data)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    converter._experimental_tf_quantization_mode = tf_quantization_mode
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertIn('FlexL2Loss', tflite_test_util.get_ops_list(tflite_model))
+
+    # Check the model works.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([15.0], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
+
+  @parameterized.named_parameters(('DefaultMode', 'DEFAULT'),
+                                  ('LegacyIntegerMode', 'LEGACY_INTEGER'))
+  def testConvOpWithBias(self, tf_quantization_mode):
+
+    class ConvModel(autotrackable.AutoTrackable):
+
+      @def_function.function
+      def conv_func(self, in_tensor, filter_tensor):
+        bias = constant_op.constant(3., shape=[1])
+        conv_tensor = tf.nn.conv2d(
+            in_tensor,
+            filter_tensor,
+            strides=[1, 1, 1, 1],
+            dilations=[1, 1, 1, 1],
+            padding='VALID',
+            data_format='NHWC')
+        conv_tensor = conv_tensor + bias
+        return tf.nn.relu(conv_tensor)
+
+    root = ConvModel()
+    input_data = tf.reshape(tf.range(4, dtype=tf.float32), [1, 2, 2, 1])
+    filter_data = tf.reshape(tf.range(2, dtype=tf.float32), [1, 2, 1, 1])
+    concrete_func = root.conv_func.get_concrete_function(
+        input_data, filter_data)
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    converter._experimental_tf_quantization_mode = tf_quantization_mode
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+    self.assertCountEqual(['CONV_2D', 'RESHAPE'],
+                          tflite_test_util.get_ops_list(tflite_model))
+
+    # Check the model works.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    test_input = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32).reshape(
+        (1, 2, 2, 1))
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    test_filter = np.array([1.0, 0.0], dtype=np.float32).reshape((1, 2, 1, 1))
+    interpreter.set_tensor(input_details[1]['index'], test_filter)
+    interpreter.invoke()
+
+    output_details = interpreter.get_output_details()
+    expected_output = np.array([[[[4.]], [[6.]]]], dtype=np.float32)
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    self.assertTrue((expected_output == output_data).all())
+
 
 if __name__ == '__main__':
   test.main()

@@ -13,13 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Gradients for operators defined in math_ops.py."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
-from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -125,11 +120,9 @@ def SmartBroadcastGradientArgs(x, y, grad):
     rx, ry = array_ops.broadcast_gradient_args(x_shape_tuple, y_shape_tuple)
     # TODO(mrry): If this becomes a bottleneck, add a multi-output version of
     # `TF_TryEvaluateConstant()`.
-    rx_value = tuple(c_api.TF_TryEvaluateConstant_wrapper(
-        rx.graph._c_graph, rx._as_tf_output()))  # pylint: disable=protected-access
+    rx_value = tuple(tensor_util.try_evaluate_constant(rx))
     assert rx_value is not None
-    ry_value = tuple(c_api.TF_TryEvaluateConstant_wrapper(
-        ry.graph._c_graph, ry._as_tf_output()))  # pylint: disable=protected-access
+    ry_value = tuple(tensor_util.try_evaluate_constant(ry))
     assert ry_value is not None
     g._bcast_grad_args_cache[(x_shape_tuple, y_shape_tuple)] = (  # pylint: disable=protected-access
         rx_value, ry_value)
@@ -189,8 +182,7 @@ def _SumGrad(op, grad):
           # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
           def EvaluateAsTuple(t):
             if tensor_util.is_tf_type(t):
-              value = c_api.TF_TryEvaluateConstant_wrapper(
-                  t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
+              value = tensor_util.try_evaluate_constant(t)
               assert value is not None
             else:
               value = t

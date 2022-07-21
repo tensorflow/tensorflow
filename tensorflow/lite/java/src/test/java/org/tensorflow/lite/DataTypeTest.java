@@ -36,14 +36,15 @@ public final class DataTypeTest {
   @Test
   public void testConversion() {
     for (DataType dataType : DataType.values()) {
-      assertThat(DataType.fromC(dataType.c())).isEqualTo(dataType);
+      assertThat(DataTypeUtils.fromC(dataType.c())).isEqualTo(dataType);
     }
   }
 
   @Test
   public void testINT8AndUINT8() {
-    assertThat(DataType.INT8.toStringName()).isEqualTo("byte");
-    assertThat(DataType.UINT8.toStringName()).isEqualTo("byte");
-    assertThat(DataType.INT8.toStringName()).isEqualTo(DataType.UINT8.toStringName());
+    assertThat(DataTypeUtils.toStringName(DataType.INT8)).isEqualTo("byte");
+    assertThat(DataTypeUtils.toStringName(DataType.UINT8)).isEqualTo("byte");
+    assertThat(DataTypeUtils.toStringName(DataType.INT8))
+        .isEqualTo(DataTypeUtils.toStringName(DataType.UINT8));
   }
 }

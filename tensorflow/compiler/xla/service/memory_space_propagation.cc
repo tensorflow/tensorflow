@@ -17,7 +17,9 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
+StatusOr<bool> MemorySpacePropagation::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
   // Configure bitcasts to define values. Otherwise, if there is only a bitcast
   // between a fusion input and output and these two values are in different
@@ -28,7 +30,8 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
                                                /*bitcast_defines_value=*/true));
   dataflow_analysis_ = std::move(dataflow_analysis);
 
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         // Propagate the operand subshapes.
@@ -63,7 +66,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
                                        int64_t memory_space) const {
   bool modified = false;
   const HloValue& value = dataflow_analysis_->GetUniqueValueAt(
-      callee_instruction, index.ToShapeIndex());
+      callee_instruction, ShapeIndex(index));
 
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;
@@ -100,7 +103,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     }
   }
 
-  for (const HloUse& use : value.uses()) {
+  for (const HloUse& use : value.GetUses()) {
     // For fusion uses, propagate the memory space to the fusion parameter.
     if (use.instruction->opcode() == HloOpcode::kFusion) {
       modified |= Propagate(

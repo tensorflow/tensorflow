@@ -9,6 +9,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -50,7 +51,7 @@ def tf_deps(deps, suffix):
 # Modified from @cython//:Tools/rules.bzl
 def pyx_library(
         name,
-        deps = [],
+        cc_deps = [],
         py_deps = [],
         srcs = [],
         testonly = None,
@@ -59,16 +60,18 @@ def pyx_library(
     """Compiles a group of .pyx / .pxd / .py files.
 
     First runs Cython to create .cpp files for each input .pyx or .py + .pxd
-    pair. Then builds a shared object for each, passing "deps" to each cc_binary
+    pair. Then builds a shared object for each, passing "cc_deps" to each cc_binary
     rule (includes Python headers by default). Finally, creates a py_library rule
     with the shared objects and any pure Python "srcs", with py_deps as its
     dependencies; the shared objects can be imported like normal Python files.
 
     Args:
       name: Name for the rule.
-      deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
+      cc_deps: C/C++ dependencies of the Cython (e.g. Numpy headers).
       py_deps: Pure Python dependencies of the final library.
       srcs: .py, .pyx, or .pxd files to either compile or pass through.
+      testonly: If True, the target can only be used with tests.
+      srcs_version: Version of python source files.
       **kwargs: Extra keyword arguments passed to the py_library.
     """
 
@@ -107,7 +110,7 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = deps + ["@org_tensorflow//third_party/python_runtime:headers"],
+            deps = cc_deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
         )
@@ -184,16 +187,14 @@ def cc_proto_library(
       protolib_deps: the dependencies to proto libraries.
       **kwargs: other keyword arguments that are passed to cc_library.
     """
-
-    wkt_deps = ["@com_google_protobuf//:cc_wkt_protos"]
-    all_protolib_deps = protolib_deps + wkt_deps
-
     includes = []
     if include != None:
         includes = [include]
     if protolib_name == None:
         protolib_name = name
 
+    genproto_deps = ([s + "_genproto" for s in protolib_deps] +
+                     ["@com_google_protobuf//:cc_wkt_protos_genproto"])
     if internal_bootstrap_hack:
         # For pre-checked-in generated files, we add the internal_bootstrap_hack
         # which will skip the codegen action.
@@ -203,7 +204,7 @@ def cc_proto_library(
             includes = includes,
             protoc = protoc,
             visibility = ["//visibility:public"],
-            deps = [s + "_genproto" for s in all_protolib_deps],
+            deps = genproto_deps,
         )
 
         # An empty cc_library to make rule dependency consistent.
@@ -235,7 +236,7 @@ def cc_proto_library(
         plugin_options = plugin_options,
         protoc = protoc,
         visibility = ["//visibility:public"],
-        deps = [s + "_genproto" for s in all_protolib_deps],
+        deps = genproto_deps,
     )
 
     if use_grpc_plugin:
@@ -276,6 +277,74 @@ def cc_proto_library(
             "@com_google_protobuf//:protobuf_headers",
         ] + header_only_deps + if_static([impl_name]),
         hdrs = gen_hdrs,
+        **kwargs
+    )
+
+# Re-defined protocol buffer rule to allow setting service namespace.
+def cc_grpc_library(
+        name,
+        srcs,
+        deps,
+        well_known_protos = False,
+        generate_mocks = False,
+        service_namespace = "grpc",
+        **kwargs):
+    """Generates C++ grpc classes for services defined in a proto file.
+
+    This rule is compatible with proto_library and
+    cc_proto_library native rules such that it expects proto_library target
+    as srcs argument and generates only grpc library classes, expecting
+    protobuf messages classes library (cc_proto_library target) to be passed in
+    deps argument.
+    Assumes the generated classes will be used in cc_api_version = 2.
+    Args:
+        name (str): Name of rule.
+        srcs (list): A single .proto file which contains services definitions,
+          or if grpc_only parameter is True, a single proto_library which
+          contains services descriptors.
+        deps (list): A list of C++ proto_library (or cc_proto_library) which
+          provides the compiled code of any message that the services depend on.
+        well_known_protos (bool): Should this library additionally depend on
+          well known protos. Deprecated, the well known protos should be
+          specified as explicit dependencies of the proto_library target
+          (passed in srcs parameter) instead. False by default.
+        generate_mocks (bool): when True, Google Mock code for client stub is
+          generated. False by default.
+        service_namespace (str): Service namespace.
+        **kwargs: rest of arguments, e.g., compatible_with and visibility
+    """
+    if len(srcs) > 1:
+        fail("Only one srcs value supported", "srcs")
+
+    extra_deps = []
+    proto_targets = []
+
+    if not srcs:
+        fail("srcs cannot be empty", "srcs")
+    proto_targets += srcs
+
+    extra_deps += select({
+        clean_dep("//tensorflow:linux_s390x"): ["//external:grpc_lib_unsecure"],
+        "//conditions:default": ["//external:grpc_lib"],
+    })
+
+    codegen_grpc_target = "_" + name + "_grpc_codegen"
+    generate_cc(
+        name = codegen_grpc_target,
+        srcs = proto_targets,
+        plugin = "//external:grpc_cpp_plugin",
+        well_known_protos = well_known_protos,
+        generate_mocks = generate_mocks,
+        flags = ["services_namespace=" + service_namespace],
+        **kwargs
+    )
+
+    native.cc_library(
+        name = name,
+        srcs = [":" + codegen_grpc_target],
+        hdrs = [":" + codegen_grpc_target],
+        deps = deps +
+               extra_deps,
         **kwargs
     )
 
@@ -419,7 +488,7 @@ def tf_proto_library_cc(
         )
         native.cc_library(
             name = cc_name + "_impl",
-            deps = [s + "_impl" for s in cc_deps] + ["@com_google_protobuf//:cc_wkt_protos"],
+            deps = [s + "_impl" for s in cc_deps],
         )
 
         return
@@ -443,7 +512,7 @@ def tf_proto_library_cc(
         use_grpc_plugin = use_grpc_plugin,
         use_grpc_namespace = use_grpc_namespace,
         visibility = visibility,
-        deps = cc_deps + ["@com_google_protobuf//:cc_wkt_protos"],
+        deps = cc_deps,
         protolib_deps = protolib_deps,
     )
 
@@ -518,18 +587,22 @@ def tf_proto_library(
     # ABI violations).
     _ignore = (
         js_codegen,
-        exports,
         create_service,
         create_java_proto,
-        create_grpc_library,
         cc_stubby_versions,
         create_go_proto,
     )
+
+    if name.endswith("_proto"):
+        name_sans_proto = name[:-6]
+    else:
+        name_sans_proto = name
 
     native.proto_library(
         name = name,
         srcs = srcs,
         deps = protodeps + well_known_proto_libs(),
+        exports = exports,
         visibility = visibility,
         testonly = testonly,
         tags = tags,
@@ -546,6 +619,16 @@ def tf_proto_library(
         protodeps = protodeps,
         visibility = visibility,
     )
+
+    if create_grpc_library:
+        cc_grpc_library(
+            name = name_sans_proto + "_cc_grpc_proto",
+            srcs = [name],
+            generate_mocks = True,
+            deps = [name + "_cc"],
+            visibility = visibility,
+            testonly = testonly,
+        )
 
     tf_proto_library_py(
         name = name,
@@ -569,7 +652,6 @@ def tf_additional_lib_hdrs():
         "//tensorflow/core/platform/default:mutex_data.h",
         "//tensorflow/core/platform/default:notification.h",
         "//tensorflow/core/platform/default:stacktrace.h",
-        "//tensorflow/core/platform/default:test_benchmark.h",
         "//tensorflow/core/platform/default:tracing_impl.h",
         "//tensorflow/core/platform/default:unbounded_work_queue.h",
     ] + select({
@@ -636,7 +718,6 @@ def tf_additional_test_deps():
 def tf_additional_test_srcs():
     return [
         "//tensorflow/core/platform/default:test.cc",
-        "//tensorflow/core/platform/default:test_benchmark.cc",
     ]
 
 def tf_kernel_tests_linkstatic():
@@ -659,7 +740,6 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
         ],
@@ -685,7 +765,14 @@ def tf_pyclif_proto_library(
     native.filegroup(name = name + "_pb2")
 
 def tf_additional_binary_deps():
-    return [clean_dep("@nsync//:nsync_cpp")] + if_cuda(
+    return [
+        clean_dep("@nsync//:nsync_cpp"),
+        # TODO(allenl): Split these out into their own shared objects. They are
+        # here because they are shared between contrib/ op shared objects and
+        # core.
+        clean_dep("//tensorflow/core/kernels:lookup_util"),
+        clean_dep("//tensorflow/core/util/tensor_bundle"),
+    ] + if_cuda(
         [
             clean_dep("//tensorflow/stream_executor:cuda_platform"),
         ],
@@ -694,13 +781,7 @@ def tf_additional_binary_deps():
             clean_dep("//tensorflow/stream_executor:rocm_platform"),
             clean_dep("//tensorflow/core/platform/default/build_config:rocm"),
         ],
-    ) + [
-        # TODO(allenl): Split these out into their own shared objects (they are
-        # here because they are shared between contrib/ op shared objects and
-        # core).
-        clean_dep("//tensorflow/core/kernels:lookup_util"),
-        clean_dep("//tensorflow/core/util/tensor_bundle"),
-    ] + if_mkl_ml(
+    ) + if_mkl_ml(
         [
             clean_dep("//third_party/mkl:intel_binary_blob"),
         ],
@@ -790,3 +871,9 @@ def if_llvm_system_z_available(then, otherwise = []):
 
 def tf_tpu_dependencies():
     return if_libtpu(["//tensorflow/core/tpu/kernels"])
+
+def tf_dtensor_tpu_dependencies():
+    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
+
+def tf_cuda_libdevice_path_deps():
+    return tf_platform_deps("cuda_libdevice_path")

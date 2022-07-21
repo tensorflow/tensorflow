@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResourceApplyPowerSign"
   input_arg {
     name: "var"

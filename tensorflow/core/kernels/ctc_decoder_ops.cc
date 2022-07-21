@@ -111,7 +111,7 @@ class CTCDecodeHelper {
     s = ctx->output_list("decoded_shape", decoded_shape);
     if (!s.ok()) return s;
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // sequences[b][p][ix] stores decoded value "ix" of path "p" for batch "b".
@@ -174,7 +174,7 @@ class CTCDecodeHelper {
       shape_t(0) = batch_size;
       shape_t(1) = max_decoded;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

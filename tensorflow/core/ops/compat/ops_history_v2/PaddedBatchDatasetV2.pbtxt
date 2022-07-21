@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "PaddedBatchDatasetV2"
   input_arg {
     name: "input_dataset"
@@ -123,6 +123,153 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "PaddedBatchDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "padded_shapes"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "padding_values"
+    type_list_attr: "Toutput_types"
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_VAR
+        s: "Toutput_types"
+      }
+    }
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "PaddedBatchDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "padded_shapes"
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "padding_values"
+    type_list_attr: "Toutput_types"
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "Toutput_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "Toutput_types"
+        }
+      }
+    }
   }
   attr {
     name: "parallel_copy"

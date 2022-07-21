@@ -206,21 +206,23 @@ TfLiteStatus CoreMlDelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* n
 
 TfLiteStatus CoreMlDelegateKernel::Invoke(TfLiteContext* context, TfLiteNode* node) {
   if (@available(iOS 11.0, *)) {
-    TfLiteIntArrayView node_inputs(node->inputs);
-    for (int i = 0; i < input_tensor_ids_.size(); ++i) {
-      const int tensor_id = input_tensor_ids_[i];
-      TfLiteTensor* tensor = &context->tensors[tensor_id];
-      // Transpose input to CHW.
-      // TODO(b/143992544): try adding transpose op for inputs.
-      TransposeToCHW(tensor->data.f, inputs_[i].data.data(), tensor->dims);
-    }
+    @autoreleasepool {
+      TfLiteIntArrayView node_inputs(node->inputs);
+      for (int i = 0; i < input_tensor_ids_.size(); ++i) {
+        const int tensor_id = input_tensor_ids_[i];
+        TfLiteTensor* tensor = &context->tensors[tensor_id];
+        // Transpose input to CHW.
+        // TODO(b/143992544): try adding transpose op for inputs.
+        TransposeToCHW(tensor->data.f, inputs_[i].data.data(), tensor->dims);
+      }
 
-    if (![executor_ invokeWithInputs:inputs_ outputs:outputs_]) {
-      return kTfLiteError;
-    }
-    for (int i = 0; i < node->outputs->size; ++i) {
-      TfLiteTensor* output_tensor = GetOutput(context, node, i);
-      TransposeToHWC(outputs_[i].data.data(), output_tensor->data.f, output_tensor->dims);
+      if (![executor_ invokeWithInputs:inputs_ outputs:outputs_]) {
+        return kTfLiteError;
+      }
+      for (int i = 0; i < node->outputs->size; ++i) {
+        TfLiteTensor* output_tensor = GetOutput(context, node, i);
+        TransposeToHWC(outputs_[i].data.data(), output_tensor->data.f, output_tensor->dims);
+      }
     }
     return kTfLiteOk;
   } else {

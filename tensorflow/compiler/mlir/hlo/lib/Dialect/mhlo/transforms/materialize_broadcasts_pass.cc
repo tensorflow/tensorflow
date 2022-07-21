@@ -16,7 +16,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -30,19 +31,20 @@ namespace {
 
 struct TestMaterializeBroadcastsPass
     : public TestMaterializeBroadcastsPassBase<TestMaterializeBroadcastsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns(&getContext());
+    RewritePatternSet conversionPatterns(&getContext());
 
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
-    conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
+    conversionTarget
+        .addLegalDialect<arith::ArithmeticDialect, mlir::func::FuncDialect>();
 
-    SetupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
-    PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
+    setupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
+    populateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
 
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
+    if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
       return signalPassFailure();
     }

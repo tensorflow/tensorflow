@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <memory>
 #include <random>
 
@@ -44,12 +45,12 @@ ABSL_FLAG(double, error_epsilon, 0.2,
 namespace tflite {
 namespace {
 // Returns a randomly generated data of size 'num_elements'.
-std::vector<uint8> GetData(int num_elements) {
-  std::vector<uint8> result(num_elements);
+std::vector<uint8_t> GetData(int num_elements) {
+  std::vector<uint8_t> result(num_elements);
   std::random_device random_engine;
   std::uniform_int_distribution<uint32_t> distribution(0, 254);
   std::generate_n(result.data(), num_elements, [&]() {
-    return static_cast<uint8>(distribution(random_engine));
+    return static_cast<uint8_t>(distribution(random_engine));
   });
   return result;
 }
@@ -96,7 +97,7 @@ class TestModel {
         absl::GetFlag(FLAGS_model_file_path).c_str());
     ASSERT_TRUE(model_ != nullptr);
 
-    resolver_.reset(new ops::builtin::BuiltinOpResolver());
+    resolver_ = std::make_unique<ops::builtin::BuiltinOpResolver>();
     InterpreterBuilder(*model_, *resolver_)(&interpreter_);
     ASSERT_TRUE(interpreter_ != nullptr);
   }
@@ -129,7 +130,7 @@ class TestModel {
   }
 
   void Run(const std::vector<int>& input_shape,
-           const std::vector<uint8>& input_data) {
+           const std::vector<uint8_t>& input_data) {
     // Resize Inputs.
     auto interpreter_inputs = interpreter_->inputs();
     interpreter_->ResizeInputTensor(interpreter_inputs[0], input_shape);
@@ -138,14 +139,14 @@ class TestModel {
     TfLiteTensor* input_tensor =
         interpreter_->tensor(interpreter_->inputs()[0]);
     memcpy(input_tensor->data.raw, input_data.data(),
-           input_data.size() * sizeof(uint8));
+           input_data.size() * sizeof(uint8_t));
 
     ASSERT_EQ(kTfLiteOk, interpreter_->Invoke());
   }
 
   std::vector<float> GetOutput(int output_index) {
     auto* tensor = interpreter_->output_tensor(output_index);
-    uint8* data = interpreter_->typed_output_tensor<uint8>(output_index);
+    uint8_t* data = interpreter_->typed_output_tensor<uint8_t>(output_index);
     std::vector<float> result;
     result.resize(NumElements(tensor));
     const auto scale =

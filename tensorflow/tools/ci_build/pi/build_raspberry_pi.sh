@@ -75,7 +75,8 @@ if [[ $1 == "PI_ONE" ]]; then
   # work, so pinning to the last know good version.
   git checkout 5a6a2bed9aff0ba8a18651d5514d029c8cae336a
   # If this path is changed, you'll also need to update
-  # cxx_builtin_include_directory in https://github.com/tensorflow/toolchains/tree/master/toolchains/cpus/arm/CROSSTOOL.tpl
+  # cxx_builtin_include_directory in
+  # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/cpus/arm/cc_config.bzl.tpl
   OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
   make CC=${CROSSTOOL_CC} FC=${CROSSTOOL_CC} HOSTCC=gcc TARGET=ARMV6
   make PREFIX=${OPENBLAS_INSTALL_PATH} install

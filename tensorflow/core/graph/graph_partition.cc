@@ -180,9 +180,8 @@ void AddReadControl(const std::vector<NodeDef*>& recvs,
 }
 
 void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
-                      NodeDefBuilder* builder) {
-  builder->Attr("tensor_name",
-                strings::StrCat("edge_", edge->id(), "_", edge->src()->name()));
+                      const string& tensor_name_attr, NodeDefBuilder* builder) {
+  builder->Attr("tensor_name", tensor_name_attr);
   builder->Attr("send_device", edge->src()->assigned_device_name());
   builder->Attr("send_device_incarnation",
                 static_cast<int64_t>(
@@ -196,7 +195,7 @@ void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
 NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
                  GraphDef* gdef, const Edge* edge,
                  NodeDefBuilder::NodeOut send_from, int64_t start_time,
-                 Status* status) {
+                 const string& tensor_name_attr, Status* status) {
   const DataType dtype = send_from.data_type;
   const DataType cast_dtype = opts.should_cast ? opts.should_cast(edge) : dtype;
   const Node* src = edge->src();
@@ -241,7 +240,7 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
   const string send_op = (host_memory) ? "_HostSend" : "_Send";
   NodeDefBuilder send_builder(opts.new_name(src->name()), send_op,
                               NodeDebugInfo(*src));
-  SetSendRecvAttrs(opts, edge, &send_builder);
+  SetSendRecvAttrs(opts, edge, tensor_name_attr, &send_builder);
   send_builder.Device(src->assigned_device_name()).Input(send_from);
   if (opts.scheduling_for_recvs) {
     send_builder.Attr("_start_time", start_time);
@@ -253,7 +252,7 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
 
 NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
                  GraphDef* gdef, const Edge* edge, NodeDef** real_recv,
-                 Status* status) {
+                 const string& tensor_name_attr, Status* status) {
   const DataType dtype = EdgeType(edge);
   const Node* src = edge->src();
   const Node* dst = edge->dst();
@@ -300,7 +299,7 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
   const string recv_op = (host_memory) ? "_HostRecv" : "_Recv";
   NodeDefBuilder recv_builder(opts.new_name(src->name()), recv_op,
                               NodeDebugInfo(*src));
-  SetSendRecvAttrs(opts, edge, &recv_builder);
+  SetSendRecvAttrs(opts, edge, tensor_name_attr, &recv_builder);
   recv_builder.Device(dst->assigned_device_name())
       .Attr("tensor_type", cast_dtype);
   NodeDef* recv = gdef->add_node();
@@ -567,7 +566,7 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
   loop->enter = enter;
   loop->merge = merge;
   loop->switch_node = switch_node;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Build memory and device type info for every node in the graph.
@@ -599,7 +598,7 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const Node* InputFrame(const Node* node,
@@ -778,7 +777,7 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 struct PriorityTopoSortNode {
@@ -881,7 +880,7 @@ Status TopologicalSortNodesWithTimePriority(
   // Done.
   nodes->swap(start_times);
   node_to_start_time_out->swap(node_to_start_time);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddControlEdges(const PartitionOptions& opts,
@@ -941,7 +940,7 @@ Status AddControlEdges(const PartitionOptions& opts,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // If 'ndef' is a Send or Recv, fills its attr send_device_incarnation
@@ -1143,15 +1142,23 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         send_from.Reset(src->name(), edge->src_output(), EdgeType(edge));
       }
 
+      string tensor_name_attr;
+      if (opts.get_tensor_name_attr) {
+        tensor_name_attr = opts.get_tensor_name_attr(edge);
+      } else {
+        tensor_name_attr =
+            strings::StrCat("edge_", edge->id(), "_", edge->src()->name());
+      }
+
       // Need to split edge by placing matching send/recv nodes on
       // the src/dst sides of the edge.
       NodeDef* send = AddSend(opts, g_info, src_graph, edge, send_from,
-                              send_start_time, &status);
+                              send_start_time, tensor_name_attr, &status);
       if (!status.ok()) return status;
 
       NodeDef* real_recv = nullptr;
-      NodeDef* recv =
-          AddRecv(opts, g_info, dst_graph, edge, &real_recv, &status);
+      NodeDef* recv = AddRecv(opts, g_info, dst_graph, edge, &real_recv,
+                              tensor_name_attr, &status);
       if (!status.ok()) return status;
 
       // Fix up the control flow edge.
@@ -1251,7 +1258,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
                          *gdef);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

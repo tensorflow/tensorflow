@@ -26,19 +26,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
-                                      const BHWDC& shape,
-                                      const TensorDescriptor& descriptor);
-
-absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
-                                      const BHWC& shape,
-                                      const TensorDescriptor& descriptor);
-
-absl::Status SelectBestStorageType(const GpuInfo& gpu_info, const BHWC& shape,
-                                   TensorStorageType desired,
-                                   DataType data_type, Layout layout,
-                                   TensorStorageType* result);
-
 LinearStorageType DeduceLinearStorageType(
     TensorStorageType tensor_storage_type);
 

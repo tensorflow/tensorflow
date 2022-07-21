@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Experimental API for manually injecting delays into `tf.data` pipelines."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 

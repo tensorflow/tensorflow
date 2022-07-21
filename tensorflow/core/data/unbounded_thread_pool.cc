@@ -58,7 +58,7 @@ class UnboundedThreadPool::LogicalThreadFactory : public ThreadFactory {
                                       std::function<void()> fn) override {
     auto done = std::make_shared<Notification>();
     pool_->ScheduleOnWorkQueue(std::move(fn), done);
-    return absl::make_unique<LogicalThreadWrapper>(std::move(done));
+    return std::make_unique<LogicalThreadWrapper>(std::move(done));
   }
 
  private:

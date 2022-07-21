@@ -15,10 +15,6 @@
 
 """Provides a method for reading events from an event file via an iterator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.util import event_pb2
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util.tf_export import tf_export
@@ -65,7 +61,7 @@ def summary_iterator(path):
   for e in tf.compat.v1.train.summary_iterator(path to events file):
       for v in e.summary.value:
           if v.tag == 'loss':
-              print(v.simple_value)
+              print(tf.make_ndarray(v.tensor))
   ```
   Example: Continuously check for new summary values.
 
@@ -75,7 +71,7 @@ def summary_iterator(path):
     for e in summaries:
         for v in e.summary.value:
             if v.tag == 'loss':
-                print(v.simple_value)
+                print(tf.make_ndarray(v.tensor))
     # Wait for a bit before checking the file for any new events
     time.sleep(wait time)
   ```

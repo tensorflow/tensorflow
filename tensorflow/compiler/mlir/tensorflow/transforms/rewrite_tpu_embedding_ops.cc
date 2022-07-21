@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -26,17 +27,10 @@ namespace TF {
 namespace {
 
 // Rewrites RecvTPUEmbeddingActivationsOp and SendTPUEmbeddingGradients ops to
-// internal variants by introducing _RecvTPUEmbeddingDeduplicationData op.
+// internal variants by introducing XlaRecvTPUEmbeddingDeduplicationData op.
 struct RewriteTPUEmbeddingOps
-    : public PassWrapper<RewriteTPUEmbeddingOps, FunctionPass> {
-  void runOnFunction() override;
-
-  StringRef getArgument() const final { return "tf-rewrite-tpu-embedding-ops"; }
-
-  StringRef getDescription() const final {
-    return "Rewrites TPU embedding send/recv ops by adding TPU embedding "
-           "deduplication data";
-  }
+    : public RewriteTPUEmbeddingOpsPassBase<RewriteTPUEmbeddingOps> {
+  void runOnOperation() override;
 };
 
 // Rewrites the given op to `OpT` op after adding the given operand at the end.
@@ -78,17 +72,17 @@ LogicalResult RunOnRegion(Region* region) {
   Location loc = recv_op ? recv_op.getLoc() : send_op.getLoc();
   StringRef config = recv_op ? recv_op.config() : send_op.config();
 
-  // Create _RecvTPUEmbeddingDeduplicationData op.
+  // Create XlaRecvTPUEmbeddingDeduplicationData op.
   OpBuilder builder(region);
   auto output_ty =
       RankedTensorType::get({}, VariantType::get(region->getContext()));
-  auto dedup_op = builder.create<_RecvTPUEmbeddingDeduplicationDataOp>(
+  auto dedup_op = builder.create<XlaRecvTPUEmbeddingDeduplicationDataOp>(
       loc, output_ty, config);
 
   // Rewrite RecvTPUEmbeddingActivations op to the corresponding internal op.
   if (recv_op)
-    AddOperandAndRewriteAs<_RecvTPUEmbeddingActivationsOp>(recv_op, dedup_op,
-                                                           &builder);
+    AddOperandAndRewriteAs<XlaRecvTPUEmbeddingActivationsOp>(recv_op, dedup_op,
+                                                             &builder);
 
   // Rewrite SendTPUEmbeddingGradients op to the corresponding internal op and
   // then update the OperandSegmentSize attribute.
@@ -98,7 +92,7 @@ LogicalResult RunOnRegion(Region* region) {
     auto attr_ty = VectorType::get(3, builder.getI32Type());
     auto operand_size_attr = DenseIntElementsAttr::get(attr_ty, operand_sizes);
 
-    auto new_send_op = AddOperandAndRewriteAs<_SendTPUEmbeddingGradientsOp>(
+    auto new_send_op = AddOperandAndRewriteAs<XlaSendTPUEmbeddingGradientsOp>(
         send_op, dedup_op, &builder);
     new_send_op->setAttr(new_send_op.getOperandSegmentSizeAttr(),
                          operand_size_attr);
@@ -106,8 +100,8 @@ LogicalResult RunOnRegion(Region* region) {
   return success();
 }
 
-void RewriteTPUEmbeddingOps::runOnFunction() {
-  FuncOp func = getFunction();
+void RewriteTPUEmbeddingOps::runOnOperation() {
+  func::FuncOp func = getOperation();
   if (failed(RunOnRegion(&func.getBody()))) return signalPassFailure();
 
   func.walk([&](Operation* op) {
@@ -119,11 +113,10 @@ void RewriteTPUEmbeddingOps::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateRewriteTPUEmbeddingOpsPass() {
   return std::make_unique<RewriteTPUEmbeddingOps>();
 }
-
-static PassRegistration<RewriteTPUEmbeddingOps> pass;
 
 }  // namespace TF
 }  // namespace mlir

@@ -25,22 +25,16 @@ import tensorflow as tf
 
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.lite.tools.optimize.debugging.python import debugger
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import tracking
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python.metrics import metrics_portable as metrics
-except ImportError:
-  from tensorflow.lite.python.metrics import metrics_nonportable as metrics
-# pylint: enable=g-import-not-at-top
+from tensorflow.python.trackable import autotrackable
 
 
 def _get_model():
   """Returns somple model with Conv2D and representative dataset gen."""
-  root = tracking.AutoTrackable()
+  root = autotrackable.AutoTrackable()
   kernel_in = np.array([-2, -1, 1, 2], dtype=np.float32).reshape((2, 2, 1, 1))
 
   @tf.function(

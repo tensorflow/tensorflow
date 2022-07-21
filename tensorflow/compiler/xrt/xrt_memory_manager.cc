@@ -203,7 +203,7 @@ Status XRTMemoryManager::WorkingSet::LookupAndPin(
   TF_RETURN_IF_ERROR(
       tuple->PinAndSwapIn(memory_manager_.get(), backend, allocator).status());
   pinned_tuples_.push_back(std::move(tuple));
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ RefPtr<XRTMemoryManager> XRTMemoryManager::Get(ResourceMgr* rm) {
@@ -213,7 +213,7 @@ Status XRTMemoryManager::WorkingSet::LookupAndPin(
   TF_CHECK_OK(rm->LookupOrCreate<XRTMemoryManager>(
       *container, *name, &memory_manager, [](XRTMemoryManager** ret) {
         *ret = new XRTMemoryManager();
-        return Status::OK();
+        return OkStatus();
       }));
   return memory_manager;
 }
@@ -246,7 +246,7 @@ Status XRTMemoryManager::Release(int64_t handle) {
   if (device_context == nullptr || !device_context->Release(handle)) {
     return errors::NotFound("XRT memory handle not found: ", handle);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XRTMemoryManager::CompactAllocations(
@@ -256,7 +256,7 @@ Status XRTMemoryManager::CompactAllocations(
                                                    /*create_if_missing=*/false);
   return device_context != nullptr
              ? device_context->CompactAllocations(this, backend, allocator)
-             : Status::OK();
+             : OkStatus();
 }
 
 void XRTMemoryManager::ReleaseAllAllocations() {
@@ -348,7 +348,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
       size_t size = free_size_or.ValueOrDie();
       mrctx->free_size += size;
       if (size > 0) {
-        return Status::OK();
+        return OkStatus();
       }
     }
     mrctx->done_freeing = true;
@@ -358,7 +358,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
     if (device_context
             ->CompactAllocations(this, mrctx->backend, mrctx->allocator)
             .ok()) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   return status;

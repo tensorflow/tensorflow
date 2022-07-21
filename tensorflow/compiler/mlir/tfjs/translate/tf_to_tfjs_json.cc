@@ -26,9 +26,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -45,7 +46,7 @@ namespace tensorflow {
 
 using mlir::MLIRContext;
 using mlir::ModuleOp;
-using mlir::OwningModuleRef;
+using mlir::OwningOpRef;
 using stream_executor::port::StatusOr;
 
 namespace {
@@ -62,14 +63,14 @@ tensorflow::Status RegisterCustomOps(
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
-StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
+StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     const std::vector<std::string>& extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
@@ -86,7 +87,8 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
@@ -112,15 +114,15 @@ Status ConvertTFOpsToTfjsJSON(mlir::ModuleOp module, bool export_to_mlir,
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
-    return Status::OK();
+    return OkStatus();
   }
 
   return tfjs::MlirToJSONTranslateFunction(module, result)
-             ? Status::OK()
+             ? OkStatus()
              : statusHandler.ConsumeStatus();
 }
 
-StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     bool import_saved_model, bool import_saved_model_v1,
     const std::vector<std::string>& extra_tf_opdefs,
     const std::string& input_filename, const std::string& saved_model_tags,
@@ -134,7 +136,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
         input_filename, tags, absl::Span<std::string>(exported_names), context);
     if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else if (import_saved_model_v1) {
     tensorflow::MLIRImportOptions import_options;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
@@ -142,7 +144,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 
     if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

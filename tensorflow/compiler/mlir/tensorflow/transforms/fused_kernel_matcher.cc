@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <cstdio>
 #include <iostream>
+#include <string>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -26,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -49,14 +52,8 @@ namespace {
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public PassWrapper<FusedKernelMatcherPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-fused-kernel-matcher"; }
-
-  StringRef getDescription() const final {
-    return "Matches computations corresponding to optimized fused kernels";
-  }
-
-  void runOnFunction() override;
+    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
+  void runOnOperation() override;
 };
 
 bool IsActivationFunction(Operation *op) {
@@ -109,6 +106,13 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     return true;
   }
 
+  // Class users should override this method if there are any op-specific
+  // compatibility requirements for devices.
+  virtual bool IsDeviceCompatible(SrcOpT contraction_op, BiasAddOp bias_add,
+                                  PatternRewriter &rewriter) const {
+    return true;
+  }
+
   LogicalResult matchAndRewrite(SrcOpT contraction,
                                 PatternRewriter &rewriter) const override {
     auto context = rewriter.getContext();
@@ -116,7 +120,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // We do support fusion only if the contraction operation is inside one of
     // the expected operations with regions. Other operations can have semantics
     // that is not compatible with fusion (e.g. region compilation).
-    if (!isa<FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
+    if (!isa<func::FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
       return rewriter.notifyMatchFailure(
           contraction,
           "fused operation must be nested inside a function, If or While");
@@ -137,6 +141,13 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (!AreFuseCompatible(contraction, bias_add, rewriter)) {
       return rewriter.notifyMatchFailure(
           contraction, "cannot fuse with the subsequent BiasAdd op");
+    }
+
+    if (!IsDeviceCompatible(contraction, bias_add, rewriter)) {
+      return rewriter.notifyMatchFailure(
+          contraction,
+          "cannot fuse with the subsequent op as it's not supported by the "
+          "target device.");
     }
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
@@ -175,12 +186,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     std::vector<NamedAttribute> attrs = contraction->getAttrs();
     ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
-        NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
+        NamedAttribute(StringAttr::get(context, "fused_ops"), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it
     // here.
     Attribute epsilon = rewriter.getF32FloatAttr(0);
     attrs.push_back(
-        NamedAttribute(Identifier::get("epsilon", context), epsilon));
+        NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
@@ -195,6 +206,31 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     return success();
   }
 };
+
+const char kDeviceAttr[] = "device";
+const char kDeviceGpu[] = "GPU";
+
+llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
+  mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
+  if (!device || device.getValue().empty()) {
+    return llvm::None;
+  }
+  const std::string device_name = device.str();
+  tensorflow::DeviceNameUtils::ParsedName parsed_name;
+  if (!tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return llvm::None;
+  }
+  if (!parsed_name.has_type) {
+    return llvm::None;
+  }
+  return parsed_name.type;
+}
+
+bool IsGpuDevice(mlir::Operation *op) {
+  llvm::Optional<std::string> device = GetDevice(op);
+  if (!device) return false;
+  return *device == kDeviceGpu;
+}
 
 // Performs a fusion of the following pattern(s), if possible:
 //   Conv2D + BiasAdd + <Activation> -> _FusedConv2D
@@ -226,6 +262,22 @@ class FuseConv2DBiasAdd
     }
     return true;
   }
+
+  bool IsDeviceCompatible(Conv2DOp conv, BiasAddOp bias_add,
+                          PatternRewriter &rewriter) const override {
+    // Currently, GPU only supports Conv2D+BiasAdd+Relu fusion.
+    if (IsGpuDevice(conv)) {
+      auto activation = GetActivation(bias_add);
+      if (!activation || activation->getName().stripDialect() != "Relu" ||
+          !bias_add.output().hasOneUse()) {
+        (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+          diag << "GPU only supports Conv2D+BiasAdd+Relu fusion";
+        });
+        return false;
+      }
+    }
+    return true;
+  }
 };
 
 // Performs a fusion of the following pattern(s), if possible:
@@ -247,23 +299,32 @@ class FuseMatMulBiasAdd
     }
     return true;
   }
+
+  bool IsDeviceCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                          PatternRewriter &rewriter) const override {
+    if (IsGpuDevice(matmul)) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "_FusedMatMul is not supported by GPU";
+      });
+      return false;
+    }
+    return true;
+  }
 };
 
-void FusedKernelMatcherPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-  patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
+void FusedKernelMatcherPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
+  patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
-
-static PassRegistration<FusedKernelMatcherPass> pass;
 
 }  // namespace TF
 

@@ -28,6 +28,8 @@ class MlirXlaOpKernel : public XlaOpKernel {
   explicit MlirXlaOpKernel(OpKernelConstruction* ctx);
 
  private:
+  Status ContextToXlaArgs(XlaOpKernelContext* ctx,
+                          std::vector<XlaCompiler::Argument>& xla_args);
   void Compile(XlaOpKernelContext* ctx) override;
   Status ConstructXlaOp(XlaOpKernelContext* ctx);
   mlir::MLIRContext mlir_ctx_;

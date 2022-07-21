@@ -15,15 +15,15 @@
 
 """Tests for tensorflow.python.ops.op_def_library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from google.protobuf import text_format
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_library
+from tensorflow.python.framework import op_def_library_pybind
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -32,6 +32,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
 
+@test_util.add_graph_building_optimization_tests
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def Tensor(self, t, name="in"):
@@ -1361,6 +1362,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
             self.assertEqual(t_c, [x.dtype for x in c])
 
 
+@test_util.add_graph_building_optimization_tests
 class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
 
   def testNoGraph(self):
@@ -1381,6 +1383,25 @@ class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as cm:
       op_def_library.apply_op("Binary", a=a, b=b)
     self.assertIn("must be from the same graph", str(cm.exception))
+
+
+class OpDefLibraryPybindTest(test_util.TensorFlowTestCase):
+
+  def testPybind(self):
+    x = constant_op.constant(32, dtype=dtypes.float32)
+    y = constant_op.constant(32, dtype=dtypes.float32)
+
+    attrs, inputs, input_types, output_structure = (
+        op_def_library_pybind.process_inputs("AddV2", 1, {
+            "x": x,
+            "y": y
+        }))
+
+    proto = text_format.Parse("type: DT_FLOAT", attr_value_pb2.AttrValue())
+    self.assertEqual(attrs, {"T": proto})
+    self.assertEqual(inputs, [x, y])
+    self.assertEqual(input_types, [dtypes.float32, dtypes.float32])
+    self.assertEqual(output_structure, [None])
 
 
 if __name__ == "__main__":

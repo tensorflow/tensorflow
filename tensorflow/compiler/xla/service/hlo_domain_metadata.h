@@ -76,7 +76,7 @@ class DomainMetadata {
   virtual size_t Hash() const = 0;
 
   // Returns a string representation of the metadata.
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 };
 
 }  // namespace xla

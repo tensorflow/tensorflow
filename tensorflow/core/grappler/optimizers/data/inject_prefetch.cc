@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/inject_prefetch.h"
 
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -31,6 +32,49 @@ namespace grappler {
 namespace {
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
+constexpr std::array<const char*, 5> kAsyncTransforms = {
+    "MapAndBatchDataset", "ParallelBatchDataset", "ParallelInterleaveDataset",
+    "ParallelMapDataset", "PrefetchDataset"};
+constexpr std::array<const char*, 8> kDatasetsToSkip = {
+    "AssertNextDataset",
+    "ExperimentalAssertNextDataset",
+    "IgnoreErrorsDataset",
+    "OptionsDataset",
+    "ModelDataset",
+    "OptimizeDataset",
+    "MaxIntraOpParallelismDataset",
+    "PrivateThreadPoolDataset",
+};
+
+// This function returns false if the last dataset after skipping all the
+// non-user defined datasets, such as OptionsDataset, is a PrefetchDataset; true
+// otherwise.
+bool ShouldInjectPrefetch(const NodeDef* last_node,
+                          const MutableGraphView& graph) {
+  // Skip all datasets that could be chained by tf.data to the user defined
+  // pipeline because of optimization, etc.
+  while (last_node != nullptr &&
+         absl::c_any_of(kDatasetsToSkip, [last_node](const char* dataset) {
+           return data::MatchesAnyVersion(dataset, last_node->op());
+         })) {
+    last_node = graph_utils::GetInputNode(*last_node, graph);
+  }
+  if (last_node == nullptr) {
+    VLOG(1) << "The optimization inject_prefetch is not applied because graph "
+               "rewrite failed to find a dataset node.";
+    return false;
+  }
+  if (absl::c_any_of(kAsyncTransforms, [last_node](const char* dataset) {
+        return data::MatchesAnyVersion(dataset, last_node->op());
+      })) {
+    VLOG(1) << "The optimization inject_prefetch is not applied because the "
+               "last transformation of the input pipeline is an asynchronous "
+               "transformation: "
+            << last_node->op();
+    return false;
+  }
+  return true;
+}
 
 }  // namespace
 
@@ -42,13 +86,14 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization inject_prefetch is not applied if autotune is "
                "off.";
-    return Status::OK();
+    return OkStatus();
   }
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
-    return Status::OK();
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) {
+    return OkStatus();
+  }
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(
@@ -58,11 +103,8 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
 
   NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
   NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
-
-  if (last_node->op() == kPrefetchDataset) {
-    VLOG(1) << "The optimization inject_prefetch is not applied since the last "
-               "dataset is already prefetched.";
-    return Status::OK();
+  if (!ShouldInjectPrefetch(last_node, graph)) {
+    return OkStatus();
   }
 
   // Insert `prefetch(AUTOTUNE)` after the last node.
@@ -82,7 +124,7 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   // attrs from the input node. If we fail to set the attributes, we abort the
   // rewrite.
   if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &prefetch_node))
-    return Status::OK();
+    return OkStatus();
 
   TF_RETURN_IF_ERROR(
       graph_utils::SetMetadataName(prefetch_node.name(), &prefetch_node));
@@ -92,7 +134,7 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
       graph.UpdateFanouts(last_node->name(), added_node->name()));
 
   stats->num_changes++;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(InjectPrefetch, "inject_prefetch");

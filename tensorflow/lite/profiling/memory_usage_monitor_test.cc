@@ -64,13 +64,13 @@ class MemoryUsageMonitorTest : public ::testing::Test {
   };
 
   void SetUp() override {
-    monitor_.reset(new MemoryUsageMonitor(
+    monitor_ = std::make_unique<MemoryUsageMonitor>(
         50, std::unique_ptr<MemoryUsageMonitor::Sampler>(
-                new FakeMemoryUsageSampler(&num_sleeps_))));
+                new FakeMemoryUsageSampler(&num_sleeps_)));
   }
 
-  std::unique_ptr<MemoryUsageMonitor> monitor_ = nullptr;
   int64_t num_sleeps_ = 0;
+  std::unique_ptr<MemoryUsageMonitor> monitor_ = nullptr;
 };
 
 TEST_F(MemoryUsageMonitorTest, StartAndStop) {

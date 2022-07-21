@@ -15,19 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 
+#include <algorithm>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -48,14 +51,14 @@ Value CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                           int32_t val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, val);
-  return builder->create<ConstantOp>(location, type, attr);
+  return builder->create<arith::ConstantOp>(location, type, attr);
 }
 
 Value CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                           float val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getF32Type());
   auto attr = DenseElementsAttr::get(type, val);
-  return builder->create<ConstantOp>(location, type, attr);
+  return builder->create<arith::ConstantOp>(location, type, attr);
 }
 
 Value CreatTfF32ConstOp(OpBuilder* builder, ArrayRef<int64_t> shape, float val,
@@ -71,7 +74,7 @@ Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
   auto type = RankedTensorType::get(static_cast<int>(shape.size()),
                                     builder->getIntegerType(64));
   auto attr = DenseElementsAttr::get(type, values);
-  return builder->create<ConstantOp>(location, type, attr);
+  return builder->create<arith::ConstantOp>(location, type, attr);
 }
 
 Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
@@ -79,12 +82,12 @@ Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
   auto type = RankedTensorType::get(static_cast<int>(values.size()),
                                     builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, values);
-  return builder->create<ConstantOp>(location, type, attr);
+  return builder->create<arith::ConstantOp>(location, type, attr);
 }
 
 Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
-  return builder->create<mlir::ConstantOp>(location, builder->getNoneType(),
-                                           builder->getUnitAttr());
+  return builder->create<TFL::NoValueOp>(location, builder->getNoneType(),
+                                         builder->getUnitAttr());
 }
 
 Value Transpose(OpBuilder* builder, Value value_to_transpose,
@@ -380,7 +383,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::GenerateFusedOpOperands() {
 void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   // https://github.com/tensorflow/community/pull/113
   SmallVector<int64_t, 2> output_shape{1, -1};
-  auto input_types = fused_func_op_.getType().getInputs();
+  auto input_types = fused_func_op_.getFunctionType().getInputs();
   auto output_type = mlir::RankedTensorType::get(
       output_shape, input_.getType().cast<RankedTensorType>().getElementType());
   fused_func_op_.setType(mlir::FunctionType::get(fused_func_op_.getContext(),
@@ -417,7 +420,9 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       forget_layer_norm_coefficients_, cell_layer_norm_coefficients_,
       output_layer_norm_coefficients_, builder_.getStringAttr("TANH"),
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
-      builder_.getStringAttr("FULL"),
+      mlir::TFL::LSTMKernelTypeAttr::get(builder_.getContext(),
+                                         mlir::TFL::LSTMKernelType::FULL),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),
@@ -433,8 +438,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
 
   auto tensor_cast = builder_.create<mlir::tensor::CastOp>(
       fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
-  builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
-                                  tensor_cast.getResult());
+  builder_.create<mlir::func::ReturnOp>(fused_func_op_.getLoc(),
+                                        tensor_cast.getResult());
   return success();
 }
 
@@ -625,7 +630,8 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
 }
 
 // TODO(b/147436982): Consider refactor this to be more general.
-LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
+LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
+                                    OpBuilder* builder) {
   // For argument order, please check out standard_lstm under
   // tensorflow/python/keras/layers/recurrent_v2.py
   Value input = func_op.getArgument(0);
@@ -717,8 +723,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       output_shape,
       final_inputs.getType().cast<RankedTensorType>().getElementType());
 
-  Value none = builder->create<mlir::ConstantOp>(
-      func_op.getLoc(), builder->getNoneType(), builder->getUnitAttr());
+  Value none = CreateNoneValue(builder, func_op.getLoc());
   auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
       func_op.getLoc(), result_type, /*input=*/final_inputs,
       /*input_to_input_weights=*/weights_array->getResult(0),
@@ -743,9 +748,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*input_layer_norm_coefficients=*/none,
       /*forget_layer_norm_coefficients=*/none,
       /*cell_layer_norm_coefficients=*/none,
-      /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
-      builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(time_majored),
+      /*output_layer_norm_coefficients=*/none,
+      /*fused_activation_function*/ builder->getStringAttr("TANH"),
+      /*cell_clip*/ builder->getF32FloatAttr(10.0),
+      /*proj_clip*/ builder->getF32FloatAttr(0.0),
+      /*time_major*/ builder->getBoolAttr(time_majored),
+      /*asymmetric_quantize_inputs=*/mlir::BoolAttr(),
       /*input_to_input_intermediate=*/mlir::TypeAttr(),
       /*input_to_forget_intermediate=*/mlir::TypeAttr(),
       /*input_to_cell_intermediate=*/mlir::TypeAttr(),
@@ -821,10 +829,11 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   }
 
   // Update function signatures.
-  func_op.setType(mlir::FunctionType::get(
-      func_op.getContext(), func_op.getType().getInputs(), output_types));
+  func_op.setType(mlir::FunctionType::get(func_op.getContext(),
+                                          func_op.getFunctionType().getInputs(),
+                                          output_types));
 
-  builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
+  builder->create<mlir::func::ReturnOp>(func_op.getLoc(), outputs);
   return success();
 }
 

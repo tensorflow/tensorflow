@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
@@ -230,16 +231,16 @@ using AutotuneRnnConfigMap =
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
     *rnn_mode = RnnMode::kRnnRelu;
-    return Status::OK();
+    return OkStatus();
   } else if (str == "rnn_tanh") {
     *rnn_mode = RnnMode::kRnnTanh;
-    return Status::OK();
+    return OkStatus();
   } else if (str == "lstm") {
     *rnn_mode = RnnMode::kRnnLstm;
-    return Status::OK();
+    return OkStatus();
   } else if (str == "gru") {
     *rnn_mode = RnnMode::kRnnGru;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Invalid RNN mode: ", str);
 }
@@ -247,13 +248,13 @@ Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
 Status ParseTFRNNInputMode(const string& str, TFRNNInputMode* rnn_input_mode) {
   if (str == "linear_input") {
     *rnn_input_mode = TFRNNInputMode::kRNNLinearInput;
-    return Status::OK();
+    return OkStatus();
   } else if (str == "skip_input") {
     *rnn_input_mode = TFRNNInputMode::kRNNSkipInput;
-    return Status::OK();
+    return OkStatus();
   } else if (str == "auto_select") {
     *rnn_input_mode = TFRNNInputMode::kAutoSelect;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Invalid RNN input mode: ", str);
 }
@@ -262,10 +263,10 @@ Status ParseRNNDirectionMode(const string& str,
                              RnnDirectionMode* rnn_dir_mode) {
   if (str == "unidirectional") {
     *rnn_dir_mode = RnnDirectionMode::kRnnUnidirectional;
-    return Status::OK();
+    return OkStatus();
   } else if (str == "bidirectional") {
     *rnn_dir_mode = RnnDirectionMode::kRnnBidirectional;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Invalid RNN direction mode: ", str);
 }
@@ -287,7 +288,7 @@ Status ToRNNInputMode(TFRNNInputMode tf_input_mode, int num_units,
       return errors::InvalidArgument("Invalid TF input mode: ",
                                      static_cast<int>(tf_input_mode));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(zhengxq): Merge those into stream_executor_util.h.
@@ -323,7 +324,7 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
 }
 
 inline Status FromExecutorStatus(const se::port::Status& s) {
-  return s.ok() ? Status::OK()
+  return s.ok() ? OkStatus()
                 : Status(static_cast<error::Code>(static_cast<int>(s.code())),
                          s.error_message());
 }
@@ -334,7 +335,7 @@ inline Status FromExecutorStatus(const se::port::StatusOr<T>& s) {
 }
 
 inline se::port::Status ToExecutorStatus(const Status& s) {
-  return s.ok() ? se::port::Status::OK()
+  return s.ok() ? OkStatus()
                 : se::port::Status(static_cast<se::port::error::Code>(
                                        static_cast<int>(s.code())),
                                    s.error_message());
@@ -674,7 +675,7 @@ Status ExtractForwardInput(OpKernelContext* context,
         TensorShape({model_shapes->batch_size, model_shapes->max_seq_length,
                      model_shapes->dir_count * model_shapes->num_units});
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Overloaded function to process the sequence_lengths
@@ -712,20 +713,20 @@ Status CreateForwardAndBackwardIODescriptors(
           input_shape.dim_size(0), input_shape.dim_size(1),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
-      *input_desc = input_desc_s.ConsumeValueOrDie();
+      *input_desc = std::move(input_desc_s).value();
     } else {
       auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
           input_shape.dim_size(1), input_shape.dim_size(0),
           input_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(input_desc_s.status());
-      *input_desc = input_desc_s.ConsumeValueOrDie();
+      *input_desc = std::move(input_desc_s).value();
     }
   } else {
     auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
         input_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(input_desc_s.status());
-    *input_desc = input_desc_s.ConsumeValueOrDie();
+    *input_desc = std::move(input_desc_s).value();
   }
 
   DCHECK_EQ(hidden_state_shape.dims(), 3);
@@ -734,13 +735,13 @@ Status CreateForwardAndBackwardIODescriptors(
         hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-    *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+    *h_state_desc = std::move(hidden_state_desc_s).value();
   } else {
     auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
         hidden_state_shape.dim_size(1), hidden_state_shape.dim_size(0),
         hidden_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-    *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+    *h_state_desc = std::move(hidden_state_desc_s).value();
   }
 
   DCHECK_EQ(cell_state_shape.dims(), 3);
@@ -749,13 +750,13 @@ Status CreateForwardAndBackwardIODescriptors(
         cell_state_shape.dim_size(0), cell_state_shape.dim_size(1),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
-    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
+    *c_state_desc = std::move(cell_state_desc_s).value();
   } else {
     auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
         cell_state_shape.dim_size(1), cell_state_shape.dim_size(0),
         cell_state_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(cell_state_desc_s.status());
-    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
+    *c_state_desc = std::move(cell_state_desc_s).value();
   }
 
   DCHECK_EQ(output_shape.dims(), 3);
@@ -765,23 +766,23 @@ Status CreateForwardAndBackwardIODescriptors(
           output_shape.dim_size(0), output_shape.dim_size(1),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
-      *output_desc = output_desc_s.ConsumeValueOrDie();
+      *output_desc = std::move(output_desc_s).value();
     } else {
       auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
           output_shape.dim_size(1), output_shape.dim_size(0),
           output_shape.dim_size(2), seq_lengths, time_major, data_type);
       TF_RETURN_IF_ERROR(output_desc_s.status());
-      *output_desc = output_desc_s.ConsumeValueOrDie();
+      *output_desc = std::move(output_desc_s).value();
     }
   } else {
     auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
         output_shape.dim_size(0), output_shape.dim_size(1),
         output_shape.dim_size(2), data_type);
     TF_RETURN_IF_ERROR(output_desc_s.status());
-    *output_desc = output_desc_s.ConsumeValueOrDie();
+    *output_desc = std::move(output_desc_s).value();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -858,7 +859,7 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
                            output_profile_result)
           .ok();
   return launch_success
-             ? Status::OK()
+             ? OkStatus()
              : errors::Internal(
                    "Failed to call ThenRnnForward with model config: ",
                    model_types.DebugString(), ", ", model_shapes.DebugString());
@@ -959,7 +960,7 @@ Status DoBackward(
               &reserve_space_uint8, workspace_allocator, output_profile_result)
           .ok();
   return launch_success
-             ? Status::OK()
+             ? OkStatus()
              : errors::Internal(
                    "Failed to call ThenRnnBackward with model config: ",
                    model_types.DebugString(), ", ", model_shapes.DebugString());
@@ -1087,8 +1088,8 @@ class CudnnRNNKernelCommon : public OpKernel {
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
-    *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
-    return Status::OK();
+    *rnn_desc = std::move(rnn_desc_s).value();
+    return OkStatus();
   }
 
   template <typename T>
@@ -1109,8 +1110,8 @@ class CudnnRNNKernelCommon : public OpKernel {
         use_padded_io);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 
-    *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
-    return Status::OK();
+    *rnn_desc = std::move(rnn_desc_s).value();
+    return OkStatus();
   }
 
   using RnnStateCache = gtl::FlatMap<
@@ -1137,7 +1138,7 @@ class CudnnRNNKernelCommon : public OpKernel {
       TF_RETURN_IF_ERROR(status);
     }
     *rnn_desc = rnn_state.rnn_desc.get();
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1536,7 +1537,8 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
 
     if (is_debug_mode_) {
-      AlgorithmDesc algo_desc(debug_cudnn_rnn_algo_, debug_use_tensor_ops_);
+      AlgorithmDesc algo_desc(debug_cudnn_rnn_algo_, debug_use_tensor_ops_,
+                              absl::nullopt);
       output_algo_config->set_algorithm(algo_desc);
     } else {
       OP_REQUIRES_OK(context,
@@ -1573,7 +1575,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                                AlgorithmConfig* best_algo_config) {
     CHECK_NE(best_algo_config, nullptr);
     *best_algo_config = AlgorithmConfig();
-    return Status::OK();
+    return OkStatus();
   }
 
   bool is_training() const { return is_training_; }
@@ -1605,7 +1607,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       Tensor* dummy_reserve_space = nullptr;
       TF_RETURN_IF_ERROR(context->allocate_output(3, {}, &dummy_reserve_space));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   mutex mu_;
@@ -1680,7 +1682,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     CHECK_NE(algo_config, nullptr);
     if (!CudnnRnnUseAutotune() || this->is_debug_mode_) {
       *algo_config = AlgorithmConfig();
-      return Status::OK();
+      return OkStatus();
     }
 
     std::vector<AlgorithmDesc> algorithms;
@@ -1688,7 +1690,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
     CHECK(stream->parent()->GetRnnAlgorithms(&algorithms));
     if (algorithms.empty()) {
       LOG(WARNING) << "No Rnn algorithm found";
-      return Status::OK();
+      return OkStatus();
     }
 
     const auto& modeltypes = model_types();
@@ -1704,7 +1706,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
               << "(algo, tensor_op_enabled) = ("
               << algo_config->algorithm()->algo_id() << ", "
               << algo_config->algorithm()->tensor_ops_enabled() << ").";
-      return Status::OK();
+      return OkStatus();
     }
     profiler::ScopedAnnotation trace("cudnn_autotuning");
 
@@ -1808,7 +1810,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
             << best_result.algorithm().algo_id() << ", "
             << best_result.algorithm().tensor_ops_enabled() << ").";
     AutotuneRnnConfigMap::GetInstance()->Insert(rnn_params, *algo_config);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -1973,7 +1975,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                               AlgorithmConfig* algo_config) {
     CHECK_NE(algo_config, nullptr);
     *algo_config = AlgorithmConfig();
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -2036,7 +2038,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
             cell_state_shape.DebugString());
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status AllocateOutputs(OpKernelContext* context,
@@ -2062,7 +2064,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     }
     TF_RETURN_IF_ERROR(
         context->allocate_output(3, params_shape, params_backprop));
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -2091,9 +2093,10 @@ class CudnnRNNBackwardOpV2<GPUDevice, T>
     TF_RETURN_IF_ERROR(context->input("host_reserved", &host_reserved));
 
     auto host_reserved_int8 = host_reserved->vec<int8>();
-    const AlgorithmDesc algo_desc(host_reserved_int8(0), host_reserved_int8(1));
+    const AlgorithmDesc algo_desc(host_reserved_int8(0), host_reserved_int8(1),
+                                  absl::nullopt);
     algo_config->set_algorithm(algo_desc);
-    return Status::OK();
+    return OkStatus();
   }
 };
 

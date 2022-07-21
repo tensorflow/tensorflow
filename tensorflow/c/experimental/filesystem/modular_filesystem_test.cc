@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -123,12 +122,11 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   // root directory. Otherwise, we need to add the `<scheme>://` in front of
   // this path.
   //
-  // TODO(mihaimaruseac): Note that some filesystem might require a different
-  // approach here, for example they might require the root directory path to
-  // be in a special format, etc. When we get there, we might decide to move
-  // this class to `modular_filesystem_test.h` and extend the instantiation to
-  // also take as argument an implementation for this method/a subclass factory
-  // (see
+  // Note that some filesystem might require a different approach here, for
+  // example they might require the root directory path to be in a special
+  // format, etc. When we get there, we might decide to move this class to
+  // `modular_filesystem_test.h` and extend the instantiation to also take as
+  // argument an implementation for this method/a subclass factory (see
   // https://github.com/google/googletest/blob/master/googletest/docs/advanced.md#creating-value-parameterized-abstract-tests)
   std::string GetURIForPath(StringPiece path) {
     const std::string translated_name =

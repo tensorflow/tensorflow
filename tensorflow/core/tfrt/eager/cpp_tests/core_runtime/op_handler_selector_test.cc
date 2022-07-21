@@ -95,7 +95,7 @@ static tensorflow::Device* CreateDevice(const char* type, const char* name) {
   class FakeDevice : public tensorflow::Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return ::tensorflow::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -121,11 +121,11 @@ class FakeTensorHandle : public tensorflow::ImmediateExecutionTensorHandle {
   }
   Status NumDims(int* num_dims) const override {
     *num_dims = 1;
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Status NumElements(int64_t* num_elements) const override {
     *num_elements = 1;
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Status Dim(int dim_index, int64_t* dim) const override {
     llvm_unreachable("unimplemented method.");
@@ -178,13 +178,13 @@ class FakeOperation : public ImmediateExecutionOperation {
     device_name_ = raw_device_name;
     attrs_.Reset(op);
     args_.clear();
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const std::string& Name() const override { return op_name_; }
   const std::string& DeviceName() const override { return device_name_; }
   tensorflow::Status SetDeviceName(const char* name) override {
     device_name_ = name;
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Status AddInput(AbstractTensorHandle* input) override {
@@ -192,7 +192,7 @@ class FakeOperation : public ImmediateExecutionOperation {
     args_.push_back(tensorflow::core::RefCountPtr<FakeTensorHandle>(
         static_cast<FakeTensorHandle*>(input)));
     attrs_.NumInputs(args_.size());
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Status SetInput(size_t index,
                   tensorflow::ImmediateExecutionTensorHandle* input) override {
@@ -305,6 +305,10 @@ class FakeOperation : public ImmediateExecutionOperation {
     llvm_unreachable("unimplemented method.");
   }
 
+  void SetStepId(int64_t step_id) override {
+    llvm_unreachable("unimplemented method.");
+  }
+
   static bool classof(const AbstractOperation* ptr) { return true; }
 
   AttrBuilder* GetAttrs() { return &attrs_; }
@@ -312,7 +316,7 @@ class FakeOperation : public ImmediateExecutionOperation {
  private:
   std::string op_name_;
   std::string device_name_;
-  SmallVector<tensorflow::core::RefCountPtr<FakeTensorHandle>, 8> args_;
+  llvm::SmallVector<tensorflow::core::RefCountPtr<FakeTensorHandle>, 8> args_;
   AttrBuilder attrs_;
 };
 
@@ -404,7 +408,7 @@ TEST_F(SelectorTest, PinSmallOpToCpuTest) {
   TF_ASSERT_OK(op->AddInput(cpu_tensor.get()));
   OpHandler* op_handler = nullptr;
   s = selector()->SelectFromArguments(*op, &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_TRUE(static_cast<bool>(op_handler));
   ASSERT_EQ(op_handler, cpu_op_handler_);
 
@@ -412,11 +416,11 @@ TEST_F(SelectorTest, PinSmallOpToCpuTest) {
   TF_ASSERT_OK(op->Reset("TestOp", kFullGPU));
   TF_ASSERT_OK(op->AddInput(gpu_tensor.get()));
   s = selector()->SelectFromArguments(*op, &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_FALSE(static_cast<bool>(op_handler));
   s = selector()->SelectFromNodeDef(*op, &op->GetAttrs()->BuildNodeDef(),
                                     &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_TRUE(static_cast<bool>(op_handler));
   ASSERT_EQ(op_handler, gpu_op_handler_);
 }
@@ -433,7 +437,7 @@ TEST_F(SelectorTest, PinResourceTest) {
   TF_ASSERT_OK(op->AddInput(cpu_tensor.get()));
   OpHandler* op_handler = nullptr;
   s = selector()->SelectFromArguments(*op, &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_TRUE(static_cast<bool>(op_handler));
   ASSERT_EQ(op_handler, cpu_op_handler_);
 
@@ -441,7 +445,7 @@ TEST_F(SelectorTest, PinResourceTest) {
   TF_ASSERT_OK(op->Reset("TestOp", kFullCPU));
   TF_ASSERT_OK(op->AddInput(gpu_tensor.get()));
   s = selector()->SelectFromArguments(*op, &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_TRUE(static_cast<bool>(op_handler));
   ASSERT_EQ(op_handler, gpu_op_handler_);
 }
@@ -469,7 +473,7 @@ TEST_F(SelectorTest, SoftPlacementTest) {
   OpHandler* op_handler = nullptr;
   s = selector()->SelectFromNodeDef(*op, &op->GetAttrs()->BuildNodeDef(),
                                     &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_TRUE(static_cast<bool>(op_handler)) << StrCat(s.error_message());
   ASSERT_EQ(op_handler, gpu_op_handler_);
 }
@@ -482,7 +486,7 @@ TEST_F(SelectorTest, HigherPriorityDeviceTest) {
   OpHandler* op_handler = nullptr;
   s = selector()->SelectFromNodeDef(*op, &op->GetAttrs()->BuildNodeDef(),
                                     &op_handler);
-  ASSERT_EQ(s, tensorflow::Status::OK());
+  ASSERT_EQ(s, ::tensorflow::OkStatus());
   ASSERT_TRUE(static_cast<bool>(op_handler));
   ASSERT_EQ(op_handler, gpu_op_handler_);
 }

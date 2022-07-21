@@ -136,6 +136,75 @@ interpreter.reset();
 TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 ```
 
+### Using the XNNPACK weights cache
+
+XNNPACK internally packs static weights for operations (like convolutions) in
+order to make accessing weights more memory friendly. XNNPACK needs to allocate
+memory internally to hold these packed weights. If you are starting multiple
+TFLite interpreter instances based on the same model, there can be multiple
+copies of the same packed weights in each instance. This can cause high memory
+usage. The weights cache can be used to share packed weights between multiple
+TFLite instances.
+
+```c++
+// Create 2 interpreters which share the same model.
+std::unique_ptr<tflite::Interpreter> interpreter1;
+std::unique_ptr<tflite::Interpreter> interpreter2;
+
+// Create a weights cache that you can pass to XNNPACK delegate.
+TfLiteXNNPackDelegateWeightsCache* weights_cache =
+    TfLiteXNNPackDelegateWeightsCacheCreate();
+
+// Like using the low-level API above, initialize options, and pass this cache
+// to XNNPACK delegate via the options.
+TfLiteXNNPackDelegateOptions xnnpack_options =
+    TfLiteXNNPackDelegateOptionsDefault();
+xnnpack_options.weights_cache = weights_cache;
+
+// Modify graph with delegate, as above...
+TfLiteDelegate* delegate1 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+if (interpreter1->ModifyGraphWithDelegate(delegate1) != kTfLiteOk) {
+    // Static weights will be packed and written into weights_cache.
+}
+TfLiteDelegate* delegate2 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+if (interpreter1->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
+    // XNNPACK will reuse packed weights if they can be found in the weights
+    // cache.
+}
+
+// Finalize the weights cache.
+// Hard finalization has the lowest memory overhead, but requires that all
+// TFLite interpreter instances must be created up front before any finalization
+// and inference.
+TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache);
+
+// Alternatively, soft-finalizate the weights cache. This is useful if more
+// delegates using the same model will to be created after finalization.
+// TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache);
+
+// Later, after all the interpreters and XNNPACK delegates using the cache are
+// destroyed, release the weights cache.
+TfLiteXNNPackDelegateWeightsCacheDelete(weights_cache);
+```
+
+The weights cache is a contents-based cache. Every time XNNPACK has to pack
+weights, it first packs into a temporary buffer, then tries to look up if the
+packed weights can be found in the weights cache, based on the contents of the
+packed weights. If it can be found, we access the packed weights in the
+cache for subsequent operations, and the temporary buffer is freed. Otherwise,
+the packed weights is added to the cache.
+
+The weights cache has to be finalized before any inference, it will be an error
+otherwise. Hard finalization and soft finalization depends on whether new
+XNNPACK delegate instances will be created after finalization. Hard finalization
+does not allow new instances to be created, and has lower memory overhead. Soft
+finalization allows new instances to be created, and has higher memory overhead
+(up to the size of the largest packed weights, rounded up to page alignment).
+
+## Profiling
+When TfLite profiling is enabled, XNNPACK will time each operator and report the
+results to TfLite which will print them as part of the overall execution profile.
+
 ## Limitations and supported operators
 
 XNNPACK delegate is a work-in-progress, and currently supports a limited set of
@@ -143,7 +212,7 @@ operators. Unsupported operators will fall back to the default implementations,
 so models using a combination of supported and unsupported operators can still
 benefit from XNNPACK delegate.
 
-### Floating-Point Operators
+### Floating-Point (IEEE FP32) Operators
 
 Below is the list of currently supported floating-point operators:
 
@@ -168,6 +237,11 @@ Below is the list of currently supported floating-point operators:
 #### `CEIL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+
+#### `CONCATENATION`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only concatenation with two, three, or four inputs is supported.
 
 #### `CONV_2D`
 
@@ -236,13 +310,12 @@ Below is the list of currently supported floating-point operators:
 
 #### `MEAN`
 
-* The first input and the output must be a 4D tensors in 32-bit
+* The first input and the output must be 4D tensors in 32-bit
   floating-point format.
 * The second input (the input with the axes specification) must be static
   (use `kTfLiteMmapRo` allocation type).
-* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
-  dimensions) is supported.
-* Only `keep_dims = True` parameter value is supported.
+* Only [1, 2], [2, 1], and [2] axes specification (i.e. reduction across either
+  both spatial dimensions or across the width dimension) is supported.
 
 #### `MINIMUM`
 
@@ -302,6 +375,11 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+#### `SPLIT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only split into two, three, or four outputs is supported.
+
 #### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -325,22 +403,249 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TRANSPOSE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second input (the input with the permutation specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
+#### `TRANSPOSE_CONV`
+
+* Input, filter, bias (if present) and output tensors must be in 32-bit
+  floating-point format.
+* Output size, filter and bias (if present) must be static (use
+  `kTfLiteMmapRo` allocation type).
+
+### Floating-Point (IEEE FP16) Operators (experimental)
+
+XNNPACK supports half-precision (using IEEE FP16 format) inference for a subset
+of floating-point operators. XNNPACK automatically enables half-precision
+inference when the following conditions are met:
+
+* XNNPACK runs on hardware that natively supports computations in IEEE FP16
+format. Currently, this hardware is limited to ARM64 devices with ARMv8.2 FP16
+arithmetics extension, and includes Android phones starting with Pixel 3,
+Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with A11 or
+newer SoCs, and all Apple Silicon Macs.
+
+* IEEE FP16 inference is supported for every floating-point operator in the
+model.
+
+* The model's "reduced_precision_support" metadata indicates that the model
+is compatible with FP16 inference.
+
+When the above conditions are met, XNNPACK replace FP32 operators with their
+FP16 equivalents, and insert additional operators to convert model inputs
+from FP32 to FP16 and convert model outputs back from FP16 to FP32. If the
+above conditions are not met, XNNPACK will perform model inference with FP32
+calculations.
+
+Additionally, XNNPACK delegate provides an option to force FP16 inference
+regardless of model metadata. This option is intended for development workflows,
+and in particular for testing end-to-end accuracy of model when FP16 inference
+is used. Forcing FP16 inference has several effects:
+
+* Besides ARM64 devices with ARMv8.2 FP16 arithmetics extension, forced FP16
+inference is supported on x86/x86-64 devices with AVX2 extension in emulation
+mode: all elementary floating-point operations are computed in FP32, then
+converted to FP16 and back to FP32. Note that such simulation is not exactly
+equivalent to native FP16 inference, but simulates the effects of restricted
+mantissa precision and exponent range in the native FP16 arithmetics.
+
+* On devices that support neither the native FP16 arithmetics (ARM64 devices
+with ARMv8.2 FP16 arithmetics extension), nor emulation (x86/x86-64 devices with
+AVX2 extension), inference will fail rather than fall back to FP32.
+
+* If any floating-point operator offloaded to XNNPACK is not supported for FP16
+inference, inference will fail rather than fall back to FP32.
+
+To force FP16 inference, either build the delegate with
+`--define xnnpack_force_float_precision=fp16` option, or add
+`TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16` flag to the
+`TfLiteXNNPackDelegateOptions.flags` bitmask passed into
+the `TfLiteXNNPackDelegateCreate` call:
+
+```c
+TfLiteXNNPackDelegateOptions xnnpack_options =
+    TfLiteXNNPackDelegateOptionsDefault();
+...
+xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16;
+TfLiteDelegate* xnnpack_delegate =
+    TfLiteXNNPackDelegateCreate(&xnnpack_options);
+```
+
+Below is the list of operators supported in IEEE FP16 inference:
+
+#### `ABS`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `ADD`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `AVERAGE_POOL_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `CEIL`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `CONV_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `CONCATENATION`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `DEPTH_TO_SPACE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `DEPTHWISE_CONV_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `DIV`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `FLOOR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `FULLY_CONNECTED`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `HARD_SWISH`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `LEAKY_RELU`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `LOGISTIC`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MAX_POOL_2D`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MAXIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `MEAN`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `MINIMUM`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `MUL`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `NEG`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `PAD`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `PRELU`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU6`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RELU_N1_TO_1`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RESHAPE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `RESIZE_BILINEAR`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `ROUND`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SPLIT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SOFTMAX`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQRT`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SQUARED_DIFFERENCE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `SUB`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+* Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `TRANSPOSE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `TRANSPOSE_CONV`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
 ### Quantized Operators
 
 By default, quantized inference in XNNPACK delegate is disabled, and XNNPACK is
 used only for floating-point models. Support for quantized inference in XNNPACK
 must be enabled by adding extra Bazel flags when building TensorFlow Lite.
 
-* `--define xnn_enable_qs8=true` flag enables XNNPACK inference for quantized
-operators using signed quantization schema. This schema is used by models
-produced by [Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
-through either post-training integer quantization or quantization-aware
-training. Post-training dynamic range quantization is not supported in XNNPACK.
+* `--define tflite_with_xnnpack_qs8=true` flag enables XNNPACK inference for
+  quantized operators using signed quantization schema. This schema is used by
+  models produced by [Model Optimization
+  Toolkit](https://www.tensorflow.org/model_optimization) through either
+  post-training integer quantization or quantization-aware training.
+  Post-training dynamic range quantization is not supported in XNNPACK.
 
-* `--define xnn_enable_qu8=true` flag enables XNNPACK inference for quantized
-operators using unsigned quantization schema, produced via the legacy TensorFlow
-1.X quantization tooling. This option is experimental and may perform
-suboptimally on mobile processors with NEON DOT product instructions.
+* `--define tflite_with_xnnpack_qu8=true` flag enables XNNPACK inference for
+  quantized operators using unsigned quantization schema, produced via the
+  legacy TensorFlow 1.X quantization tooling. This option is experimental and
+  may perform suboptimally on mobile processors with NEON DOT product
+  instructions.
 
 Below is the list of currently supported quantized operators:
 
@@ -350,6 +655,11 @@ Below is the list of currently supported quantized operators:
 * Only addition with two inputs is supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `CONCATENATION`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only concatenation with two, three, or four inputs is supported.
 
 #### `CONV_2D`
 
@@ -361,6 +671,11 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `DEPTH_TO_SPACE`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Block size must be greater than 1.
+
 #### `DEPTHWISE_CONV_2D`
 
 * Inputs and outputs must be in 8-bit quantized format (bias must be in
@@ -370,6 +685,12 @@ Below is the list of currently supported quantized operators:
   and can use either per-tensor or per-channel quantization parameters.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `DEQUANTIZE`
+
+* Input tensor must be in 8-bit quantized format without per-channel
+  quantization.
+* Output tensor must be in 32-bit floating-point format.
 
 #### `ELU`
 
@@ -383,6 +704,13 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `LEAKY_RELU`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* The ratio of input scale to output scale must be within [1/256, 128].
+* The product of negative slope by the ratio of input scale to output scale
+  must be within either [-127.99609375, -1/256] range or [1/256, 128] range.
+
 #### `LOGISTIC`
 
 * Inputs and outputs must be in 8-bit quantized format.
@@ -393,6 +721,14 @@ Below is the list of currently supported quantized operators:
 * 1x1 pooling with non-unit stride is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `MEAN`
+
+* The first input and the output must be 4D tensors in 8-bit quantized format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2], [2, 1], and [2] axes specification (i.e. reduction across either
+  both spatial dimensions or across the width dimension) is supported.
 
 #### `MUL`
 
@@ -407,11 +743,45 @@ Below is the list of currently supported quantized operators:
   (use `kTfLiteMmapRo` allocation type).
 * The numbers of padding elements must be non-negative.
 
+#### `QUANTIZE`
+
+* Input tensor must be in 32-bit floating-point format or in 8-bit quantized
+  format.
+* Output tensor must be in 8-bit quantized format without per-channel
+  quantization.
+* If inputs are in 8-bit quantized format, they must have the same signedness
+  as the outputs, and the ratio of input scale to output scale must be in the
+  [2**-8, 2**7] range.
+
+#### `RESIZE_BILINEAR`
+
+* The first input and the output must be 4D tensors in 8-bit quantized format.
+* The second input (the input with the new shape specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
+#### `SPLIT`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only split into two, three, or four outputs is supported.
+
 #### `SUB`
 
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TRANSPOSE`
+
+* The first input and the output must be in 8-bit quantized format.
+* The second input (the input with the permutation specification) must be
+  static (use `kTfLiteMmapRo` allocation type).
+
+#### `TRANSPOSE_CONV`
+
+* Input, filter, and output tensors must be in 8-bit quantized format (bias, if
+  present, must be in 32-bit quantized format).
+* Output size, filter and bias (if present) must be static (use
+  `kTfLiteMmapRo` allocation type).
 
 ### Sparse Inference
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CONVERT_OP_FOLDER_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CONVERT_OP_FOLDER_H_
+#ifndef MLIR_HLO_UTILS_CONVERT_OP_FOLDER_H
+#define MLIR_HLO_UTILS_CONVERT_OP_FOLDER_H
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -25,9 +25,9 @@ namespace hlo {
 // Converts the given elements attr to the specified elements type.
 // Requires type of the elements and new_type to be either integer or float
 // type.
-mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
-                                       mlir::Type new_type);
+mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
+                                       mlir::Type newType);
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CONVERT_OP_FOLDER_H_
+#endif  // MLIR_HLO_UTILS_CONVERT_OP_FOLDER_H

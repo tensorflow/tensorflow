@@ -14,10 +14,6 @@
 # ==============================================================================
 """Class MirroredStrategy implementing tf.distribute.Strategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from tensorflow.python import tf2
@@ -29,6 +25,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import input_util
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
@@ -36,6 +33,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import config
@@ -339,9 +337,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._cross_device_ops = cross_device_ops
     self._collective_ops_in_use = False
     self._collective_key_base = container_strategy._collective_key_base
-    self._initialize_strategy(devices)
     self._communication_options = collective_util.Options(
         implementation=collective_util.CommunicationImplementation.NCCL)
+    self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
@@ -379,10 +377,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_collective_ops(self, devices):
     self._collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=1 + self._collective_key_base)  # pylint: disable=protected-access
+        group_key_start=1 + self._collective_key_base)
     return cross_device_ops_lib.CollectiveAllReduce(
         devices=self._devices,
         group_size=len(self._devices),
+        options=self._communication_options,
         collective_keys=self._collective_keys)
 
   def _initialize_single_worker(self, devices):
@@ -541,7 +540,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(
+    return input_lib_v1.DatasetIterator(
         dataset,
         self._input_workers,
         self._container_strategy(),
@@ -558,9 +557,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           input_contexts,
-                                           self._container_strategy())
+    return input_lib_v1.InputFunctionIterator(input_fn, self._input_workers,
+                                              input_contexts,
+                                              self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset, options):
     if (options and options.experimental_replication_mode ==
@@ -570,7 +569,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           "is only supported in "
           "`distribute_datasets_from_function`."
       )
-    return input_lib.get_distributed_dataset(
+    return input_util.get_distributed_dataset(
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
@@ -591,7 +590,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
 
-    return input_lib.get_distributed_datasets_from_function(
+    return input_util.get_distributed_datasets_from_function(
         dataset_fn, input_workers, input_contexts, self._container_strategy(),
         options)
 

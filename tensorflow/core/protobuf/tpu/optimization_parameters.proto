@@ -91,9 +91,10 @@ message AdagradParameters {
 // accum(new) = beta2 == 1.0 ?
 //              accum(old) + grad^2 :
 //              beta2 * accum(old) + (1 - beta2) * grad^2
-// mom_accum(new) = momentum * mom_accum(old) + accum(new)^(-1.0 / exponent)
+// accum_with_exponent = (accum(new) + epsilon)^(-1.0 / exponent)
+// mom_accum(new) = momentum * mom_accum(old) + accum_with_exponent
 // update = use_nesterov ?
-//          momentum * mom_accum(new) + accum(new)^(-1.0 / exponent) :
+//          momentum * mom_accum(new) + accum_with_exponent :
 //          mom_accum(new)
 // var(new) = var(old) - lr * grad * update
 // Algorithm described in https://arxiv.org/abs/2002.11803.
@@ -109,6 +110,9 @@ message AdagradMomentumParameters {
 
   // Moving average parameter for the gradient^2 accumulator.
   float beta2 = 4;
+
+  // Offset added to the Adagrad accumulator.
+  float epsilon = 5;
 }
 
 // Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
@@ -117,9 +121,11 @@ message BoundedAdagradParameters {
   // computing the effective learning rate. When update_accumulator_first is set
   // to True, the updated value of the accumulator is used.
   bool update_accumulator_first = 1;
+
   // The max_var_update value to use. Set value to 0 (default) to disable using
   // max_var_update to clip the gradient.
   float max_var_update = 2;
+
   // The maximum value of the accumulator. Set max_accumulator to 0 (default)
   // to disable using max_accumulator to clip the accumulator.
   float max_accumulator = 3;
@@ -145,18 +151,19 @@ message StochasticGradientDescentParameters {}
 // for a dynamic learning rate, it is nearly the same as long as the learning
 // rate does not change quickly. The benefit of setting multiply_linear_by_lr to
 // true is that the modified formula handles zero and near-zero learning rates
-// without producing NaNs, improving flexibility for learning rate ramp-up. The
-// allow_zero_accumulator parameter changes some internal formulas to allow zero
-// and near-zero accumulator values at the cost of some performance; this only
-// needs to be set if you are using an initial accumulator value of zero, which
-// is uncommon.
+// without producing NaNs, improving flexibility for learning rate ramp-up.
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
   float beta = 7;
   bool multiply_linear_by_lr = 6;
-  bool allow_zero_accumulator = 8;
+
+  // Previously, allow_zero_accumulator parameter changed some internal formulas
+  // to allow zero and near-zero accumulator values at the cost of some
+  // performance. The current implementation ignores this parameter; zero or
+  // near-zero accumulator values are now always supported.
+  bool allow_zero_accumulator = 8 [deprecated = true];
 
   // Old initial accumulator parameters.
   reserved "initial_accum", "initial_linear";
@@ -409,6 +416,62 @@ message GradientAccumulationStatus {
   }
 }
 
+// Whether to optimize the packing of low-dimensional embedding tables in HBM
+// (high bandwidth memory). TPUs access HBM at 32-byte (8-float) granularity.
+// For functional correctness, the TPU software internally pads the embedding
+// dimension to a multiple of 8. This can sometimes lead to significant memory
+// wastage due to padding. For 1-dimensional, 2-dimensional, and 4-dimensional,
+// the TPU software can remove this padding by packing multiple rows into the
+// same 8-float HBM chunk. For example, 8 rows could be packed into the same
+// 8-float chunk for a 1-dimensional embedding table.
+
+// There is one important limitation for this HBM packing though. When only a
+// subset of rows in an 8-float chunk are accessed on a particular step, the
+// adjoining rows in the same chunk are updated with zero gradients on the
+// backward pass even if they are not touched. This is an artifact of the
+// packing implementation. This operation is NOT functionally correct for
+// optimizers where zero gradients change the embeddings/slot-variable values,
+// e.g., momentum-based optimizers. Hence, this HBM packing cannot be enabled
+// for embedding tables with such optimizers. The TPU software automatically
+// recognizes that a zero gradient can modify state and turns off the low
+// dimensional embedding packing in that scenario.
+//
+// However, for optimizers where a zero gradient is a NoOp, such as SGD,
+// Adagrad, and FTRL, this packing optimization can be used. However, there are
+// some important considerations:
+// * Clipping limits: The initial values for such embeddings should fall within
+//   the clipping limits specified in the optimization parameters. Otherwise, a
+//   zero gradient will cause the embeddings to be clipped. This changes state
+//   and hence, is not a NoOp.
+// * FTRL: The embedding vector is computed directly from the values of the
+//   accumulator and linear slot variables. Hence, the initial embedding values
+//   should match that computed from the initial values of the accumulator and
+//   linear slot variables. Note that in nearly all cases, the linear value is
+//   initialized to zero; this corresponds to an embedding value of zero.
+//
+// Performance: The TPU has to perform additional work when low dimensional
+// packing is enabled. In certain situations when the vocabulary size is small,
+// it may not make sense to turn on this packing since the total memory usage
+// due to padding is extremely low. Hence, the TPU software automatically turns
+// off the packing optimization in such scenarios.
+message LowDimensionalPackingStatus {
+  // if UNSPECIFIED (default), the low dimension packing status is DISABLED.
+  // This can change in future.
+  //
+  // if ENABLED, the low dimension packing is enabled only if the following
+  // three additional conditions are true:
+  //  * The optimizer treats the zero gradient as a NoOp.
+  //  * The embedding dimension is 1, 2, or 4.
+  //  * The vocabulary size is large enough to avoid performance issues.
+  //
+  // if DISABLED, the low dimension packing is always disabled.
+  enum Status {
+    UNSPECIFIED = 0;
+    ENABLED = 1;
+    DISABLED = 2;
+  }
+}
+
 // Configuration proto for hot ID optimization. This is an experimental feature
 // that is currently disabled (by default).
 message HotIdReplicationConfiguration {
@@ -436,11 +499,10 @@ message OptimizationParameters {
   ClippingLimits gradient_clipping_limits = 7;
 
   // Amount of weight decay to apply; see weight_decay_optimizers.py for
-  // details. Almost all optimizers are supported with this option (MDL Adagrad
-  // Light does not work, and SGD does not behave as expected if it is enabled).
-  // Although there is no check, users who want weight decay will probably also
-  // want to enable gradient accumulation as well so that the decay will happen
-  // once per minibatch.
+  // details. All optimizers except MDL Adagrad Light are supported with this
+  // option. Although there is no check, users who want weight decay will also
+  // want to ensure that gradient accumulation is enabled so that the decay will
+  // happen once per global batch.
   float weight_decay_factor = 16;
 
   // If true, the weight decay factor is multiplied by the current learning rate
@@ -458,6 +520,11 @@ message OptimizationParameters {
   // gradients: one to accumulate them into a temporary array and another to
   // apply them using the actual optimization algorithm).
   GradientAccumulationStatus.Status gradient_accumulation_status = 17;
+
+  // Status of the low-dimensional embedding packing optimization. This controls
+  // whether to optimize the packing of 1-dimensional, 2-dimensional, and
+  // 4-dimensional embedding tables in memory.
+  LowDimensionalPackingStatus.Status low_dimensional_packing_status = 28;
 
   // Configuration proto for hot ID replication. This is an experimental
   // feature that is currently disabled (by default).
@@ -487,7 +554,7 @@ message OptimizationParameters {
 
   reserved 15;  // Old use_gradient_accumulation.
 
-  // NEXT_ID: 28
+  // NEXT_ID: 29
 }
 
 // Specification of an optimization algorithm's state variables (both the main

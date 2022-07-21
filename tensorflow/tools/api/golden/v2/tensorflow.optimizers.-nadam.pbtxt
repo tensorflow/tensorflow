@@ -1,8 +1,8 @@
 path: "tensorflow.optimizers.Nadam"
 tf_class {
-  is_instance: "<class \'keras.optimizer_v2.nadam.Nadam\'>"
-  is_instance: "<class \'keras.optimizer_v2.optimizer_v2.OptimizerV2\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_v2.nadam.Nadam\'>"
+  is_instance: "<class \'keras.optimizers.optimizer_v2.optimizer_v2.OptimizerV2\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "clipnorm"

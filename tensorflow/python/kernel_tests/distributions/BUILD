@@ -61,6 +61,7 @@ cuda_py_test(
     size = "small",
     srcs = ["beta_test.py"],
     tags = [
+        "no_oss",  # b/205574093, and because tf.distributions is deprecated
         "nomac",  # b/191763315
         "notsan",  # b/173653918
     ],
@@ -172,6 +173,9 @@ cuda_py_test(
 cuda_py_test(
     name = "gamma_test",
     srcs = ["gamma_test.py"],
+    tags = [
+        "noasan",  # b/237093318
+    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",

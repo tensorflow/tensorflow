@@ -15,10 +15,6 @@
 # =============================================================================
 """Testing File IO operations in file_io.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os.path
 
 from absl.testing import parameterized
@@ -663,30 +659,6 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(crc1 != crc2)
     self.assertEqual(crc2, crc3)
 
-  def testMatchingFilesPermission(self):
-    # Create top level directory test_dir.
-    dir_path = file_io.join(self._base_dir, "test_dir")
-    file_io.create_dir(dir_path)
-    # Create second level directories `noread` and `any`.
-    noread_path = file_io.join(dir_path, "noread")
-    file_io.create_dir(noread_path)
-    any_path = file_io.join(dir_path, "any")
-    file_io.create_dir(any_path)
-    files = ["file1.txt", "file2.txt", "file3.txt"]
-    for name in files:
-      file_path = file_io.join(any_path, name)
-      file_io.FileIO(file_path, mode="w").write("testing")
-    file_path = file_io.join(noread_path, "file4.txt")
-    file_io.FileIO(file_path, mode="w").write("testing")
-    # Change noread to noread access.
-    os.chmod(noread_path, 0)
-    expected_match = [file_io.join(any_path, name) for name in files]
-    self.assertItemsEqual(
-        file_io.get_matching_files(file_io.join(dir_path, "*", "file*.txt")),
-        expected_match)
-    # Change noread back so that it could be cleaned during tearDown.
-    os.chmod(noread_path, 0o777)
-
   def testFileSeekableWithZip(self):
     # Note: Test case for GitHub issue 27276, issue only exposed in python 3.7+.
     filename = file_io.join(self._base_dir, "a.npz")
@@ -697,6 +669,17 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
 
   def testHasAtomicMove(self):
     self.assertTrue(file_io.has_atomic_move("/a/b/c"))
+
+  def testGetRegisteredSchemes(self):
+    expected = ["", "file", "ram"]
+    actual = file_io.get_registered_schemes()
+    # Be flexible about additional schemes that may sometimes be registered when
+    # this test is run, while still verifying each scheme appears just once.
+    maybe_expected = ["gs"]
+    for scheme in maybe_expected:
+      if scheme in actual:
+        expected.append("gs")
+    self.assertCountEqual(expected, actual)
 
 
 if __name__ == "__main__":

@@ -14,11 +14,7 @@
 # ==============================================================================
 """Tests for core."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import collections
+import collections.abc
 import os
 import pickle
 import threading
@@ -75,6 +71,7 @@ def configure_virtual_cpus():
   ])
 
 
+@test_util.with_eager_op_as_function
 class TFETest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -84,11 +81,11 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def _test_hashable(self, a, b, hashable):
     if hashable:
-      self.assertIsInstance(b, collections.Hashable)
+      self.assertIsInstance(b, collections.abc.Hashable)
       self.assertLen(set([a, b]), 2)
     else:
       # TODO(gjn): Figure out how to make this work for tf.Tensor
-      # self.assertNotIsInstance(b, collections.Hashable)
+      # self.assertNotIsInstance(b, collections.abc.Hashable)
       with self.assertRaisesRegex(TypeError, 'unhashable'):
         set([a, b])
 
@@ -304,8 +301,12 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      self.assertFalse(bool(tf_a == tf_e))
-      self.assertTrue(bool(tf_a != tf_e))
+
+      # TODO(b/207402791): re-enable once incompatible shapes supported by XLA.
+      if not test_util.is_xla_enabled():
+        self.assertFalse(bool(tf_a == tf_e))
+        self.assertTrue(bool(tf_a != tf_e))
+
       self.assertNotAllEqual(tf_a, tf_e)
 
       with self.assertRaises(ValueError):
@@ -868,6 +869,7 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims',
                  ['0', '2']))
 
+  @test_util.disable_eager_op_as_function('b/206994108')
   def testExecuteListTypeListShapeAttr(self):
     execute(
         b'Barrier',
@@ -1064,6 +1066,7 @@ class TFETest(test_util.TensorFlowTestCase):
         empty_handle.shape.as_list())
 
 
+@test_util.with_eager_op_as_function
 class SendRecvTest(test_util.TensorFlowTestCase):
 
   cpu_device = '/job:localhost/replica:0/task:0/device:CPU:0'

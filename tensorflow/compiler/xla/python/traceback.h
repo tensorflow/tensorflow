@@ -67,12 +67,25 @@ class Traceback {
   // using as an exception traceback.
   pybind11::object AsPythonTraceback() const;
 
+  bool operator==(const Traceback& other) const {
+    return frames_ == other.frames_;
+  }
+  bool operator!=(const Traceback& other) const {
+    return frames_ != other.frames_;
+  }
+
  private:
   absl::InlinedVector<std::pair<PyCodeObject*, int>, 32> frames_;
 
   // Protected by GIL.
   static bool enabled_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const Traceback& traceback) {
+  h = H::combine(std::move(h), traceback.raw_frames());
+  return h;
+}
 
 void BuildTracebackSubmodule(pybind11::module& m);
 

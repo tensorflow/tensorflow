@@ -19,19 +19,24 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <random>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -43,6 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -55,6 +61,8 @@ RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 namespace tflite {
 namespace benchmark {
 namespace {
+using utils::InputTensorData;
+using utils::VoidUniquePtr;
 
 // Backward compat with previous approach to enabling op profiling.
 #if defined(TFLITE_PROFILING_ENABLED)
@@ -75,7 +83,7 @@ class RuyProfileListener : public BenchmarkListener {
 };
 
 void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
-  ruy_profile_.reset(new ruy::profiler::ScopeProfile);
+  ruy_profile_ = std::make_unique<ruy::profiler::ScopeProfile>();
 }
 
 void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
@@ -187,14 +195,15 @@ TfLiteStatus PopulateInputValueFiles(
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   std::vector<std::string> value_files = Split(value_files_string, ',');
   for (const auto& val : value_files) {
-    std::vector<std::string> name_file = Split(val, ':');
-    if (name_file.size() != 2) {
+    std::pair<std::string, std::string> name_file_pair;
+    if (SplitInputLayerNameAndValueFile(val, name_file_pair) == kTfLiteError) {
       TFLITE_LOG(ERROR) << "Wrong input value file item specified: " << val;
       return kTfLiteError;
     }
 
     // Ensure the specific input layer name exists.
-    int layer_info_idx = FindLayerInfoIndex(info, name_file[0], names_string);
+    int layer_info_idx =
+        FindLayerInfoIndex(info, name_file_pair.first, names_string);
     if (info->at(layer_info_idx).has_value_range) {
       TFLITE_LOG(WARN)
           << "The input_name:" << info->at(layer_info_idx).name
@@ -202,7 +211,7 @@ TfLiteStatus PopulateInputValueFiles(
              "input_layer_value_range. The input_layer_value_range of the "
              "input_name will be ignored.";
     }
-    info->at(layer_info_idx).input_file_path = name_file[1];
+    info->at(layer_info_idx).input_file_path = name_file_pair.second;
   }
   return kTfLiteOk;
 }
@@ -266,6 +275,35 @@ CreateProfileSummaryFormatter(bool format_as_csv) {
 
 }  // namespace
 
+TfLiteStatus SplitInputLayerNameAndValueFile(
+    const std::string& name_and_value_file,
+    std::pair<std::string, std::string>& name_file_pair) {
+  // 1. split the string by ':' and ignore escaped characters
+  int delim_index = -1;
+  for (int i = 1; i < name_and_value_file.length(); ++i) {
+    if (name_and_value_file[i] == ':' && name_and_value_file[i - 1] != '\\') {
+      if (delim_index == -1) {
+        delim_index = i;
+      } else {
+        TFLITE_LOG(ERROR) << name_and_value_file
+                          << " contains more than one delimiter.";
+        return kTfLiteError;
+      }
+    }
+  }
+  if (delim_index == -1) {
+    TFLITE_LOG(ERROR) << name_and_value_file
+                      << " doesn't contain any delimiter.";
+    return kTfLiteError;
+  }
+  // 2. replace escaped "\:" string to ":"
+  name_file_pair.first = absl::StrReplaceAll(
+      name_and_value_file.substr(0, delim_index), {{"\\:", ":"}});
+  name_file_pair.second = absl::StrReplaceAll(
+      name_and_value_file.substr(delim_index + 1), {{"\\:", ":"}});
+  return kTfLiteOk;
+}
+
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   BenchmarkParams default_params = BenchmarkModel::DefaultParams();
   default_params.AddParam("graph", BenchmarkParam::Create<std::string>(""));
@@ -285,6 +323,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("allow_dynamic_profiling_buffer_increase",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
 
@@ -292,6 +332,10 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("print_postinvoke_state",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("release_dynamic_tensors",
+                          BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("optimize_memory_for_large_tensors",
+                          BenchmarkParam::Create<int32_t>(0));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -336,17 +380,20 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "A map-like string representing value file. Each item is separated "
           "by ',', and the item value consists "
           "of input layer name and value file path separated by ':', e.g. "
-          "input1:file_path1,input2:file_path2. If the input_name appears both "
-          "in input_layer_value_range and input_layer_value_files, "
-          "input_layer_value_range of the input_name will be ignored. The file "
-          "format is binary and it should be array format or null separated "
-          "strings format."),
+          "input1:file_path1,input2:file_path2. In case the input layer name "
+          "contains ':' e.g. \"input:0\", escape it with \"\\:\". If the "
+          "input_name appears both in input_layer_value_range and "
+          "input_layer_value_files, input_layer_value_range of the input_name "
+          "will be ignored. The file format is binary and it should be array "
+          "format or null separated strings format."),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries"),
+                          "max initial profiling buffer entries"),
+      CreateFlag<bool>("allow_dynamic_profiling_buffer_increase", &params_,
+                       "allow dynamic increase on profiling buffer entries"),
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
@@ -359,12 +406,18 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "print_postinvoke_state", &params_,
           "print out the interpreter internals just before benchmark completes "
           "(i.e. after all repeated Invoke calls complete). The internals will "
-          "include allocated memory size of each tensor etc.")};
+          "include allocated memory size of each tensor etc."),
+      CreateFlag<bool>("release_dynamic_tensors", &params_,
+                       "Ensure dynamic tensor's memory is released when they "
+                       "are not used."),
+      CreateFlag<int32_t>(
+          "optimize_memory_for_large_tensors", &params_,
+          "Optimize memory usage for large tensors with sacrificing latency.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
   tools::ProvidedDelegateList delegate_providers(&params_);
-  delegate_providers.AppendCmdlineFlags(&flags);
+  delegate_providers.AppendCmdlineFlags(flags);
 
   return flags;
 }
@@ -388,13 +441,20 @@ void BenchmarkTfLiteModel::LogParams() {
   LOG_BENCHMARK_PARAM(bool, "enable_op_profiling", "Enable op profiling",
                       verbose);
   LOG_BENCHMARK_PARAM(int32_t, "max_profiling_buffer_entries",
-                      "Max profiling buffer entries", verbose);
+                      "Max initial profiling buffer entries", verbose);
+  LOG_BENCHMARK_PARAM(bool, "allow_dynamic_profiling_buffer_increase",
+                      "Allow dynamic increase on profiling buffer entries",
+                      verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_preinvoke_state",
                       "Print pre-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
                       "Print post-invoke interpreter state", verbose);
+  LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
+                      "Release dynamic tensor memory", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
+                      "Optimize memory usage for large tensors", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -434,7 +494,7 @@ int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
   return in_file.tellg();
 }
 
-BenchmarkTfLiteModel::InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
+InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
     const TfLiteTensor& t, const std::string& input_file_path) {
   std::ifstream value_file(input_file_path, std::ios::binary);
   if (!value_file.good()) {
@@ -478,104 +538,17 @@ BenchmarkTfLiteModel::InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
   return t_data;
 }
 
-BenchmarkTfLiteModel::InputTensorData
-BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
-                                             const InputLayerInfo* layer_info) {
-  bool has_value_range = false;
-  int low_range = 0;
-  int high_range = 0;
-  if (layer_info) {
-    has_value_range = layer_info->has_value_range;
+InputTensorData BenchmarkTfLiteModel::CreateRandomTensorData(
+    const TfLiteTensor& t, const InputLayerInfo* layer_info) {
+  float low_range = 0;
+  float high_range = 0;
+  if (layer_info && layer_info->has_value_range) {
     low_range = layer_info->low;
     high_range = layer_info->high;
+  } else {
+    utils::GetDataRangesForType(t.type, &low_range, &high_range);
   }
-  int num_elements = GetNumElements(t.dims);
-  switch (t.type) {
-    case kTfLiteFloat32: {
-      return CreateInputTensorData<float>(
-          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
-    }
-    case kTfLiteFloat16: {
-      // TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
-#if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-#if __GNUC__ && \
-    (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
-      // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      return CreateInputTensorData<__fp16>(
-          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
-#else
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
-                        << " of type FLOAT16 on this platform.";
-#endif
-#else
-      // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
-      // compiler that supports __fp16 type. Note: when using Clang and *not*
-      // linking with compiler-rt, a definition of __gnu_h2f_ieee and
-      // __gnu_f2h_ieee must be supplied.
-      TFLITE_LOG(FATAL) << "Populating the tensor " << t.name
-                        << " of type FLOAT16 is disabled.";
-#endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-      break;
-    }
-    case kTfLiteFloat64: {
-      return CreateInputTensorData<double>(
-          num_elements, std::uniform_real_distribution<double>(-0.5, 0.5));
-    }
-    case kTfLiteInt64: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<int64_t>(
-          num_elements, std::uniform_int_distribution<int64_t>(low, high));
-    }
-    case kTfLiteInt32: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<int32_t>(
-          num_elements, std::uniform_int_distribution<int32_t>(low, high));
-    }
-    case kTfLiteUInt32: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<uint32_t>(
-          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
-    }
-    case kTfLiteInt16: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 99;
-      return CreateInputTensorData<int16_t>(
-          num_elements, std::uniform_int_distribution<int16_t>(low, high));
-    }
-    case kTfLiteUInt8: {
-      int low = has_value_range ? low_range : 0;
-      int high = has_value_range ? high_range : 254;
-      // std::uniform_int_distribution is specified not to support char types.
-      return CreateInputTensorData<uint8_t>(
-          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
-    }
-    case kTfLiteInt8: {
-      int low = has_value_range ? low_range : -127;
-      int high = has_value_range ? high_range : 127;
-      // std::uniform_int_distribution is specified not to support char types.
-      return CreateInputTensorData<int8_t>(
-          num_elements, std::uniform_int_distribution<int32_t>(low, high));
-    }
-    case kTfLiteString: {
-      // Don't populate input for string. Instead, return a default-initialized
-      // `InputTensorData` object directly.
-      break;
-    }
-    case kTfLiteBool: {
-      // According to std::uniform_int_distribution specification, non-int type
-      // is not supported.
-      return CreateInputTensorData<bool>(
-          num_elements, std::uniform_int_distribution<uint32_t>(0, 1));
-    }
-    default: {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t.name
-                        << " of type " << t.type;
-    }
-  }
-  return InputTensorData();
+  return utils::CreateRandomTensorData(t, low_range, high_range);
 }
 
 TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
@@ -637,14 +610,21 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
   auto resolver = GetOpResolver();
   const int32_t num_threads = params_.Get<int32_t>("num_threads");
   const bool use_caching = params_.Get<bool>("use_caching");
-  tflite::InterpreterBuilder(*model_, *resolver)(&interpreter_, num_threads);
+
+  tflite::InterpreterBuilder builder(*model_, *resolver);
+  if (builder.SetNumThreads(num_threads) != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to set thread number";
+    return kTfLiteError;
+  }
+
+  builder(&interpreter_);
   if (!interpreter_) {
     TFLITE_LOG(ERROR) << "Failed to initialize the interpreter";
     return kTfLiteError;
   }
   // Manually enable caching behavior in TF Lite interpreter.
   if (use_caching) {
-    external_context_.reset(new tflite::ExternalCpuBackendContext());
+    external_context_ = std::make_unique<tflite::ExternalCpuBackendContext>();
     std::unique_ptr<tflite::CpuBackendContext> cpu_backend_context(
         new tflite::CpuBackendContext());
     cpu_backend_context->SetUseCaching(true);
@@ -684,6 +664,13 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased(
+      params_.Get<bool>("release_dynamic_tensors"));
+  options.OptimizeMemoryForLargeTensors(
+      params_.Get<int32_t>("optimize_memory_for_large_tensors"));
+  interpreter_->ApplyOptions(&options);
+
   owned_delegates_.clear();
 
   // Contains all ids of TfLiteNodes that have been checked to see whether it's
@@ -696,11 +683,16 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       << " delegates one after another.";
   for (auto& created_delegate : created_delegates) {
     const auto* delegate_provider = created_delegate.provider;
-    tools::TfLiteDelegatePtr delegate = std::move(created_delegate.delegate);
+    TfLiteDelegate* delegate = created_delegate.delegate.get();
     TFLITE_TOOLS_CHECK(delegate != nullptr)
         << "The created delegate by the delegate provider should not be "
            "nullptr!";
-    if (interpreter_->ModifyGraphWithDelegate(delegate.get()) != kTfLiteOk) {
+    // The interpreter becomes dependent on the delegate once the delegate is
+    // used, so the order of destruction must be interpreter first, delegate
+    // later.
+    // Moving the delegate to a list of owned delegates to guarantee that.
+    owned_delegates_.emplace_back(std::move(created_delegate.delegate));
+    if (interpreter_->ModifyGraphWithDelegate(delegate) != kTfLiteOk) {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate_provider->GetName()
                         << " delegate.";
       return kTfLiteError;
@@ -750,7 +742,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
             << " executed by the delegate.";
       }
     }
-    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();
@@ -834,6 +825,7 @@ BenchmarkTfLiteModel::MayCreateProfilingListener() const {
 
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<bool>("allow_dynamic_profiling_buffer_increase"),
       params_.Get<std::string>("profiling_output_csv_file"),
       CreateProfileSummaryFormatter(
           !params_.Get<std::string>("profiling_output_csv_file").empty())));

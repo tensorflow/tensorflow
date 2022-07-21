@@ -15,9 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include "tensorflow/core/kernels/sequence_ops.h"
+
 #include <cmath>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -25,9 +28,27 @@ limitations under the License.
 
 namespace tensorflow {
 
-int32 GetValue(int32_t v) { return v; }
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
+
+namespace functor {
 
 template <typename T>
+struct RangeFunctor<CPUDevice, T> {
+  void operator()(OpKernelContext* context, int64_t size, T start, T delta,
+                  typename TTypes<T>::Flat output) const {
+    (void)context;
+    T val = start;
+    for (int64_t i = 0; i < size; ++i) {
+      output(i) = T(val);
+      val += delta;
+    }
+  }
+};
+
+}  // namespace functor
+
+template <typename Device, typename T>
 class RangeOp : public OpKernel {
  public:
   explicit RangeOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -71,38 +92,41 @@ class RangeOp : public OpKernel {
           errors::InvalidArgument(
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
-    int64_t size = 0;
+    int64_t size;
     if (std::is_integral<T>::value) {
-      size = static_cast<int64>(
-          (std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta));
+      size = Eigen::divup(Eigen::numext::abs(limit - start),
+                          Eigen::numext::abs(delta));
     } else {
-      size = static_cast<int64>(std::ceil(std::abs((limit - start) / delta)));
+      auto size_auto =
+          Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));
+      OP_REQUIRES(
+          context, size_auto <= std::numeric_limits<int64_t>::max(),
+          errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                  std::numeric_limits<int64_t>::max()));
+      size = static_cast<int64_t>(size_auto);
     }
+
     TensorShape shape;
     OP_REQUIRES_OK(context, shape.AddDimWithStatus(size));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
+    if (size == 0) return;
     auto flat = out->flat<T>();
-    T val = start;
-    for (int64_t i = 0; i < size; ++i) {
-      flat(i) = T(val);
-      val += delta;
-    }
+    functor::RangeFunctor<Device, T>()(context, size, start, delta, flat);
   }
 };
 
-#define REGISTER_KERNEL(DEV, TYPE)                           \
+#define REGISTER_KERNEL(DEV, DEV_TYPE, TYPE)                 \
   REGISTER_KERNEL_BUILDER(Name("Range")                      \
                               .Device(DEV)                   \
                               .HostMemory("start")           \
                               .HostMemory("limit")           \
                               .HostMemory("delta")           \
-                              .HostMemory("output")          \
                               .TypeConstraint<TYPE>("Tidx"), \
-                          RangeOp<TYPE>);
+                          RangeOp<DEV_TYPE, TYPE>);
 
-#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, T)
-#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, T)
+#define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, CPUDevice, T)
+#define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, GPUDevice, T)
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
@@ -113,10 +137,19 @@ TF_CALL_int64(REGISTER_CPU_KERNEL);
 
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
-TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// Special case to execute int32 on the host with host output.
+REGISTER_KERNEL_BUILDER(Name("Range")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("start")
+                            .HostMemory("limit")
+                            .HostMemory("delta")
+                            .HostMemory("output")
+                            .TypeConstraint<int32_t>("Tidx"),
+                        RangeOp<CPUDevice, int32_t>);
 
 #undef REGISTER_KERNEL
 #undef REGISTER_CPU_KERNEL

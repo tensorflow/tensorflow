@@ -14,10 +14,6 @@
 # ==============================================================================
 """Model script to test TF-TensorRT integration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
@@ -99,11 +95,11 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     if run_params.dynamic_shape:
       # All the ops are converted into a single TRTEngineOp.
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
     else:
       # Final squeeze and div ops are not converted. The x1 and x2 branches
       # are segmented into separate TRTEngineOp.
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
 
 if __name__ == "__main__":

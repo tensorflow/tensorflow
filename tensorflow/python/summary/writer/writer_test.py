@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.summary.writer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import os.path
 import shutil

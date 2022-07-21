@@ -330,7 +330,7 @@ REGISTER_OP("TestOp")
       if (c->input_tensor(0)) {
         if (c->input_tensor(1)) {
           c->set_output(0, c->Matrix(10, 10));
-          return Status::OK();
+          return OkStatus();
         }
         return shape_inference::ScalarShape(c);
       }
@@ -384,7 +384,7 @@ REGISTER_OP("ShapeData")
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ShapeDataInt64")
@@ -399,11 +399,11 @@ REGISTER_OP("ShapeDataInt64")
       std::vector<shape_inference::DimensionHandle> dims;
       dims.reserve(shape_data->NumElements());
       for (int i = 0; i < shape_data->NumElements(); ++i) {
-        dims.emplace_back(c->MakeDim(shape_data->flat<int64>()(i)));
+        dims.emplace_back(c->MakeDim(shape_data->flat<int64_t>()(i)));
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     });
 
 // An op with a shape function that looks at its input tensor
@@ -422,7 +422,7 @@ REGISTER_OP("ShapeVectorForAllElements")
       }
 
       c->set_output(0, c->Vector(total));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MultiIdentity")
@@ -433,7 +433,7 @@ REGISTER_OP("MultiIdentity")
       for (int i = 0; i < c->num_inputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 class MultiIdentity : public OpKernel {
@@ -834,7 +834,7 @@ Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0 /* input_idx */, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
@@ -842,12 +842,12 @@ Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   const Tensor* t = c->input_tensor(0);
   if (t == nullptr || t->NumElements() != 1) {
     c->set_output(0, c->UnknownShape());
-    return Status::OK();
+    return OkStatus();
   }
   TF_RETURN_IF_ERROR(
       c->MakeShapeFromTensorShape(TensorShape({t->flat<int32>()(0)}), &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Register ops used by the ConstantValueAsShape* tests.
@@ -881,7 +881,7 @@ REGISTER_OP("WithEmptyVectorShape")
     .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WithPartialShape")
@@ -891,7 +891,7 @@ REGISTER_OP("WithPartialShape")
       c->set_output(
           0, c->MakeShape({1, shape_inference::InferenceContext::kUnknownDim, 3,
                            shape_inference::InferenceContext::kUnknownDim, 5}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WithPartialShape2")
@@ -901,7 +901,7 @@ REGISTER_OP("WithPartialShape2")
       c->set_output(
           0,
           c->MakeShape({6, shape_inference::InferenceContext::kUnknownDim, 8}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WithUnknownShape")
@@ -909,7 +909,7 @@ REGISTER_OP("WithUnknownShape")
     .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace

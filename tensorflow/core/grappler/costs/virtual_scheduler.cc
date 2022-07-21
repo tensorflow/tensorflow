@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -173,7 +178,7 @@ Status HeapReadyManager::Init(
   // Sets up the comparator for the heap.
   greater_ = Greater();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void HeapReadyManager::AddNode(const NodeDef* node) {
@@ -262,7 +267,7 @@ void PriorityReadyManager::AddNode(const NodeDef* node) {
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
   node_priority_ = node_priority;
-  return Status::OK();
+  return OkStatus();
 }
 
 CompositeNodeManager::CompositeNodeManager()
@@ -274,7 +279,7 @@ Status CompositeNodeManager::Init(
   TF_RETURN_IF_ERROR(send_manager_.Init(node_map));
   TF_RETURN_IF_ERROR(recv_manager_.Init(node_map));
   curr_node_ = nullptr;
-  return Status::OK();
+  return OkStatus();
 }
 
 void CompositeNodeManager::AddNode(const NodeDef* node) {
@@ -367,13 +372,13 @@ bool CompositeNodeManager::Empty() const {
 std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
     const string& ready_node_manager) {
   if (ready_node_manager == "FIFO") {
-    return absl::make_unique<FIFOManager>();
+    return std::make_unique<FIFOManager>();
   } else if (ready_node_manager == "LIFO") {
-    return absl::make_unique<LIFOManager>();
+    return std::make_unique<LIFOManager>();
   } else if (ready_node_manager == "FirstReady") {
-    return absl::make_unique<FirstReadyManager>();
+    return std::make_unique<FirstReadyManager>();
   } else if (ready_node_manager == "Composite") {
-    return absl::make_unique<CompositeNodeManager>();
+    return std::make_unique<CompositeNodeManager>();
   }
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
   return nullptr;
@@ -417,7 +422,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
   initial_nodes->clear();
 
   // Constructs graph properties and performs shape inference.
-  graph_properties_ = absl::make_unique<GraphProperties>(*item);
+  graph_properties_ = std::make_unique<GraphProperties>(*item);
   // TODO(safeen,dyoon): Will we ever use InferDynamically? If not we may want
   // to get rid of use_static_shapes_ and cluster_.
   if (use_static_shapes_) {
@@ -582,7 +587,7 @@ Status SchedulerState::Init(const GrapplerItem* item,
   }
 
   initialized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 void SchedulerState::MaybeUpdateInputOutput(const NodeDef* node) {
@@ -942,20 +947,31 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
   if (!IsPersistent(*node)) {
     for (const auto& port_num_output_pair : node_state.outputs) {
       int port_num = port_num_output_pair.first;
-
       // There's a chance that a specific output is not used at all.
       if (node_state.outputs[port_num].empty()) {
         node_state.time_no_references[port_num] = curr_time;
       } else {
+        // Allow for the possibility that some ports may be persistent even if
+        // the entire node is not labeled persistent.
+        if (node_state.node_costs.persistent_output_ports.contains(port_num)) {
+          continue;
+        }
+
         // Streaming outputs do not allocate memory, they are directly consumed
         // by the target node.
         if (!IsStreamingPort(*node, port_num)) {
-          device.memory_usage +=
-              CalculateOutputSize(node_state.output_properties, port_num);
+          // If possible use the node output size calculations done by the
+          // more specific CostEstimator over the general CalculateOutputSize.
+          device.memory_usage += GetOrCalculateOutputSize(node_state, port_num);
         }
         device.nodes_in_memory.insert(std::make_pair(node, port_num));
       }
     }
+  }
+
+  // Update device state persistent node map.
+  for (const auto& port : node_costs.persistent_output_ports) {
+    device.persistent_nodes.insert({node, port});
   }
 
   // Update device's per-op cost.
@@ -968,6 +984,8 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
           << ", ready: " << node_state.time_ready.count()
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
+  VLOG(5) << "  Current device memory usage (before deallocation): "
+          << device.memory_usage;
   std::vector<const NodeDef*> new_nodes;
   if (previously_executed_merge) {
     // Skip AddOutputNodesToReadyQueue; this is due to Switch-Merge.
@@ -1006,6 +1024,11 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     auto& input_state = node_map_[input];
     input_state.num_outputs_executed[port]++;
     int input_state_outputs_size_ = input_state.outputs[port].size();
+
+    // Allow for the possibility that some outputs may be persistent even if the
+    // entire node is not labeled persistent.
+    if (input_state.node_costs.persistent_output_ports.contains(port)) continue;
+
     if (input_state.num_outputs_executed[port] == input_state_outputs_size_ &&
         !IsPersistent(*input)) {
       // All the outputs are executed; no reference to this output port of
@@ -1017,7 +1040,7 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
       // de-allocate memory.
       if (!IsStreamingPort(*input, port)) {
         input_device.memory_usage -=
-            CalculateOutputSize(input_state.output_properties, port);
+            GetOrCalculateOutputSize(input_state, port);
       }
 
       input_device.nodes_in_memory.erase(std::make_pair(input, port));
@@ -1082,12 +1105,12 @@ Costs SchedulerState::Summary() const {
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
-      auto output_size = 0;
+      int64_t output_size = 0;
       // Check if the node is in the node_map. It may be that the node executed
       // on this device was executed by a different Scheduler.
-      if (node_map_.find(node) != node_map_.end()) {
-        output_size =
-            CalculateOutputSize(node_map_.at(node).output_properties, port);
+      auto it = node_map_.find(node);
+      if (it != node_map_.end()) {
+        output_size = GetOrCalculateOutputSize(it->second, port);
       }
       persistent_memory_usage += output_size;
       op_to_memory[node->op()] += output_size;
@@ -1137,9 +1160,9 @@ Costs SchedulerState::Summary() const {
       const auto port = node_port.second;
       // Check if the node is in the node_map. It may be that the node executed
       // on this device was executed by a different Scheduler.
-      if (node_map_.find(node) != node_map_.end()) {
-        op_to_memory[node->op()] +=
-            CalculateOutputSize(node_map_.at(node).output_properties, port);
+      auto it = node_map_.find(node);
+      if (it != node_map_.end()) {
+        op_to_memory[node->op()] += GetOrCalculateOutputSize(it->second, port);
       }
     }
     Costs::NanoSeconds total_compute_time_ns;
@@ -1235,6 +1258,7 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       const NodeState& nodestate = node_map_.at(node_def);
       NodeExecStats* node_stats = device_stepstats->add_node_stats();
       uint64 total_output_size = 0;
+      uint64_t persistent_output_size = 0;
       for (int slot = 0, slot_end = nodestate.output_properties.size();
            slot < slot_end; slot++) {
         const auto& properties = nodestate.output_properties[slot];
@@ -1244,13 +1268,18 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
         tensor_descr->set_dtype(properties.dtype());
         *tensor_descr->mutable_shape() = properties.shape();
         // Optional allocation description.
-        const auto tensor_size =
+        const int64_t tensor_size_requested =
             CalculateOutputSize(nodestate.output_properties, slot);
-        total_output_size += tensor_size;
+        const int64_t tensor_size_allocated =
+            GetOrCalculateOutputSize(nodestate, slot);
+        total_output_size += tensor_size_allocated;
+        if (nodestate.node_costs.persistent_output_ports.contains(slot)) {
+          persistent_output_size += tensor_size_allocated;
+        }
         tensor_descr->mutable_allocation_description()->set_requested_bytes(
-            tensor_size);
+            tensor_size_requested);
         tensor_descr->mutable_allocation_description()->set_allocated_bytes(
-            tensor_size);
+            tensor_size_allocated);
       }
       if (node_def->op() != "HloGenericOp") {
         node_stats->set_timeline_label(node_def->op());
@@ -1292,6 +1321,8 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       int64_t persistent_memory_size = 0;
       if (IsPersistent(*node_def)) {
         persistent_memory_size = total_output_size;
+      } else {
+        persistent_memory_size = persistent_output_size;
       }
       mem_stats->set_persistent_memory_size(persistent_memory_size);
       *device_partition_graph->add_node() = *node_def;
@@ -1320,9 +1351,8 @@ SchedulerState::GetPersistentMemoryUsage() const {
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
-      const auto output_size =
-          CalculateOutputSize(node_map_.at(node).output_properties, port);
-      persistent_memory_usage += output_size;
+      const auto& node_state = node_map_.at(node);
+      persistent_memory_usage += GetOrCalculateOutputSize(node_state, port);
     }
     result[name] = persistent_memory_usage;
   }
@@ -1335,6 +1365,16 @@ void SchedulerState::SetNodeStateTimeScheduled(const NodeDef* node) {
   node_state.time_scheduled = device.GetCurrTime();
 }
 
+int64_t SchedulerState::GetOrCalculateOutputSize(const NodeState& node_state,
+                                                 int port_num) const {
+  auto& node_costs = node_state.node_costs;
+  auto it = node_costs.output_tensor_size_bytes.find(port_num);
+  if (it != node_costs.output_tensor_size_bytes.end()) {
+    return it->second;
+  }
+  return CalculateOutputSize(node_state.output_properties, port_num);
+}
+
 VirtualScheduler::~VirtualScheduler() {}
 
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
@@ -1342,7 +1382,7 @@ VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
                                    Cluster* cluster,
                                    ReadyNodeManager* ready_nodes,
                                    std::unique_ptr<VirtualPlacer> placer)
-    : scheduler_state_(absl::make_unique<SchedulerState>(
+    : scheduler_state_(std::make_unique<SchedulerState>(
           use_static_shapes, use_aggressive_shape_inference, cluster,
           std::move(placer))),
       ready_nodes_(ready_nodes) {}

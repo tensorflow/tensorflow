@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/util.h"
 
@@ -167,6 +168,27 @@ TEST(ResourceTest, AssignDifferentSizeTensor) {
   // Cleanup
   TfLiteTensorFree(&tensor_a);
   TfLiteTensorFree(&tensor_b);
+}
+
+TEST(IsBuiltinResource, IsBuiltinResourceTest) {
+  TfLiteTensor tensor;
+  tensor.type = kTfLiteResource;
+  tensor.delegate = nullptr;
+  // Resource type and not delegate output.
+  EXPECT_TRUE(IsBuiltinResource(&tensor));
+
+  // Not valid tensor.
+  EXPECT_FALSE(IsBuiltinResource(nullptr));
+
+  // Not a resource type.
+  tensor.type = kTfLiteFloat32;
+  EXPECT_FALSE(IsBuiltinResource(&tensor));
+
+  // Resource but coming from a delegate.
+  tensor.type = kTfLiteResource;
+  TfLiteDelegate delegate;
+  tensor.delegate = &delegate;
+  EXPECT_FALSE(IsBuiltinResource(&tensor));
 }
 
 }  // namespace resource

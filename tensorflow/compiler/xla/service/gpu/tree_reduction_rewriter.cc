@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -40,7 +41,7 @@ namespace xla {
 namespace gpu {
 
 // Returns the square root of the input rounded up to the nearest square.
-static int64_t SqrtOfRoundUpToNearestSquare(int64_t input) {
+static int64_t SqrtOfRoundUpToSquare(int64_t input) {
   return static_cast<int64_t>(std::ceil(std::sqrt(input)));
 }
 
@@ -51,13 +52,30 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       : cuda_compute_capability_(cuda_compute_capability) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
+    if (IsMinMaxReduction(hlo)) {
+      // TODO(cheshire): Also enable for integers.
+      VLOG(1) << "Not performing tree expansion on min/max-reduction: "
+              << hlo->ToString() << " since min/max operations are associative";
+      return OkStatus();
+    }
+
     if (!IsReductionFromOrToContiguousDimensions(*hlo)) {
-      return Status::OK();
+      return OkStatus();
     }
     return RewriteReduction(hlo);
   }
 
  private:
+  bool IsMinMaxReduction(HloInstruction *hlo) {
+    HloComputation *called = hlo->called_computations()[0];
+    if (std::optional<ReductionKind> reduction_kind =
+            MatchReductionComputation(called)) {
+      return reduction_kind == ReductionKind::MAX ||
+             reduction_kind == ReductionKind::MIN;
+    }
+    return false;
+  }
+
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
@@ -72,7 +90,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool reduce_batch_dimension = hlo->dimensions().size() > 1;
     VLOG(3) << "reduce_batch_dimension = " << reduce_batch_dimension;
 
-    std::vector<int64_t> reduced_dimensions = hlo->dimensions();
+    std::vector<int64_t> reduced_dimensions = *hlo->mutable_dimensions();
     absl::c_sort(reduced_dimensions);
     CHECK_LE(reduced_dimensions.size(), 2);
     int64_t reduced_input_dimension =
@@ -81,7 +99,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Case (1): batched dimension does not fit.
     if (reduce_batch_dimension &&
-        input_shape_dims[0] > kBatchedReductionRaceFreeBound) {
+        input_shape_dims[0] > BatchedReductionRaceFreeBound()) {
       VLOG(2) << "Splitting batched dimension reduce into a separate reduction";
       VLOG(1) << "Input: " << hlo->ToString();
       return RewriteBatchDimensionLargerThanTile(reduce, reduction_dimensions,
@@ -92,7 +110,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Base case: everything fits.
     if (ReductionIsRaceFree(reduction_dimensions, reduction_tiling)) {
       VLOG(3) << "Base case: dimensions fit";
-      return Status::OK();
+      return OkStatus();
     }
 
     VLOG(1) << "Input: " << hlo->ToString();
@@ -105,7 +123,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     //
     // it can be seen that the distance to the nearest square is at most twice
     // the square root of the input number.
-    int64_t num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
+    int64_t num_fit = SqrtOfRoundUpToSquare(reduced_dim_size);
 
     // Pad reduced dimension to the required number of elements.
     bool no_padding_necessary = reduced_dim_size % num_fit == 0;
@@ -243,11 +261,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   se::CudaComputeCapability cuda_compute_capability_;
 };
 
-StatusOr<bool> GpuTreeReductionRewriter::Run(HloModule *module) {
+StatusOr<bool> GpuTreeReductionRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  TF_ASSIGN_OR_RETURN(
-      bool changed,
-      ReductionRewriterVisitor(cuda_compute_capability_).RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionRewriterVisitor(cuda_compute_capability_)
+                          .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

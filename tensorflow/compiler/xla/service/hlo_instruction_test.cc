@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
+#include <optional>
 #include <set>
-#include <unordered_map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -60,13 +61,13 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
   Status HandleParameter(HloInstruction* parameter) override {
     EXPECT_FALSE(count_.contains(parameter));
     count_[parameter] = GetCountsForNode(parameter);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleConstant(HloInstruction* constant) override {
     EXPECT_FALSE(count_.contains(constant));
     count_[constant] = GetCountsForNode(constant);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleAdd(HloInstruction* add) override {
@@ -76,7 +77,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     EXPECT_TRUE(count_.contains(lhs));
     EXPECT_TRUE(count_.contains(rhs));
     count_[add] = GetCountsForNode(add);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleNegate(HloInstruction* negate) override {
@@ -84,7 +85,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     EXPECT_FALSE(count_.contains(negate));
     EXPECT_TRUE(count_.contains(operand));
     count_[negate] = GetCountsForNode(negate);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleMap(HloInstruction* map) override {
@@ -93,7 +94,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
       EXPECT_TRUE(count_.contains(arg));
     }
     count_[map] = GetCountsForNode(map);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status HandleReduce(HloInstruction* reduce) override {
@@ -103,7 +104,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
     EXPECT_TRUE(count_.contains(arg));
     EXPECT_TRUE(count_.contains(init_value));
     count_[reduce] = GetCountsForNode(reduce);
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t NumOperands(const HloInstruction* node) {
@@ -571,12 +572,12 @@ class NodeCollectorAndPostProcessor : public DfsHloVisitorWithDefault {
 
   Status Postprocess(HloInstruction* hlo) override {
     post_processed_nodes_.push_back(hlo);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DefaultAction(HloInstruction* hlo_instruction) override {
     visited_nodes_.push_back(hlo_instruction);
-    return Status::OK();
+    return OkStatus();
   }
 
   const std::vector<const HloInstruction*>& visited_nodes() {
@@ -708,6 +709,104 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
 
   auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {});
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
+}
+
+TEST_F(HloInstructionTest, BinaryCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({add});
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(call));
+  EXPECT_THAT(constant2->users(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, ChainCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of called unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp3, exp2, exp1});
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, MultiOutputCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of called unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
+  auto exp4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, exp3, exp4));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp3, exp2, exp1});
+  call->AppendInstructionIntoCalledComputation(exp4, /*add_output=*/true);
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant));
+  EXPECT_EQ(add->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(add->operand(0)->operands(), ElementsAre(call));
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(add->operand(1)->operands(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, AsyncOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, "parallel_thread"));
+  auto* async_start = async_done->operand(0);
+
+  EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(async_start->async_execution_thread(), "parallel_thread");
+  EXPECT_EQ(async_done->async_execution_thread(), "parallel_thread");
+  EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
+                               ShapeUtil::MakeScalarShape(U32)));
+  EXPECT_EQ(async_start->async_wrapped_computation()->execution_thread(),
+            "parallel_thread");
+  EXPECT_EQ(async_done->async_wrapped_computation()->execution_thread(),
+            "parallel_thread");
+  EXPECT_THAT(async_start->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(async_start));
+  EXPECT_THAT(constant2->users(), ElementsAre(async_start));
+  EXPECT_EQ(computation->root_instruction(), async_done);
 }
 
 TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
@@ -1047,7 +1146,7 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
     EXPECT_FALSE(visit_order.contains(inst));
     visit_order[inst] = visit_num;
     visit_num++;
-    return Status::OK();
+    return OkStatus();
   });
   EXPECT_IS_OK(add->Accept(&visitor));
 
@@ -1603,6 +1702,74 @@ TEST_F(HloInstructionTest, StringifyScatter) {
       "to_apply=%Scatter.update");
 }
 
+TEST_F(HloInstructionTest, StringifyAsyncOps) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20});
+  const Shape s_tuple = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({s1}), s2, ShapeUtil::MakeShape(S32, {})});
+
+  HloComputation::Builder async_builder("AsyncOp");
+  HloInstruction* param = async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  async_builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s2, {param},
+                                       /*custom_call_target=*/"foo"));
+  std::unique_ptr<HloComputation> async_computation = async_builder.Build();
+
+  HloComputation::Builder entry_builder("Entry");
+  HloInstruction* entry_param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  HloInstruction* async_start =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          s_tuple, {entry_param}, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_execution_thread=*/"parallel_thread"));
+  HloInstruction* async_update =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
+          s_tuple, async_start, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_execution_thread=*/"parallel_thread"));
+  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
+      s2, async_update, async_computation.get(),
+      /*async_group_id=*/std::nullopt,
+      /*async_execution_thread=*/"parallel_thread"));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(entry_builder.Build());
+  module->AddEmbeddedComputation(std::move(async_computation));
+
+  const std::string expected_with_syntax_sugar =
+      R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+}
+
+)";
+  EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
+  const std::string expected_without_syntax_sugar =
+      R"(HloModule StringifyAsyncOps, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
+
+%AsyncOp (p0.1: f32[10]) -> f32[20] {
+  %p0.1 = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1), custom_call_target="foo"
+}, execution_thread="parallel_thread"
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", calls=%AsyncOp
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+}
+
+)";
+  auto options = HloPrintOptions().set_syntax_sugar_async_ops(false);
+  EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
+}
+
 TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
@@ -1631,17 +1798,22 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
 
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  constexpr char kParallelThreadName[] = "parallel_thread";
+  computation->SetExecutionThread(kParallelThreadName);
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kLoop);
+  fusion->set_called_computations_execution_thread(
+      kParallelThreadName,
+      /*skip_async_execution_thread_overwrite*/ false);
 
-  const string expected_fusion =
+  const std::string expected_fusion =
       R"(f32[5,20]{1,0} fusion(f32[5,10]{1,0}, f32[20,10]{1,0}), kind=kLoop, calls=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, execution_thread="parallel_thread")";
   EXPECT_EQ(fusion->ToString(options), expected_fusion);
 }
 
@@ -1674,7 +1846,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationWhile) {
       HloInstruction::CreateWhile(sout, computation, computation, x));
 
   auto options = HloPrintOptions().Canonical();
-  const string expected_loop =
+  const std::string expected_loop =
       R"(f32[5,20]{1,0} while(f32[5,10]{1,0}), condition=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
@@ -1735,7 +1907,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationConditional) {
       builder.AddInstruction(HloInstruction::CreateConditional(
           sout, pred, x, computation, x, computation));
   auto options = HloPrintOptions().Canonical();
-  const string expected_conditional =
+  const std::string expected_conditional =
       R"(f32[5,20]{1,0} conditional(pred[], f32[5,10]{1,0}, f32[5,10]{1,0}), true_computation=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)

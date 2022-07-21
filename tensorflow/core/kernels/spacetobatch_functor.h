@@ -60,8 +60,8 @@ void SubtleMustCopyFlatHelper(const Tensor& t, OutputType* output) {
 }
 
 // Copies flat contents of `t` to std::vector-like `*output`, which is resized
-// as needed.  `OutputType` may be either `std::vector<int64>` or
-// `gtl::InlinedVector<int64>`.
+// as needed.  `OutputType` may be either `std::vector<int64_t>` or
+// `gtl::InlinedVector<int64_t>`.
 //
 // Precondition: t.dtype() must be either DT_INT32 or DT_INT64.
 template <typename OutputType>

@@ -59,6 +59,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
     ],
 )
 
@@ -80,6 +83,7 @@ tf_cc_test(
     srcs = ["tensor_bundle_test.cc"],
     data = ["//tensorflow/core/util/tensor_bundle/testdata:old_string_tensors"],
     tags = [
+        "nomac",  # TODO(b/239076506) Fix this.
         "nomsan",
         "notsan",
     ],

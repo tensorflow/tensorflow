@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Fault tolerance test for parameter server training in TF2."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import gc
 import sys
@@ -81,10 +76,14 @@ class Model(object):
         dataset = dataset_ops.DatasetV2.from_tensors([data]).repeat()
         return dataset
 
+      def distribute_dataset_fn():
+        return self.cluster_coord.strategy.distribute_datasets_from_function(
+            lambda _: dataset_fn())
+
       self.iterator = iter(
-          self.cluster_coord.create_per_worker_dataset(dataset_fn))
+          self.cluster_coord.create_per_worker_dataset(distribute_dataset_fn))
       self.iterator2 = iter(
-          self.cluster_coord.create_per_worker_dataset(dataset_fn))
+          self.cluster_coord.create_per_worker_dataset(distribute_dataset_fn))
     else:
       data = random_ops.random_uniform((10, 10))
       dataset = dataset_ops.DatasetV2.from_tensors([data]).repeat()
@@ -349,7 +348,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     try:
       self.thread_coord.join([run_thread])
-    except errors.UnavailableError as e:
+    except (errors.UnavailableError, errors.AbortedError) as e:
       logging.info("Got exception %r, error message is %s", e, e)
 
       self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))  # pylint: disable=g-assert-in-except
@@ -383,7 +382,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
     try:
       self.thread_coord.join([run_thread])
-    except errors.UnavailableError as e:
+    except (errors.UnavailableError, errors.AbortedError) as e:
       logging.info("Got exception %r, error message is %s", e, e)
 
       self.assertIn(_RPC_ERROR_FROM_WORKER, str(e))  # pylint: disable=g-assert-in-except
@@ -430,14 +429,14 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
       if isinstance(e, errors.UnavailableError):
         self.assertTrue("failed to connect to all addresses" in str(e) or
-                        "Unable to find a context_id" in str(e) or
                         "Socket closed" in str(e) or
                         "Connection reset by peer" in str(e) or
                         "Transport closed" in str(e))
 
       if isinstance(e, errors.AbortedError):
-        self.assertIn("RecvTensor expects a different device incarnation",
-                      str(e))
+        self.assertTrue(
+            "RecvTensor expects a different device incarnation" in str(e) or
+            "Unable to find a context_id" in str(e))
       self._ensure_threads_closed()
 
   def testTwoWorkersPreempted(self):
@@ -558,6 +557,53 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
       remote_value._values[0].numpy()
     self.assertIn("failed to connect to all addresses", cm.exception.message)
     self.assertIn("/job:worker/replica:0/task:", cm.exception.message)
+
+  def testFetchFromPSAfterWorkerFailure(self):
+    # Test for flaky failures when reading from a parameter server while a
+    # worker is recovering.
+    # Place some variables on PSes using distribute_datasets_from_function,
+    # kill a worker, and continuously poll one of those variables.
+
+    model = Model(self.cluster_coord)
+
+    # kill the worker after a delay to make sure variable reading runs while
+    # worker is up, while it's down, and while it restarts
+    def kill_after_delay():
+      time.sleep(3)
+      logging.info("Killing worker 0")
+      self._cluster.kill_task("worker", 0)
+      time.sleep(1)
+      logging.info("Restarting worker 0")
+      self._cluster.start_task("worker", 0)
+
+    kill_thread = threading.Thread(target=kill_after_delay)
+    kill_thread.start()
+
+    model.do_infinite_step.assign(True)
+    model.schedule_training_functions(1)
+
+    num_reads = 0
+    num_reads_after_restart = 0
+    read_interval_secs = 0.1
+    worker_has_stopped = False
+    # limit runtime of the test: stop after doing a few reads after worker
+    # is back up, or after a fixed maximum number of reads
+    while num_reads_after_restart <= 5 and num_reads < 200:
+      worker_up = context.check_alive("/job:worker/replica:0/task:0")
+      if not worker_up:
+        worker_has_stopped = True
+      if worker_up and worker_has_stopped:
+        num_reads_after_restart += 1
+
+      model.join_training_functions()
+      start = time.time()
+      while time.time() < start + read_interval_secs:
+        model.iterations.read_value()
+
+      num_reads += 1
+      # run another epoch
+      model.do_infinite_step.assign(True)
+      model.schedule_training_functions(1)
 
   def testClusterStateNotDisrupted(self):
     # This test has side effects and can disrupt other tests, even if the

@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 
-#if (defined(GEMMLOWP_NEON_32) || defined(GEMMLOWP_NEON_64)) && \
-    !defined(TENSORFLOW_DISABLE_META) && !defined(__APPLE__)
+#if defined(GEMMLOWP_NEON_32) && !defined(TENSORFLOW_DISABLE_META) && \
+    !defined(__APPLE__)
 #define TENSORFLOW_USE_META (1)
 #endif
 
@@ -274,14 +274,17 @@ void Requantize(OpKernelContext* tf_context, const qint32* input, int count,
       CalculateOneOverRangeScale<uint8_t>(output_min, output_max);
   params.kernel.input_range_offset =
       static_cast<float>(std::numeric_limits<int32_t>::lowest());
+  params.kernel.output_range_offset =
+      static_cast<float>(std::numeric_limits<uint8_t>::lowest());
 
+#if defined(GEMMLOWP_NEON_32)
   // After adding the output_range_offset the value is cast from float to uint.
-  // The float to int/uint cast in NEON uses round toward 0. To keep the
+  // The float to int/uint cast in 32bit arm uses round toward 0. To keep the
   // rounding consistent with Eigen, which uses round toward closest, we can
   // add 0.5f and exploit the fact that we only operate on non negative values.
   // TODO(maciekc): fix the actual kernel in gemmlowp/meta
-  params.kernel.output_range_offset =
-      static_cast<float>(std::numeric_limits<uint8_t>::lowest()) + 0.5f;
+  params.kernel.output_range_offset += 0.5f;
+#endif
 
   MultiThreadTransform1D<Params, 16>(tf_context, params);
 #else
@@ -328,14 +331,16 @@ void Quantize(OpKernelContext* tf_context, const float* input, int count,
   params.kernel.range_min = range_min;
   params.kernel.range_scale =
       CalculateOneOverRangeScale<uint8_t>(range_min, range_max);
+  params.kernel.range_offset =
+      static_cast<float>(std::numeric_limits<uint8_t>::lowest());
 
-  // After adding the range_offset the value is cast from float to uint.
-  // The float to int/uint cast in NEON uses round toward 0. To keep the
+#if defined(GEMMLOWP_NEON_32)
+  // The float to int/uint cast on 32bit arm uses round toward 0. To keep the
   // rounding consistent with Eigen, which uses round toward closest, we can
   // add 0.5f and exploit the fact that we only operate on non negative values.
   // TODO(maciekc): fix the actual kernel in gemmlowp/meta
-  params.kernel.range_offset =
-      static_cast<float>(std::numeric_limits<uint8_t>::lowest()) + 0.5f;
+  params.kernel.range_offset += 0.5f;
+#endif
 
   MultiThreadTransform1D<Params, 16>(tf_context, params);
 #else

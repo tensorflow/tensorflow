@@ -42,7 +42,7 @@ Status Set(const Node& node, bool value, bool* is_deep,
            std::vector<absl::optional<bool>>* cache) {
   *is_deep = value;
   (*cache)[node.id()] = value;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -57,7 +57,7 @@ Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
     const Node& node, bool* is_deep) {
   if (cache_[node.id()].has_value()) {
     *is_deep = cache_[node.id()].value();
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!IsFunctionCall(node)) {
@@ -88,7 +88,7 @@ Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
         "Failed to find function \"", function_name,
         "\" in function library: ", flib_def.ToProto().DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 FunctionStack::FunctionStack(const string& function_name)
@@ -183,11 +183,7 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
           << input_idx << " \n"
           << identity_def.DebugString();
 
-  Status status;
-  Node* identity_node = graph->AddNode(identity_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * identity_node, graph->AddNode(identity_def));
   graph->AddEdge(edge->src(), edge->src_output(), identity_node, 0);
 
   // Replace node's `input_idx` input with the new identity's 0'th output
@@ -195,7 +191,7 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
 
   VLOG(6) << "Successfully inserted identity. Modified node: \n"
           << node->DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 struct EdgePtrCompare {
@@ -217,13 +213,9 @@ Status AddOutputIdentities(Node* node, Graph* graph,
     TF_RETURN_IF_ERROR(builder.Finalize(&identity_def));
     MergeDebugInfo(NodeDebugInfo(*node), &identity_def);
 
-    Status status;
-    *identity_node = graph->AddNode(identity_def, &status);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_ASSIGN_OR_RETURN(*identity_node, graph->AddNode(identity_def));
     graph->AddEdge(node, src_output, *identity_node, 0);
-    return Status::OK();
+    return OkStatus();
   };
 
   // output_used[i] == true iff `node`'s i'th output is used
@@ -269,7 +261,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
             << " -> <no consumer>: \n"
             << identity_node->DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IsolateNode(Node* node, Graph* graph) {
@@ -286,7 +278,7 @@ Status IsolateNode(Node* node, Graph* graph) {
     TF_RETURN_IF_ERROR(AddInputIdentity(node, i, graph, &node_names));
   }
   TF_RETURN_IF_ERROR(AddOutputIdentities(node, graph, &node_names));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -310,7 +302,7 @@ Status IsolatePlacerInspectionRequiredOps(
     TF_RETURN_IF_ERROR(IsolateNode(node, graph));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

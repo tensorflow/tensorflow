@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/platform/test.h"
@@ -28,7 +29,7 @@ namespace cpu {
 namespace {
 class AliasAnalysisTest : public CpuCodegenTest {};
 
-void FakeCustomCallTarget(float* out, float** in) {}
+void FakeCustomCallTarget(float* out, float** in, XlaCustomCallStatus*) {}
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
 
@@ -45,7 +46,7 @@ body {
 condition {
   const.100 = f32[] constant(100)
   condition.state = f32[] parameter(0)
-  addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget"
+  addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget", api_version=API_VERSION_STATUS_RETURNING
   add = f32[] add(addend, condition.state)
   ROOT greater-than = pred[] compare(const.100, add), direction=GT
 }
@@ -57,15 +58,14 @@ ENTRY while3 {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-; CHECK-LABEL: @body(i8* %retval
-; CHECK: %[[add_result:.*]] = fadd reassoc nsz contract  float %[[fadd_lhs:.*]], %[[fadd_rhs:.*]]
-; CHECK: store float %[[add_result]], float* %[[store_dest:.*]], align 4, !alias.scope ![[alias_scope_md_for_store:[0-9]+]]
+; CHECK-LABEL: @body(ptr %retval
+; CHECK: %[[add_result:.*]] = fadd float %[[fadd_lhs:.*]], %[[fadd_rhs:.*]]
+; CHECK: store float %[[add_result]], ptr %[[store_dest:.*]], align 4, !alias.scope ![[alias_scope_md_for_store:[0-9]+]]
 ;
-; CHECK-LABEL: @condition(i8* %retval, i8* noalias %run_options, i8** noalias %params
-; CHECK: %[[cond_state_buf_ptr:.*]] = getelementptr inbounds i8*, i8** %buffer_table, i64 0
-; CHECK: %[[cond_state_buf_untyped:.*]] = load i8*, i8** %[[cond_state_buf_ptr]]
-; CHECK: %[[cond_state_buf_typed:.*]] = bitcast i8* %[[cond_state_buf_untyped]] to float*
-; CHECK: load float, float* %[[cond_state_buf_typed]], align 4, !alias.scope ![[alias_scope_md_for_store]], !noalias ![[noalias_md_for_load:.*]]
+; CHECK-LABEL: @condition(ptr %retval, ptr noalias %run_options, ptr noalias %params
+; CHECK: %[[cond_state_buf_ptr:.*]] = getelementptr inbounds ptr, ptr %buffer_table, i64 0
+; CHECK: %[[cond_state_buf_untyped:.*]] = load ptr, ptr %[[cond_state_buf_ptr]]
+; CHECK: load float, ptr %[[cond_state_buf_untyped]], align 4, !alias.scope ![[alias_scope_md_for_store]], !noalias ![[noalias_md_for_load:.*]]
 ;
 ; CHECK-LABEL: @while3(
 

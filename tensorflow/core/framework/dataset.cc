@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -27,7 +28,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -52,7 +55,7 @@ static std::unordered_set<string>* get_dataset_op_registry() {
 }
 
 std::string UniqueNodeName(const std::string& base) {
-  static std::atomic<int64> counter(0);
+  static std::atomic<int64_t> counter(0);
   return strings::StrCat(base, "/", counter.fetch_add(1));
 }
 
@@ -205,7 +208,7 @@ static Status WrappedDatasetVariantDeviceCopy(
     const WrappedDatasetVariantWrapper& from, WrappedDatasetVariantWrapper* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   *to = WrappedDatasetVariantWrapper(from);
-  return Status::OK();
+  return OkStatus();
 }
 
 #define REGISTER_OPTIONAL_COPY(DIRECTION)               \
@@ -314,7 +317,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     return errors::Internal("AddDataset: Failed to build ", type_string,
                             " op with error ", opts->StatusToString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphDefBuilderWrapper::AddFunction(
@@ -323,7 +326,7 @@ Status GraphDefBuilderWrapper::AddFunction(
   if (b_->HasFunction(function_name)) {
     VLOG(1) << "Function with name " << function_name << "already exists in"
             << " the graph. It will not be added again.";
-    return Status::OK();
+    return OkStatus();
   }
   const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
@@ -357,7 +360,7 @@ Status GraphDefBuilderWrapper::AddFunction(
   for (auto iter = f_def->attr().begin(); iter != f_def->attr().end(); iter++) {
     TF_RETURN_IF_ERROR(AddAttrFunctions(ctx, iter->second, lib_def));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void GraphDefBuilderWrapper::AddPlaceholderInternal(const Tensor& val,
@@ -411,7 +414,7 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
     model->AddNode(std::move(factory), prefix(), parent->model_node(), &node_);
     cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t GetAllocatedBytes(const std::vector<Tensor>& element) {
@@ -466,7 +469,7 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
   if (*out_dataset == nullptr) {
     return errors::Internal("Read uninitialized Dataset variant.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
@@ -476,7 +479,7 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
   }
   tensor->scalar<Variant>()() = DatasetVariantWrapper(dataset);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace internal {
@@ -580,10 +583,6 @@ void DatasetBase::Initialize(const Metadata& metadata) {
   if (!s.ok()) {
     LOG(ERROR) << s;
   }
-  s = ComputeCardinality();
-  if (!s.ok()) {
-    LOG(ERROR) << s;
-  }
   metadata_ = metadata;
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
@@ -602,12 +601,12 @@ Status DatasetBase::ComputeNumSources() {
   }
   if (num_sources_ >= 0) {
     // Already computed.
-    return Status::OK();
+    return OkStatus();
   }
   num_sources_ = 0;
   if (inputs.empty()) {
     num_sources_ = 1;
-    return Status::OK();
+    return OkStatus();
   }
   for (const auto& input : inputs) {
     if (input->num_sources() < 0) {
@@ -618,32 +617,42 @@ Status DatasetBase::ComputeNumSources() {
     }
     num_sources_ += input->num_sources();
   }
-  return Status::OK();
-}
-
-Status DatasetBase::ComputeCardinality() {
-  cardinality_ = this->Cardinality();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DatasetBase::CheckRandomAccessCompatible(const int64 index) const {
-  if (cardinality_ == kInfiniteCardinality ||
-      cardinality_ == kUnknownCardinality) {
+  CardinalityOptions options;
+  options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_MODERATE);
+  int64 cardinality = Cardinality(options);
+  if (cardinality == kInfiniteCardinality ||
+      cardinality == kUnknownCardinality) {
     return tensorflow::errors::FailedPrecondition(
-        "Dataset of type ", this->DebugString(), "has cardinality ",
-        cardinality_, "which does not support random access.");
+        "Dataset of type ", this->DebugString(), " has ",
+        cardinality == kInfiniteCardinality ? "infinite" : "unknown",
+        " cardinality, which does not support random access.");
   }
-  if (index < 0 || index >= cardinality_) {
-    return errors::OutOfRange("Index out of range [0, ", cardinality_,
+  if (index < 0 || index >= cardinality) {
+    return errors::OutOfRange("Index out of range [0, ", cardinality,
                               "):", index);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
                         std::vector<Tensor>* out_tensors) const {
   return errors::Unimplemented(
       "Random access is not implemented for this dataset.");
+}
+
+StatusOr<DatasetBase*> DatasetBase::Finalize(
+    OpKernelContext* ctx,
+    std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+        make_finalized_dataset) const {
+  mutex_lock l(mu_);
+  if (!finalized_dataset_) {
+    TF_ASSIGN_OR_RETURN(finalized_dataset_, make_finalized_dataset());
+  }
+  return finalized_dataset_.get();
 }
 
 Status DatasetBase::MergeOptionsFromInputs() {
@@ -655,7 +664,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
         ", because the dataset does not implement `InputDatasets`.");
   }
   if (inputs.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   // Merge options from inputs sequentially before merging options from dataset.
   // Since the last options merged takes precedence, the options that may be set
@@ -667,7 +676,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
   }
   internal::MergeOptions(options_, &merged_options);
   options_ = merged_options;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DatasetBase::MakeIterator(
@@ -717,6 +726,22 @@ Status DatasetBase::MakeSplitProviders(
   return inputs[0]->MakeSplitProviders(split_providers);
 }
 
+int64_t DatasetBase::Cardinality() const {
+  mutex_lock l(cardinality_mu_);
+  if (cardinality_ == kUnknownCardinality) {
+    cardinality_ = CardinalityInternal();
+  }
+  return cardinality_;
+}
+
+int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
+  mutex_lock l(cardinality_mu_);
+  if (cardinality_ == kUnknownCardinality) {
+    cardinality_ = CardinalityInternal(options);
+  }
+  return cardinality_;
+}
+
 Status DatasetBase::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   return errors::Unimplemented("InputDatasets not implemented for ",
@@ -746,7 +771,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
           << " will not be optimized because the dataset does not implement "
              "the "
              "AsGraphDefInternal() method needed to apply optimizations.";
-      return Status::OK();
+      return OkStatus();
     }
   }
   return status;
@@ -784,7 +809,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddIdentity(
   *output =
       ops::UnaryOp("Identity", *input,
                    builder()->opts().WithName(UniqueNodeName(name_prefix)));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
@@ -806,7 +831,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensorHelper(
                            opts.op_registry());
   node_builder.Input(std::move(nodes));
   *output = opts.FinalizeBuilder(&node_builder);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddResourceHelper(
@@ -953,7 +978,7 @@ Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
     std::vector<Tensor> out_tensors;
     TF_RETURN_IF_ERROR(GetNextInternal(ctx, &out_tensors, end_of_sequence));
     if (*end_of_sequence) {
-      return Status::OK();
+      return OkStatus();
     }
     // RecordElement is used to count the number of element computed and
     // help calculate the CPU time spent on a given iterator to do the
@@ -965,7 +990,7 @@ Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
     RecordElement(ctx, &out_tensors);
     (*num_skipped)++;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
@@ -988,16 +1013,19 @@ string DatasetOpKernel::TraceString(const OpKernelContext& ctx,
 bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (op_def.output_arg_size() != 1) return false;
   if (op_def.output_arg(0).type() != DT_VARIANT) return false;
-  auto& op_name = op_def.name();
+  absl::string_view op_name = op_def.name();
+  if (op_name == "DatasetFromGraph") return true;
   if (absl::EndsWith(op_name, "Dataset")) return true;
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
   while (index >= 0 && isdigit(op_name[index])) {
     index--;
   }
-  const int64 kPrefixLength = 8;  // length of the `DatasetV` prefix
+  constexpr absl::string_view kDatasetPrefix = "DatasetV";
+  constexpr absl::string_view::size_type kPrefixLength = kDatasetPrefix.size();
   if (index < kPrefixLength - 1 || index == op_name.length() - 1) return false;
-  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) == "DatasetV";
+  return op_name.substr(index - kPrefixLength + 1, kPrefixLength) ==
+         kDatasetPrefix;
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,

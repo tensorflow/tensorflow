@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Distribute Coordinator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import copy
 import json
@@ -27,13 +23,6 @@ import threading
 import time
 
 import six
-
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:  # pylint: disable=invalid-name
-  _portpicker_import_error = _error
-  portpicker = None
 
 # pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
@@ -199,23 +188,20 @@ class DistributeCoordinatorTestBase(test.TestCase):
                            num_workers=1,
                            num_ps=0,
                            has_eval=False):
-    if _portpicker_import_error:
-      raise _portpicker_import_error  # pylint: disable=raising-bad-type
-
     cluster_spec = {}
     if has_chief:
-      cluster_spec[CHIEF] = ["localhost:%s" % portpicker.pick_unused_port()]
+      cluster_spec[CHIEF] = ["localhost:%s" % test_util.pick_unused_port()]
     if num_workers:
       cluster_spec[WORKER] = [
-          "localhost:%s" % portpicker.pick_unused_port()
+          "localhost:%s" % test_util.pick_unused_port()
           for _ in range(num_workers)
       ]
     if num_ps:
       cluster_spec[PS] = [
-          "localhost:%s" % portpicker.pick_unused_port() for _ in range(num_ps)
+          "localhost:%s" % test_util.pick_unused_port() for _ in range(num_ps)
       ]
     if has_eval:
-      cluster_spec[EVALUATOR] = ["localhost:%s" % portpicker.pick_unused_port()]
+      cluster_spec[EVALUATOR] = ["localhost:%s" % test_util.pick_unused_port()]
     return cluster_spec
 
   def _in_graph_worker_fn(self, strategy):

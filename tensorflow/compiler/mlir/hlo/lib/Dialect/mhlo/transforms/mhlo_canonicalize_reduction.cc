@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 namespace mlir {
@@ -40,7 +42,7 @@ namespace {
 //   ```
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       ...
-//       %2 = "mhlo.reduce"(%arg0, ...) ( {...})
+//       %2 = "mhlo.reduce"(%arg0, ...) ({...})
 //         {dimensions = dense<[0]> : tensor<1xi64>} :
 //         (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
 //       return %2 : tensor<?x?xf32>
@@ -50,7 +52,7 @@ namespace {
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       // [a, b, c] -> [a, b*c]
 //       %1 = mhlo.dynamic_reshape(%arg0, ...) : (tensor<?x?x?xf32>,
-//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ( {...})
+//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ({...})
 //         {dimensions = dense<[0]> : tensor<1xi64>} :
 //         (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 //       %3 = "mhlo.dynamic_reshape"(%2, ...) : (tensor<?xf32>, tensor<1xi64>)
@@ -65,7 +67,7 @@ namespace {
 //   ```
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       ...
-//       %2 = "mhlo.reduce"(%arg0, ...) ( {...})
+//       %2 = "mhlo.reduce"(%arg0, ...) ({...})
 //         {dimensions = dense<[2]> : tensor<1xi64>} :
 //         (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
 //       return %2 : tensor<?x?xf32>
@@ -75,7 +77,7 @@ namespace {
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       // [a, b, c] -> [a*b, c]
 //       %1 = mhlo.dynamic_reshape(%arg0, ...) : (tensor<?x?x?xf32>,
-//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ( {...})
+//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ({...})
 //         {dimensions = dense<[1]> : tensor<1xi64>} :
 //         (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 //       %3 = "mhlo.dynamic_reshape"(%2, ...) : (tensor<?xf32>, tensor<1xi64>)
@@ -91,7 +93,7 @@ namespace {
 //   ```
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
 //       ...
-//       %2 = "mhlo.reduce"(%arg0, ...) ( {...})
+//       %2 = "mhlo.reduce"(%arg0, ...) ({...})
 //         {dimensions = dense<[0,1,2]> : tensor<3xi64>} :
 //         (tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
 //       return %2 : tensor<f32>
@@ -101,7 +103,7 @@ namespace {
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
 //       // [a, b, c] -> [a*b*c, 1]
 //       %1 = mhlo.dynamic_reshape(%arg0, ...) : (tensor<?x?x?xf32>,
-//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ( {...})
+//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ({...})
 //         {dimensions = dense<[0]> : tensor<1xi64>} :
 //         (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 //       %3 = "mhlo.reshape"(%2, ...) : (tensor<?xf32>, tensor<1xi64>) ->
@@ -114,66 +116,65 @@ struct HloCanonicalizeReductionPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tensor::TensorDialect>();
   }
-  void runOnFunction() override {
-    getFunction().walk([&](ReduceOp op) {
-      SmallVector<int64_t, 4> dims_to_reduce;
-      DenseSet<int64_t> dims_to_reduce_set;
+  void runOnOperation() override {
+    getOperation().walk([&](ReduceOp op) {
+      SmallVector<int64_t, 4> dimsToReduce;
+      DenseSet<int64_t> dimsToReduceSet;
       for (auto dim : op.dimensions().getValues<APInt>()) {
-        dims_to_reduce.push_back(dim.getSExtValue());
-        dims_to_reduce_set.insert(dims_to_reduce.back());
+        dimsToReduce.push_back(dim.getSExtValue());
+        dimsToReduceSet.insert(dimsToReduce.back());
       }
 
       // empty reduction is just a no-op, thus no need to do codegen.
-      if (dims_to_reduce.empty()) return;
+      if (dimsToReduce.empty()) return;
 
       // suppose reduce input is a ranked tensor
       auto ty = op.getOperand(0).getType().dyn_cast<RankedTensorType>();
       if (!ty) return signalPassFailure();
       int rank = ty.getRank();
-      int ndims_to_reduce = dims_to_reduce.size();
-      auto elem_ty = ty.getElementType();
-      llvm::sort(dims_to_reduce);
+      int ndimsToReduce = dimsToReduce.size();
+      auto elemTy = ty.getElementType();
+      llvm::sort(dimsToReduce);
 
       // skip case d) form since we don't support it.
-      if ((dims_to_reduce.back() - dims_to_reduce[0]) !=
-              (ndims_to_reduce - 1) ||
-          (dims_to_reduce[0] != 0 && dims_to_reduce.back() != (rank - 1))) {
+      if ((dimsToReduce.back() - dimsToReduce[0]) != (ndimsToReduce - 1) ||
+          (dimsToReduce[0] != 0 && dimsToReduce.back() != (rank - 1))) {
         return;
       }
 
       // rank 2 row/column reduction is already supported.
-      if (rank == 2 && ndims_to_reduce == 1) {
+      if (rank == 2 && ndimsToReduce == 1) {
         return;
       }
 
-      SmallVector<int64_t, 4> dims_to_keep;
+      SmallVector<int64_t, 4> dimsToKeep;
       for (int i = 0; i < rank; ++i) {
-        if (!dims_to_reduce_set.count(i)) dims_to_keep.push_back(i);
+        if (!dimsToReduceSet.count(i)) dimsToKeep.push_back(i);
       }
 
       OpBuilder b(op);
       auto loc = op.getLoc();
       // TODO(disc): uniformed shape_scalar_type with shape_derivation
-      auto shape_scalar_type = b.getIntegerType(32);
-      auto one = b.create<ConstantIntOp>(loc, 1ll, shape_scalar_type);
+      auto shapeScalarType = b.getIntegerType(32);
+      auto one = b.create<arith::ConstantIntOp>(loc, 1ll, shapeScalarType);
 
       // funtion to get total elements in selected dimensions
-      auto dim_prod = [&](ArrayRef<int64_t> dims) {
+      auto dimProd = [&](ArrayRef<int64_t> dims) {
         Value nelems = one;
         for (int64_t v : dims) {
-          Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
-          nelems = b.create<MulIOp>(
+          Value dimIndex = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
+          nelems = b.create<arith::MulIOp>(
               loc, nelems,
-              b.create<IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shapeScalarType, dimIndex));
         }
         return nelems;
       };
 
-      SmallVector<Value, 2> new_operand_dims;
+      SmallVector<Value, 2> newOperandDims;
       DenseIntElementsAttr attr;
-      Value nelem_to_reduce = dim_prod(dims_to_reduce);
-      Value nelem_to_keep = dim_prod(dims_to_keep);
-      if (rank == ndims_to_reduce) {
+      Value nelemToReduce = dimProd(dimsToReduce);
+      Value nelemToKeep = dimProd(dimsToKeep);
+      if (rank == ndimsToReduce) {
         // case c) Reduce to scalar.
         // Currently we don't support reduce to scalar directly.
         // As a workaround, we convert the `reduce to scalar` to a rank 2
@@ -182,63 +183,62 @@ struct HloCanonicalizeReductionPass
         // shape `[nelems, 1]`.
         // TODO(disc): this may have performance issue. Implements a reduce to
         // scalar schedule if necessary.
-        new_operand_dims.push_back(nelem_to_reduce);
-        new_operand_dims.push_back(nelem_to_keep);
+        newOperandDims.push_back(nelemToReduce);
+        newOperandDims.push_back(nelemToKeep);
         attr = DenseIntElementsAttr::get(
             RankedTensorType::get({1}, b.getIntegerType(64)), {0ll});
-      } else if (dims_to_reduce[0] == 0) {
+      } else if (dimsToReduce[0] == 0) {
         // case a) column reduction
-        new_operand_dims.push_back(nelem_to_reduce);
-        new_operand_dims.push_back(nelem_to_keep);
+        newOperandDims.push_back(nelemToReduce);
+        newOperandDims.push_back(nelemToKeep);
         attr = DenseIntElementsAttr::get(
             RankedTensorType::get({1}, b.getIntegerType(64)), {0ll});
       } else {
         // case b) row reduction
-        new_operand_dims.push_back(nelem_to_keep);
-        new_operand_dims.push_back(nelem_to_reduce);
+        newOperandDims.push_back(nelemToKeep);
+        newOperandDims.push_back(nelemToReduce);
         attr = DenseIntElementsAttr::get(
             RankedTensorType::get({1}, b.getIntegerType(64)), {1ll});
       }
 
-      Value new_operand_shape =
-          b.create<tensor::FromElementsOp>(loc, new_operand_dims);
+      Value newOperandShape =
+          b.create<tensor::FromElementsOp>(loc, newOperandDims);
 
-      SmallVector<Value, 4> new_operands;
-      for (Value operand : op.inputs()) {
-        new_operands.push_back(b.create<DynamicReshapeOp>(
+      SmallVector<Value, 4> newOperands;
+      for (Value operand : op.operands()) {
+        newOperands.push_back(b.create<DynamicReshapeOp>(
             loc,
             RankedTensorType::get(
-                SmallVector<int64_t, 4>(new_operand_dims.size(),
+                SmallVector<int64_t, 4>(newOperandDims.size(),
                                         ShapedType::kDynamicSize),
-                elem_ty),
-            operand, new_operand_shape));
+                elemTy),
+            operand, newOperandShape));
       }
-      auto new_op =
-          b.create<ReduceOp>(loc, new_operands, op.init_values(), attr);
-      new_op.body().takeBody(op.body());
+      auto newOp = b.create<ReduceOp>(loc, newOperands, op.init_values(), attr);
+      newOp.body().takeBody(op.body());
 
-      SmallVector<Value, 4> new_results;
-      if (dims_to_keep.empty()) {
+      SmallVector<Value, 4> newResults;
+      if (dimsToKeep.empty()) {
         // case c) reduce to scalar
         // reshape rank 1 tensor with size 1 to a rank 0 tensor
-        for (Value result : new_op.getResults()) {
-          new_results.push_back(b.create<ReshapeOp>(
-              loc, RankedTensorType::get({}, elem_ty), result));
+        for (Value result : newOp.getResults()) {
+          newResults.push_back(b.create<ReshapeOp>(
+              loc, RankedTensorType::get({}, elemTy), result));
         }
       } else {
-        SmallVector<Value, 4> result_dims;
-        for (int64_t i : dims_to_keep) {
-          Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
-          result_dims.push_back(
-              b.create<IndexCastOp>(loc, dim_index, shape_scalar_type));
+        SmallVector<Value, 4> resultDims;
+        for (int64_t i : dimsToKeep) {
+          Value dimIndex = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
+          resultDims.push_back(
+              b.create<arith::IndexCastOp>(loc, shapeScalarType, dimIndex));
         }
-        Value result_shape = b.create<tensor::FromElementsOp>(loc, result_dims);
-        for (auto&& e : llvm::zip(op.getResults(), new_op.getResults())) {
-          new_results.push_back(b.create<DynamicReshapeOp>(
-              loc, std::get<0>(e).getType(), std::get<1>(e), result_shape));
+        Value resultShape = b.create<tensor::FromElementsOp>(loc, resultDims);
+        for (auto&& e : llvm::zip(op.getResults(), newOp.getResults())) {
+          newResults.push_back(b.create<DynamicReshapeOp>(
+              loc, std::get<0>(e).getType(), std::get<1>(e), resultShape));
         }
       }
-      for (auto&& e : llvm::zip(op.getResults(), new_results)) {
+      for (auto&& e : llvm::zip(op.getResults(), newResults)) {
         std::get<0>(e).replaceAllUsesWith(std::get<1>(e));
       }
       op.erase();
@@ -248,7 +248,8 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

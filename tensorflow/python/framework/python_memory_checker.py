@@ -17,17 +17,13 @@
 Please don't use this class directly.  Instead, use `MemoryChecker` wrapper.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import gc
 
 from tensorflow.python.framework import _python_memory_checker_helper
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler.traceme import traceme_wrapper
+from tensorflow.python.profiler import trace
 
 
 def _get_typename(obj):
@@ -66,8 +62,15 @@ class _PythonMemoryChecker(object):
 
   def __init__(self):
     self._snapshots = []
+    # cache the function used by mark_stack_trace_and_call to avoid
+    # contaminating the leak measurement.
+    def _record_snapshot():
+      self._snapshots.append(_create_python_object_snapshot())
 
-  @traceme_wrapper
+    self._record_snapshot = _record_snapshot
+
+  # We do not enable trace_wrapper on this function to avoid contaminating
+  # the snapshot.
   def record_snapshot(self):
     # Function called using `mark_stack_trace_and_call` will have
     # "_python_memory_checker_helper" string in the C++ stack trace.  This will
@@ -75,14 +78,14 @@ class _PythonMemoryChecker(object):
     # because we are not interested in detecting memory growth caused by memory
     # checker itself.
     _python_memory_checker_helper.mark_stack_trace_and_call(
-        lambda: self._snapshots.append(_create_python_object_snapshot()))
+        self._record_snapshot)
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def report(self):
     # TODO(kkb): Implement.
     pass
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def assert_no_leak_if_all_possibly_except_one(self):
     """Raises an exception if a leak is detected.
 
@@ -112,7 +115,7 @@ class _PythonMemoryChecker(object):
           'These Python objects were allocated in every snapshot possibly '
           f'except one.\n\n{object_list_to_print}')
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def assert_no_new_objects(self, threshold=None):
     """Assert no new Python objects."""
 
@@ -134,13 +137,13 @@ class _PythonMemoryChecker(object):
                       f'{threshold}\n\nNew Python objects:\n'
                       f'{original_count_diff.most_common()}')
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def _snapshot_diff(self, old_index, new_index):
     return _snapshot_diff(self._snapshots[old_index],
                           self._snapshots[new_index],
                           self._get_internal_object_ids())
 
-  @traceme_wrapper
+  @trace.trace_wrapper
   def _get_internal_object_ids(self):
     ids = set()
     for snapshot in self._snapshots:

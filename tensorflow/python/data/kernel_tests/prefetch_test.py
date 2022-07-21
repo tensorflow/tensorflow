@@ -13,14 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.prefetch()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from absl.testing import parameterized
+import numpy as np
 
+from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -71,7 +69,7 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
       thread.start()
-      time.sleep(0.5)
+      time.sleep(2)
       sess.close()
       thread.join()
 
@@ -93,6 +91,41 @@ class PrefetchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                          checkpoint_test_base.default_test_combinations()))
   def test(self, verify_fn):
     verify_fn(self, self.build_dataset, num_outputs=100)
+
+
+class PrefetchRandomAccessTest(test_base.DatasetTestBase,
+                               parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 10, 11])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=5)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-2, 0, 1])))
+  def testEmptyDataset(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([]).prefetch(buffer_size=5)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=index))
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(elements=[10, 50, 100], buffer_size=[0, 5, 10])))
+  def testMultipleCombinations(self, elements, buffer_size):
+    dataset = dataset_ops.Dataset.range(elements).prefetch(
+        buffer_size=buffer_size)
+    len_dataset = self.evaluate(dataset.cardinality())
+    expected_output = np.arange(elements)
+    for i in range(len_dataset):
+      self.assertEqual(
+          self.evaluate(random_access.at(dataset, index=i)), expected_output[i])
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index=len_dataset))
 
 
 if __name__ == "__main__":

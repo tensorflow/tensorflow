@@ -90,17 +90,13 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
                                    input_tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
@@ -131,7 +127,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   case DTYPE:                      \
     return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
-  // TODO(fengliuai): customize the conversions for quantized and string types.
+  // TODO(fengliuai): customize the conversions for quantized types.
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
@@ -153,10 +149,8 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
       return ConvertBf16Tensor(input_tensor, type);
     case DT_HALF:
       return ConvertHalfTensor(input_tensor, type);
-
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
-
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
@@ -228,11 +222,11 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
     TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
                         ConvertTensorProto(tensor_copy, builder));
 
-    std::vector<int64_t> original_dimensions;
+    llvm::SmallVector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(mlir::SplatElementsAttr::get(
         single_attr.getType().clone(original_dimensions),
-        single_attr.getValue({0})));
+        single_attr.getValues<mlir::Attribute>()[0]));
   }
 
   Tensor t;
@@ -486,7 +480,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return errors::Unimplemented(absl::StrCat("Unimplemented data type ",
                                                 DataTypeString(output_dtype)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
@@ -495,7 +489,7 @@ Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<mlir::ElementsAttr> DecodeOpaqueTensor(

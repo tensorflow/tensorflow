@@ -63,14 +63,14 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
-    return Status::OK();
+    return OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -85,10 +85,25 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t result = kInfiniteCardinality;
     for (const auto& input : inputs_) {
       int64_t n = input->Cardinality();
+      if (n == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      if (n != kInfiniteCardinality &&
+          (result == kInfiniteCardinality || n < result)) {
+        result = n;
+      }
+    }
+    return result;
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t result = kInfiniteCardinality;
+    for (const auto& input : inputs_) {
+      int64_t n = input->Cardinality(options);
       if (n == kUnknownCardinality) {
         return kUnknownCardinality;
       }
@@ -104,14 +119,27 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     for (const auto& input : inputs_) {
       inputs->push_back(input);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
     for (const auto& input : inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());
     }
-    return Status::OK();
+    return OkStatus();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    out_tensors->reserve(output_dtypes().size());
+    for (int i = 0; i < inputs_.size(); ++i) {
+      std::vector<Tensor> input_tensors;
+      TF_RETURN_IF_ERROR(inputs_[i]->Get(ctx, index, &input_tensors));
+      out_tensors->insert(out_tensors->end(), input_tensors.begin(),
+                          input_tensors.end());
+    }
+    return OkStatus();
   }
 
  protected:
@@ -127,7 +155,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     }
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {}, {std::make_pair(0, input_graph_nodes)}, {}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -146,7 +174,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
             &input_contexts_[i], this, strings::StrCat(prefix(), "[", i, "]"),
             &input_impls_[i]));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -155,11 +183,11 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
       out_tensors->clear();
       out_tensors->reserve(dataset()->output_dtypes().size());
-      Status status = Status::OK();
+      Status status = OkStatus();
       *end_of_sequence = false;
       for (int i = 0; i < input_impls_.size(); ++i) {
         const auto& input_impl = input_impls_[i];
@@ -215,7 +243,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         for (auto& input_impl : input_impls_)
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -228,7 +256,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         for (auto& input_impl : input_impls_)
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

@@ -28,35 +28,36 @@ constexpr char kShapeInvariantAttr[] = "shape_invariant";
 
 class DropWhileShapeInvariantPass
     : public DropWhileShapeInvariantPassBase<DropWhileShapeInvariantPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 class DropWhileShapeInvariantInDeviceClusterPass
     : public DropWhileShapeInvariantInDeviceClusterPassBase<
           DropWhileShapeInvariantInDeviceClusterPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 void DropWhileShapeInvariantAttr(Operation* op) {
   if (llvm::isa<WhileOp, WhileRegionOp>(op))
     op->removeAttr(kShapeInvariantAttr);
 }
-void DropWhileShapeInvariantPass::runOnFunction() {
-  getFunction().walk([](Operation* op) { DropWhileShapeInvariantAttr(op); });
+void DropWhileShapeInvariantPass::runOnOperation() {
+  getOperation().walk([](Operation* op) { DropWhileShapeInvariantAttr(op); });
 }
 
-void DropWhileShapeInvariantInDeviceClusterPass::runOnFunction() {
-  getFunction().walk([](tf_device::ClusterOp cluster) {
+void DropWhileShapeInvariantInDeviceClusterPass::runOnOperation() {
+  getOperation().walk([](tf_device::ClusterOp cluster) {
     cluster.walk([](Operation* op) { DropWhileShapeInvariantAttr(op); });
   });
 }
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDropWhileShapeInvariantPass() {
   return std::make_unique<DropWhileShapeInvariantPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateDropWhileShapeInvariantInDeviceClusterPass() {
   return std::make_unique<DropWhileShapeInvariantInDeviceClusterPass>();
 }

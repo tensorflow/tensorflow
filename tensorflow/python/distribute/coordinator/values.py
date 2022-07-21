@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +16,6 @@
 
 This is currently under development and the API is subject to change.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import enum
 import threading
@@ -74,7 +69,8 @@ class RemoteValueStatus(enum.Enum):
   READY = "READY"
 
 
-@tf_export("distribute.experimental.coordinator.RemoteValue", v1=[])
+@tf_export("distribute.experimental.coordinator.RemoteValue",
+           "distribute.coordinator.RemoteValue", v1=[])
 class RemoteValue(object):
   """An asynchronously available value of a scheduled function.
 
@@ -252,7 +248,8 @@ class RemoteValueImpl(RemoteValue):
     return self._fetched_tensors
 
 
-@tf_export("distribute.experimental.coordinator.PerWorkerValues", v1=[])
+@tf_export("distribute.experimental.coordinator.PerWorkerValues",
+           "distribute.coordinator.PerWorkerValue", v1=[])
 class PerWorkerValues(composite_tensor.CompositeTensor):
   """A container that holds a list of values, one value per worker.
 
@@ -302,9 +299,9 @@ class PerWorkerValuesTypeSpec(type_spec_lib.TypeSpec):
   def value_type(self):
     return self._descendant_type
 
-  def most_specific_compatible_type(self, other):
+  def most_specific_common_supertype(self, others):
     raise NotImplementedError(
-        "most_specific_compatible_type is not implemented")
+        "most_specific_common_supertype is not implemented")
 
   @property
   def _component_specs(self):
@@ -448,6 +445,7 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
 
 
 def get_per_worker_dataset(dataset_or_dataset_fn, coordinator):
+  """Returns a per-worker dataset from a dataset or a dataset function."""
   if callable(dataset_or_dataset_fn):
     return PerWorkerDatasetFromDatasetFunction(dataset_or_dataset_fn,
                                                coordinator)

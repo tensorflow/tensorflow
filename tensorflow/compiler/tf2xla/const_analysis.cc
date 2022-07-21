@@ -42,7 +42,7 @@ Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime,
   TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
       name_attr_list.name(), AttrSlice(&name_attr_list.attr()), &func_handle));
   *fbody = flib_runtime->GetFunctionBody(func_handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFunctionBodies(FunctionLibraryRuntime* flib_runtime,
@@ -57,7 +57,7 @@ Status GetFunctionBodies(FunctionLibraryRuntime* flib_runtime,
         &func_handle));
     fbodies->push_back(flib_runtime->GetFunctionBody(func_handle));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CondConstInputIndices(
@@ -83,7 +83,7 @@ Status CondConstInputIndices(
       const_input_idxs->push_back(i + 1);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
@@ -132,7 +132,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   } else if (node.op() == "If" || node.op() == "StatelessIf") {
     const FunctionBody* fthen = nullptr;
     const FunctionBody* felse = nullptr;
@@ -161,7 +161,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
         const_input_idxs->push_back(i);
       }
     }
-    return Status::OK();
+    return OkStatus();
   } else if (op_def != nullptr) {
     return XlaOpRegistry::CompileTimeConstantInputs(node, *op_def,
                                                     const_input_idxs);
@@ -192,7 +192,7 @@ Status BackwardsConstAnalysis(
       !edge_filter_input) {
     VLOG(5) << "Using cached argument indices on graph " << &g;
     *compile_time_const_arg_indices = g.GetConstArgIndicesCache().value();
-    return Status::OK();
+    return OkStatus();
   }
   auto edge_filter = [&](const Edge& e) {
     return edge_filter_input ? edge_filter_input(e) : true;

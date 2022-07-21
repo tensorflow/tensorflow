@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -176,7 +176,7 @@ void ReplaceAllUsesExceptTerminator(Value old_val, Value new_val) {
   }
   Operation* old_op = old_val.getDefiningOp();
   Operation* terminator_op =
-      old_op->getParentOfType<FuncOp>().front().getTerminator();
+      old_op->getParentOfType<func::FuncOp>().front().getTerminator();
   llvm::SmallPtrSet<mlir::Operation*, 1> exceptions = {terminator_op};
   old_val.replaceAllUsesExcept(new_val, exceptions);
 }
@@ -457,7 +457,7 @@ LogicalResult HandleTensorArrayScatterV3Op(
 }
 
 // Updates func's type according to its current arguments and return values.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
   func.setType(
@@ -467,7 +467,7 @@ void UpdateFuncType(FuncOp func) {
 
 // Finds the accessed gradient sources for each tensor array argument.
 llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
-    ArrayRef<FuncOp> funcs, ModuleOp module) {
+    ArrayRef<func::FuncOp> funcs, ModuleOp module) {
   llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> result;
   llvm::SmallDenseMap<int64_t, llvm::StringSet<>> result_sets;
   auto insert = [&](Value v, const string& source, const Block& func_block) {
@@ -477,7 +477,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
     if (!insert_res.second) return;
     result[arg.getArgNumber()].push_back(source);
   };
-  for (FuncOp func : funcs) {
+  for (func::FuncOp func : funcs) {
     const Block& func_block = func.front();
     // Walk all operations and nested regions to find accessed gradient sources
     // for function arguments.
@@ -499,7 +499,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
           for (const string& source : entry.getSecond())
             insert(if_op.getOperand(entry.getFirst() + 1), source, func_block);
       } else if (auto call = llvm::dyn_cast<CallOpInterface>(op)) {
-        auto callee = dyn_cast<FuncOp>(call.resolveCallable());
+        auto callee = dyn_cast<func::FuncOp>(call.resolveCallable());
         for (const auto& entry : AccessedGradients({callee}, module))
           for (const string& source : entry.getSecond())
             insert(call.getArgOperands()[entry.getFirst()], source, func_block);
@@ -513,7 +513,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
 // partitioned call ops.
 struct PartitionedCallTensorArrayOpsInfo {
   bool signature_change;
-  FuncOp decomposed_callee;
+  func::FuncOp decomposed_callee;
   llvm::SmallVector<std::pair<int64_t, llvm::SmallVector<string, 4>>, 4>
       arg_grads;
   llvm::SmallVector<std::pair<int64_t, int64_t>, 4> ret_forward_input;
@@ -522,7 +522,7 @@ struct PartitionedCallTensorArrayOpsInfo {
 // Updates a called function's input signature by adjusting resource types, and
 // adding required gradient arguments.
 void ChangeFunctionInputSignature(
-    FuncOp func,
+    func::FuncOp func,
     const llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>>& grads,
     llvm::function_ref<Type(int64_t)> ta_arg_buffer_type,
     llvm::function_ref<bool(int64_t)> ta_accumulate_on_write,
@@ -537,7 +537,7 @@ void ChangeFunctionInputSignature(
     if (grad_it == grads.end()) continue;
     llvm::StringMap<Value> grads_map;
     for (const string& source : grad_it->getSecond()) {
-      auto g = func.front().addArgument(t);
+      auto g = func.front().addArgument(t, func.getLoc());
       (*stats)[g].accumulate_on_write = true;
       grads_map[source] = g;
     }
@@ -596,7 +596,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
       new_retvals.push_back(body_stats[arg].grads[source]);
     }
   }
-  OpBuilder(old_body_ret).create<ReturnOp>(old_body_ret->getLoc(), new_retvals);
+  OpBuilder(old_body_ret)
+      .create<func::ReturnOp>(old_body_ret->getLoc(), new_retvals);
   old_body_ret->erase();
   UpdateFuncType(body);
   // Recreate the while op.
@@ -622,9 +623,9 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
     }
   }
   OpBuilder builder(while_op);
-  auto new_while =
-      builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  operands, while_op->getAttrs());
+  auto new_while = builder.create<TF::WhileOp>(
+      while_op.getLoc(), body.getFunctionType().getInputs(), operands,
+      while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -689,10 +690,10 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
     }
   }
   OpBuilder builder(if_op);
-  auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
-                                         then_branch.getType().getResults(),
-                                         operands, if_op->getAttrs());
-  auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
+  auto new_if = builder.create<TF::IfOp>(
+      if_op.getLoc(), then_branch.getFunctionType().getResults(), operands,
+      if_op->getAttrs());
+  auto ret_forwards_input = [](func::FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();
     if (!arg) return -1;
@@ -719,7 +720,7 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
 
 template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
-    CallOp call, FuncOp callee, ModuleOp module,
+    CallOp call, func::FuncOp callee, ModuleOp module,
     llvm::SmallDenseMap<Value, TensorArrayStats>* stats,
     llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
@@ -749,12 +750,12 @@ LogicalResult HandlePartitionedCallOp(
     }
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getType().getResults(),
+        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),
-                 const_cast<FuncOp&>(info.decomposed_callee).getName()));
+                 const_cast<func::FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.ret_forward_input) {
       call.getResult(entry.first)
           .replaceAllUsesWith(call.getOperand(entry.second));
@@ -781,7 +782,7 @@ LogicalResult HandlePartitionedCallOp(
     if (it == stats->end()) return false;
     return it->getSecond().accumulate_on_write;
   };
-  FuncOp lowered_callee = callee;
+  func::FuncOp lowered_callee = callee;
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
@@ -935,7 +936,7 @@ LogicalResult DecomposeTensorArrayOps(
 
 void TensorArrayOpsDecompositionPass::runOnOperation() {
   auto module = getOperation();
-  auto main = module.lookupSymbol<FuncOp>("main");
+  auto main = module.lookupSymbol<func::FuncOp>("main");
   if (!main) return;
   llvm::SmallDenseMap<Value, TensorArrayStats> stats;
   llvm::StringMap<PartitionedCallTensorArrayOpsInfo>

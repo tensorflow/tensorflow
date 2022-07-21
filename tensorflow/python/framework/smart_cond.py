@@ -14,11 +14,6 @@
 # ==============================================================================
 """smart_cond and related utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -79,8 +74,7 @@ def smart_constant_value(pred):
     # TODO(skyewm): consider folding this into tensor_util.constant_value.
     # pylint: disable=protected-access
     if pred_value is None:
-      pred_value = c_api.TF_TryEvaluateConstant_wrapper(pred.graph._c_graph,
-                                                        pred._as_tf_output())
+      pred_value = tensor_util.try_evaluate_constant(pred)
     # pylint: enable=protected-access
   elif pred in {0, 1}:  # Accept 1/0 as valid boolean values
     pred_value = bool(pred)

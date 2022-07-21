@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "llvm/ADT/None.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -34,6 +36,9 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 // This file has Legalize hash tables pass which is responsible for:
 // - Converting static hash table ops to the TFLite equivalent ops.
 //
@@ -164,25 +169,10 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 
 // Pass which legalizes TF hash tables only when they are covered by the
 // TensorFlow Lite hash table kernels.
-class LegalizeHashTables
-    : public PassWrapper<LegalizeHashTables, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TensorFlowLiteDialect>();
-  }
-
+class LegalizeHashTablesPass
+    : public LegalizeHashTablesPassBase<LegalizeHashTablesPass> {
  public:
-  LegalizeHashTables() = default;
-  LegalizeHashTables(const LegalizeHashTables&) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-legalize-hashtables-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Legalize TensorFlow hash tables to TensorFlow Lite dialect";
-  }
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeHashTablesPass)
 
   void runOnOperation() override {
     auto module = getOperation();
@@ -191,10 +181,11 @@ class LegalizeHashTables
       return;
     }
 
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
-                    LegalizeHashTableImportOpPattern,
-                    LegalizeHashTableSizeOpPattern>(&getContext());
+    RewritePatternSet patterns(&getContext());
+    patterns
+        .add<LegalizeHashTableOpPattern, LegalizeHashTableFindOpPattern,
+             LegalizeHashTableImportOpPattern, LegalizeHashTableSizeOpPattern>(
+            &getContext());
     if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
       signalPassFailure();
       return;
@@ -205,10 +196,8 @@ class LegalizeHashTables
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass() {
-  return std::make_unique<LegalizeHashTables>();
+  return std::make_unique<LegalizeHashTablesPass>();
 }
-
-static PassRegistration<LegalizeHashTables> pass;
 
 }  // namespace TFL
 }  // namespace mlir

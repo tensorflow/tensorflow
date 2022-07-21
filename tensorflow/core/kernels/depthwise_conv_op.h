@@ -101,7 +101,7 @@ struct LaunchDepthwiseConvBackpropFilterOp<Eigen::GpuDevice, T> {
                   const T* out_backprop, const T* input, T* filter_backprop,
                   TensorFormat data_format);
 };
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
 

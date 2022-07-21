@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group_metadata.h"
 
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -30,12 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
-string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
-  string repr =
+std::string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
+  std::string repr =
       (instruction_ != nullptr) ? instruction_->ToShortString() : "NULL";
   switch (kind_) {
     case ComputationKind::kInvalid:
@@ -59,7 +59,7 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
 
 /* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
 HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
-  auto metadata = absl::make_unique<HloModuleGroupMetadata>(modules);
+  auto metadata = std::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
 }
@@ -75,7 +75,7 @@ Status HloModuleGroupMetadata::Build() {
     // of a While.
     const TrackedInstruction* tracked = GetTrackedInstruction(hlo->parent());
     if (tracked == nullptr) {
-      return Status::OK();
+      return OkStatus();
     }
 
     if (IsChannelInstruction(hlo) || hlo->IsCrossModuleAllReduce()) {
@@ -119,7 +119,7 @@ Status HloModuleGroupMetadata::Build() {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   // Visit the computations in postorder so that the companion information grows
@@ -156,14 +156,14 @@ Status HloModuleGroupMetadata::Build() {
     alias_analyses_[module] = std::move(alias_analysis);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::VerifyCompanionSets() const {
   for (const auto& companions : companion_sets_) {
     // A companion set must be composed at most of an instruction per
     // device/module.
-    std::unordered_set<int64_t> devices;
+    absl::flat_hash_set<int64_t> devices;
     for (HloInstruction* instruction : *companions) {
       // Go through all the communicating instructions (send, recv) of the given
       // companion, and record their device.
@@ -173,7 +173,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
         // instructions, if they are parent of companions.
         continue;
       }
-      std::unordered_set<int64_t> comm_devices;
+      absl::flat_hash_set<int64_t> comm_devices;
       for (HloInstruction* comm_instruction : it->second) {
         auto device = GetInstructionDevice(*comm_instruction);
         TF_RET_CHECK(device) << "Instruction " << comm_instruction->ToString()
@@ -193,7 +193,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HloModuleGroupMetadata::IsChannelInstruction(
@@ -296,14 +296,14 @@ int64_t HloModuleGroupMetadata::GetModuleId(const HloModule* module) const {
   LOG(FATAL) << "unknown module";
 }
 
-absl::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
+std::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
     const HloInstruction& instruction) const {
   // The module group metadata can be created in both "single module, multiple
   // devices" and "multiple modules, no explicit devices" fashions.
   // The API returns an optional even though the current implementation always
   // returns a device, to account for cases where we cannot guess a device.
   // In such cases the VerifyChannelInstructions() will return proper errors.
-  absl::optional<int64_t> device = instruction.sharding_unique_device();
+  std::optional<int64_t> device = instruction.sharding_unique_device();
   if (!device) {
     device = GetModuleId(instruction.parent()->parent());
   }
@@ -339,11 +339,11 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           << " is already used by a send/recv instruction";
       all_reduce_map_[*hlo->channel_id()].push_back(hlo);
       max_channel_id_ = std::max(max_channel_id_, *hlo->channel_id());
-      return Status::OK();
+      return OkStatus();
     }
 
     if (!IsChannelInstruction(hlo)) {
-      return Status::OK();
+      return OkStatus();
     }
 
     TF_RET_CHECK(all_reduce_map_.find(*hlo->channel_id()) ==
@@ -384,7 +384,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
           << " is used by multiple recv-done instructions";
       channel.recv_done = hlo;
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (HloModule* module : modules_) {
@@ -395,7 +395,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   }
   VLOG(2) << "Created " << channels_.size() << " channels";
   VLOG(2) << "Created " << all_reduce_map_.size() << " all-reduce groups";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
@@ -406,11 +406,10 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   VLOG(2) << "adding as companions:" << instruction1->ToString() << " and "
           << instruction2->ToString();
   if (instruction1 == instruction2) {
-    return Status::OK();
+    return OkStatus();
   } else if (!ContainsKey(companion_set_index_, instruction1) &&
              !ContainsKey(companion_set_index_, instruction2)) {
-    companion_sets_.push_back(
-        absl::make_unique<std::vector<HloInstruction*>>());
+    companion_sets_.push_back(std::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
     companion_set->push_back(instruction1);
     companion_set->push_back(instruction2);
@@ -441,7 +440,7 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
     // instead.
     companion_sets_[index_to_remove].reset(nullptr);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::VerifyChannelInstructions() {
@@ -522,7 +521,7 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
           "Nest companion paths do not match for channel %d", channel.id);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
@@ -531,7 +530,7 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
   const HloModule* module = computation->parent();
   if (module->entry_computation() == computation ||
       tracked_instructions_.contains(computation)) {
-    return Status::OK();
+    return OkStatus();
   }
   return FailedPrecondition("channel is used in disallowed computation");
 }

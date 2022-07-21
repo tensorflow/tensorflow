@@ -17,9 +17,8 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
-#include <unordered_map>
 
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
@@ -49,7 +48,9 @@ class GpuHloOrdering : public PredecessorHloOrdering {
                                                         : nullptr;
   }
 
-  string ToString() const override { return ToStringHelper("GpuHloOrdering"); }
+  std::string ToString() const override {
+    return ToStringHelper("GpuHloOrdering");
+  }
 
  private:
   std::unique_ptr<HloInstructionSequence> entry_sequence_;
@@ -62,7 +63,7 @@ GpuHloOrdering::GpuHloOrdering(
   // The entry computation has a total order when there's only one stream.
   if (stream_assignment.StreamCount() == 1) {
     entry_sequence_ =
-        absl::make_unique<HloInstructionSequence>(thunk_launch_order);
+        std::make_unique<HloInstructionSequence>(thunk_launch_order);
   }
 
   // The ordering of instructions for the entry computation is determined by the
@@ -77,7 +78,7 @@ GpuHloOrdering::GpuHloOrdering(
   // same-stream predecessors of each instruction.
 
   // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = absl::make_unique<HloReachabilityMap>(
+  auto predecessor_map = std::make_unique<HloReachabilityMap>(
       module->entry_computation()->MakeInstructionPostOrder());
 
   // The most recently visited instruction per stream.
@@ -160,7 +161,7 @@ void BFSLaunchOrder(const HloComputation* computation,
   // The sorting algorithm repeatedly pops the top from the queue and deletes
   // that HLO from the graph, making more HLOs incoming-edge free.
   std::deque<HloInstruction*> queue;
-  std::unordered_map<const HloInstruction*, int64_t> incoming_edge_count;
+  absl::flat_hash_map<const HloInstruction*, int64_t> incoming_edge_count;
   for (auto* hlo : computation->instructions()) {
     if (hlo->operand_count() == 0) {
       queue.push_back(hlo);
@@ -198,9 +199,8 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   }
 }
 
-bool ShouldScheduleSuccessor(
-    const HloInstruction& sussessor,
-    const std::function<bool(const HloInstruction*)>& is_scheduled) {
+bool ShouldScheduleSuccessor(const HloInstruction& sussessor,
+                             const HloPredicate& is_scheduled) {
   return ShouldScheduleAsEarlyAsPossible(sussessor) &&
          absl::c_all_of(sussessor.operands(), is_scheduled) &&
          absl::c_all_of(sussessor.control_predecessors(), is_scheduled);
@@ -218,9 +218,8 @@ bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   }
 }
 
-bool ShouldSchedulePredecessor(
-    const HloInstruction& predecessor,
-    const std::function<bool(const HloInstruction*)>& is_scheduled) {
+bool ShouldSchedulePredecessor(const HloInstruction& predecessor,
+                               const HloPredicate& is_scheduled) {
   return ShouldScheduleAsLateAsPossible(predecessor) &&
          absl::c_all_of(predecessor.users(), is_scheduled) &&
          absl::c_all_of(predecessor.control_successors(), is_scheduled);
@@ -334,11 +333,11 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
     schedule->thunk_launch_order_ =
         sequences.sequence(entry_computation).instructions();
     schedule->hlo_ordering_ =
-        absl::make_unique<SequentialHloOrdering>(sequences);
+        std::make_unique<SequentialHloOrdering>(sequences);
   } else {
     // BFS tends to increase concurrency, but also increases memory usage.
     BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
-    schedule->hlo_ordering_ = absl::make_unique<GpuHloOrdering>(
+    schedule->hlo_ordering_ = std::make_unique<GpuHloOrdering>(
         module, stream_assignment, schedule->thunk_launch_order_);
   }
 

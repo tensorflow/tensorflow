@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -107,7 +106,7 @@ XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
                       0, input_literal, "parameter", &builder, &parameter));
   auto reshape = Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
                          /*new_sizes=*/{});
-  auto new_shape = builder.GetShape(reshape).ConsumeValueOrDie();
+  auto new_shape = builder.GetShape(reshape).value();
 
   auto expected_literal = LiteralUtil::CreateR0<float>(1.0f);
   ComputeAndCompareLiteral(&builder, expected_literal, {input.get()},
@@ -647,7 +646,7 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
       {222, 333, 444, 555, 666, 777, 888, 999},
   });
 
-  XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().value();
   ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(use_bfloat16() ? BF16 : F32, {2, 8},
@@ -656,7 +655,7 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   Literal actual =
       client_
           ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
-          .ConsumeValueOrDie();
+          .value();
   Literal expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
   if (use_bfloat16()) {
     expected = LiteralUtil::ConvertF32ToBF16(expected);
@@ -802,7 +801,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
                               0, input_literal, "input", &builder, &parameter));
   Reshape(parameter, /*dimensions=*/{3, 0, 1, 2},
           /*new_sizes=*/{7, 2, 3, 5});
-  XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().value();
 
   ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
@@ -813,7 +812,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
       client_
           ->ExecuteAndTransfer(computation, {input_data.get()},
                                &execution_options)
-          .ConsumeValueOrDie();
+          .value();
 
   // Since the reshape is a no-op, verify that it does not change the underlying
   // data.

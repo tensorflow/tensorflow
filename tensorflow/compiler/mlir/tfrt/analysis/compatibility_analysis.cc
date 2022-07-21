@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/analysis/compatibility_analysis.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -53,7 +53,8 @@ class CompatibilityAnalysis {
 
 void CompatibilityAnalysis::AnalyzeOperation(mlir::Operation* op) {
   // Skip the standard ops that are allowed in tf dialect.
-  if (llvm::isa<mlir::ReturnOp, mlir::FuncOp, mlir::ModuleOp>(op)) return;
+  if (llvm::isa<mlir::func::ReturnOp, mlir::func::FuncOp, mlir::ModuleOp>(op))
+    return;
 
   auto op_name = op->getName();
 
@@ -102,18 +103,18 @@ bool CompatibilityAnalysis::AnalyzeOpAttributes(mlir::Operation* op) {
 
   // TODO(chky): Derived attributes should be also analyzed here.
   for (auto attr : op->getAttrs()) {
-    if (attr.first.strref() == "_output_shapes") continue;
-    if (attr.first.strref() == "_class") continue;
+    if (attr.getName().strref() == "_output_shapes") continue;
+    if (attr.getName().strref() == "_class") continue;
 
     // Symbol attributes (eg. function names) is currently not supported.
     //
     // TODO(chky): CoreRT should ideally support function call operatoins.
     // Remove this condition once that is implemented.
-    if (attr.second.isa<mlir::FlatSymbolRefAttr>()) return true;
+    if (attr.getValue().isa<mlir::FlatSymbolRefAttr>()) return true;
 
     // Currently only tensors of simple dtypes (i1, i32, i64, f32, f64) are
     // supported.
-    if (auto elements_attr = attr.second.dyn_cast<mlir::ElementsAttr>()) {
+    if (auto elements_attr = attr.getValue().dyn_cast<mlir::ElementsAttr>()) {
       if (!elements_attr.isa<mlir::DenseElementsAttr>()) return true;
       auto element_type = elements_attr.getType().getElementType();
       if (element_type.isa<mlir::TF::TensorFlowType>()) return true;
@@ -121,7 +122,7 @@ bool CompatibilityAnalysis::AnalyzeOpAttributes(mlir::Operation* op) {
 
     // Currently only arrays of simple element types (i1, i32, i64, f32, f64)
     // are supported.
-    if (auto array_attr = attr.second.dyn_cast<mlir::ArrayAttr>()) {
+    if (auto array_attr = attr.getValue().dyn_cast<mlir::ArrayAttr>()) {
       if (!array_attr.empty()) {
         if (array_attr[0].isa<mlir::ElementsAttr>()) return true;
 

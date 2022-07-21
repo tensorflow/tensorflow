@@ -21,10 +21,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
@@ -60,14 +61,14 @@ bool tfjs::MlirToJSONTranslateFunction(ModuleOp module,
   tensorflow::FunctionLibraryDefinition flib_def(
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
   absl::flat_hash_set<tensorflow::Node*> control_ret_nodes;
-  auto graph = absl::make_unique<tensorflow::Graph>(flib_def);
+  auto graph = std::make_unique<tensorflow::Graph>(flib_def);
   auto status = tensorflow::ConvertMlirToGraph(module, confs, &graph, &flib_def,
                                                &control_ret_nodes);
   if (!status.ok()) {
     LOG(ERROR) << "Graph export failed: " << status;
     return false;
   }
-  auto graphdef = absl::make_unique<tensorflow::GraphDef>();
+  auto graphdef = std::make_unique<tensorflow::GraphDef>();
   graph->ToGraphDef(graphdef.get());
 
   // Replace the _Arg nodes of the main function with Placeholder op.

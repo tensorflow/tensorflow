@@ -47,10 +47,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     if (count_ < 0) {
-      return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+      return std::make_unique<EmptyIterator>(EmptyIterator::Params{
           this, name_utils::IteratorPrefix(kEmptySkip, prefix)});
     } else {
-      return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+      return std::make_unique<FiniteIterator>(FiniteIterator::Params{
           this, name_utils::IteratorPrefix(kFiniteSkip, prefix)});
     }
   }
@@ -67,8 +67,16 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
+    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+      return n;
+    }
+    return count_ < 0 ? 0 : std::max(int64_t{0}, n - count_);
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -77,7 +85,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -99,7 +107,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     Node* count = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -111,7 +119,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       *end_of_sequence = true;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -123,12 +131,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      return Status::OK();
+      return OkStatus();
     }
   };
 
@@ -148,7 +156,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
       if (!input_impl_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       if (i_ < dataset()->count_) {
@@ -159,7 +167,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
-          return Status::OK();
+          return OkStatus();
         }
       }
 
@@ -169,7 +177,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       if (*end_of_sequence) {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -188,7 +196,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -200,7 +208,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

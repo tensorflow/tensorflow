@@ -14,10 +14,6 @@
 # ==============================================================================
 """Modules encapsulate building stateful components."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 import six
@@ -25,14 +21,14 @@ import six
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("Module")
-class Module(tracking.AutoTrackable):
+class Module(autotrackable.AutoTrackable):
   """Base neural network module class.
 
   A module is a named container for `tf.Variable`s, other `tf.Module`s and

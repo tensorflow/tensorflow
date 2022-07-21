@@ -291,7 +291,7 @@ TEST(BasicFlatBufferModel, TestWithNumThreads) {
   ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, -1);
 
   ASSERT_EQ(reporter.num_calls(), 0);
-  interpreter.reset(new Interpreter);
+  interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(builder(&interpreter, -2), kTfLiteError);
   ASSERT_EQ(interpreter, nullptr);
   ASSERT_EQ(reporter.num_calls(), 1);
@@ -333,6 +333,26 @@ TEST(BasicFlatBufferModel, TestSetNumThreads) {
   ASSERT_PRED_FORMAT2(testing::IsSubstring,
                       "num_threads should be >= 0 or just -1",
                       reporter.error_messages());
+}
+
+TEST(BasicFlatBufferModel, TestSetNumThreadsWithMultipleSubgraphs) {
+  TestErrorReporter reporter;
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/2_subgraphs.bin", &reporter);
+  ASSERT_TRUE(model);
+  std::unique_ptr<Interpreter> interpreter;
+  TrivialResolver resolver(&dummy_reg);
+  InterpreterBuilder builder(*model, resolver);
+
+  ASSERT_EQ(builder.SetNumThreads(4), kTfLiteOk);
+  interpreter.reset();
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  // Check that each subgraph has the expected number of threads set.
+  for (int i = 0; i < interpreter->subgraphs_size(); ++i) {
+    EXPECT_EQ(interpreter->subgraph(i)->context()->recommended_num_threads, 4);
+  }
 }
 
 // Test that loading a model with TensorFlow ops fails when the flex delegate is
@@ -711,7 +731,9 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
       ASSERT_TRUE(model);
       // Now try to build it into an interpreter.
       std::unique_ptr<Interpreter> interpreter;
-      InterpreterBuilder builder(*model, TrivialResolver());
+
+      TrivialResolver resolver;
+      InterpreterBuilder builder(*model, resolver);
       builder.AddDelegate(delegate.get());  // Does not transfer ownership.
       // Loop to check we can construct multiple interpreters from one builder.
       for (int i = 0; i < 3; i++) {

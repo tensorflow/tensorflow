@@ -14,34 +14,68 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/reduction_benchmark.h"
-
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
 namespace tensorflow {
+namespace {
 
-const bool kStatic = false;
-const bool kDynamic = true;
+using ::llvm::ArrayRef;
+using ::llvm::SmallVector;
+using ::llvm::StringRef;
 
-static const char* kReductionIR = R"(
-  func @main(%input: {1}) -> {2} {
-    %dim_to_reduce = "tf.Const"() {{value = {3} : {4}} : () -> {4}
-    %result = "{0}"(%input, %dim_to_reduce) {{keep_dims = false}
-      : ({1}, {4}) -> {2}
-    return %result : {2}
+const char* kReductionIR = R"(
+  func.func @main(%input: {1}) -> {2} {
+    %dim_to_reduce = "tf.Const"() {{
+      value = {3} : {4},
+      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    } : () -> {4}
+    %result = "{0}"(%input, %dim_to_reduce) {{
+      keep_dims = false,
+      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    } : ({1}, {4}) -> {2}
+    func.return %result : {2}
   }
 )";
 
-std::string GetIR(StringRef op_name, ArrayRef<int64_t> input_shape,
-                  ArrayRef<int64_t> output_shape,
-                  ArrayRef<int32_t> dims_to_reduce, StringRef element_type) {
+}  // namespace
+
+std::string GetReductionIR(StringRef op_name, ArrayRef<int32_t> input_shape,
+                           ArrayRef<bool> dynamic_dims,
+                           ArrayRef<int32_t> dims_to_reduce,
+                           StringRef element_type) {
+  SmallVector<int64_t, 2> mlir_input_shape, mlir_output_shape;
+  for (int i = 0; i < input_shape.size(); ++i) {
+    mlir_input_shape.push_back(dynamic_dims[i] ? kDynSize : input_shape[i]);
+    if (llvm::find(dims_to_reduce, i) == dims_to_reduce.end())
+      mlir_output_shape.push_back(mlir_input_shape[i]);
+  }
   return llvm::formatv(
-      kReductionIR, op_name,                        // TF op to use {0},
-      PrintTensorType(input_shape, element_type),   // Input type {1}
-      PrintTensorType(output_shape, element_type),  // Output type {2}
-      PrintDenseArray(dims_to_reduce),              // Dims to reduce attr {3}
+      kReductionIR, op_name,                             // TF op to use {0},
+      PrintTensorType(mlir_input_shape, element_type),   // Input type {1}
+      PrintTensorType(mlir_output_shape, element_type),  // Output type {2}
+      PrintDenseArray(dims_to_reduce),  // Dims to reduce attr {3}
       PrintTensorType(static_cast<int64_t>(dims_to_reduce.size()),
                       "i32")  // Dims to reduce type {4}
   );
+}
+
+std::string GetSumF32IR(llvm::ArrayRef<int32_t> input_shape,
+                        llvm::ArrayRef<bool> dynamic_dims,
+                        llvm::ArrayRef<int32_t> dims_to_reduce) {
+  return GetReductionIR("tf.Sum", input_shape, dynamic_dims, dims_to_reduce,
+                        "f32");
+}
+
+std::string GetMeanF32IR(llvm::ArrayRef<int32_t> input_shape,
+                         llvm::ArrayRef<bool> dynamic_dims,
+                         llvm::ArrayRef<int32_t> dims_to_reduce) {
+  return GetReductionIR("tf.Mean", input_shape, dynamic_dims, dims_to_reduce,
+                        "f32");
+}
+
+llvm::SmallVector<InputTensorSpec> GetInputSpec(
+    llvm::ArrayRef<ssize_t> input_shape) {
+  return {InputTensorSpec(DT_FLOAT, input_shape)};
 }
 
 }  // namespace tensorflow

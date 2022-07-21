@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
 #define TENSORFLOW_C_EAGER_immediate_execution_distributed_manager_H_
 
+#include <string>
+
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -44,13 +46,6 @@ class ImmediateExecutionDistributedManager {
   // This call internally coordinates with other tasks to initialize the eager
   // context and TF server for multi-client execution.
   virtual Status EnableCollectiveOps(const ServerDef& server_def) = 0;
-
-  // Enable coordination service instance for the distributed cluster. The
-  // service is owned by the current distributed manager.
-  // See CoordinationServiceInterface for details.
-  virtual Status EnableCoordinationService(
-      const std::string& service_type, const WorkerEnv* worker_env,
-      const ServerDef& server_def, WorkerCacheInterface* worker_cache) = 0;
 
   // Check if the remote task is alive.
   virtual Status CheckRemoteAlive(const std::string& remote_task_name,

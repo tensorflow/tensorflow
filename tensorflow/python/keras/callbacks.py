@@ -28,6 +28,8 @@ import time
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.checkpoint import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -58,8 +60,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.saved_model import save_options as save_options_lib
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -1149,7 +1149,7 @@ class History(Callback):
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
-  ...                     epochs=10)
+  ...                     epochs=10, verbose=1)
   >>> print(history.params)
   {'verbose': 1, 'epochs': 10, 'steps': 1}
   >>> # check the keys of history object

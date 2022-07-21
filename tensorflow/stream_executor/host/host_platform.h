@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"

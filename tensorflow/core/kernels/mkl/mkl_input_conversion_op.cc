@@ -18,20 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "mkldnn.hpp"
-#include "tensorflow/core/framework/numeric_op.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/mkl/mkl_tfconv_op.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/mkl_util.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -117,8 +104,9 @@ class MklInputConversionOp : public OpKernel {
           VLOG(1) << "MklInputConversionOp: Shape is same, but format is "
                      "different, "
                   << "need to convert to same format";
-          // TODO: For now, input0 is converted and input1 is unchanged
-          //       we should choose the optimal MKL format to convert to.
+          // TODO(intel-tf): For now, input0 is converted and input1 is
+          // unchanged. We should choose the optimal oneDNN format to convert
+          // to.
           Tensor* tensor_out;
           MklDnnShape mkl_output_mkl_shape;
           mkl_output_mkl_shape.SetMklTensor(true);
@@ -142,7 +130,7 @@ class MklInputConversionOp : public OpKernel {
           // Create reorder from input0's layout to input1's layout
           std::vector<primitive> net;
           std::vector<MemoryArgsMap> net_args;
-          // TODO(bhavanis): Refactor CheckReorderToOpMem() to create and
+          // TODO(intel-tf): Refactor CheckReorderToOpMem() to create and
           // execute reorder
           OP_REQUIRES(
               context,
@@ -170,8 +158,8 @@ class MklInputConversionOp : public OpKernel {
       // with MKL tensors)
       VLOG(1) << "MklInputConversionOp: Broadcast needed, "
               << "converted MKL inputs to TF format";
-      // TODO: Cleanup op_data_type and has_avx512f_ after these two parameters
-      //       are removed from ConvertMklToTf
+      // TODO(intel-tf): Cleanup op_data_type and has_avx512f_ after these two
+      //     parameters are removed from ConvertMklToTf
       MklToTfOp<Device, T>::ConvertMklToTf(this, context, data_format_str,
                                            op_data_type, has_avx512f_,
                                            kInputIndex_0);
@@ -307,9 +295,6 @@ class MklInputConversionOp : public OpKernel {
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklInputConversionOp<CPUDevice, T>);
 
-// TODO(nhasabni): We cannot support all number types since MklDnn does
-// not support types.
-// TF_CALL_NUMBER_TYPES(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
 

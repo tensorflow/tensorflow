@@ -15,10 +15,6 @@
 # -*- Python -*-
 # pylint: disable=undefined-variable
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 import lit.formats
@@ -53,7 +49,7 @@ llvm_config.use_default_substitutions()
 # subdirectories contain auxiliary inputs for various tests in their parent
 # directories.
 config.excludes = [
-    'Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt'
+    'Inputs', 'Examples', 'tosa', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt'
 ]
 
 # test_source_root: The root path where tests are located.

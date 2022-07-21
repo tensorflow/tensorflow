@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for describing the structure of a `tf.data` type."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
+import itertools
 
 import six
 import wrapt
@@ -283,8 +280,9 @@ def get_flat_tensor_specs(element_spec):
   """
 
   # pylint: disable=protected-access
-  return functools.reduce(lambda state, value: state + value._flat_tensor_specs,
-                          nest.flatten(element_spec), [])
+  return list(
+      itertools.chain.from_iterable(
+          spec._flat_tensor_specs for spec in nest.flatten(element_spec)))
 
 
 def get_flat_tensor_shapes(element_spec):

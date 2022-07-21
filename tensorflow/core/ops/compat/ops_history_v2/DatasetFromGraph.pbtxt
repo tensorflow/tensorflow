@@ -1,3 +1,14 @@
+op 	 {
+  name: "DatasetFromGraph"
+  input_arg {
+    name: "graph_def"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}
 op {
   name: "DatasetFromGraph"
   input_arg {
@@ -7,5 +18,11 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_ANY
+      }
+    }
   }
 }

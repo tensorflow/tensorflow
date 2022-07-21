@@ -14,6 +14,19 @@
 
 """Utilities for defining TensorFlow Bazel dependencies."""
 
+def tf_mirror_urls(url):
+    """A helper for generating TF-mirror versions of URLs.
+
+    Given a URL, it returns a list of the TF-mirror cache version of that URL
+    and the original URL, suitable for use in `urls` field of `tf_http_archive`.
+    """
+    if not url.startswith("https://"):
+        return [url]
+    return [
+        "https://storage.googleapis.com/mirror.tensorflow.org/%s" % url[8:],
+        url,
+    ]
+
 def _get_env_var(ctx, name):
     if name in ctx.os.environ:
         return ctx.os.environ[name]
@@ -41,6 +54,15 @@ def _tf_http_archive_impl(ctx):
     # See also https://github.com/bazelbuild/bazel/issues/10515.
     link_dict = _get_link_dict(ctx, ctx.attr.link_files, ctx.attr.build_file)
 
+    # For some reason, we need to "resolve" labels once before the
+    # download_and_extract otherwise it'll invalidate and re-download the
+    # archive each time.
+    # https://github.com/bazelbuild/bazel/issues/10515
+    patch_files = ctx.attr.patch_file
+    for patch_file in patch_files:
+        if patch_file:
+            ctx.path(Label(patch_file))
+
     if _use_system_lib(ctx, ctx.attr.name):
         link_dict.update(_get_link_dict(
             ctx = ctx,
@@ -48,16 +70,17 @@ def _tf_http_archive_impl(ctx):
             build_file = ctx.attr.system_build_file,
         ))
     else:
-        patch_file = ctx.attr.patch_file
-        patch_file = ctx.path(Label(patch_file)) if patch_file else None
         ctx.download_and_extract(
             url = ctx.attr.urls,
             sha256 = ctx.attr.sha256,
             type = ctx.attr.type,
             stripPrefix = ctx.attr.strip_prefix,
         )
-        if patch_file:
-            ctx.patch(patch_file, strip = 1)
+        if patch_files:
+            for patch_file in patch_files:
+                patch_file = ctx.path(Label(patch_file)) if patch_file else None
+                if patch_file:
+                    ctx.patch(patch_file, strip = 1)
 
     for dst, src in link_dict.items():
         ctx.delete(dst)
@@ -70,7 +93,7 @@ _tf_http_archive = repository_rule(
         "urls": attr.string_list(mandatory = True),
         "strip_prefix": attr.string(),
         "type": attr.string(),
-        "patch_file": attr.string(),
+        "patch_file": attr.string_list(),
         "build_file": attr.string(),
         "system_build_file": attr.string(),
         "link_files": attr.string_dict(),

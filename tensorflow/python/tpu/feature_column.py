@@ -13,10 +13,6 @@
 # limitations under the License.
 # ===================================================================
 """TPU Feature Column Library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.feature_column import feature_column as fc
@@ -108,12 +104,12 @@ def embedding_column(categorical_column,
   """
   if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
     raise TypeError('categorical_column for tpu '
-                    ' embedding_column was denylisted type %s' %
-                    type(categorical_column))
+                    ' embedding_column was '
+                    f'denylisted type {type(categorical_column)}')
   if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
     raise TypeError(
         'categorical_column for tpu '
-        ' embedding_column must be type %s, got %s.' % (' or '.join([
+        ' embedding_column must be type {}, got {}.'.format(' or '.join([
             cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS
         ]), type(categorical_column)))
   if (dimension is None) or (dimension < 1):
@@ -225,14 +221,15 @@ def shared_embedding_columns(categorical_columns,
   for categorical_column in categorical_columns:
     if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
       raise TypeError('categorical_column for tpu '
-                      ' embedding_column was denylisted type %s' %
-                      type(categorical_column))
+                      ' embedding_column was denylisted type '
+                      f'{type(categorical_column)}')
     if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
       raise TypeError(
           'categorical_column for tpu '
-          ' shared_embedding_columns must be type %s, got %s.' % (' or '.join([
-              cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS
-          ]), type(categorical_column)))
+          ' shared_embedding_columns must be type {}, got {}.'.format(
+              ' or '.join(
+                  [cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS]),
+              type(categorical_column)))
 
   if not max_sequence_lengths:
     max_sequence_lengths = [0] * len(categorical_columns)
@@ -715,7 +712,7 @@ def split_sequence_columns(feature_columns):
     if not isinstance(column, (_TPUEmbeddingColumn, _TPUSharedEmbeddingColumn)):
       raise TypeError(
           'column must be a _TPUEmbeddingColumn or  _TPUSharedEmbeddingColumn '
-          'but got %s instead.' % (type(column)))
+          f'but got {type(column)} instead.')
     if column.is_sequence_column():
       sequence_columns.append(column)
     else:

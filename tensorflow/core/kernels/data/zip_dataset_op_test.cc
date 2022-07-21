@@ -33,7 +33,7 @@ class ZipDatasetParams : public DatasetParams {
                       std::move(node_name)),
         num_input_datasets_(num_input_datasets) {
     for (auto& params : input_dataset_params) {
-      input_dataset_params_.push_back(absl::make_unique<T>(params));
+      input_dataset_params_.push_back(std::make_unique<T>(params));
     }
 
     iterator_prefix_ =
@@ -49,7 +49,7 @@ class ZipDatasetParams : public DatasetParams {
       input_names->emplace_back(
           absl::StrCat(ZipDatasetOp::kDatasetType, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -58,7 +58,7 @@ class ZipDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("N", num_input_datasets_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return ZipDatasetOp::kDatasetType; }

@@ -36,12 +36,12 @@ struct OpStatsOptions {
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options);
 
+// Populates the given RunEnvironment with data from XSpace.
+void SetRunEnvironment(const XSpace& space, RunEnvironment* env);
+
 // Propagate and dedup the diagnostics in XSpace and add to OpStats.
 void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
                                          OpStats* op_stats);
-
-// Extracts DeviceCapabilities from XPlane stats.
-DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane);
 
 // Populates PerfEnv.
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,

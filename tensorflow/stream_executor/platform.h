@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin.h"
@@ -78,6 +77,10 @@ struct StreamExecutorConfig {
 
   // Simple ordinal-setting constructor.
   explicit StreamExecutorConfig(int ordinal);
+
+  // The GPU stream for which we are searching the executor.
+  // If this field is specified for the search, others will be ignored.
+  void* gpu_stream = nullptr;
 
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;

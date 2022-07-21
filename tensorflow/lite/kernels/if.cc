@@ -91,6 +91,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                             input->dims->data + input->dims->size);
       subgraph->ResizeInputTensor(i, dims);
       TfLiteTensor* subgraph_input = subgraph->tensor(subgraph->inputs()[i]);
+      if (IsDynamicTensor(input)) {
+        SetTensorToDynamic(subgraph_input);
+      }
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, subgraph_input->type);
     }
     // Note: The `Prepare` function is responsible to run `AllocateTensors` on
@@ -162,7 +165,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     TF_LITE_ENSURE_EQ(context, input->bytes, subgraph_input->bytes);
-    memcpy(subgraph_input->data.raw, input->data.raw, input->bytes);
+    TfLiteTensorCopy(input, subgraph_input);
   }
 
   // Note: It's guaranteed that the subgraphs' `AllocateTensors` are called
@@ -206,7 +209,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     TF_LITE_ENSURE_EQ(context, output->bytes, subgraph_output->bytes);
-    memcpy(output->data.raw, subgraph_output->data.raw, output->bytes);
+    TfLiteTensorCopy(subgraph_output, output);
   }
   return kTfLiteOk;
 }

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -12,6 +13,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_windows_gpu",  # b/216367668
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -72,5 +74,22 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:state_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_library(
+    name = "input_lib",
+    srcs = ["input_lib.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util",
     ],
 )

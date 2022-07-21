@@ -1,6 +1,6 @@
 [//tensorflow/python/util:cpp_python_util] # util tfe
-tensorflow::swig::IsSequence
-tensorflow::swig::IsSequenceOrComposite
+tensorflow::swig::IsNested
+tensorflow::swig::IsNestedOrComposite
 tensorflow::swig::IsCompositeTensor
 tensorflow::swig::IsTypeSpec
 tensorflow::swig::IsNamedtuple
@@ -14,7 +14,7 @@ tensorflow::swig::IsVariable
 tensorflow::swig::SameNamedtuples
 tensorflow::swig::AssertSameStructure
 tensorflow::swig::Flatten
-tensorflow::swig::IsSequenceForData
+tensorflow::swig::IsNestedForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterPyObject
@@ -52,6 +52,7 @@ tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 [//tensorflow/python:bfloat16_lib] # bfloat16
 tensorflow::RegisterNumpyBfloat16
 tensorflow::Bfloat16Dtype
+tensorflow::Float8_E4M3B11Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -90,7 +91,7 @@ tensorflow::SessionState::kTensorHandleResourceTypeName
 
 [//tensorflow/core/data/service:dispatcher_client] # dispatcher_client
 tensorflow::data::DataServiceDispatcherClient::EnsureInitialized
-tensorflow::data::DataServiceDispatcherClient::GetElementSpec
+tensorflow::data::DataServiceDispatcherClient::GetDataServiceMetadata
 
 [//tensorflow/core/data/service:grpc_util] # grpc_util
 tensorflow::data::grpc_util::Retry
@@ -198,12 +199,14 @@ TFE_Py_ForwardAccumulatorPopState
 TFE_Py_PackJVPs
 TFE_Py_TensorShapeSlice
 TFE_Py_TensorShapeOnDevice
-TFE_Py_EncodeArg
 TFE_Py_EnableInteractivePythonLogging
 TFE_Py_SetEagerContext
+TFE_Py_SetCEagerContext
 tensorflow::MakeEagerContextThreadLocalData
 tensorflow::GetEagerContextThreadLocalData
 tensorflow::DestroyEagerContextThreadLocalData
+tensorflow::MaybeRaiseExceptionFromTFStatus
+tensorflow::ConvertToEagerTensor
 
 [//tensorflow/core/common_runtime/eager:eager_executor] # tfe
 tensorflow::EagerExecutor::~EagerExecutor
@@ -214,6 +217,8 @@ tensorflow::Set_TF_Status_from_Status
 
 [//tensorflow/core/common_runtime/eager:context] # tfe
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
+tensorflow::SetCEagerContext
+tensorflow::GetCEagerContext
 
 [//tensorflow/compiler/mlir/python:mlir] # mlir
 tensorflow::ExperimentalRunPassPipeline
@@ -234,15 +239,22 @@ tensorflow::OpDef::`vftable'
 
 [//tensorflow/lite/kernels/shim:shape] # tf_text
 tflite::shim::Shape::AddDims
+tflite::shim::Shape::Compatible
 tflite::shim::Shape::Dim
+tflite::shim::Shape::ToString
 
 [//tensorflow/lite/kernels/shim:tf_op_shim] # tf_text
 tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::GetAttr
 tflite::shim::TfInitContext::TfInitContext
 tflite::shim::TfInvokeContext::GetInput
 tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::NumInputs
+tflite::shim::TfInvokeContext::NumOutputs
 tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetAttr
 tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::NumOutputs
 tflite::shim::TfShapeInferenceContext::SetInputShape
 tflite::shim::TfShapeInferenceContext::SetOutputShape
 tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
@@ -254,6 +266,7 @@ tensorflow::ShapeRefiner::~ShapeRefiner
 tensorflow::AddControlInput
 tensorflow::SetAttr
 tensorflow::ClearAttr
+tensorflow::SetFullType
 tensorflow::SetRequestedDevice
 tensorflow::UpdateEdge
 tensorflow::RemoveAllControlInputs
@@ -407,12 +420,17 @@ tensorflow::metrics::SavedModelReadApi
 tensorflow::metrics::CheckpointReadDuration
 tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
+tensorflow::metrics::CheckpointSize
+
+[//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
+tensorflow::fingerprinting::CreateFingerprintDef
 
 
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
+tensorflow::ResetJitCompilerFlags
 
 [//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
 tensorflow::enable_tensor_float_32_execution
@@ -458,3 +476,52 @@ tensorflow::CopyPythonAPITensorLists
 
 [//tensorflow/core/platform:statusor] # tfe
 tensorflow::internal_statusor::Helper::Crash
+
+[//tensorflow/core/function:runtime_client_cc] # runtime_client
+tensorflow::core::function::GlobalEagerContext
+tensorflow::core::function::GlobalPythonEagerContext
+tensorflow::core::function::Runtime::CreateFunction
+tensorflow::core::function::Runtime::GetFunctionProto
+
+[//tensorflow/core/config:flag_defs] # flags_api
+tensorflow::flags::Global
+tensorflow::flags::Flags::GetExportedFlag
+
+[//tensorflow/core/config:flags] # flags_api
+tensorflow::config::Flag::value
+tensorflow::config::Flag::reset
+
+[//tensorflow/python/framework:op_def_util_cc] # op_def_util
+tensorflow::AttributeTypeFromName
+tensorflow::AttrValueToPyObject
+tensorflow::ConvertPyObjectToAttributeType
+tensorflow::DataTypeToPyObject
+tensorflow::Safe_PyObjectPtr
+
+[//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization
+tensorflow::quantization::QuantizeQATModel
+tensorflow::quantization::QuantizePTQModelPreCalibration
+tensorflow::quantization::QuantizePTQModelPostCalibration
+tensorflow::quantization::ClearCollectedInformationFromCalibrator
+tensorflow::quantization::ClearDataFromCalibrator
+tensorflow::quantization::GetMinFromCalibrator
+tensorflow::quantization::GetMaxFromCalibrator
+
+[//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
+tensorflow::dtensor::AllocateDTensorDevice
+tensorflow::dtensor::AddMesh
+tensorflow::dtensor::ExperimentalSetDefaultLayout
+tensorflow::dtensor::ExperimentalClearDefaultLayout
+tensorflow::dtensor::ExperimentalSetDefaultMesh
+tensorflow::dtensor::ExperimentalClearDefaultMesh
+tensorflow::dtensor::SetSameShapePolicy
+tensorflow::dtensor::SetTPUCoreIDs
+tensorflow::dtensor::ClearTPUCoreIDs
+tensorflow::dtensor::TPUCoreIDsToLocations
+tensorflow::dtensor::TPUCoreLocationsToIDs
+tensorflow::dtensor::Pack
+tensorflow::dtensor::Unpack
+tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::SparsePack
+tensorflow::dtensor::IsSparseDTensor
+tensorflow::dtensor::GetFunctionCacheHitAndMissCount

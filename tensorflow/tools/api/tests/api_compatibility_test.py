@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,10 +22,6 @@ incompatible changes are not allowed. You can run the test with
 "--update_goldens" flag set to "True" to update goldens when making changes to
 the public TF python API.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import argparse
 import os

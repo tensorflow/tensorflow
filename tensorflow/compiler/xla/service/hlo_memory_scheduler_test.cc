@@ -44,14 +44,14 @@ int64_t PeakMemoryUseOfEntryComputation(
   CHECK(module->has_schedule());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+      HloAliasAnalysis::Run(module).value();
 
   const HloSchedule& schedule = module->schedule();
 
   HloComputation* computation = module->entry_computation();
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   return HeapSimulator::Run(
-             absl::make_unique<NoFragmentationStatsHeap<HloValue>>(),
+             std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
              *computation, sequence, *alias_analysis, size_function)
       .ValueOrDie()
       .heap_size;
@@ -146,14 +146,14 @@ ENTRY root {
       HloSchedule schedule,
       ScheduleModule(module.get(), size_fn,
                      ComputationSchedulerToModuleScheduler(ListMemoryScheduler),
-                     &peak_memory));
+                     /*execution_threads=*/{}, &peak_memory));
   TF_ASSERT_OK(module->set_schedule(schedule));
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
-  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name;
   for (const HloInstruction* instruction : sequence) {
     instructions_by_name[instruction->name()] = instruction;
   }
@@ -204,7 +204,7 @@ ENTRY entry {
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
-  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name;
   for (const HloInstruction* instruction : sequence) {
     instructions_by_name[instruction->name()] = instruction;
   }

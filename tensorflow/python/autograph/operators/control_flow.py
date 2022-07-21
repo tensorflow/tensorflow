@@ -55,11 +55,8 @@ self.x = self_x    # the result is not properly captured
 ```
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
+import sys
 import traceback
 
 import numpy as np
@@ -87,6 +84,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 
 
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
@@ -108,6 +106,7 @@ def _is_none_or_undef(value):
 
   Args:
     value: value to test
+
   Returns:
     Boolean
   """
@@ -143,7 +142,10 @@ def _verify_tf_condition(cond, tag):
   return cond
 
 
-def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
+def _verify_loop_init_vars(init_vars,
+                           symbol_names,
+                           first_iter_vars=None,
+                           extra_message=None):
   """Ensures that all values in the state are valid to use in a TF loop.
 
   The init_vars may contain placeholder values derived from first_iter_vars.
@@ -152,6 +154,8 @@ def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
     init_vars: initial loop variables (as taken before entering the loop)
     symbol_names: corresponding names of the initial loop variables
     first_iter_vars: loop variables after one iteration of the loop
+    extra_message: an extra string to append to the error message, in case of
+      "undefined variable" errors (see variables.Undefined)
   """
   if not symbol_names:
     return
@@ -178,18 +182,10 @@ def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
       error_msg = "'{}' may not be None before the loop".format(name)
     elif isinstance(val, variables.Undefined):
       error_msg = "'{}' must be defined before the loop".format(name)
+      if extra_message:
+        error_msg += '\n' + extra_message
 
-    # This only happens when we could not infer a placeholder for the
-    # variable. The canonical case when that happens is when _placeholder_value
-    # couldnot infer a placeholder for it. That means it's of an unknown type
-    # or it's still undefined after staging one iteration.
     if error_msg is not None:
-      if fi_val:
-        error_msg += (", unless it's a {}; got {}".format(
-            LEGAL_LOOP_TYPES, type(fi_val)))
-      else:
-        # TODO(mdan): This can be handled by removing the loop var.
-        error_msg += '.'
       raise ValueError(error_msg)
 
 
@@ -293,16 +289,30 @@ def _verify_tf_loop_vars(init_vars,
 
     try:
       nest.assert_same_structure(init, entry, expand_composites=True)
+    except (ValueError, TypeError):
+      # `Variable`s in `init` may be implicitly converted to `Tensor`s. Convert
+      # `ResourceVariable`s to Tensors so tf.nest.assert_same_structure
+      # won't break due to type spec mismatches between `ResourceVariable`s and
+      # `Tensor`s.
+      try:
+        init_tensors = variable_utils.convert_variables_to_tensors(init)
+        nest.assert_same_structure(init_tensors, entry, expand_composites=True)
+      except (ValueError, TypeError) as e:
+        raise TypeError("'{}' does not have the same nested structure after one"
+                        ' iteration.\n\n{}'.format(name, e)) from e
+
+    try:
       nest.assert_same_structure(entry, exit_, expand_composites=True)
     except (ValueError, TypeError) as e:
       raise TypeError("'{}' does not have the same nested structure after one"
-                      ' iteration.\n\n{}'.format(name, e))
+                      ' iteration.\n\n{}'.format(name, e)) from e
     if invariant is not None:
       try:
         nest.assert_same_structure(init, invariant, expand_composites=False)
       except (ValueError, TypeError) as e:
         raise TypeError("'{}' does not have the same nested structure as its"
-                        ' corresponding shape invariant.\n\n{}'.format(name, e))
+                        ' corresponding shape invariant.\n\n{}'.format(
+                            name, e)) from e
 
     nest.map_structure(
         functools.partial(_verify_single_loop_var, name, check_shapes), init,
@@ -359,10 +369,20 @@ def _verify_tf_cond_vars(body_vars, orelse_vars, symbol_names):
   for name, body_var, orelse_var in named_vars:
     try:
       nest.assert_same_structure(body_var, orelse_var, expand_composites=True)
-    except (ValueError, TypeError) as e:
-      raise TypeError(
-          "'{}' must have the same nested structure in the main and else"
-          ' branches:\n\n{}'.format(name, str(e)))
+    except (ValueError, TypeError):
+      # One branch of cond could be a `Tensor`, while the other branch could be
+      # a `ResourceVariable`. Convert `ResourceVariable`s to `Tensor`s so
+      # assert_same_structure won't fail.
+      try:
+        body_var_tensors = variable_utils.convert_variables_to_tensors(body_var)
+        orelse_var_tensors = variable_utils.convert_variables_to_tensors(
+            orelse_var)
+        nest.assert_same_structure(body_var_tensors, orelse_var_tensors,
+                                   expand_composites=True)
+      except (ValueError, TypeError) as e:
+        raise TypeError(
+            "'{}' must have the same nested structure in the main and else"
+            ' branches:\n\n{}'.format(name, str(e))) from e
     nest.map_structure(
         functools.partial(verify_single_cond_var, name), body_var, orelse_var)
 
@@ -396,8 +416,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
 
   Args:
     iter_: The entity being iterated over.
-    extra_test: Callable with boolean return type.
-      An additional loop condition.
+    extra_test: Callable with boolean return type. An additional loop condition.
     body: Callable representing the actual loop body.
     get_state: Additional callable which can capture additional state (such as
       the values of composite symbols). This is only useful when staging the
@@ -468,7 +487,7 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
         # Note: Using try/except and not tensor_util.is_tf_type to avoid
         # performance degradation.
         return bool(extra_test_result)
-      except errors_impl.OperatorNotAllowedInGraphError:
+      except errors_impl.OperatorNotAllowedInGraphError as e:
         ag_logging.log(
             1,
             'Caught error while evaluating loop stop condition',
@@ -480,7 +499,7 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
             ' loop?\nSee '
             'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
             'python/autograph/g3doc/reference/limitations.md'
-            '#consistency-of-control-flow-types for more info.')
+            '#consistency-of-control-flow-types for more info.') from e
 
     if guarded_extra_test():
       for target in iter_:
@@ -978,7 +997,7 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
       # Note: Using try/except and not tensor_util.is_tf_type to avoid
       # performance degradation.
       return bool(test_result)
-    except errors_impl.OperatorNotAllowedInGraphError:
+    except errors_impl.OperatorNotAllowedInGraphError as e:
       ag_logging.log(
           1,
           'Caught error while evaluating while loop condition',
@@ -992,7 +1011,7 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
           ' remove the error.\nSee '
           'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
           'python/autograph/g3doc/reference/limitations.md'
-          '#consistency-of-control-flow-types for more info.')
+          '#consistency-of-control-flow-types for more info.') from e
   while guarded_test():
     body()
 
@@ -1003,7 +1022,8 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
   result = []
   for k in keys:
     map_key, map_val = mapping.get(id(k), (None, None))
-    result.append(map_val if map_key is k else None)
+    result.append(
+        map_val if map_key is k else nest.map_structure(lambda _: None, k))
   return tuple(result)
 
 
@@ -1017,21 +1037,25 @@ def _placeholder_value(like, shape_invariant, original=None):
   """Constructs a (dummy) placeholder value for a loop-initialized variable.
 
   Args:
-    like: Any object. The value created by the first iteration of the loop.
-      If a Python scalar, the placeholder will be the zero value of that type.
-      If a Tensor, the placeholder will be a zero tensor of matching shape and
-      dtype. If a list, dict or tuple, the placeholder will be an identical
-      structure of placeholders.
+    like: Any object. The value created by the first iteration of the loop. If a
+      Python scalar, the placeholder will be the zero value of that type. If a
+      Tensor, the placeholder will be a zero tensor of matching shape and dtype.
+      If a list, dict or tuple, the placeholder will be an identical structure
+      of placeholders.
     shape_invariant: The shape invariant specified by the user (or None, if
       nothing was specified) for the respective variable.
     original: Any object. The value of the variable prior to entering the loop.
       Typically, this is one of the special "Undefined" value, because that's
       when a placeholder is needed.
+
   Returns:
     Either a zero value of structure, shape and dtype mathing 'like', or
     'original', if no such zero value could be created.
   """
-  if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
+  if like is None:
+    return original, None
+
+  elif isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original, None
 
   elif isinstance(like, (int, float, bool)):
@@ -1088,7 +1112,11 @@ def _placeholder_value(like, shape_invariant, original=None):
     return (nest.pack_sequence_as(like,
                                   vals), nest.pack_sequence_as(like, invars))
 
-  return original, None
+  # This is to be caught by _try_handling_undefineds, to give more context.
+  raise TypeError(
+      "Found an unsupported type '{}' while creating placeholder for {}."
+      ' Supported types include Tensor, int, float, bool, list, tuple or dict.'
+      .format(type(like).__name__, like))
 
 
 def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
@@ -1106,17 +1134,24 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
     get_state: state getter for the loop statement. See while_stmt.
     set_state: state getter for the loop statement. See while_stmt.
     init_vars: loop variables before entering the loop. See while_stmt.
-    nulls: list of boolean flags indicating whether the corresponding loop
-        var is None or undefined.
+    nulls: list of boolean flags indicating whether the corresponding loop var
+      is None or undefined.
     shape_invariants: user-specified shape invariant for each loop variable.
     symbol_names: list of loop variable names. See while_stmt.
+
   Returns:
-    A tuple (success, new_init_vars). success is a boolean flag indicating
-    whether types could be successfully inferred (step 1 above). new_init_vars
-    contains the loop vars, with None or undefined values replaced by
-    placeholders, where possible (step 2 above).
+    A tuple (success, new_init_vars, extra_shape_invariants, failure_message):
+     * success is a boolean flag indicating
+       whether types could be successfully inferred (step 1 above)
+     * new_init_vars contains the loop vars, with None or undefined values
+       replaced by default values, where possible (step 2 above)
+     * extra_shape_invariants contains shape invariants that would be needed
+       by while_stmt, for instance if the placeholder values had a shape
+       different from the corresponding loop outputs
   """
   state_modified = False
+  first_iter_vars = None
+  failure_message = None
 
   try:
     # Stage an iteration of the loop body in a temporary graph.
@@ -1138,29 +1173,33 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
 
       body()
       first_iter_vars = get_state()
-  except (UnboundLocalError, TypeError, ValueError, KeyError):
-    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
-    # Fall back to the old functionality. It will likely result in an input
-    # validation failure.
-    first_iter_vars = None
-  finally:
-    if state_modified:
-      set_state(init_vars)
 
-  if first_iter_vars is not None:
-    # Note: the actual placeholder value doesn't matter, because as the staging
-    # proved, it will be replaced by an actual value before being read.
+    # Note: the actual placeholder value doesn't matter, because as the
+    # staging proved, it will be replaced by an actual value before being
+    # read.
     inits_and_invariants = tuple(
         (_placeholder_value(iv, i, v) if n else (v, None))
         for v, n, iv, i in zip(init_vars, nulls, first_iter_vars,
                                shape_invariants))
     init_vars, extra_shape_invariants = zip(*inits_and_invariants)
     success = True
-  else:
-    success = False
+
+  except (UnboundLocalError, TypeError, ValueError, KeyError):
+    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
+    # Fall back to the old functionality. It will likely result in an input
+    # validation failure.
+    exc = sys.exc_info()
+    failure_message = (
+        'Note: AutoGraph tried to define it automatically, but ran into a'
+        ' {}: {}'.format(exc[0].__name__, exc[1]))
+
+  finally:
+    if state_modified:
+      set_state(init_vars)
 
   # This check runs regardless, in case we captured non-Tensor inputs.
-  _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars)
+  _verify_loop_init_vars(
+      init_vars, symbol_names, first_iter_vars, extra_message=failure_message)
 
   return success, init_vars, extra_shape_invariants
 
@@ -1312,10 +1351,10 @@ def if_stmt(cond, body, orelse, get_state, set_state, symbol_names, nouts):
       for each composite symbol that may be modified in a branch of the
       conditional. The is usually the result of a call to get_state.
     symbol_names: Tuple containing basic loop var names.
-    nouts: Number of variables output by the statement. Vars which are
-      not outputs will not be passed through staged control flow such as
-      tf.cond. This includes variables that are defined before the conditional,
-      but are not used after it.
+    nouts: Number of variables output by the statement. Vars which are not
+      outputs will not be passed through staged control flow such as tf.cond.
+      This includes variables that are defined before the conditional, but are
+      not used after it.
   """
   # Note: tf.cond doesn't support SparseTensor.
   if tensors.is_dense_tensor(cond):

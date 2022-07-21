@@ -29,7 +29,7 @@ using OrderedNodeSet = OrderedSet<int32_t>;
 
 template <typename T>
 struct VecStruct {
-  typedef llvm::SmallVector<T, 4> type;
+  using type = llvm::SmallVector<T, 4>;
 };
 template <typename T>
 using Vec = typename VecStruct<T>::type;
@@ -52,7 +52,7 @@ struct Node {
 struct GraphCycles::Rep {
   Vec<Node*> nodes;
   // Indices for unused entries in nodes
-  Vec<int32_t> free_nodes;
+  Vec<int32_t> freeNodes;
 
   // Temporary state.
   // Results of forward DFS
@@ -67,9 +67,9 @@ struct GraphCycles::Rep {
   Vec<int32_t> stack;
 };
 
-GraphCycles::GraphCycles(int32_t num_nodes) : rep_(new Rep) {
-  rep_->nodes.reserve(num_nodes);
-  for (int32_t i = 0; i < num_nodes; ++i) {
+GraphCycles::GraphCycles(int32_t numNodes) : rep_(new Rep) {
+  rep_->nodes.reserve(numNodes);
+  for (int32_t i = 0; i < numNodes; ++i) {
     Node* n = new Node;
     n->visited = false;
     n->data = nullptr;
@@ -96,13 +96,13 @@ void GraphCycles::RemoveEdge(int32_t x, int32_t y) {
   // rank assignment remains valid after an edge deletion.
 }
 
-static bool ForwardDFS(GraphCycles::Rep* r, int32_t n, int32_t upper_bound);
-static void BackwardDFS(GraphCycles::Rep* r, int32_t n, int32_t lower_bound);
-static void Reorder(GraphCycles::Rep* r);
-static void Sort(const Vec<Node*>&, Vec<int32_t>* delta);
-static void MoveToList(GraphCycles::Rep* r, Vec<int32_t>* src,
+static bool forwardDfs(GraphCycles::Rep* r, int32_t n, int32_t upperBound);
+static void backwardDfs(GraphCycles::Rep* r, int32_t n, int32_t lowerBound);
+static void reorder(GraphCycles::Rep* r);
+static void sort(const Vec<Node*>&, Vec<int32_t>* delta);
+static void moveToList(GraphCycles::Rep* r, Vec<int32_t>* src,
                        Vec<int32_t>* dst);
-static void ClearVisitedBits(GraphCycles::Rep* r, const Vec<int32_t>& nodes);
+static void clearVisitedBits(GraphCycles::Rep* r, const Vec<int32_t>& nodes);
 
 bool GraphCycles::InsertEdge(int32_t x, int32_t y) {
   if (x == y) return false;
@@ -123,17 +123,17 @@ bool GraphCycles::InsertEdge(int32_t x, int32_t y) {
 
   // Current rank assignments are incompatible with the new edge.  Recompute.
   // We only need to consider nodes that fall in the range [ny->rank,nx->rank].
-  if (ForwardDFS(r, y, nx->rank)) {
+  if (forwardDfs(r, y, nx->rank)) {
     // Found a cycle.  Undo the insertion and tell caller.
     nx->out.Erase(y);
     ny->in.Erase(x);
     // Since we do not call Reorder() on this path, clear any visited
     // markers left by ForwardDFS.
-    ClearVisitedBits(r, r->deltaf);
+    clearVisitedBits(r, r->deltaf);
     return false;
   }
-  BackwardDFS(r, x, ny->rank);
-  Reorder(r);
+  backwardDfs(r, x, ny->rank);
+  reorder(r);
   return true;
 }
 
@@ -143,7 +143,7 @@ bool GraphCycles::InsertEdge(int32_t x, int32_t y) {
 // of the nodes of the path are all smaller than `upper_bound`.
 //
 // Returns true if such path exists.
-static bool ForwardDFS(GraphCycles::Rep* r, int32_t n, int32_t upper_bound) {
+static bool forwardDfs(GraphCycles::Rep* r, int32_t n, int32_t upperBound) {
   // Avoid recursion since stack space might be limited.
   // We instead keep a stack of nodes to visit.
   r->deltaf.clear();
@@ -160,10 +160,10 @@ static bool ForwardDFS(GraphCycles::Rep* r, int32_t n, int32_t upper_bound) {
 
     for (auto w : nn->out.GetSequence()) {
       Node* nw = r->nodes[w];
-      if (nw->rank == upper_bound) {
+      if (nw->rank == upperBound) {
         return true;
       }
-      if (!nw->visited && nw->rank < upper_bound) {
+      if (!nw->visited && nw->rank < upperBound) {
         r->stack.push_back(w);
       }
     }
@@ -173,7 +173,7 @@ static bool ForwardDFS(GraphCycles::Rep* r, int32_t n, int32_t upper_bound) {
 
 // Follows the edges from consumer to producer and visit all the nodes that
 // is reachable from node `n` and have rank larger than `lower_bound`.
-static void BackwardDFS(GraphCycles::Rep* r, int32_t n, int32_t lower_bound) {
+static void backwardDfs(GraphCycles::Rep* r, int32_t n, int32_t lowerBound) {
   r->deltab.clear();
   r->stack.clear();
   r->stack.push_back(n);
@@ -188,7 +188,7 @@ static void BackwardDFS(GraphCycles::Rep* r, int32_t n, int32_t lower_bound) {
 
     for (auto w : nn->in.GetSequence()) {
       Node* nw = r->nodes[w];
-      if (!nw->visited && lower_bound < nw->rank) {
+      if (!nw->visited && lowerBound < nw->rank) {
         r->stack.push_back(w);
       }
     }
@@ -197,14 +197,14 @@ static void BackwardDFS(GraphCycles::Rep* r, int32_t n, int32_t lower_bound) {
 
 // Recomputes rank assignments to make them compatible with the edges (producer
 // has smaller rank than its consumer)
-static void Reorder(GraphCycles::Rep* r) {
-  Sort(r->nodes, &r->deltab);
-  Sort(r->nodes, &r->deltaf);
+static void reorder(GraphCycles::Rep* r) {
+  sort(r->nodes, &r->deltab);
+  sort(r->nodes, &r->deltaf);
 
   // Adds contents of delta lists to list (backwards deltas first).
   r->list.clear();
-  MoveToList(r, &r->deltab, &r->list);
-  MoveToList(r, &r->deltaf, &r->list);
+  moveToList(r, &r->deltab, &r->list);
+  moveToList(r, &r->deltaf, &r->list);
 
   // Produce sorted list of all ranks that will be reassigned.
   r->merged.resize(r->deltab.size() + r->deltaf.size());
@@ -218,7 +218,7 @@ static void Reorder(GraphCycles::Rep* r) {
 }
 
 // Sorts nodes in the vector according to their ranks. Small rank first.
-static void Sort(const Vec<Node*>& nodes, Vec<int32_t>* delta) {
+static void sort(const Vec<Node*>& nodes, Vec<int32_t>* delta) {
   struct ByRank {
     const Vec<Node*>* nodes;
     bool operator()(int32_t a, int32_t b) const {
@@ -231,7 +231,7 @@ static void Sort(const Vec<Node*>& nodes, Vec<int32_t>* delta) {
 }
 
 // Collects ranks of nodes in vector `src` to vector `dst`
-static void MoveToList(GraphCycles::Rep* r, Vec<int32_t>* src,
+static void moveToList(GraphCycles::Rep* r, Vec<int32_t>* src,
                        Vec<int32_t>* dst) {
   for (Vec<int32_t>::size_type i = 0, e = src->size(); i < e; i++) {
     int32_t w = (*src)[i];
@@ -244,7 +244,7 @@ static void MoveToList(GraphCycles::Rep* r, Vec<int32_t>* src,
 }
 
 // Clears bookkeeping fileds used during the last DFS process.
-static void ClearVisitedBits(GraphCycles::Rep* r, const Vec<int32_t>& nodes) {
+static void clearVisitedBits(GraphCycles::Rep* r, const Vec<int32_t>& nodes) {
   for (Vec<int32_t>::size_type i = 0, e = nodes.size(); i < e; i++) {
     r->nodes[nodes[i]]->visited = false;
   }
@@ -262,10 +262,10 @@ bool GraphCycles::IsReachable(int32_t x, int32_t y) {
   }
 
   // See if x can reach y using a DFS search that is limited to y's rank
-  bool reachable = ForwardDFS(r, x, ny->rank);
+  bool reachable = forwardDfs(r, x, ny->rank);
 
   // Clear any visited markers left by ForwardDFS.
-  ClearVisitedBits(r, r->deltaf);
+  clearVisitedBits(r, r->deltaf);
   return reachable;
 }
 
@@ -294,7 +294,7 @@ llvm::Optional<int32_t> GraphCycles::ContractEdge(int32_t a, int32_t b) {
   for (int32_t y : in.GetSequence()) {
     rep_->nodes[y]->out.Erase(b);
   }
-  rep_->free_nodes.push_back(b);
+  rep_->freeNodes.push_back(b);
 
   rep_->nodes[a]->out.Reserve(rep_->nodes[a]->out.Size() + out.Size());
   for (int32_t y : out.GetSequence()) {
@@ -315,27 +315,27 @@ std::vector<int32_t> GraphCycles::SuccessorsCopy(int32_t node) const {
 }
 
 namespace {
-void SortInPostOrder(const Vec<Node*>& nodes, std::vector<int32_t>* to_sort) {
-  std::sort(to_sort->begin(), to_sort->end(), [&](int32_t a, int32_t b) {
+void sortInPostOrder(const Vec<Node*>& nodes, std::vector<int32_t>* toSort) {
+  std::sort(toSort->begin(), toSort->end(), [&](int32_t a, int32_t b) {
     return nodes[a]->rank > nodes[b]->rank;
   });
 }
 }  // namespace
 
 std::vector<int32_t> GraphCycles::AllNodesInPostOrder() const {
-  llvm::DenseSet<int32_t> free_nodes_set;
-  for (int32_t n : rep_->free_nodes) free_nodes_set.insert(n);
+  llvm::DenseSet<int32_t> freeNodesSet;
+  for (int32_t n : rep_->freeNodes) freeNodesSet.insert(n);
 
-  std::vector<int32_t> all_nodes;
-  all_nodes.reserve(rep_->nodes.size() - free_nodes_set.size());
+  std::vector<int32_t> allNodes;
+  allNodes.reserve(rep_->nodes.size() - freeNodesSet.size());
   for (size_t i = 0, e = rep_->nodes.size(); i < e; i++) {
-    if (!free_nodes_set.count(i)) {
-      all_nodes.push_back(i);
+    if (!freeNodesSet.count(i)) {
+      allNodes.push_back(i);
     }
   }
 
-  SortInPostOrder(rep_->nodes, &all_nodes);
-  return all_nodes;
+  sortInPostOrder(rep_->nodes, &allNodes);
+  return allNodes;
 }
 
 }  // namespace mlir

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_GRAPH_OPTIMIZATION_PASS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TF_GRAPH_OPTIMIZATION_PASS_H_
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
@@ -35,6 +36,9 @@ CreateTensorFlowGraphOptimizationPass(
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTensorFlowGraphOptimizationPass(
     const std::vector<std::string>& pass_names);
+
+// Register the pass for command line testing.
+void RegisterGraphOptimizationPasses();
 
 }  // namespace tensorflow
 

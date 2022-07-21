@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
+
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -31,7 +32,7 @@ using ::testing::ResultOf;
 using HloElementTypeConverterTest = HloTestBase;
 
 TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
     HloModule custom_call
     ENTRY CustomCall {
       constant = bf16[1]{0} constant({12345})
@@ -46,7 +47,7 @@ TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
 }
 
 TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
     HloModule InfeedOutfeed
     ENTRY RoundTrip16MiBR1.v2 {
       token0 = token[] after-all()
@@ -62,7 +63,7 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
 }
 
 TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
     HloModule NestedTuples
     ENTRY NestedTuples.v5 {
       constant.2 = f32[2]{0} constant({1, 2})
@@ -84,7 +85,7 @@ TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
 }
 
 TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
     HloModule BatchNormGrad
     ENTRY BatchNormGrad.v6 {
       constant.4 = bf16[2,2,2,1]{3,2,1,0} constant({ { /*i0=0*/
@@ -117,7 +118,7 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
 }
 
 TEST_F(HloElementTypeConverterTest, RngIsRemoved) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule RngIsRemoved
 
 ENTRY main {
@@ -131,18 +132,17 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
   EXPECT_TRUE(converted);
 
-  std::function<bool(const HloInstruction*)> is_bf16_rng =
-      [](const HloInstruction* inst) {
-        return inst->shape().element_type() == BF16 &&
-               inst->opcode() == HloOpcode::kRng;
-      };
+  HloPredicate is_bf16_rng = [](const HloInstruction* inst) {
+    return inst->shape().element_type() == BF16 &&
+           inst->opcode() == HloOpcode::kRng;
+  };
 
   EXPECT_THAT(module->entry_computation()->instructions(),
               Not(Contains(ResultOf(is_bf16_rng, Eq(true)))));
 }
 
 TEST_F(HloElementTypeConverterTest, RngCtrlDep) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule RngIsRemoved
 
 ENTRY main {
@@ -177,7 +177,7 @@ ENTRY main {
 }
 
 TEST_F(HloElementTypeConverterTest, BitcastConvertIsUnmodified) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
   HloModule test
 
   ENTRY test {

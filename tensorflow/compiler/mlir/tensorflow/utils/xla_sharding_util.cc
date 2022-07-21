@@ -36,10 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
-
-const char* const kInputShardingAttr = "input_sharding_configuration";
-const char* const kOutputShardingAttr = "output_sharding_configuration";
-
 namespace {
 
 constexpr char kNumSplitAttr[] = "num_split";
@@ -388,8 +384,8 @@ int MapClusterOutputIndexWithRegionOutputIndex(
 // the TPU computation result.
 llvm::SmallVector<mlir::Value, 4> GetTileShardedOutputsToMerge(
     const int cluster_func_output_index,
-    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::ParallelExecuteOp parallel_execute) {
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config, int cluster_idx,
+    mlir::tf_device::ParallelExecuteOp new_parallel_execute) {
   // Reorders outputs from TPUExecute op as defined by the output sharding
   // configuration.
   const xla::OpSharding& sharding =
@@ -399,8 +395,9 @@ llvm::SmallVector<mlir::Value, 4> GetTileShardedOutputsToMerge(
   for (const auto logical_device_id : sharding.tile_assignment_devices()) {
     const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
         output_sharding_config, logical_device_id, cluster_func_output_index);
-    const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
-        logical_device_id)[region_output_index];
+    const auto output_from_logical_device =
+        new_parallel_execute.GetRegionOutputs(
+            cluster_idx + logical_device_id)[region_output_index];
     outputs_to_merge.emplace_back(output_from_logical_device);
   }
 
@@ -412,16 +409,17 @@ void HandleTileShardedOutputs(
     const int cluster_func_output_index,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     const mlir::Location& location, mlir::Value cluster_func_output,
-    mlir::tf_device::ParallelExecuteOp parallel_execute,
+    int cluster_idx, mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
   // Inject concat ops after parallel_execute to merge outputs from
   // concurrently executed computations.
-  builder->setInsertionPointAfter(parallel_execute);
+  builder->setInsertionPointAfter(new_parallel_execute);
 
   // Reorders outputs from TPUExecute op as defined by the output sharding
   // configuration.
   auto outputs_to_merge = GetTileShardedOutputsToMerge(
-      cluster_func_output_index, output_sharding_config, parallel_execute);
+      cluster_func_output_index, output_sharding_config, cluster_idx,
+      new_parallel_execute);
 
   // Creates a tree of Concat ops that merges outputs from multiple logical
   // devices to a single replica output.
@@ -536,12 +534,13 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
 mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::ClusterFuncOp cluster_func,
-    mlir::tf_device::ParallelExecuteOp parallel_execute,
+    mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
+    mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
-  for (auto result_and_index : llvm::enumerate(cluster_func.getResults())) {
+  for (auto& result_and_index :
+       llvm::enumerate(old_parallel_execute.getResults())) {
     const auto output_index = result_and_index.index();
-    const auto cluster_func_output = result_and_index.value();
+    const auto old_parallel_execute_output = result_and_index.value();
     const auto& output_sharding = output_sharding_config[output_index];
     const auto output_sharding_type = output_sharding.type();
 
@@ -549,9 +548,9 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     // replicated sharding is supported where i-th output of
     // `tf.TPUPartitionedOutput` op maps to the output of i-th logical device.
     // Also `tf.TPUPartitionedOutput` op must be a unique user of
-    // `tf_device.cluster_func` output.
+    // TPU Cluster (`tf_device.old_parallel_execute`) output.
     mlir::TF::TPUPartitionedOutputOp partitioned_output;
-    for (auto user : cluster_func_output.getUsers()) {
+    for (auto user : old_parallel_execute_output.getUsers()) {
       if (auto partitioned_output_user =
               llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedOutputOp>(user)) {
         partitioned_output = partitioned_output_user;
@@ -559,12 +558,13 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       }
     }
     if (partitioned_output) {
-      if (!cluster_func_output.hasOneUse())
+      if (!old_parallel_execute_output.hasOneUse())
         return partitioned_output.emitOpError()
-               << "must be a unique user of tf_device.cluster_func output "
-               << *cluster_func_output.getOwner();
+               << "must be a unique user of TPU Cluster "
+                  "(tf_device.old_parallel_execute) output "
+               << *old_parallel_execute_output.getOwner();
       if (UnsupportedPartitionedShardingType(output_sharding_type))
-        return cluster_func.emitOpError()
+        return old_parallel_execute.emitOpError()
                << "unsupported output sharding type "
                << OpSharding_Type_Name(output_sharding_type) << " for "
                << output_index << "-th output";
@@ -573,15 +573,16 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
         for (auto index_and_output :
              llvm::enumerate(partitioned_output.output())) {
           const auto output_from_logical_device =
-              parallel_execute.GetRegionOutputs(
-                  index_and_output.index())[output_index];
+              new_parallel_execute.GetRegionOutputs(
+                  cluster_idx + index_and_output.index())[output_index];
           index_and_output.value().replaceAllUsesWith(
               output_from_logical_device);
         }
       } else {
         assert(output_sharding_type == xla::OpSharding::OTHER);
-        auto tile_sharded_outputs = GetTileShardedOutputsToMerge(
-            output_index, output_sharding_config, parallel_execute);
+        auto tile_sharded_outputs =
+            GetTileShardedOutputsToMerge(output_index, output_sharding_config,
+                                         cluster_idx, new_parallel_execute);
         for (auto result :
              llvm::zip(partitioned_output.output(), tile_sharded_outputs))
           std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
@@ -591,7 +592,8 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
 
     if (output_sharding_type == xla::OpSharding::OTHER) {
       HandleTileShardedOutputs(output_index, output_sharding_config, location,
-                               cluster_func_output, parallel_execute, builder);
+                               old_parallel_execute_output, cluster_idx,
+                               new_parallel_execute, builder);
       continue;
     }
 
@@ -604,9 +606,10 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
         output_sharding_config, logical_device_id, output_index);
 
-    const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
-        logical_device_id)[region_output_index];
-    cluster_func_output.replaceAllUsesWith(output_from_logical_device);
+    const auto output_from_logical_device =
+        new_parallel_execute.GetRegionOutputs(
+            cluster_idx + logical_device_id)[region_output_index];
+    old_parallel_execute_output.replaceAllUsesWith(output_from_logical_device);
   }
   return mlir::success();
 }

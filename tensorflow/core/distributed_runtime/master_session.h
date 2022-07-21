@@ -57,7 +57,7 @@ class MasterSession : public core::RefCounted {
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
-  Status Create(GraphDef&& def, const WorkerCacheFactoryOptions& options);
+  Status Create(GraphDef&& def, const ClusterDef& cluster_def);
 
   // Returns the session handle.
   const string& handle() const { return handle_; }
@@ -217,7 +217,7 @@ class MasterSession : public core::RefCounted {
   // If this session is operating using the new ClusterSpec propagation behavior
   // call this method in order to propagate the cluster membership to all
   // workers.
-  Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
+  Status CreateWorkerSessions(const ClusterDef& cluster_def);
 
   bool should_delete_worker_sessions_ = false;
   Status DeleteWorkerSessions();

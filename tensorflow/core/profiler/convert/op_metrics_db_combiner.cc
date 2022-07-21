@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -56,7 +59,8 @@ void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   }
 }
 
-void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
+void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst,
+                      bool update_num_cores) {
   DCHECK(dst != nullptr);
   if (dst->occurrences() == 0) {
     dst->set_min_time_ps(src.min_time_ps());
@@ -69,6 +73,10 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   dst->set_self_time_ps(src.self_time_ps() + dst->self_time_ps());
   dst->set_flops(src.flops() + dst->flops());
   dst->set_bytes_accessed(src.bytes_accessed() + dst->bytes_accessed());
+  dst->set_autotuned(dst->autotuned() || src.autotuned());
+  if (update_num_cores) {
+    dst->set_num_cores(src.num_cores() + dst->num_cores());
+  }
   CombineMemoryAccessedBreakdown(src.memory_accessed_breakdown(),
                                  dst->mutable_memory_accessed_breakdown());
   dst->set_dma_stall_ps(src.dma_stall_ps() + dst->dma_stall_ps());
@@ -102,7 +110,8 @@ void CombineMemoryAccessedBreakdown(
   }
 }
 
-void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
+void OpMetricsDbCombiner::Combine(const OpMetricsDb& src,
+                                  bool update_num_cores) {
   OpMetricsDb* dst = db();
   dst->set_total_host_infeed_enq_duration_ps(
       src.total_host_infeed_enq_duration_ps() +
@@ -118,7 +127,7 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),
                                                    src_metrics.name());
     CopyOpMetricsMetadata(src_metrics, dst_metrics);
-    CombineOpMetrics(src_metrics, dst_metrics);
+    CombineOpMetrics(src_metrics, dst_metrics, update_num_cores);
   }
 }
 

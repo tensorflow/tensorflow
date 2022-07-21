@@ -27,9 +27,11 @@ namespace mlir {
 // name to '.'.
 void LegalizeNodeName(std::string& name);
 
-// Creates a TensorFlow node name from a location.
+// Returns the TensorFlow node name associated with a location.
 std::string GetNameFromLoc(Location loc);
 
+// Returns the TensorFlow op type associated with a location.
+std::string GetOpTypeFromLoc(Location loc);
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_

@@ -14,10 +14,6 @@
 # ==============================================================================
 """A variable which packs a list of variables distributed across devices."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops

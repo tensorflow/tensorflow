@@ -1,7 +1,7 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -103,7 +103,6 @@ cc_library(
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:env_time",
-        "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:load_library",
@@ -117,6 +116,7 @@ cc_library(
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
@@ -415,41 +415,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test_benchmark",
-    testonly = True,
-    srcs = ["test_benchmark.cc"],
-    hdrs = ["test_benchmark.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/core/util:reporter",
-    ],
-)
-
-tf_cc_test(
-    name = "test_benchmark_test",
-    srcs = ["test_benchmark_test.cc"],
-    tags = [
-        "nobuilder",
-        "notap",
-    ],
-    deps = [
-        ":test_benchmark",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
-)
-
-cc_library(
     name = "test",
     testonly = True,
     srcs = ["test.cc"],
@@ -609,7 +574,6 @@ exports_files(
             "integral_types.h",
             "logging.h",
             "test.cc",
-            "test_benchmark.cc",
         ],
     ),
     visibility = ["//tensorflow/core/platform:__pkg__"],
@@ -620,7 +584,6 @@ exports_files(
         "integral_types.h",
         "logging.h",
         "test.cc",
-        "test_benchmark.cc",
     ],
     visibility = [":core_and_platform_packages"],
 )

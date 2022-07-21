@@ -98,7 +98,7 @@ PYBIND11_MODULE(_pywrap_tf_optimizer, m) {
             tensorflow::grappler::MetaOptimizer optimizer(cpu_device,
                                                           config_proto);
 
-            MaybeRaiseRegisteredFromStatus(
+            MaybeRaiseRegisteredFromStatusWithGIL(
                 optimizer.Optimize(cluster, *grappler_item, &out_graph));
             if (strip_default_attributes) {
               tensorflow::StripDefaultAttributes(

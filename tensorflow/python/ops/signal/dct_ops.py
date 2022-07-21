@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Discrete Cosine Transform ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math as _math
 
 from tensorflow.python.framework import dtypes as _dtypes

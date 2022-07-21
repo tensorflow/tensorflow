@@ -14,10 +14,6 @@
 # ==============================================================================
 """CSR sparse matrix tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from scipy import sparse
 
@@ -171,6 +167,25 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     self.assertAllEqual(a_indices, a_st_rt_value.indices)
     self.assertAllClose(a_values, a_st_rt_value.values)
     self.assertAllEqual(a_dense_shape, a_st_rt_value.dense_shape)
+
+  def testSparseTensorConversionInvalidInputShapes(self):
+    values = constant_op.constant(
+        0.554979503, shape=[5], dtype=dtypes.float32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 1"):
+      indices = constant_op.constant(0, shape=[5, 2], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(53, shape=[], dtype=dtypes.int64)
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape)
+      self.evaluate(csr)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 2"):
+      indices = constant_op.constant(0, shape=[5], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(53, shape=[1], dtype=dtypes.int64)
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape)
+      self.evaluate(csr)
 
   # TODO(b/139491352): Add handle_data propagation to array_ops.identity.
   @test_util.run_deprecated_v1

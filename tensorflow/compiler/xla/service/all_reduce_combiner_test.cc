@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -31,12 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 int64_t kMaxCombineCount = 256;
@@ -57,7 +55,7 @@ int64_t AllReduceCount(const HloModule& module) {
 }
 
 // inputs[i] will be some op producing a shape of size sizes_in_kib[i] which
-// feeds into a a all reduce op in all_reduces[i]. Returns a tuple
+// feeds into all reduce op in all_reduces[i]. Returns a tuple
 // of the all_reduces.
 HloInstruction* MakeCrossReplicaReductions(
     std::vector<int64_t> sizes_in_kib, std::vector<HloComputation*> reductions,
@@ -70,7 +68,7 @@ HloInstruction* MakeCrossReplicaReductions(
     auto constant = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
     Shape shape = ShapeUtil::MakeShape(
-        F32, {static_cast<int32>(size_in_kib * 1024 / sizeof(float))});
+        F32, {static_cast<int32_t>(size_in_kib * 1024 / sizeof(float))});
     auto input =
         b->AddInstruction(HloInstruction::CreateBroadcast(shape, constant, {}));
     inputs->push_back(input);

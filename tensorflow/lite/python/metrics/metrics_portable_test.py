@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python metrics helpr TFLiteMetrics check."""
-from tensorflow.lite.python.metrics import metrics_portable as metrics
+from tensorflow.lite.python.metrics import metrics
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 

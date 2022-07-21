@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "mlir-hlo/utils/codegen_utils.h"
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
@@ -28,85 +29,82 @@ namespace codegen_utils {
 
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref) {
   int rank = memref.getType().cast<MemRefType>().getRank();
-  Value num_elements;
-  num_elements = b.create<mlir::ConstantOp>(
+  Value numElements;
+  numElements = b.create<mlir::arith::ConstantOp>(
       loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
   for (int r = 0; r < rank; ++r) {
-    auto dim_size = b.create<memref::DimOp>(loc, memref, r);
-    num_elements = b.create<MulIOp>(loc, num_elements, dim_size);
+    auto dimSize = b.create<memref::DimOp>(loc, memref, r);
+    numElements = b.create<arith::MulIOp>(loc, numElements, dimSize);
   }
-  return num_elements;
+  return numElements;
 }
 
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Operation* op) {
   // only const rank is supported for now
   assert(op->getDialect()->getNamespace() == "lmhlo");
-  int num_operands = op->getNumOperands();
-  Value result_memref = op->getOperand(num_operands - 1);
-  return emitNumElementsComputation(b, loc, result_memref);
+  int numOperands = op->getNumOperands();
+  Value resultMemref = op->getOperand(numOperands - 1);
+  return emitNumElementsComputation(b, loc, resultMemref);
 }
 
-SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                        Value linear_index,
-                                        ArrayRef<Value> shape) {
+SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                     Value linearIndex, ArrayRef<Value> shape) {
   int rank = shape.size();
-  SmallVector<Value, 4> result;
+  SmallVector<Value> result;
   if (rank == 0) return result;
   if (rank == 1) {
-    result.push_back(linear_index);
+    result.push_back(linearIndex);
     return result;
   }
 
   // dim_acc_mul_vec = [d, c*d, b*c*d]
-  std::vector<Value> dim_acc_mul_vec;
-  Value tmp_acc_mul = shape[rank - 1];
-  dim_acc_mul_vec.emplace_back(tmp_acc_mul);
+  SmallVector<Value> dimAccMulVec;
+  Value tmpAccMul = shape[rank - 1];
+  dimAccMulVec.emplace_back(tmpAccMul);
   for (int i = rank - 2; i > 0; --i) {
-    tmp_acc_mul = b.create<MulIOp>(loc, tmp_acc_mul, shape[i]);
-    dim_acc_mul_vec.emplace_back(tmp_acc_mul);
+    tmpAccMul = b.create<arith::MulIOp>(loc, tmpAccMul, shape[i]);
+    dimAccMulVec.emplace_back(tmpAccMul);
   }
-  Value block_index = linear_index;
+  Value blockIndex = linearIndex;
   for (int i = 0; i < rank; ++i) {
     Value index;
     if (i == rank - 1) {
-      index = block_index;
+      index = blockIndex;
     } else {
-      index =
-          b.create<UnsignedDivIOp>(loc, block_index, dim_acc_mul_vec.back());
-      block_index =
-          b.create<UnsignedRemIOp>(loc, block_index, dim_acc_mul_vec.back());
-      dim_acc_mul_vec.pop_back();
+      index = b.create<arith::DivUIOp>(loc, blockIndex, dimAccMulVec.back());
+      blockIndex =
+          b.create<arith::RemUIOp>(loc, blockIndex, dimAccMulVec.back());
+      dimAccMulVec.pop_back();
     }
     result.push_back(index);
   }
   return result;
 }
 
-SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                        Value linear_index, Value memref) {
+SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                     Value linearIndex, Value memref) {
   int rank = memref.getType().cast<MemRefType>().getRank();
-  SmallVector<Value, 4> result;
+  SmallVector<Value> result;
   if (rank == 0) return result;
   if (rank == 1) {
-    result.push_back(linear_index);
+    result.push_back(linearIndex);
     return result;
   }
   // shape = [a, b, c, d]
-  SmallVector<Value, 4> shape_vec;
+  SmallVector<Value, 4> shapeVec;
   for (int i = 0; i < rank; ++i) {
-    shape_vec.push_back(b.create<memref::DimOp>(loc, memref, i));
+    shapeVec.push_back(b.create<memref::DimOp>(loc, memref, i));
   }
 
-  return calcMultiDimIndex(b, loc, linear_index, shape_vec);
+  return calcMultiDimIndex(b, loc, linearIndex, shapeVec);
 }
 
-SmallVector<Value, 4> calcMultiDimIndexForFirstOperand(OpBuilder& b,
-                                                       Location loc,
-                                                       Value linear_index,
-                                                       Operation* op) {
+SmallVector<Value> calcMultiDimIndexForFirstOperand(OpBuilder& b, Location loc,
+                                                    Value linearIndex,
+                                                    Operation* op) {
   assert(op->getDialect()->getNamespace() == "lmhlo");
-  Value operand_memref = op->getOperand(0);
-  return calcMultiDimIndex(b, loc, linear_index, operand_memref);
+  Value operandMemref = op->getOperand(0);
+  return calcMultiDimIndex(b, loc, linearIndex, operandMemref);
 }
 
 }  // namespace codegen_utils

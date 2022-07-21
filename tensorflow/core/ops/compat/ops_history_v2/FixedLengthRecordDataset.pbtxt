@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "FixedLengthRecordDataset"
   input_arg {
     name: "filenames"
@@ -51,6 +51,50 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "FixedLengthRecordDataset"
+  input_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "header_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "record_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "footer_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
   }
   attr {
     name: "metadata"

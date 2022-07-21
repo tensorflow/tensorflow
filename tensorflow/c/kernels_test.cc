@@ -100,6 +100,7 @@ static void MyDeleteFunc(void* kernel) {
 }
 
 namespace tensorflow {
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 static std::unique_ptr<OpKernel> GetFakeKernel(const char* device_name,
                                                const char* op_name,
@@ -162,6 +163,52 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
   ASSERT_TRUE(delete_called);
 }
 
+TEST(TestKernel, TF_RegisterKernelBuilderWithKernelDef) {
+  const char* node_name = "SomeNodeName";
+  const char* op_name = "FooOp1";
+  const char* device_name = "FakeDeviceName2";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("SomeDataTypeAttr: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+
+  KernelDef kernel_def;
+  kernel_def.set_op(op_name);
+  kernel_def.set_device_type(device_name);
+  std::string kernel_def_str = kernel_def.SerializePartialAsString();
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilderWithKernelDef(kernel_def_str.data(), node_name,
+                                          builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    KernelList list;
+    list.ParseFromArray(buf->data, buf->length);
+    ASSERT_EQ(1, list.kernel_size());
+    ASSERT_EQ(device_name, list.kernel(0).device_type());
+    TF_DeleteBuffer(buf);
+    TF_DeleteStatus(status);
+  }
+
+  {
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+    kernel->Compute(nullptr);
+  }
+
+  ASSERT_TRUE(delete_called);
+}
+
 // REGISTER_OP for TF_OpKernelConstruction_GetAttr* test cases.
 // Registers two ops, each with a single attribute called 'Attr'.
 // The attribute in one op will have a type 'type', the other
@@ -178,6 +225,7 @@ ATTR_TEST_REGISTER_OP(Int, int);
 ATTR_TEST_REGISTER_OP(Float, float);
 ATTR_TEST_REGISTER_OP(Bool, bool);
 ATTR_TEST_REGISTER_OP(Type, type);
+ATTR_TEST_REGISTER_OP(Tensor, tensor);
 #undef ATTR_TEST_REGISTER_OP
 
 // Helper macros for the TF_OpKernelConstruction_GetAttr* tests.
@@ -321,6 +369,142 @@ TEST_F(TestKernelAttr, StringList) {
   std::string attr_in[] = {"bugs", "bunny", "duck"};
   SetAttrValue(gtl::ArraySlice<std::string>(attr_in, 3), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrStringList", v);
+}
+
+TEST_F(TestKernelAttr, Tensor) {
+  struct TensorProtoHelpers {
+   public:
+    static ::tensorflow::TensorProto GenerateTensorProto() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+      tensor_proto.set_dtype(DT_INT32);
+      tensor_proto.add_int_val(1);
+      tensor_proto.add_int_val(2);
+      tensor_proto.add_int_val(3);
+      tensor_proto.add_int_val(4);
+      tensor_proto.add_int_val(5);
+      tensor_proto.add_int_val(6);
+      return tensor_proto;
+    }
+  };
+
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    TF_Tensor* val;
+    TF_Status* status = TF_NewStatus();
+    EXPECT_TF_SIZE(/*attr_name*/ "Attr", /*expected_list_size*/ -1,
+                   /*expected_total_size*/ -1);
+    TF_OpKernelConstruction_GetAttrTensor(ctx, "Attr", &val, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    ::tensorflow::Tensor expected_tensor;
+    EXPECT_TRUE(
+        expected_tensor.FromProto(TensorProtoHelpers::GenerateTensorProto()));
+
+    ::tensorflow::Tensor actual_tensor;
+    EXPECT_TRUE(TF_TensorToTensor(val, &actual_tensor).ok());
+
+    EXPECT_EQ(actual_tensor.tensor_data(), expected_tensor.tensor_data());
+    EXPECT_EQ(actual_tensor.shape(), expected_tensor.shape());
+    EXPECT_EQ(actual_tensor.dtype(), expected_tensor.dtype());
+
+    TF_DeleteStatus(status);
+    TF_DeleteTensor(val);
+    return static_cast<void*>(s);
+  };
+
+  AttrValue v;
+  ::tensorflow::TensorProto* tensor_proto = v.mutable_tensor();
+  *tensor_proto = TensorProtoHelpers::GenerateTensorProto();
+
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTensor", v);
+}
+
+TEST_F(TestKernelAttr, TensorList) {
+  struct TensorProtoHelpers {
+   public:
+    static ::tensorflow::TensorProto GenerateTensorProto1() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.set_dtype(DT_INT32);
+      tensor_proto.add_int_val(1);
+      tensor_proto.add_int_val(2);
+      tensor_proto.add_int_val(3);
+      tensor_proto.add_int_val(4);
+      return tensor_proto;
+    }
+
+    static ::tensorflow::TensorProto GenerateTensorProto2() {
+      ::tensorflow::TensorProto tensor_proto;
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+      tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+      tensor_proto.set_dtype(DT_FLOAT);
+      tensor_proto.add_float_val(5.0f);
+      tensor_proto.add_float_val(6.0f);
+      tensor_proto.add_float_val(7.0f);
+      tensor_proto.add_float_val(8.0f);
+      tensor_proto.add_float_val(9.0f);
+      tensor_proto.add_float_val(10.0f);
+      return tensor_proto;
+    }
+  };
+
+  auto my_create_func = [](TF_OpKernelConstruction* ctx) {
+    struct MyCustomKernel* s = new struct MyCustomKernel;
+    s->created = true;
+    s->compute_called = false;
+
+    const size_t list_size = 2;
+    TF_Tensor* values[list_size];
+
+    TF_Status* status = TF_NewStatus();
+    EXPECT_TF_SIZE(/*attr_name*/ "Attr", /*expected_list_size*/ list_size,
+                   /*expected_total_size*/ -1);
+    TF_OpKernelConstruction_GetAttrTensorList(ctx, "Attr", values, list_size,
+                                              status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    ::tensorflow::Tensor expected_tensor1;
+    EXPECT_TRUE(
+        expected_tensor1.FromProto(TensorProtoHelpers::GenerateTensorProto1()));
+
+    ::tensorflow::Tensor actual_tensor1;
+    EXPECT_TRUE(TF_TensorToTensor(values[0], &actual_tensor1).ok());
+
+    EXPECT_EQ(actual_tensor1.tensor_data(), expected_tensor1.tensor_data());
+    EXPECT_EQ(actual_tensor1.shape(), expected_tensor1.shape());
+    EXPECT_EQ(actual_tensor1.dtype(), expected_tensor1.dtype());
+
+    ::tensorflow::Tensor expected_tensor2;
+    EXPECT_TRUE(
+        expected_tensor2.FromProto(TensorProtoHelpers::GenerateTensorProto2()));
+
+    ::tensorflow::Tensor actual_tensor2;
+    EXPECT_TRUE(TF_TensorToTensor(values[1], &actual_tensor2).ok());
+
+    EXPECT_EQ(actual_tensor2.tensor_data(), expected_tensor2.tensor_data());
+    EXPECT_EQ(actual_tensor2.shape(), expected_tensor2.shape());
+    EXPECT_EQ(actual_tensor2.dtype(), expected_tensor2.dtype());
+
+    TF_DeleteStatus(status);
+    TF_DeleteTensor(values[0]);
+    TF_DeleteTensor(values[1]);
+    return static_cast<void*>(s);
+  };
+
+  AttrValue v;
+  ::tensorflow::TensorProto* tensor_proto1 = v.mutable_list()->add_tensor();
+  *tensor_proto1 = TensorProtoHelpers::GenerateTensorProto1();
+
+  ::tensorflow::TensorProto* tensor_proto2 = v.mutable_list()->add_tensor();
+  *tensor_proto2 = TensorProtoHelpers::GenerateTensorProto2();
+
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTensorList", v);
 }
 
 TEST_F(TestKernelAttr, Int) {
@@ -572,6 +756,12 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     EXPECT_EQ(TF_UINT8, TF_ExpectedOutputDataType(ctx, 0));
 
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, 1); },
+                 "Check failed: i < cc_ctx->num_outputs");
+
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, -1); },
+                 "Check failed: i >= 0");
+
     TF_DeleteStatus(s);
     if (input != nullptr) {
       TF_DeleteTensor(input);
@@ -600,7 +790,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     // Simulate 2 inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
-    p.inputs = &inputs;
+    p.inputs = inputs;
 
     Status status;
     std::unique_ptr<OpKernel> kernel =
@@ -664,7 +854,10 @@ std::string ExpectedString(const char* type) {
     EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
     KernelList list;                                                         \
     list.ParseFromArray(buf->data, buf->length);                             \
-    ASSERT_EQ(ExpectedString(#dtype), list.DebugString());                   \
+    KernelList expected_proto;                                               \
+    protobuf::TextFormat::ParseFromString(ExpectedString(#dtype),            \
+                                          &expected_proto);                  \
+    ASSERT_EQ(expected_proto.DebugString(), list.DebugString());             \
                                                                              \
     TF_DeleteBuffer(buf);                                                    \
     TF_DeleteStatus(status);                                                 \
@@ -713,14 +906,17 @@ TEST(TestKernel, TestHostMemory) {
   EXPECT_EQ(TF_OK, TF_GetCode(status));
   KernelList list;
   list.ParseFromArray(buf->data, buf->length);
-  const auto expected_str = R"str(kernel {
+  KernelList expected_proto;
+  protobuf::TextFormat::ParseFromString(
+      R"str(kernel {
   op: "HostMemoryOp"
   device_type: "FakeDeviceName1"
   host_memory_arg: "input2"
   host_memory_arg: "output1"
 }
-)str";
-  ASSERT_EQ(expected_str, list.DebugString());
+)str",
+      &expected_proto);
+  ASSERT_EQ(list.DebugString(), expected_proto.DebugString());
 
   TF_DeleteBuffer(buf);
   TF_DeleteStatus(status);
@@ -969,6 +1165,78 @@ TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
             output->DebugString(100));
 }
 
+REGISTER_OP("DoNothingOp")
+    .Input("input1: float")
+    .Input("input2: float")
+    .Output("output1: float")
+    .Attr("SomeDataTypeAttr: type");
+
+TEST_F(DeviceKernelOpTest, TestGetKernelInfo) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    int64_t dim[1] = {1};
+    TF_AllocatorAttributes alloc_attrs;
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    alloc_attrs.on_host = 0;
+#else
+    alloc_attrs.on_host = 1;
+#endif
+
+    // Test if the C API returns expected strings.
+    TF_StringView sv = TF_GetOpKernelName(ctx);
+    EXPECT_STREQ(sv.data, "TestGetKernelInfoNode");
+
+    sv = TF_GetOpKernelRequestedInput(ctx, 0);
+    EXPECT_STREQ(sv.data, "input1");
+
+    sv = TF_GetOpKernelRequestedInput(ctx, 1);
+    EXPECT_STREQ(sv.data, "input2");
+
+    TF_Tensor* output = TF_AllocateTemp(
+        /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/dim,
+        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
+    TF_SetOutput(ctx, 0, output, s);
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  const char* node_name = "TestGetKernelInfoNode";
+  const char* op_name = "DoNothingOp";
+  const char* device_name = "FakeDeviceName";
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(op_name, device_name, nullptr,
+                                                  my_compute_func, nullptr);
+
+  TF_Status* status = TF_NewStatus();
+  TF_RegisterKernelBuilder(node_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  TF_DeleteStatus(status);
+
+  {
+    OpKernelContext::Params p;
+    DummyDevice dummy_device(nullptr);
+    p.device = &dummy_device;
+    AllocatorAttributes alloc_attrs;
+    p.output_attr_array = &alloc_attrs;
+
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    Tensor t0(1.0f);
+    Tensor t1(2.0f);
+    inputs.emplace_back(&t0);
+    inputs.emplace_back(&t1);
+
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+
+    p.op_kernel = kernel.get();
+    OpKernelContext ctx(&p);
+    kernel->Compute(&ctx);
+  }
+}
+
 TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
   const char* node_name = "TestForwardInputOrAllocateOutputKernel";
   const char* op_name = "BazOp";
@@ -1022,7 +1290,7 @@ TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
     // GetFakeKernel requires a NodeDef with two inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
-    p.inputs = &inputs;
+    p.inputs = inputs;
 
     Status status;
     std::unique_ptr<OpKernel> kernel =

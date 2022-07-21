@@ -122,11 +122,19 @@ port::StatusOr<void*> GetCudnnDsoHandle() {
 }
 
 port::StatusOr<void*> GetNvInferDsoHandle() {
+#if defined(PLATFORM_WINDOWS)
+  return GetDsoHandle("nvinfer", "");
+#else
   return GetDsoHandle("nvinfer", GetTensorRTVersion());
+#endif
 }
 
 port::StatusOr<void*> GetNvInferPluginDsoHandle() {
+#if defined(PLATFORM_WINDOWS)
+  return GetDsoHandle("nvinfer_plugin", "");
+#else
   return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
+#endif
 }
 
 port::StatusOr<void*> GetRocblasDsoHandle() {
@@ -138,11 +146,7 @@ port::StatusOr<void*> GetMiopenDsoHandle() {
 }
 
 port::StatusOr<void*> GetHipfftDsoHandle() {
-#if TF_ROCM_VERSION < 40100
-  return GetDsoHandle("rocfft", "");
-#else
   return GetDsoHandle("hipfft", "");
-#endif
 }
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
@@ -152,6 +156,12 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
 port::StatusOr<void*> GetRocsolverDsoHandle() {
   return GetDsoHandle("rocsolver", "");
 }
+
+#if TF_ROCM_VERSION >= 40500
+port::StatusOr<void*> GetHipsolverDsoHandle() {
+  return GetDsoHandle("hipsolver", "");
+}
+#endif
 
 port::StatusOr<void*> GetRoctracerDsoHandle() {
   return GetDsoHandle("roctracer64", "");
@@ -245,6 +255,13 @@ port::StatusOr<void*> GetRocsolverDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocsolverDsoHandle());
   return *result;
 }
+
+#if TF_ROCM_VERSION >= 40500
+port::StatusOr<void*> GetHipsolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipsolverDsoHandle());
+  return *result;
+}
+#endif
 
 port::StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());

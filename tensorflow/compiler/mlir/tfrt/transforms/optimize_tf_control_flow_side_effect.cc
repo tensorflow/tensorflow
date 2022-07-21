@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -22,8 +23,8 @@ namespace tfrt_compiler {
 namespace {
 
 bool FunctionHasSideEffect(
-    mlir::FuncOp func_op,
-    llvm::DenseMap<mlir::FuncOp, bool>& function_side_effect) {
+    mlir::func::FuncOp func_op,
+    llvm::DenseMap<mlir::func::FuncOp, bool>& function_side_effect) {
   auto iter = function_side_effect.find(func_op);
   if (iter != function_side_effect.end()) return iter->second;
 
@@ -76,6 +77,11 @@ bool FunctionHasSideEffect(
 class OptimizeTfControlFlowSideEffectPass
     : public mlir::PassWrapper<OptimizeTfControlFlowSideEffectPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      OptimizeTfControlFlowSideEffectPass)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-optimize-tf-control-flow-side-effect";
   }
@@ -85,7 +91,7 @@ class OptimizeTfControlFlowSideEffectPass
   }
   void runOnOperation() override {
     auto module = getOperation();
-    llvm::DenseMap<mlir::FuncOp, bool> function_side_effect;
+    llvm::DenseMap<mlir::func::FuncOp, bool> function_side_effect;
 
     mlir::Builder builder(module.getContext());
     module.walk([&](mlir::Operation* op) {

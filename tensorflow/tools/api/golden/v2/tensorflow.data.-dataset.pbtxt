@@ -83,6 +83,10 @@ tf_class {
     argspec: "args=[\'file_pattern\', \'shuffle\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "load"
+    argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "map"
     argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
@@ -121,6 +125,10 @@ tf_class {
   member_method {
     name: "sample_from_datasets"
     argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\', \'path\', \'compression\', \'shard_func\', \'checkpoint_args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "scan"

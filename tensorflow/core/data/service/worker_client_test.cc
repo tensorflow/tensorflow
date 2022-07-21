@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_client.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -56,42 +57,45 @@ constexpr const char kProtocol[] = "grpc";
 class WorkerClientTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    test_cluster_ = absl::make_unique<TestCluster>(/*num_workers=*/1);
+    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1);
     TF_ASSERT_OK(test_cluster_->Initialize());
-    dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+    dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<int64_t> RegisterDataset(const int64_t range) {
+  StatusOr<std::string> RegisterDataset(const int64_t range) {
     const auto dataset_def = RangeSquareDataset(range);
-    int64_t dataset_id = 0;
-    absl::optional<std::string> element_spec;
+    std::string dataset_id;
     TF_RETURN_IF_ERROR(dispatcher_client_->RegisterDataset(
-        dataset_def, element_spec, dataset_id));
+        dataset_def, DataServiceMetadata(), dataset_id));
     return dataset_id;
   }
 
-  // Creates a job and returns the job client ID.
-  StatusOr<int64_t> CreateJob(const int64_t dataset_id) {
+  // Creates a iteration and returns the iteration client ID.
+  StatusOr<int64_t> CreateIteration(const std::string& dataset_id) {
     ProcessingModeDef processing_mode;
     processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
-    int64_t job_client_id = 0;
+    int64_t job_id = 0;
     TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateJob(
-        dataset_id, processing_mode, /*job_key=*/absl::nullopt,
-        /*num_consumers=*/absl::nullopt, TARGET_WORKERS_AUTO, job_client_id));
-    return job_client_id;
+        dataset_id, processing_mode, /*job_name=*/std::nullopt,
+        /*num_consumers=*/std::nullopt, /*use_cross_trainer_cache=*/false,
+        TARGET_WORKERS_AUTO, job_id));
+    int64_t iteration_client_id = 0;
+    TF_RETURN_IF_ERROR(dispatcher_client_->GetOrCreateIteration(
+        job_id, /*repetition=*/0, iteration_client_id));
+    return iteration_client_id;
   }
 
-  // Gets the task for job `job_client_id`.
-  StatusOr<int64_t> GetTaskToRead(const int64_t job_client_id) {
+  // Gets the task for iteration `iteration_client_id`.
+  StatusOr<int64_t> GetTaskToRead(const int64_t iteration_client_id) {
     ClientHeartbeatRequest request;
     ClientHeartbeatResponse response;
-    request.set_job_client_id(job_client_id);
+    request.set_iteration_client_id(iteration_client_id);
     TF_RETURN_IF_ERROR(dispatcher_client_->ClientHeartbeat(request, response));
     if (response.task_info().empty()) {
-      return errors::NotFound(
-          absl::Substitute("No task found for job $0.", job_client_id));
+      return errors::NotFound(absl::Substitute(
+          "No task found for iteration $0.", iteration_client_id));
     }
     return response.task_info(0).task_id();
   }
@@ -125,9 +129,11 @@ class WorkerClientTest : public ::testing::Test {
 
 TEST_F(WorkerClientTest, LocalRead) {
   const int64_t range = 5;
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(range));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t job_client_id, CreateJob(dataset_id));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id, GetTaskToRead(job_client_id));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id, RegisterDataset(range));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
+                          CreateIteration(dataset_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id,
+                          GetTaskToRead(iteration_client_id));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DataServiceWorkerClient> client,
                           GetWorkerClient(kLocalTransferProtocol));
   for (int64_t i = 0; i < range; ++i) {
@@ -146,10 +152,12 @@ TEST_F(WorkerClientTest, LocalRead) {
 }
 
 TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id,
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(/*range=*/0));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t job_client_id, CreateJob(dataset_id));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id, GetTaskToRead(job_client_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
+                          CreateIteration(dataset_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id,
+                          GetTaskToRead(iteration_client_id));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DataServiceWorkerClient> client,
                           GetWorkerClient(kLocalTransferProtocol));
   TF_ASSERT_OK_AND_ASSIGN(GetElementResult result,
@@ -166,9 +174,11 @@ TEST_F(WorkerClientTest, LocalReadEmptyDataset) {
 
 TEST_F(WorkerClientTest, GrpcRead) {
   const int64_t range = 5;
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(range));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t job_client_id, CreateJob(dataset_id));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id, GetTaskToRead(job_client_id));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id, RegisterDataset(range));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
+                          CreateIteration(dataset_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id,
+                          GetTaskToRead(iteration_client_id));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DataServiceWorkerClient> client,
                           GetWorkerClient(kGrpcTransferProtocol));
   for (int64_t i = 0; i < range; ++i) {
@@ -187,10 +197,12 @@ TEST_F(WorkerClientTest, GrpcRead) {
 }
 
 TEST_F(WorkerClientTest, LocalServerShutsDown) {
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id,
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(/*range=*/5));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t job_client_id, CreateJob(dataset_id));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id, GetTaskToRead(job_client_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
+                          CreateIteration(dataset_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id,
+                          GetTaskToRead(iteration_client_id));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DataServiceWorkerClient> client,
                           GetWorkerClient(kLocalTransferProtocol));
 
@@ -202,10 +214,12 @@ TEST_F(WorkerClientTest, LocalServerShutsDown) {
 }
 
 TEST_F(WorkerClientTest, CancelClient) {
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id,
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(/*range=*/5));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t job_client_id, CreateJob(dataset_id));
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id, GetTaskToRead(job_client_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t iteration_client_id,
+                          CreateIteration(dataset_id));
+  TF_ASSERT_OK_AND_ASSIGN(const int64_t task_id,
+                          GetTaskToRead(iteration_client_id));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DataServiceWorkerClient> client,
                           GetWorkerClient(kLocalTransferProtocol));
 

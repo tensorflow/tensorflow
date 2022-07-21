@@ -4,6 +4,6 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'vocabulary_size\', \'dim\', \'initializer\', \'optimizer\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\'], "
+    argspec: "args=[\'self\', \'vocabulary_size\', \'dim\', \'initializer\', \'optimizer\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'mean\', \'None\'], "
   }
 }

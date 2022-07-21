@@ -34,7 +34,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Index>
 Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
-  if (labels.NumElements() == 0) return Status::OK();
+  if (labels.NumElements() == 0) return OkStatus();
   const auto label_values = labels.vec<Index>();
   int64_t bad_index;
   auto min_max_dim_value = std::minmax_element(
@@ -47,7 +47,7 @@ Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
         " which is outside the valid range of [0, ", max_index,
         ").  Label values: ", labels.SummarizeValue(labels.NumElements()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename T, typename Index>
@@ -137,6 +137,8 @@ REGISTER(CPU, double, int32)
 REGISTER(CPU, double, int64_t)
 REGISTER(CPU, Eigen::half, int32)
 REGISTER(CPU, Eigen::half, int64_t)
+REGISTER(CPU, bfloat16, int32)
+REGISTER(CPU, bfloat16, int64_t)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER(GPU, float, int32)

@@ -15,14 +15,12 @@
 """for_loop and pfor ops."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -40,6 +38,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -69,7 +68,8 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
 
   def while_body(i, *ta_list):
     """Body of while loop."""
-    fn_output = nest.flatten(loop_fn(i))
+    fn_conv = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+    fn_output = nest.flatten(fn_conv(i))
     if len(fn_output) != len(flat_loop_fn_dtypes):
       raise ValueError(
           f"Number of expected outputs {len(flat_loop_fn_dtypes)}, does not "
@@ -135,7 +135,11 @@ def _is_under_xla_context():
   return False
 
 
-def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
+def pfor(loop_fn,
+         iters,
+         fallback_to_while_loop=True,
+         parallel_iterations=None,
+         warn=False):
   """Equivalent to running `loop_fn` `iters` times and stacking the outputs.
 
   `pfor` has functionality similar to `for_loop`, i.e. running `loop_fn` `iters`
@@ -177,6 +181,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
       vectorizing all the iterations.  If `parallel_iterations` is smaller than
       `iters`, then chunks of at most that many iterations are dispatched in
       sequence. This knob can be used to control the total memory usage.
+    warn: Whether or not to warn when falling back to while loops.
 
   Returns:
     Returns a nested structure of stacked tensor objects with the same nested
@@ -185,10 +190,12 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
     ValueError: If parallel_iterations is not None and not an integer > 1.
   """
   def f():
-    return _pfor_impl(loop_fn,
-                      iters,
-                      fallback_to_while_loop=fallback_to_while_loop,
-                      parallel_iterations=parallel_iterations)
+    return _pfor_impl(
+        loop_fn,
+        iters,
+        fallback_to_while_loop=fallback_to_while_loop,
+        parallel_iterations=parallel_iterations,
+        warn=warn)
   # Note that we wrap into a tf.function if in eager execution mode or under
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
@@ -203,6 +210,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
           "These primitives will override the disable.")
       def_function.run_functions_eagerly(False)
     f = def_function.function(f)
+
   outputs = f()
   if functions_run_eagerly is not None:
     def_function.run_functions_eagerly(functions_run_eagerly)
@@ -266,7 +274,8 @@ def _pfor_impl(loop_fn,
                iters,
                fallback_to_while_loop,
                parallel_iterations=None,
-               pfor_config=None):
+               pfor_config=None,
+               warn=False):
   """Implementation of pfor."""
   assert not context.executing_eagerly()
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
@@ -282,7 +291,8 @@ def _pfor_impl(loop_fn,
       loop_fn_outputs = loop_fn(loop_var, **{PFOR_CONFIG_ARG: pfor_config})
     else:
       assert pfor_config is None
-      loop_fn_outputs = loop_fn(loop_var)
+      f = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+      loop_fn_outputs = f(loop_var)
     loop_fn_output_tensors = nest.map_structure(_composite_to_tensors,
                                                 loop_fn_outputs)
 
@@ -318,9 +328,13 @@ def _pfor_impl(loop_fn,
       parallel_iterations = None
   if parallel_iterations is None:
     with ops.name_scope("pfor"):
-      converter = PFor(loop_var, iters, new_ops,
-                       fallback_to_while_loop=fallback_to_while_loop,
-                       pfor_config=pfor_config)
+      converter = PFor(
+          loop_var,
+          iters,
+          new_ops,
+          fallback_to_while_loop=fallback_to_while_loop,
+          pfor_config=pfor_config,
+          warn=warn)
       flattened_output_tensors = []
       for loop_fn_output in nest.flatten(loop_fn_output_tensors):
         output = converter.convert(loop_fn_output)
@@ -423,7 +437,7 @@ def _gather_from_tensor_or_composite(x, i):
 
 
 @tf_export("vectorized_map")
-def vectorized_map(fn, elems, fallback_to_while_loop=True):
+def vectorized_map(fn, elems, fallback_to_while_loop=True, warn=True):
   """Parallel map on the list of tensors unpacked from `elems` on dimension 0.
 
   This method works similar to `tf.map_fn` but is optimized to run much faster,
@@ -503,6 +517,8 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
       unsupported op, a ValueError is thrown. Note that the fallbacks can result
       in slowdowns since vectorization often yields speedup of one to two orders
       of magnitude.
+    warn: If set to `false`, this will supress any warnings due to operation
+    conversions in the provided `fn` falling back to while loops.
 
   Returns:
     A tensor or (possibly nested) sequence of tensors. Each tensor packs the
@@ -519,6 +535,7 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
   Raises:
     ValueError: If vectorization fails and fallback_to_while_loop is False.
   """
+  elems = variable_utils.convert_variables_to_tensors(elems)
   elems = nest.map_structure(ops.convert_to_tensor,
                              elems,
                              expand_composites=True)
@@ -545,5 +562,8 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
   else:
     batch_size = max(static_first_dims)
 
-  return pfor(loop_fn, batch_size,
-              fallback_to_while_loop=fallback_to_while_loop)
+  return pfor(
+      loop_fn,
+      batch_size,
+      fallback_to_while_loop=fallback_to_while_loop,
+      warn=warn)

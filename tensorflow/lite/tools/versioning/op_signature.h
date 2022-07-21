@@ -40,6 +40,7 @@ typedef struct {
   union {
     struct {
       bool is_per_channel_quantized;
+      bool is_grouped_convolution;
     } conv_2d;
     struct {
       bool is_per_channel_quantized;

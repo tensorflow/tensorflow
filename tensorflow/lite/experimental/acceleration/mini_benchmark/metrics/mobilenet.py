@@ -22,10 +22,6 @@ https://tfhub.dev/tensorflow/coral-model/mobilenet_v1_1.0_224_quantized/1/defaul
 
 The metrics used are symmetric KL-divergence and MSE.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 # TODO(b/152872335): (re-)port to tf v2 after output names are kept during

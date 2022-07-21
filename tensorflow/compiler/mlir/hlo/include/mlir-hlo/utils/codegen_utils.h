@@ -1,3 +1,6 @@
+#ifndef MLIR_HLO_UTILS_CODEGEN_UTILS_H
+#define MLIR_HLO_UTILS_CODEGEN_UTILS_H
+
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,14 +35,16 @@ namespace codegen_utils {
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Operation* op);
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref);
 
-llvm::SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                              Value linear_index, Value memref);
+llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                           Value linearIndex, Value memref);
 
-llvm::SmallVector<Value, 4> calcMultiDimIndex(OpBuilder& b, Location loc,
-                                              Value linear_index,
-                                              llvm::ArrayRef<Value> shape);
+llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
+                                           Value linearIndex,
+                                           llvm::ArrayRef<Value> shape);
 
 }  // namespace codegen_utils
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CODEGEN_UTILS_H_
+
+#endif

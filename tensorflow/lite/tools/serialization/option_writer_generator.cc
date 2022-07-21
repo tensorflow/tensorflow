@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <ctype.h>
+
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "flatbuffers/minireflect.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
@@ -32,15 +35,18 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteBatchToSpaceNDParams",
                                       "TfLiteBidirectionalSequenceLSTMParams",
                                       "TfLiteBidirectionalSequenceRNNParams",
+                                      "TfLiteBucketizeParams",
                                       "TfLiteCastParams",
                                       "TfLiteConcatenationParams",
                                       "TfLiteConvParams",
                                       "TfLiteDepthwiseConvParams",
                                       "TfLiteDivParams",
+                                      "TfLiteDynamicUpdateSliceParams",
                                       "TfLiteEmbeddingLookupSparseParams",
                                       "TfLiteFakeQuantParams",
                                       "TfLiteFullyConnectedParams",
                                       "TfLiteGatherParams",
+                                      "TfLiteGeluParams",
                                       "TfLiteIfParams",
                                       "TfLiteL2NormParams",
                                       "TfLiteLeakyReluParams",
@@ -90,6 +96,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
                                       "TfLiteVarHandleParams",
+                                      "TfLiteUnsortedSegmentSumParams",
                                       nullptr};
 }  // namespace
 
@@ -176,6 +183,8 @@ class OpOptionData {
     op_to_option_["MINIMUM"] = "MaximumMinimumOptions";
     op_to_option_["CONV_3D_TRANSPOSE"] = "Conv3DOptions";
     op_to_option_["RANDOM_STANDARD_NORMAL"] = "RandomOptions";
+    op_to_option_["RANDOM_UNIFORM"] = "RandomOptions";
+    op_to_option_["MULTINOMIAL"] = "RandomOptions";
 
     // These operators are not real ones.
     op_to_option_["CUSTOM"] = "";    // TODO(aselle): maybe something else.
@@ -193,6 +202,7 @@ class OpOptionData {
     op_to_option_["LOGISTIC"] = "";
     op_to_option_["RELU"] = "";
     op_to_option_["RELU_N1_TO_1"] = "";
+    op_to_option_["RELU_0_TO_1"] = "";
     op_to_option_["RELU6"] = "";
     op_to_option_["ROUND"] = "";
     op_to_option_["TANH"] = "";
@@ -207,6 +217,8 @@ class OpOptionData {
     op_to_option_["IMAG"] = "";
     op_to_option_["COMPLEX_ABS"] = "";
     op_to_option_["BROADCAST_ARGS"] = "";
+    op_to_option_["GELU"] = "";
+    op_to_option_["DYNAMIC_UPDATE_SLICE"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
@@ -356,6 +368,7 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
   for (size_t i = 0; i < options->num_elems; i++) {
     std::string elem_name = options->names[i];
     bool is_int_vector = false;
+    bool is_float_vector = false;
     std::string vector_name = elem_name;
     std::string vector_size;
     // TODO(aselle): Irregular naming in builtins
@@ -384,12 +397,23 @@ void GenerateImportForOp(FILE* fp, const std::string& op_name,
     } else if (elem_name == "squeeze_dims") {
       is_int_vector = true;
       vector_size = "num_squeeze_dims";
+    } else if (elem_name == "boundaries") {
+      is_float_vector = true;
+      vector_size = "num_boundaries";
     }
 
     if (is_int_vector) {
       fprintf(fp,
               "    auto val%zu = fbb->CreateVector("
               "std::vector<int>(params->%s, params->%s + params->%s));\n",
+              i, vector_name.c_str(), vector_name.c_str(), vector_size.c_str());
+      continue;
+    }
+
+    if (is_float_vector) {
+      fprintf(fp,
+              "    auto val%zu = fbb->CreateVector("
+              "std::vector<float>(params->%s, params->%s + params->%s));\n",
               i, vector_name.c_str(), vector_name.c_str(), vector_size.c_str());
       continue;
     }

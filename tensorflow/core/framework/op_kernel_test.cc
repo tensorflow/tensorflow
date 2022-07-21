@@ -374,7 +374,7 @@ TEST_F(OpKernelTest, InputDtype) {
   Tensor c(DT_UINT8, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
                                             TensorValue(&c)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   DataType dtype;
@@ -418,7 +418,7 @@ class ScopedAllocatorDevice : public DeviceBase {
                               StatusCallback done) override {
     CHECK(input_tensor->NumElements() == output_tensor->NumElements());
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(Status::OK());
+    done(OkStatus());
   }
 
   // Return the count of calls to GetAllocator or GetScopedAllocator, depending
@@ -625,8 +625,6 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
       TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok()) << status.ToString();
   params.op_kernel = op.get();
-  gtl::InlinedVector<TensorValue, 4> inputs{};
-  params.inputs = &inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
@@ -789,7 +787,11 @@ TEST_F(GetAttrTest, Shape) {
        "b|list(shape)|[{ dim { size:2 } }, { dim { size: 4 } }]"});
   auto* get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape", "shape_proto"});
-  EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(), "dim { size: 3 }");
+  TensorShapeProto expected_shape_proto;
+  protobuf::TextFormat::ParseFromString("dim { size: 3 }",
+                                        &expected_shape_proto);
+  EXPECT_EQ(get_attr_kernel->shape_proto.ShortDebugString(),
+            expected_shape_proto.ShortDebugString());
   EXPECT_EQ("[3]", get_attr_kernel->shape.DebugString());
 
   op_kernel = ExpectSuccess(
@@ -799,10 +801,14 @@ TEST_F(GetAttrTest, Shape) {
   get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"shape_list", "shape_proto_list"});
   ASSERT_EQ(2, get_attr_kernel->shape_proto_list.size());
+  protobuf::TextFormat::ParseFromString("dim { size: 2 }",
+                                        &expected_shape_proto);
   EXPECT_EQ(get_attr_kernel->shape_proto_list[0].ShortDebugString(),
-            "dim { size: 2 }");
+            expected_shape_proto.ShortDebugString());
+  protobuf::TextFormat::ParseFromString("dim { size: 4 }",
+                                        &expected_shape_proto);
   EXPECT_EQ(get_attr_kernel->shape_proto_list[1].ShortDebugString(),
-            "dim { size: 4 }");
+            expected_shape_proto.ShortDebugString());
   ASSERT_EQ(2, get_attr_kernel->shape_list.size());
   EXPECT_EQ("[2]", get_attr_kernel->shape_list[0].DebugString());
   EXPECT_EQ("[4]", get_attr_kernel->shape_list[1].DebugString());
@@ -985,7 +991,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   Tensor a(DT_FLOAT, TensorShape({99000, 256}));
   Tensor b(DT_FLOAT, TensorShape({256, 256}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   for (auto s : state) {

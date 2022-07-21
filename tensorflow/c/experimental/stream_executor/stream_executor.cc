@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
@@ -59,7 +60,7 @@ port::Status ValidateSPPlatform(const SP_Platform& platform) {
   TF_RETURN_IF_ERROR(
       tensorflow::device_utils::ValidateDeviceType(platform.type));
   // `visible_device_count` could be 0 at initialization time.
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
@@ -73,39 +74,39 @@ port::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_timer_fns);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, create_device_fns);
   TF_VALIDATE_NOT_NULL(SP_PlatformFns, platform_fns, destroy_device_fns);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPTimerFns(const SP_TimerFns& timer_fns) {
   TF_VALIDATE_STRUCT_SIZE(SP_TimerFns, timer_fns, SP_TIMER_FNS_STRUCT_SIZE);
   TF_VALIDATE_NOT_NULL(SP_TimerFns, timer_fns, nanoseconds);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPAllocatorStats(const SP_AllocatorStats& stats) {
   TF_VALIDATE_STRUCT_SIZE(SP_AllocatorStats, stats,
                           SP_ALLOCATORSTATS_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPDeviceMemoryBase(const SP_DeviceMemoryBase& mem) {
   TF_VALIDATE_STRUCT_SIZE(SP_DeviceMemoryBase, mem,
                           SP_DEVICE_MEMORY_BASE_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPDevice(const SP_Device& device) {
   TF_VALIDATE_STRUCT_SIZE(SP_Device, device, SP_DEVICE_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPDeviceFns(const SP_DeviceFns& device_fns) {
   TF_VALIDATE_STRUCT_SIZE(SP_DeviceFns, device_fns, SP_DEVICE_FNS_STRUCT_SIZE);
   // All other fields could theoretically be zero/null.
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
@@ -145,7 +146,7 @@ port::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, mem_zero);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memset);
   TF_VALIDATE_NOT_NULL(SP_StreamExecutor, se, memset32);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 port::Status ValidateSEPlatformRegistrationParams(
@@ -155,7 +156,7 @@ port::Status ValidateSEPlatformRegistrationParams(
   TF_VALIDATE_NOT_NULL(SE_PlatformRegistrationParams, params, destroy_platform);
   TF_VALIDATE_NOT_NULL(SE_PlatformRegistrationParams, params,
                        destroy_platform_fns);
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 #undef TF_VALIDATE_NOT_NULL
 
@@ -226,7 +227,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   }
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override {
@@ -436,7 +437,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
   }
   port::Status DeallocateEvent(Event* event) override {
     static_cast<CEvent*>(event->implementation())->Destroy();
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   port::Status RecordEvent(Stream* stream, Event* event) override {
     SP_Stream stream_handle =
@@ -807,6 +808,6 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn,
       std::move(cplatform)));
   // TODO(annarev): Return `use_bfc_allocator` value in some way so that it is
   // available in `PluggableDeviceProcessState` once the latter is checked in.
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 }  // namespace stream_executor

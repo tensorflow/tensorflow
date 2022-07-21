@@ -50,7 +50,6 @@ cc_library(
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:denormal",
         "//tensorflow/core/platform:env_time",
-        "//tensorflow/core/platform:error",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:load_library",
@@ -63,6 +62,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
@@ -157,7 +157,7 @@ cc_library(
     ],
     deps = [
         ":error_windows",
-        "//tensorflow/core/platform:error",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
     ],
 )

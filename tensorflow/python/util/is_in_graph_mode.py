@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """A function that tells you if the program is running in graph mode."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Call IS_IN_GRAPH_MODE() when you want to know whether the thread is in
 # graph mode.  By default, we always are.
 IS_IN_GRAPH_MODE = lambda: True

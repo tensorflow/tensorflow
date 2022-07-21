@@ -417,8 +417,9 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, async_finish_computation);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, async_finish_computation);
     return Status::OK();
   }
 
@@ -560,7 +561,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+        DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
 
     gpuprim_status = gpuprim::DeviceReduce::Sum(

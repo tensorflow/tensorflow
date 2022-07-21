@@ -35,12 +35,12 @@ xla::OpSharding GetManualSharding(const xla::OpSharding& original,
     return manual;
   }
   manual.set_type(xla::OpSharding::OTHER);
-  std::vector<int64> new_tile_shape(
+  std::vector<int64_t> new_tile_shape(
       original.tile_assignment_dimensions().begin(),
       original.tile_assignment_dimensions().end());
   new_tile_shape.push_back(new_tile_shape[single_dim]);
   new_tile_shape[single_dim] = 1;
-  xla::Array<int64> new_tile(new_tile_shape);
+  xla::Array<int64_t> new_tile(new_tile_shape);
   new_tile.Each([&](absl::Span<const int64> indices, int64* v) {
     int64 src_index = 0;
     for (int64 i = 0; i < indices.size() - 1; ++i) {

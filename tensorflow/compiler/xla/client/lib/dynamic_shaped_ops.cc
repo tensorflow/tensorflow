@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 
+#include <utility>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+
 namespace xla {
 namespace {
 
@@ -38,7 +41,7 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
     // Recurse into sub-element.
     std::vector<Shape> results;
     results.reserve(shapes[0]->tuple_shapes_size());
-    for (int64_t i = 0; i < shapes[0]->tuple_shapes_size(); ++i) {
+    for (int i = 0; i < shapes[0]->tuple_shapes_size(); ++i) {
       std::vector<const Shape*> subshapes;
       subshapes.reserve(shapes.size());
       for (int64_t j = 0; j < shapes.size(); ++j) {
@@ -73,7 +76,7 @@ XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
     // Recurse into sub-element.
     std::vector<XlaOp> results;
     results.reserve(left_branch_shape.tuple_shapes_size());
-    for (int64_t i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
       XlaOp sub_tuple = GetTupleElement(left_root, i);
       XlaOp elem = ReconsileBranchDifference(left_branch_shape.tuple_shapes(i),
                                              right_branch_shape.tuple_shapes(i),
@@ -86,7 +89,9 @@ XlaOp ReconsileBranchDifference(const Shape& left_branch_shape,
   // Invariant sanity check -- Left branch and right branch need to have
   // compatible shapes.
   CHECK(!right_branch_shape.IsTuple());
-  CHECK(left_branch_shape.rank() == right_branch_shape.rank());
+  CHECK_EQ(left_branch_shape.rank(), right_branch_shape.rank())
+      << "left rank of (" << left_branch_shape.rank() << ") vs. right rank of ("
+      << right_branch_shape.rank() << ")";
   for (int64_t dim = 0; dim < left_branch_shape.rank(); ++dim) {
     XlaOp original_dim = GetDimensionSize(result, dim);
     if (left_branch_shape.dimensions(dim) <
@@ -112,11 +117,9 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
                          XlaOp false_operand,
                          const XlaComputation& false_computation) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    auto true_shape =
-        true_computation.GetProgramShape().ConsumeValueOrDie().result();
+    auto true_shape = true_computation.GetProgramShape().value().result();
 
-    auto false_shape =
-        false_computation.GetProgramShape().ConsumeValueOrDie().result();
+    auto false_shape = false_computation.GetProgramShape().value().result();
 
     if (ShapeUtil::Compatible(true_shape, false_shape)) {
       return xla::Conditional(predicate, true_operand, true_computation,
@@ -224,7 +227,7 @@ StatusOr<XlaOp> SetDimensionSizeWithRebound(ValueInference* value_inference,
   TF_RETURN_IF_ERROR(inferred_bound_status_or.status());
   TF_RETURN_IF_ERROR(dynamism_status_or.status());
   if (inferred_bound_status_or->AllValid()) {
-    int64_t inferred_bound = inferred_bound_status_or->Get<int32>({}).value();
+    int64_t inferred_bound = inferred_bound_status_or->Get<int32_t>({}).value();
     TF_ASSIGN_OR_RETURN(auto* shape_ptr,
                         operand.builder()->GetShapePtr(operand));
     // Found a tighter bound, do a slice.

@@ -50,7 +50,7 @@ enum CustomCallApiVersion {
   // The first version of the API, with the following signatures:
   //
   // CPU:
-  //   void do_custom_call(void* out, const void** in)
+  //   void do_custom_call(void* out, const void** in);
   //
   // GPU:
   //   void do_custom_call(CUstream stream, void** buffers,
@@ -59,7 +59,9 @@ enum CustomCallApiVersion {
 
   // When the ability to return success/failure status was added:
   //
-  // CPU: Unimplemented
+  // CPU:
+  //   void do_custom_call(void* out, const void** in,
+  //                       XlaCustomCallStatus* status);
   //
   // GPU:
   //   void do_custom_call(CUstream stream, void** buffers,
@@ -67,10 +69,28 @@ enum CustomCallApiVersion {
   //                       XlaCustomCallStatus* status);
   //
   API_VERSION_STATUS_RETURNING = 2;
+
+  // Fixes the API signatures on the CPU side of the version STATUS_RETURNING by
+  // adding the opaque string so that the custom call API is consistent across
+  // CPUs and GPUs. For GPUs, the behaviors invoked by
+  // API_VERSION_STATUS_RETURNING and API_VERSION_STATUS_RETURNING_UNIFIED are
+  // the same.
+  //
+  // CPU:
+  //   void do_custom_call(void* out, const void** in,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  // GPU:
+  //   void do_custom_call(CUstream stream, void** buffers,
+  //                       const char* opaque, size_t opaque_len,
+  //                       XlaCustomCallStatus* status);
+  //
+  API_VERSION_STATUS_RETURNING_UNIFIED = 3;
 }
 
 // Serialization of HloInstruction.
-// Next ID: 78
+// Next ID: 80
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -307,6 +327,16 @@ message HloInstructionProto {
   // TODO(b/189822916): Remove this field when all clients are migrated to the
   // status-returning API.
   CustomCallApiVersion custom_call_api_version = 77;
+
+  // Represents a unique identifier for an async group which consists of an
+  // async start, async done, and zero or more async update operations.
+  // Negative async_group_id is equivalent to no async group id.
+  int64 async_group_id = 78;
+
+  // Represents a unique execution thread name for one or more async groups.
+  // Each HLO module may contain a main thread and one or more parallel threads.
+  // Empty async_execution_thread is equivalent to main thread.
+  string async_execution_thread = 79;
 }
 
 // Serialization of HloComputation.
@@ -329,6 +359,14 @@ message HloComputationProto {
 
   // The id of the root of the computation.
   int64 root_id = 6;
+
+  // Whether this is a fusion computation. Fusion computations should use this
+  // to determine whether they are a fusion in CreateFromProto since the
+  // parent fusion_instruction_ may get removed and be nullptr.
+  bool is_fusion_computation = 7;
+
+  // The name of execution thread this computation belongs to.
+  string execution_thread = 8;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
@@ -448,6 +486,36 @@ message HloModuleProto {
 
   // True if the module contains dynamic computation.
   bool is_dynamic = 11;
+
+  xla.OpSharding spmd_output_sharding = 12;
+
+  repeated xla.OpSharding spmd_parameters_shardings = 14;
+
+  // The type of optimization profile in use for module-level optimizations.
+  enum ProfileType {
+    INVALID = 0;
+    FLAG = 1;
+    FUSION = 2;
+    LAYOUT = 3;
+  }
+
+  // Information about the optimization profile that this module contains.
+  message ProfileInfo {
+    // The optimization profiles that this module contains.
+    ProfileType profile_type = 1;
+    // Speedup of tuned config compared to default config.
+    double relative_speedup = 2;
+    // The source of the optimization profile that this module contains.
+    xla.ProfileSource profile_source = 3;
+    // The compilation event that triggered the use of the profile.
+    xla.CompilationEvent compilation_event = 4;
+  }
+
+  // Profile information for the HLO module.
+  repeated ProfileInfo profile_info = 13;
+
+  // DeviceAssignment object information.
+  DeviceAssignmentProto device_assignment = 15;
 }
 
 // Serialization of LogicalBuffer.
@@ -457,8 +525,10 @@ message LogicalBufferProto {
   message Location {
     // NOTE: module_name isn't necessary, since all LogicalBuffers are
     // associated with a single HloModule.
-    string computation_name = 1;
-    string instruction_name = 2;
+    // TODO(b/239098765): Remove instruction_name and computation_name.
+    string computation_name = 1 [deprecated = true];
+    string instruction_name = 2 [deprecated = true];
+    int64 instruction_id = 4;
     repeated int64 shape_index = 3;
   }
 
@@ -640,4 +710,50 @@ message HloPassMetadata {
   // Timestamp before and after the pass is run. Note they may be equal.
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
+}
+
+// Encodes attributes for an entry function.
+message EntryFunctionAttributes {
+  // Acts as the underlying container for an xla::ShapeIndex.
+  message ShapeIndex {
+    repeated int64 indices = 1;
+  }
+
+  // Encodes attributes for a single buffer parameter.
+  message BufferParameterAttributes {
+    // Represents an lmhlo.params function argument attribute.
+    int64 lmhlo_params = 1;
+    // TODO(hanbinyoon): Deprecate when optional fields are available in proto3
+    // (Protocol Buffers v3.15.0).
+    bool lmhlo_params_present = 6;
+
+    // Represents an lmhlo.param_shape_index function argument attribute.
+    ShapeIndex lmhlo_param_shape_index = 2;
+
+    // Represents an lmhlo.constant_name function argument attribute.
+    string lmhlo_constant_name = 3;
+
+    // Represents an lmhlo.must_alias function argument attribute.
+    bool lmhlo_must_alias = 4;
+
+    // Represents an lmhlo.params function argument attribute.
+    ShapeIndex lmhlo_output_index = 5;
+  }
+
+  repeated BufferParameterAttributes buffers = 1;
+
+  // xla::Shape in string format.
+  string result_xla_shape = 2;
+}
+
+// Encodes the underlying BEF executable for GpuExecutable.
+message GpuBefExecutableProto {
+  HloModuleProto hlo_module_proto = 1;
+
+  // Executable serialized in Binary Executable Format:
+  // https://github.com/tensorflow/runtime/blob/master/documents/binary_executable_format.md
+  bytes bef = 2;
+
+  // XLA-specific attributes of the executable's (BEF) entry function.
+  EntryFunctionAttributes entry_func_attrs = 3;
 }

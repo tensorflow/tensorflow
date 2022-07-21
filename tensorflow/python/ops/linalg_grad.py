@@ -33,10 +33,6 @@ References:
     [Ionescu et al., 2015](https://arxiv.org/abs/1509.07838)
     ([pdf](https://arxiv.org/pdf/1509.07838.pdf))
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -51,10 +47,12 @@ from tensorflow.python.ops.linalg import linalg_impl as _linalg
 def _MatrixInverseGrad(op, grad):
   """Gradient for MatrixInverse."""
   ainv = op.outputs[0]
+  op_adjoint = op.get_attr("adjoint")
   return -math_ops.matmul(  # pylint: disable=invalid-unary-operand-type
       ainv,
-      math_ops.matmul(grad, ainv, adjoint_b=True),
-      adjoint_a=True)
+      math_ops.matmul(grad, ainv, adjoint_a=op_adjoint,
+                      adjoint_b=not op_adjoint),
+      adjoint_a=not op_adjoint)
 
 
 @ops.RegisterGradient("Einsum")

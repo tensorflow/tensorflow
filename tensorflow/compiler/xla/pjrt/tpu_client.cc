@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -74,7 +76,7 @@ Status TpuDeviceState::ThenMemcpyDeviceToDevice(
       transfer_stream->implementation());
   TF_RETURN_IF_ERROR(transfer_tpu_stream->EnqueueOnTpuDeviceSendRecvLocal(
       src_buffer, dst_buffer));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -83,7 +85,7 @@ PjRtTpuClient::PjRtTpuClient(
     LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index)
-    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices),
+    : PjRtStreamExecutorClient(TpuName(), client, std::move(devices),
                                process_index,
                                /*allocator=*/nullptr,
                                /*host_memory_allocator=*/nullptr,
@@ -99,7 +101,21 @@ PjRtTpuClient::PjRtTpuClient(
         return absl::StrCat(
             "libtpu version ", absl::StrJoin(version.version, "."), "\n",
             absl::string_view(version.metadata, version.metadata_size));
-      }()) {}
+      }()) {
+  // We always initialize the tpu client even if libtpu isn't linked in or
+  // initialized.
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_InitFn();
+  }
+}
+
+PjRtTpuClient::~PjRtTpuClient() {
+  if (tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn !=
+      nullptr) {
+    tf_tpu::ExecutorApiFn()->TpuAsyncCollectiveOffloadHelper_ShutdownFn();
+  }
+}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -116,7 +132,7 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
                                                               num_partitions);
 }
 
-StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
+StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
   if (executable.client() != this) {
     return InvalidArgument(
@@ -134,7 +150,7 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
               &executable)
               ->executables()[0]
               ->executable());
-  return absl::optional<std::string>(tpu_executable->fingerprint());
+  return std::optional<std::string>(tpu_executable->fingerprint());
 }
 
 StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
@@ -174,13 +190,13 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
       options.argument_layouts, &options.executable_build_options,
       &unused_argument_layout_pointers));
 
-  auto local_executable = absl::make_unique<LocalExecutable>(
+  auto local_executable = std::make_unique<LocalExecutable>(
       std::move(tpu_executable), client_->mutable_backend(),
       options.executable_build_options);
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.emplace_back(std::move(local_executable));
 
-  auto pjrt_executable = absl::make_unique<PjRtStreamExecutorExecutable>(
+  auto pjrt_executable = std::make_unique<PjRtStreamExecutorExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(extras.device_assignment),
       std::move(extras.addressable_device_logical_ids),
@@ -220,7 +236,7 @@ GetTpuDevices(
     if (device_ordinal >= 0) {
       local_device_state = std::move(local_device_states[device_ordinal]);
     }
-    auto device = absl::make_unique<PjRtTpuDevice>(
+    auto device = std::make_unique<PjRtTpuDevice>(
         core, std::move(local_device_state), process_index, coords_array,
         std::string(tf_tpu::TpuVersionEnumToString(topology.version())));
     devices.push_back(std::move(device));
@@ -230,6 +246,9 @@ GetTpuDevices(
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {
+#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
+  TF_RETURN_IF_ERROR(tensorflow::tpu::FindAndLoadTpuLibrary());
+#endif
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
@@ -273,7 +292,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
-    local_device_states.push_back(absl::make_unique<TpuDeviceState>(
+    local_device_states.push_back(std::make_unique<TpuDeviceState>(
         executor, client, max_inflight_computations));
   }
 
@@ -281,7 +300,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
                       GetTpuDevices(client, std::move(local_device_states)));
   int process_index = platform->GetTpuHostLocation().Id();
 
-  return std::shared_ptr<PjRtClient>(absl::make_unique<PjRtTpuClient>(
+  return std::shared_ptr<PjRtClient>(std::make_unique<PjRtTpuClient>(
       client, std::move(devices), process_index));
 }
 

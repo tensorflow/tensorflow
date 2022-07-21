@@ -14,26 +14,21 @@
 # ==============================================================================
 """Tests for trackable object SavedModel loading."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import functools
 import gc
 import io
 import os
+import pathlib
 import sys
 import tempfile
 import weakref
 
 from absl.testing import parameterized
 import numpy as np
-
-
+from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import backprop
@@ -41,6 +36,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -68,12 +64,14 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import load_options
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import tf_inspect
 
 
@@ -102,10 +100,10 @@ def cycle(obj, cycles, signatures=None, options=None):
 class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_structure_import(self, cycles):
-    root = tracking.AutoTrackable()
-    root.dep_one = tracking.AutoTrackable()
-    root.dep_two = tracking.AutoTrackable()
-    root.dep_two.dep = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
+    root.dep_one = autotrackable.AutoTrackable()
+    root.dep_two = autotrackable.AutoTrackable()
+    root.dep_two.dep = autotrackable.AutoTrackable()
     root.dep_three = root.dep_two.dep
     imported = cycle(root, cycles)
     self.assertIs(imported.dep_three, imported.dep_two.dep)
@@ -113,7 +111,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_variables(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
     self.evaluate([root.v1.initializer, root.v2.initializer])
@@ -132,7 +130,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(imported.v2.trainable)
 
   def test_variables_name(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     # Test 2 variables with same name: should work as the checkpoint
     # is based on object name and not on variable name.
     root.v1 = variables.Variable(1., trainable=True, name="v1")
@@ -168,7 +166,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.weights = variables.Variable(2.)
     self.evaluate(root.weights.initializer)
     root.f = def_function.function(
@@ -183,7 +181,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_capture_constant(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     captured_constant = constant_op.constant(2.)
     root.f = def_function.function(
         lambda x: captured_constant * x,
@@ -192,7 +190,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
 
   def test_control_outputs(self, cycles):
-    exported = tracking.AutoTrackable()
+    exported = autotrackable.AutoTrackable()
     exported.v = variables.Variable(1.)
     exported.f = def_function.function(
         lambda: exported.v.assign(2., name="should_be_control_output"))
@@ -212,8 +210,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         imported_graph.control_outputs)
 
   def _make_asset(self, contents):
-    filename = tempfile.mktemp(prefix=self.get_temp_dir())
-    with open(filename, "w") as f:
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
       f.write(contents)
     return filename
 
@@ -222,9 +220,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     file1 = self._make_asset("contents 1")
     file2 = self._make_asset("contents 2")
 
-    root = tracking.AutoTrackable()
-    root.asset1 = tracking.Asset(file1)
-    root.asset2 = tracking.Asset(file2)
+    root = autotrackable.AutoTrackable()
+    root.asset1 = asset.Asset(file1)
+    root.asset2 = asset.Asset(file2)
 
     save_dir = os.path.join(self.get_temp_dir(), "save_dir")
     save.save(root, save_dir)
@@ -271,8 +269,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.add(constant_op.constant(1.))
 
   def test_capture_assets(self, cycles):
-    root = tracking.AutoTrackable()
-    root.vocab = tracking.Asset(self._make_asset("contents"))
+    root = autotrackable.AutoTrackable()
+    root.vocab = asset.Asset(self._make_asset("contents"))
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
         input_signature=[])
@@ -284,8 +282,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertEqual("contents", f.read())
 
   def test_capture_assets_in_graph(self, cycles):
-    root = tracking.AutoTrackable()
-    root.vocab = tracking.Asset(self._make_asset("contents"))
+    root = autotrackable.AutoTrackable()
+    root.vocab = asset.Asset(self._make_asset("contents"))
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
         input_signature=[])
@@ -309,19 +307,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_dedup_assets(self, cycles):
     vocab = self._make_asset("contents")
-    root = tracking.AutoTrackable()
-    root.asset1 = tracking.Asset(vocab)
-    root.asset2 = tracking.Asset(vocab)
+    root = autotrackable.AutoTrackable()
+    root.asset1 = asset.Asset(vocab)
+    root.asset2 = asset.Asset(vocab)
     imported = cycle(root, cycles)
     self.assertEqual(imported.asset1.asset_path.numpy(),
                      imported.asset2.asset_path.numpy())
+
+  def test_asset_fspath(self, cycles):
+    vocab = pathlib.Path(self._make_asset("contents"))
+    root = autotrackable.AutoTrackable()
+    root.asset = asset.Asset(vocab)
+    imported = cycle(root, cycles)
+    self.assertTrue(hasattr(imported, "asset"))
 
   def test_implicit_input_signature(self, cycles):
     @def_function.function
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     # Add two traces.
@@ -339,7 +344,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     imported = cycle(root, cycles)
@@ -350,7 +355,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     imported = cycle(
@@ -369,7 +374,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda x: f(x) + 1.0,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.g = g
     imported = cycle(root, cycles)
     imported.g(constant_op.constant([1.0]))
@@ -382,7 +387,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func)
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
@@ -402,7 +407,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return array_ops.zeros(shape=x.shape, dtype=dtypes.float32)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func)
 
     self.assertAllEqual([0.0, 0.0, 0.0],
@@ -440,7 +445,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x, y):
       return string_ops.string_join([x, y])
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     self.assertAllEqual(b"ab", root.f("a", "b"))
@@ -458,7 +463,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_function_no_return(self, cycles):
 
-    class TrackableWithOneVariable(tracking.AutoTrackable):
+    class TrackableWithOneVariable(autotrackable.AutoTrackable):
 
       def __init__(self, initial_value=0.0):
         super(TrackableWithOneVariable, self).__init__()
@@ -492,7 +497,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func)
 
     x = constant_op.constant(10)
@@ -532,7 +537,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     input2 = [7, ({"a": x}, y)]  # Not compatible with input1 signature.
     input3 = [6, ({"a": y}, x)]  # Compatible with input1 signature.
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func).get_concrete_function(input1)
 
     imported = cycle(root, cycles)
@@ -552,7 +557,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
       return [named_tuple, input2, {"x": 0.5}]
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func)
 
     result = root.f(constant_op.constant(2), constant_op.constant(3))
@@ -580,7 +585,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
       return [named_tuple, input2, {"x": 0.5}]
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func).get_concrete_function(
         constant_op.constant(2), constant_op.constant(3))
 
@@ -607,7 +612,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func)
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
@@ -629,7 +634,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(func)
 
     x = constant_op.constant(10)
@@ -644,7 +649,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(7, imported.f(x, learning_rate=0.5, epochs=3).numpy())
 
   def test_member_function(self, cycles):
-    class TrackableWithMember(tracking.AutoTrackable):
+    class TrackableWithMember(autotrackable.AutoTrackable):
 
       def __init__(self):
         super(TrackableWithMember, self).__init__()
@@ -669,7 +674,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(27, imported.f(constant_op.constant(2)).numpy())
 
   def test_side_effect_listing(self, cycles):
-    class M(tracking.AutoTrackable):
+    class M(autotrackable.AutoTrackable):
 
       def __init__(self):
         super(M, self).__init__()
@@ -693,7 +698,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda x: x*weight + bias,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.weight = weight
     root.bias = bias
     root.g = g
@@ -733,7 +738,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def h(x):
       return g(x) + bias,
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.weight = weight
     root.bias = bias
     root.g = h
@@ -760,7 +765,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       del i_end
       return s_end
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.weight = weight
     root.g = g
     imported = cycle(root, cycles)
@@ -789,7 +794,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def g(x):
       return x * weight
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.weight = weight
     root.g = g
     imported = cycle(root, cycles)
@@ -823,7 +828,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       return x + resource_variable_ops.read_variable_op(
           launder_var_handle(), dtypes.float32)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.weight = weight
     root.g = g
     imported = cycle(root, cycles)
@@ -850,16 +855,16 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
 
   def test_callable(self, cycles):
-    class M1(tracking.AutoTrackable):
+    class M1(autotrackable.AutoTrackable):
 
       @def_function.function(
           input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
       def __call__(self, x):
         return x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.m1 = M1()
-    root.m2 = tracking.AutoTrackable()
+    root.m2 = autotrackable.AutoTrackable()
     root.m2.__call__ = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
@@ -882,9 +887,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     func = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
-    root = tracking.AutoTrackable()
-    root.__call__ = tracking.AutoTrackable()
-    root.__call__.__call__ = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
+    root.__call__ = autotrackable.AutoTrackable()
+    root.__call__.__call__ = autotrackable.AutoTrackable()
     root.__call__.__call__.__call__ = func
 
     imported = cycle(root, cycles)
@@ -893,7 +898,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(imported(x).numpy(), 3.0)
 
   def test_load_in_graph_mode(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(1., name="v_one", trainable=False)
     root.v2 = variables.Variable(2., name="v_two", trainable=True)
     root.f = def_function.function(
@@ -923,7 +928,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                             g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
   def test_load_in_func_graph(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(1.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(
@@ -935,7 +940,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
-    closure = tracking.AutoTrackable()
+    closure = autotrackable.AutoTrackable()
     @def_function.function
     def func(x):
       if not hasattr(closure, "model"):
@@ -952,7 +957,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -1007,7 +1012,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec([None], dtypes.int32), True)
     func.get_concrete_function(tensor_spec.TensorSpec([None], dtypes.float32))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     imported = cycle(root, cycles)
@@ -1031,7 +1036,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function()
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -1079,7 +1084,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function()
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -1095,7 +1100,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(constant_op.constant([1]))
     self.assertAllEqual([4], root.f(constant_op.constant([2])).numpy())
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
@@ -1109,7 +1114,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
     def func(x):
       return x ** 2.
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function()
 
     def _compute_gradient(function):
@@ -1129,7 +1134,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     @def_function.function
     def func(x, y):
       return x * (y + 1.)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(
         tensor_spec.TensorSpec([], dtypes.float32),
         tensor_spec.TensorSpec([], dtypes.float32))
@@ -1146,7 +1151,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(*args):
       x, y = args
       return x * (y + 1.)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(
         tensor_spec.TensorSpec([], dtypes.float32, name="x"),
         tensor_spec.TensorSpec([], dtypes.float32, name="y"))
@@ -1173,7 +1178,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       return 1
 
     vsave = variables.Variable(1)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
     root.f_sig = func_with_input_signature.get_concrete_function()
     root.capture = capture
@@ -1208,7 +1213,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(v):
       return v + 1
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.func = func
     root.concrete_func = func.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.int32))
@@ -1220,7 +1225,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, imported.concrete_func(one).numpy())
 
   def test_dict(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.variables = dict(a=variables.Variable(1.))
     root.variables["b"] = variables.Variable(2.)
     root.variables["c"] = 1
@@ -1235,7 +1240,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(100., imported.funcs["conc"]().numpy())
 
   def test_list(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.variables = [variables.Variable(1.)]
     root.variables.append(1)
     root.variables.append(variables.Variable(3.))
@@ -1246,7 +1251,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(imported.variables, 3)
 
   def test_tuple(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.variables = (variables.Variable(1.), 1, variables.Variable(3.))
     imported = cycle(root, cycles)
     self.assertEqual(1., imported.variables[0].numpy())
@@ -1255,7 +1260,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(imported.variables, 3)
 
   def test_functions_list(self, cycles):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     v1 = variables.Variable(1.)
     root.losses = [def_function.function(lambda: math_ops.reduce_sum(v1 ** 2))]
     root.variables = [v1]
@@ -1277,7 +1282,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_captured_constant(self, cycles):
     const = array_ops.zeros([100])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda: const + 1.)
     root.g = def_function.function(lambda: const + 2.)
     self.assertAllClose(array_ops.ones([100]), root.f())
@@ -1297,7 +1302,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_functions_accessed_once(self, cycles):
 
-    class Exported(tracking.AutoTrackable):
+    class Exported(autotrackable.AutoTrackable):
 
       def __init__(self):
         self._counter = 0
@@ -1317,7 +1322,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1, exported.make_func().numpy())
 
   def test_overwritten_signatures_error(self, cycles):
-    exported = tracking.AutoTrackable()
+    exported = autotrackable.AutoTrackable()
     exported.f = def_function.function(lambda: constant_op.constant(1.))
     imported = cycle(
         exported, cycles,
@@ -1329,7 +1334,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_signature_loading(self, cycles):
 
-    class Exported(tracking.AutoTrackable):
+    class Exported(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.v = variables.Variable(3.)
@@ -1385,7 +1390,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_multiple_argument_signatures_no_positional(self, cycles):
 
-    class Exported(tracking.AutoTrackable):
+    class Exported(autotrackable.AutoTrackable):
 
       @def_function.function
       def do(self, x, y):
@@ -1422,7 +1427,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       return def_function.function(input_signature=signature)(
           lambda x: table.lookup(x))  # pylint: disable=unnecessary-lambda
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.table1 = table1
     root.lookup1 = _make_lookup_function(table1)
     root.table2 = table2
@@ -1480,7 +1485,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     original_fullargspec = tf_inspect.getfullargspec(f)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(f)
     imported = cycle(root, cycles)
 
@@ -1505,7 +1510,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     trigger.get_concrete_function()
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     root = cycle(root, cycles)
     self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
@@ -1526,7 +1531,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(2, func(2).numpy())
     self.assertAllEqual(3, func(constant_op.constant(2)).numpy())
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     root = cycle(root, cycles)
     self.assertAllEqual(2, root.f(2).numpy())
@@ -1541,7 +1546,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     func = def_function.function(
         functools.partial(f, x=array_ops.zeros([1]), y=array_ops.ones([1])))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertAllEqual(root.f(), [1.0])
 
@@ -1555,7 +1560,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     func = def_function.function(functools.partial(f, y=5))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertAllEqual(root.f(1), 6)
 
@@ -1568,7 +1573,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     func = def_function.function(functools.partial(f, constant_op.constant(5)))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertAllEqual(root.f(1), 6)
 
@@ -1583,7 +1588,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     tensor = constant_op.constant(5) + constant_op.constant(7)
     func = def_function.function(functools.partial(f, tensor))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertAllEqual(root.f(1), 13)
 
@@ -1600,7 +1605,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     func = def_function.function(functools.partial(f, y=6))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertEqual(root.f().numpy(), 9)
     self.assertEqual(root.f(training=False).numpy(), 11)
@@ -1620,7 +1625,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         functools.partial(
             f, 7, 1, 2, learning_rate=3, some_tensor=constant_tensor))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertEqual(root.f(constant_op.constant(4)).numpy(), 44)
 
@@ -1638,7 +1643,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     partial_func = functools.partial(f, x=5)
     tf_func = def_function.function(partial_func)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = tf_func
     self.assertAllEqual(root.f(y=constant_op.constant(7)), 12)
 
@@ -1655,7 +1660,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     func = def_function.function(functools.partial(f, my_func))
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
 
@@ -1673,7 +1678,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec([], dtypes.float32)]
     func = def_function.function(partial, input_signature=signature)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     a, b, c = root.f(2.0)
     self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 2.0, 4))
@@ -1689,7 +1694,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return x
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     root = cycle(root, cycles)
@@ -1709,7 +1714,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         NamedTupleType(
             a=tensor_spec.TensorSpec(None, dtypes.float32, name="a"),
             b=tensor_spec.TensorSpec(None, dtypes.float32, name="b")))
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.__call__ = f
     if sys.version_info.major == 3 and sys.version_info.minor < 5:
       # TODO(allenl): figure out why this doesn't work in Python3.4
@@ -1727,7 +1732,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Trigger a trace.
     f({"a": constant_op.constant(2.0)})
 
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.__call__ = f
     imported = cycle(obj, cycles)
 
@@ -1746,7 +1751,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x, y):
       return array_ops.concat([x, y], axis=1)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
 
     root = cycle(root, cycles)
@@ -1768,7 +1773,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
   def test_variables_destroyed(self, cycles):
     v1 = variables.Variable(1.)
     weak_v1 = weakref.ref(v1)
-    root = util.Checkpoint(v=v1)
+    root = checkpoint.Checkpoint(v=v1)
     root = cycle(root, cycles)
     del v1
     self.assertIsNone(weak_v1())
@@ -1786,7 +1791,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      v.aggregation)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v = v
     root = cycle(root, cycles)
     self.assertEqual(False, root.v.trainable)
@@ -1794,49 +1799,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      root.v.synchronization)
     self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
                      root.v.aggregation)
-
-  def test_captured_dataset_with_asset(self, cycles):
-
-    class HasDataset(module.Module):
-
-      def __init__(self, temp_dir, file_name):
-        super(HasDataset, self).__init__()
-        file = os.path.join(temp_dir, file_name)
-        with tf_record.TFRecordWriter(file, "GZIP") as f:
-          for v in ["a", "aa", "aaa"]:
-            f.write(str(v))
-        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
-
-      @def_function.function
-      def __call__(self, x):
-        current_sum = array_ops.zeros([], dtype=dtypes.int32)
-        for element in self.dataset:
-          current_sum += x * string_ops.string_length(element)
-        return current_sum
-
-    temp_dir = self.get_temp_dir()
-    file_name = "tf_record_asset.tfrecord.gz"
-    root = HasDataset(temp_dir, file_name)
-    self.assertEqual(
-        18,  # 3 * (1 + 2 + 3)
-        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
-
-    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
-    save.save(root, save_dir)
-
-    file_io.delete_file(os.path.join(temp_dir, file_name))
-    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
-    if compat.forward_compatible(2021, 9, 20):
-      self.assertTrue(file_io.file_exists(asset_path))
-      load_dir = os.path.join(self.get_temp_dir(), "load_dir")
-      file_io.rename(save_dir, load_dir)
-
-      # TODO(b/188455028): Remove assertRaises block and check that invoking
-      # loaded SavedModel behaves as expected.
-      with self.assertRaises(ValueError) as error:
-        _ = load.load(load_dir)
-      self.assertEqual("Signature specifies 1 arguments, got: 0.",
-                       str(error.exception))
 
   def test_captured_dataset(self, cycles):
 
@@ -1865,7 +1827,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
   def test_tuple_signature(self, cycles):
-    root = util.Checkpoint()
+    root = checkpoint.Checkpoint()
     root.f = def_function.function(
         lambda: (array_ops.ones([]), array_ops.zeros([])),
         input_signature=())
@@ -1874,13 +1836,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      self.evaluate(root.signatures["serving_default"]()))
 
   def test_version_info(self, cycles):
-    root = util.Checkpoint()
+    root = checkpoint.Checkpoint()
     root = cycle(root, cycles)
     self.assertEqual(versions.__version__, root.tensorflow_version)
     self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
   def test_load_grad_save(self, cycles):
-    root = util.Checkpoint()
+    root = checkpoint.Checkpoint()
     root.v = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v * x)
     root.g = def_function.function(root.f)
@@ -1903,7 +1865,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
           name="my_var",
           container="my_container")
 
-    class MyResource(tracking.TrackableResource):
+    class MyResource(resource.TrackableResource):
 
       def _create_resource(self):
         return get_handle()
@@ -1917,7 +1879,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         resource_variable_ops.destroy_resource_op(
             handle, ignore_lookup_error=True)
 
-    class MyModel(tracking.AutoTrackable):
+    class MyModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         super(MyModel, self).__init__()
@@ -1974,7 +1936,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
           ragged_tensor.RaggedTensorSpec([None, None], dtype=dtypes.int32),
           c)
 
-    obj = tracking.AutoTrackable()
+    obj = autotrackable.AutoTrackable()
     obj.f = f
 
     imported1 = cycle(obj, cycles, signatures={})
@@ -1998,7 +1960,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
   def test_load_custom_saveable_object(self, cycles):
     if context.is_tfrt_enabled():
       self.skipTest("Disable due to b/190539415.")
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
     root.table.insert("foo", 15)
     root.table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
@@ -2019,7 +1981,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # Test with StaticHashTable, which has a _initializer attribute that tracks
     # the Asset vocab table.
 
-    class MyLookupModel(tracking.AutoTrackable):
+    class MyLookupModel(autotrackable.AutoTrackable):
 
       def __init__(self, vocab_file):
 
@@ -2078,7 +2040,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         expected_grads = tape.gradient(y, v)
       expected_grad_grads = tape2.gradient(expected_grads, v)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = f
     loaded = cycle(
         root, cycles, options=save_options.SaveOptions(
@@ -2115,7 +2077,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       y = predict(params, state)
       expected_grads = tape.gradient(y, params)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.fn = predict
     loaded = cycle(
         root, cycles, options=save_options.SaveOptions(
@@ -2132,7 +2094,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
   def test_load_with_tags(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
     with self.assertRaises(ValueError):
@@ -2140,6 +2102,13 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
     load.load(path, tags=set([tag_constants.SERVING]))
+
+  def test_save_load_contains_with_fspath(self):
+    root = autotrackable.AutoTrackable()
+    path = pathlib.Path(tempfile.mkdtemp(prefix=self.get_temp_dir()))
+    save.save(root, path)
+    self.assertTrue(loader_impl.contains_saved_model(path))
+    load.load(path)
 
   def test_single_restore_op_used(self):
     root = module.Module()
@@ -2162,7 +2131,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-    exported = util.Checkpoint(v=variables.Variable(3.))
+    exported = checkpoint.Checkpoint(v=variables.Variable(3.))
     exported.f = def_function.function(
         lambda x: exported.v * x,
         input_signature=[
@@ -2181,26 +2150,22 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
   def test_object_with_extra_dependencies(self):
 
-    class Extra(tracking.AutoTrackable):
+    class Extra(autotrackable.AutoTrackable):
 
-      def _list_extra_dependencies_for_serialization(self, cache):
-        if self not in cache:
-          cache[self] = {"a": variables.Variable(5.)}
-        return cache[self]
+      def _trackable_children(self, save_type, **kwargs):
+        children = super(Extra, self)._trackable_children(save_type, **kwargs)
+        children["a"] = variables.Variable(5.)
+        return children
+
     root = Extra()
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
     imported = load.load(path)
     self.assertEqual(5, self.evaluate(imported.a))
 
-    root.a = variables.Variable(3.)
-    with self.assertRaisesRegex(
-        ValueError, "object has an attribute named 'a', which is reserved."):
-      save.save(root, path)
-
   def test_save_cached_variable(self):
     with ops.Graph().as_default(), session_lib.Session() as session:
-      obj = tracking.AutoTrackable()
+      obj = autotrackable.AutoTrackable()
       obj.v = variables.Variable(2., caching_device=lambda op: op.device)
       obj.w = variables.Variable(3.)
       session.run([obj.v.initializer, obj.w.initializer])
@@ -2285,7 +2250,8 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     adder(5)
     self.assertEqual(self.evaluate(v), 6)
 
-    with self.assertRaisesRegex(ValueError, "requires inputs/variables"):
+    with self.assertRaisesRegex(
+        ValueError, "does not include all required objects for loading"):
       imported = load.load_partial(save_dir, ["root.adder"])
 
   def test_load_partial_checkpoint(self):
@@ -2395,6 +2361,46 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     if "Exception ignored in" in stderr.getvalue():
       raise Exception(stderr.getvalue())
 
+  def test_captured_dataset_with_asset(self):
+
+    class HasDataset(module.Module):
+
+      def __init__(self, temp_dir, file_name):
+        super(HasDataset, self).__init__()
+        file = os.path.join(temp_dir, file_name)
+        with tf_record.TFRecordWriter(file, "GZIP") as f:
+          for v in ["a", "aa", "aaa"]:
+            f.write(str(v))
+        self.dataset = readers.TFRecordDataset([file], compression_type="GZIP")
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int32)
+        for element in self.dataset:
+          current_sum += x * string_ops.string_length(element)
+        return current_sum
+
+    temp_dir = self.get_temp_dir()
+    file_name = "tf_record_asset.tfrecord.gz"
+    root = HasDataset(temp_dir, file_name)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        root(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+
+    file_io.delete_file(os.path.join(temp_dir, file_name))
+    asset_path = os.path.join(save_dir, "assets/{}".format(file_name))
+    self.assertTrue(file_io.file_exists(asset_path))
+    load_dir = os.path.join(self.get_temp_dir(), "load_dir")
+    file_io.rename(save_dir, load_dir)
+
+    loaded = load.load(load_dir)
+    self.assertEqual(
+        18,  # 3 * (1 + 2 + 3)
+        loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy())
+
 
 class DeferredInitModuleVariablesTest(test.TestCase):
 
@@ -2501,14 +2507,14 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     load_and_run_module(export_dir, weight_size)
 
   def _make_asset(self, contents):
-    filename = tempfile.mktemp(prefix=self.get_temp_dir())
-    with open(filename, "w") as f:
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
       f.write(contents)
     return filename
 
   def test_assets(self):
 
-    class MyLookupModel(tracking.AutoTrackable):
+    class MyLookupModel(autotrackable.AutoTrackable):
 
       def __init__(self, vocab_file):
 
@@ -2541,6 +2547,53 @@ class DeferredInitModuleVariablesTest(test.TestCase):
         options=load_options.LoadOptions(experimental_skip_checkpoint=True))
     self.assertAllEqual(imported(constant_op.constant(["d", "b"])),
                         [3, 1])
+
+
+class _TestModel(module.Module):
+
+  def __init__(self, rows, cols):
+    super().__init__()
+    self.rows = rows
+    self.cols = cols
+    self.table = None
+
+  def __call__(self, x):
+    with ops.device("/cpu:0"):
+      self.table = variables.Variable(
+          constant_op.constant(1., shape=[self.rows, self.cols]))
+      x = math_ops.matmul(self.table, x)
+      x = math_ops.reduce_sum(x, axis=0)
+    return x
+
+
+class SavedModelLoadMemoryTests(test.TestCase):
+
+  @test_util.run_gpu_only
+  def test_no_oom_loading_large_tenor(self):
+    if not config.get_soft_device_placement():
+      self.skipTest("This test only works for soft device placement is on")
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    ncols = 16
+    nrows = 32
+    model = _TestModel(rows=nrows, cols=ncols)
+    x = array_ops.zeros(shape=(ncols, 2), dtype=dtypes.float32)
+    y = model(x)
+    save.save(
+        model,
+        save_dir,
+        options=save_options.SaveOptions(
+            experimental_variable_policy=save_options.VariablePolicy
+            .SAVE_VARIABLE_DEVICES),
+    )
+    loaded_on_cpu = load.load(
+        export_dir=save_dir,
+        options=load_options.LoadOptions(
+            experimental_variable_policy=save_options.VariablePolicy
+            .SAVE_VARIABLE_DEVICES),
+    )
+    loaded_on_gpu = load.load(export_dir=save_dir)
+    self.assertTrue("CPU" in loaded_on_cpu.table.device)
+    self.assertTrue("GPU" in loaded_on_gpu.table.device)
 
 
 if __name__ == "__main__":

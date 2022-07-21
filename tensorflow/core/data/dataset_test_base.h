@@ -73,6 +73,14 @@ static Tensor CreateTensor(const TensorShape& input_shape,
   return tensor;
 }
 
+// Creates a tensor with the specified dtype and shape, with values 0, 1, 2, ...
+template <typename T>
+static Tensor CreateTensor(const TensorShape& input_shape) {
+  Tensor tensor(DataTypeToEnum<T>::value, input_shape);
+  test::FillIota<T>(&tensor, 0);
+  return tensor;
+}
+
 // Creates a vector of tensors with the specified dtype, shape, and values.
 template <typename T>
 std::vector<Tensor> CreateTensors(
@@ -265,7 +273,7 @@ class MapDatasetParams : public DatasetParams {
         type_arguments_(std::move(type_arguments)),
         use_inter_op_parallelism_(use_inter_op_parallelism),
         preserve_cardinality_(preserve_cardinality) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -332,7 +340,7 @@ class TakeDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         count_(count) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -362,9 +370,9 @@ class ConcatenateDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)) {
     input_dataset_params_.push_back(
-        absl::make_unique<T>(input_dataset_params_0));
+        std::make_unique<T>(input_dataset_params_0));
     input_dataset_params_.push_back(
-        absl::make_unique<T>(input_dataset_params_1));
+        std::make_unique<T>(input_dataset_params_1));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params_0.dataset_type(),
                                    input_dataset_params_0.iterator_prefix());
@@ -391,7 +399,7 @@ class OptionsDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         serialized_options_(serialized_options) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
   }
 
   std::vector<Tensor> GetInputTensors() const override;

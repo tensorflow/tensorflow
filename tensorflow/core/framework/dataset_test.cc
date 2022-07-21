@@ -149,9 +149,9 @@ TEST(DatasetTest, IsDatasetOp) {
   EXPECT_FALSE(DatasetOpKernel::IsDatasetOp(op_def));
 
   // Test valid op names.
-  for (const auto& name :
-       {"Dataset", "RangeDataset", "MapDatasetV1",
-        "ParallelInterleaveDatasetV42", "DataServiceDatasetV1000"}) {
+  for (const auto& name : {"Dataset", "RangeDataset", "MapDatasetV1",
+                           "ParallelInterleaveDatasetV42",
+                           "DataServiceDatasetV1000", "DatasetFromGraph"}) {
     op_def.set_name(name);
     EXPECT_TRUE(DatasetOpKernel::IsDatasetOp(op_def));
   }

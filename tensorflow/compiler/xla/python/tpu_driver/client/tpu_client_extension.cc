@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
@@ -142,7 +147,22 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                 &options.executable_build_options, client,
                 options.parameter_is_tupled_arguments);
           },
-          py::arg("computation"),
+          py::arg("computation"), py::arg("compile_options") = CompileOptions())
+      .def(
+          "compile",
+          [](std::shared_ptr<PyTpuClient> client, std::string mlir_module,
+             CompileOptions options)
+              -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
+            py::gil_scoped_release gil_release;
+            mlir::MLIRContext context;
+            TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                                ParseMlirModuleString(mlir_module, context));
+            return PyTpuExecutable::CompileMlir(
+                module.get(), options.argument_layouts,
+                &options.executable_build_options, client,
+                options.parameter_is_tupled_arguments);
+          },
+          py::arg("mlir_module"),
           py::arg("compile_options") = CompileOptions());
 
   py::class_<PyTpuBuffer>(m, "PyTpuBuffer", py::dynamic_attr())
@@ -156,6 +176,17 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            })
       .def("delete", &PyTpuBuffer::Delete)
       .def("block_host_until_ready",
+           [](PyTpuBuffer* buffer) {
+             // TODO(phawkins): remove 3 months after the release of jaxlib >=
+             // 0.3.2.
+             PythonDeprecationWarning(
+                 "block_host_until_ready() on a JAX array object is "
+                 "deprecated, use block_until_ready() instead.");
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->BlockHostUntilReady();
+           })
+      .def("block_until_ready",
            [](PyTpuBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
@@ -232,7 +263,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       // PjRtClient and can be used to set TpuDevice::client_.
       .def_property_readonly(
           "platform",
-          [](const TpuDevice& device) -> std::string { return kTpuPlatform; })
+          [](const TpuDevice& device) -> std::string { return TpuPlatform(); })
       .def("__repr__", [](const TpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, process_index=%i, coords=(%i,%i,%i), "

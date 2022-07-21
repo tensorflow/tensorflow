@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers to convert variables to constants in TensorFlow 2.0."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import numpy as np
 
@@ -198,6 +194,17 @@ class _Function(_Convertible):
     function = self.converted_self().function
     index = incoming_edge.destination.index
     function.signature.input_arg[index].type = tensor_data.dtype
+
+    # TODO(b/176982859): Find a more satisfying way to update shape information
+    # than clearing it, or migrate users to a workflow that does not require
+    # freezing.
+    if "_input_shapes" in function.attr:
+      function.attr["_input_shapes"].list.shape[index].unknown_rank = True
+      del function.attr["_input_shapes"].list.shape[index].dim[:]
+    arg_attrs = function.arg_attr[index].attr
+    if "_output_shapes" in arg_attrs:
+      arg_attrs["_output_shapes"].list.shape[0].unknown_rank = True
+      del arg_attrs["_output_shapes"].list.shape[0].dim[:]
 
     for edge in self.outgoing_edges:
       if edge.source.index == index:
@@ -1265,16 +1272,6 @@ def convert_variables_to_constants_from_session_graph(
   Returns:
     An optimized GraphDef.
   """
-  # TODO(b/176982859): Find a more satisfying way to update shape information
-  # than clearing it, or migrate users to a workflow that does not require
-  # freezing.
-  for function in graph_def.library.function:
-    if "_input_shapes" in function.attr:
-      for input_arg, shape_attribute in zip(
-          function.signature.input_arg,
-          function.attr["_input_shapes"].list.shape):
-        if dtypes.as_dtype(input_arg.type) == dtypes.resource:
-          shape_attribute.unknown_rank = True
   graph_def, _ = _replace_variables_by_constants(
       converter_data=_SessionConverterData(
           session=session,

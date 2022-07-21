@@ -33,13 +33,12 @@ Status ParallelBatch::OptimizeAndCollectStats(Cluster* cluster,
   MutableGraphView graph(output);
 
   for (NodeDef& node : *output->mutable_node()) {
-    if (node.op() == "BatchDatasetV2" || node.op() == "ParallelBatchDataset" ||
-        node.op() == "PaddedBatchDatasetV2") {
+    if (node.op() == "BatchDatasetV2" || node.op() == "PaddedBatchDatasetV2") {
       (*node.mutable_attr())["parallel_copy"].set_b(true);
       stats->num_changes++;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ParallelBatch, "parallel_batch");

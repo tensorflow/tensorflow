@@ -1,21 +1,24 @@
 # copybara:uncomment(oss-unused) load("//tools/build_defs/build_test:build_test.bzl", "build_test")
 load(
     "//tensorflow/lite:build_def.bzl",
-    "gen_zip_test",
-    "gen_zipped_test_file",
-    "generated_test_models_all",
-    "merged_test_models",
     "tflite_custom_android_library",
     "tflite_custom_cc_library",
 )
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite/testing:build_def.bzl",
+    "delegate_suffix",
+    "gen_zip_test",
+    "gen_zipped_test_file",
+    "generated_test_models_all",
+)
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
-    "tf_features_nolayering_check_if_android_or_ios",
+    "tf_features_nolayering_check_if_ios",
 )
 
 package(
@@ -26,51 +29,63 @@ package(
 )
 
 exports_files([
+    "build_def.bzl",
     "generated_examples_zip_test.cc",
     "tflite_diff_example_test.cc",
     "init_tensorflow.h",
     "init_tensorflow.cc",
 ])
 
+_test_size_override = {
+    # copybara:comment_begin(oss-only)
+    "merged_models_with-flex_6": "large",
+    "merged_models_with-flex_9": "large",
+    # copybara:comment_end
+}
+
 [gen_zip_test(
-    name = "zip_test_%s" % test_name,
-    size = "medium",
+    name = "zip_test_%s%s" % (
+        test_name,
+        delegate_suffix(delegate),
+    ),
+    size = _test_size_override.get(test_name, "medium"),
     srcs = ["generated_examples_zip_test.cc"],
-    additional_test_tags_args = {
-        "xnnpack": (
-            # TODO(b/162696268): remove 'notap' once the bug is fixed.
-            ["notap"],
-            ["--use_xnnpack=true"],
-        ),
-    },
+    args = args + select({
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            "--zip_file_path=$(location :zip_%s%s)" % (
+                test_name,
+                delegate_suffix(delegate),
+            ),
+            # TODO(angerson) We may be able to add an external unzip binary instead
+            # of relying on an existing one for OSS builds.
+            #"--unzip_binary_path=/usr/bin/unzip",
+        ],
+    }),
     conversion_mode = conversion_mode,
     # copybara:uncomment_begin(no special handling for Android in OSS)
     # data = select({
     # "//tensorflow:android": [],
     # "//conditions:default": [
-    # ":zip_%s" % test_name,
+    # ":zip_%s%s" % (
+    # test_name,
+    # delegate_suffix(delegate),
+    # ),
     # "//third_party/unzip",
     # ],
     # }),
     # copybara:uncomment_end_and_comment_begin
-    data = [":zip_%s" % test_name],
+    data = [":zip_%s%s" % (
+        test_name,
+        delegate_suffix(delegate),
+    )],
     # copybara:comment_end
-    shard_count = 20,
-    test_args = args + select({
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "--zip_file_path=$(location :zip_%s)" % test_name,
-            # TODO(angerson) We may be able to add an external unzip binary instead
-            # of relying on an existing one for OSS builds.
-            "--unzip_binary_path=/usr/bin/unzip",
-        ],
-    }),
-    test_name = test_name,
-    test_tags = tags + [
-        "no_gpu",  # Executing with TF GPU configurations is redundant.
-        "no_oss",
+    delegate = delegate,
+    tags = tags + [
+        "gen_zip_test",
         "tflite_not_portable_intentional",
     ],
+    test_name = test_name,
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",
@@ -81,7 +96,6 @@ exports_files([
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/kernels:test_delegate_providers_lib",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",
@@ -93,7 +107,7 @@ exports_files([
             "//tensorflow/core:portable_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags, args in generated_test_models_all() + merged_test_models()]
+) for conversion_mode, delegate, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -103,16 +117,21 @@ test_suite(
 )
 
 py_library(
-    name = "toco_convert",
-    srcs = ["toco_convert.py"],
+    name = "mlir_convert",
+    srcs = ["mlir_convert.py"],
     data = [
-        "//tensorflow/lite/toco",
+        "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
     ],
     srcs_version = "PY3",
     deps = [
-        ":zip_test_utils",
+        ":_pywrap_string_util",
+        ":generate_examples_lib",
+        ":generate_examples_report",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/python:test_util",
+        "//tensorflow/python:graph_util",
         "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -160,7 +179,9 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         ":generate_examples_lib",
-        ":toco_convert",
+        ":mlir_convert",
+        ":op_tests",
+        ":zip_test_utils",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -245,6 +266,8 @@ cc_library(
         ":split",
         ":test_runner",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -356,11 +379,12 @@ cc_library(
     name = "tf_driver",
     srcs = ["tf_driver.cc"],
     hdrs = ["tf_driver.h"],
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":join",
         ":split",
         ":test_runner",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:string_util",
     ] + select({
@@ -399,7 +423,7 @@ cc_library(
     name = "generate_testspec",
     srcs = ["generate_testspec.cc"],
     hdrs = ["generate_testspec.h"],
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":join",
         ":split",
@@ -478,7 +502,7 @@ cc_library(
 cc_library(
     name = "tflite_diff_flags",
     hdrs = ["tflite_diff_flags.h"],
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":split",
         ":tflite_diff_util",
@@ -600,7 +624,6 @@ pybind_extension(
     ],
     hdrs = ["string_util.h"],
     features = ["-use_header_modules"],
-    module_name = "_pywrap_string_util",
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
@@ -662,7 +685,6 @@ edgetpu_ops = [
 #     name = "zip_%s_edgetpu" % op_name,
 #     file = "%s_edgetpu.zip" % op_name,
 #     flags = " --make_edgetpu_tests",
-#     toco = "//tensorflow/lite/toco:toco",  # Unused
 # ) for op_name in edgetpu_ops]
 #
 # edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]

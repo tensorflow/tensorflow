@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -31,8 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -44,7 +41,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<T>> TransposeArray2D(
       const Array2D<T>& operand) {
     auto result =
-        absl::make_unique<Array2D<T>>(operand.width(), operand.height());
+        std::make_unique<Array2D<T>>(operand.width(), operand.height());
     for (int64_t w = 0; w < operand.width(); ++w) {
       for (int64_t h = 0; h < operand.height(); ++h) {
         (*result)(w, h) = operand(h, w);
@@ -171,6 +168,18 @@ class ReferenceUtil {
       const Array2D<float>& lhs, const Array2D<float>& rhs,
       const std::function<float(float, float)>& map_function);
 
+  // Applies map_function to each element in the input (3D array) and returns
+  // the result.
+  static std::unique_ptr<Array3D<float>> MapArray3D(
+      const Array3D<float>& array,
+      const std::function<float(float)>& map_function);
+
+  // Applies map_function to each pair of corresponding elements in the two
+  // inputs arrays and returns the result.
+  static std::unique_ptr<Array3D<float>> MapArray3D(
+      const Array3D<float>& lhs, const Array3D<float>& rhs,
+      const std::function<float(float, float)>& map_function);
+
   // Number of windows in a given dimension. Calculation taken from
   // xla::MakePadding().
   static int64_t WindowCount(int64_t unpadded_width, int64_t window_len,
@@ -230,7 +239,7 @@ class ReferenceUtil {
                                               const Array2D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 2);
-    auto result = absl::make_unique<Array2D<T>>(
+    auto result = std::make_unique<Array2D<T>>(
         concatenate_dimension == 0 ? lhs.n1() + rhs.n1() : lhs.n1(),
         concatenate_dimension == 1 ? lhs.n2() + rhs.n2() : lhs.n2());
     for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
@@ -265,7 +274,7 @@ class ReferenceUtil {
       }
     }
     auto result =
-        absl::make_unique<Array3D<T>>(out_dims[0], out_dims[1], out_dims[2]);
+        std::make_unique<Array3D<T>>(out_dims[0], out_dims[1], out_dims[2]);
     for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
       for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
         for (int64_t i2 = 0; i2 < result->n3(); ++i2) {
@@ -299,8 +308,8 @@ class ReferenceUtil {
         out_dims[i] = lhs_dims[i] + rhs_dims[i];
       }
     }
-    auto result = absl::make_unique<Array4D<T>>(out_dims[0], out_dims[1],
-                                                out_dims[2], out_dims[3]);
+    auto result = std::make_unique<Array4D<T>>(out_dims[0], out_dims[1],
+                                               out_dims[2], out_dims[3]);
     for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
       for (int64_t i1 = 0; i1 < result->n2(); ++i1) {
         for (int64_t i2 = 0; i2 < result->n3(); ++i2) {
@@ -344,7 +353,7 @@ class ReferenceUtil {
     CHECK_LE(limits[1], input.n2());
     CHECK_GE(strides[0], 1);
     CHECK_GE(strides[1], 1);
-    auto result = absl::make_unique<Array2D<T>>(
+    auto result = std::make_unique<Array2D<T>>(
         CeilOfRatio(limits[0] - starts[0], strides[0]),
         CeilOfRatio(limits[1] - starts[1], strides[1]));
     for (int64_t i0 = 0; i0 < result->n1(); ++i0) {
@@ -370,7 +379,7 @@ class ReferenceUtil {
     CHECK_GE(strides[0], 1);
     CHECK_GE(strides[1], 1);
     CHECK_GE(strides[2], 1);
-    auto result = absl::make_unique<Array3D<T>>(
+    auto result = std::make_unique<Array3D<T>>(
         CeilOfRatio(limits[0] - starts[0], strides[0]),
         CeilOfRatio(limits[1] - starts[1], strides[1]),
         CeilOfRatio(limits[2] - starts[2], strides[2]));
@@ -404,7 +413,7 @@ class ReferenceUtil {
     CHECK_GE(strides[1], 1);
     CHECK_GE(strides[2], 1);
     CHECK_GE(strides[3], 1);
-    auto result = absl::make_unique<Array4D<T>>(
+    auto result = std::make_unique<Array4D<T>>(
         CeilOfRatio(limits[0] - starts[0], strides[0]),
         CeilOfRatio(limits[1] - starts[1], strides[1]),
         CeilOfRatio(limits[2] - starts[2], strides[2]),
@@ -449,7 +458,7 @@ class ReferenceUtil {
   template <typename F>
   static std::unique_ptr<Array4D<float>> MapWithIndexArray4D(
       const Array4D<float>& input, F&& map_function) {
-    auto result = absl::make_unique<Array4D<float>>(
+    auto result = std::make_unique<Array4D<float>>(
         input.planes(), input.depth(), input.height(), input.width());
     for (int64_t plane = 0; plane < input.planes(); ++plane) {
       for (int64_t depth = 0; depth < input.depth(); ++depth) {
@@ -485,8 +494,8 @@ class ReferenceUtil {
   template <typename F>
   static std::unique_ptr<Array4D<float>> MapWithIndexArray4D(
       const Array4D<float>& lhs, const Array4D<float>& rhs, F&& map_function) {
-    auto result = absl::make_unique<Array4D<float>>(lhs.planes(), lhs.depth(),
-                                                    lhs.height(), lhs.width());
+    auto result = std::make_unique<Array4D<float>>(lhs.planes(), lhs.depth(),
+                                                   lhs.height(), lhs.width());
     for (int64_t plane = 0; plane < lhs.planes(); ++plane) {
       for (int64_t depth = 0; depth < lhs.depth(); ++depth) {
         for (int64_t height = 0; height < lhs.height(); ++height) {
@@ -520,7 +529,7 @@ class ReferenceUtil {
     int64_t out1 =
         in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
 
-    auto result = absl::make_unique<Array2D<NativeT>>(out0, out1);
+    auto result = std::make_unique<Array2D<NativeT>>(out0, out1);
     result->Fill(pad);
     int64_t o0 = low_padding0;
     for (int64_t i0 = 0; i0 < in0; ++i0) {
@@ -620,26 +629,25 @@ class ReferenceUtil {
 
     Array4D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2], output_bounds[3]);
-    result.Each(
-        [&](absl::Span<const int64_t> indices, NativeT* value) {
-          for (int i = 0; i < 4; ++i) {
-            bool in_low_padding = indices[i] < pad_low[i];
-            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
-            if (in_low_padding || in_high_padding) {
-              *value = pad;
-              return;
-            }
-            if (pad_interior[i] &&
-                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
-              *value = pad;
-              return;
-            }
-          }
-          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
-                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
-                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
-                           (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
-        });
+    result.Each([&](absl::Span<const int64_t> indices, NativeT* value) {
+      for (int i = 0; i < 4; ++i) {
+        bool in_low_padding = indices[i] < pad_low[i];
+        bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+        if (in_low_padding || in_high_padding) {
+          *value = pad;
+          return;
+        }
+        if (pad_interior[i] &&
+            (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+          *value = pad;
+          return;
+        }
+      }
+      *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                       (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                       (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
+                       (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
+    });
     return result;
   }
 
@@ -659,7 +667,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<T1>> ApplyElementwise2D(
       F&& f, const Array2D<T1>& array1, const Array2D<Ts>&... arrays) {
     AssertSameSize2D(array1, arrays...);
-    auto result = absl::make_unique<Array2D<T1>>(array1.n1(), array1.n2());
+    auto result = std::make_unique<Array2D<T1>>(array1.n1(), array1.n2());
     for (int64_t i = 0; i < array1.n1(); ++i) {
       for (int64_t j = 0; j < array1.n2(); ++j) {
         (*result)(i, j) = f(array1(i, j), arrays(i, j)...);
@@ -683,7 +691,8 @@ class ReferenceUtil {
   template <typename Array1>
   static void AssertSameSize2D(const Array1& array1) {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReferenceUtil);
+  ReferenceUtil(const ReferenceUtil&) = delete;
+  ReferenceUtil& operator=(const ReferenceUtil&) = delete;
 };
 
 }  // namespace xla

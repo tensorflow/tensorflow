@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -116,6 +112,13 @@ class SquareLinearOperatorFullMatrixTest(
     matrix = variables_module.Variable([[2.]])
     operator = linalg.LinearOperatorFullMatrix(matrix)
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    matrix = variables_module.Variable([[3.]])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    with self.cached_session() as sess:
+      sess.run([matrix.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 @test_util.run_all_in_graph_and_eager_modes

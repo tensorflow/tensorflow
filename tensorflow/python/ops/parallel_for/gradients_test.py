@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for jacobian and batch_jacobian ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import os
 import time
@@ -48,7 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
-class FullyConnectedModel(object):
+class FullyConnectedModel:
 
   def __init__(self, activation_size, num_layers):
     self._layers = [

@@ -17,13 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_GROUP_METADATA_H_
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -93,7 +91,7 @@ class HloModuleGroupMetadata {
 
     HloInstruction* instruction() const { return instruction_; }
 
-    string ToString() const;
+    std::string ToString() const;
 
    private:
     HloInstruction* instruction_ = nullptr;
@@ -168,7 +166,7 @@ class HloModuleGroupMetadata {
   // Retrieves the device an instruction is assigned to. Either from the
   // sharding information, or from the ordinal of the module the instruction
   // is in.
-  absl::optional<int64_t> GetInstructionDevice(
+  std::optional<int64_t> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
   // Returns the number of modules for devices (excluding the host module).

@@ -65,6 +65,23 @@ std::vector<Tindices> ParseRowStartIndices(
 template <typename Tindices>
 bool ContainsEmptyRows(const std::vector<Tindices>& row_start_indices);
 
+// Methods for validating sparse indices.
+enum class IndexValidation {
+  kNone,      // Indices are not used by the op, or are not directly accessible
+              // (e.g. on GPU).
+  kOrdered,   // Indices must be unique, in lexicographical order, and within
+              // safe bounds.
+  kUnordered  // Indices must be within safe bounds, but may repeat or appear
+              // out-of-order.
+};
+
+// Validates the three component tensors of a sparse tensor have the proper
+// shapes.  Also validates index values according to the method supplied.
+template <typename Tindices>
+Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
+                            const Tensor& shape,
+                            IndexValidation index_validation);
+
 }  // namespace sparse_utils
 }  // namespace tensorflow
 

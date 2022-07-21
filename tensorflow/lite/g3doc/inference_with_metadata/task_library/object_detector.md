@@ -4,10 +4,10 @@ Object detectors can identify which of a known set of objects might be present
 and provide information about their positions within the given image or a video
 stream. An object detector is trained to detect the presence and location of
 multiple classes of objects. For example, a model might be trained with images
-that contain various pieces of fruit, along with a _label_ that specifies the
+that contain various pieces of fruit, along with a *label* that specifies the
 class of fruit they represent (e.g. an apple, a banana, or a strawberry), and
 data specifying where each object appears in the image. See the
-[introduction of object detection](../../models/object_detection/overview.md)
+[introduction of object detection](../../examples/object_detection/overview)
 for more information about object detectors.
 
 Use the Task Library `ObjectDetector` API to deploy your custom object detectors
@@ -63,14 +63,15 @@ android {
     aaptOptions {
         noCompress "tflite"
     }
-
 }
 
 dependencies {
     // Other dependencies
 
-    // Import the Task Vision Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-vision'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin'
 }
 ```
 
@@ -82,8 +83,14 @@ anymore.
 
 ```java
 // Initialization
-ObjectDetectorOptions options = ObjectDetectorOptions.builder().setMaxResults(1).build();
-ObjectDetector objectDetector = ObjectDetector.createFromFileAndOptions(context, modelFile, options);
+ObjectDetectorOptions options =
+    ObjectDetectorOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setMaxResults(1)
+        .build();
+ObjectDetector objectDetector =
+    ObjectDetector.createFromFileAndOptions(
+        context, modelFile, options);
 
 // Run inference
 List<Detection> results = objectDetector.detect(image);
@@ -91,6 +98,125 @@ List<Detection> results = objectDetector.detect(image);
 
 See the
 [source code and javadoc](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/vision/detector/ObjectDetector.java)
+for more options to configure `ObjectDetector`.
+
+## Run inference in iOS
+
+### Step 1: Install the dependencies
+
+The Task Library supports installation using CocoaPods. Make sure that CocoaPods
+is installed on your system. Please see the
+[CocoaPods installation guide](https://guides.cocoapods.org/using/getting-started.html#getting-started)
+for instructions.
+
+Please see the
+[CocoaPods guide](https://guides.cocoapods.org/using/using-cocoapods.html) for
+details on adding pods to an Xcode project.
+
+Add the `TensorFlowLiteTaskVision` pod in the Podfile.
+
+```
+target 'MyAppWithTaskAPI' do
+  use_frameworks!
+  pod 'TensorFlowLiteTaskVision'
+end
+```
+
+Make sure that the `.tflite` model you will be using for inference is present in
+your app bundle.
+
+### Step 2: Using the model
+
+#### Swift
+
+```swift
+// Imports
+import TensorFlowLiteTaskVision
+
+// Initialization
+guard let modelPath = Bundle.main.path(forResource: "ssd_mobilenet_v1",
+                                            ofType: "tflite") else { return }
+
+let options = ObjectDetectorOptions(modelPath: modelPath)
+
+// Configure any additional options:
+// options.classificationOptions.maxResults = 3
+
+let detector = try ObjectDetector.detector(options: options)
+
+// Convert the input image to MLImage.
+// There are other sources for MLImage. For more details, please see:
+// https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
+guard let image = UIImage (named: "cats_and_dogs.jpg"), let mlImage = MLImage(image: image) else { return }
+
+// Run inference
+let detectionResult = try detector.detect(mlImage: mlImage)
+```
+
+#### Objective C
+
+```objc
+// Imports
+#import <TensorFlowLiteTaskVision/TFLTaskVision.h>
+
+// Initialization
+NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"ssd_mobilenet_v1" ofType:@"tflite"];
+
+TFLObjectDetectorOptions *options = [[TFLObjectDetectorOptions alloc] initWithModelPath:modelPath];
+
+// Configure any additional options:
+// options.classificationOptions.maxResults = 3;
+
+TFLObjectDetector *detector = [TFLObjectDetector objectDetectorWithOptions:options
+                                                                     error:nil];
+
+// Convert the input image to MLImage.
+UIImage *image = [UIImage imageNamed:@"dogs.jpg"];
+
+// There are other sources for GMLImage. For more details, please see:
+// https://developers.google.com/ml-kit/reference/ios/mlimage/api/reference/Classes/GMLImage
+GMLImage *gmlImage = [[GMLImage alloc] initWithImage:image];
+
+// Run inference
+TFLDetectionResult *detectionResult = [detector detectWithGMLImage:gmlImage error:nil];
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/vision/sources/TFLObjectDetector.h)
+for more options to configure `TFLObjectDetector`.
+
+## Run inference in Python
+
+### Step 1: Install the pip package
+
+```
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
+```python
+# Imports
+from tflite_support.task import vision
+from tflite_support.task import core
+from tflite_support.task import processor
+
+# Initialization
+base_options = core.BaseOptions(file_name=model_path)
+detection_options = processor.DetectionOptions(max_results=2)
+options = vision.ObjectDetectorOptions(base_options=base_options, detection_options=detection_options)
+detector = vision.ObjectDetector.create_from_options(options)
+
+# Alternatively, you can create an object detector in the following manner:
+# detector = vision.ObjectDetector.create_from_file(model_path)
+
+# Run inference
+image = vision.TensorImage.create_from_file(image_path)
+detection_result = detector.detect(image)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/vision/object_detector.py)
 for more options to configure `ObjectDetector`.
 
 ## Run inference in C++
@@ -144,9 +270,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `ObjectDetector` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md). See examples of creating
+[TFLite Model Metadata](../../models/convert/metadata). See examples of creating
 metadata for object detectors using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#object_detectors).
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#object_detectors).
 
 The compatible object detector models should meet the following requirements:
 

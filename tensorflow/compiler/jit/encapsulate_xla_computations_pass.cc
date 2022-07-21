@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -72,7 +73,7 @@ Status GetIndexAttr(const Node& n, int num_args, int* index) {
     return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
                                    *index);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the data type of the destination of an edge.
@@ -178,26 +179,13 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   AddNodeAttr(kXlaClusterIdAttr, call_def->name(), call_def);
   AddNodeAttr("_variable_start_index", variable_start_index, call_def);
 
-  // Uniquify the function name.
-  GraphDef gdef;
-  graph->ToGraphDef(&gdef);
-
-  // Before serialization, sort each node's control inputs to achieve
-  // determinism. Sorting control inputs could help (but not necessarily) create
-  // a deterministic serialization and fingerprint. Other sources of
-  // nondeterminism include unstable node ordering.
-  SortControlInputs(&gdef);
-  // Fingerprint the function.
+  // Uniquify the function name by computing a fingerprint of the function.
   // Nondeterminism in serialization would not lead to incorrect results, but
-  // may cause spurious cache misses. DeterministicSerialization is a
-  // best-effort deterministic serialization.
-  const size_t size = gdef.ByteSizeLong();
-  auto serialized = absl::make_unique<char[]>(size);
-  TF_RET_CHECK(SerializeToBufferDeterministic(gdef, serialized.get(), size));
-  uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
+  // may cause spurious cache misses.
+  TF_ASSIGN_OR_RETURN(uint64 fingerprint, FingerprintGraph(*graph));
   VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -224,14 +212,14 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     }
   }
 
-  auto output = absl::make_unique<Graph>((*graph)->op_registry());
+  auto output = std::make_unique<Graph>((*graph)->op_registry());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       EncapsulateSubgraphsInFunctions(
           kXlaClusterIdAttr, **graph, RewriteSubgraph,
           /*reuse_existing_functions=*/true, &output, flib_def),
       "EncapsulateXlaComputationsPass failed");
   graph->swap(output);
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
@@ -340,11 +328,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       graph->RemoveNode(node);
     }
 
-    Status status;
-    Node* xla_launch = graph->AddNode(def, &status);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_ASSIGN_OR_RETURN(Node * xla_launch, graph->AddNode(def));
     for (int i = 0, end = data_inputs.size(); i < end; ++i) {
       graph->AddEdge(data_inputs[i].first, data_inputs[i].second, xla_launch,
                      i);
@@ -361,7 +345,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       graph->AddControlEdge(xla_launch, n);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EncapsulateXlaComputationsPass::Run(
@@ -386,7 +370,7 @@ Status EncapsulateXlaComputationsPass::Run(
   VLOG(1) << "EncapsulateXlaComputations() finished: "
           << DumpGraphToFile("encapsulate_xla_computations_after",
                              **options.graph, options.flib_def);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

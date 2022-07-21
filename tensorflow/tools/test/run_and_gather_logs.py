@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,17 +14,13 @@
 # ==============================================================================
 """Test runner for TensorFlow tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import argparse
 import os
 import shlex
 import sys
 import time
 
 from absl import app
+from absl import flags
 import six
 
 from google.protobuf import json_format
@@ -51,7 +46,29 @@ except ImportError as e:
 # pylint: enable=g-bad-import-order
 # pylint: enable=unused-import
 
-FLAGS = None
+FLAGS = flags.FLAGS
+
+flags.DEFINE_string("name", "", """Benchmark target identifier.""")
+flags.DEFINE_string("test_name", "", """Test target to run.""")
+flags.DEFINE_multi_string(
+    "test_args", "", """\
+Test arguments, space separated. May be specified more than once, in which case
+the args are all appended.""")
+flags.DEFINE_boolean("test_log_output_use_tmpdir", False,
+                     "Whether to store the log output into tmpdir.")
+flags.DEFINE_string("benchmark_type", "",
+                    """Benchmark type (BenchmarkType enum string).""")
+flags.DEFINE_string("compilation_mode", "",
+                    """Mode used during this build (e.g. opt, dbg).""")
+flags.DEFINE_string("cc_flags", "", """CC flags used during this build.""")
+flags.DEFINE_string("test_log_output_dir", "",
+                    """Directory for benchmark results output.""")
+flags.DEFINE_string(
+    "test_log_output_filename", "",
+    """Filename to write output benchmark results to. If the filename
+                    is not specified, it will be automatically created.""")
+flags.DEFINE_boolean("skip_export", False,
+                     "Whether to skip exporting test results.")
 
 
 def gather_build_configuration():
@@ -68,14 +85,21 @@ def gather_build_configuration():
 def main(unused_args):
   name = FLAGS.name
   test_name = FLAGS.test_name
-  test_args = FLAGS.test_args
+  test_args = " ".join(FLAGS.test_args)
   benchmark_type = FLAGS.benchmark_type
   test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(
-      name, test_name=test_name, test_args=test_args,
-      benchmark_type=benchmark_type)
+      name,
+      test_name=test_name,
+      test_args=test_args,
+      benchmark_type=benchmark_type,
+      skip_processing_logs=FLAGS.skip_export)
+  if FLAGS.skip_export:
+    return
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())
+  # Add os.environ data to test_results.
+  test_results.run_configuration.env_vars.update(os.environ)
 
   if not FLAGS.test_log_output_dir:
     print(text_format.MessageToString(test_results))
@@ -100,51 +124,4 @@ def main(unused_args):
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.register(
-      "type", "bool", lambda v: v.lower() in ("true", "t", "y", "yes"))
-  parser.add_argument(
-      "--name", type=str, default="", help="Benchmark target identifier.")
-  parser.add_argument(
-      "--test_name", type=str, default="", help="Test target to run.")
-  parser.add_argument(
-      "--benchmark_type",
-      type=str,
-      default="",
-      help="BenchmarkType enum string (benchmark type).")
-  parser.add_argument(
-      "--test_args",
-      type=str,
-      default="",
-      help="Test arguments, space separated.")
-  parser.add_argument(
-      "--test_log_output_use_tmpdir",
-      type="bool",
-      nargs="?",
-      const=True,
-      default=False,
-      help="Store the log output into tmpdir?")
-  parser.add_argument(
-      "--compilation_mode",
-      type=str,
-      default="",
-      help="Mode used during this build (e.g. opt, dbg).")
-  parser.add_argument(
-      "--cc_flags",
-      type=str,
-      default="",
-      help="CC flags used during this build.")
-  parser.add_argument(
-      "--test_log_output_dir",
-      type=str,
-      default="",
-      help="Directory to write benchmark results to.")
-  parser.add_argument(
-      "--test_log_output_filename",
-      type=str,
-      default="",
-      help="Filename to output benchmark results to. If the filename is not "
-           "specified, it will be automatically created based on --name "
-           "and current time.")
-  FLAGS, unparsed = parser.parse_known_args()
-  app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  app.run(main)

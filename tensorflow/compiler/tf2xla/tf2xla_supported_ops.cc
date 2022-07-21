@@ -47,9 +47,12 @@ void PrintSupportedOps(const string& device, const string& regen_run) {
             << "-------- | ---------------" << std::endl;
   for (const KernelDef* kdef : kdefs) {
     std::vector<string> constraints;
+    constraints.reserve(kdef->constraint().size());
     for (const KernelDef::AttrConstraint& constraint : kdef->constraint()) {
       std::vector<string> types;
-      for (int type : constraint.allowed_values().list().type()) {
+      const auto& allowed_values = constraint.allowed_values().list().type();
+      types.reserve(allowed_values.size());
+      for (int type : allowed_values) {
         types.push_back(DataTypeString(static_cast<DataType>(type)));
       }
       std::sort(types.begin(), types.end());

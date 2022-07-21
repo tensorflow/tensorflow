@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Experimental `dataset` API for parsing example."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -151,7 +147,7 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
                                        deterministic)
     if any(
         isinstance(feature, parsing_ops.SparseFeature) or
-        (isinstance(feature, parsing_ops.RaggedFeature) and feature.partitions)
+        isinstance(feature, parsing_ops.RaggedFeature)
         for feature in features.values()):
       # pylint: disable=protected-access
       # pylint: disable=g-long-lambda

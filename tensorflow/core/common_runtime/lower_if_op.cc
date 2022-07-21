@@ -169,7 +169,7 @@ Status CondBuilder::CreatePivotNodes() {
                                    .Input(switch_pred, kThenBranch)
                                    .Device(if_op_->requested_device()),
                                graph_, &pivot_t_));
-  return Status::OK();
+  return OkStatus();
 }
 
 string CondBuilder::NewName(const string& infix) {
@@ -202,7 +202,7 @@ Status CondBuilder::AddInput(Node* src, int src_output) {
           .Finalize(graph_, &input));
   then_call_builder_.Input(input, kThenBranch);
   else_call_builder_.Input(input, kElseBranch);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CondBuilder::AddInputs() {
@@ -220,7 +220,7 @@ Status CondBuilder::AddInputs() {
       graph_->AddControlEdge(e->src(), control_predecessor_);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CondBuilder::AddOutputs() {
@@ -276,7 +276,7 @@ Status CondBuilder::AddOutputs() {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CondBuilder::BuildLoweredIfOutput() {
@@ -317,7 +317,7 @@ Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
   TF_RETURN_IF_ERROR(cb.AddOutputs());
   g->RemoveNode(n);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

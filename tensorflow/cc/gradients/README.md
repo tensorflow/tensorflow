@@ -13,31 +13,35 @@ below.
 
 2.  Write the op gradient with the following naming scheme:
 
-        Status OpNameGrad(const Scope& scope, const Operation& op,
-                          const std::vector<Output>& grad_inputs,
-                          std::vector<Output>* grad_outputs) {
-          ...
-          return scope.status();
-        }
-        REGISTER_GRADIENT_OP("OpName", OpNameGrad);
+    ```
+    Status OpNameGrad(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
+      ...
+      return scope.status();
+    }
+    REGISTER_GRADIENT_OP("OpName", OpNameGrad);
+    ```
 
-3.  Ops gradients are implemented by using the [C++
-    API](https://www.tensorflow.org/api_docs/cc/).
+3.  Ops gradients are implemented by using the
+    [C++ API](https://www.tensorflow.org/api_docs/cc/).
 
 4.  Tests should be included in `foo_grad_test.cc`. Please see
     [`array_grad_test.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/gradients/array_grad_test.cc)
-    for an many examples. Tests are as simple as, creating a placeholder input
-    for the op's inputs and calling `RunTest` (`RunTest` uses a [gradient
-    checker](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/framework/gradient_checker.cc)
+    for many examples. Tests are as simple as, creating a placeholder input for
+    the op's inputs and calling `RunTest` (`RunTest` uses a
+    [gradient checker](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/framework/gradient_checker.cc)
     to verify that the theoretical gradient matches the numeric gradient). For
     example:
 
-        TEST_F(ArrayGradTest, IdentityGrad) {
-          TensorShape shape({5, 2});
-          auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-          auto y = Identity(scope_, x);
-          RunTest(x, shape, y, shape);
-        }
+    ```
+    TEST_F(ArrayGradTest, IdentityGrad) {
+      TensorShape shape({5, 2});
+      auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+      auto y = Identity(scope_, x);
+      RunTest(x, shape, y, shape);
+    }
+    ```
 
 NOTE: There are some ops that require features from the C++ API that are not yet
 implemented.

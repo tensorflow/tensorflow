@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for rmsprop."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import itertools
 import math
@@ -27,7 +23,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -228,11 +224,11 @@ class RMSPropOptimizerTest(test.TestCase):
         var0 = variables.Variable(var0_np)
         var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0], dtype=np.int32)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np),
             constant_op.constant(grads0_np_indices), constant_op.constant([1]))
         grads1_np_indices = np.array([1], dtype=np.int32)
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant(grads1_np),
             constant_op.constant(grads1_np_indices), constant_op.constant([1]))
         opt = rmsprop.RMSPropOptimizer(

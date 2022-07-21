@@ -53,7 +53,7 @@ Status SnappyInputBuffer::ReadNBytes(int64_t bytes_to_read, tstring* result) {
     result_ptr += bytes_read;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 int64_t SnappyInputBuffer::Tell() const { return bytes_read_; }
@@ -64,7 +64,7 @@ Status SnappyInputBuffer::Reset() {
   avail_out_ = 0;
   next_in_ = input_buffer_.get();
   bytes_read_ = 0;
-  return Status::OK();
+  return OkStatus();
 }
 
 size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
@@ -122,7 +122,7 @@ Status SnappyInputBuffer::Inflate() {
   next_in_ += compressed_block_length;
   avail_in_ -= compressed_block_length;
   avail_out_ += uncompressed_length;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
@@ -144,7 +144,7 @@ Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
       avail_in_--;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SnappyInputBuffer::ReadFromFile() {
@@ -193,7 +193,7 @@ Status SnappyInputBuffer::ReadFromFile() {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return s;

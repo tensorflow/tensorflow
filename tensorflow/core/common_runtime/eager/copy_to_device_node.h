@@ -59,7 +59,7 @@ class CopyToDeviceNode : public EagerNode {
       // If a mirror was added since we called HasLocalMirror then just return
       // and ignore the error.
       if (s.ok() || (s.code() == error::Code::ALREADY_EXISTS)) {
-        return Status::OK();
+        return OkStatus();
       }
       return s;
     } else {

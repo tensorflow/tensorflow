@@ -26,9 +26,15 @@ namespace tensorrt {
 // execution context when the object goes out of scope.
 class ExecutionContext : public TrtUniquePtrType<nvinfer1::IExecutionContext> {
  public:
-  ExecutionContext(nvinfer1::IExecutionContext* context)
-      : TrtUniquePtrType<nvinfer1::IExecutionContext>(context) {}
+  ExecutionContext(nvinfer1::IExecutionContext* context, bool has_memory)
+      : TrtUniquePtrType<nvinfer1::IExecutionContext>(context),
+        has_device_memory_(has_memory) {}
   static ExecutionContext Create(nvinfer1::ICudaEngine* cuda_engine);
+
+  bool HasDeviceMemory() { return has_device_memory_; }
+
+ private:
+  bool has_device_memory_;
 };
 
 };  // namespace tensorrt

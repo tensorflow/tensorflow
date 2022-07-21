@@ -38,7 +38,7 @@ Status SetDevice(const GraphDef& input_graph_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("set_device", SetDevice);

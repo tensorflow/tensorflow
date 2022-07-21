@@ -441,6 +441,10 @@ inline bool operator==(const ITensorProxyPtr& p1, const ITensorProxyPtr& p2) {
            p1->simple_tensor() == p2->simple_tensor()));
 }
 
+inline bool operator!=(const ITensorProxyPtr& p1, const ITensorProxyPtr& p2) {
+  return !(p1 == p2);
+}
+
 struct ITensorProxyHash {
   size_t operator()(const ITensorProxyPtr& tensor) const {
     return reinterpret_cast<std::uintptr_t>(tensor.p_.get());

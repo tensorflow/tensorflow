@@ -19,10 +19,6 @@ exported to v2 in tf.estimator namespace. See
 https://github.com/tensorflow/estimator/blob/master/tensorflow_estimator/python/estimator/hooks/basic_session_run_hooks.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
@@ -569,7 +565,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
     self._listeners = listeners or []
-    self._steps_per_run = 1
+    # Set sufficiently high default that it never skips checking the actual
+    # global step counter -- unless the user overrides it with the right value
+    # for the steps_per_run.
+    self._steps_per_run = 1000000
     self._save_graph_def = save_graph_def
 
   def _set_steps_per_run(self, steps_per_run):
@@ -691,10 +690,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._summary_writer = summary_writer
     self._output_dir = output_dir
     self._last_global_step = None
-    # Set sufficiently high default that it never skips checking the actual
-    # global step counter -- unless the user overrides it with the right value
-    # for the steps_per_run.
-    self._steps_per_run = 1000000
+    self._steps_per_run = 1
 
   def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run

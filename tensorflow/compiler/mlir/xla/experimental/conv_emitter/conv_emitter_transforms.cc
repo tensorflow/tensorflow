@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 
+#include <iterator>
+
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -60,7 +62,7 @@ bool IsSimpleLoop(mlir::AffineForOp loop) {
   return loop.getLowerBoundMap().isSingleConstant() &&
          loop.getLowerBoundMap().getSingleConstantResult() == 0 &&
          loop.getStep() == 1 && loop.getUpperBoundMap().getNumResults() == 1 &&
-         std::next(loop.region().begin()) == loop.region().end();
+         std::next(loop.getRegion().begin()) == loop.getRegion().end();
 }
 
 std::vector<mlir::AffineForOp> CreateNestedSimpleLoops(

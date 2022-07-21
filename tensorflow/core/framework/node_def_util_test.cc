@@ -50,7 +50,7 @@ NodeDef ToNodeDef(NodeDefBuilder&& builder) {
 }
 
 void ExpectSuccess(const NodeDef& good, const OpDef& op_def) {
-  EXPECT_EQ(Status::OK(), ValidateNodeDef(good, op_def))
+  EXPECT_EQ(OkStatus(), ValidateNodeDef(good, op_def))
       << "NodeDef: " << SummarizeNodeDef(good)
       << "; OpDef: " << SummarizeOpDef(op_def);
 }
@@ -317,7 +317,7 @@ TEST(NodeDefUtilTest, Device) {
 }
 
 void ExpectValidSyntax(const NodeDef& good) {
-  EXPECT_EQ(Status::OK(), ValidateExternalNodeDefSyntax(good))
+  EXPECT_EQ(OkStatus(), ValidateExternalNodeDefSyntax(good))
       << "NodeDef: " << SummarizeNodeDef(good);
 }
 

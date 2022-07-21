@@ -14,10 +14,6 @@
 # ==============================================================================
 """Import a TF v1-style SavedModel when executing eagerly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python.eager import context
@@ -35,16 +31,18 @@ from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as tf_saver
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 
 # API label for SavedModel metrics.
 _LOAD_V1_V2_LABEL = "load_v1_in_v2"
 
 
-class _Initializer(tracking.CapturableResource):
+class _Initializer(resource.CapturableResource):
   """Represents an initialization operation restored from a SavedModel.
 
   Without this object re-export of imported 1.x SavedModels would omit the
@@ -142,12 +140,12 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     for signature_key, signature_def in meta_graph_def.signature_def.items():
       if signature_def.inputs:
         input_items = sorted(
-            signature_def.inputs.items(), key=lambda item: item[1].name)
+            signature_def.inputs.items(), key=lambda item: item[0])
         original_input_names, input_specs = zip(*input_items)
       else:
         original_input_names = []
         input_specs = []
-      # TODO(allenl): Support optional arguments
+      # TODO(b/205015292): Support optional arguments
       feeds = [
           wrap_function._get_element_from_tensor_info(input_spec, wrapped.graph)  # pylint: disable=protected-access
           for input_spec in input_specs
@@ -238,7 +236,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       # Add a dummy Tensor we know we can fetch to add control dependencies to.
       init_anchor = constant_op.constant(0., name="dummy_fetch")
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     if restore_from_saver is not None:
       root.restore = (
           lambda path: restore_from_saver(constant_op.constant(path)))
@@ -247,7 +245,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     for tensor_name, value in loader_impl.get_asset_tensors(
         self._export_dir, meta_graph_def).items():
       asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
-      asset_paths.append(tracking.Asset(value))
+      asset_paths.append(asset.Asset(value))
     init_fn = wrapped.prune(
         feeds=asset_feed_tensors,
         fetches=[init_anchor, wrapped.graph.as_graph_element(init_op)])

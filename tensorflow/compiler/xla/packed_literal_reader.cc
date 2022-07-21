@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/packed_literal_reader.h"
 
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -62,7 +61,7 @@ StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
   int64_t elements = ShapeUtil::ElementsIn(shape);
   absl::Span<const float> field = result.data<float>();
   char* data = absl::bit_cast<char*>(field.data());
-  uint64 bytes = elements * sizeof(float);
+  uint64_t bytes = elements * sizeof(float);
   absl::string_view sp;
   auto s = file_->Read(offset_, bytes, &sp, data);
   offset_ += sp.size();

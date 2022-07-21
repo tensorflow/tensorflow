@@ -1,4 +1,4 @@
-// RUN: xla-opt -split-input-file "-xla-hlo-to-lhlo-with-xla=platform=CUDA" %s | FileCheck %s
+// RUN: xla-opt-gpu -split-input-file "-xla-hlo-to-lhlo-with-xla=platform=CUDA" %s | FileCheck %s
 
 // CHECK-LABEL: func @main
 // CHECK-SAME: %[[ARG0:.*]]: memref<36xi8> {lmhlo.params = 0
@@ -20,8 +20,8 @@
 // CHECK: index_vector_dim = 1
 // CHECK: unique_indices = false
 // CHECK: (memref<3x3xi32>, memref<2xi32>, memref<2x3xi32>, memref<3x3xi32>) -> ()
-func @main(%operand:tensor<3x3xi32>, %indices: tensor<2xi32>, %updates: tensor<2x3xi32>) -> tensor<3x3xi32> {
-  %result = "mhlo.scatter"(%operand, %indices, %updates) ( {
+func.func @main(%operand:tensor<3x3xi32>, %indices: tensor<2xi32>, %updates: tensor<2x3xi32>) -> tensor<3x3xi32> {
+  %result = "mhlo.scatter"(%operand, %indices, %updates) ({
     ^bb0(%x: tensor<i32>, %y : tensor<i32>):
       %result = "mhlo.add"(%x, %y): (tensor<i32>, tensor<i32>) -> tensor<i32>
       "mhlo.return"(%result) : (tensor<i32>) -> ()
@@ -33,6 +33,6 @@ func @main(%operand:tensor<3x3xi32>, %indices: tensor<2xi32>, %updates: tensor<2
          >,
          indices_are_sorted = false,
          unique_indices = false} : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
-  return %result : tensor<3x3xi32>
+  func.return %result : tensor<3x3xi32>
 }
 

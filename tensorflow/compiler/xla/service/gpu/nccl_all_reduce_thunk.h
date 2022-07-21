@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
@@ -37,7 +36,7 @@ struct NcclAllReduceConfig {
 // GPU-based replicas.
 class NcclAllReduceThunkBase : public NcclCollectiveThunk {
  public:
-  static absl::optional<ReductionKind> MatchAllReduceComputation(
+  static std::optional<ReductionKind> MatchAllReduceComputation(
       mlir::Region& computation);
 
   NcclAllReduceThunkBase(Kind kind, ThunkInfo thunk_info,
@@ -125,6 +124,14 @@ class NcclReduceScatterThunk : public NcclAllReduceThunkBase {
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 };
+
+Status RunAllReduce(ReductionKind reduction_kind,
+                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+                    ncclComm_t comm);
+
+Status RunReduceScatter(ReductionKind reduction_kind,
+                        std::vector<DeviceBufferPair>& buffers,
+                        se::Stream& stream, ncclComm_t comm);
 
 }  // namespace gpu
 }  // namespace xla

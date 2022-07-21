@@ -37,10 +37,10 @@ namespace {
 
 // Returns string attribute value for the node if the attribute is present,
 // otherwise returns empty optional value.
-absl::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
+std::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
   auto attr = n.attrs().Find(attr_name);
   if (!attr) {
-    return absl::nullopt;
+    return std::nullopt;
   } else {
     return attr->s();
   }
@@ -58,7 +58,7 @@ Status AppendToListAttr(Node* n, const string& attr_name, const string& value) {
   n->ClearAttr(attr_name);
   attr_value.push_back(value);
   n->AddAttr(attr_name, attr_value);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replaces attribute value.
@@ -105,7 +105,7 @@ Status PreprocessControlEdgesBetweenOutsideCompilations(
   for (auto e : edges_to_remove) {
     g->RemoveEdge(e);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Step 2 for `PreprocessEdgesBetweenOutsideCompilations`. See comments of
@@ -168,9 +168,7 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
                                src_output);
       NodeDef placeholder_def;
       TF_RETURN_IF_ERROR(placeholder_builder.Finalize(&placeholder_def));
-      Status s;
-      placeholder_node = g->AddNode(placeholder_def, &s);
-      TF_RETURN_IF_ERROR(s);
+      TF_ASSIGN_OR_RETURN(placeholder_node, g->AddNode(placeholder_def));
       placeholders[placeholder_index] = placeholder_node;
     } else {
       placeholder_node = iter->second;
@@ -191,7 +189,7 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Step 1 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
@@ -267,7 +265,7 @@ Status PostprocessDataEdgesBetweenOutsideCompilations(
     // Remove placeholder node.
     g->RemoveNode(n);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Step 2 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
@@ -300,7 +298,7 @@ Status PostprocessControlEdgesBetweenOutsideCompilations(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -340,13 +338,13 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
     n->AddAttr(kXlaInferredShapesAttrName, output_shapes);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name) {
-  auto cluster_deps = absl::make_unique<
+  auto cluster_deps = std::make_unique<
       absl::flat_hash_map<string, absl::flat_hash_set<string>>>();
 
   for (const Edge* e : g->edges()) {
@@ -369,7 +367,7 @@ OutsideCompilationClusterDependencies(
   }
 
   auto cluster_deps_ordered =
-      absl::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
+      std::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
 
   for (auto it = cluster_deps->begin(); it != cluster_deps->end(); it++) {
     std::vector<string> ordered_deps(it->second.begin(), it->second.end());
@@ -403,7 +401,7 @@ Status PreprocessEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
   TF_RETURN_IF_ERROR(PreprocessDataEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PostprocessEdgesBetweenOutsideCompilations(
@@ -412,7 +410,7 @@ Status PostprocessEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
   TF_RETURN_IF_ERROR(PostprocessControlEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

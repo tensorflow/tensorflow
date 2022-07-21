@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_PARAMETER_BINDING_H_
 
+#include <functional>
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -88,7 +90,7 @@ class DynamicParameterBinding {
   // dimension `dim_num` of parameter `param_num` at `param_index`.
   //
   // Returns nullopt if the binding is not set.
-  absl::optional<DynamicParameter> GetBinding(
+  std::optional<DynamicParameter> GetBinding(
       const DynamicDimension& dynamic_dimension) const;
 
   using BindingFn =
@@ -103,7 +105,7 @@ class DynamicParameterBinding {
   static StatusOr<DynamicParameterBinding> CreateFromProto(
       const DynamicParameterBindingProto& proto);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Verifies that the given binding is valid for the given module.
   // Specifically, the binding's parameter and parameter size should be valid.

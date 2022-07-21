@@ -46,27 +46,77 @@ TfLiteStatus FeedExample(tflite::Interpreter* interpreter, const Example&);
 TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter, const Example&);
 
 // Parses a test description and feeds the given test runner with data.
-// The input format is similar to an ASCII proto:
+// The input format is similar to a proto with the following schema:
+//
+// message TestMessage {
+//   // Path to the model to load.
+//   string load_model = 1;
+//   // Names to initialize the tensor with zeros.
+//   string init_state = 2;
+//   message Reshape {
+//     // Name of the input and csv string of shape of it.
+//     map<string, string> input = 1;
+//   }
+//   repeated Reshape reshape = 3;
+//   message Invoke {
+//     // Name of this invoke.
+//     string id = 1;
+//     // Name of the input to the csv string of input value.
+//     map<string, string> input = 2;
+//     // Name of the output to the csv string of expected output value.
+//     map<string, string> output = 3;
+//     // Name of the output to the csv string of expected output shape.
+//     map<string, string> output_shape = 4;
+//   }
+//   repeated Invoke invoke = 4;
+// }
+//
+// An example of the ASCII proto:
 //   // Loads model 'add.bin' from the TestRunner's model directory.
 //   load_model: "add.bin"
 //   // Changes the shape of inputs, provided in the same order they appear
-//   // in the model.
+//   // in the model, or `input_names` if specified.
 //   reshape {
-//     input: "1,224,224,3"
-//     input: "1,3,4,1"
+//     input {
+//       key: "a"
+//       value: "1,224,224,3"
+//     }
+//     input {
+//       key: "b"
+//       value: "1,3,4,1"
+//     }
 //   }
 //   // Fills the given persistent tensors with zeros.
-//   init_state: 0,1,2,3
+//   init_state: "a,b,c,d"
 //   // Invokes the interpreter with the given input and checks that it
 //   // produces the expected output. Inputs and outputs should be specified in
-//   // the order they appear in the model.
+//   // the order they appear in the model, or `input_names` and `output_names`
+//   // if specified.
 //   invoke {
-//     input: "1,2,3,4,56"
-//     input: "0.1,0.2,0.3,4.3,56.4"
-//     output: "12,3,4,545,3,6"
-//     output: "0.01,0.02"
-//     output_shape: "2,3"
-//     output_shape: "1"
+//     input {
+//       key: "a"
+//       value: "1,2,3,4,56"
+//     }
+//     input {
+//       key: "b"
+//       value: "0.1,0.2,0.3,4.3,56.4"
+//     }
+//     output {
+//       key: "x"
+//       value: "12,3,4,545,3,6"
+//     }
+//     output {
+//       key: "y"
+//       value: "0.01,0.02"
+//     }
+//     output_shape {
+//       key: "x"
+//       value: "2,3"
+//     }
+//     output_shape {
+//       key: "y"
+//       value: "1"
+//     }
 //   }
 bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
                       int max_invocations = -1);

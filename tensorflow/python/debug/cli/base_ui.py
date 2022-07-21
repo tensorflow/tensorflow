@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Base Class of TensorFlow Debugger (tfdbg) Command-Line Interface."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 from tensorflow.python.debug.cli import cli_config

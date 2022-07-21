@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
@@ -44,7 +44,7 @@ void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
   event.SetDurationNs(duration_ns);
   if (!on_device) return;
   event.AddStatValue(
-      *plane->GetOrCreateStatMetadata("level 0"),
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
       *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
 }
 
@@ -75,10 +75,10 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   // Op1, Op2, Idle.
   EXPECT_EQ(3, op_metrics.metrics_db_size());
   uint64 total_op_duration =
-      NanosToPicos(kTfOp1DurationNs * 2 + kTfOp2DurationNs);
+      NanoToPico(kTfOp1DurationNs * 2 + kTfOp2DurationNs);
   EXPECT_EQ(total_op_duration, op_metrics.total_op_time_ps());
-  uint64 total_duration = NanosToPicos(kTfOp2StartNs - kTfOp1StartNs +
-                                       kTfOp2DurationNs + kTfOp1DurationNs);
+  uint64 total_duration = NanoToPico(kTfOp2StartNs - kTfOp1StartNs +
+                                     kTfOp2DurationNs + kTfOp1DurationNs);
   EXPECT_EQ(total_duration, op_metrics.total_time_ps());
 
   // Verifies OpMetricsDb is built correctly.
@@ -86,19 +86,19 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   EXPECT_EQ(kTfOp1, op_1.name());
   EXPECT_EQ(kTfOp1, op_1.category());
   EXPECT_EQ(2, op_1.occurrences());
-  EXPECT_EQ(NanosToPicos(kTfOp1DurationNs) * 2, op_1.time_ps());
+  EXPECT_EQ(NanoToPico(kTfOp1DurationNs) * 2, op_1.time_ps());
 
   const OpMetrics& idle = op_metrics.metrics_db().at(1);
   EXPECT_EQ(kIdle, idle.name());
   EXPECT_EQ(kIdle, idle.category());
   // Idle time is the gap between Op2 start and the end of Op1, which is 2000ns.
-  EXPECT_EQ(NanosToPicos(2000), idle.time_ps());
+  EXPECT_EQ(NanoToPico(2000), idle.time_ps());
 
   const OpMetrics& op_2 = op_metrics.metrics_db().at(2);
   EXPECT_EQ(kTfOp2, op_2.name());
   EXPECT_EQ(kTfOp2, op_2.category());
   EXPECT_EQ(1, op_2.occurrences());
-  EXPECT_EQ(NanosToPicos(kTfOp2DurationNs), op_2.time_ps());
+  EXPECT_EQ(NanoToPico(kTfOp2DurationNs), op_2.time_ps());
 }
 
 TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
@@ -140,13 +140,13 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
 
   // kernel1, kernel2, kernel3, Idle.
   EXPECT_EQ(4, op_metrics.metrics_db_size());
-  uint64 total_op_duration = NanosToPicos(
+  uint64 total_op_duration = NanoToPico(
       kKernel1DurationNs * 2 + kKernel2DurationNs * 2 + kKernel3DurationNs);
   EXPECT_EQ(total_op_duration, op_metrics.total_op_time_ps());
   // For device, the total_duration for each device is the total duration merged
   // from all GPU streams, which is from 100000 to 130000.
   uint64 total_duration =
-      NanosToPicos(kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
+      NanoToPico(kKernel3StartNs + kKernel3DurationNs - kKernel1StartNs);
   EXPECT_EQ(std::max(total_duration, total_op_duration),
             op_metrics.total_time_ps());
 
@@ -155,25 +155,25 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   EXPECT_EQ(absl::StrCat(kTfOp1, "/", kKernel1), op_1.name());
   EXPECT_EQ(kTfOp1, op_1.category());
   EXPECT_EQ(2, op_1.occurrences());
-  EXPECT_EQ(NanosToPicos(kKernel1DurationNs) * 2, op_1.time_ps());
+  EXPECT_EQ(NanoToPico(kKernel1DurationNs) * 2, op_1.time_ps());
 
   const OpMetrics& op_2 = op_metrics.metrics_db().at(1);
   EXPECT_EQ(absl::StrCat(kTfOp1, "/", kKernel2), op_2.name());
   EXPECT_EQ(kTfOp1, op_2.category());
   EXPECT_EQ(2, op_2.occurrences());
-  EXPECT_EQ(NanosToPicos(kKernel2DurationNs) * 2, op_2.time_ps());
+  EXPECT_EQ(NanoToPico(kKernel2DurationNs) * 2, op_2.time_ps());
 
   const OpMetrics& op_3 = op_metrics.metrics_db().at(2);
   EXPECT_EQ(absl::StrCat(kTfOp2, "/", kKernel3), op_3.name());
   EXPECT_EQ(kTfOp2, op_3.category());
   EXPECT_EQ(1, op_3.occurrences());
-  EXPECT_EQ(NanosToPicos(kKernel3DurationNs), op_3.time_ps());
+  EXPECT_EQ(NanoToPico(kKernel3DurationNs), op_3.time_ps());
 
   const OpMetrics& idle = op_metrics.metrics_db().at(3);
   EXPECT_EQ(kIdle, idle.name());
   EXPECT_EQ(kIdle, idle.category());
   // GPU is always busy in this example.
-  EXPECT_EQ(NanosToPicos(0), idle.time_ps());
+  EXPECT_EQ(NanoToPico(0), idle.time_ps());
 }
 
 }  // namespace

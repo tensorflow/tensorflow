@@ -49,7 +49,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -62,11 +62,11 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -83,7 +83,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddVector(transformations_, &transformations_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, transformations_node}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -130,13 +130,13 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

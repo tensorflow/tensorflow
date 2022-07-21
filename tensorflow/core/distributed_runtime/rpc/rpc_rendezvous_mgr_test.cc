@@ -63,7 +63,7 @@ class DummyWorker : public TestWorkerInterface {
       // RPC call objects.
       const int64_t t_us = random::New64() % 100 * 1000;
       Env::Default()->SleepForMicroseconds(t_us);
-      done(Status::OK());
+      done(OkStatus());
     });
   }
 };
@@ -103,7 +103,7 @@ static Device* CreateDevice(const char* type, const char* name) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return Status::OK(); }
+    Status Sync() override { return OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -326,7 +326,7 @@ TEST_F(RpcRendezvousMgrTest, RemoteRecvAsyncMany) {
     int num_requests = 10000;
     Tensor val(DT_STRING);
     mutex mu_;
-    Status status = Status::OK();
+    Status status = OkStatus();
     BlockingCounter counter(num_requests);
 
     for (int i = 0; i < num_requests; i++) {

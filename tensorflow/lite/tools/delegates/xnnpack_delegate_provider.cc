@@ -41,8 +41,12 @@ REGISTER_DELEGATE_PROVIDER(XnnpackDelegateProvider);
 
 std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
     ToolParams* params) const {
-  std::vector<Flag> flags = {
-      CreateFlag<bool>("use_xnnpack", params, "use XNNPack")};
+  std::vector<Flag> flags = {CreateFlag<bool>(
+      "use_xnnpack", params,
+      "explicitly apply the XNNPACK delegate. Note the XNNPACK delegate could "
+      "be implicitly applied by the TF Lite runtime regardless the value of "
+      "this parameter. To disable this implicit application, set the value to "
+      "false explicitly.")};
   return flags;
 }
 
@@ -57,7 +61,7 @@ TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     return evaluation::CreateXNNPACKDelegate(
         params.Get<int32_t>("num_threads"));
   }
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 }
 
 std::pair<TfLiteDelegatePtr, int>

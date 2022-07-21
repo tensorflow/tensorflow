@@ -40,12 +40,14 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "//tensorflow/compiler/xla/service/gpu:metrics",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

@@ -308,7 +308,7 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.block_shape(), bts_op.block_shape(), expand_axis, rewriter);
-  if (!dilations_attr.hasValue()) {
+  if (!dilations_attr.has_value()) {
     return rewriter.notifyMatchFailure(op, "failed to extract dilation rate");
   }
 
@@ -373,10 +373,10 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       // take into account the additional padding when determining the padding
       // scheme for `Conv2D`.
       int64_t addtional_pad =
-          pad_attr ? pad_attr.getValue<IntegerAttr>({i + 1, j}).getInt() : 0;
-      if (stb_paddings_attr.getValue<IntegerAttr>({i, j}).getInt() +
+          pad_attr ? pad_attr.getValues<APInt>()[{i + 1, j}].getSExtValue() : 0;
+      if (stb_paddings_attr.getValues<APInt>()[{i, j}].getSExtValue() +
               addtional_pad !=
-          bts_crops_attr.getValue<IntegerAttr>({i, j}).getInt()) {
+          bts_crops_attr.getValues<APInt>()[{i, j}].getSExtValue()) {
         op->setAttr("padding", rewriter.getStringAttr("SAME"));
         break;
       }
@@ -453,14 +453,16 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
   // Check that the block_shape of `stb_op` and `bts_op` are equal.
   if (stb_bs_attr.getNumElements() != bts_bs_attr.getNumElements()) return {};
   for (uint64_t i = 0, end = stb_bs_attr.getNumElements(); i < end; ++i) {
-    if (stb_bs_attr.getValue({i}) != bts_bs_attr.getValue({i})) return {};
+    if (stb_bs_attr.getValues<Attribute>()[i] !=
+        bts_bs_attr.getValues<Attribute>()[i])
+      return {};
   }
 
   int dilation_h_factor = -1, dilation_w_factor = -1;
   // Set dilation factor.
   if (stb_bs_attr.getNumElements() >= 2) {
-    dilation_h_factor = stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
-    dilation_w_factor = stb_bs_attr.getValue({1}).cast<IntegerAttr>().getInt();
+    dilation_h_factor = stb_bs_attr.getValues<APInt>()[0].getSExtValue();
+    dilation_w_factor = stb_bs_attr.getValues<APInt>()[1].getSExtValue();
   } else if (stb_bs_attr.getNumElements() == 1) {
     // For 1d conv, `tf.nn.convolution` expands NWC to NHWC format after
     // `SpaceToBatchND`. Therefore, `block_shape` of `stb_op` only has one
@@ -468,12 +470,10 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
     if (expand_axis == 1) {
       // NWC -> NHWC
       dilation_h_factor = 1;
-      dilation_w_factor =
-          stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
+      dilation_w_factor = stb_bs_attr.getValues<APInt>()[0].getSExtValue();
     } else if (expand_axis == 2) {
       // NHC -> NHWC
-      dilation_h_factor =
-          stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
+      dilation_h_factor = stb_bs_attr.getValues<APInt>()[0].getSExtValue();
       dilation_w_factor = 1;
     }
   }

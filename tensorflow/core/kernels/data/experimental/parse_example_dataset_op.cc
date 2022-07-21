@@ -251,7 +251,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       params.op_version = op_version_;
-      return absl::make_unique<Iterator>(Iterator::Params{
+      return std::make_unique<Iterator>(Iterator::Params{
           this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
     }
 
@@ -269,12 +269,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return name_utils::DatasetDebugString(kDatasetType, params);
     }
 
-    int64_t Cardinality() const override { return input_->Cardinality(); }
+    int64_t CardinalityInternal() const override {
+      return input_->Cardinality();
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -355,7 +357,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                                        },
                                        {{2, dense_defaults_nodes}}, attrs,
                                        output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -380,7 +382,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == model::kAutotune) {
-          num_parallel_calls_->value = ctx->runner_threadpool_size();
+          num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
         }
         TF_RETURN_IF_ERROR(RegisterCancellationCallback(
             ctx->cancellation_manager(),
@@ -460,7 +462,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                 ""));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -505,7 +507,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           RecordBufferEnqueue(ctx, result.return_values);
           result.notification.Notify();
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       TraceMeMetadata GetTraceMeMetadata() const override {
@@ -641,7 +643,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
               dataset()->output_shapes()[output_index].DebugString(), ", got ",
               tensor.shape().DebugString(), ").");
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status ParseExample(IteratorContext* ctx, std::vector<Tensor> input,
@@ -720,7 +722,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                 steps);
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status ProcessResult(IteratorContext* ctx,
@@ -731,7 +733,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           *out_tensors = std::move(result->return_values);
           RecordBufferDequeue(ctx, *out_tensors);
           *end_of_sequence = false;
-          return Status::OK();
+          return OkStatus();
         }
         if (errors::IsOutOfRange(result->status)) {
           // To guarantee that the transformation preserves the cardinality of
@@ -856,7 +858,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
                                                  status.error_message()));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
@@ -872,9 +874,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
               reader->ReadScalar(ErrorMessageKey(index), &error_message));
           *status = Status(code, error_message);
         } else {
-          *status = Status::OK();
+          *status = OkStatus();
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       string CodeKey(size_t index) {
@@ -905,10 +907,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       // Buffer for storing the invocation results.
       std::deque<std::shared_ptr<InvocationResult>> invocation_results_
           TF_GUARDED_BY(*mu_);
+      bool cancelled_ TF_GUARDED_BY(*mu_) = false;
 
       std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
       std::unique_ptr<Thread> stats_thread_ TF_GUARDED_BY(*mu_);
-      bool cancelled_ TF_GUARDED_BY(*mu_) = false;
 
       // Method for deregistering the cancellation callback.
       std::function<void()> deregister_fn_;

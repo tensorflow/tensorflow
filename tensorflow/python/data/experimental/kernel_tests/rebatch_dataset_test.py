@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the private `_RebatchDataset` transformation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 from absl.testing import parameterized
 import numpy as np
@@ -623,6 +619,16 @@ class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.zip((dataset.batch(4), dataset.batch(8)))
     batch_size = distribute.compute_batch_size(dataset)
     self.assertEqual(-1, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneDataset(self):
+    # Some datasets, e.g. datasets with None tensors, have components without
+    # output shapes. Test that this doesn't break computing batch size logic.
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.map(lambda x: (x, None))
+    dataset = dataset.batch(4, drop_remainder=True)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
 
 
 class LegacyRebatchDatasetCheckpointTest(

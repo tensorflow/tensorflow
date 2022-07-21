@@ -13,34 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass inserts a TFL::CallOnce op when tf_saved_model's session
 // initializer is given.
 class InsertCallOnceOpFromSessionInitializerPass
-    : public mlir::PassWrapper<InsertCallOnceOpFromSessionInitializerPass,
-                               OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TensorFlowLiteDialect>();
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-insert-call-once-op";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Insert CallOnce op when tf_saved_model's session initializer is "
-           "given";
-  }
+    : public InsertCallOnceOpFromSessionInitializerPassBase<
+          InsertCallOnceOpFromSessionInitializerPass> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      InsertCallOnceOpFromSessionInitializerPass)
 
  private:
   void runOnOperation() override;
@@ -56,7 +49,7 @@ void InsertCallOnceOpFromSessionInitializerPass::runOnOperation() {
   SymbolTable symbol_table(module);
 
   for (auto sym_ref : session_init_op.initializers()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
     if (!init_func_op) {
@@ -64,7 +57,7 @@ void InsertCallOnceOpFromSessionInitializerPass::runOnOperation() {
       return signalPassFailure();
     }
 
-    for (auto func : module.getOps<FuncOp>()) {
+    for (auto func : module.getOps<func::FuncOp>()) {
       auto dict_attr =
           func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
       if (!dict_attr) continue;
@@ -84,8 +77,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass() {
   return std::make_unique<InsertCallOnceOpFromSessionInitializerPass>();
 }
-
-static PassRegistration<InsertCallOnceOpFromSessionInitializerPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

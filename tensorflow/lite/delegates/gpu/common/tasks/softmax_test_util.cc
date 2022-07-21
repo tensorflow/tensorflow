@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/softmax_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -32,18 +33,18 @@ absl::Status SoftmaxTest(TestExecutionEnvironment* env) {
   src_tensor.data = {std::log(1.0f), std::log(2.0f), std::log(3.0f),
                      std::log(4.0f)};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateSoftmax(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f / 3.0f, 2.0f / 3.0f, 3.0f / 7.0f, 4.0f / 7.0f},
@@ -72,18 +73,18 @@ absl::Status SoftmaxBigNumberTest(TestExecutionEnvironment* env) {
   double s0 = std::exp(doubles[0]) + std::exp(doubles[1]);
   double s1 = std::exp(doubles[2]) + std::exp(doubles[3]);
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateSoftmax(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({static_cast<float>(std::exp(doubles[0]) / s0),
@@ -102,18 +103,18 @@ absl::Status Softmax1x1Test(TestExecutionEnvironment* env) {
   src_tensor.data = {std::log(1.0f), std::log(2.0f), std::log(3.0f),
                      std::log(4.0f)};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Softmax1x1 operation = CreateSoftmax1x1(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Softmax1x1>(std::move(operation)),
+          src_tensor, std::make_unique<Softmax1x1>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.1f, 0.2f, 0.3f, 0.4f}, dst_tensor.data, eps));
@@ -141,18 +142,18 @@ absl::Status Softmax1x1BigNumberTest(TestExecutionEnvironment* env) {
   double s0 = std::exp(doubles[0]) + std::exp(doubles[1]) +
               std::exp(doubles[2]) + std::exp(doubles[3]);
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Softmax1x1 operation = CreateSoftmax1x1(op_def);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Softmax1x1>(std::move(operation)),
+          src_tensor, std::make_unique<Softmax1x1>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({static_cast<float>(std::exp(doubles[0]) / s0),

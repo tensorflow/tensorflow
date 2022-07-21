@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,7 +34,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual = GetParticipatingIDs(
                                 /*current_id=*/0, /*total_participant_count=*/3,
                                 /*groups=*/{})
-                                .ConsumeValueOrDie();
+                                .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
 }
@@ -50,9 +50,9 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
 
   std::vector<int> actual =
       GetParticipatingIDs(
-          /*current_id=*/1, /*total_participant_count=*/absl::nullopt,
+          /*current_id=*/1, /*total_participant_count=*/std::nullopt,
           replica_groups)
-          .ConsumeValueOrDie();
+          .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
 }
@@ -63,8 +63,8 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
 namespace GetCollectiveOpGroupModeTest {
 struct TestCase {
   bool has_channel_id;
-  absl::optional<bool> use_global_device_ids;
-  absl::optional<xla::CollectiveOpGroupMode> expected;
+  std::optional<bool> use_global_device_ids;
+  std::optional<xla::CollectiveOpGroupMode> expected;
 
   std::string ToString() const {
     std::ostringstream s;
@@ -81,10 +81,10 @@ std::vector<TestCase> GetTestCases() {
   const std::vector<TestCase> test_cases = {
       // clang-format off
       // has_channel_id, use_global_device_ids, expected mode
-      {false, absl::nullopt, CollectiveOpGroupMode::kCrossReplica},
+      {false, std::nullopt, CollectiveOpGroupMode::kCrossReplica},
       {false, false,         CollectiveOpGroupMode::kCrossReplica},
-      {false, true,          absl::nullopt},
-      {true,  absl::nullopt, CollectiveOpGroupMode::kCrossPartition},
+      {false, true,          std::nullopt},
+      {true,  std::nullopt, CollectiveOpGroupMode::kCrossPartition},
       {true,  false,         CollectiveOpGroupMode::kCrossReplicaAndPartition},
       {true,  true,          CollectiveOpGroupMode::kFlattenedID},
       // clang-format on
@@ -120,7 +120,7 @@ struct TestCase {
   xla::Array2D<int> device_assignment;
   std::vector<std::vector<int>> replica_groups;
   bool has_channel_id;
-  absl::optional<bool> use_global_device_ids;
+  std::optional<bool> use_global_device_ids;
 
   // For a given test case, its useful to test multiple 'current_id' inputs.
   struct CurrentIdAndOutput {
@@ -238,7 +238,7 @@ std::vector<TestCase> GetTestCases() {
       },
       {{0, 1}, {2, 3}},          // replica groups
       true,                      // has_channel_id
-      absl::nullopt,             // use_global_device_ids
+      std::nullopt,             // use_global_device_ids
       {                          // subtests
         // 33 is r0p0, p0 group has p0, p1 so we get r0p0 and r0p1.
         {33, {33, 34}},
@@ -349,7 +349,7 @@ std::vector<TestCase> GetTestCases() {
   // When use_global_device_ids is not present and channel_id is not present,
   // that implies cross replica mode as well.
   for (TestCase tc : cross_replica_test_cases) {
-    tc.use_global_device_ids = absl::nullopt;
+    tc.use_global_device_ids = std::nullopt;
     test_cases.push_back(tc);
   }
 

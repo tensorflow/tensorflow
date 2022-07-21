@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -372,8 +373,8 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
   const char *expected_ir = R"(
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -416,8 +417,8 @@ TEST_F(GpuKernelTilingTest,
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
   const char *expected_ir = R"(
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK-NOT: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -461,13 +462,21 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   std::unique_ptr<VerifiedHloModule> hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  const char *expected_ir = R"(
+  const char *expected_ir = is_built_with_rocm_ ? R"(
+; CHECK-LABEL: define amdgpu_kernel void @fusion
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
+)"
+                                                : R"(
 ; CHECK-LABEL: define void @fusion
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK: store float %{{.*}}, float addrspace(1)
-; CHECK-NOT: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
@@ -495,9 +504,14 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithLayoutChangeTiled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  const char *expected_ir = R"(
+  const char *expected_ir = is_built_with_rocm_ ? R"(
+; CHECK-LABEL: define amdgpu_kernel void @
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: }
+)"
+                                                : R"(
 ; CHECK-LABEL: define void @
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -565,9 +579,14 @@ TEST_F(GpuKernelTilingTest,
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
-  const char *expected_ir = R"(
+  const char *expected_ir = is_built_with_rocm_ ? R"(
+; CHECK-LABEL: define amdgpu_kernel void @reduce
+; CHECK: store float %{{.*}}, ptr addrspace(1)
+; CHECK: }
+)"
+                                                : R"(
 ; CHECK-LABEL: define void @reduce
-; CHECK: store float %{{.*}}, float addrspace(1)
+; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -700,7 +719,7 @@ ENTRY kernel_entry {
 }
   )";
   auto expected_ir = R"(
-; CHECK: load <2 x float>, <2 x float>
+; CHECK: load <2 x float>, ptr
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -749,11 +768,39 @@ TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
-  auto expected_ir = R"(
-; CHECK: shared_cache_{{[0-9]*}} = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [32 x float]]
+  auto expected_ir = is_built_with_rocm_ ? R"(
+; CHECK: initial_value_addr = internal unnamed_addr addrspace({{[0-9]*}}) global [1024 x float] undef, align 4
+  )"
+                                         : R"(
+; CHECK: shared_cache = private unnamed_addr addrspace({{[0-9]*}}) global [1 x [1 x [2 x float]]]
   )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
+}
+
+TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
+  const char *const kHloString = R"(
+  HloModule RowReduce
+
+  Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+  }
+
+  ENTRY reduce.1 {
+    parameter = f32[4,1048576,1024,1024] parameter(0)
+    init_value = f32[] constant(0)
+    ROOT reduce = f32[4,1048576,1024] reduce(parameter, init_value), dimensions={3}, to_apply=Sum
+  }
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  EXPECT_EQ(status.code(), tensorflow::error::Code::FAILED_PRECONDITION);
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::HasSubstr(
+          "Number of physical blocks (4294967296) does not fit in an i32"));
 }
 
 }  // namespace

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -189,7 +190,7 @@ class MaxPoolOp : public PoolingOp {
     // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
     // transpose back.  This isn't necessarily the most efficient algorithm, but
     // it's ok for starters.
-    absl::optional<int64> vect_width;
+    std::optional<int64_t> vect_width;
     if (data_format_ == FORMAT_NCHW_VECT_C) {
       vect_width = input_shape->dimensions().back();
       input = xla::Collapse(xla::Transpose(input, {0, 1, 4, 2, 3}), {1, 2});
@@ -319,6 +320,13 @@ class MaxPoolGradOp : public XlaOpKernel {
     OP_REQUIRES(ctx, padding_ != EXPLICIT,
                 errors::Unimplemented(
                     "XLA does not support maxpoolgrad with explicit padding."));
+    // When determinism is enabled, the use of SelectAndScatter causes a generic
+    // error to be raised. We raise a more informative error here before
+    // SelectAndScatter is used.
+    OP_REQUIRES(
+        ctx, !tensorflow::OpDeterminismRequired(),
+        errors::Unimplemented("GPU MaxPool gradient ops do not yet have a "
+                              "deterministic XLA implementation."));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }

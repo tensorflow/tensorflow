@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
@@ -69,10 +73,10 @@ class HloDomainTest : public HloTestBase {
 // HLO instructions with the same metadata().op_name() values.
 class OpNameMetadata : public DomainMetadata {
  public:
-  explicit OpNameMetadata(string opname) : opname_(std::move(opname)) {}
+  explicit OpNameMetadata(std::string opname) : opname_(std::move(opname)) {}
 
   std::unique_ptr<DomainMetadata> Clone() const override {
-    return absl::make_unique<OpNameMetadata>(opname_);
+    return std::make_unique<OpNameMetadata>(opname_);
   }
 
   absl::string_view Kind() const override { return KindName(); }
@@ -87,14 +91,14 @@ class OpNameMetadata : public DomainMetadata {
     return opname_ == other_ptr->opname_;
   }
 
-  string ToString() const override { return opname_; }
+  std::string ToString() const override { return opname_; }
 
   static absl::string_view KindName() { return "opname"; }
 
-  size_t Hash() const override { return std::hash<string>()(opname_); }
+  size_t Hash() const override { return std::hash<std::string>()(opname_); }
 
  private:
-  string opname_;
+  std::string opname_;
 };
 
 // Creator function for OpNameMetadata domains.
@@ -106,9 +110,9 @@ class OpNameDomainCreator {
       return nullptr;
     }
     std::unique_ptr<DomainMetadata> operand_side_metadata =
-        absl::make_unique<OpNameMetadata>(root->metadata().op_name());
+        std::make_unique<OpNameMetadata>(root->metadata().op_name());
     std::unique_ptr<DomainMetadata> user_side_metadata =
-        absl::make_unique<OpNameMetadata>(instruction->metadata().op_name());
+        std::make_unique<OpNameMetadata>(instruction->metadata().op_name());
     return operand->parent()->AddInstruction(HloInstruction::CreateDomain(
         operand->shape(), operand, std::move(operand_side_metadata),
         std::move(user_side_metadata)));
@@ -118,7 +122,96 @@ class OpNameDomainCreator {
 Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
                               const DomainMetadata* metadata) {
   // Nothing to do for the particular use this test make of the OpName domains.
-  return Status::OK();
+  return OkStatus();
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInlining) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%add_block {
+  l = f32[4] parameter(0)
+  r = f32[4] parameter(1)
+  ROOT m = f32[4] add(l, r), sharding={maximal device=1}
+}
+
+ENTRY entry {
+  p0 = (f32[4], f32[4]) parameter(0)
+  a = f32[4] get-tuple-element(p0), index=0
+  b = f32[4] get-tuple-element(p0), index=1
+  c = f32[4] call(f32[4] a, f32[4] b), to_apply=%add_block
+  d = f32[4] subtract(a, b), sharding={maximal device=1}
+  e = f32[4] multiply(c, d), sharding={maximal device=1}
+  ROOT f = (f32[4], f32[4], f32[4]) tuple(c, d, e)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  CallInliner call_inliner(/*single_call_site=*/false,
+                           /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "b"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "d", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "d", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "d", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "d", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInliningDomain) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%fn {
+  arg = f32[4] parameter(0)
+}
+
+ENTRY entry {
+  p = f32[4] parameter(0), sharding={maximal device=0}
+  domain.0 = f32[4] domain(p), domain={kind="sharding", entry={}, exit={maximal device=0}}
+  a = f32[4] call(domain.0), to_apply=fn
+  domain.1 = f32[4] domain(a), domain={kind="sharding", entry={maximal device=0}, exit={}}
+  ROOT b = f32[4] copy(domain.1), sharding={maximal device=0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  CallInliner call_inliner(/*single_call_site=*/false,
+                           /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  // Instruction "a" has been inlined and no longer exists.
+  EXPECT_EQ(nullptr, FindInstruction(module.get(), "a"));
+  // Inlined instruction "arg" which is a domain instruction, which should have
+  // been removed since its user and operand share the same sharding.
+  EXPECT_EQ(nullptr, FindInstruction(module.get(), "arg"));
+  // Verify there's no domain between "b" and "p" which share the same sharding.
+  EXPECT_FALSE(HasDomainEdge(module.get(), "b", "p"));
 }
 
 TEST_F(HloDomainTest, CheckDomainLinks) {
@@ -477,8 +570,8 @@ ENTRY entry {
 TEST_F(HloDomainTest, DumpParseNullSharding) {
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {});
-  auto sharding_md_0 = absl::make_unique<ShardingMetadata>(nullptr);
-  auto sharding_md_1 = absl::make_unique<ShardingMetadata>(nullptr);
+  auto sharding_md_0 = std::make_unique<ShardingMetadata>(nullptr);
+  auto sharding_md_1 = std::make_unique<ShardingMetadata>(nullptr);
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
   HloInstruction* domain = builder.AddInstruction(HloInstruction::CreateDomain(

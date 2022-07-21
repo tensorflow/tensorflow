@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implementation of Cluster Resolvers for Kubernetes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training import server_lib

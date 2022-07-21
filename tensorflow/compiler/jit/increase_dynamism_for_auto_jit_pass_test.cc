@@ -52,7 +52,7 @@ class FakeDevice : public Device {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
     device_attributes.set_device_type(DeviceType(type).type());
-    return absl::make_unique<FakeDevice>(device_attributes);
+    return std::make_unique<FakeDevice>(device_attributes);
   }
 };
 
@@ -70,7 +70,7 @@ Status IncreaseDynamismForAutoJit(const Scope& s,
     device_set->AddDevice(device.get());
   }
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   SessionOptions session_options;
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -94,7 +94,7 @@ Status IncreaseDynamismForAutoJit(const Scope& s,
   IncreaseDynamismForAutoJitPass rewriter;
   TF_RETURN_IF_ERROR(rewriter.Run(options));
   *result = std::move(graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(SliceToDynamicSliceRewriteTest, Basic) {
@@ -302,7 +302,7 @@ TEST(SliceToDynamicSliceRewriteTest, IndicesNotVector) {
                    .WithAssignedDevice(kDeviceName)
                    .WithXlaCluster("cluster_0");
 
-  auto ToInt64 = [](int v) { return static_cast<int64>(v); };
+  auto ToInt64 = [](int v) { return static_cast<int64_t>(v); };
 
   Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
   Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT64);

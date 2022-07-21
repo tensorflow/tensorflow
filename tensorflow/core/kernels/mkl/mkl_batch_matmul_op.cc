@@ -18,16 +18,14 @@ limitations under the License.
 // This file uses oneDNN library for acceleration of Batch Matrix-Matrix
 // Multiplication (MatMul) operations. We currently register this kernel only
 // for oneDNN supported data types (float, bfloat16). The maximum number of
-// dimensions (rank) for output tensor is 12 in oneDNN. If output tensor rank
-// exceeds 12, we exit with reporting an error message.
+// dimensions (rank) for output tensor is DNNL_MAX_NDIMS = 12 in oneDNN.
+// If output tensor rank exceeds 12, we exit with reporting an error message.
 
 #define EIGEN_USE_THREADS
 
 #if defined(INTEL_MKL)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -37,10 +35,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/mkl/mkl_batch_matmul_helper.h"
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -48,7 +44,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 //  The third parameter v2_bcast is set to true if we are using V2 otherwise
 //  we set it to false.
-template <typename Device, typename Scalar, bool v2_bcast>
+template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
+          bool v2_bcast>
 class BatchMatMulMkl : public OpKernel {
  public:
   explicit BatchMatMulMkl(OpKernelConstruction* context) : OpKernel(context) {
@@ -118,9 +115,9 @@ class BatchMatMulMkl : public OpKernel {
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
-    // The maximum number of dimensions for a tensor in DNNL is 12.
+    // The maximum number of DNNL tensor dimensions is DNNL_MAX_NDIMS = 12.
     OP_REQUIRES(
-        ctx, out_shape.dims() <= 12,
+        ctx, out_shape.dims() <= DNNL_MAX_NDIMS,
         errors::InvalidArgument(
             "Rank of output tensor must be <= 12, but is ", out_shape.dims(),
             ". Current implementation supports upto rank 12 tensors."));
@@ -131,8 +128,8 @@ class BatchMatMulMkl : public OpKernel {
       return;
     }
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
-      functor::SetZeroFunctor<Device, Scalar> f;
-      f(ctx->eigen_device<Device>(), out->flat<Scalar>());
+      functor::SetZeroFunctor<Device, Toutput> f;
+      f(ctx->eigen_device<Device>(), out->flat<Toutput>());
       return;
     }
 
@@ -140,21 +137,137 @@ class BatchMatMulMkl : public OpKernel {
     MklBatchMatMulHelper bmm;
     auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
                                          adj_x_, adj_y_);
+
+#ifdef DNNL_AARCH64_USE_ACL
+    // ACL does not support reuse of primitives with different data.
+    // For matmul, the previous approach (PR #47775) of using Tensor addresses
+    // does not work, as the addresses are re-used in matmul with different data
+    // The counter  ensure we still benefit from caching via SetMklMatmul().
+    params->aarch64_counter =
+        MklMatMulPrimitiveFactory<float, Tlhs, Trhs,
+                                  Toutput>::IncrementCounter();
+#endif
+    this->ExtendMklMatMulParams(ctx, *params);
+
     // Create or retrieve matmul primitive from cache.
-    MklMatMulPrimitive<Scalar>* matmul_prim =
-        MklMatMulPrimitiveFactory<Scalar>::Get(
+    MklMatMulPrimitive<Tlhs, Trhs, Toutput>* matmul_prim =
+        MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
             *params, false /* value for do_not_cache */);
+
+    UserScratchPad<unsigned char> scratch_pad;
+    scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     MklDnnThreadPool eigen_tp(ctx);
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
-    matmul_prim->Execute(lhs.flat<Scalar>().data(), rhs.flat<Scalar>().data(),
-                         out->flat<Scalar>().data(), cpu_stream);
+    if (fused_ops_.size() > 0) {
+      void* mul_data = nullptr;
+      void* add_data = nullptr;
+      if (fused_ops_.at(0) == "Mul") {
+        const Tensor& mul_tensor = ctx->input(2);
+        mul_data = static_cast<void*>(
+            const_cast<Toutput*>(mul_tensor.flat<Toutput>().data()));
+      }
+      if (fused_ops_.size() > 1 && fused_ops_.at(1) == "Add") {
+        const Tensor& add_tensor = ctx->input(3);
+        add_data = static_cast<void*>(
+            const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
+      }
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
+                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
+                           scratch_pad.Get(), mul_data, add_data);
+    } else {
+      matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
+                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
+                           scratch_pad.Get());
+    }
   }
+
+ protected:
+  virtual void ExtendMklMatMulParams(OpKernelContext* ctx,
+                                     MklMatMulParams& params) {}
+  std::vector<string> fused_ops_;
 
  private:
   bool adj_x_;
   bool adj_y_;
+};
+
+template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
+          bool v2_bcast>
+class FusedBatchMatMulMkl
+    : public BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, v2_bcast> {
+ public:
+  explicit FusedBatchMatMulMkl(OpKernelConstruction* context)
+      : BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, v2_bcast>(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &this->fused_ops_));
+    OP_REQUIRES(context, !this->fused_ops_.empty(),
+                errors::InvalidArgument(
+                    "Fused BatchMatMul must have at least one fused op."));
+
+    int num_args;
+    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+
+    if (this->fused_ops_ == std::vector<string>{"Mul"} ||
+        this->fused_ops_ == std::vector<string>{"Mul", "Add"}) {
+      OP_REQUIRES(context, num_args == this->fused_ops_.size(),
+                  errors::InvalidArgument(
+                      "Fused BatchMatmul should have same number of additional "
+                      "inputs as the number of fusions"));
+    } else {
+      OP_REQUIRES(
+          context, false,
+          errors::Unimplemented("Fusion is not implemented: [",
+                                absl::StrJoin(this->fused_ops_, ","), "]"));
+    }
+  }
+
+  virtual ~FusedBatchMatMulMkl() {}
+
+ protected:
+  virtual void ExtendMklMatMulParams(OpKernelContext* ctx,
+                                     MklMatMulParams& params) {
+    if (this->fused_ops_.size() > 0) {
+      const Tensor& scale_tensor = ctx->input(2);
+      OP_REQUIRES(ctx, scale_tensor.NumElements() == 1,
+                  errors::InvalidArgument("Scale tensor must be a scalar"));
+
+      memory::data_type data_type = MklDnnType<Toutput>();
+      memory::format_tag format_tag;
+      switch (params.c_dims.size()) {
+        case 3:
+          format_tag = memory::format_tag::abc;
+          break;
+        case 4:
+          format_tag = memory::format_tag::abcd;
+          break;
+        default:
+          OP_REQUIRES(ctx, false, errors::Unimplemented("Unimplemented"));
+      }
+      if (this->fused_ops_.at(0) == "Mul") {
+        memory::dims mul_dims(params.c_dims.size(), 1);
+        params.post_op_params.push_back(
+            {"mul", {}, mul_dims, data_type, format_tag});
+      } else {
+        OP_REQUIRES(ctx, false,
+                    errors::InvalidArgument(
+                        "Currently first fusion is supported only for Mul",
+                        ", but it is ", this->fused_ops_.at(0), " op."));
+      }
+      if (this->fused_ops_.size() > 1 && this->fused_ops_.at(1) == "Add") {
+        auto add_shape = ctx->input(3).shape();
+        memory::dims add_dims = {add_shape.dim_size(0), add_shape.dim_size(1),
+                                 add_shape.dim_size(2), add_shape.dim_size(3)};
+        params.post_op_params.push_back(
+            {"add", {}, add_dims, data_type, format_tag});
+      } else {
+        OP_REQUIRES(ctx, false,
+                    errors::InvalidArgument(
+                        "Currently second fusion is supported only for Add",
+                        ", but it is ", this->fused_ops_.at(1), " op."));
+      }
+    }
+  }
 };
 
 #define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
@@ -162,19 +275,29 @@ class BatchMatMulMkl : public OpKernel {
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          BatchMatMulMkl<CPUDevice, TYPE, false>)
+                          BatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, false>)
 
 #define REGISTER_BATCH_MATMUL_MKL_V2(TYPE)                                    \
   REGISTER_KERNEL_BUILDER(Name("_MklBatchMatMulV2")                           \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
-                          BatchMatMulMkl<CPUDevice, TYPE, true>)
+                          BatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, true>)
+
+#define REGISTER_FUSED_BATCH_MATMUL_MKL(TYPE) \
+  REGISTER_KERNEL_BUILDER(                    \
+      Name("_MklFusedBatchMatMulV2")          \
+          .Device(DEVICE_CPU)                 \
+          .TypeConstraint<TYPE>("T"),         \
+      FusedBatchMatMulMkl<CPUDevice, TYPE, TYPE, TYPE, true>)
+
 #ifdef INTEL_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_float(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_bfloat16(REGISTER_FUSED_BATCH_MATMUL_MKL);
 #endif  // INTEL_MKL
 
 }  // end namespace tensorflow

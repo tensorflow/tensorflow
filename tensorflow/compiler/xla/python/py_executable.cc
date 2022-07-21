@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_executable.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
 namespace xla {
@@ -25,11 +29,13 @@ namespace py = pybind11;
 PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
                            std::unique_ptr<PjRtExecutable> executable,
                            std::shared_ptr<Traceback> traceback,
-                           absl::optional<std::string> fingerprint)
+                           std::optional<std::string> fingerprint,
+                           std::vector<pybind11::capsule> host_callbacks)
     : client_(std::move(client)),
       executable_(std::move(executable)),
       traceback_(std::move(traceback)),
-      fingerprint_(std::move(fingerprint)) {
+      fingerprint_(std::move(fingerprint)),
+      host_callbacks_(std::move(host_callbacks)) {
   CHECK(PyGILState_Check());
   next_ = client_->executables_;
   client_->executables_ = this;
@@ -71,13 +77,43 @@ StatusOr<std::vector<PyBuffer::object>> PyExecutable::Execute(
     absl::Span<PyBuffer::object const> args) {
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   {
+    auto options = options_;
+    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    std::shared_ptr<HostCallbackStates> host_callback_states;
+    if (!host_callbacks_.empty()) {
+      returned_futures.emplace();
+
+      host_callback_states = std::make_shared<HostCallbackStates>();
+      auto& contexts = host_callback_states->contexts.emplace_back();
+      auto& send_callbacks =
+          host_callback_states->send_callbacks.emplace_back();
+      auto& recv_callbacks =
+          host_callback_states->recv_callbacks.emplace_back();
+
+      for (const py::capsule& host_callback : host_callbacks_) {
+        contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
+            host_callback.get_pointer<HostCallback>(), client()->pjrt_client(),
+            send_callbacks, recv_callbacks));
+      }
+      options.send_callbacks = host_callback_states->send_callbacks;
+      options.recv_callbacks = host_callback_states->recv_callbacks;
+    }
+
     py::gil_scoped_release gil_release;
     std::vector<PjRtBuffer*> arg_buffers(args.size());
     absl::c_transform(
         args, arg_buffers.begin(),
         [](const PyBuffer::object& buf) { return buf.buf()->buffer(); });
-    TF_ASSIGN_OR_RETURN(output_buffers,
-                        executable_->Execute({arg_buffers}, options_));
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        executable_->Execute({arg_buffers}, options, returned_futures));
+
+    if (!host_callbacks_.empty()) {
+      returned_futures.value().at(0).OnReady(
+          [host_callback_states](Status) mutable {
+            host_callback_states.reset();
+          });
+    }
   }
   auto traceback = Traceback::Get();
   std::vector<PyBuffer::object> outputs;
@@ -94,6 +130,31 @@ PyExecutable::ExecuteShardedOnLocalDevices(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
   int num_computations = executable_->addressable_devices().size();
   {
+    auto options = options_;
+    std::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    std::shared_ptr<HostCallbackStates> host_callback_states;
+    if (!host_callbacks_.empty()) {
+      returned_futures.emplace();
+
+      host_callback_states = std::make_shared<HostCallbackStates>();
+
+      for (int i = 0; i < num_computations; ++i) {
+        auto& contexts = host_callback_states->contexts.emplace_back();
+        auto& send_callbacks =
+            host_callback_states->send_callbacks.emplace_back();
+        auto& recv_callbacks =
+            host_callback_states->recv_callbacks.emplace_back();
+
+        for (const py::capsule& host_callback : host_callbacks_) {
+          contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
+              host_callback.get_pointer<HostCallback>(),
+              client()->pjrt_client(), send_callbacks, recv_callbacks));
+        }
+      }
+      options.send_callbacks = host_callback_states->send_callbacks;
+      options.recv_callbacks = host_callback_states->recv_callbacks;
+    }
+
     py::gil_scoped_release gil_release;
     for (const auto& arg : args) {
       if (arg.size() != num_computations) {
@@ -117,8 +178,18 @@ PyExecutable::ExecuteShardedOnLocalDevices(
                           return arg[computation].buf()->buffer();
                         });
     }
-    TF_ASSIGN_OR_RETURN(output_buffers,
-                        executable_->Execute(arg_buffers, options_));
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        executable_->Execute(arg_buffers, options, returned_futures));
+
+    if (!host_callbacks_.empty()) {
+      for (int i = 0; i < num_computations; ++i) {
+        returned_futures.value().at(i).OnReady(
+            [host_callback_states](Status) mutable {
+              host_callback_states.reset();
+            });
+      }
+    }
   }
   auto traceback = Traceback::Get();
   int num_output_buffers = output_buffers[0].size();

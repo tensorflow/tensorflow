@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific ensure_shape Op.
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -45,8 +47,21 @@ class EnsureShapeOp : public XlaOpKernel {
                                 " is not compatible with expected shape ",
                                 expected_shape_.DebugString(), "."));
 
+    // If the shape dimension in `expected_shape_` is already static, we would
+    // remove the dynamic dimensions in XLA dynamic padder.
+    xla::XlaOp tensor = ctx->Input(0);
+    std::vector<bool> dynamic_dims;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ResolveInputDynamismIntoPredVector(0, &dynamic_dims));
+    for (int i = 0; i < expected_shape_.dims(); ++i) {
+      if (expected_shape_.dim_size(i) > 0 && dynamic_dims[i]) {
+        VLOG(1) << "RemoveDynamicDimension: " << i;
+        tensor = xla::RemoveDynamicDimension(tensor, i);
+      }
+    }
+
     // If shape matches, outputs the tensor.
-    ctx->SetOutput(0, ctx->Input(0));
+    ctx->SetOutput(0, tensor);
   }
 
  private:

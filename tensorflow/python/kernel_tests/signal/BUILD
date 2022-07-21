@@ -43,8 +43,6 @@ cuda_py_test(
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "optonly",
     ],
-    # TODO(timshen): re-enable after resolving flakiness (b/149426657).
-    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -149,6 +147,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_rocm",
         "no_windows_gpu",
     ],
     deps = [

@@ -13,42 +13,38 @@
 # limitations under the License.
 # ==============================================================================
 """Variable class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import enum  # pylint: disable=g-bad-import-order
-import itertools
+import enum
 import functools
+import itertools
 import os
-
-import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.deprecation import deprecated_args
-from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.types import core
 
 
 def default_variable_creator(_, **kwds):
@@ -274,7 +270,7 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 # TODO(mdan): This should subclass core.Tensor, and not all its subclasses?
-class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
+class Variable(trackable.Trackable, metaclass=VariableMetaclass):
   """See the [variable guide](https://tensorflow.org/guide/variable).
 
   A variable maintains shared, persistent state manipulated by a program.
@@ -1251,7 +1247,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     """
     return object_identity.Reference(self)
 
-  class SaveSliceInfo(object):
+  class SaveSliceInfo:
     """Information on how to save this Variable as a slice.
 
     Provides internal support for saving variables as slices of a larger
@@ -2115,7 +2111,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_sub(
         self._variable,
@@ -2139,7 +2135,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_add(
         self._variable,
@@ -2164,7 +2160,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_max(
         self._variable,
@@ -2189,7 +2185,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_min(
         self._variable,
@@ -2213,7 +2209,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_mul(
         self._variable,
@@ -2237,7 +2233,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_div(
         self._variable,
@@ -2261,7 +2257,7 @@ class RefVariable(VariableV1, core.Tensor):
     Raises:
       TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
-    if not isinstance(sparse_delta, ops.IndexedSlices):
+    if not isinstance(sparse_delta, indexed_slices.IndexedSlices):
       raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_update(
         self._variable,
@@ -2883,7 +2879,7 @@ def _find_initialized_value_for_variable(variable_op):
   return None
 
 
-class PartitionedVariable(object):
+class PartitionedVariable:
   """A container for partitioned `Variable` objects.
 
   @compatibility(eager) `tf.PartitionedVariable` is not compatible with

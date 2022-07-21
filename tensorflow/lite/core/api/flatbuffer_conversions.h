@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,6 +97,15 @@ TfLiteStatus ParseBatchToSpaceNd(const Operator* op,
                                  ErrorReporter* error_reporter,
                                  BuiltinDataAllocator* allocator,
                                  void** builtin_data);
+
+TfLiteStatus ParseBroadcastArgs(const Operator* op,
+                                ErrorReporter* error_reporter,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data);
+
+TfLiteStatus ParseBroadcastTo(const Operator* op, ErrorReporter* error_reporter,
+                              BuiltinDataAllocator* allocator,
+                              void** builtin_data);
 
 TfLiteStatus ParseCallOnce(const Operator* op, ErrorReporter* error_reporter,
                            BuiltinDataAllocator* allocator,
@@ -232,11 +241,18 @@ TfLiteStatus ParseLogSoftmax(const Operator* op, ErrorReporter* error_reporter,
                              BuiltinDataAllocator* allocator,
                              void** builtin_data);
 
+TfLiteStatus ParseLSTM(const Operator* op, ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseMaximum(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseMinimum(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseMirrorPad(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
 
 TfLiteStatus ParseMul(const Operator* op, ErrorReporter* error_reporter,
                       BuiltinDataAllocator* allocator, void** builtin_data);
@@ -340,6 +356,11 @@ TfLiteStatus ParseSqrt(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseSquare(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseSquaredDifference(const Operator* op,
+                                    ErrorReporter* error_reporter,
+                                    BuiltinDataAllocator* allocator,
+                                    void** builtin_data);
+
 TfLiteStatus ParseStridedSlice(const Operator* op,
                                ErrorReporter* error_reporter,
                                BuiltinDataAllocator* allocator,
@@ -374,6 +395,9 @@ TfLiteStatus ParseUnidirectionalSequenceLSTM(const Operator* op,
 TfLiteStatus ParseVarHandle(const Operator* op, ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,
                             void** builtin_data);
+
+TfLiteStatus ParseWhile(const Operator* op, ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseZerosLike(const Operator* op, ErrorReporter* error_reporter,
                             BuiltinDataAllocator* allocator,

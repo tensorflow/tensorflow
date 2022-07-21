@@ -369,7 +369,9 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
         continue;
       }
       std::vector<HloInstruction*> new_opnds;
-      for (HloInstruction* old_opnd : old_instr->operands()) {
+      const auto& old_opnds = old_instr->operands();
+      new_opnds.reserve(old_opnds.size());
+      for (HloInstruction* old_opnd : old_opnds) {
         CHECK(clone_map.find(old_opnd) != clone_map.end());
         new_opnds.push_back(clone_map[old_opnd]);
       }
@@ -429,7 +431,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   comp->set_root_instruction(tuple, /*accept_different_shape=*/true);
   TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HorizontalLoopFusionImpl::Fuse(
@@ -472,7 +474,7 @@ Status HorizontalLoopFusionImpl::Fuse(
         computation_->ReplaceInstruction(fused_instr, bitcast_or_tuple));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<bool> HorizontalLoopFusionImpl::Run() {
@@ -527,7 +529,9 @@ StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
   return horizontal_fusion_impl.Run();
 }
 
-StatusOr<bool> GpuHorizontalLoopFusion::Run(HloModule* module) {
+StatusOr<bool> GpuHorizontalLoopFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   VLOG(2) << "Run horizontal fusion.";
 

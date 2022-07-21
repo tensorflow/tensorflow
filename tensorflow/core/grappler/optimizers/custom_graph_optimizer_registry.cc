@@ -65,6 +65,7 @@ const ConfigList& DefaultPluginConfigs() {
                       {"shape_optimization", RewriterConfig::ON},
                       {"auto_mixed_precision", RewriterConfig::ON},
                       {"auto_mixed_precision_mkl", RewriterConfig::ON},
+                      {"auto_mixed_precision_cpu", RewriterConfig::ON},
                       {"pin_to_host_optimization", RewriterConfig::ON},
                       {"layout_optimizer", RewriterConfig::ON},
                       {"remapping", RewriterConfig::ON},

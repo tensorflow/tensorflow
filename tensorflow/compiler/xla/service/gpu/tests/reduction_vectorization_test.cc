@@ -77,16 +77,7 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  string expected;
-  if (!backend()
-           .default_stream_executor()
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeast(se::CudaComputeCapability::VOLTA)) {
-    // We do not vectorize for GPU before Volta.
-    expected = "CHECK-NOT: ld.global.nc.v2.f32";
-  } else {
-    expected = R"(
+  std::string expected = R"(
 CHECK: ld.global.nc.v2.f32
 CHECK: st.global.v2.f32
 CHECK: st.global.v2.f32
@@ -100,7 +91,6 @@ CHECK: ld.global.nc.v2.f32
 CHECK: st.global.v2.f32
 CHECK: st.global.v2.f32
 )";
-  }
   CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));

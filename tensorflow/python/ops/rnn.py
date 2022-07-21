@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """RNN helpers for TensorFlow models."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -110,7 +106,7 @@ def _infer_state_dtype(explicit_dtype, state):
   """
   if explicit_dtype is not None:
     return explicit_dtype
-  elif nest.is_sequence(state):
+  elif nest.is_nested(state):
     inferred_dtypes = [element.dtype for element in nest.flatten(state)]
     if not inferred_dtypes:
       raise ValueError(f"Unable to infer dtype from argument state={state}.")
@@ -1377,7 +1373,7 @@ def static_rnn(cell,
       (column size) cannot be inferred from inputs via shape inference.
   """
   rnn_cell_impl.assert_like_rnncell("cell", cell)
-  if not nest.is_sequence(inputs):
+  if not nest.is_nested(inputs):
     raise TypeError(f"Argument `inputs` must be a sequence. Received: {inputs}")
   if not inputs:
     raise ValueError("Argument `inputs` must not be empty.")
@@ -1393,7 +1389,7 @@ def static_rnn(cell,
 
     # Obtain the first sequence of the input
     first_input = inputs
-    while nest.is_sequence(first_input):
+    while nest.is_nested(first_input):
       first_input = first_input[0]
 
     # Temporarily avoid EmbeddingWrapper and seq2seq badness
@@ -1524,8 +1520,8 @@ def static_state_saving_rnn(cell,
      type of `state_name` does not match that of `cell.state_size`.
   """
   state_size = cell.state_size
-  state_is_tuple = nest.is_sequence(state_size)
-  state_name_tuple = nest.is_sequence(state_name)
+  state_is_tuple = nest.is_nested(state_size)
+  state_name_tuple = nest.is_nested(state_name)
 
   if state_is_tuple != state_name_tuple:
     raise ValueError("Argument `state_name` should be the same type as "
@@ -1641,7 +1637,7 @@ def static_bidirectional_rnn(cell_fw,
   """
   rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
   rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
-  if not nest.is_sequence(inputs):
+  if not nest.is_nested(inputs):
     raise TypeError(f"Argument `inputs` must be a sequence. Received: {inputs}")
   if not inputs:
     raise ValueError("Argument `inputs` must not be empty.")

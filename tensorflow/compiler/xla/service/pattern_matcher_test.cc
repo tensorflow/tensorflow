@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -490,26 +492,85 @@ TEST_F(PatternMatcherTest, TestConcat) {
                         Reshape(ConstantScalar(4)))));
 }
 
+TEST_F(PatternMatcherTest, TestWithElementType) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(Match(root, m::Op().WithElementType(F16)));
+  EXPECT_FALSE(Match(root, m::Op().WithElementType(F32)));
+}
+
+TEST_F(PatternMatcherTest, TestWithOperandIfPresent) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      a = f16[] constant(42)
+      b = f16[] add(a, a)
+      ROOT root = tuple(a, b)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  auto* a = root->operand(0);
+  auto* b = root->operand(1);
+
+  // No operand 0, but that's ok, still passes.
+  EXPECT_TRUE(Match(a, m::Op().WithOperandIfPresent(0, m::Iota())));
+
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(0, m::Constant())));
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(1, m::Constant())));
+  EXPECT_FALSE(Match(b, m::Op().WithOperandIfPresent(0, m::Iota())));
+  // No operand 2/3, but that's ok, still passes.
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(2, m::Iota())));
+  EXPECT_TRUE(Match(b, m::Op().WithOperandIfPresent(3, m::Iota())));
+}
+
+TEST_F(PatternMatcherTest, TestWithPredicate) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT a = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(
+      Match(root, m::Op().WithPredicate([&](const HloInstruction* instr) {
+        return instr == root;
+      })));
+  EXPECT_FALSE(
+      Match(root, m::Op().WithPredicate([&](const HloInstruction* instr) {
+        return instr != root;
+      })));
+}
+
 template <typename Pattern>
-string Description(const Pattern& pattern) {
+std::string Description(const Pattern& pattern) {
   std::stringstream ss;
   pattern.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename Elem, typename Pattern>
-string Explanation(Elem* elem, const Pattern& pattern) {
+std::string Explanation(Elem* elem, const Pattern& pattern) {
   std::stringstream ss;
   MatchOption options{/*.capture=*/true, /*.explain_os=*/&ss};
   Match(elem, pattern, options);
   return ss.str();
 }
 template <typename Elem, typename Pattern>
-string Explanation(const std::unique_ptr<Elem>& elem, const Pattern& pattern) {
+std::string Explanation(const std::unique_ptr<Elem>& elem,
+                        const Pattern& pattern) {
   return Explanation(elem.get(), pattern);
 }
 template <typename Elem, typename Pattern>
-string Explanation(const Elem& elem, const Pattern& pattern) {
+std::string Explanation(const Elem& elem, const Pattern& pattern) {
   return Explanation(&elem, pattern);
 }
 
@@ -672,7 +733,7 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
 
 std::unique_ptr<HloInstruction> SetName(absl::string_view name,
                                         std::unique_ptr<HloInstruction> instr) {
-  instr->SetAndSanitizeName(string(name));
+  instr->SetAndSanitizeName(name);
   return instr;
 }
 
@@ -787,6 +848,26 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
                    absl::Hex(iota.get()),
                    " (i = s32[42]{0} iota(), iota_dimension=0)\n"
                    "in c = s32[] constant(0)"));
+
+  EXPECT_DESC_AND_EXPLANATION(
+      SetName("a",
+              HloInstruction::CreateBinary(constant->shape(), HloOpcode::kAdd,
+                                           constant.get(), constant.get())),
+      m::Op().WithOperandIfPresent(0, m::Iota()),  //
+      "an HloInstruction either with fewer than 1 operand, or with an operand "
+      "0 which is:\n"
+      "  an HloInstruction with opcode iota",
+      "HloInstruction doesn't have opcode iota\n"
+      "in c = s32[] constant(0)\n"
+      "in operand 0\n"
+      "in a = s32[] add(s32[] c, s32[] c)");
+
+  EXPECT_DESC_AND_EXPLANATION(
+      constant,
+      m::Op().WithPredicate([](const HloInstruction*) { return false; }),
+      "an HloInstruction which matches a user-specified predicate",
+      "HloInstruction does not match user-specified predicate\n"
+      "in c = s32[] constant(0)");
 }
 
 TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {

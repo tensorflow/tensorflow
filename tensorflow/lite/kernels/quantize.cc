@@ -88,7 +88,7 @@ static inline void Requantize(const input_type* input_data, int32_t size,
 
 void ReportError(TfLiteContext* context, TfLiteType input_type,
                  TfLiteType output_type) {
-  context->ReportError(
+  TF_LITE_KERNEL_LOG(
       context, "Input type %s with Output type %s is not currently supported.",
       TfLiteTypeGetName(input_type), TfLiteTypeGetName(output_type));
 }
@@ -127,6 +127,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE(context, output->type == kTfLiteInt8 ||
                                   output->type == kTfLiteInt16 ||
                                   output->type == kTfLiteInt32);
+    } else if (input->type == kTfLiteInt32) {
+      TF_LITE_ENSURE(
+          context, output->type == kTfLiteInt8 || output->type == kTfLiteInt16);
     } else {
       TF_LITE_ENSURE(context,
                      input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
@@ -224,6 +227,33 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             ReportError(context, input->type, output->type);
             return kTfLiteError;
         }
+      }
+    }
+    // This case is not supported by the converter or other TFLite tools. The
+    // only use case is for applications that take quantized int32 inference
+    // inputs.
+    case kTfLiteInt32: {
+      // int32 to int8 or int16.
+      switch (output->type) {
+        case kTfLiteInt8:
+          Requantize<kernel_type>(GetTensorData<int32_t>(input),
+                                  MatchingFlatSize(input_shape, output_shape),
+                                  data->output_multiplier, data->output_shift,
+                                  input->params.zero_point,
+                                  output->params.zero_point,
+                                  GetTensorData<int8_t>(output));
+          return kTfLiteOk;
+        case kTfLiteInt16:
+          Requantize<kernel_type>(GetTensorData<int32_t>(input),
+                                  MatchingFlatSize(input_shape, output_shape),
+                                  data->output_multiplier, data->output_shift,
+                                  input->params.zero_point,
+                                  output->params.zero_point,
+                                  GetTensorData<int16_t>(output));
+          return kTfLiteOk;
+        default:
+          ReportError(context, input->type, output->type);
+          return kTfLiteError;
       }
     }
     case kTfLiteInt16: {

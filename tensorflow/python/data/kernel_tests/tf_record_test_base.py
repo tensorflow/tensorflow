@@ -14,10 +14,6 @@
 # ==============================================================================
 """Base class for testing reader datasets."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.core.example import example_pb2
@@ -331,3 +327,12 @@ class TFRecordTestBase(test_base.DatasetTestBase):
         writer.write(self._record(i, j))
       writer.close()
     return filenames
+
+  def _writeFile(self, name, data):
+    filename = os.path.join(self.get_temp_dir(), name)
+    writer = python_io.TFRecordWriter(filename)
+    for d in data:
+      writer.write(compat.as_bytes(str(d)))
+    writer.close()
+    return filename
+

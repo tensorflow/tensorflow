@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -46,6 +47,8 @@ enum class GpuApi {
 };
 
 enum class AdrenoGpu {
+  // Adreno 7xx series
+  kAdreno730,
   // Adreno 6xx series
   kAdreno685,
   kAdreno680,
@@ -97,14 +100,19 @@ enum class AdrenoGpu {
 
 struct AMDInfo {
   AMDInfo() = default;
-  int shader_engines;
-  int compute_units_per_shader_engine;
+  int shader_engines = 0;
+  int compute_units_per_shader_engine = 0;
   int GetComputeUnitsCount() const {
     return shader_engines * compute_units_per_shader_engine;
   }
 };
 
 struct AdrenoInfo {
+  struct OpenClCompilerVersion {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+  };
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
 
@@ -116,6 +124,7 @@ struct AdrenoInfo {
   bool IsAdreno4xx() const;
   bool IsAdreno5xx() const;
   bool IsAdreno6xx() const;
+  bool IsAdreno7xx() const;
   bool IsAdreno6xxOrHigher() const;
 
   // This function returns some not very documented physical parameter of
@@ -139,6 +148,8 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 
   bool compiler_bugs_in_a6xx = false;
+
+  OpenClCompilerVersion cl_compiler_version;
 };
 
 enum class AppleGpu {
@@ -157,6 +168,9 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kM1,
+  kM1Pro,
+  kM1Max,
 };
 
 struct AppleInfo {
@@ -164,9 +178,18 @@ struct AppleInfo {
   explicit AppleInfo(const std::string& gpu_description);
   AppleGpu gpu_type;
 
+  bool IsA7GenerationGpu() const;
+  bool IsA8GenerationGpu() const;
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
+
+  bool IsSIMDMatMulSupported() const;
+  // Often, fp32 alu performance is 1/2 of fp16 alu performance
+  // But, on some devices, fp32 alu performance equal to fp16 alu performance,
+  // at least in some scenarios.
+  // This method returns true if SIMDMatMul performance in fp32 equal to fp16
+  bool IsSIMDMatMulFp32Perf2x() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
@@ -204,6 +227,10 @@ enum class MaliGpu {
   kG77,
   kG68,
   kG78,
+  kG310,
+  kG510,
+  kG610,
+  kG710,
 };
 
 struct MaliInfo {
@@ -221,7 +248,11 @@ struct MaliInfo {
   bool IsBifrost() const;
   bool IsValhallGen1() const;
   bool IsValhallGen2() const;
+  bool IsValhallGen3() const;
   bool IsValhall() const;
+
+  // returns approximate compute units count using GPU name
+  int GetApproximateComputeUnitsCount() const;
 };
 
 struct OpenGlInfo {
@@ -248,6 +279,11 @@ struct OpenGlInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
+
+  bool IsApiOpenGl31OrAbove() const;
+  bool IsApiOpenGl32OrAbove() const;
 };
 
 struct VulkanInfo {
@@ -259,8 +295,14 @@ struct VulkanInfo {
 
   int max_per_stage_descriptor_sampled_images = 0;
   uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_1d;
   uint32_t max_image_dimension_2d;
+  uint32_t max_image_dimension_3d;
   uint32_t max_image_array_layers;
+  uint64_t max_texel_buffer_elements;
+  uint64_t max_uniform_buffer_range;
+  uint64_t max_storage_buffer_range;
+  uint64_t max_push_constants_size;
 
   uint32_t subgroup_size = 0;
   bool supports_subgroup_arithmetic = false;
@@ -269,6 +311,8 @@ struct VulkanInfo {
   int max_compute_work_group_size_x;
   int max_compute_work_group_size_y;
   int max_compute_work_group_size_z;
+
+  bool SupportsExplicitFp16() const;
 };
 
 enum class OpenClVersion {
@@ -288,6 +332,7 @@ struct OpenClInfo {
   std::string vendor_name;
   std::string opencl_c_version;
   std::string platform_version;
+  std::string driver_version;
 
   OpenClVersion cl_version;
 
@@ -309,7 +354,12 @@ struct OpenClInfo {
   int max_work_group_size_y;
   int max_work_group_size_z;
   int max_work_group_total_size;
-  uint64_t image_pitch_alignment;
+
+  // The row pitch alignment size in pixels for 2D images created from a buffer.
+  // The value must be a power of 2.
+  uint64_t image_pitch_alignment = 0;
+  // The minimum alignment in pixels. The value must be a power of 2.
+  uint64_t image_base_address_alignment = 0;
   uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST
@@ -320,15 +370,16 @@ struct OpenClInfo {
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
 
-  bool supports_r_f16_tex2d = false;
-  bool supports_rg_f16_tex2d = false;
-  bool supports_rgb_f16_tex2d = false;
-  bool supports_rgba_f16_tex2d = false;
+  struct SupportedImage2dTypes {
+    absl::flat_hash_set<DataType> r_layout;
+    absl::flat_hash_set<DataType> rg_layout;
+    absl::flat_hash_set<DataType> rgb_layout;
+    absl::flat_hash_set<DataType> rgba_layout;
 
-  bool supports_r_f32_tex2d = false;
-  bool supports_rg_f32_tex2d = false;
-  bool supports_rgb_f32_tex2d = false;
-  bool supports_rgba_f32_tex2d = false;
+    bool SupportsImage2D(DataType data_type, int channels) const;
+  };
+
+  SupportedImage2dTypes supported_images_2d;
 
   bool IsImage2dFromBufferSupported() const;
 };
@@ -341,6 +392,8 @@ enum class MetalLanguageVersion {
   kMetal2_1,
   kMetal2_2,
   kMetal2_3,
+  kMetal2_4,
+  kMetal3_0,
   kUnknown,
 };
 
@@ -352,6 +405,17 @@ struct MetalInfo {
   int max_work_group_size_z;
 
   uint64_t buffer_max_size;
+
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
+
+  bool IsSIMDMatMulSupported() const;
+  // MSL is Metal shading language
+  bool IsMslVersionEqualOrHigher(int major, int minor = 0) const;
 };
 
 struct GpuInfo {
@@ -364,6 +428,7 @@ struct GpuInfo {
   bool IsIntel() const;
 
   bool IsGlsl() const;
+  bool IsGlslSupportsExplicitFp16() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
@@ -383,6 +448,9 @@ struct GpuInfo {
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
   bool SupportsExtension(const std::string& extension) const;
+
+  bool SupportsZeroClampForImageBuffer() const;
+  bool SupportsZeroClampForImages() const;
 
   int GetComputeUnitsCount() const;
 

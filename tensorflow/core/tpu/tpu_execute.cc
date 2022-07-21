@@ -68,11 +68,11 @@ class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
 
-  using HostCommmandHandler = TpuOpExecutable::HostCommandHandler;
+  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
-  xla::StatusOr<HostCommmandHandler> Initialize(
+  xla::StatusOr<HostCommandHandler> Initialize(
       const TPUHostTransferInfoProto& program,
       const std::string& rendezvous_key_base, OpKernelContext* ctx);
 
@@ -80,11 +80,11 @@ class HostTransferManager {
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
-xla::StatusOr<HostTransferManager::HostCommmandHandler>
+xla::StatusOr<HostTransferManager::HostCommandHandler>
 HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
                                 const string& rendezvous_key_base,
                                 OpKernelContext* ctx) {
-  return HostCommmandHandler([](uint32, int64_t) {
+  return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
 }
@@ -112,8 +112,8 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Free(&c_host_shape);
-  ApiConverter::Free(&c_device_shape);
+  ApiConverter::Destroy(&c_host_shape);
+  ApiConverter::Destroy(&c_device_shape);
   return device_shape;
 }
 
@@ -122,7 +122,7 @@ int64_t ShapeSizeCompact(const xla::Shape& shape) {
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 
@@ -132,7 +132,7 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 
@@ -147,12 +147,12 @@ xla::Status FixTupleTableAsync(se::Stream* stream,
       [&](const xla::Shape& element_shape,
           const xla::ShapeIndex& index) -> Status {
         if (!element_shape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
-        for (int64_t i = 0; i < element_shape.tuple_shapes_size(); ++i) {
+        for (int i = 0; i < element_shape.tuple_shapes_size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
           elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());
@@ -214,7 +214,7 @@ xla::Status UpdateDynamicInputs(
         [&](const xla::Shape& compile_time_shape,
             const xla::ShapeIndex& index) -> Status {
           if (compile_time_shape.IsTuple() || compile_time_shape.is_static()) {
-            return Status::OK();
+            return OkStatus();
           }
 
           const xla::Shape& runtime_shape =
@@ -257,8 +257,8 @@ xla::Status UpdateDynamicInputs(
 
             tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
                 &params);
-            ApiConverter::Free(&c_runtime_shape);
-            ApiConverter::Free(&c_compile_time_shape);
+            ApiConverter::Destroy(&c_runtime_shape);
+            ApiConverter::Destroy(&c_compile_time_shape);
             return status.status();
           });
           // Allocate new input and transfer the padded and transposed data to
@@ -272,14 +272,14 @@ xla::Status UpdateDynamicInputs(
           stream->ThenMemcpyH2D<int8>(*padded_data, &typed_new_input_memory);
 
           // Retain the memory until the end of the transfer.
-          stream->ThenDoHostCallback([padded_data]() { return Status::OK(); });
+          stream->ThenDoHostCallback([padded_data]() { return OkStatus(); });
 
           // Modify the memory location in the input shape tree to point to the
           // new input.
           *mutable_input_mem =
               xla::MaybeOwningDeviceMemory(std::move(new_input));
           element_modified = true;
-          return Status::OK();
+          return OkStatus();
         }));
     if (element_modified) {
       // The input location has been modified, need to fix tuple table to
@@ -292,7 +292,7 @@ xla::Status UpdateDynamicInputs(
                                             &runtime_input, transfer_manager));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TPUCancelExecution(Env* env, int device_ordinal) {
@@ -351,9 +351,11 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   CancellationToken token = cancellation_manager->get_cancellation_token();
   // Don't rely on OpKernelContext being available when the callback runs.
   Env* env = ctx->env();
-  bool already_cancelled = !cancellation_manager->RegisterCallback(
-      token,
-      [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); });
+  bool already_cancelled =
+      !cancellation_manager->RegisterCallbackWithErrorLogging(
+          token,
+          [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); },
+          absl::StrCat("TPUCancellation on device ", device_ordinal));
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
@@ -432,7 +434,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommmandHandler handler,
+  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 
@@ -458,7 +460,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
       computation_layout.add_parameter_layout(xla::ShapeLayout(shape));
       input_shapes.push_back(std::move(shape));
     }
-    module = absl::make_unique<xla::HloModule>(
+    module = std::make_unique<xla::HloModule>(
         "TpuExecutableModule",
         xla::HloModuleConfig(std::move(computation_layout)));
   }
@@ -480,7 +482,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
-  auto tpu_executable = absl::make_unique<TpuOpExecutable>(
+  auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
   const int32_t device_ordinal = node_context->device_ordinal();

@@ -79,6 +79,7 @@ enum DataType : byte {
   INT32 = 9,
   UINT64 = 10,
   INT64 = 11,
+  BOOL = 12,
 }
 
 enum MemoryType : byte {
@@ -153,6 +154,8 @@ table TensorDescriptor {
   layout:Layout;
   shape:BHWDC;
   data:[uint8];
+  use_buffer_for_write_only_2d_texture:bool;
+  use_buffer_for_write_only_image_buffer:bool;
 }
 
 table BufferDescriptorMapValue {
@@ -233,6 +236,7 @@ table GPUOperation {
   elementwise:bool;
   linkable:bool;
   check_src_channels_size:bool;
+  flops:uint64;
   definition:OperationDef;
   grid_dimension:int32;
   work_group_launch_order:Int3;

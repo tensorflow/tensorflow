@@ -14,11 +14,8 @@
 # ==============================================================================
 """Basic tests for TF-TensorRT integration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -36,9 +33,10 @@ class ReshapeTest(trt_test.TfTrtIntegrationTestBase):
     # conversion.
     #
     # These reshapes happen at batch dimension, thus conversion should fail.
+    orig_shape = constant_op.constant([-1, 24, 24, 2], name="original_shape")
     for shape in [[2, 50, 24, 24, 2], [-1, 50, 24, 24, 2], [2, 50, -1, 24, 2]]:
       incompatible_reshape = array_ops.reshape(inp, shape)
-      reshape_back = array_ops.reshape(incompatible_reshape, [-1, 24, 24, 2])
+      reshape_back = array_ops.reshape(incompatible_reshape, orig_shape)
       outputs.append(self.trt_incompatible_op(reshape_back))
     # Add another block with many reshapes that don't change the batch
     # dimension.
@@ -66,8 +64,8 @@ class ReshapeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["reshape-%d" % i for i in range(7)] +
-                         ["reshape-%d/shape" % i for i in range(7)]
+        "TRTEngineOp_000": ["reshape-%d" % i for i in range(7)] +
+                           ["reshape-%d/shape" % i for i in range(7)]
     }
 
   def ShouldRunTest(self, run_params):
@@ -93,7 +91,7 @@ class TransposeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "transpose-1", "transpose-1/perm", "transposeback",
             "transposeback/perm"
         ]

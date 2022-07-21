@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -45,42 +44,16 @@ LoopEmitter::LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          const IrArray& target_array, llvm::IRBuilder<>* b)
-    : body_emitter_([=](const llvm_ir::IrArray::Index array_index) -> Status {
-        // Convert target_element_generator to a BodyEmitter.
-        TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                            target_element_generator(array_index));
-        target_array.EmitWriteArrayElement(array_index, target_element, b);
-        return Status::OK();
-      }),
+    : body_emitter_(MakeBodyEmitter(target_element_generator, {target_array}, b,
+                                    /*is_tuple=*/false)),
       shape_(target_array.GetShape()),
       b_(b) {}
-
-static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutput(
-    const ElementGenerator& target_element_generator,
-    const std::vector<IrArray>& target_arrays, llvm::IRBuilder<>* b) {
-  return [=](const llvm_ir::IrArray::Index array_index) {
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
-                        target_element_generator(array_index));
-    CHECK(target_element->getType()->isStructTy())
-        << "This BodyEmitter is for multi-output, but target element "
-           "generator does not produce values of struct type.";
-    CHECK_EQ(target_element->getType()->getStructNumElements(),
-             target_arrays.size());
-
-    for (int64_t i = 0; i < target_arrays.size(); ++i) {
-      target_arrays[i].EmitWriteArrayElement(
-          array_index, b->CreateExtractValue(target_element, i), b);
-    }
-    return Status::OK();
-  };
-}
 
 LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
                          absl::Span<const IrArray> target_arrays,
                          llvm::IRBuilder<>* b)
-    : body_emitter_(MakeBodyEmitterForMultiOutput(
-          target_element_generator,
-          std::vector<IrArray>(target_arrays.begin(), target_arrays.end()), b)),
+    : body_emitter_(MakeBodyEmitter(target_element_generator, target_arrays, b,
+                                    /*is_tuple=*/true)),
       shape_(target_arrays[0].GetShape()),
       b_(b) {
   // Sanity check: In multi-output fusion, all shapes produced must have the
@@ -90,6 +63,40 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
         << ": '" << shape_.ShortDebugString() << "' does not match '"
         << array.GetShape().ShortDebugString() << "'";
   }
+}
+
+BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
+                            absl::Span<IrArray const> target_arrays,
+                            llvm::IRBuilder<>* b, bool is_tuple) {
+  std::vector<IrArray> target_arrays_vec(target_arrays.begin(),
+                                         target_arrays.end());
+  if (!is_tuple) {
+    CHECK_EQ(target_arrays.size(), 1);
+    return [=](const llvm_ir::IrArray::Index array_index) -> Status {
+      // Convert target_element_generator to a BodyEmitter.
+      TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
+                          target_element_generator(array_index));
+      target_arrays_vec[0].EmitWriteArrayElement(array_index, target_element,
+                                                 b);
+      return OkStatus();
+    };
+  }
+
+  return [=](const llvm_ir::IrArray::Index array_index) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
+                        target_element_generator(array_index));
+    CHECK(target_element->getType()->isStructTy())
+        << "This BodyEmitter is for multi-output, but target element "
+           "generator does not produce values of struct type.";
+    CHECK_EQ(target_element->getType()->getStructNumElements(),
+             target_arrays_vec.size());
+
+    for (int64_t i = 0; i < target_arrays_vec.size(); ++i) {
+      target_arrays_vec[i].EmitWriteArrayElement(
+          array_index, b->CreateExtractValue(target_element, i), b);
+    }
+    return OkStatus();
+  };
 }
 
 IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
@@ -180,7 +187,7 @@ Status LoopEmitter::EmitLoop(absl::string_view loop_name,
   if (exit_bb_ != nullptr) {
     b_->SetInsertPoint(exit_bb_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace llvm_ir

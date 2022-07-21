@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for profiler_client."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import profiler_client
 from tensorflow.python.eager import test
 from tensorflow.python.framework import errors

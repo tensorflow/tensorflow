@@ -24,18 +24,21 @@ def HasSameType : Constraint<CPred<"$0.getType() == $1.getType()">>;
 // Canonicalization patterns.
 
 def DynamicBroadcastToOwnShape_1 : Pat<
-   (HLO_DynamicBroadcastInDimOp:$op $x,
-       (Shape_ToExtentTensorOp (Shape_ShapeOfOp $x)), $attr),
-   (replaceWithValue $x)>;
+  (HLO_DynamicBroadcastInDimOp:$op $x,
+    (Shape_ToExtentTensorOp (Shape_ShapeOfOp $x)), $_, $_, $_),
+  (replaceWithValue $x)>;
 def DynamicBroadcastToOwnShape_2 : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $x, (Shape_ShapeOfOp $x), $attr),
+  (HLO_DynamicBroadcastInDimOp:$op $x,
+    (Shape_ShapeOfOp $x), $attr0, $attr1, $attr2),
   (replaceWithValue $x)>;
 def DynamicBroadcastToOwnShape_3 : Pat<
-   (HLO_DynamicBroadcastInDimOp:$op $x,
-       (Tensor_CastOp (Shape_ToExtentTensorOp (Shape_ShapeOfOp $x))), $attr),
-   (Tensor_CastOp $x)>;
+  (HLO_DynamicBroadcastInDimOp:$op $x,
+    (Tensor_CastOp (Shape_ToExtentTensorOp (Shape_ShapeOfOp $x))),
+    $attr0, $attr1, $attr2),
+  (Tensor_CastOp $x)>;
 def DynamicBroadcastToOwnShape_4 : Pat<
-  (HLO_DynamicBroadcastInDimOp:$op $x, (Tensor_CastOp (Shape_ShapeOfOp $x)), $attr),
+  (HLO_DynamicBroadcastInDimOp:$op $x,
+    (Tensor_CastOp (Shape_ShapeOfOp $x)), $attr0, $attr1, $attr2),
   (Tensor_CastOp $x)>;
 
 def ShapeOfDynamicReshape : Pat<

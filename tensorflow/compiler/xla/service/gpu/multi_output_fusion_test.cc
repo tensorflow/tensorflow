@@ -716,7 +716,7 @@ TEST_F(MultiOutputFusionTest, PreferFuseProducerIntoFusionConsumer) {
 // Check that we limit the number of operands to fusions we create.
 TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   constexpr int64_t kNumParams = 200;
-  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, MaxOperandsAndOutputsPerFusion());
 
   // Compute
   //   p0 * p1,
@@ -761,7 +761,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
     EXPECT_LE(instr->operand_count() + ShapeUtil::SubshapeCount(instr->shape()),
-              kMaxOperandsAndOutputsPerFusion)
+              MaxOperandsAndOutputsPerFusion())
         << instr->ToString();
   }
 }
@@ -904,7 +904,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
     }
   )"))
                     .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
   EXPECT_EQ(3, CountMultiOutputFusions(module.get()));
 }
@@ -1017,7 +1017,7 @@ TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
     }
   )"))
                     .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
   EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
@@ -1075,7 +1075,7 @@ ENTRY %reproducer (param_0.1090: f64[64,64], param_1.1377: f64[64,64], param_2.1
 }
   )")
                     .ValueOrDie();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, NoFusionToAvoidCodeDuplication) {

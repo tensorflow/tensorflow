@@ -37,13 +37,13 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
   void expect_aliased(const ShapeIndex& output_index, int64_t param_number,
                       const ShapeIndex& param_index,
                       const HloInputOutputAliasConfig& config) {
-    absl::optional<ShapeIndex> aliased_output =
+    std::optional<ShapeIndex> aliased_output =
         config.GetAliasedOutput(param_number, param_index);
 
     EXPECT_TRUE(aliased_output);
     EXPECT_EQ(aliased_output.value(), output_index);
 
-    absl::optional<HloInputOutputAliasConfig::Alias> aliased_param =
+    std::optional<HloInputOutputAliasConfig::Alias> aliased_param =
         config.GetAliasedParameter(output_index);
 
     EXPECT_TRUE(aliased_param);
@@ -54,12 +54,12 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
   void expect_not_aliased(const ShapeIndex& output_index, int64_t param_number,
                           const ShapeIndex& param_index,
                           const HloInputOutputAliasConfig& config) {
-    absl::optional<ShapeIndex> aliased_output =
+    std::optional<ShapeIndex> aliased_output =
         config.GetAliasedOutput(param_number, param_index);
 
     EXPECT_FALSE(aliased_output && aliased_output == output_index);
 
-    absl::optional<HloInputOutputAliasConfig::Alias> aliased_param =
+    std::optional<HloInputOutputAliasConfig::Alias> aliased_param =
         config.GetAliasedParameter(output_index);
 
     EXPECT_FALSE(aliased_param &&
@@ -69,7 +69,7 @@ class HloInputOutputAliasConfigTest : public HloTestBase {
 };
 
 TEST_F(HloInputOutputAliasConfigTest, SimpleAliasing) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -99,7 +99,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, SimpleAliasingWithTupleInput) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -137,7 +137,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, InputDoNotAliasTwice) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -166,7 +166,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, SizesMustMatch) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {
@@ -191,7 +191,7 @@ ENTRY main {
 }
 
 TEST_F(HloInputOutputAliasConfigTest, OutputDoNotAliasTwice) {
-  const string module_str = R"(
+  const std::string module_str = R"(
 HloModule TEST
 
 ENTRY main {

@@ -25,54 +25,54 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
   switch (data_type) {
     case tensorflow::DT_BOOL:
       *type = xla::PRED;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_INT8:
     case tensorflow::DT_QINT8:
       *type = xla::S8;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_INT16:
     case tensorflow::DT_QINT16:
       *type = xla::S16;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_INT32:
     case tensorflow::DT_QINT32:
       *type = xla::S32;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_INT64:
       *type = xla::S64;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_UINT8:
     case tensorflow::DT_QUINT8:
       *type = xla::U8;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_UINT16:
     case tensorflow::DT_QUINT16:
       *type = xla::U16;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_UINT32:
       *type = xla::U32;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_UINT64:
       *type = xla::U64;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_BFLOAT16:
       *type = xla::BF16;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_HALF:
       *type = xla::F16;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_FLOAT:
       *type = xla::F32;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_DOUBLE:
       *type = xla::F64;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_COMPLEX64:
       *type = xla::C64;
-      return Status::OK();
+      return OkStatus();
     case tensorflow::DT_COMPLEX128:
       *type = xla::C128;
-      return Status::OK();
+      return OkStatus();
     default:
       return errors::InvalidArgument(
           "Unsupported type in DataTypeToPrimitiveType: '",

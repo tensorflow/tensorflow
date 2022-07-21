@@ -1,0 +1,60 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+// CHECK:         call float @llvm.nvvm.shfl.sync.down.f32
+
+HloModule Test
+
+Add {
+  scalar_lhs.0 = f32[] parameter(0)
+  scalar_rhs.0 = f32[] parameter(1)
+  scalar_lhs.1 = f32[] parameter(2)
+  scalar_rhs.1 = f32[] parameter(3)
+  add.0 = f32[] add(scalar_lhs.0, scalar_lhs.1)
+  add.1 = f32[] add(scalar_rhs.0, scalar_rhs.1)
+  ROOT t = (f32[], f32[]) tuple(add.0, add.1)
+}
+
+ENTRY main {
+  a = f32[5, 200, 300]{2,1,0} parameter(0)
+  b = f32[5, 200, 300]{2,1,0} parameter(1)
+  c = f32[] constant(0)
+  ROOT d = (f32[200]{0}, f32[200]{0}) reduce(a, b, c, c), dimensions={0,2}, to_apply=Add
+}
+
+// -----
+
+// CHECK:         @llvm.nvvm.shfl.sync.down
+
+HloModule LargeReduction
+
+Sum {
+    x.1 = c128[] parameter(0)
+    y.1 = c128[] parameter(1)
+    ROOT add.1 = c128[] add(x.1, y.1)
+}
+
+ENTRY reduce.1 {
+    parameter = c128[10000] parameter(0)
+    init_value = c128[] constant((0, 0))
+    ROOT out1 = c128[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
+}
+
+// -----
+
+// Check that for "max" we are still using atomics (CAS loop).
+
+// CHECK: cmpxchg
+
+HloModule MaxReduce
+
+Max {
+  x.1 = f32[] parameter(0)
+  y.1 = f32[] parameter(1)
+  ROOT add.1 = f32[] maximum(x.1, y.1)
+}
+
+ENTRY reduce.1 {
+  parameter = f32[300000] parameter(0)
+  init_value = f32[] constant(0)
+  ROOT reduce = reduce(parameter, init_value), dimensions={0}, to_apply=Max
+}

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ParameterizedTruncatedNormalOp."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import math
 import timeit
@@ -306,6 +302,29 @@ class ParameterizedTruncatedNormalTest(test.TestCase):
       assert (~np.isnan(samples_stateless)).all()
       self.assertAllGreater(samples, 0.)
       self.assertAllGreater(samples_stateless, 0.)
+
+  def testShapeTypes(self):
+    for shape_dtype in [np.int32, np.int64]:
+      shape = np.array([1000], dtype=shape_dtype)
+      sample_op = random_ops.parameterized_truncated_normal(
+          shape=shape, means=0.0, stddevs=0.1, minvals=-1., maxvals=1.)
+      new_seed = random_ops.random_uniform([2],
+                                           seed=1234,
+                                           minval=0,
+                                           maxval=(2**31 - 1),
+                                           dtype=np.int32)
+      sample_op_stateless = stateless.stateless_parameterized_truncated_normal(
+          shape=shape,
+          seed=new_seed,
+          means=0.0,
+          stddevs=0.1,
+          minvals=-1.,
+          maxvals=1.)
+
+      samples = self.evaluate(sample_op)
+      stateless_samples = self.evaluate(sample_op_stateless)
+      self.assertAllEqual(samples.shape, shape)
+      self.assertAllEqual(stateless_samples.shape, shape)
 
   def testStatelessParameterizedTruncatedNormalHasGrads(self):
     mean = variables.Variable(0.01)

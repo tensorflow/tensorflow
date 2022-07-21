@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MATCHERS_H_
 
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -93,7 +93,7 @@ class HloGetTupleElementMatcher : public HloMatcher {
 class HloCustomCallMatcher : public HloMatcher {
  public:
   HloCustomCallMatcher(
-      ::testing::Matcher<string> call_target_matcher,
+      ::testing::Matcher<std::string> call_target_matcher,
       std::vector<::testing::Matcher<const HloInstruction*>> operands)
       : HloMatcher(HloOpcode::kCustomCall, operands),
         call_target_matcher_(call_target_matcher) {}
@@ -103,7 +103,7 @@ class HloCustomCallMatcher : public HloMatcher {
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  ::testing::Matcher<string> call_target_matcher_;
+  ::testing::Matcher<std::string> call_target_matcher_;
 };
 
 class HloShapeMatcher
@@ -141,7 +141,7 @@ class HloShapeAndLayoutMatcher
 class HloShardingMatcher
     : public ::testing::MatcherInterface<const HloInstruction*> {
  public:
-  explicit HloShardingMatcher(const absl::optional<HloSharding>& sharding)
+  explicit HloShardingMatcher(const std::optional<HloSharding>& sharding)
       : sharding_(sharding) {}
 
   bool MatchAndExplain(const HloInstruction* instruction,
@@ -149,7 +149,7 @@ class HloShardingMatcher
   void DescribeTo(std::ostream* os) const override;
 
  private:
-  absl::optional<HloSharding> sharding_;
+  std::optional<HloSharding> sharding_;
 };
 
 // Matches a Dot HLO instruction with specific LHS and RHS contracting
@@ -205,6 +205,21 @@ class HloConstantMatcher : public HloMatcher {
 
  private:
   Literal literal_;
+};
+
+class HloReplicaGroupsMatcher
+    : public ::testing::MatcherInterface<const HloInstruction*> {
+ public:
+  explicit HloReplicaGroupsMatcher(
+      std::vector<std::vector<int64_t>> replica_groups)
+      : replica_groups_(std::move(replica_groups)) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  std::vector<std::vector<int64_t>> replica_groups_;
 };
 
 // HloInstruction* matchers for opcode and operands. Example:
@@ -296,12 +311,11 @@ HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
 HLO_MATCHER(Subtract);
 HLO_MATCHER(Tanh);
-HLO_MATCHER(Trace);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
-HLO_MATCHER(TupleSelect);
 HLO_MATCHER(While);
 HLO_MATCHER(Xor);
+HLO_MATCHER(OptimizationBarrier);
 
 #define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
   template <>                                                            \
@@ -390,17 +404,18 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement() {
 // - CustomCall() matches any CustomCall HLO at all.
 template <typename... M>
 inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
-    ::testing::Matcher<string> call_target_matcher, M... operands) {
+    ::testing::Matcher<std::string> call_target_matcher, M... operands) {
   return ::testing::MakeMatcher(new ::xla::testing::HloCustomCallMatcher(
       call_target_matcher, {operands...}));
 }
 // This overload of CustomCall(A, B, C, ...) exists iff A is not convertible to
-// ::testing::Matcher<string>.  In that case, we want to prefer the overload
-// above.
-template <typename FirstM, typename... M,
-          typename Dummy = typename std::enable_if<
-              !std::is_convertible<FirstM, ::testing::Matcher<string>>::value,
-              void>::type*>
+// ::testing::Matcher<std::string>.  In that case, we want to prefer the
+// overload above.
+template <
+    typename FirstM, typename... M,
+    typename Dummy = typename std::enable_if<
+        !std::is_convertible<FirstM, ::testing::Matcher<std::string>>::value,
+        void>::type*>
 inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
     FirstM operands_first, M... operands_rest) {
   return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
@@ -448,7 +463,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 // Verifies that no HloSharding is set for an HLO instruction.
 inline ::testing::Matcher<const ::xla::HloInstruction*> NoSharding() {
   return ::testing::MakeMatcher(
-      new ::xla::testing::HloShardingMatcher(absl::nullopt));
+      new ::xla::testing::HloShardingMatcher(std::nullopt));
 }
 
 inline ::testing::Matcher<const ::xla::HloInstruction*> Dot() {
@@ -500,6 +515,12 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Constant(
     Literal value) {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloConstantMatcher(std::move(value)));
+}
+
+inline ::testing::Matcher<const ::xla::HloInstruction*> ReplicaGroups(
+    std::vector<std::vector<int64_t>> replica_groups) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloReplicaGroupsMatcher(std::move(replica_groups)));
 }
 
 #undef HLO_MATCHER

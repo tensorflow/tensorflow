@@ -14,48 +14,72 @@
 # ==============================================================================
 """Tests for tensorflow.tools.docs.generate2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import pathlib
 import shutil
 import types
 from unittest import mock
 
 import tensorflow as tf
+from tensorflow import estimator as tf_estimator
+
+import yaml
 
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import generate2
 
-# Make a mock tensorflow package that won't take too long to test.
-fake_tf = types.ModuleType('FakeTensorFlow')
-fake_tf.estimator = tf.estimator
-fake_tf.keras = tf.keras
-fake_tf.nn = tf.nn
-fake_tf.summary = tf.summary
-fake_tf.raw_ops = types.ModuleType('raw_ops')
-fake_tf.Module = tf.Module
 
-for name in sorted(dir(tf.raw_ops))[:5]:
-  setattr(fake_tf.raw_ops, name, getattr(tf.raw_ops, name))
+class AutoModule(types.ModuleType):
+
+  def __getattr__(self, name):
+    if name.startswith('_'):
+      raise AttributeError()
+    mod = AutoModule(name)
+    setattr(self, name, mod)
+    return mod
+
+# Make a mock tensorflow package that won't take too long to test.
+fake_tf = AutoModule('FakeTensorFlow')
+fake_tf.Module = tf.Module  # pylint: disable=invalid-name
+fake_tf.estimator.DNNClassifier = tf_estimator.DNNClassifier
+fake_tf.feature_column.nummeric_column = tf.feature_column.numeric_column
+fake_tf.keras.Model = tf.keras.Model
+fake_tf.keras.preprocessing = tf.keras.preprocessing
+fake_tf.keras.layers.Layer = tf.keras.layers.Layer
+fake_tf.keras.optimizers.Optimizer = tf.keras.optimizers.Optimizer
+fake_tf.nn.sigmoid_cross_entropy_with_logits = (
+    tf.nn.sigmoid_cross_entropy_with_logits)
+fake_tf.raw_ops.Add = tf.raw_ops.Add
+fake_tf.summary.audio = tf.summary.audio
+fake_tf.summary.audio2 = tf.summary.audio
+fake_tf.__version__ = tf.__version__
 
 
 class Generate2Test(googletest.TestCase):
 
   @mock.patch.object(generate2, 'tf', fake_tf)
   def test_end_to_end(self):
-    output_dir = os.path.join(googletest.GetTempDir(), 'output')
+    generate2.MIN_NUM_FILES_EXPECTED = 1
+    output_dir = pathlib.Path(googletest.GetTempDir())/'output'
     if os.path.exists(output_dir):
       shutil.rmtree(output_dir)
     os.makedirs(output_dir)
-    with self.assertRaisesRegex(ValueError, '2000 files'):
-      generate2.build_docs(
-          output_dir=output_dir,
-          code_url_prefix='',
-          search_hints=True,
-      )
+    generate2.build_docs(
+        output_dir=output_dir,
+        code_url_prefix='',
+        search_hints=True,
+    )
 
+    raw_ops_page = (output_dir/'tf/raw_ops.md').read_text()
+    self.assertIn('/tf/raw_ops/Add.md', raw_ops_page)
+
+    toc = yaml.safe_load((output_dir / 'tf/_toc.yaml').read_text())
+    self.assertEqual({
+        'title': 'Overview',
+        'path': '/tf_overview'
+    }, toc['toc'][0]['section'][0])
+    redirects = yaml.safe_load((output_dir / 'tf/_redirects.yaml').read_text())
+    self.assertIn({'from': '/tf_overview', 'to': '/tf'}, redirects['redirects'])
 
 if __name__ == '__main__':
   googletest.main()

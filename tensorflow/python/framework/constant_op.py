@@ -19,10 +19,6 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context

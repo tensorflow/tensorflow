@@ -73,36 +73,10 @@ void Interpreter::SetCancellationFunction(void* data,
 bool Interpreter::IsCancelled() { return primary_subgraph().IsCancelled(); }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
-  TfLiteStatus status = kTfLiteOk;
-  for (auto& subgraph : subgraphs_) {
-    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
-      continue;
-    }
-    status = subgraph->ModifyGraphWithDelegate(delegate);
-    if (status != kTfLiteOk) {
-      break;
-    }
-  }
-  // Delegate-specific errors can be recovered from by restoring Interpreter to
-  // its original state.
-  if (status == kTfLiteDelegateError) {
-    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
-  }
-  return status;
-}
-
-TfLiteStatus Interpreter::RemoveAllDelegates() {
-  for (auto& subgraph : subgraphs_) {
-    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
-  }
-  return kTfLiteOk;
+  return ModifyGraphWithDelegateImpl(delegate);
 }
 
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
-
-bool Interpreter::IsFullyDelegated() const {
-  return primary_subgraph().IsFullyDelegated();
-}
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
@@ -136,38 +110,57 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(Profiler* profiler) {
-  // Release resources occupied by owned_profiler_ which is replaced by
-  // caller-owned profiler.
-  owned_profiler_.reset(nullptr);
-  installed_profiler_ = profiler;
-  SetSubgraphProfiler();
+  if (profiler == nullptr) {
+    root_profiler_ = nullptr;
+    return;
+  }
+  if (root_profiler_ != nullptr) root_profiler_->RemoveChildProfilers();
+  AddProfiler(profiler);
 }
 
 void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
-  owned_profiler_ = std::move(profiler);
-  installed_profiler_ = owned_profiler_.get();
-  SetSubgraphProfiler();
+  SetProfilerImpl(std::move(profiler));
 }
 
-void Interpreter::SetSubgraphProfiler() {
-  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
-       ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
-                                            subgraph_index);
+void Interpreter::AddProfiler(Profiler* profiler) {
+  if (profiler == nullptr) return;
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
   }
+  root_profiler_->AddProfiler(profiler);
+  SetSubgraphProfiler();
 }
 
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
 
-TfLiteStatus Interpreter::PreserveAllTensorsExperimental() {
-  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
-       ++subgraph_index) {
-    TF_LITE_ENSURE_STATUS(
-        subgraphs_[subgraph_index]->PreserveAllTensorsExperimental());
+TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
+  return ApplyOptionsImpl(options);
+}
+
+SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
+  auto iter = signature_runner_map_.find(signature_key);
+  if (iter != signature_runner_map_.end()) {
+    return &(iter->second);
   }
-  return kTfLiteOk;
+
+  // Default delegates are applied once for all subgraphs. Only returns error
+  // when the status is kTfLiteError. For other statuses, it will fall back to
+  // the default implementation.
+  if (ApplyLazyDelegateProviders() == kTfLiteError) {
+    return nullptr;
+  }
+
+  for (const auto& signature : signature_defs_) {
+    if (signature.signature_key == signature_key) {
+      auto status = signature_runner_map_.insert(
+          {signature_key,
+           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
+      return &(status.first->second);
+    }
+  }
+  return nullptr;
 }
 
 }  // namespace tflite

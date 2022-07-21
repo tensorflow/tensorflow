@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
 #include <atomic>
+#include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -47,10 +47,10 @@ void HloModuleConfig::SetComputationLayoutIfExists(
                                                 /*ignore_layouts=*/false);
 }
 
-string HloModuleConfig::compilation_cache_key() const {
-  string key = absl::StrCat("profiling=", hlo_profiling_enabled());
+std::string HloModuleConfig::compilation_cache_key() const {
+  std::string key = absl::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
-  std::vector<string> params;
+  std::vector<std::string> params;
   if (entry_computation_layout_.has_value()) {
     for (const ShapeLayout& param_layout :
          entry_computation_layout_->parameter_layouts()) {

@@ -39,19 +39,12 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
     return false;
   }
 
-  // The semantics of TupleSelect are weird: TupleSelect doesn't define a
-  // buffer, but just forwards the buffers in the either left or right side.
-  // This means the two different inputs to TupleSelect must not alias, yet they
-  // should be allocated in the same memory space, and both buffers must be kept
-  // alive for the entire live range of TupleSelect. Instead, just don't
-  // allocate TupleSelect in the alternate memory space.
   // TODO(berkin): Not allocating add-dependencies either since they need to be
   // treated specially. We should revisit this later.
   for (const HloPosition& position : value->positions()) {
-    if (position.instruction->opcode() == HloOpcode::kTupleSelect ||
-        position.instruction->opcode() == HloOpcode::kAddDependency) {
+    if (position.instruction->opcode() == HloOpcode::kAddDependency) {
       VLOG(4) << "Keeping value " << value->ToShortString()
-              << " in default mem because it has a tuple-select or "
+              << " in default mem because it has a "
               << "add-dependency position.";
       return false;
     }
@@ -92,55 +85,6 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval) {
   return IsValueAllowedInAlternateMemory(interval.buffer) &&
          absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
-}
-
-/*static*/ void MemorySpaceAssignmentUtils::HoistConstantOperations(
-    HloModule& module) {
-  CHECK(module.has_schedule());
-  HloSchedule& schedule = module.schedule();
-  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
-    CHECK(schedule.is_computation_scheduled(computation));
-    const HloInstructionSequence& sequence = schedule.sequence(computation);
-    // Conservatively don't modify the schedule if any instruction has a control
-    // successor or predecessor on a constant op. Computations with these
-    // dependencies should be very rare anyway.
-    bool contains_constant_successor_or_predecessors = false;
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() == HloOpcode::kConstant) {
-        contains_constant_successor_or_predecessors |=
-            !instruction->control_predecessors().empty();
-        contains_constant_successor_or_predecessors |=
-            !instruction->control_successors().empty();
-      } else {
-        auto is_constant = [](const HloInstruction* inst) {
-          return inst->opcode() == HloOpcode::kConstant;
-        };
-        contains_constant_successor_or_predecessors |=
-            absl::c_find_if(instruction->control_predecessors(), is_constant) !=
-            instruction->control_predecessors().end();
-        contains_constant_successor_or_predecessors |=
-            absl::c_find_if(instruction->control_successors(), is_constant) !=
-            instruction->control_successors().end();
-      }
-    }
-    if (contains_constant_successor_or_predecessors) {
-      continue;
-    }
-    HloInstructionSequence new_sequence;
-
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() == HloOpcode::kConstant) {
-        new_sequence.push_back(instruction);
-      }
-    }
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() != HloOpcode::kConstant) {
-        new_sequence.push_back(instruction);
-      }
-    }
-    CHECK_EQ(new_sequence.size(), sequence.size());
-    schedule.set_sequence(computation, new_sequence);
-  }
 }
 
 }  // namespace xla

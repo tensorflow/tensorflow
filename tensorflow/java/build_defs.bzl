@@ -10,6 +10,7 @@ XLINT_OPTS = [
     "-Xlint:-serial",
     "-Xlint:-try",
     "-Xlint:-classfile",  # see b/32750402, go/javac-warnings#classfile
+    "-Xlint:-options",  # see b/195079247
 ]
 
 # The bazel errorprone plugin currently only enables default errorChecks

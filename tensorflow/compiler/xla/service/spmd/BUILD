@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:shape_inference",
@@ -61,12 +62,12 @@ cc_library(
         "//tensorflow/core/platform:numbers",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -114,6 +115,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_query",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -143,5 +145,37 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "stateful_rng_spmd_partitioner",
+    srcs = ["stateful_rng_spmd_partitioner.cc"],
+    hdrs = ["stateful_rng_spmd_partitioner.h"],
+    deps = [
+        ":spmd_partitioner",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "stateful_rng_spmd_partitioner_test",
+    srcs = ["stateful_rng_spmd_partitioner_test.cc"],
+    deps = [
+        ":stateful_rng_spmd_partitioner",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:rng_expander",
+        "//tensorflow/compiler/xla/service:sharding_propagation",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )

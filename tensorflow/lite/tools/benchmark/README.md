@@ -44,10 +44,19 @@ and the following optional parameters:
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `max_profiling_buffer_entries`: `int` (default=1024) \
-    The max number of profiling events that will be stored during each inference
-    run. It is only meaningful when `enable_op_profiling` is set to `true`.
-    Note, the actual value of this parameter will be adjusted if the model has
-    more nodes than the specified value of this parameter.
+    The initial max number of profiling events that will be stored during each
+    inference run. It is only meaningful when `enable_op_profiling` is set to
+     `true`. Note, the actual value of this parameter will be adjusted if the
+     model has more nodes than the specified value of this parameter. Also, when
+     `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+     profiling buffer entries will be increased dynamically.
+*   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
+    Whether allowing dynamic increase on the number of profiling buffer entries.
+    It is only meaningful when `enable_op_profiling` is set to `true`.
+    Note, allowing dynamic buffer size increase may cause more profiling
+    overhead, thus it is preferred to set `max_profiling_buffer_entries` to a
+    large-enough value.
+
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
@@ -80,6 +89,12 @@ and the following optional parameters:
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+*  `release_dynamic_tensors`: `bool` (default=false) \
+    Whether to configure the Interpreter to immediately release the memory of
+    dynamic tensors in the graph once they are not used.
+*  `optimize_memory_for_large_tensors`: `int` (default=0) \
+    Whether to optimize memory usage for large tensors with sacrificing latency.
+    When the feature is enabled, `release_dynamic_tensors` is also enabled.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following
@@ -109,12 +124,14 @@ running the benchmark tool:
     A map-like string representing files that contain input values. Each
     item is separated by ',', and the item value consists of input layer name
     and the file path separated by ':',
-    e.g. 'input1:file_path1,input2:file_path2'. If a input name appears in both
-    `input_layer_value_range` and `input_layer_value_files`,
-    the corresponding input value range specified by`input_layer_value_range`
-    will be ignored. The file format is binary, and the content should be either
-    a byte array or null-separated strings. Note that the inpput layer name must
-    also exist in the list of names specified by `input_layer`.
+    e.g. 'input1:file_path1,input2:file_path2'. In case the input layer name
+    contains ':' e.g. "input:0", escape it with "\:" literal,
+    e.g. `input\:0:file_path1`. If a input name appears in both
+    `input_layer_value_range` and `input_layer_value_files`, the corresponding
+    input value range specified by`input_layer_value_range` will be ignored.
+    The file format is binary, and the content should be either a byte array or
+    null-separated strings. Note that the input layer name must also exist in
+    the list of names specified by `input_layer`.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
@@ -160,6 +177,11 @@ Note enabling this option will not produce profiling results outputs unless
 `enable_op_profiling` is also turned on. When both parameters are set to true,
 the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
+* `hexagon_lib_path`: `string` (default="/data/local/tmp/") \
+The library path for the underlying Hexagon libraries.
+This is where libhexagon_nn_skel*.so files should be.
+For libhexagon_interface.so it needs to be on a path that can be loaded from
+example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
 *   `use_xnnpack`: `bool` (default=false) \

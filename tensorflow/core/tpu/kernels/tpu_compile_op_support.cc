@@ -52,7 +52,7 @@ Status ValidateResultShape(const Shape& client_shape,
         xla::ShapeUtil::HumanStringWithLayout(client_shape),
         xla::ShapeUtil::HumanString(result_shape));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
@@ -268,7 +268,7 @@ Status AddVariableUpdatesToCores(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeOutputShapesForEachCore(
@@ -306,7 +306,7 @@ Status ComputeOutputShapesForEachCore(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateHloModules(
@@ -336,7 +336,7 @@ Status CreateHloModules(
   DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
   hlo_modules->push_back(std::move(hlo_module));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
@@ -441,7 +441,7 @@ Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
           metadata->num_cores_per_replica());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeArgumentShapes(const tpu::TPUCompileMetadataProto& metadata,
@@ -479,7 +479,7 @@ Status ComputeArgumentShapes(const tpu::TPUCompileMetadataProto& metadata,
   // Checks we consumed all of the dynamic shapes.
   TF_RET_CHECK(dynamic_shape_pos == dynamic_shapes.size())
       << "Too many dynamic shapes";
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

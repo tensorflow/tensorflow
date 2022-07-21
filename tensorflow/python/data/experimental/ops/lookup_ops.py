@@ -165,7 +165,7 @@ def table_from_dataset(dataset=None,
                      f"got {num_oov_buckets}.")
   if (not isinstance(vocab_size, ops.Tensor) and vocab_size is not None and
       vocab_size < 1):
-    raise ValueError("`vocab_size` must be greater than 0, got {vocab_size}.")
+    raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("`key_dtype` must be either an integer or string type, "
                     f"but got {key_dtype}")

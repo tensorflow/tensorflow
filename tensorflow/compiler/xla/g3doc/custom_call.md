@@ -19,9 +19,9 @@ described below.
 You can create an HLO instruction which represents a custom-call via XLA's
 client API. This is not exposed via TensorFlow as of writing.
 
-For example, the following code uses a custom-call to compute `A[i] = B[i % 128]
-+ C[i]` on the CPU. (Of course you could -- and should! -- do this with regular
-HLO.)
+For example, the following code uses a custom-call to compute `A[i] = B[i %
+128]+ C[i]` on the CPU. (Of course you could -- and should! -- do this with
+regular HLO.)
 
 ```c++
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -30,12 +30,12 @@ HLO.)
 void do_it() {
   xla::XlaBuilder b("do_it");
   xla::XlaOp param0 =
-      xla::Parameter(0, xla::ShapeUtil::CreateShape(F32, {128}), "p0");
+      xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla::F32, {128}), "p0");
   xla::XlaOp param1 =
-      xla::Parameter(1, xla::ShapeUtil::CreateShape(F32, {2048}), "p1");
+      xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla::F32, {2048}), "p1");
   xla::XlaOp custom_call =
       xla::CustomCall(&b, "do_custom_call", /*operands=*/{param0, param1},
-                      /*output_shape=*/ShapeUtil::CreateShape(F32, {2048}));
+                      /*shape=*/xla::ShapeUtil::MakeShape(xla::F32, {2048}));
 }
 
 void do_custom_call(void* out, const void** in) {
@@ -64,7 +64,7 @@ the CPU code above.
 void do_it() { /* same implementation as above */ }
 
 __global__ custom_call_kernel(const float* in0, const float* in1, float* out) {
-  size_t idx = threadIdx.x * blockSize.x + gridIdx.x;
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   out[idx] = in0[idx % 128] + in1[idx];
 }
 
@@ -109,7 +109,7 @@ to an arbitrary string of bytes when you create the custom call:
 ```c++
 std::string opaque = "...";
 xla::CustomCall(&b, "do_custom_call", /*operands=*/{param0, param1},
-                /*output_shape=*/ShapeUtil::CreateShape(F32, {2048}),
+                /*output_shape=*/xla::ShapeUtil::MakeShape(xla::F32, {2048}),
                 opaque);
 ```
 
@@ -119,24 +119,31 @@ custom-call. Note however that although `xla::ShapeProto` does not change
 frequently, it *does* change. Check the git log to see how it has changed in the
 past.
 
-### Signalling an error.
+## Signalling an error.
 
 If your custom call encounters an error, you can signal the error to the XLA
 runtime (instead of e.g. crashing or returning nonsense in the output buffers)
-by using the following signature for your function:
+by using the following signature for your function on CPU:
+
+```c++
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
+
+void do_custom_call(void* out, const void** in, XlaCustomCallStatus* status);
+```
+
+... and on GPU:
 
 ```c++
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 
 void do_custom_call(CUstream stream, void** buffers, const char* opaque,
-                    size_t opaque_len, XlaCustomCallStatus* status);
+                    size_t opaque_len, xla::XlaCustomCallStatus* status);
 ```
 
 You can signal failure by using `XlaCustomCallStatusSetFailure`, e.g.:
 
 ```c++
-void do_custom_call(CUstream stream, void** buffers, const char* opaque,
-                    size_t opaque_len, XlaCustomCallStatus* status) {
+void do_custom_call(void* out, const void** in, XlaCustomCallStatus* status) {
   // ... do some work.
 
   if (bad_condition) {
@@ -158,10 +165,10 @@ corresponding `custom-call` op with the appropriate API version set, e.g.:
 
 ```c++
 xla::CustomCall(&b, "do_custom_call", /*operands=*/{param0, param1},
-                /*output_shape=*/ShapeUtil::CreateShape(F32, {2048}),
+                /*output_shape=*/xla::ShapeUtil::MakeShape(F32, {2048}),
                 opaque, /*has_side_effect=*/false,
                 /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
-                /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+                /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
                 /*api_version=*/API_VERSION_STATUS_RETURNING);
 ```
 
@@ -174,15 +181,13 @@ On failure, none of the custom call outputs will be used; the XLA runtime will
 terminate the computation. It is not possible for an HLO computation to recover
 from the error (e.g. by catching and handling it).
 
-This feature is only available for GPU custom calls; it is not possible to
-signal failure for a CPU custom call.
-
 ## Passing tuples to custom-calls
 
 Consider the following custom-call.
 
 ```c++
 using xla::ShapeUtil;
+using xla::F32;
 Shape p0_shape = ShapeUtil::MakeTuple({
     ShapeUtil::MakeShape(F32, {32}),
     ShapeUtil::MakeTuple({

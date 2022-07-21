@@ -14,10 +14,6 @@
 # ==============================================================================
 """This file contains integration test for TPUStrategy in regards to memory."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 
 import tensorflow as tf

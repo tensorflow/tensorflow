@@ -14,16 +14,12 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-from __future__ import absolute_import as _absolute_import
-from __future__ import division as _division
-from __future__ import print_function as _print_function
-
 import distutils as _distutils
 import inspect as _inspect
 import os as _os
 import site as _site
-import six as _six
 import sys as _sys
+import typing as _typing
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
@@ -89,13 +85,6 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "keras", keras)
 
-# Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
-if not _six.PY2:
-  import typing as _typing
-  if _typing.TYPE_CHECKING:
-    from tensorflow_estimator.python.estimator.api._v1 import estimator
-# pylint: enable=g-import-not-at-top
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
@@ -197,6 +186,17 @@ if _running_from_pip_package():
       _ll.load_library(_plugin_dir)
       # Load Pluggable Device Library
       _ll.load_pluggable_device_library(_plugin_dir)
+
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if _typing.TYPE_CHECKING:
+  from tensorflow_estimator.python.estimator.api._v1 import estimator as estimator
+  from keras.api._v1 import keras
+  from keras.api._v1.keras import losses
+  from keras.api._v1.keras import metrics
+  from keras.api._v1.keras import optimizers
+  from keras.api._v1.keras import initializers
+# pylint: enable=g-import-not-at-top
 
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.

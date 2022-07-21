@@ -92,7 +92,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::GroupByWindow")});
     }
 
@@ -107,7 +107,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
-    int64_t Cardinality() const override {
+    int64_t CardinalityInternal() const override {
       int64_t n = input_->Cardinality();
       if (n == kInfiniteCardinality) {
         return n;
@@ -118,7 +118,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -184,7 +184,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
            {"Twindow_size_func_other_arguments",
             window_size_func_other_arguments_types_attr}},
           output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -202,7 +202,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             ctx, &instantiated_reduce_func_));
         TF_RETURN_IF_ERROR(dataset()->captured_window_size_func_->Instantiate(
             ctx, &instantiated_window_size_func_));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -215,11 +215,11 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             // next element.
             bool end_of_group;
             TF_RETURN_IF_ERROR(current_group_iterator_->GetNext(
-                ctx, out_tensors, &end_of_group));
+                MakeNestedIteratorContext(ctx), out_tensors, &end_of_group));
             if (!end_of_group) {
               // Produce the subelement as output.
               *end_of_sequence = false;
-              return Status::OK();
+              return OkStatus();
             }
             // We have reached the end of the current group, so maybe move on
             // to the next group.
@@ -232,7 +232,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           while (!end_of_input_) {
             std::vector<Tensor> next_input_element;
             TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, &next_input_element, &end_of_input_));
+                input_impl_->GetNext(MakeNestedIteratorContext(ctx),
+                                     &next_input_element, &end_of_input_));
 
             if (!end_of_input_) {
               // Run the key function on the input element to identify its
@@ -300,7 +301,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         } while (current_group_iterator_ || !end_of_input_);
 
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -370,7 +371,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("group_counter"),
                                                group_counter_ - 1));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -430,7 +431,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               RestoreInput(ctx, reader, current_group_iterator_));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -447,7 +448,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 strings::StrCat(name, "[", i, "][", j, "]"), group[i][j]));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreGroup(IteratorContext* ctx, IteratorStateReader* reader,
@@ -469,7 +470,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 &group->at(i)[j]));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status StartFlushingGroup(IteratorContext* ctx, int64_t key)
@@ -514,7 +515,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Create an iterator for the dataset that was returned by `f`.
         return returned_dataset->MakeIterator(
-            ctx, this, strings::StrCat(prefix(), "[", group_counter_++, "]"),
+            MakeNestedIteratorContext(ctx), this,
+            strings::StrCat(prefix(), "[", group_counter_++, "]"),
             &current_group_iterator_);
       }
 

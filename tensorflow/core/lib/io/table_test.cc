@@ -95,20 +95,20 @@ class StringSink : public WritableFile {
 
   const string& contents() const { return contents_; }
 
-  Status Close() override { return Status::OK(); }
-  Status Flush() override { return Status::OK(); }
+  Status Close() override { return OkStatus(); }
+  Status Flush() override { return OkStatus(); }
   Status Name(StringPiece* result) const override {
     return errors::Unimplemented("StringSink does not support Name()");
   }
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override { return OkStatus(); }
   Status Tell(int64_t* pos) override {
     *pos = contents_.size();
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -139,7 +139,7 @@ class StringSource : public RandomAccessFile {
     memcpy(scratch, &contents_[offset], n);
     *result = StringPiece(scratch, n);
     bytes_read_ += n;
-    return Status::OK();
+    return OkStatus();
   }
 
   uint64 BytesRead() const { return bytes_read_; }
@@ -206,7 +206,7 @@ class BlockConstructor : public Constructor {
     contents.cacheable = false;
     contents.heap_allocated = false;
     block_ = new Block(contents);
-    return Status::OK();
+    return OkStatus();
   }
   Iterator* NewIterator() const override { return block_->NewIterator(); }
 

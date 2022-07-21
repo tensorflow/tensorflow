@@ -22,7 +22,10 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -37,19 +40,25 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    // TODO(rmlarsen): add multithreading or interleaving.
-    for (int b = 0; b < batch_size; ++b) {
-      const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
-      OutType* output_ptr = output->data() + b * num_values;
-      for (int i = 0; i < num_values; ++i) {
-        output_ptr[i] =
-            std::upper_bound(sorted_inputs_ptr, sorted_inputs_ptr + num_inputs,
-                             values(i + b * num_values)) -
-            sorted_inputs_ptr;
+    auto work_fn = [&](int64_t first, int64_t last) {
+      for (int b = 0; b < batch_size; ++b) {
+        const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
+        OutType* output_ptr = output->data() + b * num_values;
+        for (int i = first; i < last; ++i) {
+          output_ptr[i] = std::upper_bound(sorted_inputs_ptr,
+                                           sorted_inputs_ptr + num_inputs,
+                                           values(i + b * num_values)) -
+                          sorted_inputs_ptr;
+        }
       }
-    }
-
-    return Status::OK();
+    };
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    thread::ThreadPool* thread_pool = worker_threads.workers;
+    const float kCostMultiplier = 1.f;  // Can be tuned to minimize overhead
+    int64_t cost_per_unit =
+        kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
+    thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
+    return OkStatus();
   }
 };
 
@@ -60,19 +69,25 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    // TODO(rmlarsen): add multithreading or interleaving.
-    for (int b = 0; b < batch_size; ++b) {
-      const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
-      OutType* output_ptr = output->data() + b * num_values;
-      for (int i = 0; i < num_values; ++i) {
-        output_ptr[i] =
-            std::lower_bound(sorted_inputs_ptr, sorted_inputs_ptr + num_inputs,
-                             values(i + b * num_values)) -
-            sorted_inputs_ptr;
+    auto work_fn = [&](int64_t first, int64_t last) {
+      for (int b = 0; b < batch_size; ++b) {
+        const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
+        OutType* output_ptr = output->data() + b * num_values;
+        for (int i = first; i < last; ++i) {
+          output_ptr[i] = std::lower_bound(sorted_inputs_ptr,
+                                           sorted_inputs_ptr + num_inputs,
+                                           values(i + b * num_values)) -
+                          sorted_inputs_ptr;
+        }
       }
-    }
-
-    return Status::OK();
+    };
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    thread::ThreadPool* thread_pool = worker_threads.workers;
+    const float kCostMultiplier = 1.f;  // Can be tuned to minimize overhead
+    int64_t cost_per_unit =
+        kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
+    thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
+    return OkStatus();
   }
 };
 }  // namespace functor
@@ -115,6 +130,14 @@ class UpperBoundOp : public OpKernel {
     auto output = output_t->template flat<OutType>();
     const auto sorted_inputs = sorted_inputs_t.template flat<T>();
     const auto values = values_t.template flat<T>();
+
+    // For empty inputs, all values will be placed at the zeroth position.
+    if (sorted_inputs.size() == 0) {
+      functor::SetZeroFunctor<Device, OutType> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output);
+      return;
+    }
+
     OP_REQUIRES_OK(
         ctx, functor::UpperBoundFunctor<Device, T, OutType>::Compute(
                  ctx, sorted_inputs, values, sorted_inputs_t.dim_size(0),
@@ -160,6 +183,14 @@ class LowerBoundOp : public OpKernel {
     auto output = output_t->template flat<OutType>();
     const auto sorted_inputs = sorted_inputs_t.template flat<T>();
     const auto values = values_t.template flat<T>();
+
+    // For empty inputs, all values will be placed at the zeroth position.
+    if (sorted_inputs.size() == 0) {
+      functor::SetZeroFunctor<Device, OutType> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output);
+      return;
+    }
+
     OP_REQUIRES_OK(
         ctx, functor::LowerBoundFunctor<Device, T, OutType>::Compute(
                  ctx, sorted_inputs, values, sorted_inputs_t.dim_size(0),

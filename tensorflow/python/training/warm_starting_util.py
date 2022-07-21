@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities to warm-start TF.Learn Estimators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import six
@@ -527,9 +523,26 @@ def warm_start(ckpt_to_initialize_from,
         if len(variable) == 1:
           variable = variable[0]
         prev_tensor_name, var = _get_var_info(variable, prev_var_name)
+        if prev_tensor_name in vocabless_vars:
+          # The API for checkpoint_utils.init_from_checkpoint accepts a mapping
+          # from checkpoint tensor names to model variable names, so it does not
+          # support warm-starting two variables from the same tensor.  Our work-
+          # around is to run init_from_checkpoint multiple times, each time we
+          # encounter a new variable that should be initialized by a previously-
+          # used tensor.
+          logging.debug("Requested prev_var_name {} initialize both {} and {}; "
+                        "calling init_from_checkpoint.".format(
+                            prev_tensor_name,
+                            vocabless_vars[prev_tensor_name],
+                            var))
+          checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from,
+                                                vocabless_vars)
+          vocabless_vars.clear()
         vocabless_vars[prev_tensor_name] = var
 
-  checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from, vocabless_vars)
+  if vocabless_vars:
+    checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from,
+                                          vocabless_vars)
   prev_var_name_not_used = set(
       var_name_to_prev_var_name.keys()) - prev_var_name_used
   vocab_info_not_used = set(var_name_to_vocab_info.keys()) - vocab_info_used

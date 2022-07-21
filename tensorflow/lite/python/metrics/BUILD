@@ -37,7 +37,6 @@ pybind_extension(
     srcs = ["wrapper/metrics_wrapper_pybind11.cc"],
     hdrs = ["wrapper/metrics_wrapper.h"],
     compatible_with = get_compatible_with_portable(),
-    module_name = "_pywrap_tensorflow_lite_metrics_wrapper",
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_wrapper_lib",
@@ -80,70 +79,57 @@ pytype_strict_library(
     visibility = ["//visibility:private"],
 )
 
+genrule(
+    name = "metrics_py_gen",
+    srcs = if_portable(
+        if_false = ["metrics_nonportable.py"],
+        if_true = ["metrics_portable.py"],
+    ),
+    outs = ["metrics.py"],
+    cmd = (
+        "cat $(SRCS) > $(OUTS)"
+    ),
+    compatible_with = get_compatible_with_portable(),
+)
+
 pytype_strict_library(
-    name = "metrics_nonportable",
-    srcs = ["metrics_nonportable.py"],
+    name = "metrics",
+    srcs = ["metrics.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":converter_error_data_proto_py",
-        ":metrics_interface",
-        ":metrics_wrapper",
-        "//tensorflow/python/eager:monitoring",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
+    deps = if_portable(
+        if_false = [
+            ":converter_error_data_proto_py",
+            ":metrics_wrapper",
+            "//tensorflow/python/eager:monitoring",
+        ],
+        if_true = [],
+    ) + [":metrics_interface"],
 )
 
 py_test(
-    name = "metrics_nonportable_test",
-    srcs = ["metrics_nonportable_test.py"],
+    name = "metrics_test",
+    srcs = if_portable(
+        if_false = ["metrics_nonportable_test.py"],
+        if_true = ["metrics_portable_test.py"],
+    ),
     data = [
         "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
     ],
+    main = if_portable(
+        if_false = "metrics_nonportable_test.py",
+        if_true = "metrics_portable_test.py",
+    ),
     python_version = "PY3",
-    tags = ["no_oss"],
-    visibility = ["//visibility:public"],
     deps = [
         ":converter_error_data_proto_py",
-        ":metrics_nonportable",
+        ":metrics",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
-)
-
-pytype_strict_library(
-    name = "metrics_portable",
-    srcs = ["metrics_portable.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//visibility:private"],
-    deps = [
-        ":metrics_interface",
-    ],
-)
-
-py_test(
-    name = "metrics_portable_test",
-    srcs = ["metrics_portable_test.py"],
-    python_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":metrics_portable",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-pytype_strict_library(
-    name = "metrics",
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow/lite:__subpackages__"],
-    deps = if_portable(
-        if_false = [":metrics_nonportable"],
-        if_true = [":metrics_portable"],
-    ),
 )
 
 tf_proto_library(

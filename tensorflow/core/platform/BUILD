@@ -18,6 +18,7 @@ load(
     "tf_additional_lib_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
+    "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_google_mobile_srcs_only_runtime",
@@ -45,7 +46,6 @@ load(
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
-    "tf_native_cc_binary",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -211,15 +211,6 @@ cc_library(
     ],
 )
 
-# Used by //tensorflow/python/platform:platform.
-tf_native_cc_binary(
-    name = "_cpu_feature_guard.so",
-    linkshared = True,
-    deps = [
-        "//tensorflow/core/platform:cpu_feature_guard",
-    ],
-)
-
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
@@ -241,7 +232,7 @@ cc_library(
 cc_library(
     name = "cuda_libdevice_path",
     textual_hdrs = ["cuda_libdevice_path.h"],
-    deps = tf_platform_deps("cuda_libdevice_path"),
+    deps = tf_cuda_libdevice_path_deps(),
 )
 
 cc_library(
@@ -269,6 +260,7 @@ tf_cc_test(
 cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
     ] + tf_platform_deps("dynamic_annotations"),
@@ -292,31 +284,24 @@ cc_library(
 
 cc_library(
     name = "env_time",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
     deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
-    name = "error",
-    srcs = ["error.cc"],
-    hdrs = ["error.h"],
-    deps = [
-        ":platform",
-        ":status",
-        ":strcat",
-        ":types",
-    ],
-)
-
-cc_library(
     name = "errors",
+    srcs = ["errors.cc"],
     hdrs = ["errors.h"],
     deps = [
         ":logging",
         ":macros",
+        ":platform",
         ":status",
         ":str_util",
         ":strcat",
+        ":types",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -392,6 +377,7 @@ cc_library(
 
 cc_library(
     name = "logging",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = tf_logging_deps(),
 )
@@ -399,6 +385,7 @@ cc_library(
 cc_library(
     name = "macros",
     hdrs = ["macros.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 filegroup(
@@ -585,6 +572,22 @@ cc_library(
     hdrs = ["refcount.h"],
     deps = [
         ":logging",
+        ":mutex",
+        ":thread_annotations",
+    ],
+)
+
+tf_cc_test(
+    name = "refcount_test",
+    size = "small",
+    srcs = [
+        "refcount_test.cc",
+    ],
+    deps = [
+        ":env",
+        ":refcount",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -707,7 +710,6 @@ cc_library(
         ":stacktrace",
         ":str_util",
         ":strcat",
-        ":stringpiece",
         ":stringprintf",
         ":types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -845,9 +847,9 @@ cc_library(
     testonly = True,
     hdrs = ["test_benchmark.h"],
     deps = [
-        "@com_google_benchmark//:benchmark",
         ":platform",
-    ] + tf_testing_deps("test_benchmark"),
+        "@com_google_benchmark//:benchmark",
+    ],
 )
 
 cc_library(
@@ -858,6 +860,7 @@ cc_library(
 cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":mutex",
         ":types",
@@ -868,6 +871,7 @@ cc_library(
 cc_library(
     name = "threadpool_options",
     hdrs = ["threadpool_options.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":threadpool_interface",
     ],
@@ -968,11 +972,11 @@ tf_cc_test(
     srcs = ["retrying_utils_test.cc"],
     deps = [
         ":retrying_utils",
+        ":str_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
     ],
 )
 
@@ -1122,6 +1126,16 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "error_payloads",
+    srcs = ["error_payloads.cc"],
+    hdrs = ["error_payloads.h"],
+    deps = [
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+    ],
+)
+
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
@@ -1130,6 +1144,12 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -1510,6 +1530,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1528,7 +1549,6 @@ filegroup(
         "crash_analysis.h",
         "dynamic_annotations.h",
         "env.h",
-        "error.h",
         "errors.h",
         "file_statistics.h",
         "file_system.h",
@@ -1689,6 +1709,7 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
@@ -1761,8 +1782,7 @@ filegroup(
         "env.cc",
         "env.h",
         "env_time.h",
-        "error.cc",
-        "error.h",
+        "errors.cc",
         "errors.h",
         "file_statistics.h",
         "file_system.cc",
@@ -1844,6 +1864,7 @@ filegroup(
         "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
+        "png.h",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.cc",
@@ -1921,4 +1942,5 @@ bzl_library(
     srcs = [
         "rules_cc.bzl",
     ] + tf_platform_alias("rules_cc.bzl"),
+    deps = ["@bazel_skylib//rules:common_settings"],
 )

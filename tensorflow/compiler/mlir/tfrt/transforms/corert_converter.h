@@ -57,7 +57,7 @@ class CoreRTConverter : public mlir::TypeConverter {
   // This method also populates a vector of attribute keys to be removed.
   mlir::ArrayAttr CreateOpFuncAttrs(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::SmallVector<mlir::Identifier, 4> *func_attr_keys);
+      llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys);
 
   // Parse the device name of `op` to TFRT's device name. For example, "/CPU:0"
   // will be parsed as "cpu". Return None if no device is assigned.

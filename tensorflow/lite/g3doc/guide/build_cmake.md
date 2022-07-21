@@ -57,17 +57,106 @@ provide `-DCMAKE_BUILD_TYPE=Debug` option.
 cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
 ```
 
-#### Cross-compilation for Android
+#### Build with kernel unit tests
 
-You can use CMake to build Android binaries. You need to install
+In order to be able to run kernel tests, you need to provide
+'-DTFLITE_KERNEL_TEST=on' flag. Unit test cross-compilation specifics can be
+found in the next subsection.
+
+```sh
+cmake ../tensorflow_src/tensorflow/lite -DTFLITE_KERNEL_TEST=on
+```
+
+#### Cross-compilation
+
+You can use CMake to build binaries for ARM64 or Android target architectures.
+
+In order to cross-compile the TF Lite, you namely need to provide the path to
+the SDK (e.g. ARM64 SDK or NDK in Android's case) with `-DCMAKE_TOOLCHAIN_FILE`
+flag.
+
+```sh
+cmake -DCMAKE_TOOLCHAIN_FILE=<CMakeToolchainFileLoc> ../tensorflow/lite/
+```
+
+##### Specifics of Android cross-compilation
+
+For Android cross-compilation, you need to install
 [Android NDK](https://developer.android.com/ndk) and provide the NDK path with
-`-DDCMAKE_TOOLCHAIN_FILE` flag. You also need to set target ABI with
-`-DANDROID_ABI` flag.
+`-DCMAKE_TOOLCHAIN_FILE` flag mentioned above. You also need to set target ABI
+with`-DANDROID_ABI` flag.
 
 ```sh
 cmake -DCMAKE_TOOLCHAIN_FILE=<NDK path>/build/cmake/android.toolchain.cmake \
   -DANDROID_ABI=arm64-v8a ../tensorflow_src/tensorflow/lite
 ```
+
+##### Specifics of kernel (unit) tests cross-compilation
+
+Cross-compilation of the unit tests requires flatc compiler for the host
+architecture. For this purpose, there is a CMakeLists located in
+`tensorflow/lite/tools/cmake/native_tools/flatbuffers` to build the flatc
+compiler with CMake in advance in a separate build directory using the host
+toolchain.
+
+```sh
+mkdir flatc-native-build && cd flatc-native-build
+cmake ../tensorflow_src/tensorflow/lite/tools/cmake/native_tools/flatbuffers
+cmake --build .
+```
+
+It is also possible **to install** the *flatc* to a custom installation location
+(e.g. to a directory containing other natively-built tools instead of the CMake
+build directory):
+
+```sh
+cmake -DCMAKE_INSTALL_PREFIX=<native_tools_dir> ../tensorflow_src/tensorflow/lite/tools/cmake/native_tools/flatbuffers
+cmake --build .
+```
+
+For the TF Lite cross-compilation itself, additional parameter
+`-DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path>` pointing to the directory containing
+the native *flatc* binary needs to be provided along with the
+`-DTFLITE_KERNEL_TEST=on` flag mentioned above.
+
+```sh
+cmake -DCMAKE_TOOLCHAIN_FILE=${OE_CMAKE_TOOLCHAIN_FILE} -DTFLITE_KERNEL_TEST=on -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> ../tensorflow/lite/
+```
+
+##### Cross-compiled kernel (unit) tests launch on target
+
+Unit tests can be run as separate executables or using the CTest utility. As far
+as CTest is concerned, if at least one of the parameters `TFLITE_ENABLE_NNAPI,
+TFLITE_ENABLE_XNNPACK` or `TFLITE_EXTERNAL_DELEGATE` is enabled for the TF Lite
+build, the resulting tests are generated with two different **labels**
+(utilizing the same test executable): - *plain* - denoting the tests ones run on
+CPU backend - *delegate* - denoting the tests expecting additional launch
+arguments used for the used delegate specification
+
+Both `CTestTestfile.cmake` and `run-tests.cmake` (as referred below) are
+available in `<build_dir>/kernels`.
+
+Launch of unit tests with CPU backend (provided the `CTestTestfile.cmake` is
+present on target in the current directory):
+
+```sh
+ctest -L plain
+```
+
+Launch examples of unit tests using delegates (provided the
+`CTestTestfile.cmake` as well as `run-tests.cmake` file are present on target in
+the current directory):
+
+```sh
+cmake -E env TESTS_ARGUMENTS=--use_nnapi=true\;--nnapi_accelerator_name=vsi-npu ctest -L delegate
+cmake -E env TESTS_ARGUMENTS=--use_xnnpack=true ctest -L delegate
+cmake -E env TESTS_ARGUMENTS=--external_delegate_path=<PATH> ctest -L delegate
+```
+
+**A known limitation** of this way of providing additional delegate-related
+launch arguments to unit tests is that it effectively supports only those with
+an **expected return value of 0**. Different return values will be reported as a
+test failure.
 
 #### OpenCL GPU delegate
 

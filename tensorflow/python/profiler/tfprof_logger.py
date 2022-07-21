@@ -16,10 +16,6 @@
 
 OpLogProto is used to add extra model information for offline analysis.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 
@@ -113,14 +109,15 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
       add_entry = True
 
     if add_trace:
-      for filename, lineno, funcname, line in op.traceback:
-        trace = entry.code_def.traces.add()
-        trace.file_id = _str_id(filename, string_to_id) if filename else 0
-        trace.lineno = lineno if lineno else -1
-        trace.function_id = _str_id(funcname, string_to_id) if funcname else 0
-        trace.line_id = _str_id(line, string_to_id) if line else 0
-        # TODO(slebedev): remove this unused field from the proto.
-        trace.func_start_line = -1
+      if op.traceback:
+        for filename, lineno, funcname, line in op.traceback:
+          trace = entry.code_def.traces.add()
+          trace.file_id = _str_id(filename, string_to_id) if filename else 0
+          trace.lineno = lineno if lineno else -1
+          trace.function_id = _str_id(funcname, string_to_id) if funcname else 0
+          trace.line_id = _str_id(line, string_to_id) if line else 0
+          # TODO(slebedev): remove this unused field from the proto.
+          trace.func_start_line = -1
       add_entry = True
 
     if add_entry:

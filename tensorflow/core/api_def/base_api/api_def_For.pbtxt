@@ -19,7 +19,8 @@ op {
     list of tensors (T).
 END
   }
-  summary: <<END
+  summary: "Applies a for loop."
+  description: <<END
   ```python
    output = input;
    for i in range(start, limit, delta)

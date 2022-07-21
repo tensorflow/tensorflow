@@ -19,6 +19,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -112,7 +113,7 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
                   const Tensor& out_backprop, const Tensor& input,
                   int row_dilation, int col_dilation, int row_stride,
                   int col_stride, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings,
+                  const std::vector<int64_t>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format) {
     std::vector<int32> dilations(4, 1);
     dilations[GetTensorDimIndex(data_format, 'H')] = row_dilation;
@@ -646,6 +647,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 // To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::bfloat16>;
 template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
 template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
@@ -660,7 +662,7 @@ struct ConvBackwardFilterAutotuneGroup {
 };
 
 typedef AutotuneSingleton<ConvBackwardFilterAutotuneGroup, ConvParameters,
-                          se::dnn::AlgorithmConfig>
+                          AutotuneEntry<se::dnn::ConvOp>>
     AutotuneConvBwdFilter;
 
 template <typename T>
@@ -759,7 +761,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                   se::blas::Transpose::kTranspose, n, m, k,
-                                  a_ptr, n, b_ptr, m, &c_ptr, n));
+                                  a_ptr, n, b_ptr, m, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -784,7 +787,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                   se::blas::Transpose::kTranspose, n, m, k,
-                                  b_ptr, n, a_ptr, m, &c_ptr, n));
+                                  b_ptr, n, a_ptr, m, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   }
 
@@ -826,12 +830,13 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
 
-  // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
-  // fp16 in NHWC data layout. In all other configurations it's more efficient
-  // to run computation in NCHW data format.
-  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
-                               stream->GetCudaComputeCapability().IsAtLeast(
-                                   se::CudaComputeCapability::VOLTA);
+#if GOOGLE_CUDA
+  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
+                                                    stream, /*is_conv2d=*/true);
+#else
+  // fast NHWC implementation is a CUDA only feature
+  const bool compute_in_nhwc = false;
+#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects the preferred layout and
@@ -955,9 +960,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
-  static int64_t ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
-  );
+  static int64_t ConvolveBackwardFilterScratchSize =
+      GetDnnWorkspaceLimitOrDefault();
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
   ConvParameters conv_parameters = {
@@ -981,34 +985,20 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       conv_desc.group_count()              // group_count
   };
 
-  auto config_or = AutotuneUnfusedConv(
+  auto entry_or = AutotuneUnfusedConv(
       cudnn_use_autotune, AutotuneConvBwdFilter::GetInstance(), conv_parameters,
       ctx, se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
       filter_desc, filter_backprop_ptr, conv_desc, output_desc,
       out_backprop_ptr, ConvolveBackwardFilterScratchSize);
-  OP_REQUIRES_OK(ctx, config_or.status());
-  AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
+  OP_REQUIRES_OK(ctx, entry_or.status());
+  auto autotune_entry = std::move(entry_or).value();
 
-  Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
-  if (CudnnUseFrontend()) {
-    if (algorithm_config.algorithm().has_value()) {
-      VLOG(4) << "Conv2DBackpropFilter Execution Plan: "
-              << algorithm_config.algorithm()->exec_plan_id();
-    } else {
-      VLOG(4) << "Convolution Autotune has been turned off";
-    }
-    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-        conv_desc, &scratch_allocator, algorithm_config, nullptr);
-  } else {
-    cudnn_launch_status = stream->ConvolveWithAlgorithm(
-        se::dnn::ConvolutionKind::BACKWARD_FILTER, input_desc, input_ptr,
-        filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
-        conv_desc, &scratch_allocator, algorithm_config, nullptr);
-  }
-
+  Status cudnn_launch_status = LaunchAutotunedConv(
+      autotune_entry, &scratch_allocator,
+      se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc, input_ptr,
+      filter_desc, filter_backprop_ptr, conv_desc, output_desc,
+      out_backprop_ptr);
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
     return;

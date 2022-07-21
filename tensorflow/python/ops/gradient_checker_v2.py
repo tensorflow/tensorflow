@@ -17,15 +17,12 @@
 The gradient checker verifies numerically that an function properly
 computes the gradients
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -55,8 +52,9 @@ def _eval_indexed_slices(a):
     If a is IndexedSlices and eager execution is enabled, calls numpy() on a's
     fields. Otherwise returns a unchanged.
   """
-  if isinstance(a, ops.IndexedSlices) and context.executing_eagerly():
-    return ops.IndexedSlicesValue(
+  if (isinstance(a, indexed_slices.IndexedSlices) and
+      context.executing_eagerly()):
+    return indexed_slices.IndexedSlicesValue(
         indices=[x.numpy() for x in a.indices],
         values=[x.numpy() for x in a.values],
         dense_shape=a.dense_shape)
@@ -79,7 +77,7 @@ def _to_numpy(a):
   if isinstance(a, ops.Tensor):
     sess = ops.get_default_session()
     return sess.run(a)
-  if isinstance(a, ops.IndexedSlicesValue):
+  if isinstance(a, indexed_slices.IndexedSlicesValue):
     arr = np.zeros(a.dense_shape)
     assert len(a.values) == len(a.indices), (
         "IndexedSlicesValue has %s value slices but %s indices\n%s" %
@@ -173,7 +171,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
     dy_data_flat[row] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
     grad = _eval_indexed_slices(grad)
-    if isinstance(grad, ops.IndexedSlicesValue):
+    if isinstance(grad, indexed_slices.IndexedSlicesValue):
       for i, v in zip(grad.indices, grad.values):
         c_begin = i * x_val_size
         c_end = c_begin + x_val_size

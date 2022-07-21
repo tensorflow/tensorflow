@@ -14,14 +14,9 @@
 # ========================================================================
 """Tensor Tracer report generation utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import hashlib
 import os
-
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -52,19 +47,8 @@ _FIELD_NAME_NUM_CACHE_INDICES = 'number-of-indices:'
 _FIELD_NAME_TOPOLOGICAL_SORT_SUCCEED = 'topological-sort-succeed:'
 
 _CURRENT_VERSION = 'use-outside-compilation'
+
 _TT_REPORT_PROTO = 'tensor_tracer_report.report_pb'
-
-
-def report_proto_path(trace_dir):
-  """Returns the path where report proto should be written.
-
-  Args:
-     trace_dir: String denoting the trace directory.
-
-  Returns:
-     A string denoting the path to the report proto.
-  """
-  return os.path.join(trace_dir, _TT_REPORT_PROTO)
 
 
 def topological_sort(g):
@@ -308,10 +292,22 @@ class TTReportHandle(object):
     report.graphdef.CopyFrom(tf_graph.as_graph_def())
     return report
 
-  def write_report_proto(self, report_proto, tt_parameters):
+  def report_proto_path(self, trace_dir, summary_tag_name):
+    """Returns the path where report proto should be written.
+
+    Args:
+      trace_dir: String denoting the trace directory.
+      summary_tag_name: Name of the unique tag that relates to
+                        the report.
+    Returns:
+      A string denoting the path to the report proto.
+    """
+    filename = _TT_REPORT_PROTO + '.' + summary_tag_name.replace('/', '_')
+    return os.path.join(trace_dir, filename)
+
+  def write_report_proto(self, report_path, report_proto, tt_parameters):
     """Writes the given report proto under trace_dir."""
     gfile.MakeDirs(tt_parameters.trace_dir)
-    report_path = report_proto_path(tt_parameters.trace_dir)
     with gfile.GFile(report_path, 'wb') as f:
       f.write(report_proto.SerializeToString())
 

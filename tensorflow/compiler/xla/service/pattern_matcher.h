@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_H_
 
+#include <functional>
+#include <string>
 #include <type_traits>
+#include <utility>
 
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -58,8 +61,11 @@ namespace xla {
 //     - WithShape: instr's shape matches the given pattern
 //     - WithShapeEqualTo: instr's shape is equal to the given Shape
 //     - WithShapeCompatibleTo: instr's shape is compatible with the given Shape
+//     - WithElementType: instr.shape().element_type() matches the given type
 //     - WithNumOperands
 //     - WithOperand: operand at the given index matches the given pattern
+//     - WithOperandIfPresent: instr has > i operands, and the i'th one matches
+//       the given pattern
 //     - IsConstant
 //     - IsNonConstant
 //     - IsConstantScalar/IsEffectiveConstantScalar: Optionally accepts a value,
@@ -70,6 +76,8 @@ namespace xla {
 //     - WithOneUser: Instruction is used by exactly one other instruction, but
 //       is possibly used more than once as an operand (e.g. multiply(x,x)).
 //     - WithComparisonDirection: instr has the given direction
+//     - WithPredicate: Instruction matches an arbitrary function you pass.
+//       Function must have signature `bool(const HloInstruction*)`.
 //
 //   Shape():
 //     - EqualTo
@@ -528,7 +536,7 @@ class AnyOfPattern {
   template <typename ItemType>
   bool MatchImpl(ItemType* item, MatchOption option) const {
     // If we're generating an explanation, buffer it until we know we failed.
-    absl::optional<std::stringstream> explanation;
+    std::optional<std::stringstream> explanation;
     MatchOption new_option = option;
     if (option.explain_os) {
       new_option.explain_os = &explanation.emplace();
@@ -548,7 +556,7 @@ class AnyOfPattern {
     auto new_option = option;
     new_option.capture = false;
 
-    absl::optional<std::stringstream> explanation;
+    std::optional<std::stringstream> explanation;
     if (option.explain_os) {
       new_option.explain_os = &explanation.emplace();
     }
@@ -917,7 +925,7 @@ class ShapePatternSubshapeImpl {
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
-    *os << "with subshape at index " << index_.ToString() << " which is";
+    *os << "with subshape at index " << ShapeIndex(index_) << " which is";
     Indent(os, indent + kIndentInc);
     subshape_.DescribeTo(os, indent + kIndentInc);
   }
@@ -933,11 +941,11 @@ class ShapePatternSubshapeImpl {
   template <typename ShapeType>
   bool MatchImpl(ShapeType* shape, MatchOption option) const {
     if (!ShapeUtil::IndexIsValid(*shape, index_)) {
-      EXPLAIN << "No subshape at " << index_.ToString();
+      EXPLAIN << "No subshape at " << ShapeIndex(index_);
       return false;
     }
     if (!subshape_.Match(GetSubshape(shape), option)) {
-      EXPLAIN << "\nin subshape at " << index_.ToString();
+      EXPLAIN << "\nin subshape at " << ShapeIndex(index_);
       return false;
     }
     return true;
@@ -1125,7 +1133,7 @@ inline const HloInstruction* HloOperand(const HloInstruction* instr,
 
 // Pretty-printer for HloInstruction.  Sort of like ToShortString, but with
 // fewer %s and more shapes.
-inline string InstToString(const HloInstruction* inst) {
+inline std::string InstToString(const HloInstruction* inst) {
   return inst->ToString(
       HloPrintOptions().set_print_metadata(false).set_print_percent(false));
 }
@@ -1365,6 +1373,49 @@ class HloInstructionPatternOperandImpl {
       EXPLAIN << "desired operand index " << operand_index_
               << " is out of bounds";
       return false;
+    }
+    if (!operand_.Match(HloOperand(inst, operand_index_), option)) {
+      EXPLAIN << "\nin operand " << operand_index_;
+      return false;
+    }
+    return true;
+  }
+
+  int64_t operand_index_;
+  HloInstructionPattern<OperandType, OperandImpl> operand_;
+};
+
+// An HloInstructionPattern implementation that matches if the instruction has
+// fewer than i+1 operands, or if the i'th operand matches a given pattern.
+template <typename OperandType, typename OperandImpl>
+class HloInstructionPatternOperandIfPresentImpl {
+ public:
+  explicit constexpr HloInstructionPatternOperandIfPresentImpl(
+      int64_t operand_index,
+      const HloInstructionPattern<OperandType, OperandImpl>& operand)
+      : operand_index_(operand_index), operand_(operand) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "either with fewer than " << operand_index_ + 1 << " operand"
+        << (operand_index_ + 1 != 1 ? "s" : "") << ", or with an operand "
+        << operand_index_ << " which is:";
+    Indent(os, indent + kIndentInc);
+    operand_.DescribeTo(os, indent + kIndentInc);
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (operand_index_ >= inst->operand_count()) {
+      return true;
     }
     if (!operand_.Match(HloOperand(inst, operand_index_), option)) {
       EXPLAIN << "\nin operand " << operand_index_;
@@ -1735,12 +1786,32 @@ class HloInstructionPatternComparisonDirectionImpl {
   ComparisonDirection direction_;
 };
 
+class HloInstructionPredicateImpl {
+ public:
+  explicit HloInstructionPredicateImpl(HloPredicate fn) : fn_(std::move(fn)) {}
+
+  bool Match(const HloInstruction* inst, MatchOption option) const {
+    bool match = fn_(inst);
+    if (!match) {
+      EXPLAIN << "HloInstruction does not match user-specified predicate";
+    }
+    return match;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which matches a user-specified predicate";
+  }
+
+ private:
+  HloPredicate fn_;
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
  public:
   explicit constexpr HloConstantScalarImpl(bool match_effective_scalar)
-      : val_(absl::nullopt), match_effective_scalar_(match_effective_scalar) {}
+      : val_(std::nullopt), match_effective_scalar_(match_effective_scalar) {}
 
   constexpr HloConstantScalarImpl(ScalarTy val, bool match_effective_scalar)
       : val_(val), match_effective_scalar_(match_effective_scalar) {}
@@ -1797,7 +1868,7 @@ class HloConstantScalarImpl {
     return true;
   }
 
-  absl::optional<ScalarTy> val_;
+  std::optional<ScalarTy> val_;
   bool match_effective_scalar_;
 };
 
@@ -1887,7 +1958,7 @@ class HloInstructionPattern {
   }
 
   // This does not check that T has the same type as the instruction, so e.g.
-  // IsConstantScalar(1.0) may match a constant of shape int32[].
+  // IsConstantScalar(1.0) may match a constant of shape int32_t[].
   template <typename ScalarTy>
   constexpr auto IsConstantScalar(const ScalarTy& val) const {
     return AppendImpl(
@@ -1941,6 +2012,12 @@ class HloInstructionPattern {
     return WithShape(Shape().CompatibleTo(shape));
   }
 
+  // Modifies the pattern to match only if the instruction's shape's element
+  // type matches the given pattern.
+  constexpr auto WithElementType(PrimitiveType ty) {
+    return WithShape(Shape().WithElementType(ty));
+  }
+
   // Modifies the pattern to match only if the instruction has an operand that
   // matches the given pattern.
   template <typename OperandType, typename OperandImpl>
@@ -1949,6 +2026,18 @@ class HloInstructionPattern {
       const HloInstructionPattern<OperandType, OperandImpl>& operand) const {
     return AppendImpl(
         HloInstructionPatternOperandImpl<OperandType, OperandImpl>(
+            operand_index, operand));
+  }
+
+  // Modifies the pattern to match only if
+  //  - the instruction has fewer than i+1 operands, or
+  //  - the i'th operand matches the given pattern.
+  template <typename OperandType, typename OperandImpl>
+  constexpr auto WithOperandIfPresent(
+      int64_t operand_index,
+      const HloInstructionPattern<OperandType, OperandImpl>& operand) const {
+    return AppendImpl(
+        HloInstructionPatternOperandIfPresentImpl<OperandType, OperandImpl>(
             operand_index, operand));
   }
 
@@ -1998,6 +2087,10 @@ class HloInstructionPattern {
   // comparison direction.
   auto WithComparisonDirection(ComparisonDirection direction) const {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
+  }
+
+  auto WithPredicate(HloPredicate fn) const {
+    return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {
@@ -2181,7 +2274,6 @@ XLA_BINOP_PATTERN(ShiftRightLogical)
         .WithOperand(2, std::forward<Arg2>(arg2));                     \
   }
 XLA_TERNOP_PATTERN(Clamp);
-XLA_TERNOP_PATTERN(Scatter);
 XLA_TERNOP_PATTERN(Select);
 XLA_TERNOP_PATTERN(SelectAndScatter);
 #undef XLA_TERNOP_PATTERN
@@ -2232,8 +2324,10 @@ XLA_VARIADIC_OP_PATTERN(Fusion);
 XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
 XLA_VARIADIC_OP_PATTERN(ReduceWindow)
+XLA_VARIADIC_OP_PATTERN(Scatter);
 XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
+XLA_VARIADIC_OP_PATTERN(Call);
 
 // CustomCall doesn't use the XLA_VARIADIC_OP_PATTERN macro so that you can
 // optionally pass a string_view for the custom_call_target before the other

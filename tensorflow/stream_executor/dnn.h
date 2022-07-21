@@ -25,9 +25,12 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
+#include "google/protobuf/wrappers.pb.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/stream_executor/data_type.h"
@@ -188,15 +191,6 @@ class RnnSequenceTensorDescriptor {
 class RnnStateTensorDescriptor {
  public:
   virtual ~RnnStateTensorDescriptor() {}
-};
-
-// Specifies the execution plan in convolution.
-class ConvolveExecutionPlan {
- public:
-  virtual ~ConvolveExecutionPlan() {}
-  virtual std::string getTag() { return "unknown"; }
-  virtual void* get_raw_desc() { return nullptr; }
-  virtual int64_t getWorkspaceSize() { return -1; }
 };
 
 // Returns a string representation of the given quantization mode.
@@ -788,31 +782,40 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64_t Index;
-  typedef std::string Tag;
-  AlgorithmDesc() : AlgorithmDesc(0, false) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops) {
-    proto_.set_algo_id(a);
+  AlgorithmDesc() : AlgorithmDesc(0, false, std::nullopt) {}
+  explicit AlgorithmDesc(AlgorithmProto proto) : proto_(std::move(proto)) {}
+  AlgorithmDesc(Index algo_id, bool use_tensor_ops)
+      : AlgorithmDesc(algo_id, use_tensor_ops, std::nullopt) {}
+  AlgorithmDesc(Index algo_id, bool use_tensor_ops,
+                std::optional<uint64_t> workspace_size) {
+    proto_.set_is_cudnn_frontend(false);
+    proto_.set_algo_id(algo_id);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
+    if (workspace_size) {
+      proto_.mutable_workspace_size()->set_value(*workspace_size);
+    }
   }
-  AlgorithmDesc(Tag a, void* b) {
-    proto_.set_exec_plan_id(a);
-    exec_plan_desc_ = b;
-  }
-  bool IsExecutionPlan() const { return exec_plan_id() != ""; }
+  AlgorithmDesc(int64_t engine_id,
+                const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
+                std::optional<uint64_t> workspace_size);
+  bool is_cudnn_frontend() const { return proto_.is_cudnn_frontend(); }
+
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
-  Index algo_id() const { return proto_.algo_id(); }
-  Tag exec_plan_id() const { return proto_.exec_plan_id(); }
-  void* exec_plan_desc() const { return exec_plan_desc_; }
-  bool operator==(const AlgorithmDesc& other) const {
-    if (IsExecutionPlan()) {
-      return exec_plan_id() == other.exec_plan_id();
+  std::optional<uint64_t> workspace_size() const {
+    if (proto_.has_workspace_size()) {
+      return proto_.workspace_size().value();
     }
-    return algo_id() == other.algo_id() &&
-           tensor_ops_enabled() == other.tensor_ops_enabled();
+    return std::nullopt;
   }
+  Index algo_id() const { return proto_.algo_id(); }
+
+  std::vector<std::pair<int64_t, int64_t>> TuningKnobs() const;
+
+  bool operator==(const AlgorithmDesc& other) const;
+
   uint64_t hash() const;
 
   AlgorithmProto ToProto() const { return proto_; }
@@ -821,9 +824,6 @@ class AlgorithmDesc {
 
  private:
   AlgorithmProto proto_;
-  // We keep a pointer for the execution plan if cuDNN v8 is used. Note,
-  // AlgorithmDesc doesn't own it.
-  void* exec_plan_desc_;
 };
 
 // Describes the result from a perf experiment.
@@ -848,12 +848,62 @@ class ProfileResult {
   void set_scratch_size(size_t val) { scratch_size_ = val; }
 
  private:
-  absl::optional<AlgorithmDesc> algorithm_;
+  std::optional<AlgorithmDesc> algorithm_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
   // The scratch size algorithm_ requires. Currently it's only populated by
   // convolutions.
   size_t scratch_size_ = 0;
 };
+
+// Backend-specific data shared between repeated launches of the same
+// convolution.
+template <typename Sig>
+class OpRunner;
+
+// An abstract class owning cached state for a particular op/configuration.
+//
+// The primary motivation for this is cuDNN backend ExecutionPlans, which are
+// costly to recreate.
+//
+// All OpRunners must be outlived by their parent Stream.
+template <typename... Args>
+class OpRunner<void(Args...)> {
+ public:
+  virtual ~OpRunner() {}
+
+  // Get a description of the runner, for uniqueness of autotune entries.
+  //
+  // Since this is used to determine whether runners are equivalent for the
+  // purpose of scoring autotune entries, it shall be unique among runners of
+  // the same op and parameters.
+  virtual std::string ToString() const = 0;
+
+  // Get the number of bytes of scratch space needed for `operator()`.
+  //
+  // If determining the workspace size can fail, runners should precompute and
+  // cache it at construction time.
+  virtual size_t GetWorkspaceSize() const = 0;
+
+  // Convert to an AlgorithmDesc for AoT compilation or autotuning.
+  virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
+
+  // Launch the operation, with the signature determined by `Sig`.
+  virtual port::Status operator()(Stream*, ProfileResult*,
+                                  DeviceMemoryBase scratch_memory,
+                                  Args... args) const = 0;
+};
+
+using ConvSignature = void(DeviceMemoryBase /* input_data */,
+                           DeviceMemoryBase /* filter_data */,
+                           DeviceMemoryBase /* output_data */);
+using ConvRunner = OpRunner<ConvSignature>;
+
+using FusedConvSignature = void(DeviceMemoryBase /* input_data */,
+                                DeviceMemoryBase /* filter_data */,
+                                DeviceMemoryBase /* side_input_data */,
+                                DeviceMemoryBase /* bias_data */,
+                                DeviceMemoryBase /* output_data */);
+using FusedConvRunner = OpRunner<FusedConvSignature>;
 
 // Describes the configuration for the algorithms that will used.
 //
@@ -889,9 +939,7 @@ class AlgorithmConfig {
   // cuDNN Frontend APIs.
   explicit AlgorithmConfig(const AlgorithmConfigProto& algorithm_config_proto) {
     const AlgorithmProto& algorithm_proto = algorithm_config_proto.algorithm();
-    algorithm_ = AlgorithmDesc(
-        algorithm_proto.algo_id(),
-        algorithm_proto.math_type() == AlgorithmProto::TENSOR_OP_MATH);
+    algorithm_ = AlgorithmDesc(algorithm_proto);
     if (algorithm_config_proto.optional_scratch_size_case() !=
         /*ONEOF_NAME_NOT_SET=*/0) {
       scratch_size_ = algorithm_config_proto.scratch_size();
@@ -900,22 +948,19 @@ class AlgorithmConfig {
         /*ONEOF_NAME_NOT_SET=*/0) {
       const AlgorithmProto& algorithm_no_scratch_proto =
           algorithm_config_proto.algorithm_no_scratch();
-      algorithm_no_scratch_ = AlgorithmDesc(
-          algorithm_no_scratch_proto.algo_id(),
-          /*use_tensor_ops=*/algorithm_no_scratch_proto.math_type() ==
-              AlgorithmProto::TENSOR_OP_MATH);
+      algorithm_no_scratch_ = AlgorithmDesc(algorithm_no_scratch_proto);
     }
   }
 
-  absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
+  std::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
-  absl::optional<AlgorithmDesc> algorithm_no_scratch() const {
+  std::optional<AlgorithmDesc> algorithm_no_scratch() const {
     return algorithm_no_scratch_;
   }
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
-  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  std::optional<size_t> scratch_size() const { return scratch_size_; }
   void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
@@ -926,12 +971,6 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   std::string ToString() const;
-  void set_plan(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
-    plan_ = std::move(plan);
-  }
-  void set_plan_no_scratch(std::unique_ptr<dnn::ConvolveExecutionPlan>& plan) {
-    plan_no_scratch_ = std::move(plan);
-  }
 
   // TODO(ruochengw): After cl/380702564, add support for algorithm configs with
   // cuDNN Frontend APIs.
@@ -952,11 +991,9 @@ class AlgorithmConfig {
   }
 
  private:
-  absl::optional<AlgorithmDesc> algorithm_;
-  absl::optional<AlgorithmDesc> algorithm_no_scratch_;
-  absl::optional<size_t> scratch_size_;
-  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_;
-  std::shared_ptr<const dnn::ConvolveExecutionPlan> plan_no_scratch_;
+  std::optional<AlgorithmDesc> algorithm_;
+  std::optional<AlgorithmDesc> algorithm_no_scratch_;
+  std::optional<size_t> scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
@@ -1349,13 +1386,51 @@ class DnnSupport {
       CudaComputeCapability cuda_compute_capability,
       std::vector<AlgorithmDesc>* out_algorithms);
 
-  virtual bool GetConvolveExecutionPlans(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor,
+  virtual port::Status GetConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, ScratchAllocator* scratch_allocator,
+      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
+
+  virtual port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+  ConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor);
+
+  virtual port::Status GetFusedConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType bias_type,
+      dnn::DataType output_type, double conv_input_scale,
+      double side_input_scale, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      std::vector<std::unique_ptr<dnn::ConvolveExecutionPlan>>* out_exec_plans);
+      bool use_fallback, dnn::ActivationMode activation_mode,
+      std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
+
+  virtual port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  FusedConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+      double side_input_scale, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      dnn::ActivationMode activation_mode);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
@@ -1545,86 +1620,22 @@ class DnnSupport {
   // the input. The output width and height can be different.
   //
   // See PoolingDescriptor for how to configure the pooling operation.
-  virtual bool DoPoolForward(Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             const DeviceMemory<float>& input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<float>* output_data,
-                             ScratchAllocator* workspace_allocator) = 0;
-
-  virtual bool DoPoolForward(Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             const DeviceMemory<double>& input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<double>* output_data,
-                             ScratchAllocator* workspace_allocator) {
-    LOG(FATAL) << "DoPoolForward not implemented for double.";
-    return false;
-  }
-
-  virtual bool DoPoolForward(Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             const DeviceMemory<Eigen::half>& input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data,
-                             ScratchAllocator* workspace_allocator) {
-    LOG(FATAL) << "DoPoolForward not implemented for float16.";
-    return false;
-  }
-
-  virtual bool DoPoolForward(Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             const DeviceMemory<int8>& input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<int8>* output_data,
-                             ScratchAllocator* workspace_allocator) {
-    LOG(FATAL) << "DoPoolForward not implemented for int8.";
-    return false;
-  }
+  virtual port::Status DoPoolForward(
+      DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemoryBase output_data, ScratchAllocator* workspace_allocator) = 0;
 
   // Performs differentiation of the pooling operation.
-  virtual bool DoPoolBackward(Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<double>& input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              const DeviceMemory<double>& output_data,
-                              const DeviceMemory<double>& input_diff_data,
-                              DeviceMemory<double>* output_diff_data,
-                              ScratchAllocator* workspace_allocator) {
-    LOG(FATAL) << "DoPoolBackward not implemented.";
-    return false;
-  }
-
-  virtual bool DoPoolBackward(Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<float>& input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              const DeviceMemory<float>& output_data,
-                              const DeviceMemory<float>& input_diff_data,
-                              DeviceMemory<float>* output_diff_data,
-                              ScratchAllocator* workspace_allocator) {
-    LOG(FATAL) << "DoPoolBackward not implemented.";
-    return false;
-  }
-
-  virtual bool DoPoolBackward(Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<Eigen::half>& input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              const DeviceMemory<Eigen::half>& output_data,
-                              const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data,
-                              ScratchAllocator* workspace_allocator) {
-    LOG(FATAL) << "DoPoolBackward not implemented.";
-    return false;
-  }
+  virtual port::Status DoPoolBackward(
+      DataType element_type, Stream* stream,
+      const dnn::PoolingDescriptor& pooling_dimensions,
+      const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemoryBase output_data, DeviceMemoryBase input_diff_data,
+      DeviceMemoryBase output_diff_data,
+      ScratchAllocator* workspace_allocator) = 0;
 
   // Applies local response normalization to the values from input_data and
   // writes the result to output_data.
@@ -2590,6 +2601,12 @@ class DnnSupport {
     return false;
   }
 
+  // Notifies that a stream is being destroyed and should be invalidated from
+  // any internal caching.  This exists to allow the CUDA implementation to
+  // avoid redundant cudnnSetStream calls without risking problems when a stream
+  // is destroyed and a new stream later created in the same memory.
+  virtual void NotifyStreamDestroyed(Stream* stream) {}
+
  protected:
   // Returns whether status is 'ok', and potentially logs the error.
   static bool IsStatusOk(const port::Status& status, bool report_error);
@@ -2606,7 +2623,7 @@ class DnnSupport {
       DeviceMemory<uint8>* scratch_memory) {
     *algorithm_desc = {};
     *scratch_memory = {};
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   virtual port::Status DoPrepareForCtcLoss(
@@ -2619,7 +2636,7 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
       int* ctc_loss_algo_id) {
     *scratch_memory = {};
-    return port::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);

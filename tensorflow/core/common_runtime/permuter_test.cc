@@ -56,7 +56,7 @@ class PermuterTest : public ::testing::Test {
     for (int wi = 0; wi < num_workers; ++wi) {
       for (int di = 0; di < num_devices; ++di) {
         int rank = wi * num_devices + di;
-        instances_.push_back(absl::make_unique<DeviceInstance>(
+        instances_.push_back(std::make_unique<DeviceInstance>(
             rank, permutation, dtype, shape, test_env_.get()));
       }
     }

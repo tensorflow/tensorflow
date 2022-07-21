@@ -14,10 +14,6 @@
 # ==============================================================================
 """Operator dispatch for RaggedTensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
@@ -36,8 +32,7 @@ def ragged_unary_elementwise_op(op, x):
   return x.with_values(op(x.values))
 
 
-@dispatch.dispatch_for_binary_elementwise_apis(ragged_tensor.RaggedOrDense,
-                                               ragged_tensor.RaggedOrDense)
+# TODO(martinz): This is deprecated. Delete.
 def ragged_binary_elementwise_op(op, x, y):
   """Binary elementwise api handler for RaggedTensors."""
   x_is_ragged = ragged_tensor.is_ragged(x)
@@ -56,9 +51,17 @@ def ragged_binary_elementwise_op(op, x, y):
   if ((x_is_ragged and y_is_ragged) or
       (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
       (y_is_ragged and y.flat_values.shape.ndims <= x.shape.ndims)):
-    bcast_shape = ragged_tensor_shape.broadcast_dynamic_shape(
-        ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(x),
-        ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(y))
+    # If both x and y are ragged, they must have the same row_splits_dtype now.
+    if x_is_ragged:
+      dim_size_dtype = x.row_splits.dtype
+    else:
+      dim_size_dtype = y.row_splits.dtype
+
+    shape_x = ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(
+        x, dim_size_dtype=dim_size_dtype)
+    shape_y = ragged_tensor_shape.RaggedTensorDynamicShape.from_tensor(
+        y, dim_size_dtype=dim_size_dtype)
+    bcast_shape = ragged_tensor_shape.broadcast_dynamic_shape(shape_x, shape_y)
     x = ragged_tensor_shape.broadcast_to(
         x, bcast_shape, broadcast_inner_dimensions=False)
     y = ragged_tensor_shape.broadcast_to(

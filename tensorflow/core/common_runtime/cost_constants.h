@@ -19,20 +19,23 @@ limitations under the License.
 namespace tensorflow {
 
 // Types of per-request cost.
-constexpr char kTpuCostName[] = "tpu";
-constexpr char kNoOpCostName[] = "no_op";
+inline constexpr char kTpuCostName[] = "tpu";
+inline constexpr char kGcuCostName[] = "gcu";
+inline constexpr char kNoOpCostName[] = "no_op";
 
 // Each type of per-request cost could have the following versions.
 //
 // A server may have costs that cannot be directly attributed to a specific
 // query. Each request will be assigned a portion of it, and the cost ends with
 // '_with_smear" includes this part.
-constexpr char kWithSmearSuffix[] = "_with_smear";
-constexpr char kNoSmearSuffix[] = "_no_smear";
+inline constexpr char kWithSmearSuffix[] = "_with_smear";
+inline constexpr char kNoSmearSuffix[] = "_no_smear";
 
 // Full names of per-request cost.
-constexpr char kTpuWithSmearCostName[] = "tpu_with_smear";
-constexpr char kTpuNoSmearCostName[] = "tpu_no_smear";
+inline constexpr char kTpuWithSmearCostName[] = "tpu_with_smear";
+inline constexpr char kTpuNoSmearCostName[] = "tpu_no_smear";
+inline constexpr char kGcuWithSmearCostName[] = "gcu_with_smear";
+inline constexpr char kGcuNoSmearCostName[] = "gcu_no_smear";
 
 }  // namespace tensorflow
 

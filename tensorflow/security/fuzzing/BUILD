@@ -130,7 +130,6 @@ tf_fuzz_target(
 tf_fuzz_target(
     name = "tstring_fuzz",
     srcs = ["tstring_fuzz.cc"],
-    tags = ["notap"],  # TODO(188445161): Flaky, re-enable.
     deps = [
         "//tensorflow/core/platform:tstring",
     ],
@@ -180,35 +179,90 @@ py_library(
 )
 
 tf_py_fuzz_target(
+    name = "abs_fuzz",
+    srcs = ["abs_fuzz.py"],
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acos_fuzz",
+    srcs = ["acos_fuzz.py"],
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "acosh_fuzz",
+    srcs = ["acosh_fuzz.py"],
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
+    name = "add_fuzz",
+    srcs = ["add_fuzz.py"],
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
+    deps = [":python_fuzzing"],
+)
+
+tf_py_fuzz_target(
     name = "constant_fuzz",
     srcs = ["constant_fuzz.py"],
-    tags = ["notap"],  # Run in OSS only.
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
 )
 
 tf_py_fuzz_target(
     name = "raggedCountSparseOutput_fuzz",
     srcs = ["raggedCountSparseOutput_fuzz.py"],
-    tags = ["notap"],  # Run in OSS only.
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
     deps = [":python_fuzzing"],
 )
 
 tf_py_fuzz_target(
     name = "dataFormatVecPermute_fuzz",
     srcs = ["dataFormatVecPermute_fuzz.py"],
-    tags = ["notap"],  # Run in OSS only.
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
     deps = [":python_fuzzing"],
 )
 
 tf_py_fuzz_target(
     name = "sparseCountSparseOutput_fuzz",
     srcs = ["sparseCountSparseOutput_fuzz.py"],
-    tags = ["notap"],  # Run in OSS only.
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
     deps = [":python_fuzzing"],
 )
 
 tf_py_fuzz_target(
     name = "tf2migration_fuzz",
     srcs = ["tf2migration_fuzz.py"],
-    tags = ["notap"],  # Run in OSS only.
+    tags = [
+        "noautofuzz",
+        "notap",
+    ],  # Run in OSS only.
     deps = [":python_fuzzing"],
 )

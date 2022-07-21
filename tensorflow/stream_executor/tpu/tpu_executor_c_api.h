@@ -291,6 +291,10 @@ void TpuHostLocation_Cores(SE_TpuTopology_Host* tpu_host_location,
                            TpuCoreTypeEnum tpu_core_type,
                            SE_TpuTopology_Core** cores);
 
+// Async collective offloading.
+void TpuAsyncCollectiveOffloadHelper_Init();
+void TpuAsyncCollectiveOffloadHelper_Shutdown();
+
 // C API for XLA::Compiler interface
 
 TFTPU_CAPI_EXPORT Tpu_Compiler* TpuCompiler_New();
@@ -314,6 +318,9 @@ TFTPU_CAPI_EXPORT void TpuCompiler_Compile(
 
 TFTPU_CAPI_EXPORT int64_t TpuCompiler_ShapeSize(Tpu_Compiler* compiler,
                                                 XLA_Shape* c_shape);
+
+TFTPU_CAPI_EXPORT void TpuCompiler_DefaultDeviceShapeRepresentation(
+    Tpu_Compiler* compiler, XLA_Shape* host_shape, XLA_Shape* device_shape);
 
 TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
     SE_Executable* executable, SE_ExecutableRunOptions* se_options,
@@ -526,6 +533,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_RunBackend);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Compile);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_ShapeSize);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_DefaultDeviceShapeRepresentation);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeXlaShapeIndexArray);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
@@ -540,6 +549,9 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuShapeRepresentation);
   TFTPU_ADD_FN_IN_STRUCT(XlaShapeToTpuPaddedShape);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuAsyncCollectiveOffloadHelper_Init);
+  TFTPU_ADD_FN_IN_STRUCT(TpuAsyncCollectiveOffloadHelper_Shutdown);
 };
 }
 

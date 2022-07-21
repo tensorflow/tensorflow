@@ -268,10 +268,8 @@ bool IsReshapeMoveCandidate(HloInstruction* instruction) {
           << instruction->ToString(print_no_metadata);
 
   // Only perform reshape-move for live elementwise instructions with operands.
-  const bool is_dead = instruction->user_count() == 0 &&
-                       instruction != instruction->parent()->root_instruction();
   if (!instruction->IsElementwise() || instruction->operands().empty() ||
-      is_dead) {
+      instruction->IsDead()) {
     return false;
   }
 
@@ -390,9 +388,11 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
 }  // namespace
 
-StatusOr<bool> ReshapeMover::Run(HloModule* module) {
+StatusOr<bool> ReshapeMover::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     HloInstructionSet reshape_candidates;
     for (HloInstruction* instruction : comp->instructions()) {
       if (IsReshapeMoveCandidate(instruction)) {

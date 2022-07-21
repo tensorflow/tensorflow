@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <optional>
+#include <vector>
+
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -73,7 +75,7 @@ class ExecutableBuildOptions {
 
   // Returns a string representation of the build options, suitable for
   // debugging.
-  string ToString() const;
+  std::string ToString() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
@@ -88,6 +90,25 @@ class ExecutableBuildOptions {
   // num_partitions > 1 and XLA is requested to partition the input program.
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
   ExecutableBuildOptions& set_use_spmd_partitioning(bool use_spmd_partitioning);
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+  ExecutableBuildOptions& set_use_auto_spmd_partitioning(
+      bool use_auto_spmd_partitioning);
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return auto_spmd_partitioning_mesh_shape_;
+  }
+  ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_shape(
+      std::vector<int64_t> mesh_shape);
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return auto_spmd_partitioning_mesh_ids_;
+  }
+  ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t> mesh_ids);
 
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
@@ -153,14 +174,17 @@ class ExecutableBuildOptions {
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  absl::optional<DebugOptions> debug_options_;
+  std::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
+  bool use_auto_spmd_partitioning_ = false;
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
-  absl::optional<DeviceAssignment> device_assignment_;
+  std::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
   bool allow_spmd_sharding_propagation_to_output_ = false;

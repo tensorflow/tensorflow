@@ -454,6 +454,27 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   return Status::OK();
 }
 
+// Extracts a scalar of type T from a tensor, with correct type checking.
+// This is necessary because several of the kernels here assume
+// T == T_threshold.
+template <typename T>
+T GetScalar(const Tensor& tensor) {
+  switch (tensor.dtype()) {
+    case DT_FLOAT:
+      return static_cast<T>(tensor.scalar<float>()());
+    case DT_DOUBLE:
+      return static_cast<T>(tensor.scalar<double>()());
+    case DT_BFLOAT16:
+      return static_cast<T>(tensor.scalar<Eigen::bfloat16>()());
+    case DT_HALF:
+      return static_cast<T>(tensor.scalar<Eigen::half>()());
+    default:
+      DCHECK(false) << "Unsupported type " << tensor.dtype();
+      break;
+  }
+  return static_cast<T>(0);
+}
+
 Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                         const Tensor& max_output_size,
                         const Tensor& iou_threshold) {
@@ -469,7 +490,7 @@ Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                                    " (Shape must be rank 0 but is rank ",
                                    iou_threshold.dims(), ")");
   }
-  const float iou_threshold_val = iou_threshold.scalar<float>()();
+  const float iou_threshold_val = GetScalar<float>(iou_threshold);
   if (iou_threshold_val < 0 || iou_threshold_val > 1) {
     return errors::InvalidArgument("iou_threshold must be in [0, 1]");
   }
@@ -527,7 +548,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                                        &output_indices));
       return;
     }
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const float iou_threshold_val = GetScalar<float>(iou_threshold);
     const int64_t output_size = max_output_size.scalar<int>()();
 
     OP_REQUIRES_OK(
@@ -565,7 +586,7 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    const float score_threshold_val = score_threshold.scalar<float>()();
+    const float score_threshold_val = GetScalar<float>(score_threshold);
     int num_boxes = boxes.dim_size(0);
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
@@ -573,7 +594,7 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
                                                        &output_indices));
       return;
     }
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const float iou_threshold_val = GetScalar<float>(iou_threshold);
     const int64_t output_size = max_output_size.scalar<int>()();
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
                                   iou_threshold_val, score_threshold_val,
@@ -610,7 +631,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    const float score_threshold_val = score_threshold.scalar<float>()();
+    const float score_threshold_val = GetScalar<float>(score_threshold);
 
     Tensor* num_outputs_t = nullptr;
     OP_REQUIRES_OK(context,
@@ -626,7 +647,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
       return;
     }
 
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const float iou_threshold_val = GetScalar<float>(iou_threshold);
     const int64_t output_size = max_output_size.scalar<int>()();
     int num_outputs = 0;
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
@@ -641,7 +662,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
   bool pad_to_max_output_size_;
 };
 
-}  // anonymous namespace
+}  // namespace
 
 Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
               const float iou_threshold, int* d_selected_indices, int* h_nkeep,

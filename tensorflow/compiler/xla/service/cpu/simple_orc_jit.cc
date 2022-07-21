@@ -20,9 +20,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdio>
 #include <list>
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -31,19 +31,24 @@ limitations under the License.
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
+#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_acl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_mkl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_conv3d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fork_join.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fp16.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_key_value_sort.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_matmul_acl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv3d.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_topk.h"
@@ -51,6 +56,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
+
+// Provided by compiler-rt and MLIR.
+// Converts an F32 value to a BF16.
+extern "C" uint16_t __truncsfbf2(float);
+// Converts an F64 value to a BF16.
+extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla {
 namespace cpu {
@@ -265,10 +276,13 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
   REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
   REGISTER_CPU_RUNTIME_SYMBOL(AllToAll);
+  REGISTER_CPU_RUNTIME_SYMBOL(PartitionId);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLConvF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(MKLConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
@@ -276,12 +290,18 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenBatchMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(ACLMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(ACLBatchMatMulF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(ACLConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
@@ -304,6 +324,10 @@ bool RegisterKnownJITSymbols() {
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),
                      "Host");
   registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
+                     "Host");
+  registry->Register("__truncdfbf2", reinterpret_cast<void*>(__truncdfbf2),
+                     "Host");
+  registry->Register("__truncsfbf2", reinterpret_cast<void*>(__truncsfbf2),
                      "Host");
   registry->Register("__powisf2", reinterpret_cast<void*>(__powisf2), "Host");
   registry->Register("__powidf2", reinterpret_cast<void*>(__powidf2), "Host");
@@ -395,6 +419,15 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memcpy", reinterpret_cast<void*>(memcpy), "Host");
   registry->Register("memmove", reinterpret_cast<void*>(memmove), "Host");
   registry->Register("memset", reinterpret_cast<void*>(memset), "Host");
+
+  // Used by MLIR lowering.
+  registry->Register("malloc", reinterpret_cast<void*>(malloc), "Host");
+  registry->Register("calloc", reinterpret_cast<void*>(calloc), "Host");
+  registry->Register("free", reinterpret_cast<void*>(free), "Host");
+#ifndef _WIN32
+  // TODO(kramerb): This fails to link on windows because it's marked dllimport.
+  registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
+#endif
 
 #ifdef __APPLE__
   registry->Register("__bzero", reinterpret_cast<void*>(bzero), "Host");

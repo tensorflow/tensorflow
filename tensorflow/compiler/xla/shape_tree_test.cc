@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_tree.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -120,6 +121,13 @@ TEST_F(ShapeTreeTest, InitValueConstructor) {
 TEST_F(ShapeTreeTest, EmptyTupleMustHaveNoLeaves) {
   ShapeTree<int> shape_tree{ShapeUtil::MakeTupleShape({})};
   EXPECT_EQ(0, shape_tree.leaf_count());
+}
+
+TEST_F(ShapeTreeTest, NestedEmptyTuple) {
+  Shape shape(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTupleShape({}), array_shape_}));
+  ShapeTree<int> shape_tree{shape};
+  EXPECT_EQ(ShapeUtil::GetLeafCount(shape), shape_tree.leaf_count());
 }
 
 TEST_F(ShapeTreeTest, ArrayShape) {
@@ -243,7 +251,7 @@ TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
 TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
   ShapeTree<std::unique_ptr<int>> shape_tree{tuple_shape_};
   EXPECT_EQ(shape_tree.element({2}).get(), nullptr);
-  *shape_tree.mutable_element({2}) = absl::make_unique<int>(42);
+  *shape_tree.mutable_element({2}) = std::make_unique<int>(42);
   EXPECT_EQ(*shape_tree.element({2}), 42);
 }
 
@@ -450,6 +458,7 @@ TEST_F(ShapeTreeTest, IterateAndMutate) {
 TEST_F(ShapeTreeTest, IterateOrder) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
+  v.reserve(t.leaf_count());
   for (auto index_to_data : t) {
     v.push_back(index_to_data.first);
   }
@@ -468,6 +477,7 @@ TEST_F(ShapeTreeTest, IterateOrder) {
 TEST_F(ShapeTreeTest, ReverseIterateOrder) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
+  v.reserve(t.leaf_count());
   for (auto it = t.rbegin(); it != t.rend(); ++it) {
     v.push_back(it->first);
   }
@@ -512,7 +522,9 @@ TEST_F(ShapeTreeTest, ConstFind) {
 TEST_F(ShapeTreeTest, IterateOrderLeaves) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
-  for (auto index_to_data : t.leaves()) {
+  const auto& leaves = t.leaves();
+  v.reserve(t.leaf_count());
+  for (auto index_to_data : leaves) {
     v.push_back(index_to_data.first);
   }
   EXPECT_EQ(v, (std::vector<ShapeIndex>{
@@ -522,6 +534,7 @@ TEST_F(ShapeTreeTest, IterateOrderLeaves) {
 TEST_F(ShapeTreeTest, ReverseIterateOrderLeaves) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
+  v.reserve(t.leaf_count());
   for (auto it = t.leaf_rbegin(); it != t.leaf_rend(); ++it) {
     v.push_back(it->first);
   }

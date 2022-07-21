@@ -125,12 +125,6 @@ struct LaunchBatchMatrixTriangularSolve<CPUDevice, Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using ConstMatrixMap = Eigen::Map<const Matrix>;
     using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
-    // Check diagonal before doing any solves.
-    auto matrix = ConstMatrixMap(in_x.flat<Scalar>().data(), in_x.dim_size(1),
-                                 in_x.dim_size(2));
-    const RealScalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
-    OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument("Input matrix is not invertible."));
 
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           cost_per_unit,
@@ -285,7 +279,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
       std::vector<Scalar*> out_ptrs;
       std::vector<const Scalar*> b_tmp_ptrs;
       auto* b_base_ptr = in_y.template flat<Scalar>().data();
-      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+      const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();
       for (int64_t i = 0; i < bcast.y_batch_size(); ++i) {
         b_tmp_ptrs.push_back(b_base_ptr + i * m * n);
       }
@@ -366,7 +360,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
         out_ptrs.push_back(out_base_ptr + i * m * n);
       }
     } else {
-      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
+      const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
       for (int64_t i = 0; i < bcast.x_batch_size(); ++i) {
         a_tmp_ptrs.push_back(a_base_ptr + i * m * m);
       }

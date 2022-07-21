@@ -16,24 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <cstdint>
+#include <functional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 class AlgebraicSimplifierOptions {
  public:
-  AlgebraicSimplifierOptions() {}
   // Platform dependent callback to determine if a reshape `from_shape` to
   // `to_shape` is a bitcast.
   using ReshapeIsBitcastCallback =
       std::function<bool(const Shape& from_shape, const Shape& to_shape)>;
+  // Platform dependent callback to determine if a set of reverse dimensions is
+  // lowerable
+  using ConvIsLowerableCallback = std::function<bool(HloInstruction* window)>;
+
   explicit AlgebraicSimplifierOptions(
-      ReshapeIsBitcastCallback reshape_is_bitcast_callback)
-      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)) {}
+      ReshapeIsBitcastCallback reshape_is_bitcast_callback = {},
+      ConvIsLowerableCallback conv_is_lowerable_callback = {})
+      : reshape_is_bitcast_callback_(std::move(reshape_is_bitcast_callback)),
+        conv_is_lowerable_callback_(std::move(conv_is_lowerable_callback)) {}
 
   // Use the platform specific callback if set. It is not sensible to return
   // true here if the options are not layout sensitive.
@@ -45,6 +55,14 @@ class AlgebraicSimplifierOptions {
       return ShapeUtil::ReshapeIsBitcast(from_shape, to_shape);
     }
     return reshape_is_bitcast_callback_(from_shape, to_shape);
+  }
+
+  // Use the platform specific callback if set. Otherwise, return true.
+  bool ConvIsLowerable(HloInstruction* reverse_dims) const {
+    if (!conv_is_lowerable_callback_) {
+      return true;
+    }
+    return conv_is_lowerable_callback_(reverse_dims);
   }
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during
@@ -125,11 +143,11 @@ class AlgebraicSimplifierOptions {
 
   int64_t very_small_gather_size() const { return very_small_gather_size_; }
 
-  void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
+  void set_cudnn_batchnorm_forward_training_metadata(const std::string& c) {
     metadata_.cudnn_batchnorm_forward_training_metadata = c;
   }
 
-  const string& get_cudnn_batchnorm_forward_training_metadata() const {
+  const std::string& get_cudnn_batchnorm_forward_training_metadata() const {
     return metadata_.cudnn_batchnorm_forward_training_metadata;
   }
 
@@ -148,13 +166,18 @@ class AlgebraicSimplifierOptions {
     return enable_negative_padding_replacement_;
   }
 
-  void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
-    replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
+  void set_enable_sink_broadcast(bool enable_sink_broadcast) {
+    enable_sink_broadcast_ = enable_sink_broadcast;
   }
 
-  bool replace_transpose_with_bitcast() const {
-    return replace_transpose_with_bitcast_;
-  }
+  bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
+
+  // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
+  //
+  // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
+  // true.
+  bool minmax_propagate_nan() const { return minmax_propagate_nan_; }
+  void set_minmax_propagate_nan(bool val) { minmax_propagate_nan_ = val; }
 
  private:
   // Metadata struct can be used to store any metadata information encapsulated
@@ -166,10 +189,11 @@ class AlgebraicSimplifierOptions {
   // guaranteed to be postive. This property has been used to recursively
   // determine if the operand of an instruction is always positive.
   struct Metadata {
-    string cudnn_batchnorm_forward_training_metadata{""};
+    std::string cudnn_batchnorm_forward_training_metadata{""};
     Metadata() {}
   };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
+  ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_dot_to_multiply_rewrite_{true};
@@ -180,8 +204,9 @@ class AlgebraicSimplifierOptions {
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
-  bool replace_transpose_with_bitcast_{true};
+  bool enable_sink_broadcast_{true};
   int64_t very_small_gather_size_{4};
+  bool minmax_propagate_nan_{true};
   Metadata metadata_;
 };
 
@@ -197,7 +222,10 @@ class AlgebraicSimplifier : public HloModulePass {
 
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.
@@ -276,6 +304,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleNot(HloInstruction* logical_not) override;
 
+  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
+
   Status HandleOr(HloInstruction* logical_or) override;
 
   Status HandlePad(HloInstruction* pad) override;
@@ -302,7 +332,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  Status HandleScatter(HloInstruction* scatter) override;
+  Status HandleScatter(HloInstruction* hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
 
@@ -318,6 +348,33 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   bool Run(HloComputation* computation,
            const AlgebraicSimplifierOptions& options,
            AlgebraicSimplifier* simplifier);
+
+  // Compute a function that maps from bitcasted dimensions to the resulting
+  // ones. Returns the function as a vector if successful; std::optional
+  // otherwise.
+  static std::optional<std::vector<std::vector<int64_t>>> ComputeBitcastDimMap(
+      const Shape& bitcast_shape, const Shape& operand_shape);
+  // Invert the directions of the given bitcast dimension map.
+  static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
+      const Shape& original_shape, const Shape& bitcast_shape,
+      const std::vector<std::vector<int64_t>>& original_map);
+
+  // Modify the layout dimensions of result_shape, so that it becomes the
+  // re-shaped result of applying bitcast to the original_shape, by using
+  // dim_map to re-shape layout dimensions of original_shape. Returns the
+  // result_shape with modified layout if the conversion succeeds; Returns
+  // std::nullopt if fails.
+  static std::optional<Shape> ReshapeLayoutDimensions(
+      const Shape& original_shape, const Shape& result_shape,
+      const std::vector<std::vector<int64_t>>& original_map,
+      const std::vector<std::vector<int64_t>>& result_map);
+
+  // Allow backend constraints on tiling etc. to invalidate optimizations.
+  virtual bool IsValidLayout(const Shape& shape) { return true; }
+
+ protected:
+  // The backend-specific options selected for the algebraic simplifier.
+  const AlgebraicSimplifierOptions& options_;
 
  private:
   // Removes degenerate dimension from dot.
@@ -366,11 +423,21 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   void ReplaceWithBitcast(HloInstruction* instruction,
                           HloInstruction* operand = nullptr);
 
+  // Change copy(bitcast...(copy)) into copy(bitcast) or bitcast(copy) so that
+  // the replicated copies are combined when allowed by layout/tiling assignment
+  // constraints.
+  bool SwapCopyBitcastCopy(HloInstruction* root_copy);
+
   // Replace old instruction with new instruction if old and new instructions
-  // have the same shape. Updates uses and root instruction. Returns whether a
-  // replacement was made.
-  bool ReplaceInstructionIfSameShape(HloInstruction* old_instruction,
-                                     HloInstruction* new_instruction);
+  // are compatible (have the same shape and replacement preserves sharding).
+  // Updates uses and root instruction. Returns whether a replacement was made.
+  bool ReplaceInstructionIfCompatible(HloInstruction* old_instruction,
+                                      HloInstruction* new_instruction);
+  // Similar to above but tuplizes `new_instructions` if there are more than 1
+  // instructions.
+  bool ReplaceInstructionIfCompatible(
+      HloInstruction* old_instruction,
+      absl::Span<HloInstruction* const> new_instructions);
 
   // Returns whether the shape of the output of the given instructions are the
   // same for the purposes of simplification. If options_.is_layout_sensitive()
@@ -379,14 +446,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
 
-  // Returns whether it was possible to transform `root` to a clamp instruction.
-  // With min a minimum instruction, max a maximum instruction, min_operand a
-  // operand of min and max_operand a operand of max.
-  // Precondition: root is either a minimum or a maximum.
-  bool TransformToClampIfSameShape(HloInstruction* root, HloInstruction* min,
-                                   HloInstruction* min_operand,
-                                   HloInstruction* operand, HloInstruction* max,
-                                   HloInstruction* max_operand);
+  // Same as above but takes shape arguments directly.
+  bool SameShape(const Shape& lhs, const Shape& rhs) const;
 
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.
@@ -395,9 +456,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
   StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
-      const HloInstruction& dot, HloInstruction* lhs,
-      int64_t lhs_contracting_dim, HloInstruction* rhs,
-      int64_t rhs_contracting_dim, bool swapped);
+      HloInstruction* dot, HloInstruction* lhs, int64_t lhs_contracting_dim,
+      HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped);
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 
@@ -462,9 +522,6 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
-
-  // The backend-specific options selected for the algebraic simplifier.
-  const AlgebraicSimplifierOptions& options_;
 
   // Cached computation for adding two scalars of a given type.
   absl::flat_hash_map<PrimitiveType, HloComputation*> scalar_add_computations_;

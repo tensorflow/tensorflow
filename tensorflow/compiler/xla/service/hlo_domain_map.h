@@ -42,14 +42,14 @@ class HloDomainMap {
   // kDomain instructions of domain_kind will be considered as separators.
   // Otherwise every kDomain instruction will be splitting domains.
   static StatusOr<std::unique_ptr<HloDomainMap>> Create(
-      HloComputation* computation, string domain_kind);
+      HloComputation* computation, std::string domain_kind);
 
   // Creates a new HloDomainMap, creating all the domains within the input
   // module, of the given kind. If domain_kind is not empty, only the
   // kDomain instructions of domain_kind will be considered as separators.
   // Otherwise every kDomain instruction will be splitting domains.
-  static StatusOr<std::unique_ptr<HloDomainMap>> Create(HloModule* module,
-                                                        string domain_kind);
+  static StatusOr<std::unique_ptr<HloDomainMap>> Create(
+      HloModule* module, std::string domain_kind);
 
   // Retrieves all the domains the input module or computation are composed by.
   const std::vector<std::unique_ptr<DomainMetadata::Domain>>& GetDomains()
@@ -80,7 +80,8 @@ class HloDomainMap {
   using InstructionOrderMap =
       absl::flat_hash_map<const HloInstruction*, int64_t>;
 
-  HloDomainMap(string domain_kind) : domain_kind_(std::move(domain_kind)) {}
+  HloDomainMap(std::string domain_kind)
+      : domain_kind_(std::move(domain_kind)) {}
 
   // Check if the kDomain instruction is facing (via its operand link) another
   // kDomain instruction of the same kind, hence defining an empty domain.
@@ -118,7 +119,7 @@ class HloDomainMap {
   // ID of its associated domain metatadata.
   Status PopulateDomainMetadataMap();
 
-  string domain_kind_;
+  std::string domain_kind_;
   std::vector<std::unique_ptr<DomainMetadata::Domain>> instruction_domains_;
   absl::flat_hash_map<const HloInstruction*, int64_t> instruction_to_domain_;
   absl::flat_hash_map<const HloInstruction*, int64_t> domain_metadata_id_;

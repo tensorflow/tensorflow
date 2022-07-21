@@ -13,20 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class TrainingCheckpointTests(test.TestCase, parameterized.TestCase):

@@ -3,15 +3,15 @@
 // CHECK:       error: FunctionalizeControlFlowForXlaPass: Graph contains node with inputs predicated on incompatible predicates: {s(Cond:0,then)} and {s(Cond:0,else)}
 // CHECK-NEXT:  for node {{[{][{]node Add[}][}]}}
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island wraps "tf._TPUReplicate"() {computation = @foo, Tinputs = [], Tbroadcast_inputs = [], NumVariables = 0, Tguaranteed_constants = [], output_types = []} : () -> () loc("_TPUReplicate")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
-func @foo() {
+func.func @foo() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", value = dense<17> : tensor<i32>} : () -> tensor<i32> loc("x")
     %1:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_BOOL", value = dense<true> : tensor<i1>} : () -> tensor<i1> loc("Cond")
@@ -21,5 +21,5 @@ func @foo() {
     %5:3 = tf_executor.Merge %3#0, %4#0 : tensor<i32> {device = "", N = 2, T = "tfdtype$DT_INT32"} loc("Merge")
     tf_executor.fetch
   }
-  return
+  func.return
 }

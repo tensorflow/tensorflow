@@ -32,10 +32,11 @@ namespace {
 
 struct DotTestSpec {
   PrimitiveType primitive_type;
-  string filecheck_lines;
+  std::string filecheck_lines;
 };
 
-string DotTestSpecToString(const ::testing::TestParamInfo<DotTestSpec>& info) {
+std::string DotTestSpecToString(
+    const ::testing::TestParamInfo<DotTestSpec>& info) {
   return PrimitiveType_Name(info.param.primitive_type);
 }
 
@@ -44,7 +45,7 @@ class CpuEigenDotOperationTest
       public ::testing::WithParamInterface<DotTestSpec> {
  protected:
   void CompileAndCheck(std::unique_ptr<HloComputation> entry_computation,
-                       const string& filecheck_lines) {
+                       const std::string& filecheck_lines) {
     CpuAotCompilationOptions options{
         /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
         /*features=*/"",
@@ -94,8 +95,10 @@ TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
 
 std::vector<DotTestSpec> GetDotTestCases() {
   std::vector<DotTestSpec> result;
+  // The fp16 test runs a 32-bit matmul because we promote fp16 gemms to fp32
+  // (they run much faster).
   result.push_back(
-      {F16, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF16)"});
+      {F16, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF32)"});
   result.push_back(
       {F32, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF32)"});
   result.push_back(

@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_H_
 
+#include <optional>
+#include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -53,7 +53,7 @@ class Shape {
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
-  string ToString(bool print_layout = false) const;
+  std::string ToString(bool print_layout = false) const;
 
   // Returns the rank (number of dimensions) of the given shape. Shape must be
   // an array.
@@ -115,8 +115,16 @@ class Shape {
   // Methods for accessing the dimensions array.
   int dimensions_size() const { return dimensions_.size(); }
   int64_t dimensions(int index) const { return dimensions_.at(index); }
+  int64_t dimensions_minor(int index) const {
+    CHECK(has_layout());
+    return dimensions_.at(layout_.minor_to_major(index));
+  }
   void set_dimensions(int index, int64_t value) {
     dimensions_.at(index) = value;
+  }
+  void set_dimensions_minor(int index, int64_t value) {
+    CHECK(has_layout());
+    dimensions_.at(layout_.minor_to_major(index)) = value;
   }
   void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
@@ -175,9 +183,11 @@ class Shape {
     clear_layout();
   }
 
-  string SerializeAsString() const { return ToProto().SerializeAsString(); }
-  string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  string DebugString() const { return ToProto().DebugString(); }
+  std::string SerializeAsString() const {
+    return ToProto().SerializeAsString();
+  }
+  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  std::string DebugString() const { return ToProto().DebugString(); }
 
   // Equal is a configurable functor to check the equality of two shapes.
   //
@@ -248,10 +258,25 @@ class Shape {
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
 
+  template <typename H, bool kIsLayoutSensitive = true>
+  static H Hash(H h, const Shape& s) {
+    if (s.IsTuple()) {
+      for (const Shape& subshape : s.tuple_shapes_) {
+        h = Shape::Hash<H, kIsLayoutSensitive>(std::move(h), subshape);
+      }
+      return H::combine(std::move(h), s.tuple_shapes_size());
+    }
+    h = H::combine(std::move(h), s.element_type_, s.dimensions_,
+                   s.dynamic_dimensions_);
+    if (kIsLayoutSensitive) {
+      h = H::combine(std::move(h), s.layout_);
+    }
+    return std::move(h);
+  }
+
   template <typename H>
   friend H AbslHashValue(H h, const Shape& s) {
-    return H::combine(std::move(h), s.element_type_, s.dimensions_,
-                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+    return Shape::Hash(std::move(h), s);
   }
 
  private:
@@ -261,11 +286,11 @@ class Shape {
   // The array bounds of the dimensions. This is nonempty only for array
   // shapes. For a dynamically-sized dimension, the respective value in this
   // vector is an inclusive upper limit of the array bound.
-  absl::InlinedVector<int64_t, 6> dimensions_;
+  DimensionVector dimensions_;
 
   // This vector is the same size as 'dimensions_' and indicates whether the
   // respective dimension is dynamically sized.
-  absl::InlinedVector<bool, 6> dynamic_dimensions_;
+  absl::InlinedVector<bool, InlineRank()> dynamic_dimensions_;
 
   // The tuple element subshapes. This is nonempty only for tuple shapes.
   std::vector<Shape> tuple_shapes_;
@@ -286,7 +311,7 @@ class ProgramShape {
   // Returns a proto representation of the object.
   ProgramShapeProto ToProto() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   // The following methods mirror the protobuf generated code interface for the
   // message ProgramShapeProto. This enabled easy migration of this data
@@ -312,37 +337,39 @@ class ProgramShape {
 
   // Methods for accessing and manipulating the names of the parameters.
   int parameter_names_size() const { return parameter_names_.size(); }
-  const string& parameter_names(int index) const {
+  const std::string& parameter_names(int index) const {
     return parameter_names_.at(index);
   }
-  void set_parameter_names(int index, const string& value) {
+  void set_parameter_names(int index, const std::string& value) {
     parameter_names_.at(index) = value;
   }
-  string* mutable_parameter_names(int index) {
+  std::string* mutable_parameter_names(int index) {
     return &parameter_names_.at(index);
   }
-  void add_parameter_names(const string& value) {
+  void add_parameter_names(const std::string& value) {
     parameter_names_.push_back(value);
   }
-  string* add_parameter_names() {
+  std::string* add_parameter_names() {
     parameter_names_.push_back("");
     return &parameter_names_.back();
   }
   void clear_parameter_names() { parameter_names_.clear(); }
-  const std::vector<string>& parameter_names() const {
+  const std::vector<std::string>& parameter_names() const {
     return parameter_names_;
   }
-  std::vector<string>* mutable_parameter_names() { return &parameter_names_; }
+  std::vector<std::string>* mutable_parameter_names() {
+    return &parameter_names_;
+  }
 
-  string ShortDebugString() const { return ToProto().ShortDebugString(); }
-  string DebugString() const { return ToProto().DebugString(); }
+  std::string ShortDebugString() const { return ToProto().ShortDebugString(); }
+  std::string DebugString() const { return ToProto().DebugString(); }
 
  private:
   // The shapes of the parameters of the computation represented by this object.
   std::vector<Shape> parameters_;
 
   // The names of the parameters of the computation represented by this object.
-  std::vector<string> parameter_names_;
+  std::vector<std::string> parameter_names_;
 
   // The shape of the result of the computation represented by this object.
   Shape result_;

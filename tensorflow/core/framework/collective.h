@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/intrusive_ptr.h"
 
 namespace tensorflow {
 
@@ -62,15 +63,20 @@ struct CollGroupMember {
   DeviceAttributes device;
   string task;
   bool is_local;
+  // User provided rank
+  int32 rank = -1;
 };
 
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
 struct CollGroupParams {
+  // Inputs from Collective ops:
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
+  int user_specified_rank = -1;  // rank provided by the user.
+  // Generated from Collective Group Resolver:
   // Members in this group, in default rank order.
   std::vector<CollGroupMember> members;
   // True if every task has the same number of devices.
@@ -201,6 +207,10 @@ class ParamResolverInterface {
                                      CancellationManager* cancel_mgr,
                                      const StatusCallback& done) = 0;
 
+  // Looks up a group. It returns an error if the group is not ready or not
+  // found.
+  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) = 0;
+
   // Aborts the resolver. After abortion the resolver can no longer be used.
   virtual void StartAbort(const Status& s) = 0;
 };
@@ -327,6 +337,10 @@ class CollectiveExecutor : public core::RefCounted {
                                                         cancel_mgr, done);
   }
 
+  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) {
+    return cem_->GetParamResolver()->LookupGroup(group_key, group);
+  }
+
   // Runs the potentially-blocking closure/expensive callback.
   virtual void RunClosure(std::function<void()> closure) = 0;
 
@@ -380,7 +394,7 @@ struct CollectiveContext {
   const DeviceMgr* dev_mgr;                      // Not owned
   OpKernelContext* op_ctx;                       // Not owned
   OpKernelContext::Params* op_params;            // Not owned
-  const CollectiveParams* col_params;            // Not owned
+  core::IntrusivePtr<const CollectiveParams> col_params;
   const string exec_key;
   const int64_t step_id;
   const Tensor* input;  // Not owned

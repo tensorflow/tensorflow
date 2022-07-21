@@ -138,7 +138,7 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
       HloInstruction* fusion_anchor = candidates[fusion_anchor_id];
       HloInstruction* fused = candidates[j];
       if (ShapesCompatibleForMultiOutputFusion(*fusion_anchor, *fused) &&
-          !FusionWouldBeTooLarge(*fusion_anchor, *fused)) {
+          FusionFitsInBudget(*fusion_anchor, *fused)) {
         VLOG(3) << "Fuse " << fused->ToString() << " into "
                 << fusion_anchor->ToString();
         fusion_anchor->MergeFusionInstructionIntoMultiOutput(fused);
@@ -163,10 +163,13 @@ StatusOr<bool> GpuHorizontalInputFusion::RunOnComputation(
   return horizontal_fusion_impl.Run();
 }
 
-StatusOr<bool> GpuHorizontalInputFusion::Run(HloModule* module) {
+StatusOr<bool> GpuHorizontalInputFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   VLOG(2) << "Run horizontal input fusion.";
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(changed, RunOnComputation(comp));
   }
 

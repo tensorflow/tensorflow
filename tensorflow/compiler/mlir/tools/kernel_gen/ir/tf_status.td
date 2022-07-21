@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TF_FRAMEWORK_STATUS
 #define TF_FRAMEWORK_STATUS
 
+include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpBase.td"
 
 def TFFramework_ERROR_CODE_OK

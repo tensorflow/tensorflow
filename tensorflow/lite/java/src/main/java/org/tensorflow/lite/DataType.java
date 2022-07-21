@@ -75,40 +75,6 @@ public enum DataType {
     return value;
   }
 
-  /** Converts a C TfLiteType enum value to the corresponding type. */
-  static DataType fromC(int c) {
-    for (DataType t : values) {
-      if (t.value == c) {
-        return t;
-      }
-    }
-    throw new IllegalArgumentException(
-        "DataType error: DataType " + c + " is not recognized in Java.");
-  }
-
-  /** Gets string names of the data type. */
-  String toStringName() {
-    switch (this) {
-      case FLOAT32:
-        return "float";
-      case INT32:
-        return "int";
-      case INT16:
-        return "short";
-      case INT8:
-      case UINT8:
-        return "byte";
-      case INT64:
-        return "long";
-      case BOOL:
-        return "bool";
-      case STRING:
-        return "string";
-    }
-    throw new IllegalArgumentException(
-        "DataType error: DataType " + this + " is not supported yet");
-  }
-
   // Cached to avoid copying it
   private static final DataType[] values = values();
 }

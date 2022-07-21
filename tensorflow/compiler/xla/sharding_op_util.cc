@@ -44,7 +44,7 @@ Status ParseAttributes(absl::string_view opaque,
       return InvalidArgumentStrCat("Cannot parse sharding op attributes: ",
                                    opaque);
     }
-    string attr_name = lexer.GetStrVal();
+    std::string attr_name = lexer.GetStrVal();
     if (attr_name == "unspecified_dims") {
       TF_RET_CHECK(lexer.Lex() == TokKind::kLsquare);
       while (lexer.Lex() == TokKind::kInt) {
@@ -59,7 +59,7 @@ Status ParseAttributes(absl::string_view opaque,
                                    attr_name);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace sharding_op_util

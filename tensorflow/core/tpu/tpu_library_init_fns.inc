@@ -95,6 +95,22 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TfTpuOrdinalSelector_DequeueFromCoreSelector);
   TFTPU_SET_FN(ops_api_fn, TfTpu_GetTpuPartitionedCallParams);
 
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ExecutePartitioner);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ConfigureMemory);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_CollateMemory);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ConfigureHost);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ConnectHosts);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_Finalize);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_IsInitialized);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_WriteParameters);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_ReadParameters);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingTensorBatchFixedState_Create);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingTensorBatchFixedState_Destroy);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_EnqueueTensorBatch);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_RecvActivationsComputation);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation);
+  TFTPU_SET_FN(ops_api_fn, TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
+
   return tensorflow::Status::OK();
 }
 

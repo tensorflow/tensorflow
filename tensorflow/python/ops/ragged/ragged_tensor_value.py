@@ -14,19 +14,16 @@
 # ==============================================================================
 """Value for RaggedTensor."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(v1=["ragged.RaggedTensorValue"])
 @dispatch.register_dispatchable_type
-class RaggedTensorValue(object):
+class RaggedTensorValue:
   """Represents the value of a `RaggedTensor`.
 
   Warning: `RaggedTensorValue` should only be used in graph mode; in
@@ -92,6 +89,11 @@ class RaggedTensorValue(object):
   def shape(self):
     """A tuple indicating the shape of this RaggedTensorValue."""
     return (self._row_splits.shape[0] - 1,) + (None,) + self._values.shape[1:]
+
+  @property
+  def _nested_row_partitions(self):
+    """The row_partitions representing this shape."""
+    return [RowPartition.from_row_splits(rs) for rs in self.nested_row_splits]
 
   def __str__(self):
     return "<tf.RaggedTensorValue %s>" % self.to_list()

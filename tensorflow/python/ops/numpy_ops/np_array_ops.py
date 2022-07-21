@@ -15,16 +15,11 @@
 """Common array methods."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
 import functools
 import math
 import numbers
 import numpy as np
-import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -173,6 +168,11 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
 
   if copy:
     result_t = array_ops.identity(result_t)
+
+  max_ndmin = 32
+  if ndmin > max_ndmin:
+    raise ValueError('ndmin bigger than allowable number of dimensions: '
+                     f'{max_ndmin}.')
 
   if ndmin == 0:
     return result_t
@@ -1006,7 +1006,7 @@ def _boundaries_to_sizes(a, boundaries, axis):
 @np_utils.np_doc('split')
 def split(ary, indices_or_sections, axis=0):
   ary = asarray(ary)
-  if not isinstance(indices_or_sections, six.integer_types):
+  if not isinstance(indices_or_sections, int):
     indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
   return array_ops.split(ary, indices_or_sections, axis=axis)
 
@@ -1015,6 +1015,11 @@ def _split_on_axis(np_fun_name, axis):
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    if isinstance(indices_or_sections, int):
+      ary_shape = ary.shape[axis]
+      if ary_shape is not None and ary_shape % indices_or_sections:
+        raise ValueError(
+            'array split does not result in an equal division')
     return split(ary, indices_or_sections, axis=axis)
 
   return f

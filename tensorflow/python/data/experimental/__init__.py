@@ -23,6 +23,7 @@ removing existing functionality.
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
 @@AutoShardPolicy
+@@AutotuneAlgorithm
 @@AutotuneOptions
 @@CheckpointInputPipelineHook
 @@Counter
@@ -55,6 +56,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@distribute
 @@enable_debug_mode
 @@enumerate_dataset
+@@from_list
 @@from_variant
 @@get_next_as_optional
 @@get_single_element
@@ -90,10 +92,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@UNKNOWN_CARDINALITY
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.data.experimental import service
 from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
@@ -109,6 +107,7 @@ from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.distribute import SHARD_HINT
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
+from tensorflow.python.data.experimental.ops.from_list import from_list
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
 from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_length
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer
@@ -149,6 +148,7 @@ from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
 from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure
 from tensorflow.python.data.ops.options import AutoShardPolicy
+from tensorflow.python.data.ops.options import AutotuneAlgorithm
 from tensorflow.python.data.ops.options import AutotuneOptions
 from tensorflow.python.data.ops.options import DistributeOptions
 from tensorflow.python.data.ops.options import ExternalStatePolicy

@@ -34,45 +34,49 @@ namespace jax {
 
 // Flags, such as JIT disable and the x64 mode, are controlled by:
 // - a global flag value, e.g., associated to --jax_enable_x64
-// - possibly a thread-local value, which initially is absl::nullopt and
+// - possibly a thread-local value, which initially is std::nullopt and
 //   overrides the global value if set. The thread-local state is
 //   used to implement context managers that locally override the global state.
-// TODO(phawkins): consider changing the global state to optional types to
-// catch cases where we fail to set it.
-struct GlobalJitState {
-  bool disable_jit = false;
-  bool enable_x64 = false;
+struct JitState {
+  ~JitState() {
+    if (extra_jit_context) {
+      // We likely do not hold the GIL if this JitState is thread-local, so we
+      // hand the Python object to the global reference manager to destroy.
+      pybind11::object o = std::move(*extra_jit_context);
+      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
+      extra_jit_context = std::nullopt;
+    }
+  }
+
+  std::optional<bool> disable_jit;
+  std::optional<bool> enable_x64;
+
+  // Used to manually set the default device jax should use. May be unset even
+  // in global state, indicating there is no manual override.
+  // TODO(skyewm): make this a C++ type when all JAX backends support a single
+  // C++ device interface
+  std::optional<pybind11::object> default_device;
 
   // Extra context that should be included in the JIT cache key. Must be
   // hashable and have an equality defined.
-  pybind11::object extra_jit_context = pybind11::none();
+  std::optional<pybind11::object> extra_jit_context;
 
   // A callback that, if present, is called when a JITted function is executed
-  // from cache.
-  absl::optional<pybind11::function> post_hook;
+  // from cache. May be unset even in global state.
+  std::optional<pybind11::function> post_hook;
 };
 
-struct ThreadLocalJitState {
-  ~ThreadLocalJitState() {
-    if (extra_jit_context) {
-      // We likely do not hold the GIL, so we hand the Python object to the
-      // global reference manager to destroy.
-      pybind11::object o = std::move(*extra_jit_context);
-      xla::GlobalPyRefManager()->AddGarbage(absl::MakeSpan(&o, 1));
-      extra_jit_context = absl::nullopt;
-    }
-  }
-  absl::optional<bool> disable_jit;
-  absl::optional<bool> enable_x64;
-  absl::optional<pybind11::object> extra_jit_context;
-  absl::optional<pybind11::function> post_hook;
-};
+JitState& GetGlobalState();
+JitState& GetLocalState();
 
-// Returns the value for jax_enable_x64 (defined by a thread-local value if
-// defined, defaulting to the value of the flag otherwise).
+// Getters for JitState fields that first look in thread-local state, then
+// fallback to global state.
+bool GetDisableJit();
 bool GetEnableX64();
-GlobalJitState& GetGlobalState();
-ThreadLocalJitState& GetLocalState();
+// TODO(skyewm): return a C++ type when all JAX backends support a single C++
+// device interface
+std::optional<pybind11::object> GetDefaultDevice();
+std::optional<pybind11::function> GetPostHook();
 
 // The signature of Python jitted function call, partitioned into:
 // - dynamic positional arguments (i.e. positional args which are not static)
@@ -112,8 +116,8 @@ struct CallSignature {
   bool jax_enable_x64;
 
   // Opaque additional context that should be included as part of the cache key.
-  pybind11::object global_extra_jit_context;
-  absl::optional<pybind11::object> thread_local_extra_jit_context;
+  std::optional<pybind11::object> global_extra_jit_context;
+  std::optional<pybind11::object> thread_local_extra_jit_context;
 
   bool operator==(const CallSignature& other) const;
   bool operator!=(const CallSignature& other) const {
@@ -150,7 +154,7 @@ struct ParsedArgumentsAsBuffers {
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
 xla::Status ParseArguments(pybind11::handle args,
-                           const absl::optional<pybind11::kwargs>& py_kwargs,
+                           const std::optional<pybind11::kwargs>& py_kwargs,
                            absl::Span<int const> static_argnums,
                            absl::Span<pybind11::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments);

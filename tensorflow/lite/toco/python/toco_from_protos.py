@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python console command to invoke TOCO from serialized protos."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 

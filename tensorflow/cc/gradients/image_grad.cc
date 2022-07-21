@@ -23,6 +23,12 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
+REGISTER_NO_GRADIENT_OP("NonMaxSuppression");
+REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV2");
+REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV3");
+REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV4");
+REGISTER_NO_GRADIENT_OP("NonMaxSuppressionV5");
+
 Status ResizeNearestNeighborGradHelper(const Scope& scope, const Operation& op,
                                        const std::vector<Output>& grad_inputs,
                                        std::vector<Output>* grad_outputs) {

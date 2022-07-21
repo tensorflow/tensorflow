@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
@@ -93,10 +94,15 @@ class CSRMatMulOp : public OpKernel {
                     "Only one of adjoint_b and transpose_b may be true."));
     OP_REQUIRES_OK(c, c->GetAttr("transpose_output", &transpose_output_));
     OP_REQUIRES_OK(c, c->GetAttr("conjugate_output", &conjugate_output_));
-    conjugate_a_ = adjoint_a;
-    conjugate_b_ = adjoint_b;
     transpose_a_ |= adjoint_a;
     transpose_b_ |= adjoint_b;
+    if (is_complex<T>::value) {
+      conjugate_a_ = adjoint_a;
+      conjugate_b_ = adjoint_b;
+    } else {
+      conjugate_a_ = false;
+      conjugate_b_ = false;
+    }
   }
 
   ~CSRMatMulOp() override {}
@@ -134,7 +140,7 @@ class CSRMatMulOp : public OpKernel {
           TensorShape(a_dense_shape), " vs. ",
           dense_tensor_b.shape().DebugString());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  public:
@@ -255,7 +261,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(ctx->allocate_output(0, output_shape, output));
       *matmul_result = output_transposed;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns an Eigen::Ref expression of a sparse sub-matrix from the given
@@ -480,7 +486,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(
           DoMatrixTranspose(ctx->eigen_device<CPUDevice>(), input, output));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -549,8 +555,8 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
 #endif
     if (use_matrix_vector_multiply) {
       // Call matrix-vector multiply if b is a vector.
-      TTypes<int64>::ConstVec a_dense_shape_comp(a_dense_shape.data() + row_dim,
-                                                 2);
+      TTypes<int64_t>::ConstVec a_dense_shape_comp(
+          a_dense_shape.data() + row_dim, 2);
       Tensor b_conj_t;
       const T* b_base_ptr = b_t.template flat<T>().data();
       bool conjugate_a = this->conjugate_a_;
@@ -658,7 +664,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     }
 
     // Dense shape of a batch component of A.
-    TTypes<int64>::ConstVec a_input_dense_shape_comp(
+    TTypes<int64_t>::ConstVec a_input_dense_shape_comp(
         a_input_dense_shape.data() + row_dim, 2);
 
     auto b = b_t_input.flat<T>();
@@ -857,7 +863,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
@@ -895,7 +901,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
@@ -939,7 +945,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 #endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -1000,7 +1006,7 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 #endif
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

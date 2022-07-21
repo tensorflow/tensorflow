@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -33,13 +35,13 @@ namespace TFL {
 namespace {
 
 template <int NInput, int NOutput>
-FuncOp createMaxUnpoolingFunc(
+func::FuncOp createMaxUnpoolingFunc(
     mlir::Builder* builder, const SmallVector<mlir::Type, NInput>& input_types,
     const SmallVector<mlir::Type, NOutput>& output_types) {
   auto func_type = builder->getFunctionType(input_types, output_types);
-  auto func =
-      FuncOp::create(mlir::NameLoc::get(builder->getIdentifier("fused_func")),
-                     "fused_func", func_type, {});
+  auto func = func::FuncOp::create(
+      mlir::NameLoc::get(builder->getStringAttr("fused_func")), "fused_func",
+      func_type, {});
 
   func.addEntryBlock();
   mlir::StringAttr attr_value = builder->getStringAttr("MaxUnpooling2D");
@@ -47,9 +49,9 @@ FuncOp createMaxUnpoolingFunc(
   return func;
 }
 
-FuncOp createMaxUnpoolingFunc(mlir::Builder* builder,
-                              const SmallVector<int64_t, 4>& input_shape,
-                              const SmallVector<int64_t, 4>& output_shape) {
+func::FuncOp createMaxUnpoolingFunc(
+    mlir::Builder* builder, const SmallVector<int64_t, 4>& input_shape,
+    const SmallVector<int64_t, 4>& output_shape) {
   auto input_type = RankedTensorType::get(input_shape, builder->getF32Type());
   auto indices_type = RankedTensorType::get(input_shape, builder->getI64Type());
   auto output_type = RankedTensorType::get(output_shape, builder->getF32Type());
@@ -84,13 +86,13 @@ mlir::TF::FuncAttr createMaxUnpoolingAttr(mlir::MLIRContext* context,
                                           const ArrayAttr& strides) {
   SmallVector<::mlir::NamedAttribute, 3> fields;
 
-  auto padding_id = ::mlir::Identifier::get("padding", context);
+  auto padding_id = ::mlir::StringAttr::get(context, "padding");
   fields.emplace_back(padding_id, StringAttr::get(context, padding));
 
-  auto pool_size_id = ::mlir::Identifier::get("pool_size", context);
+  auto pool_size_id = ::mlir::StringAttr::get(context, "pool_size");
   fields.emplace_back(pool_size_id, pool_size);
 
-  auto strides_id = ::mlir::Identifier::get("strides", context);
+  auto strides_id = ::mlir::StringAttr::get(context, "strides");
   fields.emplace_back(strides_id, strides);
 
   DictionaryAttr dict = DictionaryAttr::get(context, fields);
@@ -105,9 +107,10 @@ class PerceptionUtilsTest : public ::testing::Test {
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
-    context_->loadDialect<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect,
-                          TensorFlowLiteDialect>();
-    builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
+    context_
+        ->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+                      mlir::TF::TensorFlowDialect, TensorFlowLiteDialect>();
+    builder_ = std::make_unique<mlir::Builder>(context_.get());
 
     fused_max_unpooling_func_ =
         createMaxUnpoolingFunc(builder_.get(), {2, 4, 4, 2}, {2, 2, 2, 2});
@@ -123,7 +126,7 @@ class PerceptionUtilsTest : public ::testing::Test {
     builder_.reset();
   }
 
-  FuncOp fused_max_unpooling_func_;
+  func::FuncOp fused_max_unpooling_func_;
   mlir::TF::FuncAttr func_attr_;
   std::unique_ptr<mlir::MLIRContext> context_;
   std::unique_ptr<mlir::Builder> builder_;

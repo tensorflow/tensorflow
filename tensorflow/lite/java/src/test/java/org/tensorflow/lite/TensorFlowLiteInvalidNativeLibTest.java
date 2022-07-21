@@ -48,4 +48,25 @@ public final class TensorFlowLiteInvalidNativeLibTest {
       assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
     }
   }
+
+  @Test
+  public void testInterpreterApi() {
+    try {
+      InterpreterApi.create(new File("path/does/not/matter.tflite"), null);
+      fail();
+    } catch (UnsatisfiedLinkError e) {
+      assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
+    }
+  }
+
+  @Test
+  @SuppressWarnings("deprecation") // This is a test of the deprecated InterpreterFactory class.
+  public void testInterpreterFactory() {
+    try {
+      new InterpreterFactory().create(new File("path/does/not/matter.tflite"), null);
+      fail();
+    } catch (UnsatisfiedLinkError e) {
+      assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
+    }
+  }
 }

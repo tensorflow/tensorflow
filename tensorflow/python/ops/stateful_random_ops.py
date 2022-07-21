@@ -14,12 +14,6 @@
 # ==============================================================================
 """Operations for generating random numbers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
@@ -31,10 +25,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.stateless_random_ops import Algorithm
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -103,7 +98,7 @@ def _make_1d_state(state_size, seed):
   Returns:
     a 1-D tensor of shape [state_size] and dtype STATE_TYPE.
   """
-  if isinstance(seed, six.integer_types):
+  if isinstance(seed, int):
     # chop the Python integer (infinite precision) into chunks of SEED_TYPE
     ls = []
     for _ in range(state_size):
@@ -212,7 +207,7 @@ def get_replica_id():
 
 
 @tf_export("random.Generator", "random.experimental.Generator")
-class Generator(tracking.AutoTrackable):
+class Generator(autotrackable.AutoTrackable):
   """Random-number generator.
 
   Example:
@@ -473,7 +468,11 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The created variable.
     """
-    v = variables.Variable(*args, **kwargs)
+    with ops.name_scope("random_generator"):
+      # Make sure we don't change this name since Keras was using this name
+      # to filter out the state variable.
+      kwargs["name"] = "StateVar"
+      v = variables.Variable(*args, **kwargs)
     if isinstance(v, sharded_variable.ShardedVariable):
       # RNG state is an atomic entity representing a 128-bit or
       # 192-bit value, so it mustn't be sharded.
@@ -571,6 +570,7 @@ class Generator(tracking.AutoTrackable):
           f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
 
   def _skip_single_var(self, var, delta):
+    resource_variable_ops.variable_accessed(var)
     # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
     return gen_stateful_random_ops.rng_read_and_skip(
         var.handle,
@@ -1000,16 +1000,27 @@ def get_global_generator():
 def set_global_generator(generator):
   """Replaces the global generator with another `Generator` object.
 
-  This function creates a new Generator object (and the Variable object within),
-  which does not work well with tf.function because (1) tf.function puts
-  restrictions on Variable creation thus reset_global_generator can't be freely
-  used inside tf.function; (2) redirecting a global variable to
-  a new object is problematic with tf.function because the old object may be
-  captured by a 'tf.function'ed function and still be used by it.
-  A 'tf.function'ed function only keeps weak references to variables,
-  so deleting a variable and then calling that function again may raise an
-  error, as demonstrated by
-  random_test.py/RandomTest.testResetGlobalGeneratorBadWithDefun .
+  This function replaces the global generator with the provided `generator`
+  object.
+  A random number generator utilizes a `tf.Variable` object to store its state.
+  The user shall be aware of caveats how `set_global_generator` interacts with
+  `tf.function`:
+
+  - tf.function puts restrictions on Variable creation thus one cannot freely
+    create a new random generator instance inside `tf.function`.
+    To call `set_global_generator` inside `tf.function`, the generator instance
+    must have already been created eagerly.
+  - tf.function captures the Variable during trace-compilation, thus a compiled
+    f.function will not be affected `set_global_generator` as demonstrated by
+    random_test.py/RandomTest.testResetGlobalGeneratorBadWithDefun .
+
+  For most use cases, avoid calling `set_global_generator` after program
+  initialization, and prefer to reset the state of the existing global generator
+  instead, such as,
+
+  >>> rng = tf.random.get_global_generator()
+  >>> rng.reset_from_seed(30)
+
 
   Args:
     generator: the new `Generator` object.

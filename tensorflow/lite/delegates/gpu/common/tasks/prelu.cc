@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
@@ -39,7 +43,7 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     desc.element_type = definition.GetPrimaryDataType();
     desc.UploadLinearData(*alpha_linear);
     result.args_.AddObject(
-        "alpha", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+        "alpha", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
     alpha_read = "FLT4 alpha_val = args.alpha.Read(S_COORD);\n";
   }
 
@@ -48,17 +52,12 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
   if (alpha_hwc) {
     const BHWC shape =
         BHWC(1, alpha_hwc->shape.h, alpha_hwc->shape.w, alpha_hwc->shape.c);
-    TensorStorageType storage_type;
-    auto status = SelectBestStorageType(
-        gpu_info, shape, definition.GetPrimaryStorageType(),
-        definition.GetDataType(), Layout::HWC, &storage_type);
-    if (!status.ok()) {
-      storage_type = TensorStorageType::BUFFER;
-    }
-    TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-    desc.UploadData(*alpha_hwc);
-    result.args_.AddObject(
-        "alpha", absl::make_unique<TensorDescriptor>(std::move(desc)));
+    TensorDescriptor const_tensor_desc = definition.src_tensors[0];
+    auto status =
+        const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
+    const_tensor_desc.UploadData(*alpha_hwc);
+    result.args_.AddObject("alpha", std::make_unique<TensorDescriptor>(
+                                        std::move(const_tensor_desc)));
     const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
     const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
     const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";

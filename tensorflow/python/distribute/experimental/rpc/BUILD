@@ -34,6 +34,9 @@ tf_py_test(
     size = "medium",
     srcs = ["rpc_ops_test.py"],
     shard_count = 7,
+    tags = [
+        "no_mac",  # flaky, b/205156709
+    ],
     deps = [
         ":rpc_ops",
         "//tensorflow/python:math_ops",

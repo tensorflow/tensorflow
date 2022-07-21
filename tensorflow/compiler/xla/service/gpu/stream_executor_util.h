@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -58,24 +58,19 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
 // dimension, because only cudnn convolutions have this feature; it's not
 // applicable elsewhere.  We find it by finding a dimension in the
 // input/filter/output shape that is *not* in dnums.
-std::tuple<absl::optional<int64_t>, absl::optional<int64_t>,
-           absl::optional<int64_t>>
+std::tuple<std::optional<int64_t>, std::optional<int64_t>,
+           std::optional<int64_t>>
 FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
                           const Shape& input, const Shape& filter,
                           const Shape& output);
 
 // Generates and returns a unique lock per the provided executor.
-// Guarantees that blocks of code both holding a lock for the same provided
-// executor (as given by this function) will not be running concurrently.
+// Guarantees that blocks of code running for the same provided
+// executor will not be running concurrently if they lock the returned mutex.
 //
 // This is used to prevent other XLA instances from trying to autotune on a
 // device while another thread is using it.
-tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec);
-
-// Generates and returns a shared lock per the provided executor.
-//
-// Threads that call LockGpuShared() may execute concurrently with each other.
-tensorflow::tf_shared_lock LockGpuShared(const se::StreamExecutor* stream_exec);
+absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 
 // Creates a kernel with a provided name, based from provided PTX in ptx.
 // The kernel should be executed using the provided executor.
@@ -84,8 +79,8 @@ tensorflow::tf_shared_lock LockGpuShared(const se::StreamExecutor* stream_exec);
 // The canonical storage for both ptx and cubin_data should outlive
 // the lifetime of the kernel.
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
-    absl::string_view kernel_name, uint64 num_args, absl::string_view ptx,
-    absl::Span<const uint8> cubin_data, se::StreamExecutor* stream_exec);
+    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec);
 
 // Runs loaded kernel on the stream with the provided arguments.
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,

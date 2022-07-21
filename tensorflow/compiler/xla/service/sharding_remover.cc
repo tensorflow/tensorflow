@@ -16,29 +16,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 // Remove Sharding custom-call instruction by assigning its users to
 // to its operand.
-StatusOr<bool> ShardingRemover::Run(HloModule* module) {
+StatusOr<bool> ShardingRemover::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   const absl::flat_hash_set<absl::string_view> to_remove_sharding_ops = {
       "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"};
 
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
     std::reverse(instructions.begin(), instructions.end());
     for (HloInstruction* instruction : instructions) {

@@ -318,9 +318,15 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           conv_params->depth_multiplier == 1 ||
           (!dilation && input.dims->size == 4 && input.dims->data[3] == 1);
 
+      // Hexagon only supports filter height >= 2.
+      const auto& weights = context->tensors[node->inputs->data[1]];
+      const bool filter_height_not_supported =
+          (weights.dims->size >= 2 && weights.dims->data[1] < 2);
+
       return (IsActivationReluOrNone(conv_params->activation) &&
               conv_params->stride_height <= 3 &&
-              conv_params->stride_width <= 3 && supported_depth_multiplier);
+              conv_params->stride_width <= 3 && supported_depth_multiplier &&
+              !filter_height_not_supported);
     }
     case kTfLiteBuiltinReshape: {
       if (node->inputs->size > 2 ||
@@ -376,10 +382,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       }
       const auto& size_tensor = context->tensors[node->inputs->data[1]];
-      // TODO(b/143105433): Latency increase significantly with large size
-      // value. Limiting to 65 for now.
-      return NumElements(&size_tensor) == 2 && size_tensor.data.i32[0] < 66 &&
-             size_tensor.data.i32[1] < 66;
+      return NumElements(&size_tensor) == 2;
     }
     case kTfLiteBuiltinNeg: {
       return InputsWithCorrectTypes(node, context,

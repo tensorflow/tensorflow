@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/blocking_counter.h"
@@ -84,7 +85,7 @@ struct LaunchGeneric {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
@@ -152,7 +153,7 @@ struct LaunchGrouped {
   void operator()(OpKernelContext* ctx, const Tensor& input,
                   const Tensor& filter, int row_stride, int col_stride,
                   int row_dilation, int col_dilation, const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     DCHECK(data_format == FORMAT_NHWC)
         << "Grouped conv implementation only "
@@ -183,12 +184,18 @@ struct LaunchGrouped {
     auto on_shuffled = [&]() { shuffles_completed.DecrementCount(); };
 
     // Shuffle input into temporary tensor.
-    Tensor input_shuffled(input.dtype(), TensorShape(post_shuffle(input)));
+    Tensor input_shuffled;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(input.dtype(), TensorShape(post_shuffle(input)),
+                                &input_shuffled));
     input_shuffled.tensor<T, 5>().device(device, on_shuffled) =
         input.shaped<T, 5>(pre_shuffle(input)).shuffle(shuffle);
 
     // Shuffle filter into temporary tensor.
-    Tensor filter_shuffled(filter.dtype(), TensorShape(post_shuffle(filter)));
+    Tensor filter_shuffled;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(filter.dtype(),
+                                           TensorShape(post_shuffle(filter)),
+                                           &filter_shuffled));
     filter_shuffled.tensor<T, 5>().device(device, on_shuffled) =
         filter.shaped<T, 5>(pre_shuffle(filter)).shuffle(shuffle);
 
@@ -196,7 +203,10 @@ struct LaunchGrouped {
     shuffles_completed.Wait();
 
     // Write group convolution results into temporary output tensor.
-    Tensor output_shuffled(output->dtype(), TensorShape(post_shuffle(*output)));
+    Tensor output_shuffled;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(output->dtype(),
+                                           TensorShape(post_shuffle(*output)),
+                                           &output_shuffled));
 
     for (int64_t i = 0; i < num_groups; ++i) {
       // TODO(ezhulenev): Run this loop using `parallelFor` (regular parallelFor
@@ -242,7 +252,7 @@ struct LaunchConv2DOp<CPUDevice, T> {
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
                   const Padding& padding,
-                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  const std::vector<int64_t>& explicit_paddings, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(errors::Unimplemented(
@@ -530,7 +540,7 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
                                        params->explicit_paddings,
                                        /*num_dims=*/4, data_format));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeConv2DDimension(const Conv2DParameters& params,
@@ -637,7 +647,7 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef TF_REQUIRES
@@ -748,6 +758,7 @@ TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
+template struct LaunchConv2DOp<CPUDevice, Eigen::bfloat16>;
 template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
@@ -769,6 +780,11 @@ int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
     }
   }
   return default_value_in_bytes;
+}
+
+int64_t GetDnnWorkspaceLimitOrDefault() {
+  return GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                              1LL << 33);  // 8GB by default
 }
 
 template <typename T>
@@ -826,8 +842,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
-                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                                  a_ptr, k, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   } else if (patch_rows == in_rows && patch_cols == in_cols &&
              !is_grouped_convolution && row_dilation == 1 &&
@@ -847,18 +865,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
-                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                                  a_ptr, k, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   }
 
 #if GOOGLE_CUDA
-  // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
-  // in NHWC data layout. In all other configurations it's more efficient to
-  // run computation in NCHW data format.
-  const bool compute_in_nhwc = DataTypeToEnum<T>::value == DT_HALF &&
-                               stream->GetCudaComputeCapability().IsAtLeast(
-                                   se::CudaComputeCapability::VOLTA);
+  const bool compute_in_nhwc = ComputeInNhwcEnabled(DataTypeToEnum<T>::value,
+                                                    stream, /*is_conv2d=*/true);
 #else
   // fast NHWC implementation is a CUDA only feature
   const bool compute_in_nhwc = false;
@@ -1044,7 +1060,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
-    return Status::OK();
+    return OkStatus();
   };
 
   if (compute_data_format == FORMAT_NCHW) {
@@ -1078,10 +1094,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       AsDeviceMemory(transformed_output.template flat<T>().data(),
                      transformed_output.template flat<T>().size());
 
-  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
-      // default value is in bytes despite the name of the environment variable
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-  );
+  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
@@ -1104,40 +1117,21 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                     device_id,                // device_id
                                     conv_desc.group_count()};
 
-  auto config_or = AutotuneUnfusedConv(
-      cudnn_use_autotune, AutotuneConv::GetInstance(), conv_parameters, ctx,
+  auto entry_or = AutotuneUnfusedConv(
+      cudnn_use_autotune, ConvAutotuneMap::GetInstance(), conv_parameters, ctx,
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
-  OP_REQUIRES_OK(ctx, config_or.status());
-  AlgorithmConfig algorithm_config = config_or.ConsumeValueOrDie();
+  OP_REQUIRES_OK(ctx, entry_or.status());
+  auto autotune_entry = std::move(entry_or).value();
 
-  Status cudnn_launch_status;
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  if (CudnnUseFrontend()) {
-    if (algorithm_config.algorithm().has_value()) {
-      VLOG(4) << "Conv2D Execution Plan: "
-              << algorithm_config.algorithm()->exec_plan_id();
-    } else {
-      VLOG(4) << "Convolution Autotune has been turned off";
-    }
-    cudnn_launch_status = stream->ConvolveWithExecutionPlan(
-        se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
-        algorithm_config, nullptr);
-  } else {
-    VLOG(4) << "Convolution Algorithm: "
-            << algorithm_config.algorithm()->algo_id();
-    VLOG(4) << "tensor_ops_enabled: "
-            << algorithm_config.algorithm()->tensor_ops_enabled();
-
-    cudnn_launch_status = stream->ConvolveWithAlgorithm(
-        se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
-        filter_ptr, output_desc, output_ptr, conv_desc, &scratch_allocator,
-        algorithm_config, nullptr);
-  }
-
+  Status cudnn_launch_status = LaunchAutotunedConv(
+      autotune_entry, &scratch_allocator, se::dnn::ConvolutionKind::FORWARD,
+      stream, input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+      output_desc, output_ptr);
   if (!cudnn_launch_status.ok()) {
     ctx->SetStatus(cudnn_launch_status);
+    return;
   }
 
   if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {

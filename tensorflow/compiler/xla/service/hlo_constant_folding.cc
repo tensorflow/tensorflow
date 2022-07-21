@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -63,26 +63,57 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
   return false;
 }
 
-StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
+/*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
+
+StatusOr<bool> HloConstantFolding::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
-  auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  auto evaluator = std::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  // fast-path lets us e.g. use Eigen for matmuls.
+  evaluator->set_use_fast_path(true);
 
-  XLA_VLOG_LINES(2,
-                 "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
 
-  for (auto* computation : module->MakeNonfusionComputations()) {
-    for (auto instruction : computation->MakeInstructionPostOrder()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
-      if (instruction->user_count() == 0 &&
-          computation->root_instruction() != instruction) {
+      if (instruction->IsDead()) {
         continue;
       }
 
-      // Skip instructions with non-constant operands.
-      if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+      // We only handle instructions where
+      //
+      //  - at least one operand is a constant, and
+      //  - all other operands are either constants or broadcast(constant).
+      //
+      // Why this particular set of rules around broadcasts?
+      //
+      //  - We don't want to fold broadcast(constant) on its own, because in
+      //    general it's "simpler" to remember that it's a broadcast.  Also,
+      //    algsimp will fold an all-one-value constant into a broadcast, so
+      //    we'd just end up fighting with it.
+      //
+      //  - We don't want to fold an op where all operands are broadcasts of
+      //    constants, because algsimp will transform op(broadcast(constant) =>
+      //    broadcast(op(constant)).  Then we can constant-fold the smaller op.
+      //
+      //  - So the only remaining case is where some but not all operands are
+      //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
+      //
+      if (!absl::c_any_of(instruction->operands(),
+                          [](const HloInstruction* operand) {
+                            return operand->opcode() == HloOpcode::kConstant;
+                          }) ||
+          !absl::c_all_of(
+              instruction->operands(), [](const HloInstruction* operand) {
+                return operand->opcode() == HloOpcode::kConstant ||
+                       (operand->opcode() == HloOpcode::kBroadcast &&
+                        operand->operand(0)->opcode() == HloOpcode::kConstant);
+              })) {
         continue;
       }
 
@@ -103,6 +134,11 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       // broadcasts.
       if (instruction->opcode() == HloOpcode::kBroadcast ||
           instruction->opcode() == HloOpcode::kIota) {
+        continue;
+      }
+
+      // Do not fold FFT. Evaluating it may significantly increase compile time.
+      if (instruction->opcode() == HloOpcode::kFft) {
         continue;
       }
 
@@ -137,14 +173,69 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         }
       }
 
-      Literal result;
+      VLOG(5) << "Constant folding: " << instruction->ToString();
+
+      absl::Duration slow_timeout =
+          absl::Seconds(uint64_t{1} << slow_op_counter_.load());
+      // We cannot call `instruction->ToString() within the callback, because
+      // the instruction may be modified and invalidated in place, and ToString
+      // will fail if the compilation is slow. We probably do not want to
+      // call `ToString()` for all the instructions, thus, we only display the
+      // name by default.
+      std::string instruction_msg;
+      if (VLOG_IS_ON(4)) {
+        instruction_msg = instruction->ToString();
+      } else {
+        instruction_msg =
+            absl::StrCat(instruction->name(),
+                         " (displaying the full instruction incurs a runtime "
+                         "overhead. Raise your logging level to 4 or above).");
+      }
+      SlowOperationAlarm slow_alarm(slow_timeout, [instruction_msg = std::move(
+                                                       instruction_msg),
+                                                   slow_timeout] {
+        const bool ndebug =
+#if NDEBUG
+            true;
+#else
+            false;
+#endif
+        absl::string_view explanation_msg =
+            ndebug
+                ? "This isn't necessarily a bug; constant-folding is "
+                  "inherently a trade-off between compilation time and speed "
+                  "at runtime.  XLA has some guards that attempt to keep "
+                  "constant folding from taking too long, but fundamentally "
+                  "you'll always be able to come up with an input program that "
+                  "takes a long time.\n\n"
+                  "If you'd like to file a bug, run with envvar "
+                  "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results."
+                : "XLA was built without compiler optimizations, which can be "
+                  "slow.  Try rebuilding with -c opt.";
+        return absl::StrFormat(
+            "Constant folding an instruction is taking > %s:\n\n"
+            "  %s\n\n"  // instruction->name() or instruction->ToString()
+            "%s",       // explanation_msg
+            absl::FormatDuration(slow_timeout), instruction_msg,
+            explanation_msg);
+      });
+
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
-      if (!evaluator->TryEvaluate(instruction, &result)) {
+      Literal result;
+      if (!evaluator->TryEvaluate(
+              instruction, &result,
+              /*recursively_evaluate_nonconstant_operands=*/true)) {
         VLOG(2) << "Constant folding failed for instruction: "
                 << instruction->ToString();
         continue;
       }
+
+      slow_alarm.cancel();
+      if (slow_alarm.fired()) {
+        slow_op_counter_++;
+      }
+
       VLOG(4) << "Constant folded: " << instruction->ToString();
 
       TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
@@ -152,7 +243,6 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2, "HloConstantFolding::Run(), after:\n" + module->ToString());
   return changed;
 }
 

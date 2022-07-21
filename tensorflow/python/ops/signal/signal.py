@@ -34,10 +34,6 @@ guide.
 [stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.ops.signal.dct_ops import dct
 from tensorflow.python.ops.signal.fft_ops import fft

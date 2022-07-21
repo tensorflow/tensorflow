@@ -35,7 +35,7 @@ TEST_F(QueryInferredShapeTest, OnePlusOneShape) {
   auto result = Add(one, one);
   StatusOr<Shape> shape_status = builder.GetShape(result);
   ASSERT_IS_OK(shape_status.status());
-  auto shape = shape_status.ConsumeValueOrDie();
+  auto shape = shape_status.value();
   ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));
 }
 

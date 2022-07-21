@@ -40,6 +40,16 @@ GpuInfo CreateGpuInfoFromMetalDevice(id<MTLDevice> device) {
     }
   }
 
+  const bool a7_or_a8 =
+      gpu_info.IsApple() && (gpu_info.apple_info.IsA7GenerationGpu() ||
+                             gpu_info.apple_info.IsA8GenerationGpu());
+  gpu_info.metal_info.image2d_max_width = a7_or_a8 ? 1024 * 8 : 1024 * 16;
+  gpu_info.metal_info.image2d_max_height = a7_or_a8 ? 1024 * 8 : 1024 * 16;
+  gpu_info.metal_info.image_array_max_layers = 2048;
+  gpu_info.metal_info.image3d_max_width = 2048;
+  gpu_info.metal_info.image3d_max_height = 2048;
+  gpu_info.metal_info.image3d_max_depth = 2048;
+
   if (@available(macOS 10.11, iOS 9.0, tvOS 9.0, *)) {
     MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
     gpu_info.metal_info.max_work_group_size_x = threadsPerGroup.width;

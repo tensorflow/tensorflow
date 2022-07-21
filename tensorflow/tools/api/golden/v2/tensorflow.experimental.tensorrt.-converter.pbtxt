@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'use_dynamic_shape\', \'dynamic_shape_profile_strategy\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'use_dynamic_shape\', \'dynamic_shape_profile_strategy\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'maximum_cached_engines\', \'use_calibration\', \'allow_build_at_runtime\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'1073741824\', \'FP32\', \'3\', \'1\', \'True\', \'True\', \'None\'], "
   }
   member_method {
     name: "build"
@@ -16,6 +16,10 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'output_saved_model_dir\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'output_saved_model_dir\', \'save_gpu_specific_engines\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "summary"
+    argspec: "args=[\'self\', \'line_length\', \'detailed\', \'print_fn\'], varargs=None, keywords=None, defaults=[\'160\', \'True\', \'None\'], "
   }
 }

@@ -64,6 +64,7 @@ objc_library(
     visibility = ios_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
@@ -99,6 +100,7 @@ objc_library(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     tags = TFL_DEFAULT_TAGS + ["builder_default_ios_x86_64"],
     deps = [

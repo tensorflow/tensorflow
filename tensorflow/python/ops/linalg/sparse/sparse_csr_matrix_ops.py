@@ -14,14 +14,8 @@
 # ==============================================================================
 """CSR Sparse Matrix Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
-
-import six
 
 # pylint: disable=g-direct-tensorflow-import, wildcard-import
 from tensorflow.python.eager import context
@@ -245,7 +239,7 @@ def matmul(a,
             conjugate_output=adjoint_b)
 
 
-class SparseMatrix(six.with_metaclass(abc.ABCMeta)):
+class SparseMatrix(metaclass=abc.ABCMeta):
   """Abstract class for sparse matrix types."""
 
   @abc.abstractmethod
@@ -327,6 +321,7 @@ class CSRSparseMatrix(SparseMatrix):
     Raises:
       ValueError: if `value` is a `SparseTensor` and `indices` is not `None`.
     """
+    del name  # Unused.
     super(CSRSparseMatrix, self).__init__()
     if isinstance(value, sparse_tensor.SparseTensor):
       if indices is not None:

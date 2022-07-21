@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace cpu {
@@ -46,7 +45,7 @@ bool DotImplementationCanHandleTranspose(
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
-absl::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
+std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
 // Emit LLVM IR to perform the dot operation on lhs_array and rhs_array and

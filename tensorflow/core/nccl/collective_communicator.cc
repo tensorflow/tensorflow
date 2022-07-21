@@ -45,16 +45,16 @@ namespace {
 Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   if (merge_op == "Add") {
     *reduction_op = ncclSum;
-    return Status::OK();
+    return OkStatus();
   } else if (merge_op == "Mul") {
     *reduction_op = ncclProd;
-    return Status::OK();
+    return OkStatus();
   } else if (merge_op == "Maximum") {
     *reduction_op = ncclMax;
-    return Status::OK();
+    return OkStatus();
   } else if (merge_op == "Minimum") {
     *reduction_op = ncclMin;
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::Internal(
         "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
@@ -80,14 +80,15 @@ std::unique_ptr<NcclCommunicatorInterface> MaybeCreateNcclCommunicator(
 
 void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                                StatusCallback done) {
-  const CollectiveParams* col_params = col_ctx->col_params;
+  const CollectiveParams* col_params = col_ctx->col_params.get();
   const int num_global_devices = col_params->group.group_size;
   const int num_local_devices = col_params->group.num_devices_per_task.at(
       col_params->group.members[col_params->default_rank].task);
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
-  auto* gpu_info = col_ctx->op_ctx->device()->tensorflow_gpu_device_info();
+  auto* gpu_info =
+      col_ctx->op_ctx->device()->tensorflow_accelerator_device_info();
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
       col_ctx->output, col_ctx->col_params->default_rank,
@@ -125,15 +126,6 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
           << " num global devices " << num_global_devices << " device "
           << col_ctx->device_name << " instance "
           << col_params->instance.instance_key;
-  // Hold a ref to col_params for the rest of this function.
-  // NOTE: an alternate design can be one in which CollectiveParams is not
-  // refcounted.  In such a design, we would need to ensure that the
-  // done_callback of each participant is called only after this function is
-  // done with accessing the params.  This would likely require some
-  // coordination mechanism, and may even require the participant thread to
-  // block until after UnblockDependencies is called below.
-  col_params->Ref();
-  core::ScopedUnref unref(col_params);
   // `AddTo*` performs consistency checks for the NCCL call and enqueues the
   // `Participant` struct locally.  When all local participants with this
   // `nccl_collective_key` have called `AddToAllReduce` and

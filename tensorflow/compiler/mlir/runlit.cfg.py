@@ -13,10 +13,6 @@
 # limitations under the License.
 """Lit runner configuration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import platform
 import sys
@@ -77,7 +73,8 @@ tool_names = [
     'tfcompile', 'json_to_flatbuffer', 'xla-gpu-opt', 'xla-mlir-gpu-opt',
     'xla-opt', 'hlo_to_llvm_ir', 'kernel-gen-opt', 'tf_to_kernel',
     'tf_to_gpu_binary', 'tfjs-opt', 'tac-opt-all-backends', 'tac-translate',
-    'tfg-opt-no-passes', 'tfg-transforms-opt'
+    'tfg-opt-no-passes', 'tfg-transforms-opt', 'tfg-translate', 'tf-tfrt-opt',
+    'lhlo-tfrt-opt', 'tf-quant-opt', 'mhlo-tosa-opt',
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

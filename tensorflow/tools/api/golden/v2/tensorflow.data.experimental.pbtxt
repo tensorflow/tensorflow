@@ -9,6 +9,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "AutotuneAlgorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "AutotuneOptions"
     mtype: "<type \'type\'>"
   }
@@ -115,6 +119,10 @@ tf_module {
   member_method {
     name: "enumerate_dataset"
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "from_list"
+    argspec: "args=[\'elements\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "from_variant"

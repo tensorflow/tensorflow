@@ -88,10 +88,13 @@ class Env {
   ///
   /// Same as `RegisterFileSystem` but for filesystems provided by plugins.
   ///
-  /// TODO(mihaimaruseac): After all filesystems are converted, make this be the
+  /// TODO(b/139060984): After all filesystems are converted, make this be the
   /// canonical registration function.
   virtual Status RegisterFileSystem(const std::string& scheme,
                                     std::unique_ptr<FileSystem> filesystem);
+
+  Status SetOption(const std::string& scheme, const std::string& key,
+                   const std::string& value);
 
   Status SetOption(const std::string& scheme, const std::string& key,
                    const std::vector<string>& values);
@@ -125,7 +128,7 @@ class Env {
                              std::unique_ptr<RandomAccessFile>* result) {
     // We duplicate these methods due to Google internal coding style prevents
     // virtual functions with default arguments. See PR #41615.
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Creates an object that writes to a new file with the specified
@@ -146,7 +149,7 @@ class Env {
 
   Status NewWritableFile(const std::string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Creates an object that either appends to an existing file, or
@@ -166,7 +169,7 @@ class Env {
 
   Status NewAppendableFile(const std::string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) {
-    return Status::OK();
+    return OkStatus();
   }
   /// \brief Creates a readonly region of memory with the file context.
   ///
@@ -185,14 +188,14 @@ class Env {
   Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   Status FileExists(const std::string& fname);
 
   Status FileExists(const std::string& fname, TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Returns true if all the listed files exist, false otherwise.
@@ -214,7 +217,7 @@ class Env {
 
   Status GetChildren(const std::string& dir, TransactionToken* token,
                      std::vector<string>* result) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
@@ -231,14 +234,14 @@ class Env {
 
   Status GetMatchingPaths(const std::string& pattern, TransactionToken* token,
                           std::vector<string>* results) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Deletes the named file.
   Status DeleteFile(const std::string& fname);
 
   Status DeleteFile(const std::string& fname, TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Deletes the specified directory and all subdirectories and files
@@ -270,7 +273,7 @@ class Env {
 
   Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
                            int64_t* undeleted_files, int64_t* undeleted_dirs) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Creates the specified directory and all the necessary
@@ -282,7 +285,7 @@ class Env {
 
   Status RecursivelyCreateDir(const std::string& dirname,
                               TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
@@ -291,14 +294,14 @@ class Env {
   Status CreateDir(const std::string& dirname);
 
   Status CreateDir(const std::string& dirname, TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Deletes the specified directory.
   Status DeleteDir(const std::string& dirname);
 
   Status DeleteDir(const std::string& dirname, TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Obtains statistics for the given path.
@@ -306,7 +309,7 @@ class Env {
 
   Status Stat(const std::string& fname, TransactionToken* token,
               FileStatistics* stat) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Returns whether the given path is a directory or not.
@@ -335,7 +338,7 @@ class Env {
 
   Status GetFileSize(const std::string& fname, TransactionToken* token,
                      uint64* file_size) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Renames file src to target. If target already exists, it will be
@@ -344,7 +347,7 @@ class Env {
 
   Status RenameFile(const std::string& src, const std::string& target,
                     TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Copy the src to target.
@@ -352,20 +355,20 @@ class Env {
 
   Status CopyFile(const std::string& src, const std::string& target,
                   TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief starts a new transaction on the filesystem that handles filename
   Status StartTransaction(const std::string& filename,
                           TransactionToken** token) {
     *token = nullptr;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Adds `path` to transaction in `token` if token belongs to
   /// filesystem that handles the path.
   Status AddToTransaction(const std::string& path, TransactionToken* token) {
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Get token for `path` or start a new transaction and add `path` to
@@ -373,18 +376,18 @@ class Env {
   Status GetTokenOrStartTransaction(const std::string& path,
                                     TransactionToken** token) {
     *token = nullptr;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Returns the transaction for `path` or nullptr in `token`
   Status GetTransactionForPath(const std::string& path,
                                TransactionToken** token) {
     *token = nullptr;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// \brief Finalizes the transaction
-  Status EndTransaction(TransactionToken* token) { return Status::OK(); }
+  Status EndTransaction(TransactionToken* token) { return OkStatus(); }
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
@@ -645,7 +648,7 @@ Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
 
 // The following approach to register filesystems is deprecated and will be
 // replaced with modular filesystem plugins registration.
-// TODO(mihaimaruseac): After all filesystems are converted, remove this.
+// TODO(b/139060984): After all filesystems are converted, remove this.
 namespace register_file_system {
 
 template <typename Factory>

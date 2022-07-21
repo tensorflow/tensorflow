@@ -1,0 +1,66 @@
+# RUN: tfg-translate --graphdef-to-mlir %s | FileCheck %s
+
+# CHECK: return
+# CHECK-SAME: %a.ctl
+
+library {
+  function {
+    signature {
+      name: "test"
+      input_arg {
+        name: "a"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "b"
+        type: DT_INT32
+      }
+      control_output: "const"
+      control_output: "a"
+    }
+    node_def {
+      name: "const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+          }
+        }
+      }
+    }
+    ret {
+      key: "b"
+      value: "const:output:0"
+    }
+    control_ret {
+      key: "a"
+      value: "a"
+    }
+    control_ret {
+      key: "const"
+      value: "const"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            shape {
+            }
+          }
+        }
+      }
+    }
+  }
+}

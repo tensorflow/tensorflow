@@ -222,95 +222,123 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   EXPECT_EQ(group_metadata_map.at(3).name, "1");
 }
 
-TEST(GroupEventsTest, GroupFunctionalOp) {
-  constexpr int64_t kStepNum = 123;
-  constexpr int64_t kStepId = 0;
-  constexpr int64_t kFunctionStepId = 1;
-
-  XSpace space;
-  XPlane* host_plane = GetOrCreateHostXPlane(&space);
-  XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.ReserveLines(2);
-
-  auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 200, {{StatType::kStepNum, kStepNum}});
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 190, {{StatType::kStepId, kStepId}});
-
-  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kExecutorStateProcess, 20, 80,
-               {{StatType::kStepId, kStepId}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kRemoteCallOp, 30, 70,
-               {{StatType::kFunctionStepId, kFunctionStepId}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kExecutorStateProcess, 100, 150,
-               {{StatType::kStepId, kFunctionStepId}});
-
-  GroupTfEvents(&space);
-  XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
-  // Check that RemoteCallOp is grouped correctly so that all events belong
-  // to the same group.
-  host_plane_visitor.ForEachLine(
-      [&](const tensorflow::profiler::XLineVisitor& line) {
-        line.ForEachEvent(
-            [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
-              if (absl::optional<XStatVisitor> stat =
-                      event.GetStat(StatType::kGroupId)) {
-                group_id = stat->IntValue();
-              }
-              EXPECT_TRUE(group_id.has_value());
-              EXPECT_EQ(*group_id, 0);
-            });
-      });
-}
-
 TEST(GroupEventsTest, EagerOpTest) {
-  constexpr int64_t kCorrelationId = 100;
-
   XSpace space;
   XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
   host_plane_builder.ReserveLines(1);
-
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  // Eagerly scheduled GPU kernel.
-  CreateXEvent(&host_plane_builder, &main_thread,
-               HostEventType::kEagerKernelExecute, 10, 100);
-  CreateXEvent(&host_plane_builder, &main_thread, "matmul", 10, 100,
-               {{StatType::kCorrelationId, kCorrelationId}});
-  // Eagerly executed CPU TF op.
-  CreateXEvent(&host_plane_builder, &main_thread,
-               HostEventType::kEagerKernelExecute, 120, 80);
-  CreateXEvent(&host_plane_builder, &main_thread, "add:Add", 120, 80);
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
   device_plane_builder.ReserveLines(1);
+  auto gpu_stream = device_plane_builder.GetOrCreateLine(0);
 
-  auto stream = device_plane_builder.GetOrCreateLine(0);
-  // Eagerly executed GPU kernel.
-  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
-               {{StatType::kCorrelationId, kCorrelationId}});
+  int64_t correlation_id = 100;
+  // TF1 ops are NOT scheduled under kEagerKernelExecute events, they should be
+  // considered NOT eager.
+  const char* kTF1GpuLaunchEvent = "tf1 matmul";
+  const char* kTF1GpuEvent = "tf1_kernel_matmul";
+  CreateXEvent(&host_plane_builder, &main_thread, kTF1GpuLaunchEvent, 10, 90,
+               {{StatType::kCorrelationId, correlation_id}});
+  CreateXEvent(&device_plane_builder, &gpu_stream, kTF1GpuEvent, 200, 300,
+               {{StatType::kCorrelationId, correlation_id}});
+  ++correlation_id;
+
+  // Eagerly scheduled GPU operator w/o is_func Xstat (legacy). The legacy trace
+  // will also fall into this case, due to the fact we changed the EagerExecute
+  // TraceMe format. We treat them as NOT eager
+  const char* kLegacyGpuLaunchEvent = "legacy matmul";
+  const char* kLegacyGpuEvent = "legacy_kernel_matmul";
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 100, 200);
+  CreateXEvent(&host_plane_builder, &main_thread, kLegacyGpuLaunchEvent, 110,
+               190, {{StatType::kCorrelationId, correlation_id}});
+  CreateXEvent(&device_plane_builder, &gpu_stream, kLegacyGpuEvent, 300, 400,
+               {{StatType::kCorrelationId, correlation_id}});
+  ++correlation_id;
+
+  // Eagerly scheduled GPU op with is_func Xstat.
+  const char* kEagerOpGpuLaunchEvent = "eager op matmul";
+  const char* kEagerOpGpuEvent = "eager_op_kernel_matmul";
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 200, 300,
+               {{StatType::kIsFunc, static_cast<int64_t>(0)}});
+  CreateXEvent(&host_plane_builder, &main_thread, kEagerOpGpuLaunchEvent, 210,
+               290, {{StatType::kCorrelationId, correlation_id}});
+  CreateXEvent(&device_plane_builder, &gpu_stream, kEagerOpGpuEvent, 400, 500,
+               {{StatType::kCorrelationId, correlation_id}});
+  ++correlation_id;
+
+  // Eagerly scheduled GPU func with is_func Xstat.
+  const char* kEagerFuncGpuLaunchEvent = "eager func matmul";
+  const char* kEagerFuncGpuEvent = "eager_func_kernel_matmul";
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 300, 400,
+               {{StatType::kIsFunc, static_cast<int64_t>(1)}});
+  CreateXEvent(&host_plane_builder, &main_thread, kEagerFuncGpuLaunchEvent, 310,
+               390, {{StatType::kCorrelationId, correlation_id}});
+  CreateXEvent(&device_plane_builder, &gpu_stream, kEagerFuncGpuEvent, 500, 600,
+               {{StatType::kCorrelationId, correlation_id}});
+  ++correlation_id;
+
+  // Eagerly executed CPU TF op.
+  const char* kEagerOpCpuEvent = "eager_op_cpu_kernel:Matmul";
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 400, 500,
+               {{StatType::kIsFunc, static_cast<int64_t>(0)}});
+  CreateXEvent(&host_plane_builder, &main_thread, kEagerOpCpuEvent, 410, 490);
+
+  // Eagerly executed CPU TF function.
+  const char* kEagerFuncCpuEvent = "eager_func_cpu_kernel:Matmul";
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kEagerKernelExecute, 500, 600,
+               {{StatType::kIsFunc, static_cast<int64_t>(1)}});
+  CreateXEvent(&host_plane_builder, &main_thread, kEagerFuncCpuEvent, 510, 590);
 
   GroupTfEvents(&space);
+
+  auto is_eager = [](const XEventVisitor& event) {
+    auto eager_stats = event.GetStat(StatType::kIsEager);
+    return eager_stats && eager_stats->IntValue();
+  };
+  // verify host ops.
   XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
-  const XEvent& eager_cpu_tf_op = host_plane->lines(0).events(3);
-  EXPECT_EQ(eager_cpu_tf_op.stats_size(), 1);
-  EXPECT_EQ(
-      host_plane_visitor.GetStatType(eager_cpu_tf_op.stats(0).metadata_id()),
-      StatType::kIsEager);
-  EXPECT_EQ(eager_cpu_tf_op.stats(0).int64_value(), 1);
+  int interested_events_encountered = 0;
+  host_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == kEagerOpCpuEvent) {
+        interested_events_encountered++;
+        EXPECT_TRUE(is_eager(event));
+      } else if (event.Name() == kEagerFuncCpuEvent) {
+        interested_events_encountered++;
+        EXPECT_FALSE(is_eager(event));
+      }
+    });
+  });
+  EXPECT_EQ(interested_events_encountered, 2);
+
+  // verify device ops.
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
-  const XEvent& eager_gpu_kernel = device_plane->lines(0).events(0);
-  EXPECT_EQ(eager_gpu_kernel.stats_size(), 2);
-  EXPECT_EQ(
-      device_plane_visitor.GetStatType(eager_gpu_kernel.stats(1).metadata_id()),
-      StatType::kIsEager);
-  EXPECT_EQ(eager_gpu_kernel.stats(1).int64_value(), 1);
+  interested_events_encountered = 0;
+  device_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == kTF1GpuEvent) {
+        interested_events_encountered++;
+        EXPECT_FALSE(is_eager(event));
+      } else if (event.Name() == kLegacyGpuEvent) {
+        interested_events_encountered++;
+        EXPECT_FALSE(is_eager(event));
+      } else if (event.Name() == kEagerOpGpuEvent) {
+        interested_events_encountered++;
+        EXPECT_TRUE(is_eager(event));
+      } else if (event.Name() == kEagerFuncGpuEvent) {
+        interested_events_encountered++;
+        EXPECT_FALSE(is_eager(event));
+      }
+    });
+  });
+  EXPECT_EQ(interested_events_encountered, 4);
 }
 
 TEST(GroupEventsTest, FunctionOpTest) {
@@ -393,7 +421,7 @@ TEST(GroupEventsTest, SemanticArgTest) {
         num_events += line.NumEvents();
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -434,7 +462,7 @@ TEST(GroupEventsTest, SemanticIntArgNoMatchTest) {
         num_events += line.NumEvents();
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -479,7 +507,7 @@ TEST(GroupEventsTest, SemanticUintArgNoMatchTest) {
         num_events += line.NumEvents();
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -518,7 +546,7 @@ TEST(GroupEventsTest, AsyncEventTest) {
         EXPECT_EQ(line.NumEvents(), 3);
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -571,7 +599,7 @@ TEST(GroupEventsTest, WorkerTest) {
         EXPECT_EQ(line.NumEvents(), 6);
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();
@@ -639,7 +667,7 @@ TEST(GroupEventsTest, BatchingSessionTest) {
       [&](const tensorflow::profiler::XLineVisitor& line) {
         line.ForEachEvent(
             [&](const tensorflow::profiler::XEventVisitor& event) {
-              absl::optional<int64> group_id;
+              absl::optional<int64_t> group_id;
               if (absl::optional<XStatVisitor> stat =
                       event.GetStat(StatType::kGroupId)) {
                 group_id = stat->IntValue();

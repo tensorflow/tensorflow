@@ -102,6 +102,13 @@ void TF_SetXlaAutoJitMode(const char* mode) {
   tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
 }
 
+unsigned char TF_GetXlaAutoJitEnabled() {
+  tensorflow::XlaAutoJitFlag flag =
+      tensorflow::GetMarkForCompilationPassFlags()->xla_auto_jit_flag;
+  return static_cast<unsigned char>(flag.optimization_level_single_gpu > 0 ||
+                                    flag.optimization_level_general > 0);
+}
+
 unsigned char TF_GetXlaConstantFoldingDisabled() {
   return static_cast<unsigned char>(
       tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding);
@@ -493,7 +500,7 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
 
-  status->status = tensorflow::Status::OK();
+  status->status = ::tensorflow::OkStatus();
   return tensorflow::wrap(tensorflow::TensorHandle::CreateLocalHandle(tensor));
 }
 

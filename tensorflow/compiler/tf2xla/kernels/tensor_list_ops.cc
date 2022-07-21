@@ -16,6 +16,7 @@ limitations under the License.
 // XLA TensorList operators.
 
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
@@ -63,6 +64,7 @@ StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
   std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
   // Set dynamic dimension size to 0 for initialization value.
   std::vector<xla::XlaOp> dynamic_dims;
+  dynamic_dims.reserve(1 + element_shape.dimensions_size());
   if (leading_dim_is_dynamic) {
     dynamic_dims.push_back(ctx->Input(1));
   } else {
@@ -80,7 +82,7 @@ StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
           xla::ConstantR0<int32>(ctx->builder(), dynamic_sizes[dim]));
     }
   }
-  list_dynamic_dims.push_back(dynamic_dims);
+  list_dynamic_dims.push_back(std::move(dynamic_dims));
   return list_dynamic_dims;
 }
 
@@ -116,19 +118,19 @@ Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
   bool is_compile_time_constant = is_compile_time_constant_or.ValueOrDie();
   if (!is_compile_time_constant) {
     *got_shape = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   PartialTensorShape partial_shape;
   TF_RETURN_IF_ERROR(ctx->ConstantInputAsPartialShape(0, &partial_shape));
   if (!partial_shape.IsFullyDefined()) {
     *got_shape = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *shape = xla::ShapeUtil::MakeShape(dtype, partial_shape.dim_sizes());
   *got_shape = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 class TensorListReserveOp : public XlaOpKernel {
@@ -318,7 +320,9 @@ class TensorListElementShapeOp : public XlaOpKernel {
         break;
       case DT_INT32: {
         std::vector<int32> size;
-        for (int64_t s : list_shape.dimensions()) {
+        const auto& dimensions = list_shape.dimensions();
+        size.reserve(dimensions.size());
+        for (int64_t s : dimensions) {
           size.push_back(s);
         }
         ctx->SetOutput(0, xla::ConstantR1<int32>(b, size));
@@ -487,7 +491,7 @@ class TensorListConcatOp : public XlaOpKernel {
     xla::XlaBuilder* b = input.builder();
     auto shape_or = b->GetShape(buffer);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    xla::Shape element_shape = shape_or.ConsumeValueOrDie();
+    xla::Shape element_shape = std::move(shape_or).value();
     std::vector<int64_t> element_dims =
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(
@@ -533,7 +537,7 @@ class TensorListSplitOp : public XlaOpKernel {
     xla::XlaBuilder* b = input_tensor.builder();
     auto shape_or = b->GetShape(input_tensor);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    xla::Shape element_shape = shape_or.ConsumeValueOrDie();
+    xla::Shape element_shape = std::move(shape_or).value();
     std::vector<int64_t> element_dims =
         xla::SpanToVector(element_shape.dimensions());
     OP_REQUIRES(

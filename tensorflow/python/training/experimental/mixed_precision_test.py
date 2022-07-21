@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -88,7 +84,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
                      .get('auto_mixed_precision', False))
 
   @test_util.run_in_graph_and_eager_modes()
-  def test_register_loss_scale_wrapper(self):
+  def test_register_loss_scale_wrapper_with_2_arguments(self):
     class MyOptimizer:
       pass
 
@@ -104,6 +100,33 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     opt = mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt, 123.)
     self.assertIsInstance(opt, MyLossScaleOptimizer)
     self.assertEqual(opt.loss_scale, 123.)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_register_loss_scale_wrapper_with_3_arguments(self):
+    class MyOptimizer:
+      pass
+
+    class MyLossScaleOptimizer(MyOptimizer):
+
+      def __init__(self, inner_optimizer, loss_scale):
+        self.inner_optimizer = inner_optimizer
+        self.loss_scale = loss_scale
+
+    is_called = False
+
+    def create_lso(inner_optimizer, loss_scale):
+      nonlocal is_called
+      is_called = True
+      return MyLossScaleOptimizer(inner_optimizer, loss_scale)
+
+    mixed_precision.register_loss_scale_wrapper(MyOptimizer,
+                                                create_lso,
+                                                MyLossScaleOptimizer)
+    opt = MyOptimizer()
+    opt = mixed_precision.enable_mixed_precision_graph_rewrite_v1(opt, 123.)
+    self.assertIsInstance(opt, MyLossScaleOptimizer)
+    self.assertEqual(opt.loss_scale, 123.)
+    self.assertTrue(is_called)
 
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes

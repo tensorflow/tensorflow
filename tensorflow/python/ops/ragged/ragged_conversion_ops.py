@@ -14,10 +14,6 @@
 # ==============================================================================
 """Ops to convert between RaggedTensors and other tensor types."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops

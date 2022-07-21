@@ -121,7 +121,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
   new_metadata->ParsePartialFromString(metadata_string);
   if (new_metadata->num_cores_per_replica() != 1) {
     // We do not support model parallelism yet.
-    return Status::OK();
+    return OkStatus();
   }
 
   execute_node_info->clear();
@@ -131,7 +131,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
     }
   }
   if (execute_node_info->empty()) {
-    return Status::OK();
+    return OkStatus();
   }
   TF_RET_CHECK(execute_node_info->size() == new_metadata->num_replicas())
       << "Number of replicas does not equal number of execute nodes: "
@@ -213,7 +213,7 @@ Status ExtractExecuteNodeInfo(const Node* compile_node, const Graph& graph,
     // We don't need to process anything if no input is added.
     execute_node_info->clear();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsTPUCompileOp(const Node& n) { return n.type_string() == "TPUCompile"; }
@@ -315,7 +315,7 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
   for (const auto out_edge : loop_switch_node->out_edges()) {
     if (out_edge->src_output() == 1) {
       *node_out = out_edge->dst();
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -330,13 +330,13 @@ Status GetOrCreateBeforeEachIterationNode(const Node& loop_cond_node,
       "TPUVariableReshard/before_iteration", "/_", internal::GetNodeId())));
 
   Status status;
-  Node* at_loop_iteration_node =
-      graph->AddNode(at_loop_iteration_nodedef, &status);
+  TF_ASSIGN_OR_RETURN(Node * at_loop_iteration_node,
+                      graph->AddNode(at_loop_iteration_nodedef));
   TF_RETURN_IF_ERROR(status);
 
   graph->AddEdge(loop_switch_node, 1, at_loop_iteration_node, 0);
   *node_out = at_loop_iteration_node;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Injects a NoOp node in that is executed after the very last iteration
@@ -380,9 +380,7 @@ Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
                     absl::StrCat(kColocationGroupPrefix, switch_node->name())},
                 &switch_exit);
 
-    Status status;
-    Node* after_switch_node = graph->AddNode(switch_exit, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * after_switch_node, graph->AddNode(switch_exit));
 
     graph->AddEdge(switch_node, 0, after_switch_node, 0);
     graph->AddControlEdge(after_switch_node, after_last_iteration_node);
@@ -395,7 +393,7 @@ Status AddNoOpAfterLastIteration(const Node& loop_cond_node, Graph* graph,
   }
 
   *node_out = after_last_iteration_node;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -416,7 +414,7 @@ Status DetectHostTrainingLoop(
                                     associated_functions.end());
   }
 
-  Status ret_status = Status::OK();
+  Status ret_status = OkStatus();
   for (const auto& function : associated_function_list) {
     if (function.type() != AssociatedFunctionInfo::kFunctionAttr) continue;
 
@@ -471,11 +469,11 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
     LOG(ERROR) << "Encountered error when trying to extract execute nodes, "
                   "skipping host loop optimization. Status: "
                << status.ToString();
-    return Status::OK();
+    return OkStatus();
   }
 
   if (execute_nodes_info.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Update the TPUCompileMetadata such that sharding config of the
@@ -525,7 +523,8 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   t.AsProtoTensorContent(
       (*default_sharding.mutable_attr())["value"].mutable_tensor());
 
-  Node* default_sharding_node = graph->AddNode(default_sharding, &status);
+  TF_ASSIGN_OR_RETURN(Node * default_sharding_node,
+                      graph->AddNode(default_sharding));
   TF_RETURN_IF_ERROR(status);
   // Add control edge between loop condition to make sure that
   // default_sharding_node node is inside the while loop frame.
@@ -536,8 +535,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   after_unshard.set_op("NoOp");
   after_unshard.set_name(graph->NewName(strings::StrCat(
       "TPUVariableReshard/last_iteration", "/_", internal::GetNodeId())));
-  auto after_unshard_node = graph->AddNode(after_unshard, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(auto after_unshard_node, graph->AddNode(after_unshard));
 
   for (auto info : execute_nodes_info) {
     auto execute_node = info.execute_node;
@@ -549,8 +547,8 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
     reshard_node_def.set_op("TPUReshardVariables");
     AddNodeAttr("N", static_cast<int>(info.var_inputs.size()),
                 &reshard_node_def);
-    Node* reshard_op_node = graph->AddNode(reshard_node_def, &status);
-    if (!status.ok()) return status;
+    TF_ASSIGN_OR_RETURN(Node * reshard_op_node,
+                        graph->AddNode(reshard_node_def));
 
     reshard_op_node->set_assigned_device_name(
         execute_node->assigned_device_name());
@@ -582,8 +580,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
         "TPUVariableReshard/reshard_state", "/_", internal::GetNodeId())));
     AddNodeAttr("dtype", DT_STRING, &var_handle_def);
     AddNodeAttr("shape", TensorShape({}), &var_handle_def);
-    Node* var_handle_node = graph->AddNode(var_handle_def, &status);
-    if (!status.ok()) return status;
+    TF_ASSIGN_OR_RETURN(Node * var_handle_node, graph->AddNode(var_handle_def));
 
     // Add control edge between `var_handle_def` node and while loop
     // loop condition so that `var_handle_def` is inside the same while loop
@@ -603,8 +600,8 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
     unshard_node_def.set_op("TPUReshardVariables");
     AddNodeAttr("N", static_cast<int>(info.var_inputs.size()),
                 &unshard_node_def);
-    Node* unshard_op_node = graph->AddNode(unshard_node_def, &status);
-    TF_RETURN_IF_ERROR(status);
+    TF_ASSIGN_OR_RETURN(Node * unshard_op_node,
+                        graph->AddNode(unshard_node_def));
 
     unshard_op_node->set_assigned_device_name(
         execute_node->assigned_device_name());
@@ -637,7 +634,7 @@ Status AddReshardOp(Graph* graph, const HostTrainingLoopInfo& host_loop_info) {
   for (auto exit : FindLoopExitNodes(*loop_condition_node)) {
     graph->AddControlEdge(after_unshard_node, exit);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tpu

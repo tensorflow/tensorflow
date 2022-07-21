@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 
+#include <string>
+
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
@@ -22,12 +24,11 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -62,19 +63,19 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
                                  StringRef(content.data(), content.size()));
 }
 
-inline TensorType GetInputType(FuncOp func, int idx) {
-  return func.getType().getInput(idx).dyn_cast_or_null<TensorType>();
+inline TensorType GetInputType(func::FuncOp func, int idx) {
+  return func.getFunctionType().getInput(idx).dyn_cast_or_null<TensorType>();
 }
 
-inline TensorType GetResultType(FuncOp func, int idx) {
-  return func.getType().getResult(idx).dyn_cast_or_null<TensorType>();
+inline TensorType GetResultType(func::FuncOp func, int idx) {
+  return func.getFunctionType().getResult(idx).dyn_cast_or_null<TensorType>();
 }
 
 inline bool RankEquals(const TensorType& type, int rank) {
   return type && type.hasRank() && type.getRank() == rank;
 }
 
-LogicalResult VerifyWhitespaceTokenizer(FuncOp func) {
+LogicalResult VerifyWhitespaceTokenizer(func::FuncOp func) {
   // In the case of input tensor with 0 rank.
   // Whitespace tokenizer generates 1 output:
   // * String tensor for tokens.
@@ -129,7 +130,7 @@ LogicalResult VerifyWhitespaceTokenizer(FuncOp func) {
   return success();
 }
 
-LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
+LogicalResult ConvertWhitespaceTokenizer(func::FuncOp func, llvm::StringRef api,
                                          FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
@@ -137,24 +138,25 @@ LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
   OpBuilder builder(func.getBody());
   std::string empty_option_buffer;
   auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
-      CustomOption(&builder, empty_option_buffer));
-  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
+      api, CustomOption(&builder, empty_option_buffer));
+  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 
-LogicalResult VerifyNgrams(FuncOp func) {
+LogicalResult VerifyNgrams(func::FuncOp func) {
   // The inputs and outputs should be the same:
   // * A string tensor for tokens/ragged tensor values.
   // * Zero or more row_split tensors.
   constexpr int kValues = 0;
   constexpr int kRowSplits = 1;
 
-  if (func.getType().getInputs().size() != func.getType().getResults().size()) {
+  if (func.getFunctionType().getInputs().size() !=
+      func.getFunctionType().getResults().size()) {
     return func.emitError() << "Mismatched number of inputs and outputs.";
   }
 
-  int row_splits = func.getType().getInputs().size() - kRowSplits;
+  int row_splits = func.getFunctionType().getInputs().size() - kRowSplits;
   if (row_splits == 0) {
     auto input_values = GetInputType(func, kValues);
     if (!input_values || !input_values.getElementType().isa<StringType>()) {
@@ -206,7 +208,7 @@ LogicalResult VerifyNgrams(FuncOp func) {
   return success();
 }
 
-LogicalResult CreateNgramsCustomOption(FuncOp func, DictionaryAttr attrs,
+LogicalResult CreateNgramsCustomOption(func::FuncOp func, DictionaryAttr attrs,
                                        std::string& custom_option_buffer) {
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
@@ -253,7 +255,8 @@ LogicalResult CreateNgramsCustomOption(FuncOp func, DictionaryAttr attrs,
   return success();
 }
 
-LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
+LogicalResult ConvertNgrams(func::FuncOp func, llvm::StringRef api,
+                            FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
   func->setAttr(kTFImplements, attr);
@@ -264,15 +267,15 @@ LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
     return failure();
   }
   auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
-      CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
+      api, CustomOption(&builder, custom_option_buffer));
+  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 
-LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
-  if (func.getType().getNumInputs() != 2 ||
-      func.getType().getNumResults() != 1) {
+LogicalResult VerifySgnnProjection(func::FuncOp func, FuncAttr attr) {
+  if (func.getFunctionType().getNumInputs() != 2 ||
+      func.getFunctionType().getNumResults() != 1) {
     return func.emitError() << "Mismatched number of inputs and outputs.";
   }
   auto values_type = GetInputType(func, 0);
@@ -310,7 +313,8 @@ LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
 }
 
 LogicalResult CreateSgnnProjectionCustomOption(
-    FuncOp func, DictionaryAttr attrs, std::string& custom_option_buffer) {
+    func::FuncOp func, DictionaryAttr attrs,
+    std::string& custom_option_buffer) {
   flexbuffers::Builder fbb;
   size_t start_map = fbb.StartMap();
 
@@ -331,7 +335,7 @@ LogicalResult CreateSgnnProjectionCustomOption(
   return success();
 }
 
-LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
+LogicalResult ConvertSgnnProjection(func::FuncOp func, llvm::StringRef api,
                                     FuncAttr attr) {
   // See more details in tensorflow_models/sequence_projection/sgnn/sgnn.py
   func.eraseBody();
@@ -344,14 +348,14 @@ LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
     return failure();
   }
   auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
-      CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
+      api, CustomOption(&builder, custom_option_buffer));
+  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 }  // namespace
 
-LogicalResult ConvertTFTextAPI(FuncOp func, llvm::StringRef api,
+LogicalResult ConvertTFTextAPI(func::FuncOp func, llvm::StringRef api,
                                FuncAttr attr) {
   if (api.str() == kWhitespaceTokenizer) {
     if (succeeded(VerifyWhitespaceTokenizer(func))) {

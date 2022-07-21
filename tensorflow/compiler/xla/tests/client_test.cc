@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -43,8 +42,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
   std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
   for (const std::vector<int64_t>& execute_layout : layouts) {
     for (const std::vector<int64_t>& transfer_layout : layouts) {
-      Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
-          ConstantR2<int32>(&b, {{10, 20}, {30, 40}}));
+      Add(ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
+          ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}}));
       TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
       ExecutionOptions execution_options = execution_options_;
@@ -56,7 +55,7 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
           std::unique_ptr<GlobalData> data,
           client_->Execute(computation, {}, &execution_options));
 
-      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32>(
+      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32_t>(
           {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
       TF_ASSERT_OK_AND_ASSIGN(
@@ -72,8 +71,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
 XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   XlaBuilder b(TestName());
 
-  Tuple(&b, {ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
-             ConstantR2<int32>(&b, {{10, 20}, {30, 40}})});
+  Tuple(&b, {ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
+             ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}})});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
@@ -91,10 +90,10 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
       client_->ExecuteAndTransfer(computation, {}, &execution_options));
-  LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
-                                        LiteralSlice(result, {0}));
-  LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
-                                        LiteralSlice(result, {1}));
+  LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2}, {3, 4}},
+                                          LiteralSlice(result, {0}));
+  LiteralTestUtil::ExpectR2Equal<int32_t>({{10, 20}, {30, 40}},
+                                          LiteralSlice(result, {1}));
 
   EXPECT_TRUE(result.shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.shape()));
@@ -116,13 +115,14 @@ XLA_TEST_F(ClientTest,
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> const_arg,
-                          client_->TransferToServer(
-                              LiteralUtil::CreateR2<int32>({{5, 6}, {7, 8}})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> const_arg,
+      client_->TransferToServer(
+          LiteralUtil::CreateR2<int32_t>({{5, 6}, {7, 8}})));
 
   XlaBuilder b(TestName() + ".add");
   Add(Parameter(&b, 0, shape, "param_0"),
-      ConstantR2<int32>(&b, {{1, 2}, {3, 4}}));
+      ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}));
   TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
 
   // We can't really test parallel execution on CPU since all of the cores in a
@@ -140,7 +140,7 @@ XLA_TEST_F(ClientTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           client_->ExecuteParallel(computation_instances));
-  auto expected_result = LiteralUtil::CreateR2<int32>({{6, 8}, {10, 12}});
+  auto expected_result = LiteralUtil::CreateR2<int32_t>({{6, 8}, {10, 12}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_literal,

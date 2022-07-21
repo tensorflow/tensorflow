@@ -21,7 +21,7 @@ Sentencepiece tokenizations outside the TFLite model.
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Bert Models created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -48,8 +48,8 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
+    // Import the Task Text Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
 }
 ```
 
@@ -61,7 +61,12 @@ anymore.
 
 ```java
 // Initialization
-BertNLClassifier classifier = BertNLClassifier.createFromFile(context, modelFile);
+BertNLClassifierOptions options =
+    BertNLClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().setNumThreads(4).build())
+        .build();
+BertNLClassifier classifier =
+    BertNLClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Category> results = classifier.classify(input);
@@ -112,13 +117,13 @@ std::vector<core::Category> categories = classifier->Classify(kInput);
 ```
 
 See the
-[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/nlclassifier/bert_nl_classifier.h)
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_nl_classifier.h)
 for more details.
 
 ## Example results
 
 Here is an example of the classification results of movie reviews using the
-[MobileBert](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification)
+[MobileBert](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification)
 model from Model Maker.
 
 Input: "it's a charming and often affecting journey"
@@ -137,7 +142,7 @@ with your own model and test data.
 ## Model compatibility requirements
 
 The `BetNLClassifier` API expects a TFLite model with mandatory
-[TFLite Model Metadata](../../convert/metadata.md).
+[TFLite Model Metadata](../../models/convert/metadata.md).
 
 The Metadata should meet the following requirements:
 

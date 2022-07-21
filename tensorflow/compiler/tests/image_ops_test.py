@@ -14,18 +14,12 @@
 # ==============================================================================
 """Tests for image ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import colorsys
 import math
 import os
 
 from absl.testing import parameterized
 import numpy as np
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
@@ -231,7 +225,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     x_v = x_np.reshape([-1, 3])
     y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
     channel_count = x_v.shape[0]
-    for i in xrange(channel_count):
+    for i in range(channel_count):
       r = x_v[i][0]
       g = x_v[i][1]
       b = x_v[i][2]
@@ -351,7 +345,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     x_v = x_np.reshape([-1, 3])
     y_v = np.ndarray(x_v.shape, dtype=x_v.dtype)
     channel_count = x_v.shape[0]
-    for i in xrange(channel_count):
+    for i in range(channel_count):
       r = x_v[i][0]
       g = x_v[i][1]
       b = x_v[i][2]
@@ -545,6 +539,121 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
                            [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
                            [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
                           dtype=np.uint8))
+
+
+class ResizeNearestNeighborNonAlignCornersTest(xla_test.XLATestCase):
+
+  def _assertForwardOpMatchesExpected(self,
+                                      image_np,
+                                      target_shape,
+                                      expected=None,
+                                      large_tolerance=False,
+                                      align_corners=False,
+                                      half_pixel_centers=True):
+    if expected is None:
+      self.fail("expected must be specified")
+    with self.session() as sess, self.test_scope():
+      image = array_ops.placeholder(image_np.dtype)
+      resized = gen_image_ops.resize_nearest_neighbor(
+          image,
+          target_shape,
+          align_corners=align_corners,
+          half_pixel_centers=half_pixel_centers)
+      out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=2e-4, atol=2e-4)
+      else:
+        self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+
+  def testNonAlignCorners1x1To2x2(self):
+    input_data = [[64]]
+    expected_data = [[64, 64], [64, 64]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [2, 2],
+          expected=np.array(expected_data, dtype=np.float32))
+
+  def testNonAlignCorners2x2To1x1(self):
+    input_data = [[64, 32], [8, 16]]
+    expected_data = [[16]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [1, 1],
+          expected=np.array(expected_data, dtype=np.float32))
+
+  def testNonAlignCorners3x3To2x2(self):
+    input_data = [[64, 32, 128], [4, 8, 16]]
+    expected_data = [[64, 128], [4, 16]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [2, 2],
+          expected=np.array(expected_data, dtype=np.float32))
+
+  def testNonAlignCorners2x2To3x3(self):
+    input_data = [[64, 32], [8, 16]]
+    expected_data = [[64.0, 32.0, 32.0], [8.0, 16.0, 16.0], [8.0, 16.0, 16.0]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [3, 3],
+          expected=np.array(expected_data, dtype=np.float32))
+
+  def testNonAlignCorners2x2To4x4(self):
+    input_data = [[64, 32], [8, 16]]
+    expected_data = [[64.0, 64.0, 32.0, 32.0], [64.0, 64.0, 32.0, 32.0],
+                     [8.0, 8.0, 16.0, 16.0], [8.0, 8.0, 16.0, 16.0]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [4, 4],
+          expected=np.array(expected_data, dtype=np.float32))
+
+  def testNonAlignCorners3x2To5x3(self):
+    input_data = [[64, 32], [8, 16], [50, 100]]
+    expected_data = [[64.0, 32.0, 32.0], [64.0, 32.0, 32.0], [8.0, 16.0, 16.0],
+                     [50.0, 100.0, 100.0], [50.0, 100.0, 100.0]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [5, 3],
+          expected=np.array(expected_data, dtype=np.float32))
+
+  def testNonAlignCornersNonHalfPixelCorners2x2To1x1(self):
+    input_data = [[64, 32], [8, 16]]
+    expected_data = [[64]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [1, 1],
+          expected=np.array(expected_data, dtype=np.float32),
+          half_pixel_centers=False)
+
+  def testNonAlignCornersNonHalfPixelCorners3x2To5x3(self):
+    input_data = [[64, 32], [8, 16], [50, 100]]
+    expected_data = [[64.0, 64.0, 32.0], [64.0, 64.0, 32.0], [8.0, 8.0, 16.0],
+                     [8.0, 8.0, 16.0], [50.0, 50.0, 100.0]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [5, 3],
+          expected=np.array(expected_data, dtype=np.float32),
+          half_pixel_centers=False)
+
+  def testNonAlignCorners3x2To6x4Batch2(self):
+    input_data = [[[64, 32], [32, 64], [50, 100]], [[32, 16], [16, 32],
+                                                    [25, 50]]]
+    expected_data = [[[64.0, 64.0, 32.0, 32.0], [64.0, 64.0, 32.0, 32.0],
+                      [32.0, 32.0, 64.0, 64.0], [32.0, 32.0, 64.0, 64.0],
+                      [50.0, 50.0, 100.0, 100.0], [50.0, 50.0, 100.0, 100.0]],
+                     [[32.0, 32.0, 16.0, 16.0], [32.0, 32.0, 16.0, 16.0],
+                      [16.0, 16.0, 32.0, 32.0], [16.0, 16.0, 32.0, 32.0],
+                      [25.0, 25.0, 50.0, 50.0], [25.0, 25.0, 50.0, 50.0]]]
+
+    for dtype in self.float_types:
+      input_image = np.array(input_data, dtype=dtype)
+      expected = np.array(expected_data, dtype=dtype)
+      with self.session() as sess, self.test_scope():
+        image = array_ops.placeholder(input_image.dtype)
+        resized = gen_image_ops.resize_nearest_neighbor(
+            image, [6, 4], align_corners=False, half_pixel_centers=True)
+        out = sess.run(resized, {image: input_image[:, :, :, np.newaxis]})
+        self.assertAllClose(expected[:, :, :, np.newaxis], out)
 
 
 class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
@@ -772,6 +881,37 @@ class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
 
 
 class NonMaxSuppressionTest(xla_test.XLATestCase):
+
+  def testNMSV3(self):
+    boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+
+    scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    scores_np = np.array(scores_data, dtype=np.float32)
+    max_output_size = 6
+    iou_threshold_np = np.array(0.5, dtype=np.float32)
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                            iou_threshold_np.shape)
+      with self.test_scope():
+        selected_indices = image_ops.non_max_suppression_v3(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=float("-inf"))
+      inputs_feed = {
+          boxes: boxes_np,
+          scores: scores_np,
+          iou_threshold: iou_threshold_np
+      }
+      (indices_tf) = sess.run(selected_indices, feed_dict=inputs_feed)
+
+      self.assertEqual(indices_tf.size, 3)
+      self.assertAllClose(indices_tf[:3], [3, 0, 5])
 
   def testNMS128From1024(self):
     num_boxes = 1024

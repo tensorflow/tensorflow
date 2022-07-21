@@ -32,13 +32,13 @@ namespace toco {
   const auto concat_it = model->operators.begin() + op_index;
   auto* concat_op = concat_it->get();
   if (concat_op->type != OperatorType::kConcatenation) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (concat_op->inputs.size() != 1) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

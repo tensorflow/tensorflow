@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/service/gpu/precompiled_kernels.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -32,11 +33,14 @@ namespace gpu {
 
 TriangularSolveThunk::TriangularSolveThunk(
     ThunkInfo thunk_info, const TriangularSolveOptions& options,
+    se::GpuAsmOpts asm_opts,  //
     const BufferAllocation::Slice& a_buffer,
-    const BufferAllocation::Slice& b_buffer, PrimitiveType type,
-    int64_t batch_size, int64_t m, int64_t n, int64_t a_batch_stride,
-    int64_t b_batch_stride)
+    const BufferAllocation::Slice& b_buffer,
+    const BufferAllocation::Slice& temp_buffer,  //
+    PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
+    int64_t a_batch_stride, int64_t b_batch_stride)
     : Thunk(Kind::kTriangularSolve, thunk_info),
+      asm_opts_(asm_opts),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
       side_(options.left_side() ? se::blas::Side::kLeft
@@ -45,6 +49,7 @@ TriangularSolveThunk::TriangularSolveThunk(
                                              : se::blas::Diagonal::kNonUnit),
       a_buffer_(a_buffer),
       b_buffer_(b_buffer),
+      temp_buffer_(temp_buffer),
       type_(type),
       batch_size_(batch_size),
       m_(m),
@@ -68,58 +73,65 @@ TriangularSolveThunk::TriangularSolveThunk(
 }
 
 Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
+  return RunTriangulatSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
+                            buffer_allocations.GetDeviceAddress(b_buffer_),
+                            buffer_allocations.GetDeviceAddress(temp_buffer_),
+                            asm_opts_, uplo_, side_, unit_diagonal_,
+                            transpose_a_, type_, batch_size_, m_, n_,
+                            a_batch_stride_, b_batch_stride_, params.stream);
+}
 
-  VLOG(3) << "uplo=" << se::blas::UpperLowerString(uplo_)
-          << " side=" << se::blas::SideString(side_)
-          << " diagonal=" << se::blas::DiagonalString(unit_diagonal_)
-          << " batch_size=" << batch_size_ << " m=" << m_ << " n=" << n_
-          << " a_batch_stride=" << a_batch_stride_
-          << " b_batch_stride=" << b_batch_stride_;
+Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
+                          se::DeviceMemoryBase b_data,
+                          se::DeviceMemoryBase temp_data,
+                          se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,
+                          se::blas::Side side, se::blas::Diagonal unit_diagonal,
+                          se::blas::Transpose transpose_a, PrimitiveType type,
+                          int64_t batch_size, int64_t m, int64_t n,
+                          int64_t a_batch_stride, int64_t b_batch_stride,
+                          se::Stream* stream) {
+  VLOG(3) << "uplo=" << se::blas::UpperLowerString(uplo)
+          << " side=" << se::blas::SideString(side)
+          << " diagonal=" << se::blas::DiagonalString(unit_diagonal)
+          << " batch_size=" << batch_size << " m=" << m << " n=" << n
+          << " a_batch_stride=" << a_batch_stride
+          << " b_batch_stride=" << b_batch_stride;
 
-  const int lda = side_ == se::blas::Side::kLeft ? m_ : n_;
-  const int ldb = m_;
+  const int lda = side == se::blas::Side::kLeft ? m : n;
+  const int ldb = m;
 
-  char* a_base = static_cast<char*>(
-      buffer_allocations.GetDeviceAddress(a_buffer_).opaque());
-  char* b_base = static_cast<char*>(
-      buffer_allocations.GetDeviceAddress(b_buffer_).opaque());
-  for (int64_t i = 0; i < batch_size_; ++i) {
-    bool launch_ok;
-    se::DeviceMemoryBase a_data =
-        se::DeviceMemoryBase(a_base + i * a_batch_stride_, a_batch_stride_);
-    se::DeviceMemoryBase b_data =
-        se::DeviceMemoryBase(b_base + i * b_batch_stride_, b_batch_stride_);
-    switch (type_) {
+  bool launch_ok;
+  if (batch_size == 1) {
+    switch (type) {
       case F32: {
         se::DeviceMemory<float> b_data_typed(b_data);
-        launch_ok = stream
-                        .ThenBlasTrsm(side_, uplo_, transpose_a_,
-                                      unit_diagonal_, m_, n_, /*alpha=*/1.0f,
-                                      se::DeviceMemory<float>(a_data), lda,
-                                      &b_data_typed, ldb)
-                        .ok();
+        launch_ok =
+            stream
+                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
+                               /*alpha=*/1.0f, se::DeviceMemory<float>(a_data),
+                               lda, &b_data_typed, ldb)
+                .ok();
         break;
       }
       case F64: {
         se::DeviceMemory<double> b_data_typed(b_data);
-        launch_ok = stream
-                        .ThenBlasTrsm(side_, uplo_, transpose_a_,
-                                      unit_diagonal_, m_, n_, /*alpha=*/1.0,
-                                      se::DeviceMemory<double>(a_data), lda,
-                                      &b_data_typed, ldb)
-                        .ok();
+        launch_ok =
+            stream
+                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
+                               /*alpha=*/1.0, se::DeviceMemory<double>(a_data),
+                               lda, &b_data_typed, ldb)
+                .ok();
         break;
       }
       case C64: {
         se::DeviceMemory<std::complex<float>> b_data_typed(b_data);
         launch_ok =
             stream
-                .ThenBlasTrsm(side_, uplo_, transpose_a_, unit_diagonal_, m_,
-                              n_, /*alpha=*/1.0f,
-                              se::DeviceMemory<std::complex<float>>(a_data),
-                              lda, &b_data_typed, ldb)
+                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
+                               /*alpha=*/1.0f,
+                               se::DeviceMemory<std::complex<float>>(a_data),
+                               lda, &b_data_typed, ldb)
                 .ok();
         break;
       }
@@ -127,22 +139,87 @@ Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
         se::DeviceMemory<std::complex<double>> b_data_typed(b_data);
         launch_ok =
             stream
-                .ThenBlasTrsm(side_, uplo_, transpose_a_, unit_diagonal_, m_,
-                              n_, /*alpha=*/1.0,
-                              se::DeviceMemory<std::complex<double>>(a_data),
-                              lda, &b_data_typed, ldb)
+                ->ThenBlasTrsm(side, uplo, transpose_a, unit_diagonal, m, n,
+                               /*alpha=*/1.0,
+                               se::DeviceMemory<std::complex<double>>(a_data),
+                               lda, &b_data_typed, ldb)
                 .ok();
         break;
       }
       default:
-        return InvalidArgument("Invalid type for triangular solve %d", type_);
+        return InvalidArgument("Invalid type for triangular solve %d", type);
     }
-    if (!launch_ok) {
-      return InternalError("Unable to launch triangular solve for thunk %p",
-                           this);
+  } else {
+    // cublas trsmBatched requires us to materialize out two arrays of
+    // batch_size_ pointers, pointing to the individual `a` and `b` matrices of
+    // our input.  batch_pointers_bytes is the size in bytes of one of these
+    // arrays.
+    int64_t batch_pointers_bytes = sizeof(void*) * batch_size;
+    TF_RET_CHECK(temp_data.size() >= 2 * batch_pointers_bytes);
+    void** temp_base = reinterpret_cast<void**>(temp_data.opaque());
+    se::DeviceMemoryBase a_pointers(temp_base, batch_pointers_bytes);
+    se::DeviceMemoryBase b_pointers(temp_base + batch_size,
+                                    batch_pointers_bytes);
+
+    TF_RETURN_IF_ERROR(MakeBatchPointers(
+        stream, asm_opts, a_data, a_batch_stride, batch_size, a_pointers));
+    TF_RETURN_IF_ERROR(MakeBatchPointers(
+        stream, asm_opts, b_data, b_batch_stride, batch_size, b_pointers));
+
+    switch (type) {
+      case F32: {
+        se::DeviceMemory<float*> typed_b_pointers(b_pointers);
+        launch_ok =
+            stream
+                ->ThenBlasTrsmBatched(side, uplo, transpose_a, unit_diagonal, m,
+                                      n, /*alpha=*/1.0f,
+                                      se::DeviceMemory<float*>(a_pointers), lda,
+                                      &typed_b_pointers, ldb, batch_size)
+                .ok();
+        break;
+      }
+      case F64: {
+        se::DeviceMemory<double*> typed_b_pointers(b_pointers);
+        launch_ok =
+            stream
+                ->ThenBlasTrsmBatched(side, uplo, transpose_a, unit_diagonal, m,
+                                      n, /*alpha=*/1.0f,
+                                      se::DeviceMemory<double*>(a_pointers),
+                                      lda, &typed_b_pointers, ldb, batch_size)
+                .ok();
+        break;
+      }
+      case C64: {
+        se::DeviceMemory<std::complex<float>*> typed_b_pointers(b_pointers);
+        launch_ok = stream
+                        ->ThenBlasTrsmBatched(
+                            side, uplo, transpose_a, unit_diagonal, m, n,
+                            /*alpha=*/1.0f,
+                            se::DeviceMemory<std::complex<float>*>(a_pointers),
+                            lda, &typed_b_pointers, ldb, batch_size)
+                        .ok();
+        break;
+      }
+      case C128: {
+        se::DeviceMemory<std::complex<double>*> typed_b_pointers(b_pointers);
+        launch_ok = stream
+                        ->ThenBlasTrsmBatched(
+                            side, uplo, transpose_a, unit_diagonal, m, n,
+                            /*alpha=*/1.0f,
+                            se::DeviceMemory<std::complex<double>*>(a_pointers),
+                            lda, &typed_b_pointers, ldb, batch_size)
+                        .ok();
+        break;
+      }
+      default:
+        return InvalidArgument("Invalid type for triangular solve %d", type);
     }
   }
-  return Status::OK();
+
+  if (!launch_ok) {
+    return InternalError("Unable to launch triangular solve");
+  }
+  return OkStatus();
 }
 
 }  // namespace gpu

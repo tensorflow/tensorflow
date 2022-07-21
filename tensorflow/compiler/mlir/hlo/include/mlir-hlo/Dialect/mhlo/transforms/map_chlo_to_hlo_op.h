@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_MHLO_OP_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_MHLO_OP_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
+#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
 
 #include <type_traits>
 
@@ -27,20 +27,20 @@ namespace chlo {
 
 template <typename FromOpTy, typename ToOpTy>
 struct HloNaryElementwiseAdaptor {
-  static ToOpTy CreateOp(FromOpTy from_op, Type result_type,
-                         ValueRange broadcasted_operands, OpBuilder &builder) {
-    return builder.create<ToOpTy>(from_op.getLoc(), result_type,
-                                  broadcasted_operands);
+  static ToOpTy createOp(FromOpTy fromOp, Type resultType,
+                         ValueRange broadcastedOperands, OpBuilder &builder) {
+    return builder.create<ToOpTy>(fromOp.getLoc(), resultType,
+                                  broadcastedOperands);
   }
 };
 struct HloCompareAdaptor {
-  static mhlo::CompareOp CreateOp(BroadcastCompareOp from_op, Type result_type,
-                                  ValueRange broadcasted_operands,
+  static mhlo::CompareOp createOp(BroadcastCompareOp fromOp, Type resultType,
+                                  ValueRange broadcastedOperands,
                                   OpBuilder &builder) {
     return builder.create<mhlo::CompareOp>(
-        from_op.getLoc(), result_type, broadcasted_operands[0],
-        broadcasted_operands[1], from_op.comparison_direction(),
-        from_op.compare_typeAttr());
+        fromOp.getLoc(), resultType, broadcastedOperands[0],
+        broadcastedOperands[1], fromOp.comparison_direction(),
+        fromOp.compare_typeAttr());
   }
 };
 
@@ -48,13 +48,13 @@ struct HloCompareAdaptor {
 // to take a ChloOpTy, NonBroadcastingOpTy, and an Adaptor as templated values.
 template <template <typename, typename, typename> class Pattern,
           typename... ConstructorArgs>
-void PopulateForBroadcastingBinaryOp(MLIRContext *context,
-                                     OwningRewritePatternList *patterns,
+void populateForBroadcastingBinaryOp(MLIRContext *context,
+                                     RewritePatternSet *patterns,
                                      ConstructorArgs &&...args) {
-#define POPULATE_BCAST(ChloOp, HloOp)                                    \
-  patterns->insert<                                                      \
-      Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
-      context, args...);
+#define POPULATE_BCAST(ChloOp, HloOp)                                          \
+  patterns                                                                     \
+      ->add<Pattern<ChloOp, HloOp, HloNaryElementwiseAdaptor<ChloOp, HloOp>>>( \
+          context, args...);
 
   POPULATE_BCAST(BroadcastAddOp, mhlo::AddOp);
   POPULATE_BCAST(BroadcastAndOp, mhlo::AndOp);
@@ -72,7 +72,7 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
   POPULATE_BCAST(BroadcastShiftLeftOp, mhlo::ShiftLeftOp);
   POPULATE_BCAST(BroadcastShiftRightArithmeticOp, mhlo::ShiftRightArithmeticOp);
   POPULATE_BCAST(BroadcastShiftRightLogicalOp, mhlo::ShiftRightLogicalOp);
-  POPULATE_BCAST(BroadcastSubOp, mhlo::SubOp);
+  POPULATE_BCAST(BroadcastSubOp, mhlo::SubtractOp);
   POPULATE_BCAST(BroadcastXorOp, mhlo::XorOp);
   POPULATE_BCAST(BroadcastZetaOp, ZetaOp);
 
@@ -87,4 +87,4 @@ void PopulateForBroadcastingBinaryOp(MLIRContext *context,
 }  // namespace chlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H

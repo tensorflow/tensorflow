@@ -20,12 +20,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/profiler/lib/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_lock.h"
+#endif
 
 namespace tensorflow {
 
@@ -46,7 +51,7 @@ class ProfilerSession {
     options.set_host_tracer_level(2);
     options.set_device_type(ProfileOptions::UNSPECIFIED);
     options.set_python_tracer_level(0);
-    options.set_enable_hlo_proto(false);
+    options.set_enable_hlo_proto(true);
     options.set_include_dataset_ops(true);
     return options;
   }
@@ -70,19 +75,19 @@ class ProfilerSession {
   ProfilerSession(const ProfilerSession&) = delete;
   ProfilerSession& operator=(const ProfilerSession&) = delete;
 
+#if !defined(IS_MOBILE_PLATFORM)
   // Collects profile data into XSpace without post-processsing.
   tensorflow::Status CollectDataInternal(profiler::XSpace* space);
 
-  std::vector<std::unique_ptr<profiler::ProfilerInterface>> profilers_
-      TF_GUARDED_BY(mutex_);
+  profiler::ProfilerLock profiler_lock_ TF_GUARDED_BY(mutex_);
 
-  // True if the session is active.
-  bool active_ TF_GUARDED_BY(mutex_);
+  std::unique_ptr<profiler::ProfilerInterface> profilers_ TF_GUARDED_BY(mutex_);
 
-  tensorflow::Status status_ TF_GUARDED_BY(mutex_);
   uint64 start_time_ns_;
-  mutex mutex_;
   ProfileOptions options_;
+#endif
+  tensorflow::Status status_ TF_GUARDED_BY(mutex_);
+  mutex mutex_;
 };
 
 }  // namespace tensorflow

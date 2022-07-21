@@ -880,7 +880,7 @@ TEST_P(BidirectionalRNNOpTest, ClosedBoxTest) {
   rnn.SetInput(0, batch_start, batch_end);
   rnn.SetInput(input_sequence_size, batch_start, batch_end);
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   float* golden_fw_start = rnn_golden_fw_output;
   float* golden_fw_end =
@@ -933,7 +933,7 @@ TEST_P(BidirectionalRNNOpTest, ClosedBoxTestTimeMajor) {
     rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> fw_expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {
@@ -975,7 +975,7 @@ TEST_P(BidirectionalRNNOpTest, ClosedBoxTestMergeOutputs) {
   rnn.SetInput(0, batch_start, batch_end);
   rnn.SetInput(input_sequence_size, batch_start, batch_end);
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> merged_expected;
   for (int bid = 0; bid < rnn.num_batches(); bid++) {
@@ -1021,7 +1021,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestTimeMajorMergeOutputs) {
     rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> merged_expected;
   for (int step = 0; step < rnn.sequence_len(); step++) {
@@ -1067,7 +1067,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestReverseInputs) {
                  batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   // The forward and backward outputs are swapped.
   std::vector<float> fw_expected;  // consider using std::deque instead.
@@ -1132,7 +1132,7 @@ TEST(BidirectionalRNNOpTest, EndToEndTest) {
     float* batch_end = batch_start + input_sequence_size;
     rnn.SetInput(0, batch_start, batch_end);
 
-    rnn.Invoke();
+    ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
     std::vector<float> fw_output = rnn.GetFwOutput();
     std::vector<float> bw_output = rnn.GetBwOutput();
@@ -1195,7 +1195,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestNoCrossLinkingRegularAndAuxInput) {
     rnn.SetAuxInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> fw_expected;
   std::vector<float> bw_expected;
@@ -1249,7 +1249,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestNoCrossLinkingRegularInputOnly) {
                     &bw_inputs[bw_inputs.size() - 1]);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> fw_expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {
@@ -1297,7 +1297,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestNoCrossLinkingAuxInputOnly) {
                  &fw_inputs[fw_inputs.size() - 1]);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> bw_expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {
@@ -1339,7 +1339,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestCrossLinkingAuxInputOnly) {
                zero_input.data() + zero_input.size());
   rnn.SetAuxInput(input_sequence_size, batch_start, batch_end);
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   float* golden_fw_start = rnn_golden_fw_output;
   float* golden_fw_end =
@@ -1396,7 +1396,7 @@ TEST(BidirectionalRNNOpTest, ClosedBoxTestCrossLinkingAuxInputOnlyTimeMajor) {
     rnn.SetAuxInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   std::vector<float> fw_expected;
   for (int i = 0; i < rnn.sequence_len(); i++) {
@@ -1478,7 +1478,7 @@ void run_closedbox_test_with_input_split(int input_size, int aux_input_size) {
     }
   }
 
-  rnn.Invoke();
+  ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
   float* golden_fw_start = rnn_golden_fw_output;
   float* golden_fw_end =

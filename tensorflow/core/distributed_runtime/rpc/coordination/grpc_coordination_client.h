@@ -19,10 +19,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 
 namespace tensorflow {
+class CoordinationClient;
 class CoordinationClientCache;
 
 CoordinationClientCache* NewGrpcCoordinationClientCache(
     std::shared_ptr<tensorflow::GrpcChannelCache> channel);
+
+CoordinationClient* NewGrpcCoordinationClient(
+    std::shared_ptr<::grpc::Channel> channel);
 
 }  // namespace tensorflow
 

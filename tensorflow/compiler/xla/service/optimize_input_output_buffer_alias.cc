@@ -14,18 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/optimize_input_output_buffer_alias.h"
 
-#include <queue>
-#include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -66,7 +66,7 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       output_shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsTuple()) {
-          return Status::OK();
+          return OkStatus();
         }
         for (Entry& entry : parameter_entries) {
           if (Shape::Equal()(entry.shape, subshape) && !entry.used) {
@@ -82,12 +82,14 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
             break;
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
   return changed;
 }
 
-StatusOr<bool> OptimizeInputOutputBufferAlias::Run(HloModule* module) {
+StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // User buffer alias only work for modules with 1 parameter.
   if (module->entry_computation()->num_parameters() != 1) {
     return false;

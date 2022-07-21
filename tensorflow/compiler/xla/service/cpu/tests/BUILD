@@ -2,7 +2,6 @@
 #    Tests for LLVM-based CPU backend for XLA.
 
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -256,6 +255,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "cpu_spmd_compile_test",
+    srcs = ["cpu_spmd_compile_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "cpu_topk_test",
     srcs = ["cpu_topk_test.cc"],
     deps = [
@@ -274,6 +289,23 @@ tf_cc_test(
 tf_cc_test(
     name = "cpu_vectorization_test",
     srcs = ["cpu_vectorization_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_while_test",
+    srcs = ["cpu_while_test.cc"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",

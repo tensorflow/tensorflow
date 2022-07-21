@@ -20,10 +20,6 @@ rule, then this function is overridden and will instead cause Tensorflow graphs
 to be compiled with MLIR bridge.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 def is_mlir_bridge_enabled():
   """Returns true if MLIR bridge should be enabled for tests."""

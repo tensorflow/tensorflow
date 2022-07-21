@@ -58,15 +58,15 @@ xla::XlaOp GetScalarConst(const TensorProto& proto, xla::XlaBuilder* b) {
 
       HANDLE_SPLAT(DT_BOOL, bool, bool);
 
-      HANDLE_SPLAT(DT_INT8, int, xla::int8);
-      HANDLE_SPLAT(DT_INT16, int, xla::int16);
-      HANDLE_SPLAT(DT_INT32, int, xla::int32);
+      HANDLE_SPLAT(DT_INT8, int, int8_t);
+      HANDLE_SPLAT(DT_INT16, int, int16_t);
+      HANDLE_SPLAT(DT_INT32, int, int32_t);
       HANDLE_SPLAT(DT_INT64, int64, int64_t);
 
-      HANDLE_SPLAT(DT_UINT8, int, xla::uint8);
-      HANDLE_SPLAT(DT_UINT16, int, xla::uint16);
-      HANDLE_SPLAT(DT_UINT32, uint32, xla::uint32);
-      HANDLE_SPLAT(DT_UINT64, uint64, xla::uint64);
+      HANDLE_SPLAT(DT_UINT8, int, uint8_t);
+      HANDLE_SPLAT(DT_UINT16, int, uint16_t);
+      HANDLE_SPLAT(DT_UINT32, uint32, uint32_t);
+      HANDLE_SPLAT(DT_UINT64, uint64, uint64_t);
 
       HANDLE_SPLAT(DT_FLOAT, float, float);
       HANDLE_SPLAT(DT_DOUBLE, double, double);

@@ -524,7 +524,7 @@ Status SharedBatchScheduler<TaskType>::Create(
                                    options.num_batch_threads);
   }
   scheduler->reset(new SharedBatchScheduler<TaskType>(options));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -632,7 +632,7 @@ Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     }
   }
   *queue = std::move(handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -715,12 +715,12 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
       if (!BatchExists(batch_to_process)) {
         break;
       }
-      if (queues_.empty()) return;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
       const int64_t kTimeoutMillis =
           1;  // The smallest accepted granule of time.
       WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
+      if (queues_.empty()) return;
     }
   }
 
@@ -867,7 +867,7 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
     schedulable_batch_callback_();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(b/194294263):
@@ -944,7 +944,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     schedulable_batch_callback_();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -973,7 +973,7 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int64 num_new_batches_schedulable =
-      static_cast<int64>(options_.max_enqueued_batches) -
+      static_cast<int64_t>(options_.max_enqueued_batches) -
       this->num_enqueued_batches();
   const int64 execution_batch_size_limit = max_execution_batch_size();
   const int64 open_batch_capacity =

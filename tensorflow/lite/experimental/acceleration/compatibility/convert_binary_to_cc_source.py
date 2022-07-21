@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +16,6 @@
 
 # This is a version of //tensorflow/lite/python/convert_file_to_c_source.py
 # with minimal dependencies to reduce build times. See b/158254039.
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import argparse
 import datetime

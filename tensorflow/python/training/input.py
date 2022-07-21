@@ -20,11 +20,6 @@ how-to](https://tensorflow.org/api_guides/python/reading_data)
 for context.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -699,13 +694,15 @@ def _shapes(tensor_list_list, shapes, enqueue_many):
     len0 = len(tensor_list_list[0])
 
     for tl in tensor_list_list:
-      for i in xrange(len0):
+      for i in range(len0):
         if tl[i].shape.ndims is None:
           raise ValueError("Cannot infer Tensor's rank: %s" % tl[i])
 
-    shapes = [_merge_shapes(
-        [tl[i].shape.as_list() for tl in tensor_list_list], enqueue_many)
-              for i in xrange(len0)]
+    shapes = [
+        _merge_shapes([tl[i].shape.as_list()
+                       for tl in tensor_list_list], enqueue_many)
+        for i in range(len0)
+    ]
   return shapes
 
 

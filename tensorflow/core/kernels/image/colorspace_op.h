@@ -38,11 +38,7 @@ struct RGBToHSV {
     auto G = input_data.template chip<1>(1);
     auto B = input_data.template chip<1>(2);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<int, 1> channel_axis{{1}};
-#else
     Eigen::IndexList<Eigen::type2index<1> > channel_axis;
-#endif
 
     V.device(d) = input_data.maximum(channel_axis);
 

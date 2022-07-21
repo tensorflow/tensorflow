@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Distribution Strategy-related dataset transformations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
@@ -190,8 +186,7 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
         raise ValueError(
             f"Invalid `batch_sizes`. Expected `batch_sizes` to be a scalar or "
             f"a vector. Received `batch_sizes` of rank "
-            f"{len(new_batch_dim.shape)}."
-        )
+            f"{len(new_batch_dim.shape)}.")
 
     if self._may_form_partial_batches(new_batch_dim):
       return None
@@ -204,7 +199,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
       return False
 
     def get_batch_dim(type_spec):
-      shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+      try:
+        shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+      except NotImplementedError:
+        return None
       if not isinstance(shape, tensor_shape.TensorShape):
         return None
       if shape.rank is None:
@@ -343,8 +341,7 @@ def replicate(dataset, devices):
   if not isinstance(dataset, dataset_ops.DatasetV2):
     raise TypeError(
         f"Invalid `dataset`. Expected a `tf.data.Dataset` object but "
-        f"got {type(dataset)}."
-    )
+        f"got {type(dataset)}.")
 
   # pylint: disable=protected-access
   dataset_device = dataset._variant_tensor.device
@@ -513,14 +510,20 @@ def compute_batch_size(dataset):
     will be -1.
   """
 
-  def get_static_batch_dim(output_shape):
+  def get_static_batch_dim(type_spec):
+    try:
+      output_shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+    except NotImplementedError:
+      return None
+    if not isinstance(output_shape, tensor_shape.TensorShape):
+      return None
     if output_shape.rank is None:
       return None
     return output_shape.dims[0].value
 
   batch_dims = [
-      get_static_batch_dim(ts._to_legacy_output_shapes())  # pylint: disable=protected-access
-      for ts in nest.flatten(dataset_ops.get_structure(dataset))
+      get_static_batch_dim(type_spec)
+      for type_spec in nest.flatten(dataset_ops.get_structure(dataset))
   ]
 
   if all(d is not None for d in batch_dims):

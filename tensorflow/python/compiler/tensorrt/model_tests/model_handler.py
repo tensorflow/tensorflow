@@ -22,7 +22,6 @@ import tempfile
 import time
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Union
 
-from absl import logging
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
@@ -37,6 +36,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
@@ -509,7 +509,7 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
         input_saved_model_tags=self.model_config.saved_model_tags,
         input_saved_model_signature_key=(
             self.model_config.saved_model_signature_key),
-        conversion_params=trt_convert_params)
+        **trt_convert_params._asdict())
 
   def _check_conversion(self, graph_func):
     graph_def = graph_func.graph.as_graph_def()

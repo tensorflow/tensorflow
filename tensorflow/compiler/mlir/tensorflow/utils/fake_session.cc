@@ -66,13 +66,13 @@ void FakeSession::BuildDeviceManager() {
   auto device =
       tensorflow::DeviceFactory::NewDevice("CPU", {}, kDeviceNamePrefix);
   device_mgr_ =
-      absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+      std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
 void FakeSession::InitVariables() {
   tensorflow::Device* device = nullptr;
   auto status = device_mgr_->LookupDevice(kDeviceName, &device);
-  if (status != Status::OK()) return;
+  if (status != ::tensorflow::OkStatus()) return;
   auto container = device->resource_manager()->default_container();
 
   // Create 2 resources and initialize them with dummy values.
@@ -104,7 +104,7 @@ Status FakeSession::LocalDeviceManager(
   if (kSessionOptions->fail_to_fetch_local_device_manager)
     return Status(tensorflow::error::UNKNOWN, "No Local Device Manager");
   *deviceMgrPtr = device_mgr_.get();
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status FakeSession::Run(
@@ -180,7 +180,7 @@ Status FakeSession::Run(
       outputs->push_back(t);
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace test_util

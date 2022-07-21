@@ -26,8 +26,11 @@ namespace builtin {
 // applied by TfLite interpreter by default.
 class BuiltinOpResolver : public MutableOpResolver {
  public:
+  // NOTE: we *deliberately* don't define any virtual functions here to avoid
+  // behavior changes when users pass a derived instance by value or assign a
+  // derived instance to a variable of this class. See "object slicing"
+  // (https://en.wikipedia.org/wiki/Object_slicing)) for details.
   BuiltinOpResolver();
-  OpResolver::TfLiteDelegateCreators GetDelegateCreators() const override;
 };
 
 // TfLite interpreter could apply a TfLite delegate by default. To completely
@@ -35,9 +38,9 @@ class BuiltinOpResolver : public MutableOpResolver {
 // BuiltinOpResolverWithoutDefaultDelegates.
 class BuiltinOpResolverWithoutDefaultDelegates : public BuiltinOpResolver {
  public:
-  BuiltinOpResolverWithoutDefaultDelegates() : BuiltinOpResolver() {}
-  OpResolver::TfLiteDelegateCreators GetDelegateCreators() const final {
-    return {};
+  BuiltinOpResolverWithoutDefaultDelegates() : BuiltinOpResolver() {
+    delegate_creators_.clear();
+    opaque_delegate_creators_.clear();
   }
 };
 

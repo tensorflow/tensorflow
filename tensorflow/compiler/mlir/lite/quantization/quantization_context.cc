@@ -22,9 +22,9 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -43,7 +43,7 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-QuantizeContext::QuantizeContext(FuncOp func, const DeviceTarget &spec)
+QuantizeContext::QuantizeContext(func::FuncOp func, const DeviceTarget &spec)
     : func_(func), target_spec_(spec) {
   llvm::DenseMap<Value, int> value_to_state;
   func.walk([&](quant::QuantizeRegionOp op) {
@@ -66,7 +66,7 @@ std::vector<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
 
 KernelSpecs::Signature QuantizeContext::GetSignature(QuantizeRegionOp op) {
   KernelSpecs::Signature signature;
-  signature.reserve(op.input_specs().size() + op.output_specs().size());
+  signature.reserve(op.getInputSpecs().size() + op.getOutputSpecs().size());
   for (int i = 0; i < op.getNumOperands(); ++i) {
     DeviceTarget::AppendToSignature(GetOperandParams(op, i), &signature);
   }
@@ -80,8 +80,8 @@ LogicalResult QuantizeContext::Handle(
     quant::QuantizeRegionOp op, llvm::SmallVectorImpl<Operation *> *new_items,
     bool *changed) {
   auto signature = GetSignature(op);
-  auto spec = target_spec_.GetKernelSpec(op.logical_kernel(), signature);
-  if (!spec.hasValue()) {
+  auto spec = target_spec_.GetKernelSpec(op.getLogicalKernel(), signature);
+  if (!spec.has_value()) {
     op.emitWarning(
         "Couldn't find kernel from the registration for quantization.");
     return success();
@@ -123,7 +123,7 @@ LogicalResult QuantizeContext::Finalize() {
   MLIRContext *context = func_.getContext();
   func_.walk([&](quant::QuantizeRegionOp op) {
     llvm::SmallVector<Attribute, 4> input_specs;
-    auto original_input_specs = op.input_specs().getValue();
+    auto original_input_specs = op.getInputSpecs().getValue();
     for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
       auto &state = states_manager_.GetOperandQuantState(op, i);
       auto &requantize = states_manager_.GetOperandRequantizeState(op, i);
@@ -138,7 +138,7 @@ LogicalResult QuantizeContext::Finalize() {
     op->setAttr("input_specs", ArrayAttr::get(context, input_specs));
 
     llvm::SmallVector<Attribute, 4> output_specs;
-    auto original_output_specs = op.output_specs().getValue();
+    auto original_output_specs = op.getOutputSpecs().getValue();
     for (int res = 0, e = op.getNumResults(); res != e; ++res) {
       auto &state = states_manager_.GetResultQuantState(op, res);
       auto &requantize = states_manager_.GetResultRequantizeState(op, res);
@@ -157,11 +157,11 @@ LogicalResult QuantizeContext::Finalize() {
 
 void QuantizeContext::DumpStates(QuantizeRegionOp current_op) {
   if (current_op) {
-    llvm::errs() << "\n\n\n" << current_op.logical_kernel() << "\n";
+    llvm::errs() << "\n\n\n" << current_op.getLogicalKernel() << "\n";
   }
   func_.walk([&](QuantizeRegionOp op) {
     if (current_op == op) llvm::errs() << "===>>>";
-    llvm::errs() << op.logical_kernel() << " : (";
+    llvm::errs() << op.getLogicalKernel() << " : (";
     for (auto i = 0; i < op.getNumOperands(); ++i) {
       if (auto params = GetOperandParams(op, i))
         params.print(llvm::errs());
@@ -281,9 +281,9 @@ int QuantizeContext::StatesManager::InitializeState(quant::QuantizeRegionOp op,
                                                     int index, bool as_result) {
   Attribute params_attr;
   if (as_result) {
-    params_attr = op.output_specs()[index];
+    params_attr = op.getOutputSpecs()[index];
   } else {
-    params_attr = op.input_specs()[index];
+    params_attr = op.getInputSpecs()[index];
   }
   QuantParams params =
       params_attr.cast<TypeAttr>().getValue().dyn_cast<QuantParams>();

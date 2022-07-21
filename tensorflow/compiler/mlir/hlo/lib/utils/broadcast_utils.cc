@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -28,55 +27,54 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
-bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
-                                 DenseIntElementsAttr broadcast_dims) {
-  RankedTensorType lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
-  RankedTensorType rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
-  if (!lhs_type || !rhs_type) return false;
-  if (lhs_type.getRank() == rhs_type.getRank()) return true;
+bool isLegalNumpyRankedBroadcast(Value lhs, Value rhs,
+                                 DenseIntElementsAttr broadcastDims) {
+  RankedTensorType lhsType = lhs.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType rhsType = rhs.getType().dyn_cast<RankedTensorType>();
+  if (!lhsType || !rhsType) return false;
+  if (lhsType.getRank() == rhsType.getRank()) return true;
 
   // Otherwise, verify that broadcast_dims strictly performs left-padding.
-  auto smaller_rank = std::min(lhs_type.getRank(), rhs_type.getRank());
-  auto larger_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
+  auto smallerRank = std::min(lhsType.getRank(), rhsType.getRank());
+  auto largerRank = std::max(lhsType.getRank(), rhsType.getRank());
 
-  if (smaller_rank != broadcast_dims.getNumElements()) {
+  if (smallerRank != broadcastDims.getNumElements()) {
     return false;
   }
-  auto expected_extents =
-      llvm::seq<int64_t>(larger_rank - smaller_rank, larger_rank);
-  return std::equal(expected_extents.begin(), expected_extents.end(),
-                    broadcast_dims.value_begin<APInt>());
+  auto expectedExtents =
+      llvm::seq<int64_t>(largerRank - smallerRank, largerRank);
+  return std::equal(expectedExtents.begin(), expectedExtents.end(),
+                    broadcastDims.value_begin<APInt>());
 }
 
-Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
+Value computeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
                                                         Value rhs,
                                                         OpBuilder& builder) {
-  return ComputeNaryElementwiseBroadcastingResultExtents(
+  return computeNaryElementwiseBroadcastingResultExtents(
       loc, ValueRange{lhs, rhs}, builder);
 }
 
-Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
+Value computeNaryElementwiseBroadcastingResultExtents(Location loc,
                                                       ValueRange operands,
                                                       OpBuilder& builder) {
   auto shapes = llvm::to_vector<4>(llvm::map_range(operands, [&](Value v) {
     return builder.createOrFold<shape::ShapeOfOp>(loc, v);
   }));
 
-  int64_t result_rank = 0;
+  int64_t resultRank = 0;
   for (Value s : shapes) {
     auto ty = s.getType().cast<RankedTensorType>();
     assert(ty.getRank() == 1 && "expect extent tensor type");
     if (ty.isDynamicDim(0)) {
-      result_rank = ShapedType::kDynamicSize;
+      resultRank = ShapedType::kDynamicSize;
       break;
-    } else {
-      result_rank = std::max(result_rank, ty.getDimSize(0));
     }
+    resultRank = std::max(resultRank, ty.getDimSize(0));
   }
-  Type extent_tensor_ty =
-      shape::getExtentTensorType(builder.getContext(), result_rank);
+  Type extentTensorTy =
+      shape::getExtentTensorType(builder.getContext(), resultRank);
 
-  return builder.createOrFold<shape::BroadcastOp>(loc, extent_tensor_ty, shapes,
+  return builder.createOrFold<shape::BroadcastOp>(loc, extentTensorTy, shapes,
                                                   /*error=*/nullptr);
 }
 

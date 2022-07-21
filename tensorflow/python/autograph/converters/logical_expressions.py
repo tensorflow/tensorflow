@@ -14,10 +14,6 @@
 # ==============================================================================
 """Converter for logical expressions, e.g. `a and b -> tf.logical_and(a, b)`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.core import converter
@@ -70,7 +66,7 @@ class LogicalExpressionTransformer(converter.Base):
 
   def _as_binary_operation(self, op, arg1, arg2):
     template = templates.replace_as_expression(
-        'arg1 is arg2',
+        'arg1 is arg2',  # Note: `is` will be replaced with `op` below.
         arg1=arg1,
         arg2=arg2)
     template.ops[0] = op
@@ -80,12 +76,14 @@ class LogicalExpressionTransformer(converter.Base):
     return templates.replace_as_expression(
         'func_name(arg)', func_name=parser.parse_expression(func_name), arg=arg)
 
+  def _process_binop(self, op, left, right):
+    overload = self._overload_of(op)
+    if overload is None:
+      return self._as_binary_operation(op, left, right)
+    return self._as_binary_function(overload, left, right)
+
   def visit_Compare(self, node):
     node = self.generic_visit(node)
-
-    if (not self.ctx.user.options.uses(
-        converter.Feature.EQUALITY_OPERATORS)):
-      return node
 
     ops_and_comps = list(zip(node.ops, node.comparators))
     left = node.left
@@ -95,11 +93,7 @@ class LogicalExpressionTransformer(converter.Base):
     op_tree = None
     while ops_and_comps:
       op, right = ops_and_comps.pop(0)
-      overload = self._overload_of(op)
-      if overload is not None:
-        binary_comparison = self._as_binary_function(overload, left, right)
-      else:
-        binary_comparison = self._as_binary_operation(op, left, right)
+      binary_comparison = self._process_binop(op, left, right)
       if op_tree is not None:
         op_tree = self._as_binary_function('ag__.and_',
                                            self._as_lambda(op_tree),

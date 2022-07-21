@@ -241,7 +241,7 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
 
 Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
   bool success = tensor_.FromProto(from);
-  if (success) return Status::OK();
+  if (success) return OkStatus();
   return errors::InvalidArgument("Unparseable tensor proto");
 }
 
@@ -261,7 +261,9 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
   static char empty;
   int64_t nelems = 1;
   std::vector<int64_t> dims;
-  for (int i = 0; i < shape.dims(); ++i) {
+  auto shape_dims = shape.dims();
+  dims.reserve(shape_dims);
+  for (int i = 0; i < shape_dims; ++i) {
     dims.push_back(shape.dim_size(i));
     nelems *= shape.dim_size(i);
   }
@@ -275,7 +277,7 @@ namespace tensorflow {
 
 // Non-static for testing.
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
-  *status = tensorflow::Status::OK();
+  *status = OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -299,7 +301,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 
 Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   *dst = tensor_;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }

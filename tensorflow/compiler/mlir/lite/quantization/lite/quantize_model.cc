@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -77,8 +79,8 @@ TfLiteStatus QuantizeModel(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
 
-  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
-                                                    UnknownLoc::get(&context));
+  OwningOpRef<mlir::ModuleOp> module = tflite::FlatBufferToMlir(
+      serialized_model, &context, UnknownLoc::get(&context));
   if (!module) {
     error_reporter->Report("Couldn't import flatbuffer to MLIR.");
     return kTfLiteError;
@@ -86,18 +88,22 @@ TfLiteStatus QuantizeModel(
 
   // Apply quantization passes.
   PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
-  TFL::QuantizationSpecs quant_specs;
+  quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
   quant_specs.disable_per_channel = disable_per_channel;
   quant_specs.verify_numeric = verify_numeric;
   quant_specs.whole_model_verify = whole_model_verify;
   quant_specs.legacy_float_scale = legacy_float_scale;
+  quant_specs.ops_blocklist = denylisted_mlir_op_names;
+  quant_specs.nodes_blocklist = denylisted_nodes;
 
   llvm::dbgs() << "fully_quantize: " << fully_quantize
                << ", inference_type: " << quant_specs.inference_type
-               << ", input_inference_type: " << input_type
-               << ", output_inference_type: " << output_type << "\n";
+               << ", input_inference_type: "
+               << tflite::EnumNameTensorType(input_type)
+               << ", output_inference_type: "
+               << tflite::EnumNameTensorType(output_type) << "\n";
   mlir::Builder mlir_builder(&context);
   mlir::Type input_mlir_type =
       tflite::ConvertElementType(input_type, mlir_builder);
@@ -109,12 +115,7 @@ TfLiteStatus QuantizeModel(
     output_mlir_type = input_mlir_type;
   }
 
-  pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
-  pm.addPass(TFL::CreateQuantizePass(
-      verify_numeric, whole_model_verify, legacy_float_scale,
-      denylisted_mlir_op_names, denylisted_nodes));
-  pm.addPass(TFL::CreatePostQuantizePass(/*emit_quant_adaptor_ops=*/true));
-  pm.addPass(TFL::CreateOptimizeOpOrderPass());
+  tensorflow::AddQuantizationPasses(quant_specs, pm);
   pm.addPass(TFL::CreateModifyIONodesPass(input_mlir_type, output_mlir_type));
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());

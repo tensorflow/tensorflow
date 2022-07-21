@@ -15,7 +15,8 @@ limitations under the License.
 
 // Converts DeviceIndex to constant device.
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -44,20 +46,14 @@ namespace {
 // executed to produce the same values but with different functions optimized
 // for CPU or GPU.
 struct DeviceIndexSelector
-    : public PassWrapper<DeviceIndexSelector, OperationPass<FuncOp>> {
-  StringRef getArgument() const final { return "tf-device-index-selector"; }
-
-  StringRef getDescription() const final {
-    return "Fold tf.DeviceIndex to constant";
-  }
-
+    : public DeviceIndexSelectorPassBase<DeviceIndexSelector> {
   void runOnOperation() override;
 };
 
 }  // namespace
 
 void DeviceIndexSelector::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   // Convert all the DeviceIndex ops to constant values.
   func.getBody().walk([](TF::DeviceIndexOp op) {
     // This just selects the default in all cases where DeviceIndex feeds into
@@ -73,18 +69,16 @@ void DeviceIndexSelector::runOnOperation() {
     }
     DenseElementsAttr attr =
         DenseElementsAttr::get(type, b.getI32IntegerAttr(index));
-    auto constant = b.create<ConstantOp>(op.getLoc(), type, attr);
+    auto constant = b.create<arith::ConstantOp>(op.getLoc(), type, attr);
     op.replaceAllUsesWith(constant.getOperation());
     op.erase();
   });
 }
 
 // Creates an instance of the TensorFlow DeviceIndex selector pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceIndexSelectorPass() {
   return std::make_unique<DeviceIndexSelector>();
 }
-
-static PassRegistration<DeviceIndexSelector> pass;
 
 }  // namespace TF
 }  // namespace mlir

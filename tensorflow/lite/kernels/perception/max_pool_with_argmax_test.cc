@@ -118,7 +118,7 @@ TEST(MaxpoolWithArgMaxTest, SimpleTest) {
       /*output=*/{TensorType_FLOAT32, {}},
       /*indices=*/{TensorType_INT32, {}});
   model.SetInput({0, 13, 2, 0, 0, 1, 4, 0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({13, 4}));
@@ -136,7 +136,7 @@ TEST(MaxpoolWithArgMaxTest, Strides2x1Test) {
       /*indices=*/{TensorType_INT32, {}});
 
   model.SetInput({1, 0, 0, 2, 3, 0, 0, 4, 5, 0, 0, 6, 7, 0, 0, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 2}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({3, 4, 0, 4, 7, 8, 0, 8}));
@@ -156,7 +156,7 @@ TEST(MaxpoolWithArgMaxTest, Strides2x2Test) {
 
   model.SetInput({1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 0, 0, 4, 0, 0,
                   0, 0, 0, 5, 6, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 3, 4, 0, 0, 7, 6, 8}));
@@ -176,7 +176,7 @@ TEST(MaxpoolWithArgMaxTest, Strides2x2UnfitTest) {
 
   model.SetInput({1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 0, 0, 4,
                   0, 0, 0, 0, 0, 5, 6, 0, 0, 0, 0, 0, 0, 7});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 3, 2, 4, 0, 0, 5, 7}));
@@ -196,7 +196,7 @@ TEST(MaxpoolWithArgMaxTest, PaddingValidTest) {
 
   model.SetInput(
       {0, 0, 0, 0, 0, 0, 7, 0, 0, 10, 0, 0, 0, 0, 0, 0, 20, 0, 0, 19});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({7, 10, 20, 19}));
@@ -215,7 +215,7 @@ TEST(MaxpoolWithArgMaxTest, PaddingValidUnfitTest) {
 
   model.SetInput({0, 0, 0, 0, 0,  0, 7, 0,  0,  10, 0, 0,
                   0, 0, 0, 0, 20, 0, 0, 19, 24, 1,  2, 44});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({7, 10, 24, 24}));
@@ -244,7 +244,7 @@ TEST(MaxpoolWithArgMaxTest, InputWithBatchTest) {
                   0,  0,  27, 28, 0,  0,  0,  0,  29, 0, 0,  0,  0, 0, 0,  32,
                   0,  0,  0,  0,  25, 26, 0,  0,  0,  0, 0,  0,  0, 0, 0,  0,
                   0,  0,  0,  0,  0,  0,  31, 0,  0,  0, 0,  0,  0, 0, 0,  0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4, 2}));
   EXPECT_THAT(model.GetOutput(),
@@ -278,7 +278,7 @@ TEST(MaxpoolWithArgMaxTest, InputWithBatchAndPaddingValidTest) {
                   0,  0,  23, 0, 0, 0, 0,  0,  0,  0,  27, 28, 0,  0,  0,  0,
                   29, 0,  0,  0, 0, 0, 0,  32, 0,  0,  0,  0,  25, 26, 0,  0,
                   0,  0,  0,  0, 0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  31, 0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4, 2}));
   EXPECT_THAT(model.GetOutput(),

@@ -67,7 +67,16 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    return input_->Get(ctx, index, out_tensors);
+  }
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
@@ -75,7 +84,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -93,7 +102,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node},
         {std::make_pair(kSerializedOptions, serialized_options_attr)}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

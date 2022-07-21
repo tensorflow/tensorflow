@@ -16,25 +16,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_LIB_CONNECTED_TRACEME_H_
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace profiler {
-
-enum class ContextType : int {
-  kGeneric = 0,
-  kLegacy,
-  kTfExecutor,
-  kTfrtExecutor,
-  kSharedBatchScheduler,
-  kPjRt,
-  kAdaptiveSharedBatchScheduler,
-  kTfrtTpuRuntime,
-};
 
 /*
  * TraceMeProducer and TraceMeConsumer are used to correlate TraceMe events on
@@ -86,14 +77,14 @@ enum class ContextType : int {
 class TraceMeProducer {
  public:
   template <typename NameT>
-  explicit TraceMeProducer(NameT name,
+  explicit TraceMeProducer(NameT&& name,
                            ContextType context_type = ContextType::kGeneric,
                            absl::optional<uint64> context_id = absl::nullopt,
                            int level = 2)
-      : trace_me_(name, level) {
+      : context_id_(context_id.has_value() ? context_id.value()
+                                           : TraceMe::NewActivityId()),
+        trace_me_(std::forward<NameT>(name), level) {
     trace_me_.AppendMetadata([&] {
-      context_id_ =
-          context_id.has_value() ? *context_id : TraceMe::NewActivityId();
       return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
     });
   }
@@ -101,24 +92,25 @@ class TraceMeProducer {
   uint64 GetContextId() const { return context_id_; }
 
  private:
+  uint64 context_id_;
   TraceMe trace_me_;
-  uint64 context_id_ = 0;
 };
 
 class TraceMeConsumer {
  public:
   template <typename NameT>
-  TraceMeConsumer(NameT name, ContextType context_type, uint64 context_id,
+  TraceMeConsumer(NameT&& name, ContextType context_type, uint64 context_id,
                   int level = 2)
-      : trace_me_(name, level) {
+      : trace_me_(std::forward<NameT>(name), level) {
     trace_me_.AppendMetadata([&] {
       return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
     });
   }
 
   template <typename NameT>
-  TraceMeConsumer(NameT name, uint64 context_id, int level = 2)
-      : TraceMeConsumer(name, ContextType::kGeneric, context_id, level) {}
+  TraceMeConsumer(NameT&& name, uint64 context_id, int level = 2)
+      : TraceMeConsumer(std::forward<NameT>(name), ContextType::kGeneric,
+                        context_id, level) {}
 
  private:
   TraceMe trace_me_;

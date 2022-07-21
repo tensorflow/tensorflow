@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
 
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include <string>
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -28,8 +30,8 @@ namespace gpu {
 class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition,
-                                   const GpuInfo& gpu_info,
-                                   const int tensor_slices);
+                                   const GpuInfo& gpu_info, const BHWC& shape,
+                                   float variance_bias, bool two_step);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -47,12 +49,15 @@ class MeanStdDevNormalization : public GPUOperation {
   MeanStdDevNormalization& operator=(const MeanStdDevNormalization&) = delete;
 
  private:
-  std::string GetNormalizationCode(const GpuInfo& gpu_info);
+  std::string GetNormalizationCode(const GpuInfo& gpu_info, bool channels_x4,
+                                   bool two_step);
 };
 
+// std dev can be calculated in single step, but two step algorithm can
+// provide more stable and robust results
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const int tensor_slices);
+    const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
+    float variance_bias = 1.0e-8f, bool two_step = true);
 
 }  // namespace gpu
 }  // namespace tflite

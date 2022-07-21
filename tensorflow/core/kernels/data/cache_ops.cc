@@ -71,7 +71,7 @@ const std::vector<std::vector<Tensor>>& MemoryCache::data() {
 AnonymousMemoryCacheHandleOp::AnonymousMemoryCacheHandleOp(
     OpKernelConstruction* ctx)
     : AnonymousResourceOp<MemoryCacheManager>(ctx,
-                                              /* ref_counting */ false,
+                                              /* ref_counting */ true,
                                               /* return_deleter */ true) {}
 
 string AnonymousMemoryCacheHandleOp::name() { return kMemoryCache; }
@@ -81,7 +81,7 @@ Status AnonymousMemoryCacheHandleOp::CreateResource(
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
     FunctionLibraryRuntime* lib, MemoryCacheManager** manager) {
   *manager = new MemoryCacheManager();
-  return Status::OK();
+  return OkStatus();
 }
 
 void DeleteMemoryCacheOp::Compute(OpKernelContext* ctx) {

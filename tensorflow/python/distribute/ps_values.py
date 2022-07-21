@@ -14,10 +14,6 @@
 # ==============================================================================
 """Various classes representing distributed values for PS."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import copy
 import threading
@@ -40,7 +36,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -562,7 +558,8 @@ class DistributedTable(lookup_ops.StaticHashTable):
   """
 
   def __init__(self, strategy, wrapped_creator):
-
+    distribute_lib.distribution_strategy_input_api_counter.get_cell(
+        self.__class__.__name__, "PSSDistributedLookupTable").increase_by(1)
     self._coordinator_instance = wrapped_creator()
     self._wrapped_creator = wrapped_creator
     self._coordinator = strategy._cluster_coordinator
@@ -649,6 +646,21 @@ class DistributedTable(lookup_ops.StaticHashTable):
           closure,
           spec,
           default_value=self._coordinator_instance.resource_handle)
+
+  @property
+  def is_distributed_table(self):
+    return True
+
+  def __tf_experimental_restore_capture__(
+      self, concrete_function, internal_capture):
+    closure, spec = self.resource_handle_call_time_value()
+    concrete_function.graph.replace_capture_with_deferred_capture(
+        self._coordinator_instance.resource_handle,
+        closure,
+        spec,
+        default_value=self._coordinator_instance.resource_handle,
+        placeholder=internal_capture)
+    return concrete_function.graph.deferred_external_captures[-1]
 
 
 _local_resource_restore_context = threading.local()
@@ -746,12 +758,9 @@ class RestoredDistributedTable(DistributedTable):
       # been created. We store them in '_restored_function' and set them to the
       # distributed tables when they're created in
       # `self._maybe_build_distributed_table.create_copy`.
-      if load_context.in_load_context or ("RestoredStaticHashtable"
-                                          in self._wrapped.__class__.__name__):
-
-        if not hasattr(self, "_restored_function"):
-          self._restored_function = {}
-        self._restored_function[name] = value
+      if not hasattr(self, "_restored_function"):
+        self._restored_function = {}
+      self._restored_function[name] = value
       return self._coordinator_instance.__setattr__(name, value)
     else:
       return super(RestoredDistributedTable, self).__setattr__(name, value)

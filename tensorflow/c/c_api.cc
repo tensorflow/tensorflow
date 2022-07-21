@@ -187,7 +187,7 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
 }
 
 void TF_DeleteDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   if (s == nullptr) return;
   delete s->session;
   delete s;
@@ -249,7 +249,7 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
   out->data = buf;
   out->length = proto_size;
   out->data_deallocator = [](void* data, size_t length) { port::Free(data); };
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BufferToMessage(const TF_Buffer* in,
@@ -258,7 +258,7 @@ Status BufferToMessage(const TF_Buffer* in,
     return errors::InvalidArgument("Unparseable ", out->GetTypeName(),
                                    " proto");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
@@ -393,7 +393,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
 
 static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   for (int i = 0; i < noutputs; ++i) {
     c_outputs[i] = nullptr;
   }
@@ -429,9 +429,9 @@ static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
       return InvalidArgument(
           "Malformed TF_RESOURCE tensor: unable to parse resource handle");
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
@@ -453,6 +453,7 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
   static char empty;
   int64_t nelems = 1;
   std::vector<int64_t> dims;
+  dims.reserve(shape.dims());
   for (int i = 0; i < shape.dims(); ++i) {
     dims.push_back(shape.dim_size(i));
     nelems *= shape.dim_size(i);
@@ -674,7 +675,7 @@ int TF_DeviceListCount(const TF_DeviceList* list) {
       status->status = InvalidArgument("index out of bounds");            \
       return err_val;                                                     \
     }                                                                     \
-    status->status = Status::OK();                                        \
+    status->status = ::tensorflow::OkStatus();                            \
     return list->response[index].accessor;                                \
   }
 
@@ -999,7 +1000,7 @@ void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, static_cast<int>(proto_len))) {
     desc->node_builder.Attr(attr_name, shape);
-    status->status = Status::OK();
+    status->status = ::tensorflow::OkStatus();
   } else {
     status->status = InvalidArgument("Unparseable TensorShapeProto");
   }
@@ -1026,7 +1027,7 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
     }
   }
   desc->node_builder.Attr(attr_name, shapes);
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
@@ -1039,7 +1040,7 @@ void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
                           TF_Tensor* const* values, int num_values,
                           TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   std::vector<Tensor> t;
   t.reserve(num_values);
 
@@ -1077,7 +1078,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
     desc->node_builder.Attr(attr_name, std::move(attr_value));
   }
 
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
@@ -1592,7 +1593,7 @@ void TF_OperationGetAttrName(TF_Operation* oper, int i, char* output,
   for (it = attrs.begin(); it != attrs.end(); it++) {
     if (count == i) {
       strncpy(output, it->first.c_str(), it->first.length());
-      status->status = Status::OK();
+      status->status = ::tensorflow::OkStatus();
       return;
     }
     count++;
@@ -1956,7 +1957,7 @@ Status CopyGraph(Graph* src_graph, Graph* dst_graph,
   for (const auto& pair : results.return_tensors) {
     return_nodes->emplace_back(pair.first, pair.second);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool ValidateConstWhileParams(const TF_WhileParams& params, TF_Status* s) {
@@ -2088,7 +2089,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
             scope.impl()->control_deps(), &params->cond_output,
             /* nreturn_nodes */ 1, &cond_output));
         *output = cond_output[0];
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       };
 
   // 'body_fn' copies the body graph into the parent graph.
@@ -2103,7 +2104,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
                       &parent->refiner, params->body_inputs, inputs,
                       scope.impl()->name(), scope.impl()->control_deps(),
                       params->body_outputs, num_loop_vars, outputs));
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       };
 
   // Create the while loop using an internal scope.
@@ -2337,7 +2338,7 @@ void TF_CloseSession(TF_Session* s, TF_Status* status) {
 }
 
 void TF_DeleteSession(TF_Session* s, TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   if (s == nullptr) return;
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
@@ -2496,7 +2497,7 @@ TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
     status->status = InvalidArgument("Unparseable OpList");
     return nullptr;
   }
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   return new TF_ApiDefMap(op_list);
 }
 

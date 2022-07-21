@@ -49,7 +49,7 @@ TYPED_TEST(ReshapeOpTest, MismatchedDimensions) {
     if (shape_type == ShapeSpecificationType::kAsTensor) {
       ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {2}, {2, 1}, shape_type);
       m.SetInput({3});
-      EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk)
+      EXPECT_NE(m.Invoke(), kTfLiteOk)
           << "num_input_elements != num_output_elements";
     } else {
 #ifdef GTEST_HAS_DEATH_TEST
@@ -85,7 +85,7 @@ TYPED_TEST(ReshapeOpTest, TooManySpecialDimensions) {
     } else {
       ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {4}, {-1, -1, 2, 4},
                                   shape_type);
-      EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk) << "stretch_dim != -1";
+      EXPECT_NE(m.Invoke(), kTfLiteOk) << "stretch_dim != -1";
     }
   }
 }
@@ -95,9 +95,15 @@ TYPED_TEST(ReshapeOpTest, TooManySpecialDimensions) {
 TYPED_TEST(ReshapeOpTest, InvalidShape) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 2}, {2, 2}, {1, 2, 2, 1}, shape_type);
     m.SetInput({5, 6, 7, 8});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 6, 7, 8}));
   }
@@ -107,9 +113,15 @@ TYPED_TEST(ReshapeOpTest, InvalidShape) {
 TYPED_TEST(ReshapeOpTest, RegularShapes) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 2, 2}, shape_type);
     m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
   }
@@ -118,9 +130,15 @@ TYPED_TEST(ReshapeOpTest, RegularShapes) {
 TYPED_TEST(ReshapeOpTest, WithStretchDimension) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
+    if (SingleOpModel::GetForceUseNnapi() &&
+        shape_type == ShapeSpecificationType::kAsTensor) {
+      // NNAPI delegate does not support RESHAPE with shape as a non-constant
+      // tensor.
+      continue;
+    }
     ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 1, -1}, shape_type);
     m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 4}));
   }
@@ -133,7 +151,7 @@ TYPED_TEST(ReshapeOpTest, ScalarOutput) {
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
     ReshapeOpModel<TypeParam> m({1}, {0}, {}, shape_type);
     m.SetInput({3});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
     EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   }
@@ -146,7 +164,7 @@ TYPED_TEST(ReshapeOpTest, ZeroInShape) {
   for (ShapeSpecificationType shape_type :
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
     ReshapeOpModel<TypeParam> m({4, 0}, {3}, {2, 0, -1}, shape_type);
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 0, 2}));
   }
 }
@@ -164,12 +182,12 @@ TYPED_TEST(ReshapeOpTest, LegacyScalarOutput) {
     } else if (shape_type == ShapeSpecificationType::kAsTensor) {
       ReshapeOpModel<TypeParam> m({1}, {1}, {0}, shape_type);
       m.SetInput({3});
-      ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk)
+      ASSERT_NE(m.Invoke(), kTfLiteOk)
           << "num_input_elements != num_output_elements";
     } else {
       ReshapeOpModel<TypeParam> m({1}, {1}, {0}, shape_type);
       m.SetInput({3});
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
       EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
       EXPECT_THAT(m.GetOutputShape(), IsEmpty());
     }
@@ -181,7 +199,7 @@ TYPED_TEST(ReshapeOpTest, Strings) {
        ReshapeOpTest<ShapeSpecificationType>::_range_) {
     ReshapeOpModel<string> m({1, 2, 4, 1}, {3}, {2, 2, 2}, shape_type);
     m.SetStringInput({"1", "2", "3", "4", "5", "6", "7", "8"});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
     EXPECT_THAT(m.GetOutput(),
                 ElementsAreArray({"1", "2", "3", "4", "5", "6", "7", "8"}));

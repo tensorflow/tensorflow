@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -25,6 +28,8 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Dequantize ops will produce 3x larger tensors, so we want to move it after
 // some passthrough ops to reduce the memory consumption.
@@ -42,7 +47,14 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
     if (passthrough_op->hasTrait<OpTrait::IsTerminator>()) return failure();
 
     auto get_num_elements = [](RankedTensorType tensor) {
-      return tensor.getNumElements();
+      int num_elements = 1;
+      for (int i = 0; i < tensor.getRank(); ++i) {
+        // Assume dynamic dim size as the dim size one.
+        if (!tensor.isDynamicDim(i)) {
+          num_elements *= tensor.getDimSize(i);
+        }
+      }
+      return num_elements;
     };
 
     // If the op is the pass-through op with (3x) smaller output, the dequantize
@@ -57,9 +69,13 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
         dequantize_op.output().getType().dyn_cast<RankedTensorType>();
     auto output_type =
         passthrough_op->getResult(0).getType().dyn_cast<RankedTensorType>();
-    if (!input_type || !output_type || !input_type.hasStaticShape() ||
-        !output_type.hasStaticShape() ||
+    if (!input_type || !output_type ||
         get_num_elements(input_type) <= get_num_elements(output_type)) {
+      return failure();
+    }
+    Type input_element_type = getElementTypeOrSelf(dequantize_op.input());
+    // Most passthrough ops do not support F16.
+    if (input_element_type.isF16()) {
       return failure();
     }
 
@@ -68,9 +84,15 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
     passthrough_op->replaceAllUsesWith(dequantize_op);
 
     // Set the input type of the passthrough op and pull it up.
-    Type new_output_type =
-        QuantizedType::getQuantizedElementType(dequantize_op.input().getType())
-            .castFromExpressedType(output_type);
+    Type new_output_type;
+    if (input_element_type.isa<quant::QuantizedType>()) {
+      new_output_type = QuantizedType::getQuantizedElementType(
+                            dequantize_op.input().getType())
+                            .castFromExpressedType(output_type);
+    } else {
+      llvm_unreachable("unhandled element type");
+    }
+
     passthrough_op->getResult(0).setType(new_output_type);
     passthrough_op->setOperand(operand_index, dequantize_op.input());
 
@@ -82,28 +104,18 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
   }
 };
 
-// This transformation pass optimizes the op execution order of the ops in the
-// model.
 struct OptimizeOpOrderPass
-    : public PassWrapper<OptimizeOpOrderPass, FunctionPass> {
-  void runOnFunction() override;
+    : public OptimizeOpOrderPassBase<OptimizeOpOrderPass> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeOpOrderPass)
 
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-optimize-op-order";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Optimize the execution order of the ops.";
-  }
+  void runOnOperation() override;
 };
 
-void OptimizeOpOrderPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void OptimizeOpOrderPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.insert<PushDownDequantize>(ctx);
+  patterns.add<PushDownDequantize>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }
@@ -111,7 +123,7 @@ void OptimizeOpOrderPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite optimize op order pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeOpOrderPass() {
   return std::make_unique<OptimizeOpOrderPass>();
 }
 

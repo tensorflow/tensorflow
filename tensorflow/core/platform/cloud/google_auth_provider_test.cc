@@ -47,7 +47,7 @@ class FakeOAuthClient : public OAuthClient {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
-    return Status::OK();
+    return OkStatus();
   }
 
   /// Retrieves a bearer token using a refresh token.
@@ -57,7 +57,7 @@ class FakeOAuthClient : public OAuthClient {
     provided_credentials_json = json;
     *token = return_token;
     *expiration_timestamp_sec = return_expiration_timestamp;
-    return Status::OK();
+    return OkStatus();
   }
 
   string return_token;

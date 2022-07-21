@@ -14,16 +14,12 @@
 # ==============================================================================
 """Gradients for operators defined in array_ops.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -156,7 +152,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
         offset = gen_array_ops.concat_offset(non_neg_concat_dim, sizes)
         for (begin, size) in zip(offset, sizes):
           out_grads.append(array_ops.slice(grad, begin, size))
-  elif isinstance(grad, ops.IndexedSlices):
+  elif isinstance(grad, indexed_slices_lib.IndexedSlices):
     # Using mod here for convenience since concat_dim is already verified
     # in concat implementation to be within the allowed [-rank, rank) range.
     non_neg_concat_dim = concat_dim % array_ops.rank(input_values[0])
@@ -184,7 +180,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
         new_values = array_ops.slice(
             grad.values, begin,
             array_ops.concat([[-1], array_ops.slice(size, [1], [-1])], 0))
-        out_grads.append(ops.IndexedSlices(new_values, grad.indices, size))
+        out_grads.append(
+            indexed_slices_lib.IndexedSlices(new_values, grad.indices, size))
         # Lint complains begin = begin + ...
         begin = math_ops.add(begin, size * mask)
     else:
@@ -205,7 +202,8 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
             axis=[1])
         new_indices = array_ops.gather(grad.indices, indices_to_select) - start
         new_values = array_ops.gather(grad.values, indices_to_select)
-        out_grads.append(ops.IndexedSlices(new_values, new_indices, size))
+        out_grads.append(
+            indexed_slices_lib.IndexedSlices(new_values, new_indices, size))
         start = end
   else:
     raise TypeError("Expected Tensor or IndexedSlices, got %s" % type(grad))
@@ -336,6 +334,17 @@ def _TensorStridedSliceUpdateGrad(op, grad):  # pylint:disable=missing-function-
              grad, begin, end, strides)
   dx = Apply(array_ops.tensor_strided_slice_update,
              grad, begin, end, strides, array_ops.zeros_like(dy))
+
+  # The value is potentially broadcast to the shape of the strided slice, so we
+  # may need to adjust dy.
+  slice_shape = array_ops.shape(dy, out_type=begin.dtype)
+  value_shape = array_ops.shape(op.inputs[4], out_type=slice_shape.dtype)
+
+  _, reduction_axes = gen_array_ops.broadcast_gradient_args(
+      slice_shape, value_shape)
+  dy_reshaped = math_ops.reduce_sum(dy, axis=reduction_axes, keepdims=True)
+  dy = array_ops.reshape(dy_reshaped, value_shape)
+
   return dx, None, None, None, dy
 
 
@@ -553,7 +562,7 @@ def _PreventGradientGrad(op, _):
 
 def _IndexedSlicesToTensorNoWarning(indexed_slices):
   """Converts an IndexedSlices to a Tensor without sparse->dense warnings."""
-  if not isinstance(indexed_slices, ops.IndexedSlices):
+  if not isinstance(indexed_slices, indexed_slices_lib.IndexedSlices):
     # If it is not IndexedSlices, it's better be a tensor.
     return indexed_slices
   if indexed_slices.dense_shape is None:
@@ -580,7 +589,7 @@ def _GatherGrad(op, grad):
   values = array_ops.reshape(
       _IndexedSlicesToTensorNoWarning(grad), values_shape)
   indices = array_ops.reshape(indices, size)
-  return [ops.IndexedSlices(values, indices, params_shape), None]
+  return [indexed_slices_lib.IndexedSlices(values, indices, params_shape), None]
 
 
 def _GetBatchIndices(params_shape, indices, batch_dims):
@@ -676,7 +685,8 @@ def _GatherV2Grad(op, grad):
     values = array_ops.reshape(
         _IndexedSlicesToTensorNoWarning(grad), values_shape)
     indices = array_ops.reshape(indices, indices_size)
-    params_grad = ops.IndexedSlices(values, indices, params_shape)
+    params_grad = indexed_slices_lib.IndexedSlices(values, indices,
+                                                   params_shape)
   else:
     # Handle axis by transposing the axis dimension to be the first non-batch
     # dimension, compute the gradient and transpose the result back.
@@ -722,8 +732,8 @@ def _GatherNdGrad(op, grad):
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
   if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
-    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
-                                 ref_shape)
+    ref_grad = indexed_slices_lib.IndexedSlices(
+        grad, array_ops.squeeze(indices, axis=-1), ref_shape)
   else:
     ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
@@ -735,8 +745,8 @@ def _ResourceGatherNdGrad(op, grad):  # pylint: disable=missing-docstring
   indices = op.inputs[1]
   ref_shape = gen_resource_variable_ops.variable_shape(ref, indices.dtype)
   if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
-    ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
-                                 ref_shape)
+    ref_grad = indexed_slices_lib.IndexedSlices(
+        grad, array_ops.squeeze(indices, axis=-1), ref_shape)
   else:
     ref_grad = array_ops.scatter_nd(indices, grad, ref_shape)
   return [ref_grad, None]
@@ -855,7 +865,7 @@ def _TileGrad(op, grad):
       array_ops.transpose(array_ops.stack([op.inputs[1], input_shape])), [-1])
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   # Sum reduces grad along the first dimension for IndexedSlices
-  if isinstance(grad, ops.IndexedSlices):
+  if isinstance(grad, indexed_slices_lib.IndexedSlices):
     input_shape_0 = math_ops.cast(input_shape[0], grad.indices.dtype)
     grad = math_ops.unsorted_segment_sum(
         grad.values, math_ops.mod(grad.indices, input_shape_0), input_shape_0)
@@ -1159,8 +1169,8 @@ def _TensorScatterMinOrMaxGrad(op, grad):
   x_indicators = math_ops.cast(math_ops.equal(x, output), grad.dtype)
   y_output = array_ops.gather_nd(output, indices)
   y_indicators = math_ops.cast(math_ops.equal(y, y_output), grad.dtype)
-  ys_indicators = array_ops.scatter_nd(indices, y_indicators,
-                                       array_ops.shape(x))
+  ys_indicators = array_ops.scatter_nd(
+      indices, y_indicators, array_ops.shape(x, out_type=indices.dtype))
   indicators = x_indicators + ys_indicators  # All elements are >= 1.
   # If there are multiple minimum or maximum elements then the gradient will be
   # divided between them.
@@ -1200,14 +1210,17 @@ def _ScatterNdNonAliasingAddGrad(op, grad):
 def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
-  input_value_shape = array_ops.shape(input_value)
+  shape_dtype = dtypes.int32
+  if isinstance(broadcast_shape, ops.Tensor):
+    shape_dtype = broadcast_shape.dtype
+
+  input_value_shape = array_ops.shape(input_value, out_type=shape_dtype)
   if not isinstance(broadcast_shape, ops.EagerTensor):
     broadcast_shape_static = tensor_shape.TensorShape(
-        pywrap_tf_session.TF_TryEvaluateConstant_wrapper(
-            broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access
+        tensor_util.try_evaluate_constant(broadcast_shape))
     if broadcast_shape_static.is_fully_defined():
       broadcast_shape = constant_op.constant(
-          broadcast_shape_static.as_list(), dtype=dtypes.int32)
+          broadcast_shape_static.as_list(), dtype=shape_dtype)
   _, reduction_axes = gen_array_ops.broadcast_gradient_args(
       broadcast_shape, input_value_shape)
   updates_grad_reshaped = math_ops.reduce_sum(

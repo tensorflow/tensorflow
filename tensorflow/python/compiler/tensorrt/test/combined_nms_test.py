@@ -14,10 +14,6 @@
 # ==============================================================================
 """Script to test TF-TensorRT conversion of CombinedNMS op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.compiler.tensorrt import utils as trt_utils
@@ -37,15 +33,10 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     self.num_boxes = 200
 
   def GraphFn(self, boxes, scores):
-    max_output_size_per_class = 3
     max_total_size = 3
     score_threshold = 0.1
     iou_threshold = 0.5
     # Shapes
-    max_output_size_per_class_tensor = constant_op.constant(
-        max_output_size_per_class,
-        dtype=dtypes.int32,
-        name='max_output_size_per_class')
     max_total_size_tensor = constant_op.constant(
         max_total_size, dtype=dtypes.int32, name='max_total_size')
     iou_threshold_tensor = constant_op.constant(
@@ -55,7 +46,7 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     nms_output = image_ops_impl.combined_non_max_suppression(
         boxes,
         scores,
-        max_output_size_per_class_tensor,
+        max_total_size_tensor,
         max_total_size_tensor,
         iou_threshold_tensor,
         score_threshold_tensor,
@@ -88,10 +79,9 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     if not run_params.dynamic_shape:
       return {
-          'TRTEngineOp_0': [
-              'combined_nms/CombinedNonMaxSuppression',
-              'max_output_size_per_class', 'max_total_size', 'iou_threshold',
-              'score_threshold'
+          'TRTEngineOp_000': [
+              'combined_nms/CombinedNonMaxSuppression', 'max_total_size',
+              'iou_threshold', 'score_threshold'
           ]
       }
     else:

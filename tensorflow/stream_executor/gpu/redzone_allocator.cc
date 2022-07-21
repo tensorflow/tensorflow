@@ -212,11 +212,10 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
 // Run the redzone checker on the provided buffer redzone.
 //
 // Increment out_param if mismatch occurs.
-static void RunRedzoneChecker(Stream* stream,
-                              const DeviceMemory<uint8>& redzone,
-                              uint8 redzone_pattern,
-                              const DeviceMemory<uint64_t>& out_param,
-                              const ComparisonKernelT& comparison_kernel) {
+static port::Status RunRedzoneChecker(
+    Stream* stream, const DeviceMemory<uint8>& redzone, uint8 redzone_pattern,
+    const DeviceMemory<uint64_t>& out_param,
+    const ComparisonKernelT& comparison_kernel) {
   StreamExecutor* executor = stream->parent();
 
   int64_t num_elements = redzone.size();
@@ -225,9 +224,10 @@ static void RunRedzoneChecker(Stream* stream,
   int64_t block_count =
       tensorflow::MathUtil::CeilOfRatio(num_elements, threads_per_block);
 
-  stream->ThenLaunch(ThreadDim(threads_per_block), BlockDim(block_count),
-                     comparison_kernel, redzone, redzone_pattern,
-                     redzone.size(), out_param);
+  TF_RETURN_IF_ERROR(stream->ThenLaunch(
+      ThreadDim(threads_per_block), BlockDim(block_count), comparison_kernel,
+      redzone, redzone_pattern, redzone.size(), out_param));
+  return ::tensorflow::OkStatus();
 }
 
 // Since we reuse the same buffer for multiple checks, we re-initialize redzone
@@ -241,7 +241,7 @@ static port::Status ReinitializeRedzone(Stream* stream,
   redzone_array.fill(redzone_pattern);
   stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return port::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Check redzones around the user allocation.
@@ -269,10 +269,10 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
       executor->GetSubBuffer(&buffer_uint8, redzone_size + user_allocation_size,
                              /*element_count=*/redzone_size + rhs_slop);
 
-  RunRedzoneChecker(stream, lhs_redzone, redzone_pattern, out_param,
-                    comparison_kernel);
-  RunRedzoneChecker(stream, rhs_redzone, redzone_pattern, out_param,
-                    comparison_kernel);
+  TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, lhs_redzone, redzone_pattern,
+                                       out_param, comparison_kernel));
+  TF_RETURN_IF_ERROR(RunRedzoneChecker(stream, rhs_redzone, redzone_pattern,
+                                       out_param, comparison_kernel));
   int64_t result;
   CHECK_EQ(out_param.size(), sizeof(result));
   stream->ThenMemcpy(&result, out_param, sizeof(result));

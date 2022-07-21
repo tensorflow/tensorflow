@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TruncatedNormal"
   input_arg {
     name: "shape"

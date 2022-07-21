@@ -6,34 +6,39 @@
 // RUN:       tfrt-cost-threshold=1024                                         \
 // RUN:       auto-fusion-oplist=tf.Relu,tf.Transpose,tf.Const                 \
 // RUN:       auto-fusion-min-cluster-size=1"                                  \
-// RUN: | FileCheck %s
+// RUN: | FileCheck %s --dump-input=always
 
-// Check TF->CPURT JIT compiled operations clustering and outlining starting
+// Check TF->JitRT JIT compiled operations clustering and outlining starting
 // from the Tensorflow executor dialect.
 
 // -----
 // Simple cluster consisting of a single operation.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
-  // CHECK: func @_tfrt_fallback_init
-  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+  // CHECK: func @_tfrt_fallback_init(%[[ARG:.*]]: !tfrt.chain)
+  // CHECK:   %[[COMPILED:.*]] = tf_jitrt.fallback.compile @kernel::@compute
+  // CHECK:   %[[CHAIN:.*]] = tfrt.merge.chains %[[ARG]], %[[COMPILED]]
+  // CHECK:   tfrt.return %[[CHAIN]]
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
-    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    // CHECK: tf_jitrt.fallback.execute @kernel::@compute
     %0 = tf_executor.graph {
       %outs, %control = tf_executor.island wraps "tf.Relu"(%arg0)
                           {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME: ) -> tensor<?x?xf32> {
@@ -42,36 +47,42 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // CHECK:      }
 
 // -----
-// Two identical clusters consisting of a single operation. Check that outlined
-// clusters are deduplicated and we compile only once.
+// Two identical clusters (except the _class attribute) consisting of a single
+// `Relu` operation. Check that outlined clusters are deduplicated and we
+// compile only once.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK:     func @_tfrt_fallback_init
-  // CHECK:       tf_cpurt.fallback.compile @kernel::@compute
-  // CHECK-NOT:   tf_cpurt.fallback.compile
+  // CHECK:       tf_jitrt.fallback.compile @kernel::@compute
+  // CHECK-NOT:   tf_jitrt.fallback.compile
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
-    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    // CHECK: tf_jitrt.fallback.execute @kernel::@compute
     // CHECK: tfrt_fallback_async.executeop {{.*}} "tf.Sqrt"
-    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    // CHECK: tf_jitrt.fallback.execute @kernel::@compute
     %0 = tf_executor.graph {
       %outs0, %control0 = tf_executor.island wraps "tf.Relu"(%arg0)
-                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+                            {device = "", _class = ["loc:@Relu_0"]}
+                            : (tensor<?x?xf32>) -> tensor<?x?xf32>
       %outs1, %control1 = tf_executor.island wraps "tf.Sqrt"(%outs0)
                             {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       %outs2, %control2 = tf_executor.island wraps "tf.Relu"(%outs1)
-                            {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+                            {device = "", _class = ["loc:@Relu_1"]}
+                            : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs2: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME: ) -> tensor<?x?xf32> {
@@ -84,14 +95,14 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 
 module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK: func @_tfrt_fallback_init
-  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+  // CHECK:   tf_jitrt.fallback.compile @kernel::@compute
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
-    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    // CHECK: tf_jitrt.fallback.execute @kernel::@compute
     %0 = tf_executor.graph {
       %perm, %perm_ctl = tf_executor.island wraps "tf.Const"()
                          {device = "", value = dense<[1, 0]> : tensor<2xi32>}
@@ -101,11 +112,14 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                        : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
       tf_executor.fetch %out: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
 // CHECK-SAME: ) -> tensor<?x?xf32> {
@@ -121,28 +135,31 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 
 module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK: func @_tfrt_fallback_init
-  // CHECK:   tf_cpurt.fallback.compile @kernel::@compute
+  // CHECK:   tf_jitrt.fallback.compile @kernel::@compute
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>, %arg1: tensor<?xi32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>, %arg1: tensor<?xi32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0,input_1",
                                         outputs = "output_0"}} {
-    // CHECK: tf_cpurt.fallback.execute @kernel::@compute
+    // CHECK: tf_jitrt.fallback.execute @kernel::@compute
     %0 = tf_executor.graph {
       %out, %out_ctl = tf_executor.island wraps "tf.Transpose"(%arg0, %arg1)
                        {device = ""}
                        : (tensor<?x?xf32>, tensor<?xi32>) -> tensor<?x?xf32>
       tf_executor.fetch %out: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
-// CHECK:      module @kernel attributes {tfrt.compiled}
+// CHECK:      module @kernel attributes {
+// CHECK-SAME:   tfrt.compiled
+// CHECK-SAME:   "tfrt.max-arg-size" = 1 : i64
+// CHECK-SAME: }
 // CHECK:      func @compute(
 // CHECK-SAME:   %[[ARG0:.*]]: tensor<?x?xf32>
-// CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {cpurt.constraint = "value"}
+// CHECK-SAME:   %[[ARG1:.*]]: tensor<?xi32> {jitrt.constraint = "value"}
 // CHECK-SAME: ) -> tensor<?x?xf32> {
 // CHECK-NEXT:   %[[RET:.*]] = "tf.Transpose"(%[[ARG0]], %[[ARG1]])
 // CHECK:        return %[[RET]]
@@ -152,12 +169,12 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // Operations with unsupported data type operands/results are not clustered.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
-  func @call(%arg0: tensor<?x?x!tf_type.string>) -> (tensor<?x?x!tf_type.string>)
+  func.func @call(%arg0: tensor<?x?x!tf_type.string>) -> (tensor<?x?x!tf_type.string>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
-    // CHECK-NOT: tf_cpurt.fallback.compile
-    // CHECK-NOT: tf_cpurt.fallback.execute
+    // CHECK-NOT: tf_jitrt.fallback.compile
+    // CHECK-NOT: tf_jitrt.fallback.execute
     // CHECK-NOT: module @kernel
     %0 = tf_executor.graph {
       %perm, %perm_ctl =
@@ -169,6 +186,6 @@ module attributes {tf.versions = {producer = 462 : i32}} {
         : (tensor<?x?x!tf_type.string>, tensor<2xi32>) -> tensor<?x?x!tf_type.string>
       tf_executor.fetch %out: tensor<?x?x!tf_type.string>
     }
-    return %0 : tensor<?x?x!tf_type.string>
+    func.return %0 : tensor<?x?x!tf_type.string>
   }
 }

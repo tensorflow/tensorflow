@@ -59,7 +59,7 @@ DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
     if (!stat.Type().has_value()) return;
     switch (stat.Type().value()) {
       case StatType::kDevCapClockRateKHz:
-        caps.set_clock_rate_in_ghz(stat.IntOrUintValue() * 1000000.0);
+        caps.set_clock_rate_in_ghz(stat.IntOrUintValue() / 1000000.0);
         break;
       case StatType::kDevCapCoreCount:
         caps.set_num_cores(stat.IntOrUintValue());

@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/compiler/stream_analysis.h"  // from @tf_runtime
@@ -27,7 +27,7 @@ namespace {
 // multiple threads, to avoid atomic contention on their refcounts.
 class InsertFallbackTensorCopy
     : public mlir::PassWrapper<InsertFallbackTensorCopy,
-                               mlir::OperationPass<mlir::FuncOp>> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   }
@@ -42,8 +42,10 @@ class InsertFallbackTensorCopy
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertFallbackTensorCopy)
+
   void runOnOperation() override {
-    mlir::FuncOp func_op = getOperation();
+    mlir::func::FuncOp func_op = getOperation();
 
     // Use stream analysis to know whether a value is passed to different
     // threads.
@@ -155,7 +157,7 @@ class InsertFallbackTensorCopy
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateInsertFallbackTensorCopyPass() {
   return std::make_unique<InsertFallbackTensorCopy>();
 }

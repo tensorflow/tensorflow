@@ -15,12 +15,15 @@ limitations under the License.
 
 // This file implements logic for lowering MHLO dialect to Standard dialect.
 
-#include "llvm/ADT/StringSwitch.h"
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -40,31 +43,44 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
                                 PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
-    auto lhs_type = lhs.getType().cast<TensorType>();
-    auto rhs_type = rhs.getType().cast<TensorType>();
+    auto lhsType = lhs.getType().cast<TensorType>();
+    auto rhsType = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
-    if (lhs_type.getShape() != rhs_type.getShape()) return failure();
+    if (lhsType.getShape() != rhsType.getShape()) return failure();
 
-    if (!lhs_type.getElementType().isSignlessInteger() ||
-        !rhs_type.getElementType().isSignlessInteger())
+    if (!lhsType.getElementType().isSignlessInteger() ||
+        !rhsType.getElementType().isSignlessInteger())
       return failure();
 
-    auto comparison_direction = op.comparison_direction();
-    auto compare_predicate =
-        llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
-            .Case("EQ", CmpIPredicate::eq)
-            .Case("NE", CmpIPredicate::ne)
-            .Case("LT", CmpIPredicate::slt)
-            .Case("LE", CmpIPredicate::sle)
-            .Case("GT", CmpIPredicate::sgt)
-            .Case("GE", CmpIPredicate::sge)
-            .Default(llvm::None);
+    Optional<arith::CmpIPredicate> comparePredicate;
+    switch (op.comparison_direction()) {
+      case ComparisonDirection::EQ:
+        comparePredicate = arith::CmpIPredicate::eq;
+        break;
+      case ComparisonDirection::NE:
+        comparePredicate = arith::CmpIPredicate::ne;
+        break;
+      case ComparisonDirection::LT:
+        comparePredicate = arith::CmpIPredicate::slt;
+        break;
+      case ComparisonDirection::LE:
+        comparePredicate = arith::CmpIPredicate::sle;
+        break;
+      case ComparisonDirection::GT:
+        comparePredicate = arith::CmpIPredicate::sgt;
+        break;
+      case ComparisonDirection::GE:
+        comparePredicate = arith::CmpIPredicate::sge;
+        break;
+      default:
+        comparePredicate = llvm::None;
+    }
 
-    if (!compare_predicate.hasValue()) return failure();
+    if (!comparePredicate.has_value()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
-                                        rhs);
+    rewriter.replaceOpWithNewOp<arith::CmpIOp>(op, comparePredicate.getValue(),
+                                               lhs, rhs);
     return success();
   }
 };
@@ -77,31 +93,44 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
                                 PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
-    auto lhs_type = lhs.getType().cast<TensorType>();
-    auto rhs_type = rhs.getType().cast<TensorType>();
+    auto lhsType = lhs.getType().cast<TensorType>();
+    auto rhsType = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
-    if (lhs_type.getShape() != rhs_type.getShape()) return failure();
+    if (lhsType.getShape() != rhsType.getShape()) return failure();
 
-    if (!lhs_type.getElementType().isa<FloatType>() ||
-        !rhs_type.getElementType().isa<FloatType>())
+    if (!lhsType.getElementType().isa<FloatType>() ||
+        !rhsType.getElementType().isa<FloatType>())
       return failure();
 
-    auto comparison_direction = op.comparison_direction();
-    auto compare_predicate =
-        llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
-            .Case("EQ", CmpFPredicate::OEQ)
-            .Case("NE", CmpFPredicate::UNE)
-            .Case("LT", CmpFPredicate::OLT)
-            .Case("LE", CmpFPredicate::OLE)
-            .Case("GT", CmpFPredicate::OGT)
-            .Case("GE", CmpFPredicate::OGE)
-            .Default(llvm::None);
+    Optional<arith::CmpFPredicate> comparePredicate;
+    switch (op.comparison_direction()) {
+      case ComparisonDirection::EQ:
+        comparePredicate = arith::CmpFPredicate::OEQ;
+        break;
+      case ComparisonDirection::NE:
+        comparePredicate = arith::CmpFPredicate::UNE;
+        break;
+      case ComparisonDirection::LT:
+        comparePredicate = arith::CmpFPredicate::OLT;
+        break;
+      case ComparisonDirection::LE:
+        comparePredicate = arith::CmpFPredicate::OLE;
+        break;
+      case ComparisonDirection::GT:
+        comparePredicate = arith::CmpFPredicate::OGT;
+        break;
+      case ComparisonDirection::GE:
+        comparePredicate = arith::CmpFPredicate::OGE;
+        break;
+      default:
+        comparePredicate = llvm::None;
+    }
 
-    if (!compare_predicate.hasValue()) return failure();
+    if (!comparePredicate.has_value()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate.getValue(), lhs,
-                                        rhs);
+    rewriter.replaceOpWithNewOp<arith::CmpFOp>(op, comparePredicate.getValue(),
+                                               lhs, rhs);
     return success();
   }
 };
@@ -116,60 +145,60 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 
   LogicalResult matchAndRewrite(mhlo::IotaOp op,
                                 PatternRewriter &rewriter) const override {
-    auto output_type = op.getType().cast<ShapedType>();
-    auto output_size = output_type.getNumElements();
+    auto outputType = op.getType().cast<ShapedType>();
+    auto outputSize = outputType.getNumElements();
     auto dimension = op.iota_dimension();
-    auto max_dim_size = output_type.getDimSize(dimension);
+    auto maxDimSize = outputType.getDimSize(dimension);
 
-    auto element_type = output_type.getElementType();
+    auto elementType = outputType.getElementType();
     int bitwidth;
 
-    auto complex_ty = element_type.dyn_cast<ComplexType>();
-    Type int_or_float_ty = element_type;
-    if (complex_ty) int_or_float_ty = complex_ty.getElementType();
+    auto complexTy = elementType.dyn_cast<ComplexType>();
+    Type intOrFloatTy = elementType;
+    if (complexTy) intOrFloatTy = complexTy.getElementType();
 
-    bitwidth = int_or_float_ty.getIntOrFloatBitWidth();
+    bitwidth = intOrFloatTy.getIntOrFloatBitWidth();
     llvm::SmallVector<APInt, 10> values;
-    values.reserve(output_size);
+    values.reserve(outputSize);
 
-    int64_t increase_stride = output_size;
-    for (int i = 0; i <= dimension; i++) {
-      increase_stride /= output_type.getDimSize(i);
+    int64_t increaseStride = outputSize;
+    for (uint64_t i = 0; i <= dimension; i++) {
+      increaseStride /= outputType.getDimSize(i);
     }
 
-    int64_t current_value = 0;
-    for (int i = 0; i < output_size; i++) {
-      int64_t value = (current_value / increase_stride) % max_dim_size;
+    int64_t currentValue = 0;
+    for (int i = 0; i < outputSize; i++) {
+      int64_t value = (currentValue / increaseStride) % maxDimSize;
       values.push_back(APInt(bitwidth, value));
-      ++current_value;
+      ++currentValue;
     }
 
-    auto int_shape_type = RankedTensorType::get(
-        output_type.getShape(),
+    auto intShapeType = RankedTensorType::get(
+        outputType.getShape(),
         IntegerType::get(rewriter.getContext(), bitwidth));
     auto loc = op.getLoc();
-    auto integer_const = rewriter.create<mlir::ConstantOp>(
-        loc, DenseIntElementsAttr::get(int_shape_type, values));
+    auto integerConst = rewriter.create<mlir::arith::ConstantOp>(
+        loc, DenseIntElementsAttr::get(intShapeType, values));
 
-    auto int_or_float_shape_ty =
-        RankedTensorType::get(output_type.getShape(), int_or_float_ty);
+    auto intOrFloatShapeTy =
+        RankedTensorType::get(outputType.getShape(), intOrFloatTy);
 
-    auto iota_const =
-        rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, integer_const);
+    auto iotaConst =
+        rewriter.create<ConvertOp>(loc, intOrFloatShapeTy, integerConst);
 
     // For int/float types we are done, replace op and return.
-    if (!complex_ty) {
-      rewriter.replaceOp(op, iota_const.getResult());
+    if (!complexTy) {
+      rewriter.replaceOp(op, iotaConst.getResult());
       return success();
     }
 
     // For complex types, generate a constant tensor of zeroes for the imaginary
     // part and use iota_const for real part.
-    auto zeroes = rewriter.create<mlir::ConstantOp>(
-        loc, DenseIntElementsAttr::get(int_shape_type, APInt(bitwidth, 0)));
-    auto imag_zeroes =
-        rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
-    rewriter.replaceOpWithNewOp<mhlo::ComplexOp>(op, iota_const, imag_zeroes);
+    auto zeroes = rewriter.create<mlir::arith::ConstantOp>(
+        loc, DenseIntElementsAttr::get(intShapeType, APInt(bitwidth, 0)));
+    auto imagZeroes =
+        rewriter.create<ConvertOp>(loc, intOrFloatShapeTy, zeroes);
+    rewriter.replaceOpWithNewOp<mhlo::ComplexOp>(op, iotaConst, imagZeroes);
     return success();
   }
 };
@@ -180,29 +209,32 @@ namespace {
 struct LegalizeToStandardPass
     : public LegalizeToStandardPassBase<LegalizeToStandardPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<arith::ArithmeticDialect, math::MathDialect,
+                    func::FuncDialect>();
   }
 
   /// Perform the lowering to Standard dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandardPass>();
 }
 
-void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+void populateMhloToStdPatterns(RewritePatternSet *patterns,
                                mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(*patterns);
-  patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
+  patterns->add<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
 /// Perform the lowering to standard dialect.
-void LegalizeToStandardPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+void LegalizeToStandardPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  mlir::mhlo::populateMhloToStdPatterns(&patterns, &getContext());
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 }  // end namespace mhlo

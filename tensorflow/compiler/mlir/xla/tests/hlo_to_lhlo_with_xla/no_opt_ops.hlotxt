@@ -17,9 +17,9 @@ HloModule indexed_conditional
   ROOT %floor = f32[] floor(f32[] %z)
 }
 
-// CHECK: "lmhlo.case"(%{{.*}}) ( {
+// CHECK: "lmhlo.case"(%{{.*}}) ({
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.negate"
+// CHECK:   mhlo.negate
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
@@ -27,7 +27,7 @@ HloModule indexed_conditional
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.floor"
+// CHECK:   mhlo.floor
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : (memref<i32>) -> ()
 
@@ -56,7 +56,7 @@ HloModule WhileWithScalarS32Result_module
   ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %prev.2), direction=GT
 }
 
-// CHECK: "lmhlo.while"(%{{.*}}) ( {
+// CHECK: "lmhlo.while"(%{{.*}}) ({
 // CHECK:   %{{.*}} = memref.view
 // CHECK:   "mhlo.compare"
 // CHECK:   "lmhlo.terminator"() : () -> ()

@@ -174,7 +174,6 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -235,6 +234,7 @@ tf_cc_binary(
         ":hlo_extractor",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -271,7 +271,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/strings",
-        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -382,10 +381,14 @@ cc_library(
     hdrs = ["hlo_control_flow_flattening.h"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:call_graph",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -394,12 +397,14 @@ tf_cc_test(
     srcs = ["hlo_control_flow_flattening_test.cc"],
     deps = [
         ":hlo_control_flow_flattening",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:despecializer",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/cpu/runtime_custom_call_status.h"
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY bool __xla_cpu_runtime_StatusIsSuccess(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY bool __xla_cpu_runtime_StatusIsSuccess(
     const void* status_ptr) {
   auto status = static_cast<const XlaCustomCallStatus*>(status_ptr);
   return !xla::CustomCallStatusGetMessage(status).has_value();

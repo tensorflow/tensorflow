@@ -67,10 +67,13 @@ static bool AreInstructionSupported(HloComputation* comp) {
   return true;
 }
 
-StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
+StatusOr<bool> FusionBitcastLift::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "FusionBitcastLift::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     // Copy the instruction list as we modify the HloComputation.
     std::vector<HloInstruction*> comp_instruction(comp->instructions().begin(),
                                                   comp->instructions().end());
@@ -149,7 +152,7 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
             // Replace the parameter inside the fusion.
             Shape new_shape = i->users()[0]->shape();
             int64_t parameter_number = i->parameter_number();
-            string name = i->name();
+            std::string name = i->name();
             auto n = HloInstruction::CreateParameter(parameter_number,
                                                      new_shape, name);
             HloInstruction* new_parameter =
@@ -243,11 +246,8 @@ StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
           }
         }  // while
         DCHECK(clone_changed) << "We should have changed the fusion!";
-        std::function<int64_t(const Shape&)> shape_size_func =
-            [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); };
-        auto shape_verifier = absl::make_unique<ShapeVerifier>(
-            /*layout_sensitive=*/true,
-            /*allow_mixed_precision=*/false, shape_size_func);
+        auto opts = HloVerifierOpts{}.MakeLayoutSensitive();
+        auto shape_verifier = std::make_unique<ShapeVerifier>(opts);
         if (clone_changed) {
           Status status =
               cloned_fusion->fused_instructions_computation()->Accept(

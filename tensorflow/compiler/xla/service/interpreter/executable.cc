@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -41,7 +41,7 @@ namespace interpreter {
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloEvaluator> evaluator,
-    absl::optional<DynamicDimensionInference> dynamic_dymension_inference)
+    std::optional<DynamicDimensionInference> dynamic_dymension_inference)
     : InterpreterExecutableBase(std::move(hlo_module)),
       evaluator_(std::move(evaluator)),
       dynamic_dimension_inference_(std::move(dynamic_dymension_inference)) {
@@ -55,7 +55,7 @@ StatusOr<Literal> InterpreterExecutable::Evaluate(
     const ServiceExecutableRunOptions* run_options,
     const HloComputation& computation, absl::Span<const Literal> arg_literals) {
   // Execute the graph using the HloEvaluator.
-  tensorflow::mutex_lock lock(evaluator_lock_);
+  absl::MutexLock lock(&evaluator_lock_);
   evaluator_->ResetVisitStates();
   return evaluator_->Evaluate(computation, arg_literals);
 }

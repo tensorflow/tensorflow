@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/ref_var.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/variant.h"
@@ -58,7 +59,7 @@ tensorflow::Status EnsureSparseVariableAccess(
     tensorflow::Var* var) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   mutex_lock ml(*var->mu());
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
@@ -66,7 +67,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   // copy-on-read mode is false.
   if (var->tensor()->RefCountIsOne()) {
     var->copy_on_read_mode.store(true);
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Tensor tmp;
   if (variantType) {
@@ -93,7 +94,7 @@ tensorflow::Status EnsureSparseVariableAccess(
   }
   *var->tensor() = tmp;
   var->copy_on_read_mode.store(true);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status PrepareToUpdateVariable(
@@ -130,7 +131,7 @@ tensorflow::Status PrepareToUpdateVariable(
     }
     *tensor = tmp;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::mutex* GetTrainingVariableMutex(
@@ -158,7 +159,7 @@ tensorflow::mutex* GetTrainingVariableMutex(
 }
 
 void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
-                       int value_index,
+                       int value_index, bool validate_shape,
                        void (*copyFunc)(TF_OpKernelContext* ctx,
                                         TF_Tensor* source, TF_Tensor* dest),
                        TF_Status* status) {
@@ -171,9 +172,20 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                *ptr = new tensorflow::Var(value.dtype());
                                *(*ptr)->tensor() = value;
                                (*ptr)->is_initialized = true;
-                               return tensorflow::Status::OK();
+                               return ::tensorflow::OkStatus();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
+
+  if (validate_shape) {
+    OP_REQUIRES(cc_ctx,
+                (!variable->is_initialized ||
+                 variable->tensor()->shape().IsSameSize(value.shape())),
+                InvalidArgument(
+                    "Trying to assign to variable with tensor with wrong shape."
+                    " Expected ",
+                    variable->tensor()->shape().DebugString(), " got ",
+                    value.shape().DebugString()));
+  }
 
   if (variable->copy_on_read_mode.load()) {
     tensorflow::Tensor tmp;
@@ -191,6 +203,37 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
     *variable->tensor() = value;
   }
   variable->is_initialized = true;
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
+                          int output_ref_index, int value_index,
+                          bool use_locking, bool validate_shape,
+                          void (*copyFunc)(TF_OpKernelContext* ctx,
+                                           TF_Tensor* source, TF_Tensor* dest),
+                          TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+
+  auto copy = [copyFunc, ctx](::tensorflow::OpKernelContext* cc_ctx,
+                              ::tensorflow::Tensor* lhs,
+                              const ::tensorflow::Tensor& rhs) {
+    ::tensorflow::Status s;
+    TF_Tensor* tf_lhs = TF_TensorFromTensor(*lhs, &s);
+    OP_REQUIRES_OK(cc_ctx, s);
+
+    TF_Tensor* tf_rhs = TF_TensorFromTensor(rhs, &s);
+
+    if (!s.ok()) {
+      TF_DeleteTensor(tf_lhs);
+      OP_REQUIRES_OK(cc_ctx, s);
+    }
+
+    copyFunc(ctx, tf_rhs, tf_lhs);
+  };
+
+  ::tensorflow::AssignRefVariable(cc_ctx, input_ref_index, output_ref_index,
+                                  value_index, use_locking, validate_shape,
+                                  false, copy);
   TF_SetStatus(status, TF_OK, "");
 }
 
@@ -308,19 +351,19 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
       OP_REQUIRES_OK(cc_ctx, EnsureSparseVariableAccess(ctx, isVariantType,
                                                         copyFunc, var.get()));
       *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-      TF_SetStatus(status, TF_OK, "");
+      ::tensorflow::Set_TF_Status_from_Status(status, s);
       return;
     }
     OP_REQUIRES_OK(cc_ctx, PrepareToUpdateVariable(
                                ctx, var->tensor(),
                                var->copy_on_read_mode.load(), false, copyFunc));
     *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-    TF_SetStatus(status, TF_OK, "");
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
     return;
   }
   *out = ::tensorflow::TF_TensorFromTensor(
       cc_ctx->mutable_input(input, lock_held), &s);
-  TF_SetStatus(status, TF_OK, "");
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
 }
 
 void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
@@ -380,4 +423,14 @@ void TF_OpKernelConstruction_GetAttrTensorShape(TF_OpKernelConstruction* ctx,
   for (int i = 0; i < rank; ++i) {
     dims[i] = static_cast<int64_t>(shape.dim_size(i));
   }
+}
+
+bool TF_IsRefInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_inputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    return false;
+  }
+  TF_SetStatus(status, TF_OK, "");
+  return cc_ctx->input_is_ref(i);
 }

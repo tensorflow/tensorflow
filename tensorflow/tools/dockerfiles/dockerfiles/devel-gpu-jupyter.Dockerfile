@@ -31,14 +31,16 @@ ARG CUDA
 ARG CUDNN=8.1.0.77-1
 ARG CUDNN_MAJOR_VERSION=8
 ARG LIB_DIR_PREFIX=x86_64
-ARG LIBNVINFER=8.0.0-1
-ARG LIBNVINFER_MAJOR_VERSION=8
+ARG LIBNVINFER=7.2.2-1
+ARG LIBNVINFER_MAJOR_VERSION=7
 
 # Needed for string substitution
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub && \
+    apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        clang-format \
         cuda-command-line-tools-${CUDA/./-} \
         libcublas-${CUDA/./-} \
         libcublas-dev-${CUDA/./-} \
@@ -71,6 +73,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install TensorRT if not building for PowerPC
 # NOTE: libnvinfer uses cuda11.1 versions
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
+        apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub && \
+        echo "deb https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64 /"  > /etc/apt/sources.list.d/tensorRT.list && \
+        apt-get update && \
         apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda11.0 \
         libnvinfer-dev=${LIBNVINFER}+cuda11.0 \
         libnvinfer-plugin-dev=${LIBNVINFER}+cuda11.0 \
@@ -79,7 +84,7 @@ RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
         && rm -rf /var/lib/apt/lists/*; }
 
 # Configure the build for our CUDA configuration.
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH:/usr/local/cuda/lib64/stubs:/usr/local/cuda-11.0/lib64:/usr/local/cuda-11.2/lib64
+ENV LD_LIBRARY_PATH /usr/local/cuda-11.0/targets/x86_64-linux/lib:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:/usr/include/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH:/usr/local/cuda/lib64/stubs:/usr/local/cuda-11.0/lib64:/usr/local/cuda-11.2/lib64
 ENV TF_NEED_CUDA 1
 ENV TF_NEED_TENSORRT 1
 ENV TF_CUDA_VERSION=${CUDA}
@@ -88,7 +93,7 @@ ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
 ARG CACHE_STOP=1
 # Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
 ARG CHECKOUT_TF_SRC=0
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone --depth=1 https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
 
 # Link the libcuda stub to the location where tensorflow is searching for it and reconfigure
 # dynamic linker run-time bindings
@@ -124,6 +129,7 @@ RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
     keras_preprocessing \
+    tb-nightly \
     matplotlib \
     mock \
     'numpy<1.19.0' \
@@ -132,16 +138,16 @@ RUN python3 -m pip --no-cache-dir install \
     pandas \
     future \
     portpicker \
-    enum34
+    enum34 \
+    'protobuf < 4'
 
-# Install bazel
-ARG BAZEL_VERSION=3.7.2
+# Installs bazelisk
 RUN mkdir /bazel && \
-    wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
-    wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
-    chmod +x /bazel/installer.sh && \
-    /bazel/installer.sh && \
-    rm -f /bazel/installer.sh
+    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
+    mkdir /bazelisk && \
+    curl -fSsL -o /bazelisk/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazelisk/master/LICENSE" && \
+    curl -fSsL -o /usr/bin/bazel "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64" && \
+    chmod +x /usr/bin/bazel
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

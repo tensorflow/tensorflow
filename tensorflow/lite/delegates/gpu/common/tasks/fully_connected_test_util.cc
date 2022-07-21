@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/fully_connected_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -37,19 +38,19 @@ absl::Status FullyConnectedTest(TestExecutionEnvironment* env) {
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.5f, -0.5f};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       FullyConnected operation =
           CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)),
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({14.5f, 37.5f}, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);
@@ -83,19 +84,19 @@ absl::Status FullyConnectedLargeTest(TestExecutionEnvironment* env) {
   attr.bias.data = {-0.6f, -0.5f, -0.4f, -0.3f, -0.2f, -0.1f,
                     0.1f,  0.2f,  0.3f,  0.4f,  0.5f,  0.6f};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 0.0f : 1.0f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       FullyConnected operation =
           CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)),
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, 12), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({139.4f, 363.5f, 587.6f, 811.7f, 1035.8f, 1259.9f,
@@ -122,8 +123,9 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
 
   std::vector<float> expected(kOutputSize, 2481.38f);
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       float eps;
       switch (precision) {
         case CalculationsPrecision::F32:
@@ -149,14 +151,13 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
       }
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       FullyConnected operation =
           CreateFullyConnected(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<FullyConnected>(std::move(operation)),
+          src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, kOutputSize), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(expected, dst_tensor.data, eps))
           << "Failed using precision " << ToString(precision);

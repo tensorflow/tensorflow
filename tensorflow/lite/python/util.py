@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +14,6 @@
 # ==============================================================================
 """Functions used by multiple converter files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import datetime
 import sys
@@ -31,11 +26,13 @@ import flatbuffers
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
+from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
 from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -43,6 +40,9 @@ from tensorflow.python.framework import error_interpolation as _error_interpolat
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
+
+# The field name of conversion metadata in the flatbuffer file.
+CONVERSION_METADATA_FIELD_NAME = "CONVERSION_METADATA"
 
 # Keras functions used by TFLite
 model_input_signature = _tflite_keras_util.model_input_signature
@@ -981,3 +981,97 @@ def modify_model_io_type(
   _remove_redundant_quantize_ops(model_object)
 
   return _convert_model_from_object_to_bytearray(model_object)
+
+
+def get_sparsity_modes(model_object):
+  """Get sparsity modes used in a tflite model.
+
+  The sparsity modes are listed in conversion_metadata.fbs file.
+
+  Args:
+    model_object: A tflite model in object form.
+
+  Returns:
+    The list of sparsity modes used in the model.
+  """
+  if not model_object or not model_object.metadata:
+    return []
+
+  result = set()
+  for subgraph in model_object.subgraphs:
+    for tensor in subgraph.tensors:
+      if not tensor.sparsity:
+        continue
+
+      # Block map is the list if indexes where the block size is larger than 1.
+      # So empty block map means it is random sparsity.
+      if not tensor.sparsity.blockMap:
+        result.add(
+            conversion_metadata_fb.ModelOptimizationMode.RANDOM_SPARSITY)
+      else:
+        result.add(
+            conversion_metadata_fb.ModelOptimizationMode.BLOCK_SPARSITY)
+
+  return list(result)
+
+
+def populate_conversion_metadata(model_object, metadata):
+  """Add or update conversion metadata to a tflite model.
+
+  Args:
+    model_object: A tflite model in object form.
+    metadata: The conversion metadata.
+
+  Returns:
+    A tflite model object with embedded conversion metadata.
+  """
+  try:
+    metadata_builder = flatbuffers.Builder(0)
+    metadata_builder.Finish(metadata.Pack(metadata_builder))
+    buffer_field = schema_fb.BufferT()
+    buffer_field.data = metadata_builder.Output()
+
+    if not model_object.metadata:
+      model_object.metadata = []
+    else:
+      # Check if metadata has already been populated.
+      for meta in model_object.metadata:
+        if meta.name.decode("utf-8") == CONVERSION_METADATA_FIELD_NAME:
+          model_object.buffers[meta.buffer] = buffer_field
+          return model_object
+
+    if not model_object.buffers:
+      model_object.buffers = []
+    model_object.buffers.append(buffer_field)
+    # Creates a new metadata field.
+    metadata_field = schema_fb.MetadataT()
+    metadata_field.name = CONVERSION_METADATA_FIELD_NAME
+    metadata_field.buffer = len(model_object.buffers) - 1
+    model_object.metadata.append(metadata_field)
+
+    return model_object
+  except Exception:  # pylint: disable=broad-except
+    return model_object
+
+
+def get_conversion_metadata(model_buffer):
+  """Read conversion metadata from a tflite model.
+
+  Args:
+    model_buffer: A tflite model.
+
+  Returns:
+    The conversion metadata or None if it is not populated.
+  """
+  model_object = flatbuffer_utils.convert_bytearray_to_object(model_buffer)
+  if not model_object or not model_object.metadata:
+    return None
+
+  for meta in model_object.metadata:
+    if meta.name.decode("utf-8") == CONVERSION_METADATA_FIELD_NAME:
+      metadata_buf = model_object.buffers[meta.buffer].data.tobytes()
+      return conversion_metadata_fb.ConversionMetadataT.InitFromObj(
+          conversion_metadata_fb.ConversionMetadata.GetRootAsConversionMetadata(
+              metadata_buf, 0))
+
+  return None

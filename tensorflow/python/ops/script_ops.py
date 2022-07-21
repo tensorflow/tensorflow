@@ -15,10 +15,6 @@
 """Script Language Operators."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 # Used by py_util.cc to get tracebacks.
@@ -26,7 +22,6 @@ import traceback  # pylint: disable=unused-import
 import weakref
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
@@ -49,6 +44,7 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 autograph = lazy_loader.LazyLoader(
@@ -74,7 +70,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
     return tensor._copy()  # pylint: disable=protected-access
 
 
-class EagerFunc(object):
+class EagerFunc:
   """A wrapper for a function owned by an EagerPyFunc."""
 
   def __init__(self, func, Tout, is_grad_func):
@@ -177,7 +173,7 @@ class EagerFunc(object):
     return outputs
 
 
-class FuncRegistry(object):
+class FuncRegistry:
   """A helper class to keep track of registered py functions.
 
   FuncRegistry keeps a map from unique tokens (string) to python
@@ -275,7 +271,7 @@ class FuncRegistry(object):
       ret = func(*args)
       # Strings seem to lead to a memory leak here if they're not wrapped in a
       # list.
-      if isinstance(ret, six.binary_type):
+      if isinstance(ret, bytes):
         ret = [ret]
       # Ensures that we return either a single numpy array or a list of numpy
       # arrays.
@@ -317,7 +313,7 @@ def _internal_py_func(func,
 
   original_func = func
   func = autograph.do_not_convert(func)
-  inp = list(inp)
+  inp = variable_utils.convert_variables_to_tensors(list(inp))
 
   # Normalize Tout.
   is_list_or_tuple = isinstance(Tout, (list, tuple))
@@ -445,17 +441,15 @@ def eager_py_func(func, inp, Tout, name=None):
     else:
       return m**2 * (1 - 2 * tf.math.log(m) + tf.math.log(x**2))
 
-  x = tf.compat.v1.placeholder(tf.float32)
-  m = tf.compat.v1.placeholder(tf.float32)
+  x = tf.constant(1.0)
+  m = tf.constant(2.0)
 
-  y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
-  dy_dx = tf.gradients(y, x)[0]
+  with tf.GradientTape() as t:
+    t.watch([x, m])
+    y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
 
-  with tf.compat.v1.Session() as sess:
-    # The session executes `log_huber` eagerly. Given the feed values below,
-    # it will take the first branch, so `y` evaluates to 1.0 and
-    # `dy_dx` evaluates to 2.0.
-    y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
+  dy_dx = t.gradient(y, x)
+  assert dy_dx.numpy() == 2.0
   ```
 
   You can also use `tf.py_function` to debug your models at runtime
@@ -470,14 +464,18 @@ def eager_py_func(func, inp, Tout, name=None):
   `tf.py_function` is similar in spirit to `tf.compat.v1.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
   Python function. In particular, while `tf.compat.v1.py_func` only runs on CPUs
-  and
-  wraps functions that take NumPy arrays as inputs and return NumPy arrays as
-  outputs, `tf.py_function` can be placed on GPUs and wraps functions
+  and wraps functions that take NumPy arrays as inputs and return NumPy arrays
+  as outputs, `tf.py_function` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
-  Like `tf.compat.v1.py_func`, `tf.py_function` has the following limitations
-  with respect to serialization and distribution:
+  Note: We recommend to avoid using `tf.py_function` outside of prototyping
+  and experimentation due to the following known limitations:
+
+  * Calling `tf.py_function` will acquire the Python Global Interpreter Lock
+    (GIL) that allows only one thread to run at any point in time. This will
+    preclude efficient parallelization and distribution of the execution of the
+    program.
 
   * The body of the function (i.e. `func`) will not be serialized in a
     `GraphDef`. Therefore, you should not use this function if you need to
@@ -489,6 +487,9 @@ def eager_py_func(func, inp, Tout, name=None):
     program that calls `tf.py_function()` and you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
 
+  * Currently `tf.py_function` is not compatible with XLA. Calling
+    `tf.py_function` inside `tf.function(jit_comiple=True)` will raise an
+    error.
 
   Args:
     func: A Python function that accepts `inp` as arguments, and returns a
@@ -685,7 +686,7 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 @tf_export("numpy_function")
 @dispatch.add_dispatch_support
-def numpy_function(func, inp, Tout, name=None):
+def numpy_function(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func` wrap this function as an operation in a
@@ -712,8 +713,14 @@ def numpy_function(func, inp, Tout, name=None):
   function to contain `tf.Tensors`, and have any TensorFlow operations executed
   in the function be differentiable, please use `tf.py_function`.
 
-  Note: The `tf.numpy_function` operation has the following known
-  limitations:
+  Note: We recommend to avoid using `tf.numpy_function` outside of
+  prototyping and experimentation due to the following known limitations:
+
+  * Calling `tf.numpy_function` will acquire the Python Global Interpreter Lock
+    (GIL) that allows only one thread to run at any point in time. This will
+    preclude efficient parallelization and distribution of the execution of the
+    program. Therefore, you are discouraged to use `tf.numpy_function` outside
+    of prototyping and experimentation.
 
   * The body of the function (i.e. `func`) will not be serialized in a
     `tf.SavedModel`. Therefore, you should not use this function if you need to
@@ -725,11 +732,13 @@ def numpy_function(func, inp, Tout, name=None):
     program that calls `tf.numpy_function`  you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
 
+  * Currently `tf.numpy_function` is not compatible with XLA. Calling
+    `tf.numpy_function` inside `tf.function(jit_comiple=True)` will raise an
+    error.
+
   * Since the function takes numpy arrays, you cannot take gradients
     through a numpy_function. If you require something that is differentiable,
     please consider using tf.py_function.
-
-  * The resulting function is assumed stateful and will never be optimized.
 
   Args:
     func: A Python function, which accepts `numpy.ndarray` objects as arguments
@@ -746,12 +755,20 @@ def numpy_function(func, inp, Tout, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
+    stateful: (Boolean.) Setting this argument to False tells the runtime to
+      treat the function as stateless, which enables certain optimizations.
+      A function is stateless when given the same input it will return the
+      same output and have no side effects; its only purpose is to have a
+      return value.
+      The behavior for a stateful function with the `stateful` argument False
+      is undefined. In particular, caution should be taken when
+      mutating the input arguments as this is a stateful operation.
     name: (Optional) A name for the operation.
 
   Returns:
     Single or list of `tf.Tensor` which `func` computes.
   """
-  return py_func_common(func, inp, Tout, stateful=True, name=name)
+  return py_func_common(func, inp, Tout, stateful=stateful, name=name)
 
 
 def _as_dtype_or_type_spec(t):

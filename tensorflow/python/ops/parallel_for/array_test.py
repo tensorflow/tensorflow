@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for vectorization of array kernels."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,6 +28,7 @@ from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 
 
+@test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes
 class ArrayTest(PForTestCase):
 

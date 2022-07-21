@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -34,7 +35,7 @@ namespace gpu {
 
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
-                         const string& kernel_name,
+                         const std::string& kernel_name,
                          const LaunchDimensions& launch_dimensions)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
@@ -42,12 +43,13 @@ KernelThunk::KernelThunk(ThunkInfo thunk_info,
       launch_dimensions_(launch_dimensions) {}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
-  return " ,kernel = " + kernel_name_;
+  return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,
+                         launch_dimensions_.ToString());
 }
 
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   // Load the kernel into the device if necessary.
   //
@@ -64,14 +66,14 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     kernel_cache_.emplace(executor, std::move(kernel));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static void PrintBufferContents(
     se::Stream* stream, absl::Span<const se::DeviceMemoryBase> buffer_args) {
   int input_idx = 0;
   for (const se::DeviceMemoryBase& buf : buffer_args) {
-    auto host_buffer = absl::make_unique<char[]>(buf.size());
+    auto host_buffer = std::make_unique<char[]>(buf.size());
     CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
     CHECK(stream->BlockHostUntilDone().ok());
 
@@ -91,7 +93,7 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   const se::KernelBase* kernel = nullptr;
 
   {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     auto it = kernel_cache_.find(executor);
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;

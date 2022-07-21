@@ -500,15 +500,17 @@ absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
   return absl::OkStatus();
 }
 
-bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
-  if (model.values().empty()) return true;
+absl::Status CheckBatchSizeForAllValues(const GraphFloat32& model) {
+  if (model.values().empty()) return absl::OkStatus();
   const int32_t b = model.values()[0]->tensor.shape.b;
   for (auto value : model.values()) {
     if (value->tensor.shape.b != b) {
-      return false;
+      return absl::InvalidArgumentError(
+          absl::StrCat("Batch size mismatch, expected ", b, " but got ",
+                       value->tensor.shape.b));
     }
   }
-  return true;
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

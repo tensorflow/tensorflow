@@ -228,7 +228,7 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // switch node, and use it to anchor the control dependency.
     for (const NodeDef* output : node_map->GetOutputs(node->name())) {
       if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
-        if (IsSameInput(node->input(0), input_name)) {
+        if (IsSameInput(output->name(), input_name)) {
           return AsControlDependency(*output);
         }
       }
@@ -332,7 +332,7 @@ static Status PutValueIntoTensor(const int64_t value, const DataType& type,
   } else {
     tensor->flat<int64_t>()(index) = value;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Writes the given tensor shape into the given tensor.
@@ -357,7 +357,7 @@ static Status ConvertShapeToConstant(const string& op, const DataType& type,
     *tensor = Tensor(type, TensorShape({}));
     TF_RETURN_IF_ERROR(PutValueIntoTensor(shp.dims(), type, 0, tensor));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(rmlarsen): Perhaps we should move this to the GraphOptimizer base class.
@@ -559,7 +559,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -611,22 +611,22 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
       (shape_node1->op() != "Shape" && !IsReallyConstant(*shape_node1)) ||
       shape_node2 == nullptr ||
       (shape_node2->op() != "Shape" && !IsReallyConstant(*shape_node2))) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Don't optimize this again if it was already optimized and folded.
   if (OptimizedNodeExists(node, "-folded-1") ||
       OptimizedNodeExists(node, "-folded-2")) {
-    return Status::OK();
+    return OkStatus();
   }
   int64_t min_id = 0;
   BCast::Vec shape1;
   if (!ExtractShape(*shape_node1, properties, &shape1, &min_id)) {
-    return Status::OK();
+    return OkStatus();
   }
   BCast::Vec shape2;
   if (!ExtractShape(*shape_node2, properties, &shape2, &min_id)) {
-    return Status::OK();
+    return OkStatus();
   }
   // A value of -1 means we don't known anything about the dimension. Replace
   // the -1 values with unique dimension ids since we don't want two '-1'
@@ -655,7 +655,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
       // We're either dealing with 2 different symbolic dimensions or a symbolic
       // and a know dimensions. We can't be sure whether both are equal or not,
       // so we can't be sure whether we'll be broadcasting or not.
-      return Status::OK();
+      return OkStatus();
     }
   }
   // These extra dims could be equal to 1, in which case there is no
@@ -663,18 +663,18 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   // be broadcasting. Since we don't know, we'll just punt.
   for (int i = common_dims, end = shape1.size(); i < end; ++i) {
     if (shape1[i] < 0) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   for (int i = common_dims, end = shape2.size(); i < end; ++i) {
     if (shape2[i] < 0) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
   BCast bcast(shape1, shape2);
   if (!bcast.IsValid()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   BCast::Vec reduce_dims[2];
@@ -723,39 +723,39 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::MaterializeReductionIndices(
     NodeDef* node, const GraphProperties& properties) {
   if (node->input_size() < 2) {
-    return Status::OK();
+    return OkStatus();
   }
   const NodeDef* indices = node_map_->GetNode(node->input(1));
   if (!indices || IsReallyConstant(*indices)) {
     // The reduction indices are already constant, there's nothing to do.
-    return Status::OK();
+    return OkStatus();
   }
 
   const std::vector<OpInfo::TensorProperties>& input_props =
       properties.GetInputProperties(node->name());
   if (input_props.size() != 2) {
-    return Status::OK();
+    return OkStatus();
   }
   const OpInfo::TensorProperties& input_prop = input_props[0];
   if (input_prop.shape().unknown_rank()) {
     // We can't do anything if we don't know the rank of the input.
-    return Status::OK();
+    return OkStatus();
   }
   const int input_rank = input_prop.shape().dim_size();
   if (input_rank < 1) {
     // Unexpected graph, don't try to change it.
-    return Status::OK();
+    return OkStatus();
   }
   const OpInfo::TensorProperties& reduction_indices_prop = input_props[1];
   DataType dtype = reduction_indices_prop.dtype();
   if (dtype != DT_INT32 && dtype != DT_INT64) {
-    return Status::OK();
+    return OkStatus();
   }
   PartialTensorShape reduction_indices_shape(reduction_indices_prop.shape());
   const int num_reduction_indices = reduction_indices_shape.num_elements();
@@ -763,7 +763,7 @@ Status ConstantFolding::MaterializeReductionIndices(
   const std::vector<OpInfo::TensorProperties>& output_props =
       properties.GetOutputProperties(node->name());
   if (output_props.size() != 1) {
-    return Status::OK();
+    return OkStatus();
   }
   const OpInfo::TensorProperties& output_prop = output_props[0];
   const int output_rank =
@@ -778,23 +778,23 @@ Status ConstantFolding::MaterializeReductionIndices(
     for (const NodeDef* fanout : node_map_->GetOutputs(node->name())) {
       full_reduction = false;
       if (!IsReshape(*fanout)) {
-        return Status::OK();
+        return OkStatus();
       }
       const std::vector<OpInfo::TensorProperties>& reshape_props =
           properties.GetOutputProperties(fanout->name());
       if (reshape_props.size() != 1) {
-        return Status::OK();
+        return OkStatus();
       }
       const OpInfo::TensorProperties& reshape_prop = reshape_props[0];
       PartialTensorShape shape(reshape_prop.shape());
       if (shape.num_elements() != 1) {
-        return Status::OK();
+        return OkStatus();
       } else {
         full_reduction = true;
       }
     }
     if (!full_reduction) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -802,7 +802,7 @@ Status ConstantFolding::MaterializeReductionIndices(
   // reduce as a constant node.
   string const_name = OptimizedNodeName(*node, "-reduction_indices");
   if (node_map_->GetNode(const_name)) {
-    return Status::OK();
+    return OkStatus();
   }
   NodeDef* reduction_indices = graph_->add_node();
   Tensor value(dtype, TensorShape({input_rank}));
@@ -827,22 +827,22 @@ Status ConstantFolding::MaterializeReductionIndices(
   node_map_->UpdateInput(node->name(), indices->name(),
                          reduction_indices->name());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::MaterializeConstantValuedNode(
     NodeDef* node, const GraphProperties& properties) {
   if (disable_compressed_tensor_optimization_) {
-    return Status::OK();
+    return OkStatus();
   }
   // Nodes that generate constant-valued outputs can be represented compactly in
   // compressed format, regardless of their shape.
   const std::vector<OpInfo::TensorProperties>& output_props =
       properties.GetOutputProperties(node->name());
-  if (output_props.size() != 1) return Status::OK();
+  if (output_props.size() != 1) return OkStatus();
   const auto& output_shape = output_props[0].shape();
   if (!PartialTensorShape(output_shape).IsFullyDefined()) {
-    return Status::OK();
+    return OkStatus();
   }
   if (IsFill(*node)) {
     const auto output_dtype = output_props[0].dtype();
@@ -850,7 +850,7 @@ Status ConstantFolding::MaterializeConstantValuedNode(
     for (int i = 0; i < 2; ++i) {
       input_node = node_map_->GetNode(NodeName(node->input(i)));
       if (input_node == nullptr || !IsReallyConstant(*input_node)) {
-        return Status::OK();
+        return OkStatus();
       }
     }
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
@@ -894,7 +894,7 @@ Status ConstantFolding::MaterializeConstantValuedNode(
           value, properties, output_shape, node, graph_));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Materialize output values inferred by the shape inference.
@@ -904,7 +904,7 @@ Status ConstantFolding::MaterializeOutputValues(
       properties.GetOutputProperties(node->name());
   if (output.size() != 1 || !output[0].has_value() ||
       !IsFoldable(*node, &properties)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // If this is a trivial Identity node with a constant input, just route the
@@ -915,7 +915,7 @@ Status ConstantFolding::MaterializeOutputValues(
       std::vector<int> inputs_to_forward;
       std::iota(inputs_to_forward.begin(), inputs_to_forward.end(), 0);
       graph_modified_ = ForwardInputs(node, inputs_to_forward);
-      return Status::OK();
+      return OkStatus();
     }
   }
   // Repurpose the existing node to be the constant.
@@ -941,7 +941,7 @@ Status ConstantFolding::MaterializeConstants(
       TF_RETURN_IF_ERROR(MaterializeOutputValues(&node, properties));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ConstantFolding::IsFoldable(const NodeDef& node,
@@ -1017,7 +1017,12 @@ bool ConstantFolding::IsFoldableUncached(
       }
     }
     for (const auto& output_prop : output_props) {
-      const PartialTensorShape output_shape(output_prop.shape());
+      PartialTensorShape output_shape;
+      if (!PartialTensorShape::BuildPartialTensorShape(output_prop.shape(),
+                                                       &output_shape)
+               .ok()) {
+        return false;
+      }
       if (output_shape.IsFullyDefined()) {
         const int64_t num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
@@ -1166,7 +1171,7 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
           "Unsupported type in CreateConstantTensorAttrValue: ",
           DataTypeString(type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef SET_TENSOR_CAL_CASE
@@ -1315,7 +1320,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
         strings::StrCat("Can't fold ", name, ", its size would be too large (",
                         encoded_size, " >= ", kMaxConstantSize, " bytes)"));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
@@ -1363,6 +1368,11 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                           input_tensor.ToString(),
                           " has a dtype of DT_INVALID."));
     }
+    if (IsRefType(raw_val.dtype())) {
+      return errors::InvalidArgument(
+          "Not allowed to construct a tensor with reference dtype, got ",
+          DataTypeString(raw_val.dtype()));
+    }
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     if (!value->FromProto(raw_val)) {
       delete (value);
@@ -1398,7 +1408,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
       outputs->at(i) = NodeDef();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::FoldMergeNode(NodeDef* node, GraphDef* output_graph) {
@@ -1488,9 +1498,9 @@ Status ConstantFolding::FoldMergeNode(NodeDef* node, GraphDef* output_graph) {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
@@ -1616,7 +1626,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
       node->clear_input();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::FoldGraph(
@@ -1681,18 +1691,24 @@ Status ConstantFolding::FoldGraph(
       *(optimized_graph->add_node()) = std::move(*node);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-bool ConstantFolding::IsSimplifiableReshape(
+Status ConstantFolding::IsSimplifiableReshape(
     const NodeDef& node, const GraphProperties& properties) const {
   if (!IsReshape(node)) {
-    return false;
+    return errors::Internal("Node ", node.name(), " is not a Reshape node");
   }
-  CHECK_LE(2, node.input_size());
+  if (2 > node.input_size()) {
+    return errors::Internal("Node ", node.name(),
+                            " must have at most 2 inputs but has ",
+                            node.input_size());
+  }
   const NodeDef* new_shape = node_map_->GetNode(node.input(1));
   if (!IsReallyConstant(*new_shape)) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has shape ",
+                            new_shape->DebugString(),
+                            " which is not a constant");
   }
   TensorVector outputs;
   auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
@@ -1703,22 +1719,29 @@ bool ConstantFolding::IsSimplifiableReshape(
 
   Status s = EvaluateNode(*new_shape, TensorVector(), &outputs);
   if (!s.ok()) {
-    return false;
+    return errors::Internal("Could not evaluate node ", node.name());
   }
-  CHECK_EQ(1, outputs.size());
+  if (outputs.size() != 1) {
+    return errors::Internal("Node ", node.name(),
+                            " must have exactly 1 output but has ",
+                            outputs.size());
+  }
 
   const std::vector<OpInfo::TensorProperties>& props =
       properties.GetInputProperties(node.name());
   if (props.empty()) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has no properties");
   }
   const OpInfo::TensorProperties& prop = props[0];
   if (prop.dtype() == DT_INVALID) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has property ",
+                            prop.DebugString(), " with invalid dtype");
   }
   const PartialTensorShape shape(prop.shape());
   if (!shape.IsFullyDefined()) {
-    return false;
+    return errors::Internal("Node ", node.name(), " has property ",
+                            prop.DebugString(), " with shape ",
+                            shape.DebugString(), " which is not fully defined");
   }
 
   PartialTensorShape new_dims;
@@ -1728,17 +1751,24 @@ bool ConstantFolding::IsSimplifiableReshape(
       int32_t dim = outputs[0]->flat<int32>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   } else {
     std::vector<int64_t> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
       int64_t dim = outputs[0]->flat<int64_t>()(i);
       shp.push_back(dim);
     }
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+    s = TensorShapeUtils::MakeShape(shp, &new_dims);
+    if (!s.ok()) return s;
   }
 
-  return shape.IsCompatibleWith(new_dims);
+  if (!shape.IsCompatibleWith(new_dims)) {
+    return errors::Internal("Expected shape ", shape.DebugString(),
+                            "to be compatible with ", new_dims.DebugString());
+  }
+
+  return OkStatus();
 }
 
 #define IS_VALUE_CASE(DTYPE, VALUE)                   \
@@ -2010,7 +2040,7 @@ Status ConstantFolding::ReplaceOperationWithConstantTensor(DataType dtype,
                                                            TensorProto* value,
                                                            NodeDef* node,
                                                            GraphDef* graph) {
-  if (dtype == DT_VARIANT) return Status::OK();
+  if (dtype == DT_VARIANT) return OkStatus();
   node->set_op("Const");
   EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["dtype"].set_type(dtype);
@@ -2027,14 +2057,14 @@ Status ConstantFolding::ReplaceOperationWithConstantTensor(DataType dtype,
   }
   DedupControlInputs(node);
   graph_modified_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const GraphProperties& properties,
     const TensorShapeProto& shape, NodeDef* node, GraphDef* graph) {
   const DataType dtype = GetDataTypeFromNodeOrProps(*node, properties);
-  if (dtype == DT_VARIANT) return Status::OK();
+  if (dtype == DT_VARIANT) return OkStatus();
   AttrValue tensor_attr;
   Status s = CreateConstantTensorAttrValue(dtype, value, shape, &tensor_attr);
   if (!s.ok()) {
@@ -2042,7 +2072,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     VLOG(1) << "Failed to replace node " << node->name() << " of type "
             << DataTypeString(dtype) << " with constant tensor of value "
             << value;
-    return Status::OK();
+    return OkStatus();
   }
   return ReplaceOperationWithConstantTensor(dtype, tensor_attr.mutable_tensor(),
                                             node, graph);
@@ -2065,20 +2095,20 @@ Status ConstantFolding::SimplifyGraph(
       TF_RETURN_IF_ERROR(SimplifyNode(node, optimized_graph, properties));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #define RETURN_IF_ERROR_OR_MODIFIED(EXPR) \
   TF_RETURN_IF_ERROR(EXPR);               \
-  if (graph_modified_) return Status::OK()
+  if (graph_modified_) return OkStatus()
 
 #define SET_AND_RETURN_IF_MODIFIED(EXPR) \
   graph_modified_ = EXPR;                \
-  if (graph_modified_) return Status::OK()
+  if (graph_modified_) return OkStatus()
 
 #define RETURN_IF_MODIFIED(EXPR) \
   EXPR;                          \
-  if (graph_modified_) return Status::OK()
+  if (graph_modified_) return OkStatus()
 
 Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
                                      GraphProperties* properties) {
@@ -2133,7 +2163,7 @@ Status ConstantFolding::SimplifyNode(NodeDef* node, GraphDef* optimized_graph,
       RemoveRedundantVariableUpdates(properties, optimized_graph, node));
 
   graph_modified_ = graph_modified_cached;
-  return Status::OK();
+  return OkStatus();
 }
 
 void ConstantFolding::RemoveSplitOrSplitV(const GraphProperties& properties,
@@ -2152,7 +2182,7 @@ Status ConstantFolding::RemoveShuffleOrTranspose(
     const GraphProperties& properties, bool use_shape_info,
     GraphDef* optimized_graph, NodeDef* node) {
   if (!use_shape_info || !(IsShuffle(*node) || IsTranspose(*node)))
-    return Status::OK();
+    return OkStatus();
   Tensor permutation_tensor;
   if (GetTensorFromConstNode(node->input(1), &permutation_tensor) &&
       properties.HasInputProperties(node->name())) {
@@ -2168,7 +2198,7 @@ Status ConstantFolding::RemoveShuffleOrTranspose(
     int permutation_size = permutation.size();
     if (permutation_size != shape.dim_size()) {
       // Number of elements in perm should be same as dim_size. Skip if not.
-      return Status::OK();
+      return OkStatus();
     }
     // The node is replaceable iff
     // dim_size == 0 || all dims have size 1 ||
@@ -2181,7 +2211,7 @@ Status ConstantFolding::RemoveShuffleOrTranspose(
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ConstantFolding::RemoveRandomShuffle(const GraphProperties& properties,
@@ -2204,12 +2234,12 @@ Status ConstantFolding::RemoveReverse(const GraphProperties& properties,
                                       bool use_shape_info,
                                       GraphDef* optimized_graph,
                                       NodeDef* node) {
-  if (!use_shape_info || node->op() != "ReverseV2") return Status::OK();
+  if (!use_shape_info || node->op() != "ReverseV2") return OkStatus();
   Tensor axis;
   if (properties.HasInputProperties(node->name()) &&
       GetTensorFromConstNode(node->input(1), &axis)) {
     const auto& shape = properties.GetInputProperties(node->name())[0].shape();
-    if (shape.unknown_rank()) return Status::OK();
+    if (shape.unknown_rank()) return OkStatus();
     std::set<int> target_axes;
     for (int j = 0; j < axis.NumElements(); ++j) {
       // value of axis can be negative.
@@ -2235,14 +2265,14 @@ Status ConstantFolding::RemoveReverse(const GraphProperties& properties,
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
                                       bool use_shape_info,
                                       GraphDef* optimized_graph,
                                       NodeDef* node) {
-  if (!use_shape_info || !IsSlice(*node)) return Status::OK();
+  if (!use_shape_info || !IsSlice(*node)) return OkStatus();
   Tensor begin;
   Tensor size;
   if (properties.HasInputProperties(node->name()) &&
@@ -2270,7 +2300,7 @@ Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
@@ -2285,20 +2315,20 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
         node->attr().at("shrink_axis_mask").i() != 0) {
       // Skip nodes with new/shrink axis mask, since they involve dimension
       // changes.
-      return Status::OK();
+      return OkStatus();
     }
     const auto& input = properties.GetInputProperties(node->name())[0];
     for (int j = 0; j < input.shape().dim_size(); ++j) {
       // Skip if input shape is not fully determined.
       if (input.shape().dim(j).size() < 0) {
-        return Status::OK();
+        return OkStatus();
       }
     }
 
     std::vector<Tensor> input_tensors(3);
     for (int i = 1; i < 4; ++i) {
       if (!GetTensorFromConstNode(node->input(i), &input_tensors[i - 1])) {
-        return Status::OK();
+        return OkStatus();
       }
     }
 
@@ -2362,7 +2392,7 @@ Status ConstantFolding::SimplifyStridedSlice(const GraphProperties& properties,
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::SimplifyTile(const GraphProperties& properties,
@@ -2387,13 +2417,13 @@ Status ConstantFolding::SimplifyTile(const GraphProperties& properties,
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::SimplifyPad(const GraphProperties& properties,
                                     bool use_shape_info,
                                     GraphDef* optimized_graph, NodeDef* node) {
-  if (!use_shape_info || !IsPad(*node)) return Status::OK();
+  if (!use_shape_info || !IsPad(*node)) return OkStatus();
 
   Tensor paddings;
   if (GetTensorFromConstNode(node->input(1), &paddings)) {
@@ -2414,7 +2444,7 @@ Status ConstantFolding::SimplifyPad(const GraphProperties& properties,
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ConstantFolding::SimplifySqueeze(const GraphProperties& properties,
@@ -2925,7 +2955,7 @@ bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
 bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
                                       bool use_shape_info, NodeDef* node) {
   if (!use_shape_info || node->attr().count("T") == 0 ||
-      !IsSimplifiableReshape(*node, properties)) {
+      !IsSimplifiableReshape(*node, properties).ok()) {
     return false;
   }
   DataType output_type = node->attr().at("T").type();
@@ -2979,13 +3009,13 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         ReplaceBinaryOperationWithBroadcastTo(1, properties, node,
                                               optimized_graph);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     if (y_matches_output_shape && (is_sub && x_is_zero)) {
       // Replace 0 - y with Neg(y).
       ReplaceSubtractionFromZeroByNegation(node, optimized_graph);
-      return Status::OK();
+      return OkStatus();
     }
 
     // Replace 1 / y with Reciprocal op.
@@ -2994,7 +3024,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
       DataType type = node->attr().at("T").type();
       if (DataTypeIsFloating(type) || DataTypeIsComplex(type)) {
         ReplaceDivisionOfOnesByReciprocal(node, optimized_graph);
-        return Status::OK();
+        return OkStatus();
       }
     }
 
@@ -3009,7 +3039,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         ReplaceBinaryOperationWithBroadcastTo(0, properties, node,
                                               optimized_graph);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // x OR true = true OR y = true.
@@ -3017,7 +3047,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
     if (shp.IsFullyDefined() && IsLogicalOr(*node) && (y_is_one || x_is_one)) {
       TF_RETURN_IF_ERROR(ReplaceOperationWithConstant(
           1, properties, output_shape, node, optimized_graph));
-      return Status::OK();
+      return OkStatus();
     }
 
     // Simplify multiplication and matmul by zeros.
@@ -3035,7 +3065,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
           TF_RETURN_IF_ERROR(
               AddQuantizedMatMulMinMaxOutConstNodes(node, optimized_graph));
         }
-        return Status::OK();
+        return OkStatus();
       }
       // Even if an input shape is only partially known, we may known that it
       // matches the output shape and thus forward or broadcast the
@@ -3047,7 +3077,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
           ReplaceBinaryOperationWithBroadcastTo(0, properties, node,
                                                 optimized_graph);
         }
-        return Status::OK();
+        return OkStatus();
       } else if (is_mul && y_is_zero) {
         if (y_matches_output_shape) {
           ReplaceOperationWithIdentity(1, properties, node, optimized_graph);
@@ -3055,11 +3085,11 @@ Status ConstantFolding::SimplifyArithmeticOperations(
           ReplaceBinaryOperationWithBroadcastTo(1, properties, node,
                                                 optimized_graph);
         }
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
@@ -3480,6 +3510,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 
   NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
   NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+  if (mul_left_child == nullptr || mul_right_child == nullptr) {
+    return false;
+  }
   // One child must be constant, and the second must be Conv op.
   const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
   const bool right_child_is_constant = IsReallyConstant(*mul_right_child);
@@ -3930,7 +3963,7 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   };
   const string min_out_const_name =
       OptimizedNodeName(*node, "-quantized_matmul_min_out");
@@ -3946,7 +3979,7 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
         "node '$0' because of node name conflict",
         node->name()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
@@ -3985,7 +4018,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   TF_RETURN_IF_ERROR(
       SimplifyGraph(optimized_graph, properties, &nodes_to_not_simplify));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -4043,7 +4076,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace grappler

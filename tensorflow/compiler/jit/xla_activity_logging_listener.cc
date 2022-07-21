@@ -28,7 +28,7 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaAutoClusteringActivity disabled";
-      return Status::OK();
+      return OkStatus();
     }
 
     if (Logger* logger = Logger::GetSingletonAsync()) {
@@ -39,14 +39,14 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(2) << "Not logging: logger not ready yet.";
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
-      return Status::OK();
+      return OkStatus();
     }
 
     if (Logger* logger = Logger::GetSingletonAsync()) {
@@ -57,13 +57,13 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(2) << "Not logging: logger not ready yet.";
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Listen(const XlaOptimizationRemark& optimization_remark) override {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
-      return Status::OK();
+      return OkStatus();
     }
 
     if (Logger* logger = Logger::GetSingletonAsync()) {
@@ -74,7 +74,7 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       VLOG(2) << "Not logging: logger not ready yet.";
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -95,7 +95,7 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
 };
 
 bool Register() {
-  RegisterXlaActivityListener(absl::make_unique<XlaActivityLoggingListener>());
+  RegisterXlaActivityListener(std::make_unique<XlaActivityLoggingListener>());
   return false;
 }
 

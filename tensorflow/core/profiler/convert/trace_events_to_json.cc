@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/utils/format_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -35,7 +35,7 @@ namespace {
 // Converts the given time from picoseconds to microseconds and then to a string
 // using maximum precision.
 inline std::string PicosToMicrosString(uint64 ps) {
-  return MaxPrecision(PicosToMicros(ps));
+  return MaxPrecision(PicoToMicro(ps));
 }
 
 // Escapes and quotes the given string.

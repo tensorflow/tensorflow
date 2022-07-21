@@ -14,10 +14,6 @@
 # ==============================================================================
 """A client interface for TensorFlow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import re
@@ -35,6 +31,7 @@ from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import session_ops
@@ -77,7 +74,7 @@ class SessionInterface(object):
 
 
 def _get_indexed_slices_value_from_fetches(fetched_vals):
-  return ops.IndexedSlicesValue(
+  return indexed_slices.IndexedSlicesValue(
       fetched_vals[0], fetched_vals[1],
       fetched_vals[2] if len(fetched_vals) == 3 else None)
 
@@ -123,7 +120,7 @@ _REGISTERED_EXPANSIONS = [
      lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
-    (ops.IndexedSlices,
+    (indexed_slices.IndexedSlices,
      lambda fetch: ([fetch.values, fetch.indices] if fetch.dense_shape is None
                     else [fetch.values, fetch.indices, fetch.dense_shape
                          ], _get_indexed_slices_value_from_fetches),
@@ -711,7 +708,8 @@ class BaseSession(SessionInterface):
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
       # pylint: disable=protected-access
-      self._session = tf_session.TF_NewSessionRef(self._graph._c_graph, opts)
+      with self._graph._c_graph.get() as c_graph:
+        self._session = tf_session.TF_NewSessionRef(c_graph, opts)
       # pylint: enable=protected-access
     finally:
       tf_session.TF_DeleteSessionOptions(opts)

@@ -15,7 +15,18 @@
 #
 
 add_mlir_library(MLIRBufferTransforms
+  buffer_packing.cc
   buffer_reuse.cc
+  bufferize.cc
+  bufferize_pass.cc
+  copy_removal.cc
+  generic_host_to_llvm.cc
+  propagate_static_shapes_to_kernel.cc
+  lower_index_cast_pass.cc
+  symbolic_shape_optimization.cc
+  shape_simplification.cc
+  tile_loops_pass.cc
+  collapse_parallel_loops_to_1d_pass.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen
@@ -24,8 +35,43 @@ add_mlir_library(MLIRBufferTransforms
   Core
 
   LINK_LIBS PUBLIC
+  MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass
+  MLIRShapeDialect
   MLIRTransforms
+)
+
+add_mlir_library(MLIRHLOGPUTransforms
+  gpu_kernel_lowering_passes.cc
+  gpu_fusion_rewrite.cc
+  hlo_to_gpu_pipeline.cc
+
+  DEPENDS
+  LMHLOGPUTransformsPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  MLIRGPUOps
+  MLIRHLOAnalysis
+  MLIRIR
+  MLIRPass
+  MLIRShapeDialect
+  MLIRSCFTransforms
+  MLIRTransforms
+)
+
+add_mlir_library(MLIRHLOGmlStPipeline
+  gml_st_pipeline.cc
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  GmlStPasses
+  MLIRLinalgTransforms
+  MLIRPass
 )

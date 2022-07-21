@@ -113,7 +113,7 @@ FunctionDef RandomUniform() {
         "RandomUniform",
         {"random_uniform/shape"},
         {{"T", DT_INT32},
-         {"Tout", DT_FLOAT},
+         {"dtype", DT_FLOAT},
          {"seed", 87654321},
          {"seed2", 42}}}});
 }
@@ -432,6 +432,22 @@ FunctionDef ReadResourceVariable() {
           {{"read"}, "ReadVariableOp", {"x"}, {{"dtype", DT_FLOAT}}, {}},
       },
       {{"y", "read:value:0"}});
+}
+
+FunctionDef ControlFlow() {
+  return FDH::Create(
+      // Name
+      "ControlFlow",
+      // Args
+      {"i: float"},
+      // Return values
+      {"o: float"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"enter"}, "Enter", {"i"}, {{"T", DT_FLOAT}, {"frame_name", "while"}}}},
+      // Output mapping
+      {{"o", "enter:output"}});
 }
 
 FunctionDef InvalidControlFlow() {

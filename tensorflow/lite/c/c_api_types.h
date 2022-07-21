@@ -98,6 +98,7 @@ typedef enum {
   kTfLiteResource = 14,
   kTfLiteVariant = 15,
   kTfLiteUInt32 = 16,
+  kTfLiteUInt16 = 17,
 } TfLiteType;
 
 // Legacy. Will be deprecated in favor of TfLiteAffineQuantization.
@@ -110,6 +111,18 @@ typedef struct TfLiteQuantizationParams {
   float scale;
   int32_t zero_point;
 } TfLiteQuantizationParams;
+
+// --------------------------------------------------------------------------
+// Opaque types used by c_api.h, c_api_opaque.h and common.h.
+
+// TfLiteOpaqueContext is an opaque version of TfLiteContext;
+typedef struct TfLiteOpaqueContext TfLiteOpaqueContext;
+
+// TfLiteOpaqueNode is an opaque version of TfLiteNode;
+typedef struct TfLiteOpaqueNode TfLiteOpaqueNode;
+
+// TfLiteOpaqueTensor is an opaque version of TfLiteTensor;
+typedef struct TfLiteOpaqueTensor TfLiteOpaqueTensor;
 
 #ifdef __cplusplus
 }  // extern C

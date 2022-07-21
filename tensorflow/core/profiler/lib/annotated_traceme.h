@@ -33,12 +33,12 @@ namespace profiler {
 class AnnotatedTraceMe {
  public:
   template <typename NameGeneratorT>
-  explicit AnnotatedTraceMe(NameGeneratorT name_generator, int level = 1) {
+  explicit AnnotatedTraceMe(NameGeneratorT&& name_generator, int level = 1) {
     DCHECK_GE(level, 1);
     bool annotation_enabled = ScopedAnnotation::IsEnabled();
     bool traceme_enabled = TraceMe::Active(level);
     if (TF_PREDICT_FALSE(annotation_enabled || traceme_enabled)) {
-      string name = name_generator();
+      string name = std::forward<NameGeneratorT>(name_generator)();
       if (annotation_enabled) {
         scoped_annotation_.emplace(absl::string_view(name));
       }

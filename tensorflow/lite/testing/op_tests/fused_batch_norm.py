@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for fused_batch_norm."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 import tensorflow.compat.v1 as tf
@@ -34,24 +30,17 @@ def make_fused_batch_norm_tests(options):
       "input_shape": [[1, 1, 6, 2]],
       "epsilon": [0.001, 0.1],
       "is_training": [False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 1, 6, 2]],
+      "epsilon": [0.001, 0.1],
+      "is_training": [True],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, None, 6, 2]],
+      "epsilon": [0.001, 0.1],
+      "is_training": [True, False],
   }]
-
-  # Training support in MLIR converter.
-  if options.use_experimental_converter:
-    test_parameters = test_parameters + [
-        {
-            "dtype": [tf.float32],
-            "input_shape": [[1, 1, 6, 2]],
-            "epsilon": [0.001, 0.1],
-            "is_training": [True],
-        },
-        {
-            "dtype": [tf.float32],
-            "input_shape": [[1, None, 6, 2]],
-            "epsilon": [0.001, 0.1],
-            "is_training": [True, False],
-        },
-    ]
 
   def build_graph(parameters):
     """Build the testing graph for fused batch normalization."""

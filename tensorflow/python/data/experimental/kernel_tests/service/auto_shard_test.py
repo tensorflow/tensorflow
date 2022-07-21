@@ -16,11 +16,12 @@
 
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import multi_process_cluster
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.kernel_tests.service.multi_process_cluster import MultiProcessCluster
+from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute
-from tensorflow.python.data.experimental.ops.data_service_ops import ShardingPolicy
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -29,16 +30,19 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 
 
-def _make_service_cluster(num_workers,
-                          local_shard_index,
-                          worker_addresses=None):
+def _make_service_cluster(
+    num_workers,
+    local_shard_index,
+    worker_addresses=None,
+    deployment_mode=data_service_pb2.DEPLOYMENT_MODE_COLOCATED):
   if worker_addresses is None:
     worker_addresses = ["localhost" for _ in range(num_workers)]
 
   cluster = MultiProcessCluster(
       num_local_workers=0,
       num_remote_workers=0,
-      worker_addresses=worker_addresses)
+      worker_addresses=worker_addresses,
+      deployment_mode=deployment_mode)
   for _ in range(local_shard_index):
     cluster.start_remote_worker()
   cluster.start_local_worker()
@@ -63,7 +67,8 @@ class AutoShardTest(data_service_test_base.TestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=[
-              ShardingPolicy.DATA, ShardingPolicy.FILE_OR_DATA
+              data_service_ops.ShardingPolicy.DATA,
+              data_service_ops.ShardingPolicy.FILE_OR_DATA
           ])))
   def testRangeDataset_AutoShard(self, sharding_policy):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
@@ -77,7 +82,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE)
     with self.assertRaisesRegex(errors.NotFoundError,
                                 "Found an unshardable source dataset"):
       self.getDatasetOutput(dataset)
@@ -94,7 +101,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset.shard(
         num_shards=distribute.SHARD_HINT, index=worker_index)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.HINT)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.HINT)
     self.assertDatasetProduces(dataset, [1, 6, 11, 16])
 
   @combinations.generate(test_base.default_test_combinations())
@@ -108,7 +117,9 @@ class AutoShardTest(data_service_test_base.TestBase,
         r"Index must be between 0 and 4 \(currently index = -1\)."):
       dataset = dataset.shard(num_shards=5, index=distribute.SHARD_HINT)
       dataset = self.make_distributed_dataset(
-          dataset, cluster=cluster, processing_mode=ShardingPolicy.HINT)
+          dataset,
+          cluster=cluster,
+          processing_mode=data_service_ops.ShardingPolicy.HINT)
       self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -118,15 +129,18 @@ class AutoShardTest(data_service_test_base.TestBase,
     # No SHARD_HINT is provided. The given sharding arguments will be used.
     dataset = dataset.shard(num_shards=1, index=0)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.HINT)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.HINT)
     self.assertDatasetProduces(dataset, list(range(20)))
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(
-              sharding_policy=[ShardingPolicy.OFF, ShardingPolicy.FILE_OR_DATA
-                              ])))
+          combinations.combine(sharding_policy=[
+              data_service_ops.ShardingPolicy.OFF,
+              data_service_ops.ShardingPolicy.FILE_OR_DATA
+          ])))
   def testRangeDataset_ShardHintUsedInWrongShardingPolicy(
       self, sharding_policy):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
@@ -146,7 +160,7 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = self.make_distributed_dataset(
         dataset,
         cluster=cluster,
-        processing_mode=ShardingPolicy.OFF,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
         target_workers="LOCAL")
     self.assertDatasetProduces(dataset, list(range(20)))
 
@@ -156,29 +170,30 @@ class AutoShardTest(data_service_test_base.TestBase,
     cluster = _make_service_cluster(num_workers=1, local_shard_index=0)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     self.assertDatasetProduces(dataset, list(range(20)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testRangeDataset_ReadFromAnyWorker(self):
-    cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
+    # When deployment mode is unspecified, the client will read from any worker.
+    cluster = _make_service_cluster(
+        num_workers=5, local_shard_index=1, deployment_mode=None)
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
         dataset,
         cluster=cluster,
-        processing_mode=ShardingPolicy.FILE_OR_DATA,
-        target_workers="ANY")
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Static sharding policy <FILE_OR_DATA> requires reading from local "
-        "workers"):
-      self.getDatasetOutput(dataset)
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
+    self.assertDatasetProduces(
+        dataset, list(range(20)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=[
-              ShardingPolicy.FILE_OR_DATA, ShardingPolicy.FILE
+              data_service_ops.ShardingPolicy.FILE_OR_DATA,
+              data_service_ops.ShardingPolicy.FILE
           ])))
   def testTFRecordDataset_AutoShard(self, sharding_policy):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
@@ -201,7 +216,8 @@ class AutoShardTest(data_service_test_base.TestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=[
-              ShardingPolicy.FILE_OR_DATA, ShardingPolicy.FILE
+              data_service_ops.ShardingPolicy.FILE_OR_DATA,
+              data_service_ops.ShardingPolicy.FILE
           ])))
   def testTFRecordDataset_ShuffleFileList(self, sharding_policy):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
@@ -223,7 +239,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DATA)
 
     expected = [
         b"Record %d of file %d" % (record, file)
@@ -239,7 +257,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = dataset.shard(distribute.SHARD_HINT, distribute.SHARD_HINT)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.HINT)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.HINT)
 
     expected = [
         b"Record %d of file %d" % (record, file)
@@ -255,7 +275,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset.shard(distribute.SHARD_HINT, distribute.SHARD_HINT)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.HINT)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.HINT)
 
     expected = [
         b"Record %d of file %d" % (record, file)
@@ -272,7 +294,7 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = self.make_distributed_dataset(
         dataset,
         cluster=cluster,
-        processing_mode=ShardingPolicy.OFF,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
         target_workers="LOCAL")
 
     expected = [
@@ -284,25 +306,29 @@ class AutoShardTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testTFRecordDataset_ReadFromAnyWorker(self):
-    cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
+    # When deployment mode is unspecified, the client will read from any worker.
+    cluster = _make_service_cluster(
+        num_workers=5, local_shard_index=3, deployment_mode=None)
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
         dataset,
         cluster=cluster,
-        processing_mode=ShardingPolicy.FILE_OR_DATA,
-        target_workers="ANY")
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        "Static sharding policy <FILE_OR_DATA> requires reading from local "
-        "workers"):
-      self.getDatasetOutput(dataset)
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
+
+    expected = [
+        b"Record %d of file %d" % (record, file)
+        for file in range(0, 10)
+        for record in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=[
-              ShardingPolicy.FILE_OR_DATA, ShardingPolicy.FILE
+              data_service_ops.ShardingPolicy.FILE_OR_DATA,
+              data_service_ops.ShardingPolicy.FILE
           ])))
   def testTFRecordDataset_FewerFilesThanWorkers(self, sharding_policy):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
@@ -323,7 +349,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset.shard(distribute.SHARD_HINT, distribute.SHARD_HINT)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.HINT)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.HINT)
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -336,7 +364,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.list_files(self._filenames[:4], shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DATA)
 
     expected = [
         b"Record %d of file %d" % (record, file)
@@ -349,7 +379,8 @@ class AutoShardTest(data_service_test_base.TestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(sharding_policy=[
-              ShardingPolicy.FILE_OR_DATA, ShardingPolicy.DATA
+              data_service_ops.ShardingPolicy.FILE_OR_DATA,
+              data_service_ops.ShardingPolicy.DATA
           ])))
   def testBatchDataset(self, sharding_policy):
     cluster = _make_service_cluster(num_workers=5, local_shard_index=1)
@@ -369,7 +400,9 @@ class AutoShardTest(data_service_test_base.TestBase,
         num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
 
     expected = [
@@ -395,7 +428,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
     dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
 
     expected = [(b"Record %d of file %d" % (record, file),
                  b"Record %d of file %d" % (record, file))
@@ -419,7 +454,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset1.concatenate(dataset2)
     dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
 
     expected = [
         b"Record %d of file %d" % (record, file)
@@ -434,7 +471,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)
     dataset = dataset_ops.Dataset.range(0)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     self.assertDatasetProduces(dataset, [])
 
   @combinations.generate(test_base.default_test_combinations())
@@ -445,7 +484,9 @@ class AutoShardTest(data_service_test_base.TestBase,
         worker_addresses=["localhost:%port%" for _ in range(5)])
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     self.assertDatasetProduces(dataset, [3, 8, 13, 18])
 
   @combinations.generate(test_base.default_test_combinations())
@@ -456,7 +497,9 @@ class AutoShardTest(data_service_test_base.TestBase,
         worker_addresses=["localhost:%port_worker%" for _ in range(5)])
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     self.assertDatasetProduces(dataset, [3, 8, 13, 18])
 
   @combinations.generate(test_base.default_test_combinations())
@@ -474,7 +517,9 @@ class AutoShardTest(data_service_test_base.TestBase,
         num_workers=5, local_shard_index=1, worker_addresses=[])
     dataset = dataset_ops.Dataset.range(20)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     with self.assertRaisesRegex(errors.NotFoundError,
                                 "Worker .* is not in the workers list."):
       self.getDatasetOutput(dataset)
@@ -503,7 +548,9 @@ class AutoShardTest(data_service_test_base.TestBase,
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(readers.TFRecordDataset)
     dataset = self.make_distributed_dataset(
-        dataset, cluster=cluster, processing_mode=ShardingPolicy.FILE_OR_DATA)
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.FILE_OR_DATA)
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Static sharding policy <FILE_OR_DATA> requires local tf.data workers"):
@@ -512,7 +559,8 @@ class AutoShardTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(sharding_policy=list(ShardingPolicy))))
+          combinations.combine(
+              sharding_policy=list(data_service_ops.ShardingPolicy))))
   def testEnumerateShardingPolicies(self, sharding_policy):
     """Verifies tf.data service handles every sharding policy with no errors."""
     cluster = _make_service_cluster(num_workers=5, local_shard_index=3)

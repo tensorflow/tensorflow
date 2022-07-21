@@ -22,10 +22,6 @@
 #
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
-#     c++17:                  Build with C++17 options (links with libc++)
-#     c++1z:                  Build with C++17 options (links with libc++)
-#     c++17_gcc:              Build with C++17 options (links with stdlibc++)
-#     c++1z_gcc:              Build with C++17 options (links with stdlibc++)
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
 #     native_arch_linux:      Build with instruction sets available to the host machine on linux
@@ -67,14 +63,15 @@
 #     rbe_linux: General RBE options used on all linux builds.
 #     rbe_win:   General RBE options used on all windows builds.
 #
-#     rbe_cpu_linux:           RBE options to build with only CPU support.
-#     rbe_linux_cuda_nvcc_py*: RBE options to build with GPU support using nvcc.
+#     rbe_cpu_linux:                  RBE options to build with only CPU support.
+#     rbe_linux_cuda_nvcc_py*:        RBE options to build with GPU support using nvcc.
 #
-#     rbe_linux_py3: Linux Python 3 RBE config
+#     rbe_linux_py3:        Linux Python 3 RBE config
 #
 #     rbe_win_py37: Windows Python 3.7 RBE config
 #     rbe_win_py38: Windows Python 3.8 RBE config
 #     rbe_win_py39: Windows Python 3.9 RBE config
+#     rbe_win_py310: Windows Python 3.10 RBE config
 #
 #     tensorflow_testing_rbe_linux: RBE options to use RBE with tensorflow-testing project on linux
 #     tensorflow_testing_rbe_win:   RBE options to use RBE with tensorflow-testing project on windows
@@ -87,13 +84,13 @@
 #     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
 #
 # Release build options (for all operating systems)
-#     release_base:        Common options for all builds on all operating systems.
-#     release_gpu_base:    Common options for GPU builds on Linux and Windows.
-#     release_cpu_linux:   Toolchain and CUDA options for Linux CPU builds.
-#     release_cpu_macos:   Toolchain and CUDA options for MacOS CPU builds.
-#     release_gpu_linux:   Toolchain and CUDA options for Linux GPU builds.
-#     release_cpu_windows: Toolchain and CUDA options for Windows CPU builds.
-#     release_gpu_windows: Toolchain and CUDA options for Windows GPU builds.
+#     release_base:                    Common options for all builds on all operating systems.
+#     release_gpu_base:                Common options for GPU builds on Linux and Windows.
+#     release_cpu_linux:               Toolchain and CUDA options for Linux CPU builds.
+#     release_cpu_macos:               Toolchain and CUDA options for MacOS CPU builds.
+#     release_gpu_linux:               Toolchain and CUDA options for Linux GPU builds.
+#     release_cpu_windows:             Toolchain and CUDA options for Windows CPU builds.
+#     release_gpu_windows:             Toolchain and CUDA options for Windows GPU builds.
 
 # Default build options. These are applied first and unconditionally.
 
@@ -101,10 +98,6 @@
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
-
-# For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
-build --java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
-build --host_java_toolchain=@tf_toolchains//toolchains/java:tf_java_toolchain
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
@@ -115,6 +108,7 @@ build -c opt
 # Make Bazel print out all options from rc files.
 build --announce_rc
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --define=grpc_no_ares=true
 
 # See https://github.com/bazelbuild/bazel/issues/7362 for information on what
@@ -131,18 +125,28 @@ build --define=grpc_no_ares=true
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --enable_platform_specific_config
 
 # Enable XLA support by default.
 build --define=with_xla_support=true
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=short_logs
 
+# TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --config=v2
 
 # Disable AWS/HDFS support by default
 build --define=no_aws_support=true
 build --define=no_hdfs_support=true
+
+# TF now has `cc_shared_library` targets, so it needs the experimental flag
+# TODO(rostam): Remove when `cc_shared_library` is enabled by default
+build --experimental_cc_shared_library
+
+# cc_shared_library ensures no library is linked statically more than once.
+build --experimental_link_static_libraries_once=false
 
 # Default options should come above this line.
 
@@ -181,6 +185,7 @@ build:macos --copt=-DGRPC_BAZEL_BUILD
 
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
+build:macos_arm64 --macos_minimum_os=11.0
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
@@ -190,6 +195,8 @@ build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
 build:ios_arm64 --config=ios
 build:ios_arm64 --cpu=ios_arm64
+build:ios_sim_arm64 --config=ios
+build:ios_sim_arm64 --cpu=ios_sim_arm64
 build:ios_i386 --config=ios
 build:ios_i386 --cpu=ios_i386
 build:ios_x86_64 --config=ios
@@ -202,6 +209,7 @@ build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 # By default, TensorFlow will build with a dependence on
 # //tensorflow:libtensorflow_framework.so.
 build:monolithic --define framework_shared_object=false
+build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
 # Please note that MKL on MacOS or windows is still not supported.
 # If you would like to use a local MKL instead of downloading, please set the
@@ -218,11 +226,9 @@ build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
-# This build is for the inference regime only.
-build:mkl_aarch64 --define=build_with_mkl_aarch64=true --define=enable_mkl=true
-build:mkl_aarch64 --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_aarch64 --define=build_with_mkl_opensource=true
+build:mkl_aarch64 --define=build_with_mkl_aarch64=true
 build:mkl_aarch64 --define=build_with_openmp=true
+build:mkl_aarch64 --define=build_with_acl=true
 build:mkl_aarch64 -c opt
 
 # This config refers to building CUDA op kernels with nvcc.
@@ -257,7 +263,9 @@ build:tensorrt --repo_env TF_NEED_TENSORRT=1
 
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
+build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
 build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm --experimental_link_static_libraries_once=false  # b/230048163
 
 # Options extracted from configure script
 build:numa --define=with_numa_support=true
@@ -274,13 +282,6 @@ build:stackdriver_support --define=stackdriver_support=true
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 
-# Build TF with C++ 17 features.
-build:c++17 --cxxopt=-std=c++1z
-build:c++17 --cxxopt=-stdlib=libc++
-build:c++1z --config=c++17
-build:c++17_gcc --cxxopt=-std=c++1z
-build:c++1z_gcc --config=c++17_gcc
-
 # Don't trigger --config=<host platform> when cross-compiling.
 build:android --noenable_platform_specific_config
 build:ios --noenable_platform_specific_config
@@ -292,11 +293,27 @@ build:linux --copt=-w
 build:linux --host_copt=-w
 build:macos --copt=-w
 build:windows --copt=/W0
+build:windows --host_copt=/W0
+
+
+# On Windows, `__cplusplus` is wrongly defined without this switch
+# See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
+build:windows --copt=/Zc:__cplusplus
+build:windows --host_copt=/Zc:__cplusplus
 
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
 build:windows --copt=/D_USE_MATH_DEFINES
 build:windows --host_copt=/D_USE_MATH_DEFINES
+
+# Windows has a relatively short command line limit, which TF has begun to hit.
+# See https://docs.bazel.build/versions/main/windows.html
+build:windows --features=compiler_param_file
+
+# Speed Windows compile times. Available in VS 16.4 (we are on 16.11). See
+# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
+build:windows --copt=/d2ReducedOptimizeHugeFunctions
+build:windows --host_copt=/d2ReducedOptimizeHugeFunctions
 
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
@@ -309,17 +326,17 @@ build:macos --define=INCLUDEDIR=$(PREFIX)/include
 build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
-# By default, build TF in C++ 14 mode.
-build:android --cxxopt=-std=c++14
-build:android --host_cxxopt=-std=c++14
-build:ios --cxxopt=-std=c++14
-build:ios --host_cxxopt=-std=c++14
-build:linux --cxxopt=-std=c++14
-build:linux --host_cxxopt=-std=c++14
-build:macos --cxxopt=-std=c++14
-build:macos --host_cxxopt=-std=c++14
-build:windows --cxxopt=/std:c++14
-build:windows --host_cxxopt=/std:c++14
+# By default, build TF in C++ 17 mode.
+build:android --cxxopt=-std=c++17
+build:android --host_cxxopt=-std=c++17
+build:ios --cxxopt=-std=c++17
+build:ios --host_cxxopt=-std=c++17
+build:linux --cxxopt=-std=c++17
+build:linux --host_cxxopt=-std=c++17
+build:macos --cxxopt=-std=c++17
+build:macos --host_cxxopt=-std=c++17
+build:windows --cxxopt=/std:c++17
+build:windows --host_cxxopt=/std:c++17
 
 # On windows, we still link everything into a single DLL.
 build:windows --config=monolithic
@@ -411,10 +428,6 @@ build:rbe --remote_download_toplevel
 
 build:rbe_linux_base --config=rbe
 build:rbe_linux_base --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
-build:rbe_linux_base --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
-build:rbe_linux_base --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
-build:rbe_linux_base --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
-build:rbe_linux_base --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 
 build:rbe_linux --config=rbe_linux_base
 # Non-rbe settings we should include because we do not run configure
@@ -427,12 +440,12 @@ build:rbe_linux --host_linkopt=-lm
 
 # Use the GPU toolchain until the CPU one is ready.
 # https://github.com/bazelbuild/bazel/issues/13623
-build:rbe_cpu_linux_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_cpu_linux_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_cpu_linux_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_cpu_linux_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_cpu_linux_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_cpu_linux_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_base --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_base --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_cpu_linux_base --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_cpu_linux_base --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_base --host_platform="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_cpu_linux_base --platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
 
 build:rbe_cpu_linux --config=rbe_linux
 build:rbe_cpu_linux --config=rbe_cpu_linux_base
@@ -454,72 +467,73 @@ build:rbe_linux_cuda_base --repo_env=REMOTE_GPU_TESTING=1
 test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.1/lib64"
 
 build:rbe_linux_cuda11.2_nvcc_base --config=rbe_linux_cuda_base
-build:rbe_linux_cuda11.2_nvcc_base --host_crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda11.2_nvcc_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda11.2_nvcc_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda11.2_nvcc_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda11.2_nvcc_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda11.2_nvcc_base --platforms="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda11.2_nvcc_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
-build:rbe_linux_cuda11.2_nvcc_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
-build:rbe_linux_cuda11.2_nvcc_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
-build:rbe_linux_cuda11.2_nvcc_py3.7 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.7"
-build:rbe_linux_cuda11.2_nvcc_py3.8 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.8"
-build:rbe_linux_cuda11.2_nvcc_py3.9 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_cuda11.2_nvcc_base --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda11.2_nvcc_base --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda11.2_nvcc_base --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda11.2_nvcc_base --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda11.2_nvcc_base --host_platform="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda11.2_nvcc_base --platforms="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda11.2_nvcc_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
+build:rbe_linux_cuda11.2_nvcc_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
+build:rbe_linux_cuda11.2_nvcc_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
+build:rbe_linux_cuda11.2_nvcc_py3.7 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.7"
+build:rbe_linux_cuda11.2_nvcc_py3.8 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.8"
+build:rbe_linux_cuda11.2_nvcc_py3.9 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_cuda11.2_nvcc_py3.10 --config=rbe_linux_cuda11.2_nvcc_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.10"
 
 # Map default to CUDA 11.2.
 build:rbe_linux_cuda_nvcc_py37 --config=rbe_linux_cuda11.2_nvcc_py3.7
 build:rbe_linux_cuda_nvcc_py38 --config=rbe_linux_cuda11.2_nvcc_py3.8
 build:rbe_linux_cuda_nvcc_py39 --config=rbe_linux_cuda11.2_nvcc_py3.9
+build:rbe_linux_cuda_nvcc_py310 --config=rbe_linux_cuda11.2_nvcc_py3.10
 
 # Deprecated configs that people might still use.
-build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py36
+build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_nvcc_py39
 build:rbe_gpu_linux       --config=rbe_linux_cuda_nvcc
 
 build:rbe_linux_cuda_clang_base --config=rbe_linux_cuda_base
 build:rbe_linux_cuda_clang_base --repo_env TF_CUDA_CLANG=1
 build:rbe_linux_cuda_clang_base --@local_config_cuda//:cuda_compiler=clang
-build:rbe_linux_cuda_clang_base --crosstool_top="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-build:rbe_linux_cuda_clang_base --extra_toolchains="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cuda_clang_base --extra_execution_platforms="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda_clang_base --host_platform="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda_clang_base --platforms="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
-build:rbe_linux_cuda_clang_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
-build:rbe_linux_cuda_clang_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
-build:rbe_linux_cuda_clang_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
-build:rbe_linux_cuda_clang_py37 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.7"
-build:rbe_linux_cuda_clang_py38 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.8"
-build:rbe_linux_cuda_clang_py39 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-clang_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_cuda_clang_base --crosstool_top="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_clang_base --extra_toolchains="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_clang_base --extra_execution_platforms="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_clang_base --host_platform="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_clang_base --platforms="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_platform//:platform"
+build:rbe_linux_cuda_clang_base --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda"
+build:rbe_linux_cuda_clang_base --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_tensorrt"
+build:rbe_linux_cuda_clang_base --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_nccl"
+build:rbe_linux_cuda_clang_py37 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.7"
+build:rbe_linux_cuda_clang_py38 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.8"
+build:rbe_linux_cuda_clang_py39 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_cuda_clang_py310 --config=rbe_linux_cuda_clang_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-clang_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.10"
 
 # ROCm
 build:rbe_linux_rocm_base --config=rocm
 build:rbe_linux_rocm_base --config=rbe_linux
-build:rbe_linux_rocm_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm//crosstool:toolchain"
-build:rbe_linux_rocm_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_rocm_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
-build:rbe_linux_rocm_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
-build:rbe_linux_rocm_base --platforms="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
-build:rbe_linux_rocm_base --action_env=TF_ROCM_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm"
-build:rbe_linux_rocm_py3.6 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.6"
-build:rbe_linux_rocm_py3.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.7"
-build:rbe_linux_rocm_py3.8 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.8"
-build:rbe_linux_rocm_py3.9 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.9"
+build:rbe_linux_rocm_base --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm//crosstool:toolchain"
+build:rbe_linux_rocm_base --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_rocm_base --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --host_platform="@ubuntu20.04-gcc9_manylinux2014-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --platforms="@ubuntu20.04-gcc9_manylinux2014-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --action_env=TF_ROCM_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm"
+build:rbe_linux_rocm_py3.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.7"
+build:rbe_linux_rocm_py3.8 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.8"
+build:rbe_linux_rocm_py3.9 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.9"
+build:rbe_linux_rocm_py3.10 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.10"
 
 # Linux CPU
 
 build:rbe_linux_py3 --config=rbe_linux
 build:rbe_linux_py3 --config=rbe_linux_py3_base
 build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
-build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
+build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@tf_toolchains//toolchains/win/tf_win_06242021:toolchain"
-build:rbe_win --extra_toolchains="@tf_toolchains//toolchains/win/tf_win_06242021:cc-toolchain-x64_windows"
-build:rbe_win --host_javabase="@tf_toolchains//toolchains/win:windows_jdk8"
-build:rbe_win --javabase="@tf_toolchains//toolchains/win:windows_jdk8"
-build:rbe_win --extra_execution_platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
-build:rbe_win --host_platform="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
-build:rbe_win --platforms="@tf_toolchains//toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_06152022:toolchain"
+build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_06152022:cc-toolchain-x64_windows"
+build:rbe_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:rbe_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win --experimental_strict_action_env=true
 
@@ -539,19 +553,27 @@ build:rbe_win_py37 --python_path=C:\\Python37\\python.exe
 build:rbe_win_py38 --config=rbe
 build:rbe_win_py38 --repo_env=PYTHON_BIN_PATH=C:\\Python38\\python.exe
 build:rbe_win_py38 --repo_env=PYTHON_LIB_PATH=C:\\Python38\\lib\\site-packages
-build:rbe_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=@tf_toolchains//toolchains/win_1803/py38
+build:rbe_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py38
 build:rbe_win_py38 --python_path=C:\\Python38\\python.exe
 
 build:rbe_win_py39 --config=rbe
 build:rbe_win_py39 --repo_env=PYTHON_BIN_PATH=C:\\Python39\\python.exe
 build:rbe_win_py39 --repo_env=PYTHON_LIB_PATH=C:\\Python39\\lib\\site-packages
-build:rbe_win_py39 --repo_env=TF_PYTHON_CONFIG_REPO=@tf_toolchains//toolchains/win_1803/py39
+build:rbe_win_py39 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py39
 build:rbe_win_py39 --python_path=C:\\Python39\\python.exe
+
+build:rbe_win_py310 --config=rbe
+build:rbe_win_py310 --repo_env=PYTHON_BIN_PATH=C:\\Python310\\python.exe
+build:rbe_win_py310 --repo_env=PYTHON_LIB_PATH=C:\\Python310\\lib\\site-packages
+build:rbe_win_py310 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py310
+build:rbe_win_py310 --python_path=C:\\Python310\\python.exe
 
 # These you may need to change for your own GCP project.
 build:tensorflow_testing_rbe --project_id=tensorflow-testing
 common:tensorflow_testing_rbe_linux --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 build:tensorflow_testing_rbe_linux --config=tensorflow_testing_rbe
+# Build GPU binaries for the RBE test machines (Tesla T4s).
+build:tensorflow_testing_rbe_linux --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=sm_75
 
 common:tensorflow_testing_rbe_win --remote_instance_name=projects/tensorflow-testing/instances/windows
 build:tensorflow_testing_rbe_win --config=tensorflow_testing_rbe
@@ -565,6 +587,7 @@ build:elinux_aarch64 --distinct_host_configuration=true
 build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
 build:elinux_armhf --distinct_host_configuration=true
+build:elinux_armhf --copt -mfp16-format=ieee
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Config-specific options should come above this line.
@@ -583,7 +606,7 @@ test:release_base --test_size_filters=small,medium
 
 build:release_cpu_linux --config=release_base
 build:release_cpu_linux --config=avx_linux
-build:release_cpu_linux --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
+build:release_cpu_linux --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
 test:release_cpu_linux --test_env=LD_LIBRARY_PATH
 
 build:release_cpu_macos --config=release_base
@@ -598,22 +621,13 @@ build:release_gpu_linux --config=release_cpu_linux
 build:release_gpu_linux --config=release_gpu_base
 build:release_gpu_linux --config=tensorrt
 build:release_gpu_linux --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.2"
-build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
-build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt7/usr/bin/gcc"
-build:release_gpu_linux --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
-
-build:release_gpu_linux_11_4 --config=release_gpu_linux
-build:release_gpu_linux_11_4 --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda-11.4"
-build:release_gpu_linux_11_4 --action_env=TF_CUDA_VERSION="11.4"
-build:release_gpu_linux_11_4 --action_env=TF_CUDNN_VERSION="8.2"
-build:release_gpu_linux_11_4 --crosstool_top=@ubuntu18.04-gcc7_manylinux2010-cuda11.4-cudnn8.2-tensorrt7.2_config_cuda//crosstool:toolchain
+build:release_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.1/lib64:/usr/local/tensorrt/lib"
+build:release_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
+build:release_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
 
 build:release_cpu_windows --config=release_base
 build:release_cpu_windows --config=avx_win
 build:release_cpu_windows --define=no_tensorflow_py_deps=true
-# First available in VS 16.4. Speeds Windows compile times by a lot. See
-# https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
-build:release_cpu_windows --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions
 
 build:release_gpu_windows --config=release_cpu_windows
 build:release_gpu_windows --config=release_gpu_base
@@ -650,17 +664,5 @@ build:ubsan --linkopt -fsanitize=undefined
 build:ubsan --linkopt -lubsan
 
 # Disable TFRT integration for now unless --config=tfrt is specified.
-build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/fallback,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
+build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
 build:tfrt --deleted_packages=
-
-# Experimental configuration for testing XLA GPU lowering to TFRT BEF thunks.
-# bazel test --config=experimental_enable_bef_thunk \
-#   //tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test
-build:experimental_enable_bef_thunk --config=tfrt
-build:experimental_enable_bef_thunk --//tensorflow/compiler/xla/service/gpu:enable_bef_thunk
-build:experimental_enable_bef_thunk --@tf_runtime//:enable_gpu
-build:experimental_enable_bef_thunk --@rules_cuda//cuda:enable_cuda
-build:experimental_enable_bef_thunk --@rules_cuda//cuda:cuda_runtime=//tensorflow/compiler/xla/service/gpu:cuda_runtime_for_xlir
-build:experimental_enable_bef_thunk --nocheck_visibility
-build:experimental_enable_bef_thunk --incompatible_strict_action_env
-build:experimental_enable_bef_thunk --config=monolithic

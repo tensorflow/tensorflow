@@ -1,45 +1,0 @@
-Ê
-ÒÊf
-6
-layer_with_weights-0
-layer-0
-	optimizer
-
-
-kernel
-bias
-$
-base_optimizer
-
-loss_scale
-ca
-VARIABLE_VALUEsequential/dense/kernel6layer_with_weights-0/kernel/.ATTRIBUTES/VARIABLE_VALUE
-_]
-VARIABLE_VALUEsequential/dense/bias4layer_with_weights-0/bias/.ATTRIBUTES/VARIABLE_VALUE
-V
-iter
-	decay
-	learning_rate
-
-momentummomentummomentum
-(
-current_loss_scale
-
-good_steps
-VT
-VARIABLE_VALUESGD/iter8optimizer/base_optimizer/iter/.ATTRIBUTES/VARIABLE_VALUE
-XV
-VARIABLE_VALUE	SGD/decay9optimizer/base_optimizer/decay/.ATTRIBUTES/VARIABLE_VALUE
-hf
-VARIABLE_VALUESGD/learning_rateAoptimizer/base_optimizer/learning_rate/.ATTRIBUTES/VARIABLE_VALUE
-^\
-VARIABLE_VALUESGD/momentum<optimizer/base_optimizer/momentum/.ATTRIBUTES/VARIABLE_VALUE
-jh
-VARIABLE_VALUEcurrent_loss_scaleBoptimizer/loss_scale/current_loss_scale/.ATTRIBUTES/VARIABLE_VALUE
-ZX
-VARIABLE_VALUE
-good_steps:optimizer/loss_scale/good_steps/.ATTRIBUTES/VARIABLE_VALUE
-£ 
-VARIABLE_VALUE$SGD/sequential/dense/kernel/momentumhlayer_with_weights-0/kernel/.OPTIMIZER_SLOT/optimizer/base_optimizer/momentum/.ATTRIBUTES/VARIABLE_VALUE
-Ÿœ
-VARIABLE_VALUE"SGD/sequential/dense/bias/momentumflayer_with_weights-0/bias/.OPTIMIZER_SLOT/optimizer/base_optimizer/momentum/.ATTRIBUTES/VARIABLE_VALUE

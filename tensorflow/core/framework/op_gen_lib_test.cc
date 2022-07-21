@@ -186,7 +186,9 @@ TEST(OpGenLibTest, ApiDefAccessInvalidName) {
 }
 
 TEST(OpGenLibTest, ApiDefInitializedFromOpDef) {
-  const string expected_api_def = R"(graph_op_name: "testop"
+  tensorflow::ApiDef expected_api_def;
+  protobuf::TextFormat::ParseFromString(
+R"(graph_op_name: "testop"
 visibility: VISIBLE
 endpoint {
   name: "testop"
@@ -209,17 +211,19 @@ attr {
 }
 arg_order: "arg_a"
 arg_order: "arg_b"
-)";
+)",
+      &expected_api_def);
   OpList op_list;
   protobuf::TextFormat::ParseFromString(kTestOpList, &op_list);  // NOLINT
 
   ApiDefMap api_map(op_list);
   const auto* api_def = api_map.GetApiDef("testop");
-  ASSERT_EQ(expected_api_def, api_def->DebugString());
+  ASSERT_EQ(api_def->DebugString(), expected_api_def.DebugString());
 }
 
 TEST(OpGenLibTest, ApiDefLoadSingleApiDef) {
-  const string expected_api_def = R"(op {
+  tensorflow::ApiDefs expected_api_defs;
+  protobuf::TextFormat::ParseFromString(R"(op {
   graph_op_name: "testop"
   visibility: VISIBLE
   endpoint {
@@ -246,7 +250,8 @@ TEST(OpGenLibTest, ApiDefLoadSingleApiDef) {
   arg_order: "arg_a"
   arg_order: "arg_b"
 }
-)";
+)",
+      &expected_api_defs);
   OpList op_list;
   protobuf::TextFormat::ParseFromString(kTestOpList, &op_list);  // NOLINT
 
@@ -258,7 +263,7 @@ TEST(OpGenLibTest, ApiDefLoadSingleApiDef) {
 
   ApiDefs api_defs;
   *api_defs.add_op() = *api_def;
-  EXPECT_EQ(expected_api_def, api_defs.DebugString());
+  EXPECT_EQ(api_defs.DebugString(), expected_api_defs.DebugString());
 }
 
 TEST(OpGenLibTest, ApiDefOverrideVisibility) {

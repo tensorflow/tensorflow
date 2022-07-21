@@ -1,0 +1,22 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: empty op type
+
+library {
+  function {
+    signature {
+      name: "XTimesTwo"
+    }
+    node_def {
+      name: "value"
+      attr {
+        key: "Tin"
+        value {
+          placeholder: "\t"
+        }
+      }
+    }
+  }
+}
+versions {
+}

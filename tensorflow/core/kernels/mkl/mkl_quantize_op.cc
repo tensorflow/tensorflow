@@ -17,20 +17,22 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "mkldnn.hpp"
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
-using mkldnn::primitive_attr;
-using mkldnn::prop_kind;
-using mkldnn::reorder;
-using mkldnn::stream;
+using dnnl::primitive_attr;
+using dnnl::prop_kind;
+using dnnl::reorder;
+using dnnl::stream;
 
 namespace {
 enum {
@@ -87,6 +89,9 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
   void Execute(void* src_data, void* dst_data,
                std::shared_ptr<stream> reorder_stream) {
+#ifdef DNNL_AARCH64_USE_ACL
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
     context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
@@ -104,17 +109,17 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   // Primitive reuse context for reorder
   struct ReorderContext {
     // MKL-DNN memory
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> dst_mem;
 
     // Reorder primitive descriptor and primitive
     std::shared_ptr<reorder::primitive_desc> reorder_pd;
     std::shared_ptr<primitive> reorder_prim;
 
     // Stream and primitive vector
-    std::shared_ptr<mkldnn::stream> reorder_stream;
+    std::shared_ptr<dnnl::stream> reorder_stream;
 
-    std::unordered_map<int, mkldnn::memory> prim_args;
+    std::unordered_map<int, dnnl::memory> prim_args;
 
     ReorderContext()
         : src_mem(nullptr),
@@ -133,7 +138,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
     // Check if there is any fusion as post-ops
     auto const& post_op_params = fwdParams.post_op_params;
-    mkldnn::primitive_attr post_ops_attr;
+    dnnl::primitive_attr post_ops_attr;
 
     DCHECK(post_op_params.name == "scale");
     DCHECK_EQ(post_op_params.param.size(), 1);
@@ -147,9 +152,13 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 
     // Create reorder primitive
     context_.reorder_prim.reset(new reorder(*context_.reorder_pd));
-    context_.prim_args.insert({MKLDNN_ARG_FROM, *context_.src_mem});
-    context_.prim_args.insert({MKLDNN_ARG_TO, *context_.dst_mem});
+    context_.prim_args.insert({DNNL_ARG_FROM, *context_.src_mem});
+    context_.prim_args.insert({DNNL_ARG_TO, *context_.dst_mem});
   }
+
+#ifdef DNNL_AARCH64_USE_ACL
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -288,7 +297,7 @@ class MklQuantizeV2Op : public OpKernel {
     // Estimate scale for quantization
     float scale_factor = 0;
     const int number_of_bits = sizeof(T) * 8;
-    const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+    const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
     scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
 
     float* src_data = const_cast<float*>(src_tensor.flat<float>().data());
@@ -461,7 +470,7 @@ class MklQuantizeV2Op : public OpKernel {
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       // Estimate scale for qunatization
       const int number_of_bits = sizeof(T) * 8;
-      const int64 number_of_steps = static_cast<int64>(1) << number_of_bits;
+      const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
       scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
     }
 

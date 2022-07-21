@@ -28,10 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
@@ -244,6 +241,11 @@ class TransferManager {
   virtual StatusOr<Shape> ChooseCompactLayoutForShape(
       const Shape& host_shape) const;
 
+  // For the given shape, chooses a layout for infeed. The returned shape
+  // has the same dimensions as the original shape, and only the layout is
+  // changed.
+  virtual Shape ChooseGoodInfeedLayout(const Shape& shape) const;
+
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
 
   // Allocates a ScopedShapedBuffer which can hold data with the given on-host
@@ -325,7 +327,7 @@ class TransferManager {
 
  private:
   // The mutex that guards the platform-to-transfer manager map.
-  static tensorflow::mutex platform_transfer_manager_mutex_;
+  static absl::Mutex platform_transfer_manager_mutex_;
 
   // State kept for each kind of TransferManager.  Registration functions
   // set up creation_function, and then we use that to lazily create

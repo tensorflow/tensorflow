@@ -130,7 +130,7 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
   } else {
     // For Collective V3 ops, group is already initialized. Fetch attributes
     // for the already initialized group to pass to Insitance initialization.
-    auto s = LookupAndPopulateGroupParams(&cp->group);
+    auto s = LookupGroup(cp->group.group_key, &cp->group);
     if (s.ok()) {
       CompleteInstanceDistributed(device.name(), cp, cancel_mgr, done);
     } else {
@@ -267,7 +267,7 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
           absl::CEscape(previous_gr->group.runtime_details.communicator_key));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CollectiveParamResolverDistributed::CompleteGroupDistributed(

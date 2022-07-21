@@ -16,10 +16,6 @@
 
 Analyze model, including shape, params, time, memory, structure, etc.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 import six
@@ -134,7 +130,7 @@ class Profiler(object):
     # Currently we are only allowed to create 1 profiler per process.
     profiler = Profiler(sess.graph)
 
-    for i in xrange(total_steps):
+    for i in range(total_steps):
       if i % 10000 == 0:
         run_meta = tf.compat.v1.RunMetadata()
         _ = sess.run(...,

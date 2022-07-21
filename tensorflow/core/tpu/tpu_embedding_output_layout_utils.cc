@@ -32,7 +32,24 @@ Status ComputeOutputTensorShapes(const TPUEmbeddingConfiguration& config,
     dim1->set_size(table.dimension());
     shapes->push_back(shape);
   }
-  return Status::OK();
+  return OkStatus();
+}
+
+Status ComputeOutputTensorShapesFromFeature(
+    const TPUEmbeddingConfiguration& config,
+    std::vector<TensorShapeProto>* shapes) {
+  for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
+       config.feature_descriptor()) {
+    TensorShapeProto shape;
+    for (int32 input_shape : feature.input_shape()) {
+      auto* dim = shape.add_dim();
+      dim->set_size(input_shape);
+    }
+    shape.add_dim()->set_size(
+        config.table_descriptor(feature.table_id()).dimension());
+    shapes->push_back(shape);
+  }
+  return OkStatus();
 }
 
 }  // namespace tpu

@@ -34,7 +34,7 @@ namespace tensorflow {
 
 Status DefaultValidator(const OpRegistryInterface& op_registry) {
   LOG(WARNING) << "No kernel validator registered with OpRegistry.";
-  return Status::OK();
+  return OkStatus();
 }
 
 // OpRegistry -----------------------------------------------------------------
@@ -47,7 +47,7 @@ Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
   const OpRegistrationData* op_reg_data = nullptr;
   TF_RETURN_IF_ERROR(LookUp(op_type_name, &op_reg_data));
   *op_def = &op_reg_data->op_def;
-  return Status::OK();
+  return OkStatus();
 }
 
 OpRegistry::OpRegistry()
@@ -84,7 +84,7 @@ Status OpNotFound(const string& op_type_name) {
 
 Status OpRegistry::LookUp(const string& op_type_name,
                           const OpRegistrationData** op_reg_data) const {
-  if ((*op_reg_data = LookUp(op_type_name))) return Status::OK();
+  if ((*op_reg_data = LookUp(op_type_name))) return OkStatus();
   return OpNotFound(op_type_name);
 }
 
@@ -161,7 +161,7 @@ Status OpRegistry::SetWatcher(const Watcher& watcher) {
         "Cannot over-write a valid watcher with another.");
   }
   watcher_ = watcher;
-  return Status::OK();
+  return OkStatus();
 }
 
 void OpRegistry::Export(bool include_internal, OpList* ops) const {
@@ -219,7 +219,7 @@ bool OpRegistry::MustCallDeferred() const {
 }
 
 Status OpRegistry::CallDeferred() const {
-  if (initialized_) return Status::OK();
+  if (initialized_) return OkStatus();
   initialized_ = true;
   for (size_t i = 0; i < deferred_.size(); ++i) {
     Status s = RegisterAlreadyLocked(deferred_[i]);
@@ -228,7 +228,7 @@ Status OpRegistry::CallDeferred() const {
     }
   }
   deferred_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpRegistry::RegisterAlreadyLocked(
@@ -286,7 +286,7 @@ const OpRegistrationData* OpListOpRegistry::LookUp(
 
 Status OpListOpRegistry::LookUp(const string& op_type_name,
                                 const OpRegistrationData** op_reg_data) const {
-  if ((*op_reg_data = LookUp(op_type_name))) return Status::OK();
+  if ((*op_reg_data = LookUp(op_type_name))) return OkStatus();
   return OpNotFound(op_type_name);
 }
 

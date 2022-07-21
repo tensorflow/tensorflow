@@ -23,6 +23,7 @@ limitations under the License.
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 #include <unordered_set>
 
 #include "tensorflow/core/platform/logging.h"
@@ -107,6 +108,9 @@ int PickUnusedPortOrDie() {
   // Type of port to first pick in the next iteration.
   bool is_tcp = true;
   int trial = 0;
+  std::default_random_engine rgen(std::random_device{}());
+  std::uniform_int_distribution<int> rdist(MIN_EPHEMERAL_PORT,
+                                           MAX_EPHEMERAL_PORT - 1);
   while (true) {
     int port;
     trial++;
@@ -116,8 +120,7 @@ int PickUnusedPortOrDie() {
       port = getpid() % (MAX_EPHEMERAL_PORT - MIN_EPHEMERAL_PORT) +
              MIN_EPHEMERAL_PORT;
     } else if (trial <= kNumRandomPortsToPick) {
-      port = rand() % (MAX_EPHEMERAL_PORT - MIN_EPHEMERAL_PORT) +
-             MIN_EPHEMERAL_PORT;
+      port = rdist(rgen);
     } else {
       port = 0;
     }

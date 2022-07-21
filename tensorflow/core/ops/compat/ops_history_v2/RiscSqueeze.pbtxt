@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RiscSqueeze"
   input_arg {
     name: "input"

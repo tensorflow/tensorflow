@@ -28,6 +28,7 @@ from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -46,7 +47,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -687,7 +688,7 @@ class OptimizerV2(trackable.Trackable):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
-      if isinstance(grad, ops.IndexedSlices):
+      if isinstance(grad, indexed_slices.IndexedSlices):
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
@@ -1098,8 +1099,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> len(opt.get_weights())
     3
 
@@ -1129,8 +1129,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> new_weights = [np.array(10), np.ones([20, 10]), np.zeros([10])]
     >>> opt.set_weights(new_weights)
     >>> opt.iterations

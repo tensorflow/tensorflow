@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
@@ -57,7 +56,7 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module,
         true_computation_builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(S32, {}), "param"));
     auto one = true_computation_builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
     true_computation_builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(S32, {}), HloOpcode::kAdd, param, one));
@@ -75,7 +74,7 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module,
         HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(S32, {}),
                                         "param"));
     auto forty_two = false_computation_builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(42)));
 
     false_computation_builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(S32, {}), HloOpcode::kAdd, param, forty_two));
@@ -91,7 +90,7 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module,
   auto false_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {}), "false_param"));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
   builder.AddInstruction(HloInstruction::CreateConditional(
       ShapeUtil::MakeShape(S32, {}), false_instrn, one, true_computation,
@@ -205,7 +204,7 @@ ENTRY main {
 )";
   auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> module = std::move(status).value();
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(module.get()).status());
   EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
@@ -264,7 +263,7 @@ TEST_F(ConditionalSimplifierTest,
     })";
   auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
+  std::unique_ptr<HloModule> module = std::move(status).value();
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(module.get()).status());
 

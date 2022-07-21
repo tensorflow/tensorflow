@@ -69,7 +69,7 @@ Status TypeForPlaceholder(const TransformFuncContext& context,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeForPlaceholder(const TransformFuncContext& context,
@@ -108,7 +108,7 @@ Status ShapeForPlaceholder(const TransformFuncContext& context,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -185,7 +185,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
       *(output_graph_def->mutable_node()->Add()) = node;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("strip_unused_nodes", StripUnusedNodes);

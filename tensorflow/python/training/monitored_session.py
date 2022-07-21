@@ -15,10 +15,6 @@
 # ==============================================================================
 """A wrapper of Session API which runs hooks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import os
 import sys
@@ -26,6 +22,8 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.checkpoint import checkpoint as trackable_util
+from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -42,8 +40,6 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 

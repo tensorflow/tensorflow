@@ -15,10 +15,6 @@
 
 """Wrappers for candidate sampling operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_candidate_sampling_ops
@@ -210,6 +206,9 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
+  # Limiting to Max int32 value
+  if range_max > 2147483647:
+    raise ValueError(f'Value of range_max:{range_max} is too large to handle')
   return gen_candidate_sampling_ops.learned_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)

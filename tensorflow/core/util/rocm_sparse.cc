@@ -122,35 +122,6 @@ HandleMap* GetHandleMapSingleton() {
 
 }  // namespace
 
-// Type traits to get HIP complex types from std::complex<>
-
-template <typename T>
-struct HipComplexT {
-  typedef T type;
-};
-
-template <>
-struct HipComplexT<std::complex<float>> {
-  typedef hipFloatComplex type;
-};
-
-template <>
-struct HipComplexT<std::complex<double>> {
-  typedef hipDoubleComplex type;
-};
-
-// Convert pointers of std::complex<> to pointers of
-// hipFloatComplex/hipDoubleComplex. No type conversion for non-complex types.
-template <typename T>
-inline const typename HipComplexT<T>::type* AsHipComplex(const T* p) {
-  return reinterpret_cast<const typename HipComplexT<T>::type*>(p);
-}
-
-template <typename T>
-inline typename HipComplexT<T>::type* AsHipComplex(T* p) {
-  return reinterpret_cast<typename HipComplexT<T>::type*>(p);
-}
-
 GpuSparse::GpuSparse(OpKernelContext* context)
     : initialized_(false), context_(context) {
   auto hip_stream_ptr =
@@ -396,7 +367,7 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
 
   Tensor pBuffer_t;
   TF_RETURN_IF_ERROR(context->allocate_temp(
-      DT_INT8, TensorShape({static_cast<int64>(pBufferSizeInBytes)}),
+      DT_INT8, TensorShape({static_cast<int64_t>(pBufferSizeInBytes)}),
       &pBuffer_t));
   auto pBuffer = pBuffer_t.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);

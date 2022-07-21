@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -38,7 +38,7 @@ limitations under the License.
 
 namespace xla {
 
-string BufferAlias::ToString() const {
+std::string BufferAlias::ToString() const {
   return absl::StrCat("BufferAlias(", instruction_->name(), "[",
                       absl::StrJoin(index_, ","), "])");
 }
@@ -141,7 +141,7 @@ void GatherFusionInstructions(
 TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, logical_buffer_analysis.ConsumeValueOrDie()));
+      module, std::move(logical_buffer_analysis).value()));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
@@ -174,11 +174,12 @@ Status TuplePointsToAnalysis::Analyze() {
 
   XLA_VLOG_LINES(3, ToString());
 
-  return Status::OK();
+  return OkStatus();
 }
 
-Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(const decltype(
-    std::declval<HloComputation>().instructions())& instructions) {
+Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
+    const decltype(std::declval<HloComputation>()
+                       .instructions())& instructions) {
   for (auto* instruction : instructions) {
     PerInstruction* pi = PerInst(instruction);
     TF_RETURN_IF_ERROR(GatherBuffersDefinedByInstruction(
@@ -195,7 +196,7 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(const decltype(
           }
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
@@ -216,7 +217,7 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
     points_to_set.add_tuple_source({}, hlo_instruction);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleGetTupleElement(
@@ -248,7 +249,7 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
@@ -261,7 +262,7 @@ Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
       logical_buffer_analysis_->GetBuffer(copy, /*index=*/{}),
       /*index=*/{});
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
@@ -269,7 +270,7 @@ Status TuplePointsToAnalysis::HandleBitcast(HloInstruction* bitcast) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(bitcast, bitcast->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
@@ -277,14 +278,14 @@ Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(domain, domain->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleAddDependency(
     HloInstruction* add_dependency) {
   // AddDependency just forwards the value of its zero-th operand.
   CreateCopiedPointsToSet(add_dependency, add_dependency->operand(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
@@ -314,7 +315,72 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
           points_to_set.add_tuple_source(index, tuple_source);
         }
       });
-  return Status::OK();
+  return OkStatus();
+}
+
+Status TuplePointsToAnalysis::HandleAsyncStart(HloInstruction* async_start) {
+  // AsyncStart forwards its aliased operands to {0}.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(async_start);
+
+  points_to_set.ForEachMutableElement(
+      [&](const ShapeIndex& target_index, PointsToSet::BufferList* buffers) {
+        if (target_index.size() >= 2 && target_index.front() == 0) {
+          const PointsToSet& operand_points_to_set =
+              GetPointsToSet(async_start->operand(target_index.at(1)));
+          ShapeIndex source_index(target_index.begin() + 2, target_index.end());
+          *buffers = operand_points_to_set.element(source_index);
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(source_index)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        } else {
+          buffers->push_back(
+              &logical_buffer_analysis_->GetBuffer(async_start, target_index));
+        }
+      });
+
+  return OkStatus();
+}
+
+Status TuplePointsToAnalysis::HandleAsyncUpdate(HloInstruction* async_update) {
+  // AsyncUpdate forwards its aliased operand to {}.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(async_update);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(async_update->operand(0));
+  CHECK_EQ(async_update->shape(), async_update->operand(0)->shape());
+
+  points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
+                                          PointsToSet::BufferList* buffers) {
+    *buffers = operand_points_to_set.element(index);
+    for (HloInstruction* tuple : operand_points_to_set.tuple_sources(index)) {
+      points_to_set.add_tuple_source(index, tuple);
+    }
+  });
+
+  return OkStatus();
+}
+
+Status TuplePointsToAnalysis::HandleAsyncDone(HloInstruction* async_done) {
+  // AsyncDone forwards its aliased operand.
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(async_done);
+  const PointsToSet& operand_points_to_set =
+      GetPointsToSet(async_done->operand(0));
+  operand_points_to_set.ForEachElement(
+      [&points_to_set, &operand_points_to_set](
+          const ShapeIndex& src_index,
+          const PointsToSet::BufferList& points_to) {
+        if (!src_index.empty() && src_index.front() == 1) {
+          const ShapeIndex target_index(src_index.begin() + 1, src_index.end());
+          *points_to_set.mutable_element(target_index) = points_to;
+
+          for (HloInstruction* tuple :
+               operand_points_to_set.tuple_sources(src_index)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        }
+      });
+
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCopyStart(HloInstruction* copy_start) {
@@ -338,7 +404,7 @@ Status TuplePointsToAnalysis::HandleCopyStart(HloInstruction* copy_start) {
     points_to_set.add_tuple_source(/*index=*/{1}, tuple);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
@@ -361,7 +427,7 @@ Status TuplePointsToAnalysis::HandleCopyDone(HloInstruction* copy_done) {
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
@@ -400,7 +466,7 @@ Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
         }
       });
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
@@ -439,40 +505,7 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
 
   points_to_set.add_tuple_source({}, tuple);
 
-  return Status::OK();
-}
-
-Status TuplePointsToAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
-  // Select allocates a new buffer and then shallow copies the on_true or
-  // on_false buffer into this new buffer. Which side is chosen cannot be
-  // determined statically so conservatively set the points-to set to the union
-  // of these on_true and on_false operands.
-  //
-  // First create a copy of the on_true points-to set (and tuple sources), then
-  // add in elements of the on_false points-to set (tuple sources).
-  auto on_true = tuple_select->operand(1);
-  auto on_false = tuple_select->operand(2);
-  PointsToSet& points_to_set = CreateCopiedPointsToSet(tuple_select, on_true);
-  const PointsToSet& false_points_to_set = *PerInst(on_false)->points_to_set;
-  points_to_set.ForEachMutableElement(
-      [&](const ShapeIndex& index, PointsToSet::BufferList* buffers) {
-        for (const LogicalBuffer* false_buffer :
-             false_points_to_set.element(index)) {
-          points_to_set.AddPointedToBuffer(*false_buffer, index);
-        }
-
-        for (HloInstruction* tuple : false_points_to_set.tuple_sources(index)) {
-          points_to_set.add_tuple_source(index, tuple);
-        }
-      });
-
-  // Select creates a new (top-level) buffer to store its result, so its
-  // respective element in the points-to set should contain only itself.
-  points_to_set.mutable_element({})->clear();
-  points_to_set.AddPointedToBuffer(
-      logical_buffer_analysis_->GetBuffer(tuple_select, /*index=*/{}),
-      /*index=*/{});
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
@@ -503,7 +536,14 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
     }
   });
   points_to_set.add_tuple_source({}, custom_call);
-  return Status::OK();
+  return OkStatus();
+}
+
+Status TuplePointsToAnalysis::HandleOptimizationBarrier(
+    HloInstruction* barrier) {
+  // A kOptimizationBarrier instruction is a no-op.
+  CreateCopiedPointsToSet(barrier, barrier->operand(0));
+  return OkStatus();
 }
 
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
@@ -516,7 +556,7 @@ PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
   PerInstruction* pi = PerInst(instruction);
   CHECK(pi->points_to_set == nullptr)
       << "instruction should not have been present in the map.";
-  auto set = absl::make_unique<PointsToSet>(&instruction->shape());
+  auto set = std::make_unique<PointsToSet>(&instruction->shape());
   pi->points_to_set = std::move(set);
   // Return *set using the iterator returned by emplace.
   return *pi->points_to_set;
@@ -548,7 +588,7 @@ Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
         buffer.ToString(), GetBuffer(buffer.id()).ToString());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 const LogicalBuffer& TuplePointsToAnalysis::GetBuffer(
@@ -604,7 +644,7 @@ Status TuplePointsToAnalysis::GatherBuffersDefinedByInstruction(
           }
         }
       });
-  return Status::OK();
+  return OkStatus();
 }
 
 PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
@@ -624,8 +664,8 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
   return *PerInst(instruction)->points_to_set;
 }
 
-string TuplePointsToAnalysis::ToString() const {
-  string output =
+std::string TuplePointsToAnalysis::ToString() const {
+  std::string output =
       absl::StrFormat("TuplePointsToSet for module %s:\n", module_->name());
   for (const auto* computation : module_->MakeNonfusionComputations()) {
     const char* entry =
@@ -653,21 +693,22 @@ string TuplePointsToAnalysis::ToString() const {
 }
 
 void TuplePointsToAnalysis::InstructionToString(
-    const HloInstruction* instruction, string* output) const {
-  const string prefix = instruction->IsFused() ? "    " : "";
+    const HloInstruction* instruction, std::string* output) const {
+  const std::string prefix = instruction->IsFused() ? "    " : "";
   absl::StrAppend(output, prefix, "  instruction ",
                   instruction->ToShortString(), ":\n");
   const PointsToSet& points_to_set = GetPointsToSet(instruction);
-  points_to_set.ForEachElement([&prefix, &output](
-                                   const ShapeIndex& index,
-                                   const PointsToSet::BufferList& points_to) {
-    absl::StrAppend(output, prefix, "    {", absl::StrJoin(index, ","), "}: ",
-                    absl::StrJoin(points_to, ", ",
-                                  [](string* out, const LogicalBuffer* source) {
-                                    out->append(source->ToString());
-                                  }),
-                    "\n");
-  });
+  points_to_set.ForEachElement(
+      [&prefix, &output](const ShapeIndex& index,
+                         const PointsToSet::BufferList& points_to) {
+        absl::StrAppend(
+            output, prefix, "    {", absl::StrJoin(index, ","), "}: ",
+            absl::StrJoin(points_to, ", ",
+                          [](std::string* out, const LogicalBuffer* source) {
+                            out->append(source->ToString());
+                          }),
+            "\n");
+      });
 }
 
 bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(

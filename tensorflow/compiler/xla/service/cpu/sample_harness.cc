@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array4d.h"
@@ -40,12 +41,12 @@ int main(int argc, char** argv) {
   xla::Literal param0_literal =
       xla::LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client->TransferToServer(param0_literal).value();
 
   xla::Literal param1_literal = xla::LiteralUtil::CreateR2<float>(
       {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
   std::unique_ptr<xla::GlobalData> param1_data =
-      client->TransferToServer(param1_literal).ConsumeValueOrDie();
+      client->TransferToServer(param1_literal).value();
 
   // Build computation.
   xla::XlaBuilder builder("");
@@ -53,8 +54,7 @@ int main(int argc, char** argv) {
   auto p1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Add(p1, p0, {0});
 
-  xla::StatusOr<xla::XlaComputation> computation_status = builder.Build();
-  xla::XlaComputation computation = computation_status.ConsumeValueOrDie();
+  xla::XlaComputation computation = builder.Build().value();
 
   // Execute and transfer result of computation.
   xla::ExecutionProfile profile;
@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
       /*arguments=*/{param0_data.get(), param1_data.get()},
       /*execution_options=*/nullptr,
       /*execution_profile=*/&profile);
-  xla::Literal actual = result.ConsumeValueOrDie();
+  xla::Literal actual = std::move(result).value();
 
   LOG(INFO) << absl::StrFormat("computation took %dns",
                                profile.compute_time_ns());

@@ -144,13 +144,13 @@ class BatchInputTaskTest : public ::testing::Test {
 TEST_F(BatchInputTaskTest, BatchInputToSplitTasks) {
   auto batch_task = std::make_unique<BatchResourceBase::BatchTask>();
 
-  batch_task->inputs.push_back(CreateTensor<int64>(
+  batch_task->inputs.push_back(CreateTensor<int64_t>(
       TensorShape({5, 2, 1}), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
-  batch_task->inputs.push_back(CreateTensor<int64>(
+  batch_task->inputs.push_back(CreateTensor<int64_t>(
       TensorShape({5, 1, 2}), {11, 12, 13, 14, 15, 16, 17, 18, 19, 20}));
 
   batch_task->captured_inputs.push_back(
-      CreateTensor<int64>(TensorShape{1}, {0}));
+      CreateTensor<int64_t>(TensorShape{1}, {0}));
 
   batch_task->context = op_kernel_context();
 

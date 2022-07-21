@@ -75,16 +75,16 @@ template <typename T>
 struct NumTrue<CPUDevice, T, int64_t> {
   static Status Compute(OpKernelContext* ctx, const CPUDevice& d,
                         typename TTypes<T>::ConstFlat input,
-                        TTypes<int64>::UnalignedScalar num_true) {
+                        TTypes<int64_t>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
-    return Status::OK();
+    return OkStatus();
   }
 };
 
 template <int DIMS, typename T, typename TIndex>
 struct Where<CPUDevice, DIMS, T, TIndex> {
   EIGEN_ALWAYS_INLINE static void WriteIndexRowMajor(
-      typename TTypes<int64>::Matrix output,
+      typename TTypes<int64_t>::Matrix output,
       const typename Eigen::DSizes<TIndex, DIMS>& strides, TIndex true_n,
       TIndex index) {
     for (int i = 0; i < DIMS; ++i) {
@@ -96,7 +96,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const CPUDevice& d,
       typename TTypes<T, DIMS>::ConstTensor input,
-      typename TTypes<int64>::Matrix output, TIndex* found_true) {
+      typename TTypes<int64_t>::Matrix output, TIndex* found_true) {
     Eigen::DSizes<Eigen::DenseIndex, DIMS> dims = input.dimensions();
     Eigen::DSizes<TIndex, DIMS> strides;
 
@@ -118,7 +118,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
         ++*found_true;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -141,7 +141,7 @@ class WhereCPUOp : public OpKernel {
     const int input_dims = input.dims();
 
     int64_t num_true;
-    TTypes<int64>::UnalignedScalar num_true_t(&num_true);
+    TTypes<int64_t>::UnalignedScalar num_true_t(&num_true);
 
     Status s = functor::NumTrue<CPUDevice, T, int64_t>::Compute(
         context, context->eigen_device<CPUDevice>(), input.flat<T>(),
@@ -309,12 +309,12 @@ class WhereGPUOp : public AsyncOpKernel {
               0, TensorShape({*num_true.data(), input_dims}), &output),
           done);
 
-#define HANDLE_DIM(NDIM)                                              \
-  case NDIM: {                                                        \
-    Status s = functor::Where<GPUDevice, NDIM, T, Tindex>::Compute(   \
-        context, d, input.tensor<T, NDIM>(), output->matrix<int64>(), \
-        &found_true);                                                 \
-    OP_REQUIRES_OK_ASYNC(context, s, done);                           \
+#define HANDLE_DIM(NDIM)                                                \
+  case NDIM: {                                                          \
+    Status s = functor::Where<GPUDevice, NDIM, T, Tindex>::Compute(     \
+        context, d, input.tensor<T, NDIM>(), output->matrix<int64_t>(), \
+        &found_true);                                                   \
+    OP_REQUIRES_OK_ASYNC(context, s, done);                             \
   } break;
 
       switch (input_dims) {
@@ -351,8 +351,9 @@ class WhereGPUOp : public AsyncOpKernel {
     };
 
     auto stream = context->op_device_context()->stream();
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, create_and_check_output);
   }
 
  private:
@@ -364,15 +365,15 @@ class WhereGPUOp : public AsyncOpKernel {
       Name("Where").Device(DEVICE_GPU).TypeConstraint<T>("T"), WhereGPUOp<T>);
 
 TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
+#undef REGISTER_GPU_WHERE_OP
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 REGISTER_KERNEL_BUILDER(Name("Where")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
                         WhereCPUOp<int32>);
-
-#undef REGISTER_GPU_WHERE_OP
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

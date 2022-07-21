@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,6 +33,8 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/subgraph_resource.h"
+#include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -86,12 +92,13 @@ class TfLiteSubgraphExecute : public OpKernel {
     ResizeInputTensor(ctx, subgraph_selected);
 
     if (tfl_tensors_need_allocation_) {
-      subgraph_selected.AllocateTensors();
+      OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
+                  errors::Internal("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
     }
 
     // Copy input tensors to subgraph.
-    SetSubgraphInput(ctx, subgraph_selected);
+    SetSubgraphInput(ctx, subgraph_selected, resource->GetFlexDelegate());
 
     OP_REQUIRES(ctx, subgraph_selected.Invoke() == kTfLiteOk,
                 errors::Internal("Failed to invoke tflite subgraph"));
@@ -132,7 +139,29 @@ class TfLiteSubgraphExecute : public OpKernel {
   }
 
   void SetSubgraphInput(OpKernelContext* ctx,
-                        tflite::Subgraph& subgraph_selected) const {
+                        tflite::Subgraph& subgraph_selected,
+                        TfLiteDelegate* flex_delegate) const {
+    auto InitializeVariantOrResource = [flex_delegate](
+                                           const Tensor& tf_tensor,
+                                           TfLiteTensor* subgraph_input) {
+      // The code here initializes the TfLiteTensor which points the data field
+      // to the original TF resource or variant tensor. This requires the TF
+      // tensor's lifetime must extend beyond the execution of callee subgraph.
+      // TODO(b/179094265): This is an experimental implementation, subject to
+      // change. This can be re-implemented with life cycle management
+      // mechanism like reference counting.
+      const size_t required_bytes = sizeof(tensorflow::Tensor**);
+      const tensorflow::Tensor** tf_tensor_ptr =
+          reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
+      *tf_tensor_ptr = &tf_tensor;
+
+      TfLiteTensorDataFree(subgraph_input);
+      subgraph_input->data.raw = reinterpret_cast<char*>(tf_tensor_ptr);
+      subgraph_input->bytes = required_bytes;
+      subgraph_input->data_is_stale = true;
+      subgraph_input->delegate = flex_delegate;
+    };
+
     for (int i = 0; i < subgraph_selected.inputs().size(); ++i) {
       const Tensor& tf_tensor = ctx->input(i + 1);
       TfLiteTensor* subgraph_input =
@@ -148,21 +177,18 @@ class TfLiteSubgraphExecute : public OpKernel {
         }
 
         dynamic_buffer.WriteToTensor(subgraph_input, /*new_shape=*/nullptr);
-      } else if (subgraph_input->type == kTfLiteResource ||
-                 subgraph_input->type == kTfLiteVariant) {
-        // TODO(b/179094265): This is an experimental implementation, subject to
-        // change. This can be re-implemented with life cycle management
-        // mechanism like reference counting.
-        const size_t required_bytes = sizeof(tensorflow::Tensor**);
-        const tensorflow::Tensor** tf_tensor_ptr =
-            reinterpret_cast<const tensorflow::Tensor**>(
-                malloc(required_bytes));
-        *tf_tensor_ptr = &tf_tensor;
-
-        TfLiteTensorDataFree(subgraph_input);
-        subgraph_input->data.raw = reinterpret_cast<char*>(tf_tensor_ptr);
-        subgraph_input->bytes = required_bytes;
-        subgraph_input->data_is_stale = true;
+      } else if (subgraph_input->type == kTfLiteResource) {
+        // Here we will try to parse the input tensor handle to see if it
+        // contains a valid TF lite resource ID. If not, then we know that the
+        // input is a TF resource tensor.
+        tensorflow::ResourceHandle handle =
+            tf_tensor.flat<tensorflow::ResourceHandle>()(0);
+        if (!tflite::flex::GetTfLiteResourceTensorFromResourceHandle(
+                handle, subgraph_input)) {
+          InitializeVariantOrResource(tf_tensor, subgraph_input);
+        }
+      } else if (subgraph_input->type == kTfLiteVariant) {
+        InitializeVariantOrResource(tf_tensor, subgraph_input);
       } else {
         tensorflow::StringPiece tensor_data = tf_tensor.tensor_data();
         OP_REQUIRES(ctx, subgraph_input->bytes == tensor_data.size(),
@@ -186,9 +212,14 @@ class TfLiteSubgraphExecute : public OpKernel {
       TfLiteTensor* subgraph_output =
           subgraph_selected.tensor(subgraph_selected.outputs()[i]);
 
+      // Forcing a memcpy for each tensor output from the called dataset
+      // subgraph. This is because the callee subgraph might be invoked
+      // repeatedly for each item in the dataset, and the result TfLiteTensor's
+      // data should be immediately copied into tensorflow::Tensor.
       Tensor tensor;
       OP_REQUIRES_OK(
-          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor));
+          ctx, tflite::flex::SetTfTensorFromTfLite(subgraph_output, &tensor,
+                                                   /*allow_reusing=*/false));
       ctx->set_output(i, std::move(tensor));
     }
   }

@@ -14,10 +14,6 @@
 # ==============================================================================
 """`LinearOperator` coming from a [[nested] block] circulant matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -44,6 +40,118 @@ _FFT_OP = {1: fft_ops.fft, 2: fft_ops.fft2d, 3: fft_ops.fft3d}
 _IFFT_OP = {1: fft_ops.ifft, 2: fft_ops.ifft2d, 3: fft_ops.ifft3d}
 
 
+def exponential_power_convolution_kernel(
+    grid_shape,
+    length_scale,
+    power=None,
+    divisor=None,
+    zero_inflation=None,
+):
+  """Make an exponentiated convolution kernel.
+
+  In signal processing, a [kernel]
+  (https://en.wikipedia.org/wiki/Kernel_(image_processing)) `h` can be convolved
+  with a signal `x` to filter its spectral content.
+
+  This function makes a `d-dimensional` convolution kernel `h` of shape
+  `grid_shape = [N0, N1, ...]`. For `n` a multi-index with `n[i] < Ni / 2`,
+
+  ```h[n] = exp{sum(|n / (length_scale * grid_shape)|**power) / divisor}.```
+
+  For other `n`, `h` is extended to be circularly symmetric. That is
+
+  ```h[n0 % N0, ...] = h[(-n0) % N0, ...]```
+
+  Since `h` is circularly symmetric and real valued, `H = FFTd[h]` is the
+  spectrum of a symmetric (real) circulant operator `A`.
+
+  #### Example uses
+
+  ```
+  # Matern one-half kernel, d=1.
+  # Will be positive definite without zero_inflation.
+  h = exponential_power_convolution_kernel(
+      grid_shape=[10], length_scale=[0.1], power=1)
+  A = LinearOperatorCirculant(
+      tf.signal.fft(tf.cast(h, tf.complex64)),
+      is_self_adjoint=True, is_positive_definite=True)
+
+  # Gaussian RBF kernel, d=3.
+  # Needs zero_inflation since `length_scale` is long enough to cause aliasing.
+  h = exponential_power_convolution_kernel(
+      grid_shape=[10, 10, 10], length_scale=[0.1, 0.2, 0.2], power=2,
+      zero_inflation=0.15)
+  A = LinearOperatorCirculant3D(
+      tf.signal.fft3d(tf.cast(h, tf.complex64)),
+      is_self_adjoint=True, is_positive_definite=True)
+  ```
+
+  Args:
+    grid_shape: Length `d` (`d` in {1, 2, 3}) list-like of Python integers. The
+      shape of the grid on which the convolution kernel is defined.
+    length_scale: Length `d` `float` `Tensor`. The scale at which the kernel
+      decays in each direction, as a fraction of `grid_shape`.
+    power: Scalar `Tensor` of same `dtype` as `length_scale`, default `2`.
+      Higher (lower) `power` results in nearby points being more (less)
+      correlated, and far away points being less (more) correlated.
+    divisor: Scalar `Tensor` of same `dtype` as `length_scale`. The slope of
+      decay of `log(kernel)` in terms of fractional grid points, along each
+      axis, at `length_scale`, is `power/divisor`. By default, `divisor` is set
+      to `power`. This means, by default, `power=2` results in an exponentiated
+      quadratic (Gaussian) kernel, and `power=1` is a Matern one-half.
+    zero_inflation: Scalar `Tensor` of same `dtype` as `length_scale`, in
+      `[0, 1]`. Let `delta` be the Kronecker delta. That is,
+      `delta[0, ..., 0] = 1` and all other entries are `0`. Then
+      `zero_inflation` modifies the return value via
+      `h --> (1 - zero_inflation) * h + zero_inflation * delta`. This may be
+      needed to ensure a positive definite kernel, especially if `length_scale`
+      is large enough for aliasing and `power > 1`.
+
+  Returns:
+    `Tensor` of shape `grid_shape` with same `dtype` as `length_scale`.
+  """
+  nd = len(grid_shape)
+
+  length_scale = ops.convert_to_tensor_v2_with_dispatch(
+      length_scale, name="length_scale")
+  dtype = length_scale.dtype
+
+  power = 2. if power is None else power
+  power = ops.convert_to_tensor_v2_with_dispatch(
+      power, name="power", dtype=dtype)
+  divisor = power if divisor is None else divisor
+  divisor = ops.convert_to_tensor_v2_with_dispatch(
+      divisor, name="divisor", dtype=dtype)
+
+  # With K = grid_shape[i], we implicitly assume the grid vertices along the
+  # ith dimension are at:
+  #   0 = 0 / (K - 1), 1 / (K - 1), 2 / (K - 1), ..., (K - 1) / (K - 1) = 1.
+  zero = math_ops.cast(0., dtype)
+  one = math_ops.cast(1., dtype)
+  ts = [math_ops.linspace(zero, one, num=n) for n in grid_shape]
+
+  log_vals = []
+  for i, x in enumerate(array_ops.meshgrid(*ts, indexing="ij")):
+    # midpoint[i] is the vertex just to the left of 1 / 2.
+    # ifftshift will shift this vertex to position 0.
+    midpoint = ts[i][math_ops.cast(
+        math_ops.floor(one / 2. * grid_shape[i]), dtypes.int32)]
+    log_vals.append(-(math_ops.abs(
+        (x - midpoint) / length_scale[i]))**power / divisor)
+  kernel = math_ops.exp(
+      fft_ops.ifftshift(sum(log_vals), axes=[-i for i in range(1, nd + 1)]))
+
+  if zero_inflation:
+    # delta.shape = grid_shape, delta[0, 0, 0] = 1., all other entries are 0.
+    zero_inflation = ops.convert_to_tensor_v2_with_dispatch(
+        zero_inflation, name="zero_inflation", dtype=dtype)
+    delta = array_ops.pad(
+        array_ops.reshape(one, [1] * nd), [[0, dim - 1] for dim in grid_shape])
+    kernel = (1. - zero_inflation) * kernel + zero_inflation * delta
+
+  return kernel
+
+
 # TODO(langmore) Add transformations that create common spectrums, e.g.
 #   starting with the convolution kernel
 #   start with half a spectrum, and create a Hermitian one.
@@ -68,9 +176,9 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     r"""Initialize an `_BaseLinearOperatorCirculant`.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
-        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
-        than `input_output_dtype`
+      spectrum:  Shape `[B1,...,Bb] + N` `Tensor`, where `rank(N) in {1, 2, 3}`.
+        Allowed dtypes: `float16`, `float32`, `float64`, `complex64`,
+        `complex128`.  Type can be different than `input_output_dtype`
       block_depth:  Python integer, either 1, 2, or 3.  Will be 1 for circulant,
         2 for block circulant, and 3 for nested block circulant.
       input_output_dtype: `dtype` for input/output.
@@ -130,8 +238,6 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      # TODO(b/143910018) Remove graph_parents in V3.
-      self._set_graph_parents([self.spectrum])
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
@@ -231,6 +337,33 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
           (vec_leading_shape, self.block_shape_tensor()), 0)
     return array_ops.reshape(vec, final_shape)
 
+  def _unblockify(self, x):
+    """Flatten the trailing block dimensions."""
+    # Suppose
+    #   x.shape = [v0, v1, v2, v3],
+    #   self.block_depth = 2.
+    # Then
+    #   leading shape = [v0, v1]
+    #   block shape = [v2, v3].
+    # We will reshape x to
+    #   [v0, v1, v2*v3].
+    if x.shape.is_fully_defined():
+      # x_shape = [v0, v1, v2, v3]
+      x_shape = x.shape.as_list()
+      # x_leading_shape = [v0, v1]
+      x_leading_shape = x_shape[:-self.block_depth]
+      # x_block_shape = [v2, v3]
+      x_block_shape = x_shape[-self.block_depth:]
+      # flat_shape = [v0, v1, v2*v3]
+      flat_shape = x_leading_shape + [np.prod(x_block_shape)]
+    else:
+      x_shape = array_ops.shape(x)
+      x_leading_shape = x_shape[:-self.block_depth]
+      x_block_shape = x_shape[-self.block_depth:]
+      flat_shape = array_ops.concat(
+          (x_leading_shape, [math_ops.reduce_prod(x_block_shape)]), 0)
+    return array_ops.reshape(x, flat_shape)
+
   def _unblockify_then_matricize(self, vec):
     """Flatten the block dimensions then reshape to a batch matrix."""
     # Suppose
@@ -244,22 +377,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     # Un-blockify: Flatten block dimensions.  Reshape
     #   [v0, v1, v2, v3] --> [v0, v1, v2*v3].
-    if vec.shape.is_fully_defined():
-      # vec_shape = [v0, v1, v2, v3]
-      vec_shape = vec.shape.as_list()
-      # vec_leading_shape = [v0, v1]
-      vec_leading_shape = vec_shape[:-self.block_depth]
-      # vec_block_shape = [v2, v3]
-      vec_block_shape = vec_shape[-self.block_depth:]
-      # flat_shape = [v0, v1, v2*v3]
-      flat_shape = vec_leading_shape + [np.prod(vec_block_shape)]
-    else:
-      vec_shape = array_ops.shape(vec)
-      vec_leading_shape = vec_shape[:-self.block_depth]
-      vec_block_shape = vec_shape[-self.block_depth:]
-      flat_shape = array_ops.concat(
-          (vec_leading_shape, [math_ops.reduce_prod(vec_block_shape)]), 0)
-    vec_flat = array_ops.reshape(vec, flat_shape)
+    vec_flat = self._unblockify(vec)
 
     # Matricize:  Reshape to batch matrix.
     #   [v0, v1, v2*v3] --> [v1, v2*v3, v0],
@@ -409,6 +527,21 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
     return x, spectrum
 
+  def _cond(self):
+    # Regardless of whether the operator is real, it is always diagonalizable by
+    # the Fourier basis F. I.e.  A = F S F^H, with S a diagonal matrix
+    # containing the spectrum. We then have:
+    #  A A^H = F SS^H F^H = F K F^H,
+    # where K = diag with squared absolute values of the spectrum.
+    # So in all cases,
+    abs_singular_values = math_ops.abs(self._unblockify(self.spectrum))
+    return (math_ops.reduce_max(abs_singular_values, axis=-1) /
+            math_ops.reduce_min(abs_singular_values, axis=-1))
+
+  def _eigvals(self):
+    return ops.convert_to_tensor_v2_with_dispatch(
+        self._unblockify(self.spectrum))
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linalg.adjoint(x) if adjoint_arg else x
     # With F the matrix of a DFT, and F^{-1}, F^H the inverse and Hermitian
@@ -522,6 +655,10 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("spectrum", "input_output_dtype")
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"spectrum": self.block_depth}
 
 
 @tf_export("linalg.LinearOperatorCirculant")
@@ -777,9 +914,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         parameters=parameters,
         name=name)
 
-  def _eigvals(self):
-    return ops.convert_to_tensor_v2_with_dispatch(self.spectrum)
-
 
 @tf_export("linalg.LinearOperatorCirculant2D")
 @linear_operator.make_composite_tensor
@@ -932,9 +1066,9 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
     a real type is fine.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
-        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
-        than `input_output_dtype`
+      spectrum:  Shape `[B1,...,Bb, N0, N1]` `Tensor`.  Allowed dtypes:
+        `float16`, `float32`, `float64`, `complex64`, `complex128`.
+        Type can be different than `input_output_dtype`
       input_output_dtype: `dtype` for input/output.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
@@ -1094,9 +1228,9 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
     a real type is fine.
 
     Args:
-      spectrum:  Shape `[B1,...,Bb, N]` `Tensor`.  Allowed dtypes: `float16`,
-        `float32`, `float64`, `complex64`, `complex128`.  Type can be different
-        than `input_output_dtype`
+      spectrum:  Shape `[B1,...,Bb, N0, N1, N2]` `Tensor`.  Allowed dtypes:
+        `float16`, `float32`, `float64`, `complex64`, `complex128`.
+        Type can be different than `input_output_dtype`
       input_output_dtype: `dtype` for input/output.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian

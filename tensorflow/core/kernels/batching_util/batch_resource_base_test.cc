@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
 #include "absl/time/time.h"
+#include "tensorflow/core/common_runtime/cost_measurement.h"
+#include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -26,11 +28,23 @@ namespace {
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-class TestCostMeasurement : public CostMeasurement {
+class TestTpuCostMeasurement : public CostMeasurement {
  public:
+  using CostMeasurement::CostMeasurement;
+
   absl::Duration GetTotalCost() override { return absl::Milliseconds(100); }
-  absl::string_view GetCostType() const override { return "test"; }
+  absl::string_view GetCostType() const override { return "test_tpu"; }
 };
+REGISTER_COST_MEASUREMENT("test_tpu", TestTpuCostMeasurement);
+
+class TestGcuCostMeasurement : public CostMeasurement {
+ public:
+  using CostMeasurement::CostMeasurement;
+
+  absl::Duration GetTotalCost() override { return absl::Milliseconds(200); }
+  absl::string_view GetCostType() const override { return "test_gcu"; }
+};
+REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
 
 std::unique_ptr<BatchResourceBase::BatchTask> MakeBatchTask(
     const int64_t task_size, RequestCost* request_cost) {
@@ -45,8 +59,10 @@ TEST(SplitBatchCostTest, SkipOnNoCostMeasurement) {
   RequestCost cost;
   batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost));
   batch.Close();
-  BatchResourceBase::SplitBatchCost(/*batch_cost_measurement*/ nullptr,
-                                    /*processed_size=*/16, batch);
+
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/16, batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
 }
 
@@ -56,9 +72,12 @@ TEST(SplitBatchCostTest, SkipOnZeroCost) {
   batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost));
   batch.Close();
 
-  NoOpCostMeasurement no_op_cost_measurement;
-  BatchResourceBase::SplitBatchCost(&no_op_cost_measurement,
-                                    /*processed_size=*/16, batch);
+  CostMeasurement::Context context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/16, batch);
   EXPECT_TRUE(batch.task(0).request_cost->GetCosts().empty());
 }
 
@@ -66,9 +85,12 @@ TEST(SplitBatchCostTest, SkipOnZeroBatchSize) {
   BatchResourceBase::BatchT batch;
   batch.Close();
 
-  TestCostMeasurement test_cost_measurement;
-  BatchResourceBase::SplitBatchCost(&test_cost_measurement,
-                                    /*processed_size=*/0, batch);
+  CostMeasurement::Context context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/0, batch);
 }
 
 TEST(SplitBatchCostTest, SkipOnNoRequestCost) {
@@ -77,33 +99,69 @@ TEST(SplitBatchCostTest, SkipOnNoRequestCost) {
   batch.AddTask(MakeBatchTask(/*task_size=*/9, nullptr));
   batch.Close();
 
-  TestCostMeasurement test_cost_measurement;
-  BatchResourceBase::SplitBatchCost(&test_cost_measurement,
-                                    /*processed_size=*/16, batch);
+  CostMeasurement::Context context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/16, batch);
 
   EXPECT_EQ(batch.task(0).request_cost, nullptr);
   EXPECT_EQ(batch.task(1).request_cost, nullptr);
 }
 
-TEST(SplitBatchCostTest, Basic) {
+TEST(SplitBatchCostTest, SplitSingleCostType) {
   BatchResourceBase::BatchT batch;
   RequestCost cost1, cost2;
   batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1));
   batch.AddTask(MakeBatchTask(/*task_size=*/9, &cost2));
   batch.Close();
 
-  TestCostMeasurement test_cost_measurement;
-  BatchResourceBase::SplitBatchCost(&test_cost_measurement,
-                                    /*processed_size=*/20, batch);
+  CostMeasurement::Context context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/20, batch);
 
   EXPECT_THAT(
       batch.task(0).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_with_smear", absl::Milliseconds(10)),
-                           Pair("test_no_smear", absl::Milliseconds(5))));
+      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(10)),
+                           Pair("test_tpu_no_smear", absl::Milliseconds(5))));
   EXPECT_THAT(
       batch.task(1).request_cost->GetCosts(),
-      UnorderedElementsAre(Pair("test_with_smear", absl::Milliseconds(90)),
-                           Pair("test_no_smear", absl::Milliseconds(45))));
+      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
+                           Pair("test_tpu_no_smear", absl::Milliseconds(45))));
+}
+
+TEST(SplitBatchCostTest, SplitMultiCostTypes) {
+  BatchResourceBase::BatchT batch;
+  RequestCost cost1, cost2;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1));
+  batch.AddTask(MakeBatchTask(/*task_size=*/9, &cost2));
+  batch.Close();
+
+  CostMeasurement::Context context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("test_gcu", context));
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/20, batch);
+
+  EXPECT_THAT(
+      batch.task(0).request_cost->GetCosts(),
+      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(10)),
+                           Pair("test_tpu_no_smear", absl::Milliseconds(5)),
+                           Pair("test_gcu_with_smear", absl::Milliseconds(20)),
+                           Pair("test_gcu_no_smear", absl::Milliseconds(10))));
+  EXPECT_THAT(
+      batch.task(1).request_cost->GetCosts(),
+      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
+                           Pair("test_tpu_no_smear", absl::Milliseconds(45)),
+                           Pair("test_gcu_with_smear", absl::Milliseconds(180)),
+                           Pair("test_gcu_no_smear", absl::Milliseconds(90))));
 }
 
 }  // namespace

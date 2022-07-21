@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -27,20 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/stream_executor/lazy_op_runner.h"
 
 namespace xla {
 namespace gpu {
-
-struct RunConvOptions {
-  // Nullable output-parameter pointer for profiling results.
-  se::dnn::ProfileResult* profile_result = nullptr;
-
-  // Use this algorithm, instead of the one from the instruction.
-  absl::optional<se::dnn::AlgorithmDesc> algo_override;
-
-  // Use this scratch_bytes size, instead of the one from the instruction.
-  absl::optional<size_t> scratch_size_override;
-};
 
 // Structure to describe static properties of a GPU convolution.
 struct GpuConvConfig {
@@ -64,7 +55,7 @@ struct GpuConvConfig {
   PrimitiveType input_type;
   PrimitiveType output_type;
   CudnnConvKind kind;
-  se::dnn::AlgorithmConfig algorithm;
+  se::dnn::AlgorithmDesc algorithm;
   double conv_result_scale;
 
   se::dnn::BatchDescriptor input_descriptor;
@@ -75,12 +66,12 @@ struct GpuConvConfig {
   Shape input_shape;
   Shape filter_shape;
   Shape output_shape;
-  absl::optional<FusionConfig> fusion;
+  std::optional<FusionConfig> fusion;
 };
 
 // Implementation struct exposed for debugging and log analysis.
 struct GpuConvParams {
-  GpuConvConfig config;
+  const GpuConvConfig* config;  // Not owned
   struct FusionParams {
     se::DeviceMemoryBase bias_buf;
     se::DeviceMemoryBase side_input_buf;  // nullable
@@ -90,7 +81,84 @@ struct GpuConvParams {
   se::DeviceMemoryBase filter_buf;
   se::DeviceMemoryBase output_buf;
 
-  absl::optional<FusionParams> fusion;
+  std::optional<FusionParams> fusion;
+};
+
+// The XLA convolution plumbing is all dynamically-typed w.r.t. whether a
+// convolution is fused (and has extra arguments) or unfused, which doesn't
+// naturally play well with the typed APIs provided by StreamExecutor; rather
+// than rewriting everything here, just propagate the dynamic typing to one more
+// place by having either a FusedConvRunner or a ConvRunner.
+class MaybeFusedConvRunner {
+ public:
+  MaybeFusedConvRunner() = default;
+
+  explicit MaybeFusedConvRunner(
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>> runner)
+      : repr_(std::move(runner)) {}
+
+  explicit MaybeFusedConvRunner(
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>> runner)
+      : repr_(std::move(runner)) {}
+
+  explicit MaybeFusedConvRunner(const GpuConvConfig& config)
+      : MaybeFusedConvRunner(
+            config.kind == CudnnConvKind::kForwardActivation
+                ? MaybeFusedConvRunner(
+                      std::make_unique<
+                          se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>(
+                          config.algorithm))
+                : MaybeFusedConvRunner(
+                      std::make_unique<se::dnn::LazyOpRunner<se::dnn::ConvOp>>(
+                          config.algorithm))) {}
+
+  se::dnn::AlgorithmDesc ToAlgorithmDesc() const {
+    return std::visit(ToAlgorithmDescVisitor{}, repr_);
+  }
+
+  se::dnn::LazyOpRunner<se::dnn::ConvOp>* AsConvRunner() {
+    CHECK(std::holds_alternative<
+          std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(repr_));
+    return std::get<std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(
+               repr_)
+        .get();
+  }
+
+  se::dnn::LazyOpRunner<se::dnn::FusedConvOp>* AsFusedConvRunner() {
+    CHECK(std::holds_alternative<
+          std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>>(repr_));
+    return std::get<
+               std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>>(
+               repr_)
+        .get();
+  }
+
+ private:
+  struct ToAlgorithmDescVisitor {
+    template <typename RunnerPtr>
+    se::dnn::AlgorithmDesc operator()(const RunnerPtr& runner) {
+      return runner->ToAlgorithmDesc();
+    }
+
+    se::dnn::AlgorithmDesc operator()(const std::monostate&) {
+      CHECK(false) << "Internal error: uninitialized runner in ToAlgorithmDesc";
+    }
+  };
+
+  using Repr =
+      std::variant<std::monostate,  // To allow GpuConvConfig default ctor
+                   std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>,
+                   std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>;
+  Repr repr_;
+};
+
+struct RunConvOptions {
+  // Nullable output-parameter pointer for profiling results.
+  se::dnn::ProfileResult* profile_result = nullptr;
+
+  // Use this runner cache (and its configured algorithm), instead of the one
+  // from the instruction.
+  MaybeFusedConvRunner* runner_cache;
 };
 
 // This file contains low-level routines for running cudnn convolutions.
@@ -108,15 +176,9 @@ struct GpuConvParams {
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
 Status RunGpuConv(const GpuConvConfig& conv_config,
-                  absl::Span<se::DeviceMemoryBase> operand_buffers,
+                  absl::Span<const se::DeviceMemoryBase> operand_buffers,
                   se::DeviceMemoryBase result_buffer,
-                  se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                  RunConvOptions = {});
-
-Status RunGpuConv(const GpuConvConfig& conv_config,
-                  absl::Span<se::DeviceMemoryBase> operand_buffers,
-                  se::DeviceMemoryBase result_buffer,
-                  se::ScratchAllocator* scratch_allocator, se::Stream* stream,
+                  se::DeviceMemoryBase scratch_memory, se::Stream* stream,
                   RunConvOptions = {});
 
 // Struct to describe properties of a convolution without being tied to specific
@@ -147,8 +209,19 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(const GpuConvDescriptor& desc,
 // Implementation details exposed for debugging and log analysis.
 StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
-    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    absl::Span<const se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer);
+
+se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config);
+
+inline se::dnn::DataType BiasTypeForInputType(se::dnn::DataType input_type) {
+  switch (input_type) {
+    default:
+      return input_type;
+    case se::dnn::DataType::kInt8:
+      return se::dnn::DataType::kFloat;
+  }
+}
 
 }  // namespace gpu
 }  // namespace xla

@@ -53,7 +53,7 @@ Status GraphAnalyzer::Run() {
     return st;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphAnalyzer::BuildMap() {
@@ -194,7 +194,7 @@ void GraphAnalyzer::AddExtendedSubgraph(Subgraph* parent,
     return;  // Nothing new was added.
   }
 
-  auto sg = absl::make_unique<Subgraph>(id);
+  auto sg = std::make_unique<Subgraph>(id);
   SubgraphPtrSet& spec_sg_set =
       (id.size() == subgraph_size_) ? result_ : partial_;
   if (spec_sg_set.find(sg) != spec_sg_set.end()) {
@@ -284,7 +284,7 @@ Status GraphAnalyzer::CollateResult() {
 
   // Collate by the signatures of the graphs.
   for (const auto& it : result_) {
-    auto sig = absl::make_unique<Signature>();
+    auto sig = std::make_unique<Signature>();
     it->ExtractForSignature(&sig->map);
     Status status = sig->Compute();
     if (!status.ok()) {
@@ -305,7 +305,7 @@ Status GraphAnalyzer::CollateResult() {
 
   result_.clear();  // Not needed after collation.
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<string> GraphAnalyzer::DumpRawSubgraphs() {
@@ -335,7 +335,7 @@ Status GraphAnalyzer::OutputSubgraphs() {
   if (std::cout.fail()) {
     return Status(error::DATA_LOSS, "Failed to write to stdout");
   } else {
-    return Status::OK();
+    return OkStatus();
   }
 }
 

@@ -23,14 +23,8 @@ import numpy as np
 
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import interpreter as _interpreter
+from tensorflow.lite.python.metrics import metrics as metrics_stub  # type: ignore
 from tensorflow.python.util import tf_export
-
-# pylint: disable=g-import-not-at-top
-try:
-  from tensorflow.lite.python.metrics import metrics_nonportable as metrics_stub  # type: ignore
-except ImportError:
-  from tensorflow.lite.python.metrics import metrics_portable as metrics_stub  # type: ignore
-# pylint: enable=g-import-not-at-top
 
 
 # TODO(b/198099651): move converter implementation out of lite.py
@@ -359,15 +353,15 @@ class QuantizationDebugger:
 
       # Collect the statistics of this invoke result.
       for tensor_detail in self._get_numeric_verify_tensor_details():
-        tensor_name = tensor_detail['name']
-        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])
+        tensor_name = tensor_detail['name']  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])  # pytype: disable=unsupported-operands  # dynamic-method-lookup
         for metric_name, metric_fn in self._layer_debug_metrics.items():
           layer_statistics[tensor_name][metric_name].append(metric_fn(diffs))
 
       if self._debug_options.layer_direct_compare_metrics is not None:
         for tensor_detail in self._get_numeric_verify_tensor_details():
-          tensor_name = tensor_detail['name']
-          op_idx = self._defining_op[tensor_detail['index']]
+          tensor_name = tensor_detail['name']  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+          op_idx = self._defining_op[tensor_detail['index']]  # pytype: disable=unsupported-operands  # dynamic-method-lookup
           op_detail = self._quant_interpreter._get_op_details(op_idx)  # pylint: disable=protected-access
           q_idx, f_idx = op_detail['inputs']
           quant_input_detail = self._quant_interpreter._get_tensor_details(  # pylint: disable=protected-access

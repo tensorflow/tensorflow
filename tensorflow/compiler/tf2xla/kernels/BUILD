@@ -1,5 +1,15 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_all_protos",
+    "tf_proto_library",
+)
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+    "tf_cuda_library",
+)
 
 package(
     default_visibility = [
@@ -14,6 +24,7 @@ tf_kernel_library(
     srcs = [
         "aggregate_ops.cc",
         "all_reduce_op.cc",
+        "approx_topk_op.cc",
         "arg_op.cc",
         "batch_matmul_op.cc",
         "batch_norm_op.cc",
@@ -22,6 +33,7 @@ tf_kernel_library(
         "beta_op.cc",
         "bias_ops.cc",
         "binary_ops.cc",
+        "bincount_op.cc",
         "broadcast_to_op.cc",
         "bucketize_op.cc",
         "cast_op.cc",
@@ -133,9 +145,12 @@ tf_kernel_library(
         "variable_ops.cc",
         "where_op.cc",
         "xla_broadcast_helper_op.cc",
+        "xla_call_module_op.cc",
         "xla_conv_op.cc",
+        "xla_custom_call_op.cc",
         "xla_dequantize_op.cc",
         "xla_dot_op.cc",
+        "xla_optimization_barrier_op.cc",
         "xla_pad_op.cc",
         "xla_reduce_op.cc",
         "xla_select_and_scatter_op.cc",
@@ -154,8 +169,23 @@ tf_kernel_library(
         ":if_op",
         ":tensor_list_utils",
         ":while_op",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -183,6 +213,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:approx_topk",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
@@ -199,20 +230,51 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/client/lib:tridiagonal",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:resource_variable_util",
+        "//tensorflow/core/kernels:scatter_nd_util",
         "//tensorflow/core/kernels:stateful_random_ops_header",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/util:overflow",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":gpu_tf_kernel_custom_call"],
+    ),
+)
+
+tf_cuda_library(
+    name = "gpu_tf_kernel_custom_call",
+    srcs = ["gpu_tf_kernel_custom_call.cc"],
+    hdrs = ["gpu_tf_kernel_custom_call.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":callback_proto_cc",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla/lib:util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:custom_call_status",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
+    alwayslink = 1,
 )
 
 # A separate cc_library for resampler_ops is needed because resampler is in
@@ -222,6 +284,7 @@ tf_kernel_library(
 cc_library(
     name = "resampler_ops",
     srcs = ["resampler_ops.cc"],
+    hdrs = ["resampler_ops.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
@@ -236,6 +299,21 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+    alwayslink = 1,
+)
+
+# See note on resampler_ops target for why this is also a seprate op.
+cc_library(
+    name = "resampler_addon_ops",
+    srcs = ["resampler_addon_ops.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":resampler_ops",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
     ],
     alwayslink = 1,
 )
@@ -378,4 +456,11 @@ tf_kernel_library(
         "//tensorflow/core:logging_ops_op_lib",
     ],
     alwayslink = 1,
+)
+
+tf_proto_library(
+    name = "callback_proto",
+    srcs = ["callback.proto"],
+    cc_api_version = 2,
+    protodeps = tf_additional_all_protos(),
 )

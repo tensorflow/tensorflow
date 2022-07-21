@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Collective Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from tensorflow.core.protobuf import config_pb2
@@ -454,6 +450,20 @@ class CollectiveOpTest(test.TestCase):
         context.LogicalDeviceConfiguration()
     ])
     context.ensure_initialized()
+
+  @test_util.run_v2_only
+  def testCollectiveGatherShapeCheckFailure(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'input should have rank > 0'):
+      collective_ops.gen_collective_ops.CollectiveGather(
+          input=1,
+          group_size=1,
+          group_key=1,
+          instance_key=1,
+          shape=(3, 3, 3),
+          communication_hint='auto',
+          timeout_seconds=0,
+          name='')
 
     @def_function.function
     def run_all_reduce():

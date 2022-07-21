@@ -31,9 +31,17 @@ const llvm::StringSet<>& GetAllowedAttributes() {
   return *ops;
 }
 
+// Some TFL optional attributes may not appear in their corresponding TF op
+// attributes.
+const llvm::StringSet<>& GetOptionalAttributes() {
+  static auto* const ops =
+      new llvm::StringSet<>({"asymmetric_quantize_inputs"});
+  return *ops;
+}
+
 void CollectAllowedAttrs(CallOp src, NamedAttrList* attrs) {
   for (auto& attr : src->getAttrs()) {
-    if (GetAllowedAttributes().contains(attr.first.strref())) {
+    if (GetAllowedAttributes().contains(attr.getName().strref())) {
       attrs->append(attr);
     }
   }
@@ -45,7 +53,7 @@ void AddAttributesInSameBlock(Block::iterator begin, Block::iterator end,
                               const NamedAttrList& attrs) {
   for (Block::iterator it = begin; it != end; ++it) {
     for (auto& attr : attrs) {
-      it->setAttr(attr.first, attr.second);
+      it->setAttr(attr.getName(), attr.getValue());
     }
   }
 }
@@ -123,9 +131,11 @@ std::string GetTFOpName(StringRef compose_func_name) {
 
 LogicalResult ValidateAttrs(Operation* src, const StringSet<>& registered) {
   for (auto& attr : src->getAttrs()) {
-    StringRef attr_name = attr.first.strref();
+    StringRef attr_name = attr.getName().strref();
+
     if (!registered.contains(attr_name) &&
-        !GetAllowedAttributes().contains(attr_name)) {
+        !(GetAllowedAttributes().contains(attr_name) ||
+          GetOptionalAttributes().contains(attr_name))) {
       src->emitError("Denied unregistered attribute was found: " + attr_name);
       return failure();
     }
@@ -136,13 +146,15 @@ LogicalResult ValidateAttrs(Operation* src, const StringSet<>& registered) {
 LogicalResult CopyAllowedUnregisteredAttrs(Operation* src, CallOp dst,
                                            const StringSet<>& registered) {
   for (auto& attr : src->getAttrs()) {
-    StringRef attr_name = attr.first.strref();
-    // Skip the registered attribute.
-    if (registered.contains(attr_name)) continue;
+    StringRef attr_name = attr.getName().strref();
+    // Skip the registered or optional attribute.
+    if (registered.contains(attr_name) ||
+        GetOptionalAttributes().contains(attr_name))
+      continue;
 
     // Unregistered attribute.
     if (GetAllowedAttributes().contains(attr_name)) {
-      dst->setAttr(attr.first, attr.second);
+      dst->setAttr(attr.getName(), attr.getValue());
     } else {
       src->emitError("Denied unregistered attribute was found: " + attr_name);
       return failure();
@@ -156,7 +168,7 @@ LogicalResult CopyNonSymbolRefAttrs(CallOp src, Operation* dst) {
   CollectAllowedAttrs(src, &attrs);
 
   for (auto& attr : attrs) {
-    dst->setAttr(attr.first, attr.second);
+    dst->setAttr(attr.getName(), attr.getValue());
   }
 
   return success();

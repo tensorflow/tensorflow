@@ -64,7 +64,7 @@ static Status TensorListDeviceCopy(
       TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 #define REGISTER_LIST_COPY(DIRECTION)                                         \

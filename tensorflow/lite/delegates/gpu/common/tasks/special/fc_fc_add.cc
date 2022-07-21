@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -237,7 +238,7 @@ void FCFCAdd::UploadQuantizedWeights(
     args_.AddHalf(q_name + "a", half(-scale * (127.0 + zero_point)));
   }
   args_.AddObject("weights" + std::to_string(index),
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+                  std::make_unique<Texture2DDescriptor>(std::move(desc)));
 }
 
 FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
@@ -255,14 +256,14 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   desc0.element_type = definition.GetDataType();
   desc0.UploadLinearData(attr0.bias);
   result.args_.AddObject(
-      "biases0", absl::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+      "biases0", std::make_unique<TensorLinearDescriptor>(std::move(desc0)));
 
   TensorLinearDescriptor desc1;
   desc1.storage_type = LinearStorageType::TEXTURE_2D;
   desc1.element_type = definition.GetDataType();
   desc1.UploadLinearData(attr1.bias);
   result.args_.AddObject(
-      "biases1", absl::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+      "biases1", std::make_unique<TensorLinearDescriptor>(std::move(desc1)));
 
   return result;
 }
@@ -283,14 +284,14 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   desc0.element_type = definition.GetDataType();
   desc0.UploadLinearData(attr0.bias);
   result.args_.AddObject(
-      "biases0", absl::make_unique<TensorLinearDescriptor>(std::move(desc0)));
+      "biases0", std::make_unique<TensorLinearDescriptor>(std::move(desc0)));
 
   TensorLinearDescriptor desc1;
   desc1.storage_type = LinearStorageType::TEXTURE_2D;
   desc1.element_type = definition.GetDataType();
   desc1.UploadLinearData(attr1.bias);
   result.args_.AddObject(
-      "biases1", absl::make_unique<TensorLinearDescriptor>(std::move(desc1)));
+      "biases1", std::make_unique<TensorLinearDescriptor>(std::move(desc1)));
 
   return result;
 }

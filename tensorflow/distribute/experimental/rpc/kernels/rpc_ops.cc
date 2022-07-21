@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -195,7 +196,7 @@ class FunctionRegistry {
       return tensorflow::errors::InvalidArgument(
           absl::StrCat(method, " is already registered."));
     }
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   tensorflow::Status LookUp(const std::string& method,
@@ -208,7 +209,7 @@ class FunctionRegistry {
     }
 
     *output = it->second;
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   const gtl::FlatMap<std::string, FunctionMetadata>& List() const {
@@ -521,7 +522,7 @@ void RpcServerOp::Compute(OpKernelContext* ctx) {
   // Create resource
   auto creator = [address](RpcServer** server) {
     *server = new RpcServer(address);
-    return Status::OK();
+    return OkStatus();
   };
   core::RefCountPtr<RpcServer> server;
   OP_REQUIRES_OK(ctx, LookupOrCreateResource<RpcServer>(ctx, resource_handle,
@@ -562,7 +563,7 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   // Create resource
   auto creator = [&address, &resource_name, timeout_in_ms](RpcClient** client) {
     *client = new RpcClient(address, resource_name, timeout_in_ms);
-    return Status::OK();
+    return OkStatus();
   };
 
   core::RefCountPtr<RpcClient> client;
@@ -573,6 +574,10 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   ctx->set_output(0, handle);
 
   if (!list_registered_methods_) {
+    Tensor* method_output_t;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, ctx->allocate_output(1, TensorShape({}), &method_output_t), done);
+    method_output_t->scalar<tstring>()() = "";
     done();
     return;
   }
@@ -584,7 +589,7 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         } else {
           Tensor* method_output_signatures_t;
           auto method_output_shape = TensorShape(
-              {static_cast<int64>(response->registered_methods_size())});
+              {static_cast<int64_t>(response->registered_methods_size())});
           OP_REQUIRES_OK_ASYNC(
               ctx,
               ctx->allocate_output(1, method_output_shape,
@@ -609,7 +614,7 @@ void RpcServerStartOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &server));
 
   server->StartServer();
-  ctx->SetStatus(Status::OK());
+  ctx->SetStatus(OkStatus());
 }
 
 RpcServerRegisterOp::RpcServerRegisterOp(OpKernelConstruction* ctx)
@@ -720,7 +725,7 @@ void RpcCallOp::Compute(OpKernelContext* ctx) {
   // Create resource
   auto creator = [](RpcFutureResource** resource) {
     *resource = new RpcFutureResource();
-    return Status::OK();
+    return OkStatus();
   };
   core::RefCountPtr<RpcFutureResource> future_resource;
   OP_REQUIRES_OK(ctx, LookupOrCreateResource<RpcFutureResource>(
@@ -772,7 +777,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       [ctx, done, handle](const Status& status, const CallResponse& response) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
-        error_code.scalar<int64>()() = status.code();
+        error_code.scalar<int64_t>()() = status.code();
         error_message.scalar<tstring>()() = status.error_message();
 
         ctx->set_output(0, error_code);
@@ -895,5 +900,6 @@ REGISTER_KERNEL_BUILDER(Name("RpcGetValue").Device(DEVICE_CPU), RpcGetValueOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteRpcFutureResource").Device(DEVICE_CPU),
                         DeleteRpcFutureResourceOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("RpcServerRegister");
 }  // namespace rpc
 }  // namespace tensorflow

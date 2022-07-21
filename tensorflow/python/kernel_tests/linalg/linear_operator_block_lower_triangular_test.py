@@ -13,14 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -61,7 +58,12 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-5
     self._atol[dtypes.float32] = 1e-5
     self._atol[dtypes.complex64] = 1e-5
@@ -203,6 +205,25 @@ class SquareLinearOperatorBlockLowerTriangularTest(
           grads = tape.gradient(getattr(operator, y)(), diag_block.variables)
           for item in grads:
             self.assertIsNotNone(item)
+
+  def test_convert_variables_to_tensors(self):
+    operator_1 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[1., 0.], [0., 1.]]),
+        is_self_adjoint=True,
+        is_positive_definite=True)
+    operator_2 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[2., 0.], [1., 0.]]))
+    operator_3 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[3., 1.], [1., 3.]]),
+        is_self_adjoint=True,
+        is_positive_definite=True)
+    operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+        [[operator_1], [operator_2, operator_3]],
+        is_self_adjoint=False,
+        is_positive_definite=True)
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
 
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.

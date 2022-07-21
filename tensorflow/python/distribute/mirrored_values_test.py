@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the mirrored values library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -25,8 +21,8 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util as ds_test_util
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.eager import context
@@ -37,9 +33,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import saver as saver_lib
-
-
-_TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
 
 def _make_mirrored(distribution=None):
@@ -54,7 +47,8 @@ def _make_mirrored(distribution=None):
           variable_scope.get_variable(
               name=n, initializer=init, use_resource=True))
 
-  if (distribution is not None) and isinstance(distribution, _TPU_STRATEGIES):
+  if (distribution
+      is not None) and strategy_test_lib.is_tpu_strategy(distribution):
     var_cls = tpu_values.TPUMirroredVariable
   else:
     var_cls = values_lib.MirroredVariable

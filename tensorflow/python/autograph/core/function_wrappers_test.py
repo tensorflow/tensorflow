@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for function_wrappers module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.eager import context

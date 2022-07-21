@@ -67,6 +67,13 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const Tensor& values = ctx->input(1);
     const Tensor& dense_shape = ctx->input(2);
     const int rank = dense_shape.NumElements();
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(dense_shape.shape()),
+        errors::InvalidArgument("dense_shape must be rank 1 but got rank",
+                                dense_shape.shape().dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(indices.shape()),
+                errors::InvalidArgument("indices must be rank 2 but got rank",
+                                        indices.shape().dims()));
     OP_REQUIRES(ctx, rank == 2 || rank == 3,
                 errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                         "but indices has rank: ", rank));
@@ -76,10 +83,18 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t total_nnz = values.NumElements();
 
     // Allocate output Tensors.
-    Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
-    Tensor csr_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
-    Tensor csr_row_ptr(cpu_allocator(), DT_INT32,
-                       TensorShape({(num_rows + 1) * batch_size}));
+    TensorShape batch_ptr_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({batch_size + 1}, &batch_ptr_shape));
+    Tensor batch_ptr(cpu_allocator(), DT_INT32, batch_ptr_shape);
+    TensorShape csr_col_ind_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({total_nnz}, &csr_col_ind_shape));
+    Tensor csr_col_ind(cpu_allocator(), DT_INT32, csr_col_ind_shape);
+    TensorShape csr_row_ind_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
+                            {(num_rows + 1) * batch_size}, &csr_row_ind_shape));
+    Tensor csr_row_ptr(cpu_allocator(), DT_INT32, csr_row_ind_shape);
 
     // Fill the row pointers with zeros.
     functor::SetZeroFunctor<CPUDevice, int32> set_zero;
@@ -190,7 +205,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                          TensorShape({batch_size + 1}));
 
       auto batch_ptr = batch_ptr_t.vec<int32>();
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
 
       batch_ptr(0) = 0;
       for (int i = 0; i < batch_size; ++i) {
@@ -282,7 +297,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       convert_to_csr();
     } else {
       // Launch the GPU kernel to count nnz entries, then call convert_to_csr.
-      c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+      c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
           stream, convert_to_csr);
     }
   }
