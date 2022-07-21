@@ -256,29 +256,6 @@ absl::Status CreateImage2DFromBuffer(const CLContext& context, cl_mem memory,
   return absl::OkStatus();
 }
 
-absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, cl_mem memory,
-                          Tensor* result) {
-  const bool memory_owner = memory == nullptr;
-  if (memory_owner) {
-    CLMemory mem;
-    RETURN_IF_ERROR(
-        AllocateTensorMemory(context, shape, descriptor, nullptr, &mem));
-    memory = mem.Release();
-  }
-  if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
-    cl_mem image_memory;
-    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.GetDataType(),
-        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
-        &image_memory));
-    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
-  } else {
-    *result = Tensor(memory, memory_owner, shape, descriptor);
-  }
-  return absl::OkStatus();
-}
-
 absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 cl_mem memory, Tensor* result) {
@@ -627,15 +604,25 @@ absl::Status Tensor::ReadData(void* ptr, CLCommandQueue* queue) const {
   return absl::OkStatus();
 }
 
-absl::Status CreateTensor(const CLContext& context, const BHWC& shape,
+absl::Status CreateTensor(const CLContext& context,
                           const TensorDescriptor& descriptor, Tensor* result) {
-  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateTensor(context, shape5D, descriptor, nullptr, result);
-}
-
-absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result) {
-  return CreateTensor(context, shape, descriptor, nullptr, result);
+  const BHWDC& shape = descriptor.GetBHWDCShape();
+  CLMemory mem;
+  RETURN_IF_ERROR(
+      AllocateTensorMemory(context, shape, descriptor, nullptr, &mem));
+  cl_mem memory = mem.Release();
+  if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.GetDataType(),
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
+    *result =
+        Tensor(memory, /*memory_owner*/ true, image_memory, shape, descriptor);
+  } else {
+    *result = Tensor(memory, /*memory_owner*/ true, shape, descriptor);
+  }
+  return absl::OkStatus();
 }
 
 absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,

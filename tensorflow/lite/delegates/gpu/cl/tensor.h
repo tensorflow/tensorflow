@@ -143,10 +143,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result);
 
-absl::Status CreateTensor(const CLContext& context, const BHWC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result);
-
-absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
+absl::Status CreateTensor(const CLContext& context,
                           const TensorDescriptor& descriptor, Tensor* result);
 
 absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
