@@ -1175,7 +1175,7 @@ struct Cholesky {
                            const DebugOptions* debug_options,
                            jitrt::MemrefView operand, jitrt::MemrefView a,
                            jitrt::MemrefView workspace, jitrt::MemrefView info,
-                           int64_t batch_size, int64_t n, int64_t uplo) const;
+                           int64_t batch_size, bool is_lower, int64_t n) const;
   static Cholesky Handler() { return Cholesky(); }
 };
 }  // namespace
@@ -1184,7 +1184,7 @@ LogicalResult Cholesky::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, jitrt::MemrefView operand,
     jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
-    int64_t batch_size, int64_t n, int64_t uplo) const {
+    int64_t batch_size, bool is_lower, int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -1198,9 +1198,11 @@ LogicalResult Cholesky::operator()(
   if (a.data != operand.data)
     stream->ThenMemcpy(&a_buffer, operand_buffer, operand_buffer.size());
 
-  CholeskyParams params{
-      n,        batch_size,       static_cast<se::blas::UpperLower>(uplo),
-      a_buffer, workspace_buffer, info_buffer};
+  using UpperLower = se::blas::UpperLower;
+  UpperLower uplo = is_lower ? UpperLower::kLower : UpperLower::kUpper;
+
+  CholeskyParams params{n,        batch_size,       uplo,
+                        a_buffer, workspace_buffer, info_buffer};
   auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
                               ToPrimitiveType(operand.dtype), &params, stream);
   if (!executed.ok()) return failure();
@@ -1220,8 +1222,8 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<jitrt::MemrefView>()  // workspace
                              .Arg<jitrt::MemrefView>()  // info
                              .Attr<int64_t>("batch_size")
+                             .Attr<bool>("is_lower")
                              .Attr<int64_t>("n")
-                             .Attr<int64_t>("uplo")  // se::blas::UpperLower
                              .To<RuntimeChecks()>(Cholesky::Handler())
                              .release();
 

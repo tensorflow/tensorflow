@@ -1018,8 +1018,7 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     call->setAttr(b.getStringAttr("batch_size"),
                   b.getI64IntegerAttr(batch_size));
     call->setAttr(b.getStringAttr("n"), b.getI64IntegerAttr(n));
-    call->setAttr(b.getStringAttr("uplo"),
-                  b.getI64IntegerAttr(op.getIsLower()));
+    call->setAttr(b.getStringAttr("is_lower"), op.getIsLowerAttr());
 
     // Erase the original Cholesky operation.
     rewriter.eraseOp(op);
