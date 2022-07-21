@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TRANSFORMS_UTILS_OP_CAT_HELPER_H_
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"    // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
@@ -25,6 +25,7 @@ namespace tfg {
 // A Helper class to identify if an op belongs to certain op category.
 class OpCatHelper {
  public:
+  OpCatHelper() = default;
   explicit OpCatHelper(TFGraphDialect *dialect) : dialect_(dialect) {}
 
   bool IsAggregate(TFOp op);
@@ -42,7 +43,9 @@ class OpCatHelper {
   // Returns true if the op belongs to the NC_DATASET class (see graph/graph.h).
   bool IsDataset(TFOp op);
 
- private:
+  TFGraphDialect *getDialect() const { return dialect_; }
+
+ protected:
   TFGraphDialect *dialect_;
 };
 }  // namespace tfg

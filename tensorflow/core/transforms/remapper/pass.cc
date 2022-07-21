@@ -97,29 +97,25 @@ class MatchMulSigmoid : public RewritePattern {
 };
 
 namespace {
-class RewriterBase : public RewritePattern {
+class RemapperPatternBase : public RewritePattern {
  public:
-  RewriterBase(StringRef opName, OpPropertyHelper &helper,
-               PatternBenefit benefit = PatternBenefit(1))
+  RemapperPatternBase(StringRef opName, OpPropertyHelper &helper,
+                      PatternBenefit benefit = PatternBenefit(1))
       : RewritePattern(opName, benefit, helper.getDialect()->getContext()),
-        helper_(helper),
-        dialect_(helper.getDialect()) {}
-  RewriterBase(MatchAnyOpTypeTag tag, OpPropertyHelper &helper,
-               PatternBenefit benefit = PatternBenefit(1))
+        helper_(helper) {}
+  RemapperPatternBase(MatchAnyOpTypeTag tag, OpPropertyHelper &helper,
+                      PatternBenefit benefit = PatternBenefit(1))
       : RewritePattern(tag, benefit, helper.getDialect()->getContext()),
-        helper_(helper),
-        dialect_(helper.getDialect()) {}
+        helper_(helper) {}
 
  protected:
-  OpPropertyHelper &helper_;
-  TFGraphDialect *dialect_;
+  OpPropertyHelper helper_;
 };
 }  // namespace
 
-static FailureOr<TFOp> CreateContractionBiasAddOp(PatternRewriter &rewriter,
-                                                  OpPropertyHelper &helper,
-                                                  Operation *contraction_op,
-                                                  Operation *bias_add_op) {
+static std::unique_ptr<OperationState> GetContractionBiasAddOpState(
+    OpBuilder &builder, const OpPropertyHelper &helper,
+    Operation *contraction_op, Operation *bias_add_op) {
   // Fused op name dependes on original contraction op name.
   std::string fused_op_name;
   if (helper.getDialect()->IsConv2D(contraction_op)) {
@@ -131,47 +127,40 @@ static FailureOr<TFOp> CreateContractionBiasAddOp(PatternRewriter &rewriter,
   } else if (helper.getDialect()->IsConv3D(contraction_op)) {
     fused_op_name = "tfg._FusedConv3D";
   } else {
-    return rewriter.notifyMatchFailure(contraction_op,
-                                       "Unsupported contraction op.");
+    return nullptr;
   }
 
-  SmallVector<Value, 4> operands;
+  SmallVector<Location> fused_locs{contraction_op->getLoc(),
+                                   bias_add_op->getLoc()};
+  auto state = std::make_unique<OperationState>(builder.getFusedLoc(fused_locs),
+                                                fused_op_name);
+  SmallVector<Value> operands;
   Value input = contraction_op->getOperand(0);
   Value filter = contraction_op->getOperand(1);
   Value bias = bias_add_op->getOperand(1);
   operands.push_back(input);
   operands.push_back(filter);
   operands.push_back(bias);
-  llvm::append_range(operands, TFOp(contraction_op).getControlOperands());
-  llvm::append_range(operands, TFOp(bias_add_op).getControlOperands());
-
-  SmallVector<Location, 4> fused_locs{contraction_op->getLoc(),
-                                      bias_add_op->getLoc()};
-
-  NamedAttrList fused_attrs(contraction_op->getAttrs());
-  fused_attrs.set("fused_ops", rewriter.getStrArrayAttr({"BiasAdd"}));
-  fused_attrs.set("num_args", rewriter.getI32IntegerAttr(1));
+  state->addOperands(operands);
+  state->addOperands(TFOp(contraction_op).getControlOperands());
+  state->addOperands(TFOp(bias_add_op).getControlOperands());
+  state->addTypes(bias_add_op->getResultTypes());
+  state->attributes = contraction_op->getAttrs();
+  state->attributes.set("fused_ops", builder.getStrArrayAttr({"BiasAdd"}));
+  state->attributes.set("num_args", builder.getI32IntegerAttr(1));
   // Default values for epsilon and leakyrelu_alpha
-  fused_attrs.set("epsilon", rewriter.getF32FloatAttr(0.0001));
-  fused_attrs.set("leakyrelu_alpha", rewriter.getF32FloatAttr(0.2));
-
-  OperationState state(rewriter.getFusedLoc(fused_locs), fused_op_name,
-                       operands, bias_add_op->getResultTypes(), fused_attrs);
-
-  if (auto new_op = rewriter.create(state)) {
-    return TFOp(new_op);
-  }
-
-  return failure();
+  state->attributes.set("epsilon", builder.getF32FloatAttr(0.0001));
+  state->attributes.set("leakyrelu_alpha", builder.getF32FloatAttr(0.2));
+  return state;
 }
 
 // Contraction + BiasAdd
 // TODO(intel-tf): Support Contraction + {Add, AddV2} fusion in the case it has
 // similar semantic of contraction + BiasAdd
-class ContractionBiasAddRewriter : public RewriterBase {
+class ContractionBiasAddRewriter : public RemapperPatternBase {
  public:
   explicit ContractionBiasAddRewriter(OpPropertyHelper &helper)
-      : RewriterBase("tfg.BiasAdd", helper, PatternBenefit(1)) {}
+      : RemapperPatternBase("tfg.BiasAdd", helper, PatternBenefit(1)) {}
 
   // Constructor used by derived pattern rewritter class that may have
   // different root operation name. Currently, pattern is
@@ -179,7 +168,7 @@ class ContractionBiasAddRewriter : public RewriterBase {
   explicit ContractionBiasAddRewriter(StringRef op_name,
                                       OpPropertyHelper &helper,
                                       PatternBenefit benefit)
-      : RewriterBase(op_name, helper, benefit) {}
+      : RemapperPatternBase(op_name, helper, benefit) {}
 
   using Pattern = ContractionBiasAdd;
 
@@ -190,9 +179,9 @@ class ContractionBiasAddRewriter : public RewriterBase {
     if (!helper_.IsContraction(contraction_op) ||
         helper_.HasControlOperandsOrResultUsers(contraction_op) ||
         !helper_.HaveSameDataType(op, contraction_op) ||
-        !helper_.HasAtMostOneUserOfResult0(contraction_op))
+        !helper_.HasAtMostOneUserOfResult0(contraction_op)) {
       return false;
-
+    }
     pattern.contraction = contraction_op;
     pattern.bias_add = op;
     return true;
@@ -203,11 +192,11 @@ class ContractionBiasAddRewriter : public RewriterBase {
     Pattern pattern;
     if (!matchPattern(op, pattern)) return failure();
     if (!helper_.IsDeviceCompatible(pattern)) return failure();
-    FailureOr<TFOp> fused_op = CreateContractionBiasAddOp(
+    std::unique_ptr<OperationState> state = GetContractionBiasAddOpState(
         rewriter, helper_, pattern.contraction, pattern.bias_add);
-    if (failed(fused_op)) return failure();
-    fused_op->setName(TFOp(op).nameAttr());
-    rewriter.replaceOp(op, (*fused_op)->getResults());
+    Operation *fused_op = rewriter.create(*state);
+    TFOp(fused_op).setName(TFOp(op).nameAttr());
+    rewriter.replaceOp(op, fused_op->getResults());
     return success();
   }
 };
@@ -229,19 +218,21 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
                     Pattern &pattern) const {
     // Although template instantiation guarantuees that only valid activation is
     // set as the root operation, a sanity check is added here.
-    if (this->dialect_->IsNoOp(op)) return false;
+    if (this->helper_.getDialect()->IsNoOp(op)) return false;
     if (this->helper_.HasControlOperandsOrResultUsers(op)) return false;
 
     // TODO(intel-tf): Add support for more patterns.
     if constexpr (std::is_same<BasePattern, ContractionBiasAdd>::value &&
                   std::is_same<Pattern, ContractionBiasAddActivation>::value) {
       Operation *bias_add_op = op->getOperand(0).getDefiningOp();
-      if (!this->dialect_->IsBiasAdd(bias_add_op) ||
+      if (!this->helper_.getDialect()->IsBiasAdd(bias_add_op) ||
           !this->helper_.HaveSameDataType(op, bias_add_op) ||
-          !this->helper_.HasAtMostOneUserOfResult0(bias_add_op))
+          !this->helper_.HasAtMostOneUserOfResult0(bias_add_op)) {
         return false;
-      if (!BasePatternRewriter::matchPattern(bias_add_op, base_pattern))
+      }
+      if (!BasePatternRewriter::matchPattern(bias_add_op, base_pattern)) {
         return false;
+      }
       pattern.contraction = base_pattern.contraction;
       pattern.bias_add = base_pattern.bias_add;
       pattern.activation = op;
@@ -262,28 +253,30 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
       Operation *&contraction_op = pattern.contraction;
       Operation *&bias_add_op = pattern.bias_add;
       Operation *&activation_op = pattern.activation;
-      FailureOr<TFOp> fused_op = CreateContractionBiasAddOp(
-          rewriter, this->helper_, contraction_op, bias_add_op);
-      if (failed(fused_op)) return failure();
       const std::string activation_op_name =
           activation_op->getName().stripDialect().str();
       // Currently, supported activations are:
       //    _FusedMatMul: Relu, Relu6, Elu, LeakyRelu, Tanh, and Sigmoid
       //    _Fused*Conv*: Relu, Relu6, Elu and LeakyRelu
       if ((activation_op_name == "Tanh" || activation_op_name == "Sigmoid") &&
-          !this->dialect_->IsMatMul(contraction_op)) {
+          !this->helper_.getDialect()->IsMatMul(contraction_op)) {
         return failure();
       }
-      (*fused_op)->setAttr("fused_ops", rewriter.getStrArrayAttr(
-                                            {"BiasAdd", activation_op_name}));
-      if (this->dialect_->IsLeakyRelu(activation_op))
-        (*fused_op)->setAttr("leakyrelu_alpha",
-                             activation_op->getAttr("alpha"));
-      fused_op->setName(TFOp(op).nameAttr());
-      SmallVector<Location, 4> fused_locs{(*fused_op)->getLoc(),
-                                          activation_op->getLoc()};
-      (*fused_op)->setLoc(rewriter.getFusedLoc(fused_locs));
-      rewriter.replaceOp(op, (*fused_op)->getResults());
+
+      std::unique_ptr<OperationState> state = GetContractionBiasAddOpState(
+          rewriter, this->helper_, contraction_op, bias_add_op);
+      SmallVector<Location> fused_locs{state->location,
+                                       activation_op->getLoc()};
+      state->location = rewriter.getFusedLoc(fused_locs);
+      state->attributes.set("fused_ops", rewriter.getStrArrayAttr(
+                                             {"BiasAdd", activation_op_name}));
+      if (this->helper_.getDialect()->IsLeakyRelu(activation_op)) {
+        state->attributes.set("leakyrelu_alpha",
+                              activation_op->getAttr("alpha"));
+      }
+      Operation *fused_op = rewriter.create(*state);
+      TFOp(fused_op).setName(TFOp(op).nameAttr());
+      rewriter.replaceOp(op, fused_op->getResults());
       return success();
     }
 
@@ -314,9 +307,9 @@ class Remapper : public RemapperBase<Remapper> {
   }
 
   LogicalResult initialize(MLIRContext *context) override {
-    helper_ = std::make_shared<OpPropertyHelper>(
-        context->getOrLoadDialect<TFGraphDialect>(), tensorflow::IsMKLEnabled(),
-        xla_auto_clustering_);
+    helper_ =
+        OpPropertyHelper(context->getOrLoadDialect<TFGraphDialect>(),
+                         tensorflow::IsMKLEnabled(), xla_auto_clustering_);
     RewritePatternSet patterns(context);
     populateRemapperPatterns(context, patterns);
     RegisterPDLLUtils(patterns);
@@ -340,12 +333,12 @@ class Remapper : public RemapperBase<Remapper> {
       // a decision that which one is preferred.
       populateRemapperPDLLPatterns(patterns);
     }
-    patterns.insert<ContractionBiasAddRewriter>(*helper_);
+    patterns.insert<ContractionBiasAddRewriter>(helper_);
     // Insert multiple pattern rewriters from template instantiations by
     // activation ops.
     InsertPatterns<ContractionBiasAddActivationRewriter, OpKind::Relu,
                    OpKind::Relu6, OpKind::Elu, OpKind::LeakyRelu, OpKind::Tanh,
-                   OpKind::Sigmoid>(patterns, *helper_);
+                   OpKind::Sigmoid>(patterns, helper_);
   }
 
   void populateRemapperPDLLPatterns(RewritePatternSet &patterns) {
@@ -353,7 +346,7 @@ class Remapper : public RemapperBase<Remapper> {
   }
 
   FrozenRewritePatternSet final_patterns_;
-  std::shared_ptr<OpPropertyHelper> helper_;
+  OpPropertyHelper helper_;
 };
 
 void Remapper::runOnOperation() {

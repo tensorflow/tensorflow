@@ -22,6 +22,11 @@ namespace mlir {
 namespace tfg {
 namespace remapping {
 
+// The following structures stores info of the operations to be fused. These
+// are mainly used for combining operands info and attributes for a fused
+// operation. They are also used for some predicate functions like
+// `IsCpuCompatible` and `IsGpuCompatible` to check if the relevant fusion is
+// supported on CPU and GPU, respectively.
 struct ContractionBiasAdd {
   Operation* contraction;
   Operation* bias_add;
@@ -72,17 +77,15 @@ inline std::string GetTfgOpName(OpKind op_kind) {
 
 class OpPropertyHelper : public OpCatHelper {
  public:
-  OpPropertyHelper(TFGraphDialect* dialect, bool onednn_enabled = false,
-                   bool xla_auto_clustering = false)
+  OpPropertyHelper() = default;
+  explicit OpPropertyHelper(TFGraphDialect* dialect,
+                            bool onednn_enabled = false,
+                            bool xla_auto_clustering = false)
       : OpCatHelper(dialect),
-        dialect_(dialect),
         is_onednn_enabled_(onednn_enabled),
-        xla_auto_clustering_(xla_auto_clustering) {}
+        is_xla_auto_clustering_enabled_(xla_auto_clustering) {}
 
-  // Get the TFG dialect instance.
-  TFGraphDialect* getDialect() { return dialect_; }
-
-  bool HasControlOperandsOrResultUsers(Operation* op) {
+  bool HasControlOperandsOrResultUsers(Operation* op) const {
     TFOp wrapper_op(op);
     bool has_ctl_operands = !(wrapper_op.getControlOperands().empty());
     bool has_ctl_ret_users = !(wrapper_op.controlRet().getUsers().empty());
@@ -92,32 +95,31 @@ class OpPropertyHelper : public OpCatHelper {
       return false;
   }
 
-  bool HasAtMostOneUserOfResult0(Operation* op) {
-    // Note tfg operations have at least 2 results: at least 1 non-control
-    // and exactly 1 control result.
+  // This function is to be used for an operation that has at least 1
+  // non-control result.
+  bool HasAtMostOneUserOfResult0(Operation* op) const {
+    // All tfg operation has 1 control result. When the operation has at least 1
+    // non-control result, the number of results should be at least 2.
     return op->getNumResults() > 1 &&
            (op->getResult(0).hasOneUse() || op->getResult(0).use_empty());
   }
 
-  bool IsContraction(Operation* op) {
+  bool IsContraction(Operation* op) const {
     return dialect_->IsConv2D(op) || dialect_->IsConv3D(op) ||
            dialect_->IsDepthwiseConv2dNative(op) || dialect_->IsMatMul(op);
   }
 
   bool HaveSameDataType(Operation* lhs_op, Operation* rhs_op,
-                        const StringRef& attr_name = "T") {
+                        const StringRef& attr_name = "T") const {
     auto lhs_attr = lhs_op->getAttrOfType<TypeAttr>(attr_name);
     auto rhs_attr = rhs_op->getAttrOfType<TypeAttr>(attr_name);
     if (!lhs_attr || !rhs_attr) return false;
-
-    Type lhs_dtype = lhs_attr.getValue();
-    Type rhs_dtype = rhs_attr.getValue();
-    return lhs_dtype == rhs_dtype;
+    return lhs_attr == rhs_attr;
   }
 
   // This function is currently used by contraction ops.
   bool IsGpuCompatibleDataType(Operation* contraction_op,
-                               const StringRef& attr_name = "T") {
+                               const StringRef& attr_name = "T") const {
     Type dtype;
     if (auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name)) {
       dtype = attr.getValue();
@@ -135,7 +137,7 @@ class OpPropertyHelper : public OpCatHelper {
 
   // This function is currently used by contraction ops.
   bool IsCpuCompatibleDataType(Operation* contraction_op,
-                               const StringRef& attr_name = "T") {
+                               const StringRef& attr_name = "T") const {
     Type dtype;
     if (auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name)) {
       dtype = attr.getValue();
@@ -162,11 +164,11 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   // This function is currently used by convolution type op
-  bool IsGpuCompatibleDataFormat(Operation* conv_op,
-                                 const StringRef& attr_name = "data_format") {
+  bool IsGpuCompatibleDataFormat(
+      Operation* conv_op, const StringRef& attr_name = "data_format") const {
     StringRef data_format;
-    if (conv_op->hasAttrOfType<StringAttr>(attr_name)) {
-      data_format = conv_op->getAttrOfType<StringAttr>(attr_name).getValue();
+    if (auto attr = conv_op->getAttrOfType<StringAttr>(attr_name)) {
+      data_format = attr.getValue();
     } else {
       return false;
     }
@@ -178,11 +180,11 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   // This function is currently used by convolution type op
-  bool IsCpuCompatibleDataFormat(Operation* conv_op,
-                                 const StringRef& attr_name = "data_format") {
+  bool IsCpuCompatibleDataFormat(
+      Operation* conv_op, const StringRef& attr_name = "data_format") const {
     StringRef data_format;
-    if (conv_op->hasAttrOfType<StringAttr>(attr_name)) {
-      data_format = conv_op->getAttrOfType<StringAttr>(attr_name).getValue();
+    if (auto attr = conv_op->getAttrOfType<StringAttr>(attr_name)) {
+      data_format = attr.getValue();
     } else {
       return false;
     }
@@ -197,7 +199,7 @@ class OpPropertyHelper : public OpCatHelper {
     }
   }
 
-  bool IsGpuCompatible(const ContractionBiasAddActivation& pattern) {
+  bool IsGpuCompatible(const ContractionBiasAddActivation& pattern) const {
 #if TENSORFLOW_USE_ROCM
     // ROCm does not support _FusedConv2D. Does it suppport _FusedMatMul?
     return false;
@@ -206,7 +208,7 @@ class OpPropertyHelper : public OpCatHelper {
     // this op. Furthermore, XLA already does this fusion internally so there
     // is no true benefit from doing this optimization if XLA is going to
     // compile the unfused operations anyway.
-    if (xla_auto_clustering_) return false;
+    if (is_xla_auto_clustering_enabled_) return false;
     if (!util::NodeIsOnGpu(pattern.contraction)) return false;
     if (!dialect_->IsRelu(pattern.activation)) return false;
     if (dialect_->IsMatMul(pattern.contraction)) {
@@ -218,9 +220,9 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   // Currently GPU does not supprt contraction + bias_add
-  bool IsGpuCompatible(const ContractionBiasAdd&) { return false; }
+  bool IsGpuCompatible(const ContractionBiasAdd&) const { return false; }
 
-  bool IsCpuCompatible(Operation* contraction_op) {
+  bool IsCpuCompatible(Operation* contraction_op) const {
     if (!util::NodeIsOnCpu(contraction_op)) return false;
     if (dialect_->IsConv2D(contraction_op) ||
         dialect_->IsConv3D(contraction_op)) {
@@ -236,7 +238,7 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
   template <typename Pattern>
-  bool IsDeviceCompatible(const Pattern& pattern) {
+  bool IsDeviceCompatible(const Pattern& pattern) const {
     // Currently, this function is used by contraction based fussion.
     if constexpr (!std::is_same<Pattern, ContractionBiasAdd>::value &&
                   !std::is_same<Pattern, ContractionBiasAddActivation>::value &&
@@ -248,9 +250,8 @@ class OpPropertyHelper : public OpCatHelper {
   }
 
  private:
-  TFGraphDialect* dialect_;
   bool is_onednn_enabled_;
-  bool xla_auto_clustering_;
+  bool is_xla_auto_clustering_enabled_;
 };
 
 }  // namespace remapping
