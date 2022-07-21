@@ -39,6 +39,7 @@ class JitRtAsyncCollectiveSupport;
 namespace tfrt {
 namespace jitrt {
 JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
+JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
 }  // namespace jitrt
 }  // namespace tfrt
 
