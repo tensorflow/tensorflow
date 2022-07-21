@@ -765,11 +765,13 @@ td_library(
 cc_library(
     name = "rewrite_util",
     srcs = [
+        "transforms/rewrite_util.cc",
     ],
     hdrs = [
         "transforms/rewrite_util.h",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "@llvm-project//mlir:IR",
     ],
 )

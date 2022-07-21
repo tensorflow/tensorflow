@@ -2019,6 +2019,34 @@ func.func @testMaximumOfZeroToReluInt(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   func.return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: testMaximumOfZeroToReluInt32OnGpu
+func.func @testMaximumOfZeroToReluInt32OnGpu(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+  // CHECK: %[[RESULT:.*]] = "tf.Maximum"(%arg0, %[[CST]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt32OnCpu
+func.func @testMaximumOfZeroToReluInt32OnCpu(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK: %[[RESULT:.*]] = "tf.Relu"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt64OnGpu
+func.func @testMaximumOfZeroToReluInt64OnGpu(%arg0: tensor<4xi64>) -> tensor<4xi64> {
+  // CHECK: %[[RESULT:.*]] = "tf.Relu"(%arg0) : (tensor<4xi64>) -> tensor<4xi64>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i64>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<4xi64>, tensor<i64>) -> tensor<4xi64>
+  func.return %0 : tensor<4xi64>
+}
+
 // CHECK-LABEL: testReluOfMinimum6ToRelu6Float
 func.func @testReluOfMinimum6ToRelu6Float(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: %0 = "tf.Relu6"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
