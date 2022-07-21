@@ -660,3 +660,18 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )
+
+cc_library(
+    name = "hlo_proto_to_module",
+    srcs = ["hlo_proto_to_module.cc"],
+    hdrs = ["hlo_proto_to_module.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
