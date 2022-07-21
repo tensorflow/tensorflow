@@ -4,14 +4,14 @@
 
 Before sending your pull requests, make sure you do the following:
 
--   Read the [contributing guidelines](CONTRIBUTING.md).
--   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
--   Ensure you have signed the
-    [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
--   Check if your changes are consistent with the
-    [guidelines](#general-guidelines-and-philosophy-for-contribution).
--   Changes are consistent with the [Coding Style](#c-coding-style).
--   Run the [unit tests](#running-unit-tests).
+- Read the [contributing guidelines](CONTRIBUTING.md).
+- Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+- Ensure you have signed the
+  [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
+- Check if your changes are consistent with the
+  [guidelines](#general-guidelines-and-philosophy-for-contribution).
+- Changes are consistent with the [Coding Style](#c-coding-style).
+- Run the [unit tests](#running-unit-tests).
 
 ## How to become a contributor and submit your own code
 
@@ -21,12 +21,12 @@ We'd love to accept your patches! Before we can take them, we have to jump a cou
 
 Please fill out either the individual or corporate Contributor License Agreement (CLA).
 
-  * If you are an individual writing original source code and you're sure you own the intellectual property, then you'll need to sign an [individual CLA](https://code.google.com/legal/individual-cla-v1.0.html).
-  * If you work for a company that wants to allow you to contribute your work, then you'll need to sign a [corporate CLA](https://code.google.com/legal/corporate-cla-v1.0.html).
+- If you are an individual writing original source code and you're sure you own the intellectual property, then you'll need to sign an [individual CLA](https://code.google.com/legal/individual-cla-v1.0.html).
+- If you work for a company that wants to allow you to contribute your work, then you'll need to sign a [corporate CLA](https://code.google.com/legal/corporate-cla-v1.0.html).
 
 Follow either of the two links above to access the appropriate CLA and instructions for how to sign and return it. Once we receive it, we'll be able to accept your pull requests.
 
-***NOTE***: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
+**_NOTE_**: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
 
 ### Contributing code
 
@@ -64,48 +64,48 @@ TensorFlow coding style.
 
 #### General guidelines and philosophy for contribution
 
-*   Include unit tests when you contribute new features, as they help to a)
-    prove that your code works correctly, and b) guard against future breaking
-    changes to lower the maintenance cost.
-*   Bug fixes also generally require unit tests, because the presence of bugs
-    usually indicates insufficient test coverage.
-*   Keep API compatibility in mind when you change code in core TensorFlow,
-    e.g., code in
-    [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core)
-    and
-    [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
-    TensorFlow has passed version 1.0 and hence cannot make
-    non-backward-compatible API changes without a major release. Reviewers of
-    your pull request will comment on any API compatibility issues
-    [following API review practices](https://github.com/tensorflow/community/blob/master/governance/api-reviews.md).
-*   When you contribute a new feature to TensorFlow, the maintenance burden is
-    (by default) transferred to the TensorFlow team. This means that the benefit
-    of the contribution must be compared against the cost of maintaining the
-    feature.
-*   Full new features (e.g., a new op implementing a cutting-edge algorithm)
-    typically will live in
-    [tensorflow/addons](https://github.com/tensorflow/addons) to get some
-    airtime before a decision is made regarding whether they are to be migrated
-    to the core.
-*   As every PR requires several CPU/GPU hours of CI testing, we discourage
-    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
-    same issue at the file level at least (e.g.: fix all typos in a file, fix
-    all compiler warning in a file, etc.)
-*   Tests should follow the
-    [testing best practices](https://www.tensorflow.org/community/contribute/tests)
-    guide.
+- Include unit tests when you contribute new features, as they help to a)
+  prove that your code works correctly, and b) guard against future breaking
+  changes to lower the maintenance cost.
+- Bug fixes also generally require unit tests, because the presence of bugs
+  usually indicates insufficient test coverage.
+- Keep API compatibility in mind when you change code in core TensorFlow,
+  e.g., code in
+  [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core)
+  and
+  [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
+  TensorFlow has passed version 1.0 and hence cannot make
+  non-backward-compatible API changes without a major release. Reviewers of
+  your pull request will comment on any API compatibility issues
+  [following API review practices](https://github.com/tensorflow/community/blob/master/governance/api-reviews.md).
+- When you contribute a new feature to TensorFlow, the maintenance burden is
+  (by default) transferred to the TensorFlow team. This means that the benefit
+  of the contribution must be compared against the cost of maintaining the
+  feature.
+- Full new features (e.g., a new op implementing a cutting-edge algorithm)
+  typically will live in
+  [tensorflow/addons](https://github.com/tensorflow/addons) to get some
+  airtime before a decision is made regarding whether they are to be migrated
+  to the core.
+- As every PR requires several CPU/GPU hours of CI testing, we discourage
+  submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+  same issue at the file level at least (e.g.: fix all typos in a file, fix
+  all compiler warning in a file, etc.)
+- Tests should follow the
+  [testing best practices](https://www.tensorflow.org/community/contribute/tests)
+  guide.
 
 #### License
 
 Include a license at the top of new files.
 
-* [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
-* [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
-* [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
-* [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
-* [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_sanity.sh#L2)
-* [HTML license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/tf-backend.html#L2)
-* [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
+- [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
+- [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
+- [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
+- [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
+- [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_sanity.sh#L2)
+- [HTML license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/tf-backend.html#L2)
+- [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
 
 Bazel BUILD files also need to include a license section, e.g.,
 [BUILD example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/BUILD#L61).
@@ -122,7 +122,6 @@ apt-get install -y clang-tidy
 ```
 
 You can check a C/C++ file by doing:
-
 
 ```bash
 clang-format <my_cc_file> --style=google > /tmp/my_cc_file.cc
@@ -147,10 +146,10 @@ top level tensorflow directory.
 
 #### Coding style for other languages
 
-* [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
-* [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
-* [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
-* [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
+- [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
+- [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
+- [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
+- [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
 
 #### Running sanity check
 
@@ -254,10 +253,10 @@ There are two ways to test the code in the docstring locally:
     This will run it using your installed version of TensorFlow. To be sure
     you're running the same code that you're testing:
 
-    *   Use an up to date [tf-nightly](https://pypi.org/project/tf-nightly/)
-        `pip install -U tf-nightly`
-    *   Rebase your pull request onto a recent pull from
-        [TensorFlow's](https://github.com/tensorflow/tensorflow) master branch.
+    - Use an up to date [tf-nightly](https://pypi.org/project/tf-nightly/)
+      `pip install -U tf-nightly`
+    - Rebase your pull request onto a recent pull from
+      [TensorFlow's](https://github.com/tensorflow/tensorflow) master branch.
 
 2.  If you are changing the code and the docstring of a class/function/method,
     then you will need to
