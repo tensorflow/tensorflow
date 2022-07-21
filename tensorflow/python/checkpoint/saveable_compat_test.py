@@ -125,13 +125,13 @@ class TestForceCheckpointConversionFlag(test.TestCase):
       def _gather_saveables_for_checkpoint(self):
         return {"foo": lambda name: _MultiSpecSaveable(self, name)}
 
+    @saveable_compat.legacy_saveable_name("foo")
     class NewTrackable(base.Trackable):
 
       def __init__(self):
         self.a = variables.Variable(3.0)
         self.b = variables.Variable(4.0)
 
-      @saveable_compat.legacy_saveable_name("foo")
       def _serialize_to_tensors(self):
         return {"-a": self.a, "-b": self.b}
 

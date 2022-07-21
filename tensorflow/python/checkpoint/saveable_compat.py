@@ -52,9 +52,9 @@ def legacy_saveable_name(name):
   *After*
 
   ```
+  @legacy_saveable_name("key")
   class MyTrackable(Trackable):
 
-    @legacy_saveable_name("key")
     def _serialize_to_tensors(self):
       return {"key-1": tensor1, "key-2": tensor2}
   ```
@@ -66,21 +66,14 @@ def legacy_saveable_name(name):
   Returns:
     A decorator.
   """
-  def decorator(serialize_to_tensors_fn):
-    if hasattr(serialize_to_tensors_fn, "__func__"):
-      serialize_to_tensors_fn = serialize_to_tensors_fn.__func__
-    setattr(serialize_to_tensors_fn, _LEGACY_SAVEABLE_NAME, name)
-    return serialize_to_tensors_fn
+  def decorator(cls_or_obj):
+    setattr(cls_or_obj, _LEGACY_SAVEABLE_NAME, name)
+    return cls_or_obj
   return decorator
 
 
-def get_saveable_name(obj):
-# pylint: disable=protected-access
-  obj_serialize_fn = obj._serialize_to_tensors
-  if hasattr(obj_serialize_fn, "__func__"):
-    obj_serialize_fn = obj_serialize_fn.__func__
-  return getattr(obj_serialize_fn, _LEGACY_SAVEABLE_NAME, None)
-  # pylint: enable=protected-access
+def get_saveable_name(cls_or_obj):
+  return getattr(cls_or_obj, _LEGACY_SAVEABLE_NAME, None)
 
 
 _FORCE_CHECKPOINT_CONVERSION = False
@@ -116,3 +109,7 @@ def force_checkpoint_conversion(value=True):
 
 def force_checkpoint_conversion_enabled():
   return _FORCE_CHECKPOINT_CONVERSION
+
+
+class CheckpointConversionError(Exception):
+  pass
