@@ -28,6 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/tpu/pjrt_api.h"
 
+// TODO(b/238999986): Remove this when we have decomposed shape.
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+
 namespace xla {
 
 // Helper macros
@@ -479,9 +482,62 @@ bool PjRtCApiExecutable::IsDeleted() {
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)
-    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {}
+    : client_(client), buffer_(buffer), wrapped_(buffer->buffer.get()) {
+  set_shape();
+}
 
 PjRtCApiBuffer::~PjRtCApiBuffer() { delete buffer_; }
+
+const Shape& PjRtCApiBuffer::on_device_shape() const {
+  CHECK(shape_.has_value())
+      << "Shape should be initialized in PjRtCApiBuffer constructor.";
+  return shape_.value();
+}
+
+void PjRtCApiBuffer::set_shape() {
+  PJRT_Buffer_OnDeviceTrimmedShape_Args args;
+  args.struct_size = PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_;
+
+  pjrt::LogFatalIfPjrtError(
+      client_->pjrt_c_api()->PJRT_Buffer_OnDeviceTrimmedShape(&args),
+      client_->pjrt_c_api());
+
+  xla::PrimitiveType element_type =
+      static_cast<xla::PrimitiveType>(args.element_type);
+
+  CHECK_NE(element_type, xla::PrimitiveType::TUPLE);
+
+  absl::Span<const int64_t> dims = ApiConverter::MakeSpan(args.dimensions);
+  absl::Span<const bool> dynamic_dims =
+      ApiConverter::MakeSpan(args.dynamic_dimensions);
+
+  Shape trimmed_shape = Shape(element_type, dims, dynamic_dims, {});
+
+  if (args.layout.format != xla::INVALID_FORMAT) {
+    *(trimmed_shape.mutable_layout()) = ApiConverter::FromC(&args.layout);
+  }
+
+  // TODO(amangu): Refactor the deletion.
+  if (args.dimensions.size > TPU_C_API_MAX_INLINED) {
+    delete[] args.dimensions.heap;
+  }
+
+  if (args.dynamic_dimensions.size > TPU_C_API_MAX_INLINED) {
+    delete[] args.dynamic_dimensions.heap;
+  }
+
+  if (args.layout.minor_to_major.size > TPU_C_API_MAX_INLINED) {
+    delete[] args.layout.minor_to_major.heap;
+  }
+
+  if (args.layout.tiles.size > TPU_C_API_MAX_INLINED) {
+    delete[] args.layout.tiles.heap;
+  }
+
+  shape_ = trimmed_shape;
+}
 
 StatusOr<size_t> PjRtCApiBuffer::GetOnDeviceSizeInBytes() const {
   PJRT_Buffer_OnDeviceSizeInBytes_Args args;
