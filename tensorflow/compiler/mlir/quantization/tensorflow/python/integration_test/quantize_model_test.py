@@ -1418,7 +1418,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               ['serving_default'], tags,
@@ -1473,7 +1474,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               ['serving_default'], tags,
@@ -1506,7 +1508,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               ['serving_default'], tags,
@@ -1542,7 +1545,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
     # Try to use a different set of tags to quantize.
     tags = {tag_constants.SERVING}
@@ -1581,7 +1585,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE))
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE),
+        op_set=quant_opts_pb2.OpSet.UNIFORM_QUANTIZED)
 
     converted_model = quantize_model.quantize(input_saved_model_path,
                                               signature_keys, tags,

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <pybind11/stl.h>
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
@@ -25,21 +27,24 @@ limitations under the License.
 namespace tensorflow {
 namespace quantization {
 
-PyObject* QuantizeQATModel(absl::string_view saved_model_path,
-                           absl::string_view exported_names_str,
-                           absl::string_view tags);
+PyObject* QuantizeQATModel(const absl::string_view saved_model_path,
+                           const absl::string_view exported_names_str,
+                           const absl::string_view tags,
+                           const std::string& quant_opts_serialized);
 
-PyObject* QuantizePTQDynamicRange(absl::string_view saved_model_path,
-                                  absl::string_view exported_names_str,
-                                  absl::string_view tags);
+PyObject* QuantizePTQDynamicRange(const absl::string_view saved_model_path,
+                                  const absl::string_view exported_names_str,
+                                  const absl::string_view tags,
+                                  const std::string& quant_opts_serialized);
 
-PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
-                                         absl::string_view exported_names_str,
-                                         absl::string_view tags);
+PyObject* QuantizePTQModelPreCalibration(
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags);
 
-PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
-                                          absl::string_view exported_names_str,
-                                          absl::string_view tags);
+PyObject* QuantizePTQModelPostCalibration(
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::string& quant_opts_serialized);
 
 void ClearCollectedInformationFromCalibrator();
 
