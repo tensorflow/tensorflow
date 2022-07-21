@@ -16,6 +16,7 @@
 import functools
 import six
 
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 
@@ -533,6 +534,7 @@ class TrackableSaveable(saveable_object.SaveableObject):
     tensor_dict = obj._serialize_to_tensors()  # pylint: disable=protected-access
     specs = []
     self._local_names = []
+    self._prefix = saveable_compat.get_saveable_name(self._trackable) or ""
     for tensor_name, tensor in tensor_dict.items():
       self._local_names.append(tensor_name)
       spec_name = name + trackable_utils.escape_local_name(tensor_name)
@@ -558,7 +560,7 @@ class TrackableSaveable(saveable_object.SaveableObject):
     return restore_from_tensors()
 
   def get_proto_names_and_checkpoint_keys(self):
-    return [(local_name, spec.name)
+    return [(self._prefix + local_name, spec.name)
             for local_name, spec in zip(self._local_names, self.specs)]
 
 
