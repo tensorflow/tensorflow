@@ -344,10 +344,6 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformWrite2DSelector(gpu_info, args, template_args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
-  } else if (selector == "GetPtrWithSliceOffset") {
-    return PerformGetPtrWithSliceOffsetSelector(args, result);
-  } else if (selector == "GetWHOffset") {
-    return PerformGetWHOffsetSelector(args, result);
   } else if (selector == "GetHandle") {
     return PerformGetHandleSelector(args, result);
   } else {
@@ -868,50 +864,6 @@ absl::Status TensorDescriptor::PerformGetAddressSelector(
   }
 
   *result = GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc);
-  return absl::OkStatus();
-}
-
-absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
-    const std::vector<std::string>& args, std::string* result) const {
-  if (storage_type_ != TensorStorageType::BUFFER) {
-    return absl::InvalidArgumentError(
-        "GetPtrWithSliceOffset selector can be used only with BUFFER");
-  }
-  if (args.size() != 1) {
-    return absl::NotFoundError(absl::StrCat(
-        "GetPtrWithSliceOffset require one argument(slice coordinate), but ",
-        args.size(), " was passed"));
-  }
-  *result = absl::StrCat("buffer + ", args[0], " * slice_stride");
-  return absl::OkStatus();
-}
-
-absl::Status TensorDescriptor::PerformGetWHOffsetSelector(
-    const std::vector<std::string>& args, std::string* result) const {
-  if (storage_type_ != TensorStorageType::BUFFER &&
-      storage_type_ != TensorStorageType::IMAGE_BUFFER) {
-    return absl::InvalidArgumentError(
-        "GetWHOffset selector can be used only with BUFFER/IMAGE_BUFFER");
-  }
-  if (args.size() != 2) {
-    return absl::NotFoundError(absl::StrCat(
-        "GetWHOffset require two arguments(X and Y coordinates), but ",
-        args.size(), " was passed"));
-  }
-  if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
-    auto it = state_vars_.find("batch_id");
-    std::string batch_id;
-    if (it == state_vars_.end()) {
-      return absl::NotFoundError(
-          "Not found batch_id. Should be setted up by SetBatchRef(). method");
-    } else {
-      batch_id = it->second;
-    }
-    *result = absl::StrCat("((", args[1], ") * width + (", args[0],
-                           ")) * batch + (", batch_id, ")");
-  } else {
-    *result = absl::StrCat("(", args[1], ") * width + (", args[0], ")");
-  }
   return absl::OkStatus();
 }
 

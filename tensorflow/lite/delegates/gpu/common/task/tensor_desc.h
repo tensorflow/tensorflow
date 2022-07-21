@@ -173,12 +173,6 @@ class TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
 
-  absl::Status PerformGetPtrWithSliceOffsetSelector(
-      const std::vector<std::string>& args, std::string* result) const;
-
-  absl::Status PerformGetWHOffsetSelector(const std::vector<std::string>& args,
-                                          std::string* result) const;
-
   absl::Status PerformGetHandleSelector(const std::vector<std::string>& args,
                                         std::string* result) const;
 
