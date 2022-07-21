@@ -149,8 +149,7 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
   if (dimension.size() != 4 && dimension.size() != 5) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
-        "Expected tensor with four or five dimensions, but got %d.",
-        dimension.size());
+       "Expected tensor with less than %d dimensions, but got %d.",
         kPerChannelMaxDim + 1, dimension.size());
     return kTfLiteError;
   }
@@ -170,9 +169,6 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
   int indices[dimension.size()];
   RuntimeShape tensor_dims(dimension.size(), dimension.data());
   auto set_min_max = [&]() {
-      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
-  channel_dim_index +=
-      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
     int channel_idx = indices[channel_dim_index];
     const float val = input[Offset(tensor_dims, indices)];
     if (has_min_max_value[channel_idx]) {
@@ -393,9 +389,6 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
   int indices[dimension.size()];
   RuntimeShape tensor_dims(dimension.size(), dimension.data());
   auto set_quantized_values = [&]() {
-    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
-      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
-        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
     int channel_idx = indices[channel_dim_index];
     int index = Offset(tensor_dims, indices);
     const float val = input[index];
@@ -590,7 +583,7 @@ TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
   if (tensor->shape.size() != 4 && tensor->shape.size() != 5) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
-        "SymmetricQuantizeTensorPerChannel requires tensor with four or five"
+        "SymmetricQuantizeTensorPerChannel requires tensor with less than %d "
         "dimensions, but got %d dimension(s).",
         kPerChannelMaxDim + 1, tensor->shape.size());
     return kTfLiteError;
