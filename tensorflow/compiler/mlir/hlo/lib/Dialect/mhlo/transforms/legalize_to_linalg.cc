@@ -23,16 +23,14 @@ limitations under the License.
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringSet.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -52,7 +50,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
@@ -63,35 +60,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
+namespace mhlo {
 namespace {
-
-template <typename OpTy>
-SmallVector<NamedAttribute> pruneAttributeList(OpTy op) {
-  auto opAttributes = op.getAttributeNames();
-  llvm::StringSet<> elidedAttrs;
-  elidedAttrs.insert(opAttributes.begin(), opAttributes.end());
-  SmallVector<NamedAttribute> preservedAttrs;
-  for (auto attr : op->getAttrs()) {
-    if (elidedAttrs.count(attr.getName())) continue;
-    preservedAttrs.push_back(attr);
-  }
-  return preservedAttrs;
-}
-
-/// Returns an ArrayAttr that contains `nLoops` attributes. All the attributes
-/// are "parallel" except the last `nReduction` elements, where are "reduction"
-/// attributes.
-SmallVector<StringRef, 3> getParallelAndReductionIterators(
-    unsigned nLoops, unsigned nReduction) {
-  SmallVector<StringRef, 3> res(nLoops - nReduction,
-                                getParallelIteratorTypeName());
-  res.append(nReduction, getReductionIteratorTypeName());
-  return res;
-}
-
-SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops) {
-  return getParallelAndReductionIterators(nParallelLoops, 0);
-}
 
 Value getResultValue(Operation* op) { return op->getResult(0); }
 
@@ -107,44 +77,6 @@ bool verifyHloOpBufferOrTensorSemantics(Operation* op) {
   return llvm::all_of(op->getResults(), verifyType);
 }
 
-Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
-                    ArrayRef<Value> dynSizes) {
-  return b.create<linalg::InitTensorOp>(loc, dynSizes, type.getShape(),
-                                        type.getElementType());
-}
-
-Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
-                          ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type, dynSizes,
-                                                /*copy=*/Value(),
-                                                /*memory_space=*/IntegerAttr());
-}
-
-Value getInitTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
-                       Operation* op, ValueRange operands) {
-  bool isSparse = sparse_tensor::getSparseTensorEncoding(resultType) != nullptr;
-  // Collect the sizes for a ranked tensor to be passed as parameter to a
-  // new tensor initialization operation. This operation only needs the
-  // dynamic sizes.
-  SmallVector<Value> sizes;
-  if (resultType.hasRank() && !resultType.hasStaticShape()) {
-    // Ask the op for its output shape.
-    auto shapeSource = cast<InferShapedTypeOpInterface>(op);
-    SmallVector<Value, 1> reifiedShapes;
-    (void)shapeSource.reifyReturnTypeShapes(b, operands, reifiedShapes);
-    assert(reifiedShapes.size() == 1 && "Expected one reified result");
-    // Construct sizes for the required dimensions.
-    for (auto& en : llvm::enumerate(resultType.getShape())) {
-      if (en.value() != ShapedType::kDynamicSize) continue;
-      sizes.push_back(b.create<tensor::ExtractOp>(
-          loc, reifiedShapes[0],
-          ValueRange{b.create<arith::ConstantIndexOp>(loc, en.index())}));
-    }
-  }
-  return isSparse ? getInitSparseTensor(b, loc, resultType, sizes)
-                  : getInitTensor(b, loc, resultType, sizes);
-}
-
 Value fillTensorWithZeros(OpBuilder& builder, Location loc, Value tensor) {
   auto type = tensor.getType().cast<ShapedType>();
   Value zero;
@@ -158,54 +90,6 @@ Value fillTensorWithZeros(OpBuilder& builder, Location loc, Value tensor) {
     zero = builder.create<arith::ConstantOp>(loc, zeroAttr);
   }
   return builder.create<linalg::FillOp>(loc, zero, tensor).result();
-}
-
-static inline bool hasIntegralShapeType(Operation* op) {
-  auto stp = op->getOperand(0).getType().dyn_cast<ShapedType>();
-  return stp && stp.getElementType().isIntOrIndex();
-}
-
-/// Sparsifies a (block of) operation(s) that cannot be handled directly
-/// by the sparse compiler but has well-known semi-ring semantics.
-///
-/// This yields something of the following form:
-///
-///   %result = sparse_tensor.unary %values[0]
-///     present={
-///       ^bb1(%val):
-///         ... codegen proceeds here using %val ....
-///         sparse_tensor.yield
-///     }
-///     absent={}
-///   linalg.yield %result
-Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
-                  OpBuilder* b) {
-  // Apply for semi-ring operations that lower to elaborate code
-  // (any sign-op, any elt-wise conversion, or an integral abs-op).
-  if (isa<mhlo::SignOp>(op) || isa<mhlo::ConvertOp>(op) ||
-      (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op))) {
-    if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
-        !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
-      return Value();
-    Location loc = op->getLoc();
-    auto semiring = b->create<sparse_tensor::UnaryOp>(loc, rtp, values[0]);
-    Type itp = values[0].getType();
-    Block* present = b->createBlock(&semiring.getPresentRegion(), {}, itp, loc);
-    b->setInsertionPointToStart(&semiring.getPresentRegion().front());
-    values[0] = present->getArgument(0);
-    return semiring;
-  }
-  return Value();
-}
-
-/// Finalizes sparse semi-ring construction.
-Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
-  if (semiring) {
-    b->create<sparse_tensor::YieldOp>(op->getLoc(), result);
-    b->setInsertionPointAfter(semiring.getDefiningOp());
-    return semiring;
-  }
-  return result;
 }
 
 SmallVector<int64_t, 4> extract1DVector(DenseIntElementsAttr elements) {
@@ -671,87 +555,6 @@ bool EinsumToLinalgConverter::checkBatchHasEqualRank(
     batchHasEqualRank = false;
   return batchHasEqualRank;
 }
-
-template <typename OpTy>
-class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
- public:
-  using OpConversionPattern<OpTy>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      OpTy op, typename OpTy::Adaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final {
-    // Find maximum rank / number of loops.
-    auto getRank = [](Value v) {
-      return v.getType().cast<ShapedType>().getRank();
-    };
-    auto isScalar = [&](Value v) { return getRank(v) == 0; };
-    auto it = llvm::find_if_not(adaptor.getOperands(), isScalar);
-    Value maxRankArg =
-        it != adaptor.getOperands().end() ? *it : adaptor.getOperands().front();
-    int64_t nloops = getRank(maxRankArg);
-
-    // Apply only if all operands are scalar or have the same rank. Some ops,
-    // like `mhlo.select`, support implicit broadcasting of scalars.
-    if (!llvm::all_of(adaptor.getOperands(), [&](Value v) {
-          int64_t r = getRank(v);
-          return r == 0 || r == nloops;
-        })) {
-      return rewriter.notifyMatchFailure(
-          op, "Operands must be os same rank or scalar.");
-    }
-
-    // Find result type, if on tensors.
-    Optional<ShapedType> resultTy;
-    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
-                   .template dyn_cast<ShapedType>();
-
-    // Check result type compatibility.
-    if (!resultTy || !resultTy->hasRank() || resultTy->getRank() != nloops ||
-        !(resultTy->getElementType().isSignlessIntOrFloat() ||
-          resultTy->getElementType().isa<ComplexType>())) {
-      return rewriter.notifyMatchFailure(
-          op, "mismatched operand/result types or iterator count");
-    }
-
-    // Find input/output values and types.
-    auto loc = op.getLoc();
-    ValueRange inputs = adaptor.getOperands();
-    Value output =
-        getInitTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
-
-    // Create indexing maps.
-    AffineMap scalarMap = AffineMap::get(nloops, 0, rewriter.getContext());
-    AffineMap idMap = rewriter.getMultiDimIdentityMap(nloops);
-    SmallVector<AffineMap, 4> maps;
-    for (Value v : inputs) maps.push_back(isScalar(v) ? scalarMap : idMap);
-    maps.push_back(idMap);
-
-    // Build `linalg.generic` op.
-    bool failed = false;
-    auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, resultTy ? *resultTy : TypeRange{}, inputs, output, maps,
-        getNParallelLoopsAttrs(nloops),
-        [&](OpBuilder& nestedBuilder, Location /*nested_loc*/,
-            ValueRange args) {
-          Type innerResultTy = getElementTypeOrSelf(output);
-          auto argvec = llvm::to_vector<2>(args.take_front(inputs.size()));
-          auto semiring = preSparsify(op, argvec, innerResultTy, &rewriter);
-          Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
-              op, innerResultTy, argvec, &rewriter);
-          if (innerResult == nullptr) {
-            failed = true;
-          } else {
-            innerResult = postSparsify(op, semiring, innerResult, &rewriter);
-            nestedBuilder.create<linalg::YieldOp>(loc, innerResult);
-          }
-        },
-        pruneAttributeList(op));
-    if (failed) return failure();
-
-    rewriter.replaceOp(op, linalgOp->getResults());
-    return success();
-  }
-};
 
 template <typename MhloOp>
 class ScalarPointwiseToStandardConverter : public OpConversionPattern<MhloOp> {
@@ -3259,7 +3062,6 @@ struct HloLegalizeToLinalgPass
 
 }  // namespace
 
-namespace mhlo {
 
 void populateHloToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& typeConverter,
