@@ -20,14 +20,20 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 
+def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
+
 def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim",
     [NoSideEffect,
      TypesMatchWith<"result and init types match", "init", "result", "$_self">,
      DeclareOpInterfaceMethods<FusionInterface>]> {
   let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
+
   let arguments = (ins
-    AnyTensor:$operand,
-    AnyTensor:$init,
+    // Input args
+    TensorOrMemref:$operand,
+    // Output arg
+    TensorOrMemref:$init,
+
     DenseI64ArrayAttr:$broadcast_dimensions,
     OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
     OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
@@ -38,7 +44,6 @@ def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim",
     `outs` `(` $init `:` type($init) `)`
     attr-dict
   }];
-  let hasVerifier = 0;
 }
 
 def GMLST_GatherOp : GMLST_Op<"gather", [
@@ -55,9 +60,11 @@ def GMLST_GatherOp : GMLST_Op<"gather", [
     - start_index_map is range(slice_sizes.shape[index_vector_dim])
   }];
   let arguments = (ins
-    AnyTensor:$operand,
+    // Input args
+    TensorOrMemref:$operand,
     I64Tensor:$start_indices,
-    AnyTensor:$init
+    // Output arg
+    TensorOrMemref:$init
   );
   let results = (outs AnyTensor:$result);
   let assemblyFormat = [{
@@ -66,7 +73,6 @@ def GMLST_GatherOp : GMLST_Op<"gather", [
     `outs` `(` $init `:` type($init) `)`
     attr-dict
   }];
-  let hasVerifier = 0;
 }
 
 def GMLST_ScatterOp : GMLST_Op<"scatter", [
@@ -86,10 +92,12 @@ def GMLST_ScatterOp : GMLST_Op<"scatter", [
       - index_vector_dim is scatter_indices.shape.rank-1
   }];
   let arguments = (ins
-    AnyTensor:$operand,
+    // Input args
+    TensorOrMemref:$operand,
     TensorOf<[I32, I64]>:$scatter_indices,
-    AnyTensor:$updates,
-    AnyTensor:$init
+    TensorOrMemref:$updates,
+    // Output arg
+    TensorOrMemref:$init
   );
   let results = (outs AnyTensor:$result);
   let assemblyFormat = [{
@@ -99,7 +107,6 @@ def GMLST_ScatterOp : GMLST_Op<"scatter", [
     `outs` `(` $init `:` type($init) `)`
     attr-dict
   }];
-  let hasVerifier = 0;
 }
 
 #endif // GML_ST_EXTENSION_OPS

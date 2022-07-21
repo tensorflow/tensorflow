@@ -60,6 +60,51 @@ ParseResult parseShapeTypeDimensionsList(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Destination-style ops tools
+//===----------------------------------------------------------------------===//
+
+bool hasTensorSemantics(OperandRange operands, unsigned numOutputArgs) {
+  for (auto operand : operands.drop_back(numOutputArgs)) {
+    if (!operand.getType().isa<ShapedType>()) continue;
+    if (!operand.getType().isa<RankedTensorType>()) return false;
+  }
+  return llvm::all_of(operands.take_back(numOutputArgs), [](Value operand) {
+    return operand.getType().isa<RankedTensorType>();
+  });
+}
+
+bool hasBufferSemantics(OperandRange operands) {
+  return llvm::all_of(operands, [](Value operand) {
+    return operand.getType().isa<MemRefType>();
+  });
+}
+
+LogicalResult verifyDestinationStyleOp(Operation *op,
+                                       unsigned numOutputArgs = 1) {
+  if (hasBufferSemantics(op->getOperands()))
+    return success(op->getNumResults() == 0);
+
+  if (!hasTensorSemantics(op->getOperands(), numOutputArgs))
+    return op->emitOpError("expected either buffer or tensor semantics");
+
+  if (op->getNumResults() != numOutputArgs) {
+    return op->emitOpError(
+        "expected the number of output args to match the number of results");
+  }
+  for (auto &en : llvm::enumerate(llvm::zip(
+           op->getResultTypes(), op->getOperands().take_back(numOutputArgs)))) {
+    size_t index = en.index();
+    Type resultType = std::get<0>(en.value());
+    Type outputOperandType = std::get<1>(en.value()).getType();
+    if (resultType != outputOperandType)
+      op->emitOpError() << "type " << resultType << " of result " << index
+                        << " does not match output operand type "
+                        << outputOperandType;
+  }
+  return success();
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -1908,6 +1953,10 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult DynamicBroadcastInDimOp::verify() {
+  return verifyDestinationStyleOp(this->getOperation());
+}
+
 Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
                                     OpBuilder &builder) {
   Type subsetTy = subset.getType();
@@ -2020,6 +2069,22 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
   }
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScatterOp::verify() {
+  return verifyDestinationStyleOp(this->getOperation());
+}
+
+//===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult GatherOp::verify() {
+  return verifyDestinationStyleOp(this->getOperation());
 }
 
 //===----------------------------------------------------------------------===//
