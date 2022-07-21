@@ -177,7 +177,8 @@ std::string GenerateConvolution(
   int c_y = min(DST_Y, args.src_tensor.Height() - 1);
 )";
   if (definition.src_tensors[0].IsLinear()) {
-    c += "  args.src_tensor.GetAddress(src_address, c_x, c_y, slice_id);\n";
+    c +=
+        "  int src_address = args.src_tensor.GetAddress(c_x, c_y, slice_id);\n";
   }
   c += R"(
   int tid2 = 0;

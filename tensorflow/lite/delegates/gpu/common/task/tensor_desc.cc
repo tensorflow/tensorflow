@@ -861,18 +861,13 @@ std::string TensorDescriptor::Write(
 
 absl::Status TensorDescriptor::PerformGetAddressSelector(
     const std::vector<std::string>& args, std::string* result) const {
-  std::string xc;
-  std::string yc;
-  std::string zc;
-  std::string sc;
-  std::string bc;
-  bool parsed = ParseCoordsFromArgs(args, 1, &xc, &yc, &zc, &sc, &bc);
-  if (args.size() < 3 || !parsed) {
+  std::string xc, yc, zc, sc, bc;
+  bool parsed = ParseCoordsFromArgs(args, 0, &xc, &yc, &zc, &sc, &bc);
+  if (!parsed) {
     return absl::NotFoundError("Unrecognized GetAddress selector");
   }
 
-  *result = DeclareAddress(args[0],
-                           GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc));
+  *result = GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc);
   return absl::OkStatus();
 }
 
@@ -951,12 +946,6 @@ absl::Status TensorDescriptor::PerformGetHandleSelector(
     case TensorStorageType::UNKNOWN:
       return absl::UnavailableError("Unknown type");
   }
-}
-
-std::string TensorDescriptor::DeclareAddress(const std::string& var_name,
-                                             const std::string& address) const {
-  return absl::StrCat(StorageTypeToAddressType(), " ", var_name, " = ", address,
-                      ";");
 }
 
 std::string TensorDescriptor::StorageTypeToAddressType() const {

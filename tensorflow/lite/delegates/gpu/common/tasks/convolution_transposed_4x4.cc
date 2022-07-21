@@ -227,10 +227,10 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   };
   if (src_desc.IsLinear()) {
     if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
-      c += "  args.src_tensor.GetAddress(addr_0, X - 1, Y - 1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_1, X, Y - 1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_2, X - 1, Y, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_3, X, Y, 0);\n";
+      c += "  int addr_0 = args.src_tensor.GetAddress(X - 1, Y - 1, 0);\n";
+      c += "  int addr_1 = args.src_tensor.GetAddress(X, Y - 1, 0);\n";
+      c += "  int addr_2 = args.src_tensor.GetAddress(X - 1, Y, 0);\n";
+      c += "  int addr_3 = args.src_tensor.GetAddress(X, Y, 0);\n";
       c += "  addr_0 = select(-1, addr_0, (in_x0 && in_y0));\n";
       c += "  addr_1 = select(-1, addr_1, (in_x1 && in_y0));\n";
       c += "  addr_2 = select(-1, addr_2, (in_x0 && in_y1));\n";
@@ -248,10 +248,10 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
       c += "  int xc1 = clamp(X, 0, args.src_tensor.Width() - 1);\n";
       c += "  int yc0 = clamp(Y - 1, 0, args.src_tensor.Height() - 1);\n";
       c += "  int yc1 = clamp(Y, 0, args.src_tensor.Height() - 1);\n";
-      c += "  args.src_tensor.GetAddress(addr_0, xc0, yc0, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_1, xc1, yc0, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_2, xc0, yc1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_3, xc1, yc1, 0);\n";
+      c += "  int addr_0 = args.src_tensor.GetAddress(xc0, yc0, 0);\n";
+      c += "  int addr_1 = args.src_tensor.GetAddress(xc1, yc0, 0);\n";
+      c += "  int addr_2 = args.src_tensor.GetAddress(xc0, yc1, 0);\n";
+      c += "  int addr_3 = args.src_tensor.GetAddress(xc1, yc1, 0);\n";
       c += "  int dz = args.src_tensor.SliceStride();\n";
     }
   }

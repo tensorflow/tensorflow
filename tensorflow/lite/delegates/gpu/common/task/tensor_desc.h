@@ -182,9 +182,6 @@ class TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetHandleSelector(const std::vector<std::string>& args,
                                         std::string* result) const;
 
-  std::string DeclareAddress(const std::string& var_name,
-                             const std::string& address) const;
-
   std::string StorageTypeToAddressType() const;
 
   absl::Status PerformWriteSelector(
