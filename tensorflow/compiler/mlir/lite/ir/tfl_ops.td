@@ -4869,6 +4869,31 @@ def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
+def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentSum operator";
+
+  let description = [{
+    From a tensor segmentation, computes the `output` resulting from
+    summing together elements mapped to the same segment_id. I.e. `output[i]` is
+    equal to the tensor sum of all elements from the input tensor mapped to
+    segment_id `i`. If no tensors are mapped to a particular included
+    segment_id, the output at that indice will be a zero tensor with the
+    appropriate shape. Note the values of segment_ids are always validated to be
+    less than num_segments and an error is thrown for out-of-bound indices
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
 def TFL_YieldOp : Op<TFL_Dialect, "yield",
   [NoSideEffect,
    Terminator,
