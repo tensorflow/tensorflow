@@ -586,6 +586,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
         "//tensorflow/core/tpu:pjrt_api",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
     ],
 )
 

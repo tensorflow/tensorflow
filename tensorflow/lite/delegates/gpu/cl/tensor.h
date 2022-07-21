@@ -139,18 +139,11 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
 
 using TensorPtr = std::shared_ptr<Tensor>;
 
-absl::Status AllocateTensorMemory(const CLContext& context, const BHWC& shape,
+absl::Status AllocateTensorMemory(const CLContext& context,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result);
 
-absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
-                                  const TensorDescriptor& descriptor,
-                                  CLMemory* result);
-
-absl::Status CreateTensor(const CLContext& context, const BHWC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result);
-
-absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
+absl::Status CreateTensor(const CLContext& context,
                           const TensorDescriptor& descriptor, Tensor* result);
 
 absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,

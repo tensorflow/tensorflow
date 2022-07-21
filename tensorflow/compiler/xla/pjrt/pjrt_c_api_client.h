@@ -274,9 +274,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer);
   ~PjRtCApiBuffer() override;
 
-  const Shape& on_device_shape() const override {
-    return wrapped_->on_device_shape();
-  }
+  const Shape& on_device_shape() const override;
 
   StatusOr<Shape> logical_on_device_shape() override {
     return wrapped_->logical_on_device_shape();
@@ -365,11 +363,15 @@ class PjRtCApiBuffer : public PjRtBuffer {
  private:
   PjRtCApiClient* client_;
   PJRT_Buffer* buffer_;
+  std::optional<xla::Shape> shape_;
 
   // TODO(amangu): _wrapped is a non-C API pointer that was used to bypass the
   // C API calls until all the C API's got implemented. Remove it when it's
   // usage is reduced to zero.
   PjRtBuffer* wrapped_;
+
+  // TODO(b/238999986): Refactor or Remove.
+  void set_shape();
 };
 
 class PjRtCApiExecutable : public PjRtExecutable {

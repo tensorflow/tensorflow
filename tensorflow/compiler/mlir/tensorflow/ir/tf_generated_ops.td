@@ -18908,6 +18908,31 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   let hasFolder = 1;
 }
 
+def TF_TridiagonalMatMulOp : TF_Op<"TridiagonalMatMul", [NoSideEffect]> {
+  let summary = "Calculate product with tridiagonal matrix.";
+
+  let description = [{
+Calculates product of two matrices, where left matrix is a tridiagonal matrix.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing superdiagonals of
+tri-diagonal matrices to the left of multiplication. Last element is ignored.}]>:$superdiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing main diagonals of tri-diagonal
+matrices to the left of multiplication.}]>:$maindiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., 1, M]`, representing subdiagonals of tri-diagonal
+matrices to the left of multiplication. First element is ignored.}]>:$subdiag,
+    Arg<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., M, N]`, representing MxN matrices to the right of
+multiplication.}]>:$rhs
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Complex128, TF_Complex64, TF_Float32, TF_Float64]>, [{Tensor of shape `[..., M, N]` containing the product.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TridiagonalSolveOp : TF_Op<"TridiagonalSolve", [NoSideEffect]> {
   let summary = "Solves tridiagonal systems of equations.";
 

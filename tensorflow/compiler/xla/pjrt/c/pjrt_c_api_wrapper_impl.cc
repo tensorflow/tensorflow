@@ -20,6 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/shape.h"
+
+// TODO(b/238999986): Remove this.
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+
 namespace pjrt {
 
 xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
@@ -330,6 +335,27 @@ PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args) {
 }
 
 // ---------------------------------- Buffers ----------------------------------
+// TODO(b/238999986): Replace this with decomposed shape methods.
+PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
+    PJRT_Buffer_OnDeviceTrimmedShape_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_OnDeviceTrimmedShape_Args",
+      PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE, args->struct_size));
+
+  const xla::Shape& shape = args->buffer->buffer->on_device_shape();
+  args->element_type = shape.element_type();
+  ApiConverter::CreateVector(shape.dimensions(), &args->dimensions);
+  ApiConverter::CreateVector(shape.dynamic_dimensions(),
+                             &args->dynamic_dimensions);
+
+  if (shape.has_layout()) {
+    ApiConverter::ToC(shape.layout(), &args->layout);
+  } else {
+    args->layout.format = xla::INVALID_FORMAT;
+  }
+
+  return nullptr;
+}
 
 PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args) {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Quantization as a function library with XLA Ops for Dynamic PTQ
+// Quantization as a function library with TF Ops for Dynamic PTQ
 //
 // Internal functions should be marked as private. They will be inlined and
 // deleted in `InsertQuantizedFunctionsPass`.

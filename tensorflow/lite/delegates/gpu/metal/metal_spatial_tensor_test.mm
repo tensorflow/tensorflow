@@ -50,13 +50,15 @@ absl::Status TensorBHWCTest(const BHWC& shape, const TensorDescriptor& descripto
     // val = [0, 1];
     const double val = static_cast<double>(i) / static_cast<double>(tensor_cpu.data.size() - 1);
     double transformed_val = sin(val * 2.0 * M_PI) * 256.0;
-    if (descriptor.data_type == DataType::INT16 || descriptor.data_type == DataType::UINT16) {
+    if (descriptor.GetDataType() == DataType::INT16 ||
+        descriptor.GetDataType() == DataType::UINT16) {
       transformed_val *= 256.0;
     }
-    if (descriptor.data_type == DataType::INT32 || descriptor.data_type == DataType::UINT32) {
+    if (descriptor.GetDataType() == DataType::INT32 ||
+        descriptor.GetDataType() == DataType::UINT32) {
       transformed_val *= 256.0 * 256.0 * 256.0 * 256.0;
     }
-    if (descriptor.data_type == DataType::FLOAT16) {
+    if (descriptor.GetDataType() == DataType::FLOAT16) {
       transformed_val = half(transformed_val);
     }
     tensor_cpu.data[i] = transformed_val;
@@ -119,13 +121,15 @@ absl::Status TensorBHWDCTest(const BHWDC& shape, const TensorDescriptor& descrip
     // val = [0, 1];
     const double val = static_cast<double>(i) / static_cast<double>(tensor_cpu.data.size() - 1);
     double transformed_val = sin(val * 2.0 * M_PI) * 256.0;
-    if (descriptor.data_type == DataType::INT16 || descriptor.data_type == DataType::UINT16) {
+    if (descriptor.GetDataType() == DataType::INT16 ||
+        descriptor.GetDataType() == DataType::UINT16) {
       transformed_val *= 256.0;
     }
-    if (descriptor.data_type == DataType::INT32 || descriptor.data_type == DataType::UINT32) {
+    if (descriptor.GetDataType() == DataType::INT32 ||
+        descriptor.GetDataType() == DataType::UINT32) {
       transformed_val *= 256.0 * 256.0 * 256.0 * 256.0;
     }
-    if (descriptor.data_type == DataType::FLOAT16) {
+    if (descriptor.GetDataType() == DataType::FLOAT16) {
       transformed_val = half(transformed_val);
     }
     tensor_cpu.data[i] = transformed_val;

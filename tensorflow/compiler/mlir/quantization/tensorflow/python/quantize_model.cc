@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -56,8 +57,8 @@ namespace quantization {
 namespace internal {
 
 tensorflow::Status PreprocessAndFreezeGraph(
-    mlir::ModuleOp module, mlir::MLIRContext *context,
-    llvm::Optional<tensorflow::Session *> session) {
+    mlir::ModuleOp module, mlir::MLIRContext* context,
+    llvm::Optional<tensorflow::Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
@@ -92,13 +93,19 @@ tensorflow::Status PreprocessAndFreezeGraph(
   return OkStatus();
 }
 
-absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
-                                          absl::string_view exported_names_str,
-                                          absl::string_view tags) {
+absl::StatusOr<GraphDef> QuantizeQATModel(
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::string& quant_opts_serialized) {
   const std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
   std::vector<std::string> exported_names_vec =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
+  QuantizationOptions quantization_options;
+  if (!quantization_options.ParseFromString(quant_opts_serialized)) {
+    return absl::InternalError(
+        "Failed to parse QuantizationOptions from string.");
+  }
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
@@ -145,7 +152,8 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
   // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
+      mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
+      quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -177,8 +185,8 @@ absl::StatusOr<GraphDef> QuantizeQATModel(absl::string_view saved_model_path,
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags) {
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags) {
   const std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
   std::vector<std::string> exported_names_vec =
@@ -249,12 +257,18 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags) {
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::string& quant_opts_serialized) {
   const std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
   std::vector<std::string> exported_names_vec =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
+  QuantizationOptions quantization_options;
+  if (!quantization_options.ParseFromString(quant_opts_serialized)) {
+    return absl::InternalError(
+        "Failed to parse QuantizationOptions from string.");
+  }
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
@@ -288,7 +302,8 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kPostTrainingQuantization));
+      mlir::quant::QuantizationMethod::kPostTrainingQuantization,
+      quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
@@ -320,12 +335,18 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
 }
 
 absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags) {
+    const absl::string_view saved_model_path,
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const std::string& quant_opts_serialized) {
   const std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
   std::vector<std::string> exported_names_vec =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
+  QuantizationOptions quantization_options;
+  if (!quantization_options.ParseFromString(quant_opts_serialized)) {
+    return absl::InternalError(
+        "Failed to parse QuantizationOptions from string.");
+  }
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
@@ -367,7 +388,8 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass());
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
-      mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
+      mlir::quant::QuantizationMethod::kDynamicRangeQuantization,
+      quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
       mlir::quant::QuantizationMethod::kDynamicRangeQuantization));
   pm.addPass(mlir::createSymbolDCEPass());

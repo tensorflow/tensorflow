@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <stddef.h>
 
+// TODO(b/238999986): Remove this.
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
 
@@ -371,6 +374,26 @@ typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
 
 // ---------------------------------- Buffers ----------------------------------
 
+// This trimmed shape doesn't have any Tuple information. In case of Tuple,
+// assert is triggered from the C API  Client.
+// TODO(b/238999986): This is a temporary solution. Remove this later.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  int element_type;             // out
+  Int64List dimensions;         // out
+  BoolList dynamic_dimensions;  // out
+  XLA_Layout layout;            // out
+} PJRT_Buffer_OnDeviceTrimmedShape_Args;
+const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
+
+// Return the trimmed shape from PjRtBuffer.
+// TODO(b/238999986): Replace this with decomposed shape methods.
+typedef PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
+    PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
+
 typedef struct {
   size_t struct_size;
   void* priv;
@@ -458,6 +481,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);

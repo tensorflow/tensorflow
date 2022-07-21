@@ -173,17 +173,8 @@ class TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
 
-  absl::Status PerformGetPtrWithSliceOffsetSelector(
-      const std::vector<std::string>& args, std::string* result) const;
-
-  absl::Status PerformGetWHOffsetSelector(const std::vector<std::string>& args,
-                                          std::string* result) const;
-
   absl::Status PerformGetHandleSelector(const std::vector<std::string>& args,
                                         std::string* result) const;
-
-  std::string DeclareAddress(const std::string& var_name,
-                             const std::string& address) const;
 
   std::string StorageTypeToAddressType() const;
 
@@ -275,6 +266,13 @@ class TensorDescriptor : public GPUObjectDescriptor {
   BHWDC shape_;
   std::vector<uint8_t> data_;
 };
+
+TensorDescriptor CreateBhwcTensorDescriptor(DataType data_type,
+                                            TensorStorageType storage_type,
+                                            const BHWC& shape);
+TensorDescriptor CreateHwcTensorDescriptor(DataType data_type,
+                                           TensorStorageType storage_type,
+                                           const HWC& shape);
 
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {

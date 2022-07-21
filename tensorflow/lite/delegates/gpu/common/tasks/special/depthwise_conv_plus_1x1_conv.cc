@@ -234,8 +234,8 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
                &elementwise_code);
     for (int d = 0; d < intermediate_depth; ++d) {
       const std::string var_name = "dw_res_" + std::to_string(d);
-      const std::string elementwise_new_code =
-          absl::StrReplaceAll(elementwise_code, {{"in_out_value", var_name}});
+      const std::string elementwise_new_code = absl::StrReplaceAll(
+          elementwise_code, {{"in_value", var_name}, {"out_value", var_name}});
       c += "  {  " + elementwise_new_code + "  }\n";
     }
   }

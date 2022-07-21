@@ -1028,6 +1028,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

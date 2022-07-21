@@ -260,6 +260,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::TopKWithUniqueOp>(),
     TypeID::get<TF::TransposeOp>(),
     TypeID::get<TF::TridiagonalSolveOp>(),
+    TypeID::get<TF::TridiagonalMatMulOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::TruncateModOp>(),
