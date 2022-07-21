@@ -613,7 +613,7 @@ unsigned potentiallyComplexBitwidth(Type type) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterOp::verify() {
-  if (failed(mlir::hlo::verifyReplicaGroups(*this, /*isUniformSized=*/true)))
+  if (failed(mlir::hlo::verifyReplicaGroups(*this, /*is_uniform_sized=*/true)))
     return failure();
   auto operandType = operand().getType().cast<TensorType>();
   bool operandTypeRanked = operandType.isa<RankedTensorType>();
@@ -628,9 +628,9 @@ LogicalResult ReduceScatterOp::verify() {
 
   return mlir::hlo::verifyReduceScatter(
       *this,
-      /*operandTypes=*/{operand().getType()},
-      /*resultTypes=*/{getType()},
-      /*scatterDimension=*/scatter_dimension());
+      /*operand_types=*/{operand().getType()},
+      /*result_types=*/{getType()},
+      /*scatter_dimension=*/scatter_dimension());
 }
 
 //===----------------------------------------------------------------------===//
