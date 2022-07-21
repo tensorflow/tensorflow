@@ -338,7 +338,7 @@ class SliceTest(test.TestCase):
     slices = []
     for i in range(len(input_shape)):
       slices.append(slice(slice_begin[i], slice_begin[i] + slice_size[i]))
-    np_ans[tuple(slices)] = grads
+    np_ans[slices] = grads
 
     self.assertAllClose(np_ans, result)
 
@@ -363,7 +363,7 @@ class SliceTest(test.TestCase):
     slices = []
     for i in range(len(input_shape)):
       slices.append(slice(slice_begin[i], slice_begin[i] + slice_size[i]))
-    np_ans[tuple(slices)] = grads
+    np_ans[slices] = grads
 
     self.assertAllClose(np_ans, result)
 
