@@ -155,7 +155,7 @@ let classificationResults = try classifier.classify(mlImage: mlImage)
 
 ```objc
 // Imports
-#import <TensorFlowLiteTaskVision/TFLTaskVision.h>
+#import <TensorFlowLiteTaskVision/TensorFlowLiteTaskVision.h>
 
 // Initialization
 NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"birds_V1" ofType:@"tflite"];
