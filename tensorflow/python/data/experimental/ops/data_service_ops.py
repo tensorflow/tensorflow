@@ -45,6 +45,7 @@ _PARALLEL_EPOCHS = "parallel_epochs"
 _DISTRIBUTED_EPOCH = "distributed_epoch"
 
 # TODO(b/176933539): Use the regular import.
+# TODO(b/238903802): Use TypeSpec serialization methods directly.
 nested_structure_coder = lazy_loader.LazyLoader(
     "nested_structure_coder", globals(),
     "tensorflow.python.saved_model.nested_structure_coder")
