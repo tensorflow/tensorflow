@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_mobile",
@@ -22,7 +23,7 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//tensorflow/core/tfrt/...",
+        "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
     ],
@@ -83,14 +84,27 @@ cc_library(
 
 cc_library(
     name = "cost_recorder",
+    srcs = ["cost_recorder.cc"],
     hdrs = ["cost_recorder.h"],
-    visibility = [
-        "//tensorflow/core/runtime_fallback/kernel:__pkg__",
-    ],
     deps = [
+        ":op_cost_map_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_recorder_test",
+    srcs = ["cost_recorder_test.cc"],
+    deps = [
+        ":cost_recorder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -113,4 +127,10 @@ tf_cuda_cc_test(
         ],
         [],
     ),
+)
+
+tf_proto_library(
+    name = "op_cost_map_proto",
+    srcs = ["op_cost_map.proto"],
+    cc_api_version = 2,
 )

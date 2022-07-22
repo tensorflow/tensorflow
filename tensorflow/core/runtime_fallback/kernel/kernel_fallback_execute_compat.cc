@@ -544,10 +544,10 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
   }
   if (is_cost_measurement_enabled) {
     op_chain->AndThen([run_start_time, exec_ctx, frame] {
-      auto run_duration = Env::Default()->NowMicros() - run_start_time;
+      auto execution_time = Env::Default()->NowMicros() - run_start_time;
       exec_ctx.host()
           ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_name().GetValue(), run_duration);
+          .RecordCost(frame.op_name().GetValue(), execution_time);
     });
   }
 }
