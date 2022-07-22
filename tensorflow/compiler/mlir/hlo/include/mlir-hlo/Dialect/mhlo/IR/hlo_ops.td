@@ -324,10 +324,10 @@ def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
   let summary = "Not operator";
   let description = [{
-    Returns `!operand` element-wise.
+    Returns biwise-NOT of `operand` element-wise. The input tensor must be
+    of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+    Note: For boolean tensor, the bitwise-NOT is equivalent to logical-NOT.
   }];
     let hasFolder = 1;
 }
@@ -662,7 +662,7 @@ def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
 //===----------------------------------------------------------------------===//
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
-class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
+class HLO_BinaryBiwiseOrLogicalElementwiseOp<string mnemonic> :
         HLO_BinaryElementwiseOp<mnemonic,
           [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let arguments = (ins
@@ -673,33 +673,33 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
   let hasFolder = 1;
 }
 
-def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and"> {
-  let summary = "Logical and";
+def HLO_AndOp: HLO_BinaryBiwiseOrLogicalElementwiseOp<"and"> {
+  let summary = "And operator";
   let description = [{
-    Returns `logical_and(lhs, rhs)` element-wise.
+    Returns biwise-AND of `lhs` and `rhs` element-wise. The input tensors must
+    be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+    Note: For boolean tensor, the bitwise-AND is equivalent to logical-AND.
   }];
 }
 
-def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or"> {
-  let summary = "Logical or";
+def HLO_OrOp: HLO_BinaryBiwiseOrLogicalElementwiseOp<"or"> {
+  let summary = "Or operator";
   let description = [{
-    Returns `logical_or(lhs, rhs)` element-wise.
+    Returns biwise-OR of `lhs` and `rhs` element-wise. The input tensors must
+    be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+    Note: For boolean tensor, the bitwise-OR is equivalent to logical-OR.
   }];
 }
 
-def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor"> {
-  let summary = "Logical xor";
+def HLO_XorOp : HLO_BinaryBiwiseOrLogicalElementwiseOp<"xor"> {
+  let summary = "Xor operator";
   let description = [{
-    Returns `logical_xor(lhs, rhs)` element-wise.
+    Returns biwise-XOR of `lhs` and `rhs` element-wise. The input tensors must
+    be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+    Note: For boolean tensor, the bitwise-XOR is equivalent to logical-XOR.
   }];
 }
 
