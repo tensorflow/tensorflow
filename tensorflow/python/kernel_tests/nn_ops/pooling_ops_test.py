@@ -772,6 +772,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @parameterized.parameters(
+      GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
+  @test_util.run_deprecated_v1
+  def testMaxPoolInvalidFilterSize(self, **kwargs):
+    with self.cached_session(use_gpu=test.is_gpu_available()):
+      t = constant_op.constant(1.0, shape=[1, 1, 1, 1])
+      with self.assertRaisesRegex(
+          (errors_impl.InvalidArgumentError, ValueError),
+          "Negative dimension size"):
+        t = self.evaluate(
+            nn_ops.max_pool(t, ksize=[1, 1, 2, 1], strides=1, padding="VALID"))
+
   # Tests for DepthwiseMaxPooling on CPU only.
   @parameterized.parameters(
       GetTestConfigsDicts(
