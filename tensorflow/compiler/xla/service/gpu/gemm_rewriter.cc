@@ -281,13 +281,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     config.set_beta(1.0);
-    CHECK_EQ(gemm->operand_count(), 2);
-    std::unique_ptr<HloInstruction> fused_op = gemm->CloneWithNewOperands(
-        instr->shape(), {
-                            gemm->mutable_operand(0),
-                            gemm->mutable_operand(1),
-                            MaybeConstantFoldBias(bias),
-                        });
+
+    std::vector<HloInstruction *> operands(gemm->operands().begin(),
+                                           gemm->operands().end());
+    operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
+
+    std::unique_ptr<HloInstruction> fused_op =
+        gemm->CloneWithNewOperands(instr->shape(), operands);
+
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
     if (IsCublasGemm(*fused_op)) {
       // Force bias input to alias with output, as GEMM operates in-place.
