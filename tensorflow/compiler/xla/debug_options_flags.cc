@@ -51,6 +51,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
+  opts.set_xla_cpu_use_jitrt(false);
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
   // Run all GPU work on one stream by default.  Using multiple streams
@@ -448,6 +449,10 @@ static void AllocateFlags() {
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       flag_values->xla_cpu_use_acl(),
       "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_use_jitrt",
+      bool_setter_for(&DebugOptions::set_xla_cpu_use_jitrt),
+      flag_values->xla_cpu_use_jitrt(), "Enable JitRt in the CPU backend."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(

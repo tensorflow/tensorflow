@@ -112,6 +112,9 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
+  // Enable JitRt in the CPU backend.
+  bool xla_cpu_use_jitrt = 177;
+
   // Maximum kernel unroll factor for the GPU backend.
   int32 xla_gpu_max_kernel_unroll_factor = 98;
 
@@ -432,7 +435,7 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   bool xla_cpu_strict_dot_conv_math = 175;
 
-  // Next id: 177
+  // Next id: 178
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
