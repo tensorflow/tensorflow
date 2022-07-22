@@ -73,14 +73,14 @@ struct GatherIsTorchIndexSelect : public OpRewritePattern<GatherOp> {
     }
 
     // Offset dimensions should be the defaults.
-    if (dimensionNumbers.getOffsetDims().size() !=
+    if (static_cast<int64_t>(dimensionNumbers.getOffsetDims().size()) !=
         resultTy.getRank() - indexVectorDim) {
       return rewriter.notifyMatchFailure(
           gather, "offset_dims.size not operand rank minus index_vector_dim");
     }
 
     for (const auto &it : llvm::enumerate(dimensionNumbers.getOffsetDims())) {
-      if ((it.index() + indexVectorDim) != it.value()) {
+      if (static_cast<int64_t>(it.index() + indexVectorDim) != it.value()) {
         return rewriter.notifyMatchFailure(
             gather, "offset_dims != [index_vector_dim, result.rank)");
       }

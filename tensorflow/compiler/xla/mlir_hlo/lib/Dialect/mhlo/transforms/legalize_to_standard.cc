@@ -53,7 +53,7 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhsType.getElementType().isSignlessInteger())
       return failure();
 
-    Optional<arith::CmpIPredicate> comparePredicate;
+    Optional<arith::CmpIPredicate> comparePredicate = llvm::None;
     switch (op.comparison_direction()) {
       case ComparisonDirection::EQ:
         comparePredicate = arith::CmpIPredicate::eq;
@@ -73,8 +73,6 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
       case ComparisonDirection::GE:
         comparePredicate = arith::CmpIPredicate::sge;
         break;
-      default:
-        comparePredicate = llvm::None;
     }
 
     if (!comparePredicate.has_value()) return failure();
@@ -103,7 +101,7 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhsType.getElementType().isa<FloatType>())
       return failure();
 
-    Optional<arith::CmpFPredicate> comparePredicate;
+    Optional<arith::CmpFPredicate> comparePredicate = llvm::None;
     switch (op.comparison_direction()) {
       case ComparisonDirection::EQ:
         comparePredicate = arith::CmpFPredicate::OEQ;
@@ -123,8 +121,6 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
       case ComparisonDirection::GE:
         comparePredicate = arith::CmpFPredicate::OGE;
         break;
-      default:
-        comparePredicate = llvm::None;
     }
 
     if (!comparePredicate.has_value()) return failure();

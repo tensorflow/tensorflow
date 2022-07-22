@@ -417,7 +417,7 @@ SmallVector<int64_t> inferWindowOutputShape(
          "Size of window dimensions must match the size of base shape.");
 
   SmallVector<int64_t> outputDimensions(window.size());
-  for (int64_t i = 0; i < window.size(); ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(window.size()); ++i) {
     if (isDynamicDimSize(baseShape[i]) || isDynamicDimSize(window[i].size)) {
       outputDimensions[i] = ShapedType::kDynamicSize;
     } else {
@@ -469,7 +469,7 @@ LogicalResult verifyReducerShape(
     SmallVectorImpl<TensorType>& accumulatorSubShapes) {
   // Check that the number of reduction-region arguments matches with that of
   // reduce-op's arguments.
-  if (block.getArguments().size() != numInputs * 2)
+  if (static_cast<int64_t>(block.getArguments().size()) != numInputs * 2)
     return mlir::emitError(loc)
            << "Reduction-region must take " << numInputs * 2
            << " parameters, but takes " << block.getArguments().size()
@@ -482,7 +482,8 @@ LogicalResult verifyReducerShape(
 
   // Check that the reduction-region returns list- of tensors.
   // The number of result-tensors must match the `numInputs`.
-  if (block.getTerminator()->getOperands().size() != numInputs)
+  if (static_cast<int64_t>(block.getTerminator()->getOperands().size()) !=
+      numInputs)
     return mlir::emitError(loc)
            << "Reduction-region here must produce " << numInputs
            << " tensors, but produces "
@@ -589,13 +590,13 @@ LogicalResult verifyReducerShape(
 
     int64_t argShapeIdx = 0;
     for (int64_t outputShapeIdx = 0;
-         outputShapeIdx < allowedDimensions.size() &&
-         argShapeIdx < argShape.size();
+         outputShapeIdx < static_cast<int64_t>(allowedDimensions.size()) &&
+         argShapeIdx < static_cast<int64_t>(argShape.size());
          outputShapeIdx++)
       if (allowedDimensions[outputShapeIdx] == argShape[argShapeIdx])
         argShapeIdx++;
 
-    if (argShapeIdx != argShape.size())
+    if (argShapeIdx != static_cast<int64_t>(argShape.size()))
       return mlir::emitError(loc)
              << "The shape of reduction-region's argument at index "
              << numInputs + inputIdx
@@ -1209,7 +1210,7 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 // P3. Element types agree with fft_type
 LogicalResult FftOp::verify() {
   // P1.
-  auto fftRank = fft_length().size();
+  int64_t fftRank = fft_length().size();
   if (fftRank > 3 || fftRank < 1) {
     return emitOpError() << "rank must be between 1 and 3, but got " << fftRank
                          << ".";
@@ -1219,7 +1220,7 @@ LogicalResult FftOp::verify() {
   auto operandType = operand().getType().dyn_cast<RankedTensorType>();
   if (!operandType) return success();
   auto operandShape = operandType.getShape();
-  if (operandShape.size() < fftRank) {
+  if (static_cast<int64_t>(operandShape.size()) < fftRank) {
     return emitOpError() << "operand rank must be greater than fft rank of "
                          << fftRank << " for operand of type " << operandType
                          << ".";
@@ -1308,7 +1309,8 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
 
     // TODO(tberghammer): Remove when the verifier catches this case what is
     // invalid if all previous condition holds.
-    if (index.getNumElements() != dnums.getStartIndexMap().size())
+    if (index.getNumElements() !=
+        static_cast<int64_t>(dnums.getStartIndexMap().size()))
       return failure();
 
     RankedTensorType operandType =
@@ -1452,14 +1454,14 @@ static LogicalResult verifyGather(
         effectiveDimSize = 1;
       else
         effectiveDimSize = startIndicesShape.getDimSize(indexVectorDim);
-
       // P4.
-      if (effectiveDimSize != startIndexMap.size())
-        return errorEmitter()
-               << "start_index_map size (" << startIndexMap.size()
-               << ") is not equal to size of index dimension ("
-               << indexVectorDim << ") of start_indices (" << effectiveDimSize
-               << ")";
+      if (effectiveDimSize !=
+          static_cast<int64_t>(dimensionNumbers.getStartIndexMap().size()))
+        return errorEmitter() << "start_index_map size ("
+                              << dimensionNumbers.getStartIndexMap().size()
+                              << ") is not equal to size of index dimension ("
+                              << indexVectorDim << ") of start_indices ("
+                              << effectiveDimSize << ")";
     }
   }
 
@@ -1586,7 +1588,7 @@ static void inferGatherShape(
     adjustedSliceSizePrefix.push_back(getSliceDim(dimIndex));
   }
   auto getAdjustedSliceDim = [&](int64_t index) -> dimTy {
-    if (index < adjustedSliceSizePrefix.size())
+    if (index < static_cast<int64_t>(adjustedSliceSizePrefix.size()))
       return adjustedSliceSizePrefix[index];
     return getSliceDim(index + collapsedSliceDims.size());
   };
@@ -1827,7 +1829,8 @@ LogicalResult IotaOp::verify() {
   if (shape.getRank() == 0) return emitOpError() << "does not support scalars.";
 
   auto iotaDimension = this->iota_dimension();
-  if (iotaDimension >= shape.getRank() || iotaDimension < 0)
+  if (static_cast<int64_t>(iotaDimension) >= shape.getRank() ||
+      iotaDimension < 0)
     return emitOpError()
            << "iota dimension cannot go beyond the output rank or be negative.";
   return success();
@@ -2310,12 +2313,12 @@ SmallVector<int64_t> inferConvolutionOpReturnShape(
   auto inputSpatialDims = op.dimension_numbers().getInputSpatialDimensions();
   auto numSpatialDims = inputSpatialDims.size();
   SmallVector<int64_t> inputSpatialDimVals(numSpatialDims);
-  for (int i = 0; i < numSpatialDims; ++i)
+  for (int64_t i = 0; i < static_cast<int64_t>(numSpatialDims); ++i)
     inputSpatialDimVals[i] = lhsType.getShape()[inputSpatialDims[i]];
 
   auto windowOutputShape = inferWindowOutputShape(inputSpatialDimVals, window);
 
-  for (int i = 0; i < window.size(); ++i)
+  for (int64_t i = 0; i < static_cast<int64_t>(window.size()); ++i)
     outputDimensions[op.dimension_numbers().getOutputSpatialDimensions()[i]] =
         windowOutputShape[i];
 
@@ -2657,7 +2660,8 @@ struct UnpackRepackSameTuple : public OpRewritePattern<TupleOp> {
     for (const auto& elementAndIdx : llvm::enumerate(op.val().drop_front(1))) {
       auto elementOp = elementAndIdx.value().getDefiningOp<GetTupleElementOp>();
       if (!elementOp ||
-          elementOp.indexAttr().getInt() != elementAndIdx.index() + 1 ||
+          elementOp.indexAttr().getInt() !=
+              static_cast<int64_t>(elementAndIdx.index() + 1) ||
           elementOp.getOperand() != tuplePredecessor)
         return failure();
     }
@@ -4445,7 +4449,7 @@ LogicalResult MapOp::verify() {
   DenseIntElementsAttr dimensions = this->dimensions();
   for (const auto& indexedValue :
        llvm::enumerate(dimensions.getValues<int64_t>())) {
-    if (indexedValue.value() != indexedValue.index())
+    if (indexedValue.value() != static_cast<int64_t>(indexedValue.index()))
       return emitOpError() << "requires monotonically increasing dimension "
                               "numbers, but got: "
                            << dimensions;
@@ -4456,7 +4460,8 @@ LogicalResult MapOp::verify() {
   // dimensions: i.e., scalar map functions.
   auto operandType = operands()[0].getType().cast<TensorType>();
   if (operandType.hasRank()) {
-    if (dimensions.size() != operandType.getShape().size())
+    if (dimensions.size() !=
+        static_cast<int64_t>(operandType.getShape().size()))
       return emitOpError()
              << "applied to a subset of dimensions currently not supported: "
                 "operand dimensions = "
@@ -4574,7 +4579,7 @@ LogicalResult ReduceWindowOp::verify() {
       convertDenseIntAttr(this->window_dimensions());
   for (const auto inputType : inputTypes) {
     if (!inputType.hasRank()) continue;
-    if (inputType.getRank() != windowDims.size())
+    if (inputType.getRank() != static_cast<int64_t>(windowDims.size()))
       return emitOpError()
              << "expects window-dimensions size == input rank, but got "
                 "window-dimensions size: "
@@ -4618,7 +4623,8 @@ LogicalResult ReduceWindowOp::verify() {
   // Check if the element-type of results match with the ones derived from
   // the reducer-block. Already ensured that  |accumulator_subshapes| ==
   // num_inputs == num_of_results.
-  for (int64_t shapeIdx = 0; shapeIdx < accumulatorSubshapes.size();
+  for (int64_t shapeIdx = 0;
+       shapeIdx < static_cast<int64_t>(accumulatorSubshapes.size());
        shapeIdx++) {
     if (accumulatorSubshapes[shapeIdx].getElementType() !=
         resultTensorTypes[shapeIdx].getElementType()) {
@@ -4662,9 +4668,9 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   auto arg0 = computeOp->getOperand(0).dyn_cast<BlockArgument>();
   auto arg1 = computeOp->getOperand(1).dyn_cast<BlockArgument>();
   if (!arg0 || !arg1) return nullptr;
-  int arg0Num = arg0.getArgNumber();
-  int arg1Num = arg1.getArgNumber();
-  size_t otherArgIndex = resultIndex + operands().size();
+  int64_t arg0Num = arg0.getArgNumber();
+  int64_t arg1Num = arg1.getArgNumber();
+  int64_t otherArgIndex = resultIndex + operands().size();
   if (arg0Num == resultIndex && arg1Num == otherArgIndex) return computeOp;
   if (arg0Num == otherArgIndex && arg1Num == resultIndex &&
       computeOp->hasTrait<mlir::OpTrait::IsCommutative>())
@@ -5174,7 +5180,8 @@ LogicalResult ReduceOp::verify() {
                        << getResults().size() << " vs "
                        << accumulatorSubShapes.size() << " (expected)";
 
-  for (int64_t shapeIdx = 0; shapeIdx < accumulatorSubShapes.size();
+  for (int64_t shapeIdx = 0;
+       shapeIdx < static_cast<int64_t>(accumulatorSubShapes.size());
        shapeIdx++) {
     // The result-type is enforced as "TensorType" by ODS.
     auto opResultType = getResult(shapeIdx).getType().cast<TensorType>();
@@ -5657,7 +5664,8 @@ OpFoldResult padOpFoldHelper(DenseElementsAttr input, DenseElementsAttr padding,
                       llvm::ArrayRef<int64_t> shape) {
     for (int64_t i = index.size() - 1; i >= 0; --i) {
       ++index[i];
-      if (index[i] < shape[i]) return;
+      if (static_cast<int64_t>(index[i]) < shape[i])
+        return;
       index[i] = 0;
     }
   };
@@ -7098,7 +7106,7 @@ static LogicalResult sortOpInferDefaultDimension(SortOp op,
   if (!ty) {
     return failure();
   }
-  if (op.dimension() != -1) {
+  if (static_cast<int64_t>(op.dimension()) != -1) {
     return failure();
   }
 
@@ -7365,7 +7373,8 @@ LogicalResult GetTupleElementOp::inferReturnTypes(
 
   auto indexAttr = attributes.get("index").cast<IntegerAttr>();
   auto index = indexAttr.getInt();
-  if (index < 0 || index >= tupleType.size()) return failure();
+  if (index < 0 || index >= static_cast<int64_t>(tupleType.size()))
+    return failure();
 
   inferredReturnTypes.push_back(tupleType.getType(index));
   return success();
@@ -7644,7 +7653,7 @@ LogicalResult SelectAndScatterOp::verify() {
   SmallVector<int64_t> windowDims =
       convertDenseIntAttr(this->window_dimensions());
   if (operandType.hasRank()) {
-    if (operandType.getRank() != windowDims.size())
+    if (operandType.getRank() != static_cast<int64_t>(windowDims.size()))
       return emitOpError()
              << "expects window-dimensions size == operand rank, but got "
                 "window-dimensions size: "
@@ -7749,7 +7758,7 @@ LogicalResult validateScatterDimensionNumbers(
   // P3.
   if (operandTypeRanked) {
     auto windowSize = updateWindowDims.size() + insertedWindowDims.size();
-    if (operandType.getRank() != windowSize)
+    if (operandType.getRank() != static_cast<int64_t>(windowSize))
       return mlir::emitError(loc)
              << "Expects rank-of operand to match "
                 "size-of('update_window_dims')  + "
@@ -7763,7 +7772,7 @@ LogicalResult validateScatterDimensionNumbers(
   auto indexVectorDim = dimNumbers.getIndexVectorDim();
   if (scatterIndicesTypeRanked) {
     if (!isDynamicDimSize(scatterIndicesShape[indexVectorDim]) &&
-        scatterDimsToOperandDims.size() !=
+        static_cast<int64_t>(scatterDimsToOperandDims.size()) !=
             scatterIndicesShape[dimNumbers.getIndexVectorDim()])
       return mlir::emitError(loc)
              << "Scatter op has " << scatterDimsToOperandDims.size()
@@ -7775,7 +7784,8 @@ LogicalResult validateScatterDimensionNumbers(
   }
 
   if (operandTypeRanked) {
-    for (int i = 0; i < scatterDimsToOperandDims.size(); ++i) {
+    for (int64_t i = 0;
+         i < static_cast<int64_t>(scatterDimsToOperandDims.size()); ++i) {
       int64_t scatterDimToOperandDim = scatterDimsToOperandDims[i];
       if (scatterDimToOperandDim < 0 ||
           scatterDimToOperandDim >= operandType.getRank())
@@ -7843,7 +7853,7 @@ LogicalResult ScatterOp::verify() {
   Block& block = update_computation().front();
   SmallVector<TensorType> accumulatorSubshapes;
   SmallVector<TensorType> inputTypes, initValueTypes;
-  for (int i = 0; i < numOperands; i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     inputTypes.push_back(operandTypes[i]);
     initValueTypes.push_back(
         RankedTensorType::get({}, updatesTypes[i].getElementType()));
@@ -7860,11 +7870,12 @@ LogicalResult ScatterOp::verify() {
   if (scatterIndicesTypeRanked) {
     expandedScatterIndicesShape =
         llvm::to_vector(scatterIndicesType.getShape());
-    if (expandedScatterIndicesShape.size() == indexVectorDim)
+    if (static_cast<int64_t>(expandedScatterIndicesShape.size()) ==
+        indexVectorDim)
       expandedScatterIndicesShape.push_back(1);
   }
 
-  for (int i = 0; i < numOperands; i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     if (scatterIndicesTypeRanked && updatesTypes[i].isa<RankedTensorType>()) {
       int64_t expectedUpdatesRank =
           expandedScatterIndicesShape.size() - 1 + updateWindowDims.size();
@@ -7881,7 +7892,7 @@ LogicalResult ScatterOp::verify() {
   }
 
   // P4.
-  for (int i = 0; i < numOperands; i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     if (failed(validateScatterDimensionNumbers(
             operandTypes[i], expandedScatterIndicesShape, updatesTypes[i],
             operandTypes[i].isa<RankedTensorType>(), scatterIndicesTypeRanked,
@@ -7891,7 +7902,7 @@ LogicalResult ScatterOp::verify() {
   }
 
   // P5.
-  for (int i = 0; i < numOperands; i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     if (updatesTypes[i].isa<RankedTensorType>()) {
       auto updatesShape = updatesTypes[i].getShape();
       if (operandTypes[i].isa<RankedTensorType>()) {
@@ -7904,7 +7915,8 @@ LogicalResult ScatterOp::verify() {
         const auto dimensionsSize = operandTypes[i].getRank();
         maxUpdateSliceSizes.reserve(dimensionsSize);
         for (int i = 0; i < dimensionsSize; ++i) {
-          if (insertedDimsSeen < insertedWindowDims.size() &&
+          if (insertedDimsSeen <
+                  static_cast<int64_t>(insertedWindowDims.size()) &&
               insertedWindowDims[insertedDimsSeen] == i) {
             ++insertedDimsSeen;
           } else {
@@ -7912,7 +7924,8 @@ LogicalResult ScatterOp::verify() {
           }
         }
 
-        for (int i = 0; i < updateWindowDims.size(); ++i) {
+        for (int64_t i = 0; i < static_cast<int64_t>(updateWindowDims.size());
+             ++i) {
           auto updateWindowDim = updateWindowDims[i];
 
           if (isDynamicDimSize(updatesShape[updateWindowDim]) ||
@@ -7935,7 +7948,8 @@ LogicalResult ScatterOp::verify() {
       // P6.
       if (scatterIndicesTypeRanked) {
         int64_t scatterDimsSeen = 0;
-        for (int64_t i = 0; i < updatesShape.size(); ++i) {
+        for (int64_t i = 0; i < static_cast<int64_t>(updatesShape.size());
+             ++i) {
           bool isUpdateWindowDim = std::binary_search(
               updateWindowDims.begin(), updateWindowDims.end(), i);
 
@@ -7964,7 +7978,7 @@ LogicalResult ScatterOp::verify() {
   }
 
   // P7.
-  for (int i = 0; i < numOperands; i++) {
+  for (int64_t i = 0; i < static_cast<int64_t>(numOperands); i++) {
     if (!compatibleShapeAndElementType(operandTypes[i], getResult(i).getType()))
       return emitOpError()
              << "expects the return type to be same as the operand type: "
@@ -8050,7 +8064,8 @@ LogicalResult ScatterOp::fold(
                       llvm::ArrayRef<int64_t> shape) {
     for (int64_t i = index.size() - 1; i >= 0; --i) {
       ++index[i];
-      if (index[i] < shape[i]) return true;
+      if (index[i] < static_cast<unsigned long>(shape[i]))
+        return true;
       index[i] = 0;
     }
     return false;
@@ -8066,18 +8081,19 @@ LogicalResult ScatterOp::fold(
   llvm::SmallVector<uint64_t, 8> updateIndex(updateType.getRank(), 0);
   llvm::SmallVector<uint64_t, 8> indexIndex;
   indexIndex.reserve(indexType.getRank());
-  llvm::SmallVector<uint64_t, 8> baseIndex;
+  llvm::SmallVector<int64_t, 8> baseIndex;
   baseIndex.reserve(baseType.getRank());
   do {
     // Compute the index for the slice of the indices tensor for this update
     // value.
     indexIndex.clear();
     if (indexVectorDim == 0) indexIndex.push_back(0);
-    for (int64_t i = 0; i < updateIndex.size(); ++i) {
+    for (int64_t i = 0; i < static_cast<int64_t>(updateIndex.size()); ++i) {
       if (llvm::count(scatter_dimension_numbers().getUpdateWindowDims(), i) ==
           0)
         indexIndex.push_back(updateIndex[i]);
-      if (indexIndex.size() == indexVectorDim) indexIndex.push_back(0);
+      if (static_cast<int64_t>(indexIndex.size()) == indexVectorDim)
+        indexIndex.push_back(0);
     }
 
     // Compute the index for the given update value in the base tensor.
@@ -8448,7 +8464,7 @@ static ParseResult parseDimsWithMinimumElements(AsmParser& parser,
                                                 SmallVector<int64_t>& dims,
                                                 int minElements) {
   if (failed(parseDims(parser, dims))) return failure();
-  if (dims.size() < minElements)
+  if (static_cast<int64_t>(dims.size()) < minElements)
     return parser.emitError(parser.getCurrentLocation())
            << "expected at least " << minElements << " element(s), found "
            << dims.size();
@@ -9067,7 +9083,8 @@ static Type getTypeFromTupleIndices(Type type, ArrayRef<int64_t> indices) {
   Type current = type;
   for (auto index : indices) {
     TupleType tupleType = current.dyn_cast<TupleType>();
-    if (!tupleType || index >= tupleType.size()) return {};
+    if (!tupleType || index >= static_cast<int64_t>(tupleType.size()))
+      return {};
     current = tupleType.getType(index);
   }
   return current;
@@ -9097,7 +9114,7 @@ static LogicalResult verifyArgResultAliasAttr(StringAttr attrName,
   FunctionOpInterface funcOp = cast<FunctionOpInterface>(op);
   ArrayRef<Type> argTypes = funcOp.getArgumentTypes();
   ArrayRef<Type> resultTypes = funcOp.getResultTypes();
-  if (aliasAttr.getResultIndex() >= resultTypes.size())
+  if (aliasAttr.getResultIndex() >= static_cast<int64_t>(resultTypes.size()))
     return op->emitOpError()
            << "attribute " << attrName
            << " result index is out of range, must be <" << resultTypes.size();

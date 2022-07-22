@@ -34,8 +34,9 @@ namespace gml_st {
 namespace {
 
 bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
-  if (expectedSize != -1 && array.size() != expectedSize) return false;
-  for (int i = 0, e = array.size(); i < e; ++i) {
+  if (expectedSize != -1 && static_cast<int>(array.size()) != expectedSize)
+    return false;
+  for (int64_t i = 0, e = array.size(); i < e; ++i) {
     if (i != array[i]) return false;
   }
   return true;

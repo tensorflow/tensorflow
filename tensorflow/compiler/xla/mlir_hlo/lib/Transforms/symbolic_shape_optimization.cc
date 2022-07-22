@@ -191,7 +191,8 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
     // Fail pattern application if there is nothing new to annotate.
     auto isEqual = [](llvm::SmallSetVector<int64_t, 4> &set,
                       DenseIntElementsAttr attr) {
-      return set.size() == attr.size() && llvm::all_of(attr, [&](auto it) {
+      return static_cast<int64_t>(set.size()) == attr.size() &&
+             llvm::all_of(attr, [&](auto it) {
                return set.count(it.getLimitedValue());
              });
     };
@@ -423,7 +424,7 @@ SymbolicProduct eliminateCommonFactors(SymbolicProduct &a, SymbolicProduct &b) {
 
   // Eliminate common symbolic factors.
   int64_t i = 0;
-  while (i < a.symbolic.size()) {
+  while (i < static_cast<int64_t>(a.symbolic.size())) {
     auto *it = llvm::find(b.symbolic, a.symbolic[i]);
     if (it != b.symbolic.end()) {
       gcd.symbolic.push_back(*it);

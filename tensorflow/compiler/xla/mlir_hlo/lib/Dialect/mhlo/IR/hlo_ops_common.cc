@@ -69,7 +69,7 @@ LogicalResult verifyReduceScatter(Operation *op, TypeRange operandTypes,
     if (!operandType.hasRank() || !resultType.hasRank()) continue;
     if (operandType.getRank() != resultType.getRank())
       return op->emitOpError() << "operand and result should have same rank";
-    if (scatterDimension >= operandType.getRank())
+    if (static_cast<int64_t>(scatterDimension) >= operandType.getRank())
       return op->emitOpError()
              << "scatter dim should be less than operand/result rank";
     if (operandType.isDynamicDim(scatterDimension) ||

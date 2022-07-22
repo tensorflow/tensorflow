@@ -74,7 +74,7 @@ void TileLoopsPass::runOnOperation() {
   SmallVector<int64_t> unrolledTile;
   if (tile_sizes_.size() == unroll_factors_.size()) {
     unrolledTile.reserve(tile_sizes_.size());
-    for (int i = 0; i < tile_sizes_.size(); ++i)
+    for (int64_t i = 0; i < static_cast<int64_t>(tile_sizes_.size()); ++i)
       unrolledTile.push_back(tile_sizes_[i] * unroll_factors_[i]);
   }
 
@@ -106,7 +106,7 @@ void TileLoopsPass::runOnOperation() {
     // unroll factor evenly divides the iteration size of the outer ploop.
     OpBuilder builder(ploop);
     Location loc = ploop.getLoc();
-    for (int i = 0; i < unrolledTile.size(); ++i) {
+    for (int64_t i = 0; i < static_cast<int64_t>(unrolledTile.size()); ++i) {
       if (!lower[i] || !upper[i] || !step[i]) continue;
       int64_t unrollFactor = unroll_factors_[i];
       int64_t difference = upper[i].value() - lower[i].value();

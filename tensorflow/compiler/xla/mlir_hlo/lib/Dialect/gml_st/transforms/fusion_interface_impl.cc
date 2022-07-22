@@ -82,7 +82,7 @@ struct LinalgGenericFusionInterface
         unsigned int rank = map.getNumResults();
         SmallVector<int64_t> permutation;
         permutation.reserve(rank);
-        for (int i = 0; i < rank; ++i) {
+        for (int i = 0; i < static_cast<int>(rank); ++i) {
           permutation.push_back(map.getPermutedPosition(i));
         }
         operandSubset = builder.create<TransposeDimsOp>(
