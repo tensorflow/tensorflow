@@ -32,9 +32,6 @@ API.
 *   The
     [Universal Sentence Encoder TFLite model from TensorFlow Hub](https://tfhub.dev/google/lite-model/universal-sentence-encoder-qa-ondevice/1)
 
-*   The
-    [MobileBERT TFLite model from TensorFlow Hub](https://tfhub.dev/tensorflow/lite-model/mobilebert/1/metadata/1)
-
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
 
