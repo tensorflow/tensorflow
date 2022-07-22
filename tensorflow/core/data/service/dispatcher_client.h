@@ -70,6 +70,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // dataset id in `dataset_id`.
   Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
+                         const std::optional<std::string>& requested_dataset_id,
                          std::string& dataset_id);
 
   // If `job_name` is set, looks up a job matching `job_name`.

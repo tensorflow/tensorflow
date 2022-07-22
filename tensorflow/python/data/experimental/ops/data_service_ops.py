@@ -800,7 +800,7 @@ def distribute(processing_mode,
       target_workers=target_workers)
 
 
-def _register_dataset(service, dataset, compression):
+def _register_dataset(service, dataset, compression, dataset_id=None):
   """Registers a dataset with the tf.data service.
 
   This transformation is similar to `register_dataset`, but supports additional
@@ -816,9 +816,15 @@ def _register_dataset(service, dataset, compression):
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    dataset_id: (Optional.) By default, tf.data service generates a unique
+      (string) ID for each registered dataset. If a `dataset_id` is provided, it
+      will use the specified ID. If a dataset with a matching ID already exists,
+      no new dataset is registered. This is useful if multiple training jobs
+      want to (re)use the same dataset for training. In this case, they can
+      register the dataset with the same dataset ID.
 
   Returns:
-    A scalar tensor of the registered dataset's id.
+    A scalar string tensor representing the dataset ID.
   """
   _validate_compression(compression)
   if isinstance(service, tuple):
@@ -845,22 +851,25 @@ def _register_dataset(service, dataset, compression):
       element_spec=encoded_spec,
       compression=_get_compression_proto(compression))
 
-  if compat.forward_compatible(2022, 8, 31):
-    register_dataset_op = gen_experimental_dataset_ops.register_dataset_v2
+  if compat.forward_compatible(2022, 8, 31) or dataset_id:
+    return gen_experimental_dataset_ops.register_dataset_v2(
+        dataset._variant_tensor,  # pylint: disable=protected-access
+        address=address,
+        protocol=protocol,
+        external_state_policy=external_state_policy.value,
+        requested_dataset_id=dataset_id,
+        metadata=metadata.SerializeToString())
   else:
-    register_dataset_op = gen_experimental_dataset_ops.register_dataset
-  dataset_id = register_dataset_op(
-      dataset._variant_tensor,  # pylint: disable=protected-access
-      address=address,
-      protocol=protocol,
-      external_state_policy=external_state_policy.value,
-      metadata=metadata.SerializeToString())
-
-  return dataset_id
+    return gen_experimental_dataset_ops.register_dataset(
+        dataset._variant_tensor,  # pylint: disable=protected-access
+        address=address,
+        protocol=protocol,
+        external_state_policy=external_state_policy.value,
+        metadata=metadata.SerializeToString())
 
 
 @tf_export("data.experimental.service.register_dataset")
-def register_dataset(service, dataset, compression="AUTO"):
+def register_dataset(service, dataset, compression="AUTO", dataset_id=None):
   """Registers a dataset with the tf.data service.
 
   `register_dataset` registers a dataset with the tf.data service so that
@@ -901,11 +910,17 @@ def register_dataset(service, dataset, compression="AUTO"):
       transferring them over the network. "AUTO" leaves the decision of how to
       compress up to the tf.data service runtime. `None` indicates not to
       compress.
+    dataset_id: (Optional.) By default, tf.data service generates a unique
+      (string) ID for each registered dataset. If a `dataset_id` is provided, it
+      will use the specified ID. If a dataset with a matching ID already exists,
+      no new dataset is registered. This is useful if multiple training jobs
+      want to (re)use the same dataset for training. In this case, they can
+      register the dataset with the same dataset ID.
 
   Returns:
-    A scalar tensor of the registered dataset's id.
+    A scalar string tensor representing the dataset ID.
   """
-  return _register_dataset(service, dataset, compression)
+  return _register_dataset(service, dataset, compression, dataset_id)
 
 
 def _from_dataset_id(processing_mode,

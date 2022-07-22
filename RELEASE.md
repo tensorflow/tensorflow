@@ -95,6 +95,12 @@
         same dataset. See
         https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
         for more details.
+    *   Added `dataset_id` to `tf.data.experimental.service.register_dataset`.
+        If provided, tf.data service will use the provided ID for the dataset.
+        If the dataset ID already exists, no new dataset will be registered.
+        This is useful if multiple training jobs need to use the same dataset
+        for training. In this case, users should call `register_dataset` with
+        the same `dataset_id`.
     *   Added a new field, `inject_prefetch`, to
         `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
         tf.data will now automatically add a `prefetch` transformation to

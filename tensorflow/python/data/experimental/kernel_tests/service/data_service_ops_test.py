@@ -831,6 +831,129 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertNotEqual(self.evaluate(id_1), self.evaluate(id_2))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testRegisterWithExplicitDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id,
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target)
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+    # Verifies the dataset ID is indeed "dataset_id".
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id="dataset_id",
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target)
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  # Eager mode only: In the graph mode, `register_dataset` may not run before
+  # `from_dataset_id` if `from_dataset_id` does not use its return value.
+  @combinations.generate(test_base.eager_only_combinations())
+  def testFromRegisteredStringDatasetId(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    _ = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset, dataset_id="dataset_id")
+    dataset = data_service_ops.from_dataset_id(
+        dataset_id="dataset_id",
+        element_spec=dataset.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target)
+    self.assertDatasetProduces(dataset, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRegisterSameDatasetIds(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10)
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset1, dataset_id="dataset_id")
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset2, dataset_id="dataset_id")
+    dataset1 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id1,
+        element_spec=dataset1.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    dataset2 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id2,
+        element_spec=dataset2.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    # `dataset2` is empty because the datasets share the same job and `dataset1`
+    # has exhausted the dataset.
+    self.assertDatasetProduces(dataset1, list(range(10)))
+    self.assertDatasetProduces(dataset2, list())
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              different_dataset_id=[None, "another_dataset_id"])))
+  def testRegisterDifferentDatasetIds(self, different_dataset_id):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(10)
+    dataset_id1 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset1, dataset_id="dataset_id")
+    dataset_id2 = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset2, dataset_id=different_dataset_id)
+    dataset1 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id1,
+        element_spec=dataset1.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    dataset2 = data_service_ops.from_dataset_id(
+        dataset_id=dataset_id2,
+        element_spec=dataset2.element_spec,
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        job_name="job_name")
+    # `dataset1` and `dataset2` are different datasets.
+    self.assertDatasetProduces(dataset1, list(range(10)))
+    self.assertDatasetProduces(dataset2, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetsDoNotMatch(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.from_tensor_slices(list("Test dataset."))
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Datasets with the same ID should have the same structure"):
+      dataset_id1 = data_service_ops.register_dataset(
+          cluster.dispatcher.target,
+          dataset1,
+          compression=None,
+          dataset_id="dataset_id")
+      dataset_id2 = data_service_ops.register_dataset(
+          cluster.dispatcher.target,
+          dataset2,
+          compression=None,
+          dataset_id="dataset_id")
+      dataset1 = data_service_ops.from_dataset_id(
+          dataset_id=dataset_id1,
+          element_spec=dataset1.element_spec,
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=cluster.dispatcher.target)
+      dataset2 = data_service_ops.from_dataset_id(
+          dataset_id=dataset_id2,
+          element_spec=dataset2.element_spec,
+          processing_mode=data_service_ops.ShardingPolicy.OFF,
+          service=cluster.dispatcher.target)
+      self.getDatasetOutput(dataset1)
+      self.getDatasetOutput(dataset2)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testDoubleDistribute(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     ds = self.make_distributed_range_dataset(num_elements=10, cluster=cluster)
