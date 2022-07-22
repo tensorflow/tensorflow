@@ -124,6 +124,7 @@ void CGraphOptimizerRegister(
   CONFIG_TOGGLE(shape_optimization);
   CONFIG_TOGGLE(auto_mixed_precision);
   CONFIG_TOGGLE(auto_mixed_precision_bfloat16);
+  CONFIG_TOGGLE(auto_mixed_precision_mkl);
   CONFIG_TOGGLE(pin_to_host_optimization);
   CONFIG_TOGGLE(layout_optimizer);
   CONFIG_TOGGLE(remapping);

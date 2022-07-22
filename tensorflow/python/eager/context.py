@@ -1165,6 +1165,7 @@ class Context(object):
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
     rewriter_toggle("auto_mixed_precision_bfloat16")
+    rewriter_toggle("auto_mixed_precision_mkl")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
       config.graph_options.rewrite_options.min_graph_nodes = nodes
@@ -1816,6 +1817,7 @@ class Context(object):
     rewriter_toggle("use_plugin_optimizers")
     rewriter_bool("disable_meta_optimizer")
     rewriter_toggle("auto_mixed_precision_bfloat16")
+    rewriter_toggle("auto_mixed_precision_mkl")
 
     if rewrite_options.min_graph_nodes != 0:
       options["min_graph_nodes"] = rewrite_options.min_graph_nodes
