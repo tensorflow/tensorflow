@@ -24,6 +24,8 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
+import multiprocessing
+
 
 class CrossTrainerCacheTest(data_service_test_base.TestBase,
                             parameterized.TestCase):
@@ -68,8 +70,18 @@ class CrossTrainerCacheTest(data_service_test_base.TestBase,
   @combinations.generate(
       combinations.times(test_base.default_test_combinations()))
   def testConcurrentReaders(self):
+    # Fetching an element from the dataset will trigger prefetches of more
+    # elements, one per CPU core which will be placed in the cache.
+    # However if the number of prefetches exceeds the space available in
+    # the cache then the sliding window will be moved forward away from
+    # the element just read thus negating the use of the cache as other
+    # trainers will not get the correct element.
+    # Hence the need to calculate the size of the cache based on the
+    # number of CPU cores and the element size of 363. The extra 8
+    # entries are simply a bit of margin.
+    num_cpus = multiprocessing.cpu_count()
     cluster = self._create_cluster(
-        num_workers=1, cross_trainer_cache_size_bytes=18000)
+        num_workers=1, cross_trainer_cache_size_bytes=(num_cpus + 8) * 363)
     num_readers = 20
     num_elements = 50
     dataset = dataset_ops.Dataset.range(10000000).repeat()
