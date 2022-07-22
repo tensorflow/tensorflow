@@ -2308,8 +2308,7 @@ tpu_py_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
     disable_experimental = False,
-    # TODO(b/225357174): Implement MLIR legalization properly.
-    disable_mlir_bridge = True,
+    disable_mlir_bridge = False,
     tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",

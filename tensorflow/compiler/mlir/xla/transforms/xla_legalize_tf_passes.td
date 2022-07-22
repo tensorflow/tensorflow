@@ -53,6 +53,26 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
                            "shape::ShapeDialect", "func::FuncDialect"];
 }
 
+def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
+  let summary = "Legalize whitelisted Ops using TF2XLA fallback for ops that "
+      "must also be able to create new functions.";
+
+  let description = [{
+    Legalizes whitelisted Ops from TF dialect to HLO dialect using TF2XLA
+    fallback for ops that must be allowed to create new functions.
+  }];
+  let options = [
+    Option<"device_type_", "device-type", "std::string",
+        /*default=*/"\"INVALID_DEVICE_TYPE\"",
+        "The device type used by TF2XLA fallback. Required.">,
+  ];
+
+  let constructor = "mlir::mhlo::createLegalizeTFModulePass()";
+  let dependentDialects = ["arith::ArithmeticDialect, chlo::ChloDialect",
+                           "memref::MemRefDialect", "mhlo::MhloDialect",
+                           "shape::ShapeDialect", "func::FuncDialect"];
+}
+
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 

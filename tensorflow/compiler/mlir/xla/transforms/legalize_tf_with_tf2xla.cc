@@ -409,6 +409,17 @@ bool IsOpAllowedForTesting(Operation* op) {
   return ops->count(abstractOp->getTypeID());
 }
 
+// List of ops that require falling back to XlaOpKernel legalizations and also
+// require the ability to create functions.
+bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
+  static auto* ops = new llvm::SmallDenseSet<mlir::TypeID, 16>{
+      TypeID::get<TF::ApproxTopKOp>(),
+  };
+  auto abstractOp = op->getRegisteredInfo();
+  if (!abstractOp) return false;
+  return ops->count(abstractOp->getTypeID());
+}
+
 namespace {
 
 template <typename T, size_t N>
@@ -427,19 +438,20 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
 class Tf2XlaRewriter {
  public:
   static LogicalResult RewriteOp(Operation* op, PatternRewriter& rewriter,
-                                 const std::string& device_type) {
-    Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type);
+                                 const std::string& device_type,
+                                 bool is_module_pass) {
+    Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type, is_module_pass);
     return tf2xla_rewriter.LegalizeOp();
   }
 
  private:
   Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
-                 const std::string& device_type)
+                 const std::string& device_type, bool is_module_pass)
       : op_(op),
         device_type_(device_type),
         rewriter_(rewriter),
         hlo_builder_(op->getName().getStringRef().str(), rewriter_,
-                     op->getLoc(), /*build_functions=*/false),
+                     op->getLoc(), /*build_functions=*/is_module_pass),
         context_(nullptr) {}
 
   ~Tf2XlaRewriter() {
@@ -707,25 +719,37 @@ class Tf2XlaRewritePattern : public RewritePattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool legalize_test_only_ops)
+                                bool prefer_tf2xla, bool legalize_test_only_ops,
+                                bool is_module_pass)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        legalize_test_only_ops_(legalize_test_only_ops) {}
+        legalize_test_only_ops_(legalize_test_only_ops),
+        is_module_pass_(is_module_pass) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (!(IsOpAllowedTf2XlaFallback(op) ||
-          (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
-          (legalize_test_only_ops_ && IsOpAllowedForTesting(op))))
+    if (is_module_pass_) {
+      // Module passes should only ever legalize ops that have been specifically
+      // whitelisted for legalization within a module pass. They will never
+      // legalize any ops whitelisted for legalization within a func pass.
+      if (!IsOpAllowedTf2XlaFallbackAndCreateFunctions(op)) {
+        return failure();
+      }
+    } else if (!(IsOpAllowedTf2XlaFallback(op) ||
+                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
+                 (legalize_test_only_ops_ && IsOpAllowedForTesting(op)))) {
       return failure();
-    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
+    }
+    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
+                                     is_module_pass_);
   }
 
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
   bool legalize_test_only_ops_;
+  bool is_module_pass_;
 };
 
 class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
@@ -741,7 +765,8 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
-                                       prefer_tf2xla_, legalize_test_only_ops_);
+                                       prefer_tf2xla_, legalize_test_only_ops_,
+                                       /*is_module_pass=*/false);
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       signalPassFailure();
@@ -754,10 +779,11 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
-                                          MLIRContext* ctx,
-                                          bool prefer_tf2xla) {
+                                          MLIRContext* ctx, bool prefer_tf2xla,
+                                          bool is_module_pass) {
   patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                     /*legalize_test_only_ops=*/false);
+                                     /*legalize_test_only_ops=*/false,
+                                     is_module_pass);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
