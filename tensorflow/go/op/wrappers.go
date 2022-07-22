@@ -36345,6 +36345,14 @@ func RegisterDatasetV2ElementSpec(value string) RegisterDatasetV2Attr {
 	}
 }
 
+// RegisterDatasetV2RequestedDatasetId sets the optional requested_dataset_id attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2RequestedDatasetId(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["requested_dataset_id"] = value
+	}
+}
+
 // RegisterDatasetV2Metadata sets the optional metadata attribute to value.
 // If not specified, defaults to ""
 func RegisterDatasetV2Metadata(value string) RegisterDatasetV2Attr {
