@@ -26,7 +26,10 @@ namespace remapping {
 // are mainly used for combining operands info and attributes for a fused
 // operation. They are also used for some predicate functions like
 // `IsCpuCompatible` and `IsGpuCompatible` to check if the relevant fusion is
-// supported on CPU and GPU, respectively.
+// supported on CPU and GPU, respectively. Another reason to keep these
+// structures is to follow similar logics in current grappler-remapper.
+// TODO(intel-tf): Remove redundancies once the similar functionality is
+// achieved by tfg-remapper.
 struct ContractionBiasAdd {
   Operation* contraction;
   Operation* bias_add;
