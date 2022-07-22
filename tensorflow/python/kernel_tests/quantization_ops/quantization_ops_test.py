@@ -79,6 +79,71 @@ class FakeQuantWithMinMaxVarsPerChannelOpTest(test_util.TensorFlowTestCase):
               inputs=inputs, min=[0.0], max=[1.0, 1.1]))
 
 
+class FakeQuantWithMinMaxVarsGradientOpTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    gradients = constant_op.constant(
+        value=[[1.0], [2.0], [4.0]], dtype=dtypes.float32)
+    inputs = constant_op.constant(
+        value=[[1.0], [2.0], [4.0]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be equal rank|must be rank 0"):
+      self.evaluate(
+          array_ops.fake_quant_with_min_max_vars_gradient(
+              gradients=gradients,
+              inputs=inputs,
+              min=0.0,
+              max=[[1.0], [2.0], [4.0]]))
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 0"):
+      self.evaluate(
+          array_ops.fake_quant_with_min_max_vars_gradient(
+              gradients=gradients,
+              inputs=inputs,
+              min=[[1.0], [2.0], [4.0]],
+              max=[[1.0], [2.0], [4.0]]))
+
+
+class FakeQuantWithMinMaxVarsPerChannelGradientOpTest(
+    test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_inputs(self):
+    gradients = constant_op.constant(
+        value=[[1.0], [2.0], [4.0]], dtype=dtypes.float32)
+    inputs = constant_op.constant(
+        value=[[1.0], [2.0], [4.0]], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Shapes must be equal rank|must be rank 1"):
+      self.evaluate(
+          array_ops.fake_quant_with_min_max_vars_per_channel_gradient(
+              gradients=gradients, inputs=inputs, min=[[0.0]], max=[1.0]))
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Dimension 0 in both shapes must be equal|incorrect size"):
+      self.evaluate(
+          array_ops.fake_quant_with_min_max_vars_per_channel_gradient(
+              gradients=gradients, inputs=inputs, min=[0.0, 0.1], max=[1.0]))
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Shapes must be equal rank|must be rank 1"):
+      self.evaluate(
+          array_ops.fake_quant_with_min_max_vars_per_channel_gradient(
+              gradients=gradients, inputs=inputs, min=[1.0], max=[[1.0]]))
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Dimension 0 in both shapes must be equal|incorrect size"):
+      self.evaluate(
+          array_ops.fake_quant_with_min_max_vars_per_channel_gradient(
+              gradients=gradients, inputs=inputs, min=[0.0], max=[1.0, 1.1]))
+
+
 class QuantizedBiasedAddTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -353,13 +418,15 @@ class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_inputs(self):
-    input_value = constant_op.constant([-0.8, -0.5, 0, 0.3, 0.8, -2.0],
-                                       shape=(6,),
-                                       dtype=dtypes.float32),
-    input_min = constant_op.constant(-127, shape=(), dtype=dtypes.float32)
-    input_max = constant_op.constant(127, shape=(), dtype=dtypes.float32)
-    # Tensor with invalid shape and invalid number of elements.
-    num_bits = constant_op.constant([], shape=(0,), dtype=dtypes.int32)
+    inputs = constant_op.constant(
+        np.int32(0), shape=[3, 3, 3, 3], dtype=dtypes.qint32)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 0"):
+      self.evaluate(
+          math_ops.quantize_down_and_shrink_range(
+              input=inputs, input_min=[], input_max=4.0,
+              out_type=dtypes.quint8))
 
     # Test that running the op raises error. It raises different errors
     # depending on whether the shape inference is run first or the op's
