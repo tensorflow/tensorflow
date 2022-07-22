@@ -3854,7 +3854,7 @@ static int GetNumOutputs(const Shape& shape) {
 ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
     mlir::lmhlo::FusionOp fusion, const ReductionCodegenInfo& reduction_info,
     absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
-    HloComputation* fused_computation, FusedIrEmitter* fused_emitter) {
+    FusedIrEmitter& fused_emitter) {
   ReductionCodegenState reduction_codegen_state(reduction_info);
   VLOG(10) << "Emit prologue for reduction: " << MlirToString(fusion);
 
@@ -3881,7 +3881,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
           reduce_hlo->init_values()[op_result_idx];
 
       // Initialize the partial result with the initial value of the reduction.
-      llvm::Value* init_ir_value = (*fused_emitter->GetGenerator(*init_value))(
+      llvm::Value* init_ir_value = (*fused_emitter.GetGenerator(*init_value))(
                                        IrArray::Index(b_.getInt32Ty()))
                                        .ValueOrDie();
 
@@ -3917,7 +3917,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
       }();
 
       llvm_ir::ElementGenerator input_gen =
-          *fused_emitter->GetGenerator(*reduce_hlo->inputs()[op_result_idx]);
+          *fused_emitter.GetGenerator(*reduce_hlo->inputs()[op_result_idx]);
       reduction_codegen_state.SetCalculationStateFor(
           {shared_cache, init_ir_value, partial_result_address,
            reduction_input_address, input_gen},
@@ -4941,8 +4941,7 @@ void IrEmitterUnnested::GenerateElementForReducer(
 Status IrEmitterUnnested::EmitIRForReduction(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<HloInstruction* const> instr_index_group,
-    HloComputation* fused_computation, FusedIrEmitter* fused_emitter,
-    const ReductionOutputMap& result_ir_arrays,
+    FusedIrEmitter& fused_emitter, const ReductionOutputMap& result_ir_arrays,
     const ReductionCodegenInfo& reduction_info, const Shape& input_shape) {
   std::vector<const HloReduceInstruction*> reductions;
   ExtraOutputGensMap extra_output_gens;
@@ -4950,7 +4949,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
     if (IsReductionFromOrToContiguousDimensions(*hlo)) {
       reductions.push_back(Cast<HloReduceInstruction>(hlo));
     } else {
-      extra_output_gens[hlo] = *fused_emitter->GetGenerator(*hlo);
+      extra_output_gens[hlo] = *fused_emitter.GetGenerator(*hlo);
     }
   }
 
@@ -4963,7 +4962,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
                                 tiling_scheme.GetNumberOfBlocksPhysical(),
                             &b_);
   ReductionCodegenState codegen_state = GenerateReductionCodegenState(
-      fusion, reduction_info, reductions, fused_computation, fused_emitter);
+      fusion, reduction_info, reductions, fused_emitter);
 
   EmitElementFunction emit_reduction_element =
       [&](const ThreadIdInfo& thread_id_info,
@@ -5158,26 +5157,7 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
 Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
   llvm::SmallVector<mlir::Operation*> fusion_roots = fusion.getFusionRoots();
 
-  // Build a kernel thunk to compute all the outputs.
-  mlir::mhlo::ReduceOp first_reduce;
-  for (mlir::Operation* output_instruction : fusion.getFusionRoots()) {
-    if (IsReductionFromOrToContiguousDimensions(output_instruction)) {
-      first_reduce = mlir::cast<mlir::mhlo::ReduceOp>(output_instruction);
-      break;
-    }
-  }
-
-  CHECK(first_reduce) << MlirToString(fusion);
-
-  Shape input_shape = GetShape(first_reduce->getOperand(0));
-  // The layout of a reduction input is either set by LayoutAssignment for
-  // unnested kReduce or by InstructionFusion for fused kReduce.
-  CHECK(input_shape.has_layout()) << "LayoutAssignment or InstructionFusion "
-                                     "doesn't set the input layout of "
-                                  << MlirToString(first_reduce);
-
-  HloComputation* fused_computation = nullptr;
-  TF_ASSIGN_OR_RETURN(fused_computation,
+  TF_ASSIGN_OR_RETURN(HloComputation * fused_computation,
                       GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
                                                           /*is_fusion=*/true));
 
@@ -5188,6 +5168,10 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
   VLOG(2) << StrCat("Generate in ", instr_index_groups.size(), " groups for ",
                     MlirToString(fusion));
 
+  mlir::mhlo::ReduceOp first_reduce = mlir::cast<mlir::mhlo::ReduceOp>(
+      *absl::c_find_if(fusion_roots, [](mlir::Operation* op) {
+        return IsReductionFromOrToContiguousDimensions(op);
+      }));
   TF_ASSIGN_OR_RETURN(ReductionCodegenInfo reduction_info,
                       ComputeReductionCodegenInfo(fusion, first_reduce));
   const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
@@ -5200,9 +5184,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
        /*z=*/1},
       {/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(), /*y=*/1, /*z=*/1});
   VLOG(3) << "Launch dimensions of " << mlir::GetNameFromLoc(fusion.getLoc())
-          << ": number of blocks: " << tiling_scheme.GetNumberOfBlocksPhysical()
-          << " - threads per block: "
-          << tiling_scheme.GetNumThreadsPerBlockPhysical();
+          << launch_dimensions.ToString();
 
   std::vector<llvm_ir::IrArray> ir_arrays;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
@@ -5244,27 +5226,26 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
                       ComputeReductionCodegenInfo(fusion, first_reduce));
 
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
-  for (size_t i = 0; i < instr_index_groups.size(); ++i) {
-    // Use raw block_id_y to select the i-th parallel reduction to run. Using
-    // block_id_y instead of block_id_x simplifies the index calculation
-    // for reduction code generation as the block_id_y is orthogonal to
-    // the indices used within the reductions.
-    llvm::CallInst* raw_block_id_y = gpu::EmitCallToTargetIntrinsic(
-        gpu::TargetIntrinsicID::kBlockIdy, {}, {}, &b_);
-    llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
-                              llvm::cast<llvm::Instruction>(raw_block_id_y));
 
+  // Use raw block_id_y to select the i-th parallel reduction to run. Using
+  // block_id_y instead of block_id_x simplifies the index calculation
+  // for reduction code generation as the block_id_y is orthogonal to
+  // the indices used within the reductions.
+  llvm::CallInst* raw_block_id_y = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kBlockIdy, {}, {}, &b_);
+  llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
+                            llvm::cast<llvm::Instruction>(raw_block_id_y));
+  for (int i = 0; i < instr_index_groups.size(); ++i) {
     TF_RETURN_IF_ERROR(ksl.IfWithStatus(
         StrCat("reduce-group-", i),
         b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i)), [&] {
           return EmitIRForReduction(
-              fusion, instr_index_groups[i], fused_computation, &fused_emitter,
-              result_ir_arrays, reduction_codegen_info, input_shape);
+              fusion, instr_index_groups[i], fused_emitter, result_ir_arrays,
+              reduction_codegen_info, GetShape(first_reduce->getOperand(0)));
         }));
   }
 
   ThunkSequence thunks;
-
   if (!reduction_codegen_info.IsRaceFree()) {
     for (int i = 0; i < fusion_roots.size(); ++i) {
       mlir::Operation* output_instruction = fusion_roots[i];
