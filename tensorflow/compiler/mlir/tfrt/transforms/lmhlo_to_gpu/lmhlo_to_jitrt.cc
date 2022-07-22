@@ -441,19 +441,7 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
     call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
     call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
-
-    // TODO(ezhulenev): Once cutom calls support passing structured attributes
-    // we should be able to pass `mhlo.dot` attribute directly.
-    auto dot = op.getDotDimensionNumbers();
-    auto lhs_batch = b.getI64TensorAttr(dot.getLhsBatchingDimensions());
-    auto lhs_contract = b.getI64TensorAttr(dot.getLhsContractingDimensions());
-    auto rhs_batch = b.getI64TensorAttr(dot.getRhsBatchingDimensions());
-    auto rhs_contract = b.getI64TensorAttr(dot.getRhsContractingDimensions());
-
-    call->setAttr(b.getStringAttr("lhs_batching_dimensions"), lhs_batch);
-    call->setAttr(b.getStringAttr("lhs_contracting_dimensions"), lhs_contract);
-    call->setAttr(b.getStringAttr("rhs_batching_dimensions"), rhs_batch);
-    call->setAttr(b.getStringAttr("rhs_contracting_dimensions"), rhs_contract);
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
 
     // Erase the original gemm operation.
     rewriter.eraseOp(op);

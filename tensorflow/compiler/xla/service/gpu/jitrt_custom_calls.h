@@ -33,6 +33,13 @@ class JitRtKernelsCache;
 class JitRtGemmConfigCache;
 class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
+
+struct DotDimensionNumbers {
+  llvm::ArrayRef<int64_t> lhs_batch;
+  llvm::ArrayRef<int64_t> lhs_contract;
+  llvm::ArrayRef<int64_t> rhs_batch;
+  llvm::ArrayRef<int64_t> rhs_contract;
+};
 }  // namespace gpu
 }  // namespace xla
 
@@ -40,6 +47,12 @@ namespace tfrt {
 namespace jitrt {
 JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
 JITRT_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
+
+JITRT_REGISTER_AGGREGATE_ATTR_DECODING(
+    xla::gpu::DotDimensionNumbers,
+    JITRT_AGGREGATE_FIELDS("lhs_batch", "lhs_contract", "rhs_batch",
+                           "rhs_contract"),
+    ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>, ArrayRef<int64_t>);
 }  // namespace jitrt
 }  // namespace tfrt
 

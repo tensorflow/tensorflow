@@ -123,6 +123,15 @@ void PopulateLmhloToXlaAttrEncoding(
             return se::fft::Type::kInvalid;
         }
       });
+
+  using DotDimsAttr = mhlo::DotDimensionNumbersAttr;
+  encoding.Add<jitrt::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
+      encoding,
+      jitrt::AggregateAttrDef<DotDimsAttr>()
+          .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
+          .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
+          .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
+          .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
 
 // -------------------------------------------------------------------------- //
@@ -450,27 +459,28 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-      jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-      jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-      double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
-      ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
-      ArrayRef<int64_t> rhs_contract, int64_t uid) const;
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           JitRtGemmConfigCache* configs,
+                           jitrt::StridedMemrefView lhs,
+                           jitrt::StridedMemrefView rhs,
+                           jitrt::StridedMemrefView out, int64_t algorithm,
+                           double alpha_real, double alpha_imag, double beta,
+                           DotDimensionNumbers dot_dims, int64_t uid) const;
 
   static Gemm Handler() { return Gemm(); }
 };
 }  // namespace
 
-LogicalResult Gemm::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-    jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
-    ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
-    ArrayRef<int64_t> rhs_contract, int64_t uid) const {
+LogicalResult Gemm::operator()(const ServiceExecutableRunOptions* run_options,
+                               const DebugOptions* debug_options,
+                               JitRtGemmConfigCache* configs,
+                               jitrt::StridedMemrefView lhs,
+                               jitrt::StridedMemrefView rhs,
+                               jitrt::StridedMemrefView out, int64_t algorithm,
+                               double alpha_real, double alpha_imag,
+                               double beta, DotDimensionNumbers dot_dims,
+                               int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -481,9 +491,9 @@ LogicalResult Gemm::operator()(
   // Find the gemm config for this instance of operation based on uid.
   const GemmConfig* config = configs->Get(uid);
   if (config == nullptr) {
-    auto cfg =
-        GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
-                      lhs_batch, lhs_contract, rhs_batch, rhs_contract);
+    auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
+                             beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
+                             dot_dims.rhs_batch, dot_dims.rhs_contract);
     if (!cfg.ok()) return failure();
     config = configs->Set(uid, std::move(*cfg));
   }
@@ -498,25 +508,21 @@ LogicalResult Gemm::operator()(
 }
 
 static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.gemm")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<const DebugOptions*>()
-          .UserData<JitRtGemmConfigCache*>()
-          .Arg<jitrt::StridedMemrefView>()  // lhs
-          .Arg<jitrt::StridedMemrefView>()  // rhs
-          .Arg<jitrt::StridedMemrefView>()  // out
-          .Attr<int64_t>("algorithm")
-          .Attr<double>("alpha_real")
-          .Attr<double>("alpha_imag")
-          .Attr<double>("beta")
-          .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_contracting_dimensions")
-          .Attr<int64_t>("uid")
-          .To<RuntimeChecks()>(Gemm::Handler())
-          .release();
+  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .UserData<JitRtGemmConfigCache*>()
+                             .Arg<jitrt::StridedMemrefView>()  // lhs
+                             .Arg<jitrt::StridedMemrefView>()  // rhs
+                             .Arg<jitrt::StridedMemrefView>()  // out
+                             .Attr<int64_t>("algorithm")
+                             .Attr<double>("alpha_real")
+                             .Attr<double>("alpha_imag")
+                             .Attr<double>("beta")
+                             .Attr<DotDimensionNumbers>("dot_dims")
+                             .Attr<int64_t>("uid")
+                             .To<RuntimeChecks()>(Gemm::Handler())
+                             .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
