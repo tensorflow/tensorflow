@@ -864,7 +864,7 @@ class HloInstruction {
   // Creates an asynchronous receive instruction with the given channel id,
   // which allocates resources to receive data of the given shape from a unique
   // send instruction in another computation that has the same channel id.  If
-  // is_host_transfer is true, then this Send operation transfers data from the
+  // is_host_transfer is true, then this Recv operation transfers data from the
   // host.
   static std::unique_ptr<HloInstruction> CreateRecv(
       const Shape& shape, HloInstruction* token, int64_t channel_id,
