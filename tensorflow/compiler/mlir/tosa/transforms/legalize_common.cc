@@ -29,6 +29,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -47,6 +48,23 @@ static int64_t multiply_dims(int64_t a, int64_t b) {
     return ShapedType::kDynamicSize;
   }
   return a * b;
+}
+
+static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
+  for (auto dim : dims) {
+    if (ShapedType::isDynamic(dim)) {
+      return ShapedType::kDynamicSize;
+    }
+    res = res * dim;
+  }
+  return res;
+}
+
+static int64_t count_dynamic_dims(llvm::ArrayRef<int64_t> dims) {
+  int64_t count = 0;
+  for (auto dim : dims)
+    if (ShapedType::isDynamic(dim)) ++count;
+  return count;
 }
 
 namespace {
@@ -3414,8 +3432,6 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   //
   //  [Batch, LeftChannels, Non-Batch-Indices, RightChannels]
 
-  int N = 1, W = 1, K = 1, C = 1;
-
   int params_rank = params_type.getShape().size();
   int indices_rank = indices_type.getShape().size();
 
@@ -3457,23 +3473,15 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // Calculate N, K, W, C
-  for (int i = 0; i < batch_dims; i++) N *= params_type.getShape()[i];
+  int64_t N = multiply_dims(params_type.getShape().take_front(batch_dims));
+  int64_t W = multiply_dims(
+      indices_type.getShape().slice(batch_dims, indices_rank - batch_dims));
+  int64_t K = params_type.getShape()[axis];
 
-  for (int i = batch_dims; i < indices_rank; i++)
-    W *= indices_type.getShape()[i];
-
-  K = params_type.getShape()[axis];
-
-  for (int i = batch_dims; i < axis; i++) C *= params_type.getShape()[i];
-  for (int i = (axis + 1); i < params_rank; i++) C *= params_type.getShape()[i];
-
-  // Check for obviously invalid values before doing a divide.
-  if (N <= 0 || K <= 0 || W <= 0 || C <= 0) {
-    op->emitOpError(
-        "N, K, W, or C was calculated as <= zero.  Invalid dimensions for "
-        "Gather");
-    return llvm::None;
-  }
+  int64_t C = multiply_dims(
+      params_type.getShape().slice(batch_dims, axis - batch_dims));
+  C = multiply_dims(
+      params_type.getShape().slice(axis + 1, params_rank - axis - 1), C);
 
   /////////////////////////////////////////////
   // Build up the params transpose operator
@@ -3570,11 +3578,27 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                             params_type.getElementType()),
       params_value, params_transpose_perm_val.getValue());
 
+  if (count_dynamic_dims(tosa_values_shape) > 1) {
+    return (void)rewriter.notifyMatchFailure(
+               op,
+               "multiply dynamic shapes when reshaping values down to "
+               "tosa.gather"),
+           llvm::None;
+  }
+
   auto tosa_values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(tosa_values_shape, params_type.getElementType()),
       params_transpose_op.getResult(),
       rewriter.getI64ArrayAttr(tosa_values_shape));
+
+  if (count_dynamic_dims(tosa_indices_shape) > 1) {
+    return (void)rewriter.notifyMatchFailure(
+               op,
+               "multiply dynamic shapes when reshaping indices down to "
+               "tosa.gather"),
+           llvm::None;
+  }
 
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
@@ -3586,6 +3610,13 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       RankedTensorType::get(tosa_gather_result_shape,
                             result_type.getElementType()),
       tosa_values_reshape_op.getResult(), tosa_indices_reshape_op.getResult());
+
+  if (count_dynamic_dims(result_reshape_shape) > 1) {
+    return (void)rewriter.notifyMatchFailure(
+               op,
+               "multiply dynamic shapes when reshaping tosa.gather result up"),
+           llvm::None;
+  }
 
   auto tosa_result_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
