@@ -68,7 +68,7 @@ Status IntroduceJitterToTensor(
 
   if (edges_to_update.empty()) {
     VLOG(1) << "No users for " << TensorId(n->name(), oidx).ToString();
-    return Status::OK();
+    return OkStatus();
   }
 
   VLOG(1) << "Updating " << edges_to_update.size() << " users for  "
@@ -115,7 +115,7 @@ Status IntroduceJitterToTensor(
   // from the same frame.
   g->AddControlEdge(n, jitter_constant.node());
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -124,7 +124,7 @@ Status IntroduceFloatingPointJitter(Graph* graph,
                                     float jitter_amount) {
   if (tensor_names.empty()) {
     VLOG(3) << "Nothing to do";
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<std::pair<Node*, std::vector<int>>> nodes_to_modify =
@@ -139,7 +139,7 @@ Status IntroduceFloatingPointJitter(Graph* graph,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IntroduceFloatingPointJitterPass::Run(

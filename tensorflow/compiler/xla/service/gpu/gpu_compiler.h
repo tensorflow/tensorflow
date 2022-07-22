@@ -132,7 +132,7 @@ class GpuCompiler : public LLVMCompiler {
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
     return
         [](const HloInstruction*, const HloInstruction*,
-           const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
+           const ShapeIndex&) -> std::optional<bool> { return std::nullopt; };
   }
 
   // TODO(timshen): Replace `debug_module` with some portable debug information
@@ -150,9 +150,6 @@ class GpuCompiler : public LLVMCompiler {
       std::vector<std::vector<uint8_t>> modules) {
     return Unimplemented("LinkModules is not implemented.");
   }
-
-  // Optional HloProto, stashed for dumping snapshots.
-  std::unique_ptr<HloProto> hlo_proto_;
 
   se::Platform::Id platform_id_;
 
@@ -178,7 +175,8 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size);
+    se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size);
 
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment

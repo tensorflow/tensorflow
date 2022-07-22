@@ -24,13 +24,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Frontend Attributes Id.
-extern const char kXlaFrontendAttributesAttrName[];
 // Return the FrontendAttributes stored in the AttrSlice if there are some.
 //
 // Return an InvalidArgument error if some attributes are present but
 // cannot be parsed.
-StatusOr<absl::optional<xla::FrontendAttributes>>
+StatusOr<std::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs);
 
 }  // namespace tensorflow

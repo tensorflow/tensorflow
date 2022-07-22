@@ -58,27 +58,28 @@ std::vector<py::array> RunTfrtFallback(
     const std::string& module_ir, const std::string& entrypoint,
     const std::vector<py::array>& arguments) {
   // Convert arguments to memrefs.
-  std::vector<MemrefDesc> memrefs(arguments.size());
+  std::vector<MemrefDesc> memrefs;
+  memrefs.reserve(arguments.size());
   for (size_t i = 0; i < arguments.size(); ++i) {
-    ConvertPyArrayMemrefDesc(arguments[i], &memrefs[i]);
+    memrefs.emplace_back(ConvertPyArrayMemrefDesc(arguments[i]));
   }
 
   // Convert memrefs to tensors.
   llvm::SmallVector<Tensor> tensor_arguments;
   tensor_arguments.reserve(arguments.size());
   for (const auto& memref : memrefs) {
-    size_t size = tfrt::GetHostSize(memref.dtype);
+    size_t size = tfrt::GetHostSize(memref.dtype());
     // memref.data is still owned by the py::array. Therefore we pass nullptr as
     // base_ptr, because we don't need to keep track of it for deallocation.
     // The tensor will take ownership of the buffer from the reference counted
     // pointer.
-    auto* buffer = new MemrefTensorBuffer(/*base_ptr=*/nullptr, memref.data,
+    auto* buffer = new MemrefTensorBuffer(/*base_ptr=*/nullptr, memref.data(),
                                           size, /*owner=*/false);
     auto ptr = core::RefCountPtr<MemrefTensorBuffer>(buffer);
     TensorShape shape;
-    auto st = TensorShapeUtils::MakeShape(memref.sizes, &shape);
+    auto st = TensorShapeUtils::MakeShape(memref.sizes(), &shape);
     (void)st;
-    tensor_arguments.emplace_back(tfd::GetTfDataType(memref.dtype),
+    tensor_arguments.emplace_back(tfd::GetTfDataType(memref.dtype()),
                                   std::move(shape), std::move(ptr));
   }
 

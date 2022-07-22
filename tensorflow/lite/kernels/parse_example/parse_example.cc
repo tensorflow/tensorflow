@@ -17,7 +17,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/example/feature.pb.h"
@@ -162,7 +164,7 @@ Status FastParseSerializedExample(
     };
 
     tf::DataType example_dtype;
-    if (feature.ParseDataType(&example_dtype) != Status::OK()) {
+    if (feature.ParseDataType(&example_dtype) != ::tensorflow::OkStatus()) {
       return parse_error();
     }
     if (is_dense) {
@@ -385,7 +387,7 @@ Status FastParseSerializedExample(
     out.example_end_indices.push_back(prev_example_end_index);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CountSparseFeatures(const SparseBuffer& sparse_buffer,
@@ -635,7 +637,7 @@ Status FastParseExampleLite(
                    elements_per_stride);
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -968,7 +970,7 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       data->config, serialized, {}, data->quick_filter, data->quick_filter_size,
       data->config_index, data->config_index_size, &data->hasher, &data->got,
       stats, context);
-  if (status != tf::Status::OK()) {
+  if (status != ::tensorflow::OkStatus()) {
     TF_LITE_KERNEL_LOG(context, status.ToString().c_str());
     return kTfLiteError;
   }

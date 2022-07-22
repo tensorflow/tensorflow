@@ -225,7 +225,7 @@ void LaunchSparseToDense<T, Index>::operator()(
       done();
     };
 
-    c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+    c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
         stream, check_status_and_compute);
   } else {
     OP_REQUIRES_OK_ASYNC(

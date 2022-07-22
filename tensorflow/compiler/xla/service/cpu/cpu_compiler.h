@@ -165,14 +165,13 @@ class CpuCompiler : public LLVMCompiler {
   // Runs HLO passes up to and including layout assignment.
   Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
-      LLVMTargetMachineFeatures* target_machine_features);
+      LLVMTargetMachineFeatures* target_machine_features,
+      bool is_mlir_compile = false);
 
   // Runs HLO passes after layout assignment.
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
-
-  mutable std::unique_ptr<HloProto> hlo_proto_;
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;

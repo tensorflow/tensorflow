@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TPUEmbeddingActivations"
   input_arg {
     name: "embedding_variable"

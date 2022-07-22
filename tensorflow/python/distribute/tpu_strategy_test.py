@@ -26,6 +26,7 @@ from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
@@ -56,6 +57,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
@@ -92,12 +94,6 @@ class TPUTest(test.TestCase):
   # In this case, the entire computation in foo is compiled using JIT
   # compilation.
   def test_single_tpu_jit_compile(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "This test triggers _XlaCompile and XlaLaunch which are not "
-          "supported in tfrt yet. We should avoid using these kernels on TPU. "
-          "However, it is a workaround to support b/129842431. We need more "
-          "discussion about how to support it in the long term.")
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)
 
@@ -118,12 +114,8 @@ class TPUTest(test.TestCase):
   # In this case, the entire computation in foo is compiled using JIT
   # compilation and contains unsupported ops that should be outside compiled.
   def test_single_tpu_jit_compile_with_outside_compilation(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "This test triggers _XlaCompile and XlaLaunch which are not "
-          "supported in tfrt yet. We should avoid using these kernels on TPU. "
-          "However, it is a workaround to support b/129842431. We need more "
-          "discussion about how to support it in the long term.")
+    context.enable_jit_compile_rewrite()
+    get_tpu_strategy(True)
     config.set_soft_device_placement(True)
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)
@@ -142,12 +134,9 @@ class TPUTest(test.TestCase):
       b = c + get_a_plus_one()
       return b + 1
 
-    # TODO(b/222338429): Replace this assert once outside compilation is
-    # supported with jit_compile.
-    with self.assertRaises(errors.InvalidArgumentError):
-      with ops.device("/device:TPU:0"):
-        foo(a)
-    # self.assertAllEqual(6, result)
+    with ops.device("/device:TPU:0"):
+      result = foo(a)
+    self.assertAllEqual(33, result)
 
   # In this case, each of the ops in the TPU device scope are compiled and run
   # individually.
@@ -1145,6 +1134,16 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
               num_replicas))
       dist_iterator = iter(dist_dataset)
       train_steps(w, dist_iterator, 1)
+
+  def test_tpu_hardware_feature(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    self.assertIsInstance(
+        strategy.extended.tpu_hardware_feature.embedding_feature,
+        tpu_hardware_feature.HardwareFeature.EmbeddingFeature)
+
+  def test_get_tpu_cluster_resolver(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    self.assertIsNotNone(strategy.cluster_resolver)
 
 
 @test_util.with_eager_op_as_function

@@ -144,7 +144,7 @@ void DedupeAndHoistConstantPass::PropagateEdges(Operation* op) {
 
 bool DedupeAndHoistConstantPass::RequiresIdentity(Operation* op) {
   for (Operation* user : op->getUsers())
-    if (function_table->MaybeCall(user)) return true;
+    if (function_table->MayBeCall(user)) return true;
   return false;
 }
 
@@ -177,7 +177,7 @@ Operation* DedupeAndHoistConstantPass::BuildIdentity(Operation* input,
   }
   // Map dtype to T attribute.
   state.addAttribute(t_id, input->getAttr(dtype_id));
-  return OpBuilder(input).createOperation(state);
+  return OpBuilder(input).create(state);
 }
 
 void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {

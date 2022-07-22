@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def OptimizePass : Pass<"tfjs-optimize", "mlir::FuncOp"> {
+def OptimizePass : Pass<"tfjs-optimize", "mlir::func::FuncOp"> {
   let summary = "Optimize within the TensorFlow.js dialect";
 
   let constructor = "::mlir::tfjs::CreateOptimizePass()";

@@ -110,7 +110,7 @@ TEST(QuantizedPoolingOpTest, AveragePool_Int8) {
   });
 
   // Reference data.
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -131,7 +131,7 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPool) {
       3, 2, 10, 7,  //
   });
   // Reference data.
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -176,7 +176,7 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPool_Valid_Large_Filter) {
   m.SetInput<uint8_t>(input);
 
   // Reference data.
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();

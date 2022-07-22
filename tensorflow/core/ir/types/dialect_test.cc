@@ -36,7 +36,8 @@ TEST(TFTypesDialect, TestFuncAttrSubElement) {
   MLIRContext context;
   context.allowUnregisteredDialects();
   context.getOrLoadDialect<tf_type::TFTypeDialect>();
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   Operation &test_op = module->front();
 
   Builder b(&context);

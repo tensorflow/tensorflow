@@ -22,7 +22,8 @@ limitations under the License.
 #if XLA_ENABLE_XLIR
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
@@ -93,7 +93,7 @@ class BefThunk : public Thunk {
   // The module data will be set in the execution context for kernel thunk to
   // use during execution. The resource contexts cache the loaded modules.
   absl::Mutex mutex_;
-  absl::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
+  std::optional<GpuModuleData> gpu_module_data_ ABSL_GUARDED_BY(mutex_);
   tfrt::gpu::GpuContextCache gpu_context_cache_ ABSL_GUARDED_BY(mutex_);
 };
 
@@ -116,7 +116,8 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateModule(mlir::Operation* op) {
   builder.setInsertionPointToEnd(module->getBody());
   auto func_type = builder.getType<mlir::FunctionType>(op->getOperandTypes(),
                                                        op->getResultTypes());
-  auto func = builder.create<mlir::FuncOp>(op->getLoc(), kFuncName, func_type);
+  auto func =
+      builder.create<mlir::func::FuncOp>(op->getLoc(), kFuncName, func_type);
   func.setPublic();
 
   builder.setInsertionPointToEnd(func.addEntryBlock());
@@ -138,7 +139,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   tensorflow::populateLmhloToTfrtGpuPasses(pass_manager);
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
-  return Status::OK();
+  return OkStatus();
 }
 
 // Converts `module` to BEF.
@@ -160,7 +161,7 @@ ConvertToBef(mlir::ModuleOp module, tfrt::HostContext* host) {
 }
 
 static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
-  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
     return Thunk::Kind::kGemm;
   }
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
@@ -212,15 +213,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
 
 static MlirAndTfrtHostCtx GetMlirAndTfrtHostCtx() {
   static auto* mlir_ctx = new mlir::MLIRContext;
-  static auto* host_ctx = [&] {
-    auto* result = new tfrt::HostContext(
-        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
-        // TODO(hanbinyoon): Make these configurable.
-        tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
-                                           /*num_blocking_threads=*/16));
-    tfrt::RegisterStaticKernels(result->GetMutableRegistry());
-    return result;
-  }();
+  static auto* host_ctx =
+      tfrt::gpu::CreateHostContext(tfrt::gpu::GetDiagHandler(mlir_ctx))
+          .release();
   return {mlir_ctx, host_ctx};
 }
 
@@ -244,11 +239,11 @@ static mlir::OwningOpRef<mlir::ModuleOp> CreateTfrtKernelLaunchModule(
 
   // Add a function that loads the module and main function.
   builder.setInsertionPointToEnd(tfrt_module->getBody());
-  mlir::FuncOp module_func = builder.create<mlir::FuncOp>(
+  mlir::func::FuncOp module_func = builder.create<mlir::func::FuncOp>(
       loc, "module_load",
       builder.getFunctionType(builder.getType<tfrt::gpu::ContextType>(),
                               module_type));
-  mlir::FuncOp main_func = builder.create<mlir::FuncOp>(
+  mlir::func::FuncOp main_func = builder.create<mlir::func::FuncOp>(
       loc, kFuncName, builder.getFunctionType(input_types, chain_type));
   main_func.setPublic();
 
@@ -323,7 +318,7 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefCollectiveThunk(
       builder.getI64IntegerAttr(replica_count);
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(partition_count);
-  mlir::FuncOp func = module->lookupSymbol<mlir::FuncOp>(kFuncName);
+  mlir::func::FuncOp func = module->lookupSymbol<mlir::func::FuncOp>(kFuncName);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
@@ -343,8 +338,8 @@ StatusOr<std::unique_ptr<Thunk>> CreateBefKernelThunk(
     const std::string& kernel_name, const LaunchDimensions& launch_dimensions) {
   // Construct the TFRT module and convert it to BEF.
   mlir::MLIRContext mlir_context;
-  mlir_context.loadDialect<tfrt::compiler::TFRTDialect, tfrt::gpu::GpuDialect,
-                           xla::gpu::XlirDialect>();
+  mlir_context.loadDialect<mlir::func::FuncDialect, tfrt::compiler::TFRTDialect,
+                           tfrt::gpu::GpuDialect, xla::gpu::XlirDialect>();
 
   mlir::OwningOpRef<mlir::ModuleOp> tfrt_module = CreateTfrtKernelLaunchModule(
       &mlir_context, kernel_name, args.size(), launch_dimensions);
@@ -393,12 +388,13 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
     const Thunk::ExecuteParams& params,
     tfrt::RequestContextBuilder request_context_builder) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
-  request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
-      params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id,
-      GetOrCreateInfeedManager(params.stream->parent()),
-      GetOrCreateOutfeedManager(params.stream->parent())});
+                      params.nccl_params.GetGlobalDeviceId());
+  request_context_builder.context_data().emplace<XlaGpuParams>(
+      XlaGpuParams{params.nccl_params.run_id, params.nccl_params.device_assn,
+                   params.nccl_params.gpu_global_device_ids,
+                   params.nccl_params.nccl_unique_id_callback, global_device_id,
+                   GetOrCreateInfeedManager(params.stream->parent()),
+                   GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
@@ -409,7 +405,7 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
 }
 
 static Status InsertKernelRequestContext(
-    absl::optional<GpuModuleData> gpu_module_data,
+    std::optional<GpuModuleData> gpu_module_data,
     tfrt::RequestContextBuilder* request_context_builder) {
   if (!gpu_module_data.has_value()) {
     return tensorflow::errors::Internal(
@@ -417,7 +413,7 @@ static Status InsertKernelRequestContext(
   }
   request_context_builder->context_data().emplace<GpuModuleData>(
       *gpu_module_data);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BefThunk::Initialize(const GpuExecutable& executable,
@@ -438,7 +434,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
       gpu_module_data_ = module_data;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -514,7 +510,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

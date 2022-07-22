@@ -5,7 +5,7 @@
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #pointwise_2d_trait = {indexing_maps = [#map0, #map0, #map0],
                        iterator_types = ["parallel", "parallel"]}
-func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
+func.func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
              %summand_2: memref<6x6xf32>, %result: memref<6x6xf32>) {
   %temp_result = memref.alloc() : memref<6x6xf32>
   linalg.generic #pointwise_2d_trait
@@ -23,7 +23,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     linalg.yield %out : f32
   }
   memref.dealloc %temp_result : memref<6x6xf32>
-  return
+  func.return
 }
 // CHECK-LABEL: func @fusion
 //       CHECK:  %[[C1:.*]] = arith.constant 1
@@ -59,7 +59,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
 
 // -----
 
-func @fusion_of_three(%arg0: memref<100x10xf32>,
+func.func @fusion_of_three(%arg0: memref<100x10xf32>,
                       %arg1: memref<100xf32>,
                       %arg2: memref<100x10xf32>) {
  %0 = memref.alloc() : memref<100x10xf32>
@@ -96,7 +96,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
        linalg.yield %2 : f32
      }
  memref.dealloc %1 : memref<100x10xf32>
- return
+ func.return
 }
 // CHECK-LABEL: func @fusion
 //       CHECK:  %[[C1:.*]] = arith.constant 1 :
@@ -139,7 +139,7 @@ func @fusion_of_three(%arg0: memref<100x10xf32>,
 #pointwise_4d_trait = {indexing_maps = [#map0, #map0, #map0],
                        iterator_types = ["parallel", "parallel", "parallel",
                                          "parallel"]}
-func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32>,
+func.func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32>,
              %summand_2: memref<6x6x6x6xf32>, %result: memref<6x6x6x6xf32>) {
   %temp_result = memref.alloc() : memref<6x6x6x6xf32>
   linalg.generic #pointwise_4d_trait
@@ -157,7 +157,7 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
     linalg.yield %out : f32
   }
   memref.dealloc %temp_result : memref<6x6x6x6xf32>
-  return
+  func.return
 }
 // CHECK-LABEL: func @fusion_4d
 //       CHECK:  %[[C1:.*]] = arith.constant 1
@@ -198,7 +198,7 @@ func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x6xf32
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #pointwise_2d_trait = {indexing_maps = [#map0, #map0, #map0],
                        iterator_types = ["parallel", "parallel"]}
-func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
+func.func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
              %summand_2: memref<6x6xf32>) -> memref<6x6xf32> {
   %temp_result = memref.alloc() : memref<6x6xf32>
   linalg.generic #pointwise_2d_trait
@@ -217,7 +217,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     linalg.yield %out : f32
   }
   memref.dealloc %temp_result : memref<6x6xf32>
-  return %result : memref<6x6xf32>
+  func.return %result : memref<6x6xf32>
 }
 
 // CHECK-LABEL: func @fusion
@@ -254,7 +254,7 @@ func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
 
 // -----
 
-func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
+func.func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
     -> memref<*xf32> {
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
@@ -269,7 +269,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
   }
   %2 = memref.reshape %1(%arg1)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
-  return %2 : memref<*xf32>
+  func.return %2 : memref<*xf32>
 }
 
 // CHECK-LABEL: func @view_result
@@ -306,7 +306,7 @@ func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
 // Confirm that tiling information is passed through RegionBranchOpInterfaces.
 // This test also uses memref.reshape, just to have a value to return through
 // the if statement.
-func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
+func.func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: index)
     -> memref<*xf32> {
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
@@ -329,7 +329,7 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
         : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     scf.yield %2 : memref<*xf32>
   }
-  return %3 : memref<*xf32>
+  func.return %3 : memref<*xf32>
 }
 
 // CHECK-LABEL: func @branching_result
@@ -377,7 +377,7 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 
 // Confirm that tiling information is passed through tensor_load, tensor.cast
 // and memref_to_tensor  operations.
-func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
+func.func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
     -> memref<?xf32> {
   %c1 = arith.constant 1 : index
   %1 = memref.alloc() : memref<32xf32>
@@ -392,7 +392,7 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
   %2 = bufferization.to_tensor %1 : memref<32xf32>
   %3 = tensor.cast %2 : tensor<32xf32> to tensor<?xf32>
   %4 = bufferization.to_memref %3 : memref<?xf32>
-  return %4 : memref<?xf32>
+  func.return %4 : memref<?xf32>
 }
 
 // CHECK-LABEL: func @tensor_ops

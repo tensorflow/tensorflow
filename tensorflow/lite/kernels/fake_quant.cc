@@ -47,7 +47,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteFakeQuantParams*>(node->builtin_data);
 
   if (params->narrow_range) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "narrow_range FakeQuant is not currently supported at runtime. "
         "narrow_range is only meant to be applied to weights, not activations");

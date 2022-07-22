@@ -46,7 +46,8 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
 
-  auto cache = new XlaCompilationCache(client, device_type);
+  auto cache = new XlaCompilationCache(XlaCompilationCache::Config(), client,
+                                       device_type);
   core::ScopedUnref cache_ref(cache);
 
   // Check that strict compilation is disallowed.

@@ -194,7 +194,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "random_shuffle_queue_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_shuffle_queue_test.py"],
     tags = [
         "no_cuda_on_cpu_tap",  # TODO(b/171060960) flakyly broken assertions
@@ -226,6 +226,23 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:stateless_random_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "stateful_random_ops_test",
+    size = "medium",
+    srcs = ["stateful_random_ops_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/framework:config",
     ],
 )
 

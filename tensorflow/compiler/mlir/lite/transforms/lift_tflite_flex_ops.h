@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_LIFT_TFLITE_FLEX_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_LIFT_TFLITE_FLEX_OPS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -23,7 +24,7 @@ namespace TFL {
 
 // Creates an instance of the lift TFLite Flex ops pass that lifts TFLite Flex
 // ops into TF dialect operations.
-std::unique_ptr<OperationPass<FuncOp>> CreateLiftTfliteFlexOpsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 
 }  // namespace TFL
 }  // namespace mlir

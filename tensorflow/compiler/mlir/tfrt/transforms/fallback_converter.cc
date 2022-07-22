@@ -15,8 +15,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
 
@@ -50,11 +50,17 @@ mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
 
   mlir::OpBuilder::InsertionGuard guard(rewriter);
 
-  if (device.endswith("CPU:0")) {
+  if (device.endswith("CPU:0") && !device.startswith("/job:")) {
     // Canonicalize CPU device name. This is needed as corert library only uses
     // the default CPU device name (i.e.
     // "/job:localhost/replica:0/task:0/device:CPU:0") and cannot recoganize
     // other legal variants (e.g. "/device:CPU:0").
+    //
+    // Note that we don't want to make change to the device name if it is
+    // already canonicalized by users.
+    // e.g. "/job:tpu_worker/replica:0/task:x/device:CPU:0".
+    // TODO(tfrt-devs): to make the canonicalization more robust we should
+    // introduce a util to check each component of the TF device name.
     device = GetDefaultCpuDeviceName();
   }
 

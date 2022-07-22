@@ -139,7 +139,7 @@ TransferRuntimeFallbackToAnotherDevice(const RuntimeFallbackTensor &tensor,
       exec_ctx.resource_context()
           ->GetResource<tensorflow::tfd::EagerContextResource>(
               tensorflow::tfd::kEagerContextResourceName);
-  if (!eager_context_resource.hasValue())
+  if (!eager_context_resource.has_value())
     return tfrt::MakeStringError(
         "Cannot get EagerContext from ExecutionContext.");
   auto expected_eager_context =

@@ -176,6 +176,10 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
   void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
                         DoneCallback done) override {
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(c, output_shape.dims() > 0,
+                      errors::InvalidArgument("input should have rank > 0, ",
+                                              "recieved ", output_shape.dims()),
+                      done);
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params_->group.group_size);
     col_params_->instance.shape = output_shape;
@@ -483,6 +487,7 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& group_assignment = context->input(0);
     const Tensor& device_index = context->input(1);
+    const Tensor& base_key = context->input(2);
 
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(device_index.shape()),
@@ -495,22 +500,43 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
         errors::InvalidArgument("group_assignment must be a 2-d Tensor, but "
                                 "received tensor of shape: ",
                                 group_assignment.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(base_key.shape()),
+                errors::InvalidArgument(
+                    "base_key must be a scalar, but received tensor of shape: ",
+                    base_key.shape().DebugString()));
 
-    Tensor* output = nullptr;
+    Tensor* group_key = nullptr;
+    Tensor* group_size = nullptr;
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, TensorShape({}), &output, attr));
-    OP_REQUIRES_OK(context,
-                   ComputeGroupKey(group_assignment,
-                                   device_index.scalar<int32_t>()(), output));
+    OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({}),
+                                                     &group_size, attr));
+
+    OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
+                                                     &group_key, attr));
+
+    OP_REQUIRES_OK(
+        context,
+        ComputeGroupKey(group_assignment, device_index.scalar<int32_t>()(),
+                        base_key.scalar<int32_t>()(), group_size, group_key));
   }
 
  private:
   static Status ComputeGroupKey(const Tensor& group_assignment,
-                                const int32_t device_index, Tensor* output) {
+                                const int32_t device_index,
+                                const int32_t base_key, Tensor* group_size,
+                                Tensor* group_key) {
+    group_size->flat<int32_t>()(0) = group_assignment.dim_size(1);
+
     for (int group_id = 0; group_id < group_assignment.dim_size(0);
          group_id++) {
+      int32_t key = static_cast<int32_t>(static_cast<uint32_t>(base_key) +
+                                         static_cast<uint32_t>(group_id));
+      if (key == 0) {
+        return errors::InvalidArgument(
+            "Using the reserved group_key = 0 is not allowed: group_id = ",
+            group_id, ", base_key = ", base_key);
+      }
       for (int color = 0; color < group_assignment.dim_size(1); color++) {
         const auto index = group_assignment.matrix<int32>()(group_id, color);
         if (index < 0 || index >= group_assignment.shape().num_elements()) {
@@ -519,10 +545,12 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
                                          " is within [0, number of devices)");
         }
         if (index == device_index) {
-          // Ensure we don't create 0 group keys
-          // Potentially reserved for special use to represent all devices.
-          output->flat<int32_t>()(0) = 0x7F000000 + group_id;
-          return Status::OK();
+          group_key->flat<int32_t>()(0) = key;
+          VLOG(2) << " group_assignment = " << group_assignment.DebugString()
+                  << " device_index = " << index
+                  << " group_key = " << group_key->DebugString()
+                  << " group_size = " << group_size->DebugString();
+          return OkStatus();
         }
       }
     }
@@ -538,6 +566,8 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveAssignGroupV2")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("device_index")
                             .HostMemory("group_assignment")
+                            .HostMemory("base_key")
+                            .HostMemory("group_size")
                             .HostMemory("group_key"),
                         CollectiveAssignGroupV2OpKernel);
 
@@ -588,7 +618,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     col_params->instance.data_type = data_type_;
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this
@@ -939,7 +969,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
       return errors::InvalidArgument(
           "group_size must be positive integer but got ", group_size);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
@@ -1062,7 +1092,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     col_params->instance.impl_details.timeout_seconds =
         timeout_seconds_ > 0 ? resource->timeout_seconds() : timeout_seconds_;
     col_params->run_group_initialization = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Fault tolerance testst for tf.data service coordinated reads."""
+"""Fault tolerance tests for tf.data service coordinated reads."""
 
 from absl.testing import parameterized
 

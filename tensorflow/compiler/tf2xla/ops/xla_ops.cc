@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
@@ -41,7 +42,7 @@ Status UnchangedRank(shape_inference::InferenceContext* c) {
   } else {
     c->set_output(0, c->input(0));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("XlaBroadcastHelper")
@@ -293,7 +294,7 @@ static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(output_dims));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("XlaDot")
@@ -397,7 +398,7 @@ REGISTER_OP("XlaDynamicSlice")
         return UnchangedRank(c);
       }
       c->set_output(0, size_indices_value);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA DynamicSlice operator, documented at
@@ -555,7 +556,7 @@ REGISTER_OP("XlaPad")
       }
 
       c->set_output(0, c->MakeShape(output_dims));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Pad operator, documented at
@@ -586,7 +587,7 @@ REGISTER_OP("XlaRecv")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Receives the named tensor from another XLA computation. Wraps the XLA Recv
@@ -629,7 +630,7 @@ REGISTER_OP("XlaReduce")
       } else {
         c->set_output(0, c->input(0));
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Reduce operator, documented at
@@ -683,7 +684,7 @@ REGISTER_OP("XlaVariadicReduce")
           c->set_output(i, c->input(i));
         }
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -767,7 +768,7 @@ REGISTER_OP("XlaVariadicReduceV2")
       for (int i = 0; i < nr_inputs; ++i) {
         c->set_output(i, output_shape);
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the variadic XLA Reduce operator.
@@ -827,7 +828,7 @@ REGISTER_OP("XlaRngBitGenerator")
       shape_inference::ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &output));
       c->set_output(1, output);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Stateless PRNG bit generator.
@@ -911,7 +912,7 @@ REGISTER_OP("XlaKeyValueSort")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(1));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -937,7 +938,7 @@ REGISTER_OP("XlaVariadicSort")
       std::vector<shape_inference::ShapeHandle> input_shapes;
       TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
       TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA Sort operator, documented at
@@ -1065,7 +1066,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         dims.push_back(c->MakeDim(dim));
       }
       c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from automatic partitioning to
@@ -1091,7 +1092,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op used by XLA SPMD partitioner to switch from manual partitioning to
@@ -1118,7 +1119,7 @@ REGISTER_OP("XlaReplicaId")
     .Output("id: int32")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       context->set_output(0, context->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc("Replica ID.");
 
@@ -1211,7 +1212,7 @@ Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     c->set_output(i, c->input(i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_OP("XlaOptimizationBarrier")
@@ -1241,7 +1242,7 @@ REGISTER_OP("XlaCustomCall")
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Wraps the XLA CustomCall operator
@@ -1253,6 +1254,73 @@ target_name: Name of the function. A call instruction will be emitted which
 backend_config: String, used to encode serialized metadata to the backend.
 dtype: Output tensor data type.
 shape: Output tensor shape.
+)doc");
+
+REGISTER_OP("XlaCallModule")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("module: string")
+    .Attr("Sout: list(shape) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("dim_args_spec: list(string) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // For debugging
+      VLOG(3) << "XlaCallModule.shape_inference";
+      std::vector<shape_inference::ShapeHandle> args_shapes;
+      TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
+      for (int i = 0; i < args_shapes.size(); ++i) {
+        VLOG(3) << "XlaCallModule.shape_inference args[" << i
+                << "] : " << c->DebugString(args_shapes[i]);
+      }
+      std::vector<PartialTensorShape> shapes_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("Sout", &shapes_attr));
+      for (int i = 0; i < shapes_attr.size(); ++i) {
+        shape_inference::ShapeHandle s;
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(shapes_attr[i], &s));
+        VLOG(3) << "XlaCallModule.shape_inference out[" << i
+                << "] : " << c->DebugString(s);
+        c->set_output(i, s);
+      }
+      return OkStatus();
+    })
+    .Doc(R"doc(
+Temporary op for experimenting with jax2tf.
+
+DO NOT USE THIS OP. It has no backwards compatibility guarantees. It is also
+very likely to change. This op will be used only in jax2tf under an
+experimental flag.
+
+This is an experimental op to allow a smooth evolution of jax2tf towards
+emitting and serializing MHLO directly from JAX. At the moment this op
+carries a serialized MHLO module, therefore there are no backward-compatibility
+guarantees, and should not be used for serialization.
+Eventually, the op will carry a MHLO object, which will have
+backwards-compatibility guarantees.
+
+The serialized module must return a tuple if and only if the Sout is an empty
+list or a list with more than 1 elements. The length of Tout and Sout must
+match. This op always returns a tuple of results, even if the module returns
+a single result.
+
+The handling of dynamic shapes is work-in-progress. At the moment, the
+JAX lowering for dynamic shapes will prepend one dimension parameter to the
+serialized module for each dimension whose value must be passed in.
+The "args" correspond to the non-dimension arguments. During compilation
+we compute the values of the dimension arguments based on the static shapes of
+the "args". In order to do this, we encode for each dimension argument a
+specification of how to compute its value, as a string, in the form
+"<arg_idx>.<axis_idx>".
+E.g., the specification "2.1" denotes the value args[2].shape[1].
+
+args: A list of `Tensor` with possibly different types to be passed as arguments
+  to the HLO module.
+module: A serialized computation, a text representation of mlir.Module.
+Tout: List of output tensor data types.
+Sout: List of output tensor shapes.
+dim_args_spec: the specification for the dimension arguments, one for each
+  dimension argument. In absence of dynamic shapes this list is empty.
 )doc");
 
 }  // namespace

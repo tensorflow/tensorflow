@@ -136,7 +136,7 @@ Status ParseArgumentShapes(
   TF_RETURN_IF_ERROR(ParseNodeShapes(input_shapes_str, input_shapes_vector));
   arg_shapes.resize(input_shapes_vector.size());
   for (const auto& shape : llvm::enumerate(input_shapes_vector)) {
-    if (!shape.value().hasValue()) {
+    if (!shape.value().has_value()) {
       TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
           static_cast<int*>(nullptr), 0, &arg_shapes[shape.index()].shape));
       continue;
@@ -145,7 +145,7 @@ Status ParseArgumentShapes(
         shape.value().getValue(), &arg_shapes[shape.index()].shape));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseDataTypes(absl::string_view data_types_str,
@@ -168,14 +168,14 @@ Status ParseDataTypes(absl::string_view data_types_str,
                                      data_type.value());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseArgumentKinds(
     absl::string_view input_types_str,
     llvm::SmallVectorImpl<XlaArgument::Kind>& argument_kinds) {
   argument_kinds.clear();
-  if (input_types_str.empty()) return Status::OK();
+  if (input_types_str.empty()) return OkStatus();
 
   std::vector<absl::string_view> argument_kind_strs =
       absl::StrSplit(input_types_str, ',');
@@ -193,7 +193,7 @@ Status ParseArgumentKinds(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseXlaArguments(absl::string_view input_shapes_str,
@@ -231,7 +231,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     XlaArgument& arg = std::get<0>(arg_components);
     TensorShape shape;
     auto input_shapes = std::get<1>(arg_components);
-    if (input_shapes.hasValue()) {
+    if (input_shapes.has_value()) {
       TF_RETURN_IF_ERROR(
           TensorShapeUtils::MakeShape(input_shapes.getValue(), &shape));
     } else {
@@ -243,7 +243,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     arg.kind = std::get<3>(arg_components);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace
@@ -261,7 +261,7 @@ Status CompileMlirToXlaHloViaBuilder(
   // have the proper shapes.
   TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
 
-  mlir::FuncOp main = module_op.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module_op.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 
@@ -299,9 +299,11 @@ Status CompileMlirToXlaHloViaBuilder(
 
   XlaHelpers::ShapeRepresentationFn shape_representation_fn =
       IdentityShapeRepresentationFn();
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
+      UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   return PopulateResultIOInfo(module_op, arg_shapes, /*use_tuple_args=*/false,
                               /*use_resource_updates_for_aliases=*/false,
-                              shape_representation_fn, compilation_result);
+                              shape_determination_fns, compilation_result);
 }
 
 static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
@@ -328,7 +330,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
                         module_op, arg_shapes, device_type, emit_use_tuple_arg,
                         /*analyse_graph=*/false, emit_return_tuple,
                         /*use_resource_updates_for_aliases=*/true,
-                        IdentityShapeRepresentationFn(), &compilation_result,
+                        /*shape_determination_fns=*/{}, &compilation_result,
                         custom_legalization_passes);
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
@@ -357,7 +359,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       CompileGraphToXlaHlo(module_op, xla_arguments,
                            /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
                            /*analyse_graph=*/false, emit_return_tuple,
-                           IdentityShapeRepresentationFn(), &compilation_result,
+                           /*shape_determination_fns=*/{}, &compilation_result,
                            /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "

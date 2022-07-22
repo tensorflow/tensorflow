@@ -334,8 +334,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, create_and_check_output);
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -946,8 +947,9 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
           errors::Internal(type_string() +
                            ": failed to copy last_segment_id from device"),
           done);
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, create_and_check_output);
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, create_and_check_output);
     }
   }
 

@@ -88,7 +88,9 @@ Status Defuse(HloInstruction* fusion_instruction) {
 
 }  // namespace
 
-StatusOr<bool> Defuser::Run(HloModule* module) {
+StatusOr<bool> Defuser::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Defusing module " << module->name();
   XLA_VLOG_LINES(2, "Before defusion:\n" + module->ToString());
 
@@ -103,7 +105,7 @@ StatusOr<bool> Defuser::Run(HloModule* module) {
           TF_RETURN_IF_ERROR(Defuse(fusion_instruction));
           changed = true;
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*visit_unreachable_nodes=*/true));
 

@@ -69,34 +69,34 @@ TYPED_TEST_SUITE(BroadcastArgsOpTest, DataTypes);
 #ifdef GTEST_HAS_DEATH_TEST
 TYPED_TEST(BroadcastArgsOpTest, ShapeNotBroadcastable) {
   BroadcastArgsOpModel<TypeParam> m({2, 3, 4, 4}, {2, 2});
-  EXPECT_DEATH(m.Invoke(), "");
+  EXPECT_DEATH(ASSERT_EQ(m.Invoke(), kTfLiteOk), "");
 }
 #endif
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsWithScalar) {
   BroadcastArgsOpModel<TypeParam> m({}, {2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 4}));
 }
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsDifferentDims) {
   BroadcastArgsOpModel<TypeParam> m({1}, {2, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 4}));
 }
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsSameDims) {
   BroadcastArgsOpModel<TypeParam> m({1, 4, 6, 3, 1, 5}, {4, 4, 1, 3, 4, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 4, 6, 3, 4, 5}));
 }
 
 TYPED_TEST(BroadcastArgsOpTest, BroadcastArgsComplex) {
   BroadcastArgsOpModel<TypeParam> m({6, 3, 1, 5}, {4, 4, 1, 3, 4, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 4, 6, 3, 4, 5}));
 }

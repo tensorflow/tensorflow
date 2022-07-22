@@ -49,7 +49,9 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
                                          /*import_all_computations=*/true));
   std::string s;
   llvm::raw_string_ostream os(s);
-  module->print(os);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo();
+  module->print(os, flags);
   return s;
 }
 
@@ -60,9 +62,9 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
   mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::HloClientDialect>();
+  context.loadDialect<mlir::chlo::ChloDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  module = mlir::parseSourceString(
+  module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module.data(), mlir_module.size()), &context);
   if (!module) {
     return diagnostic_handler.ConsumeStatus();

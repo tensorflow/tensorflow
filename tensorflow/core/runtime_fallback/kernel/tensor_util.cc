@@ -55,8 +55,8 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
   }
   tensorflow::Device* srcd = expected_src.get();
   tensorflow::Device* dstd = expected_dst.get();
-  const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
-  const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
+  const bool src_cpu = srcd->tensorflow_accelerator_device_info() == nullptr;
+  const bool dst_cpu = dstd->tensorflow_accelerator_device_info() == nullptr;
 
   if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
                    !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
@@ -81,12 +81,12 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
         tensorflow::DeviceContext* src_device_context = nullptr;
         if (!src_cpu) {
           src_device_context =
-              srcd->tensorflow_gpu_device_info()->default_context;
+              srcd->tensorflow_accelerator_device_info()->default_context;
         }
         tensorflow::DeviceContext* dst_device_context = nullptr;
         if (!dst_cpu) {
           dst_device_context =
-              dstd->tensorflow_gpu_device_info()->default_context;
+              dstd->tensorflow_accelerator_device_info()->default_context;
         }
         // TODO(tfrt-devs): The Sync() call below may be more aggressive than
         // necessary. It is based on knowledge of implementation details - that

@@ -55,12 +55,12 @@ using se::Stream;
 
 static Status PrepareCopy(Device* device, const DeviceContext* ctx,
                           const Tensor& src, const Tensor* dst,
-                          const DeviceBase::GpuDeviceInfo** dev_info,
+                          const DeviceBase::AcceleratorDeviceInfo** dev_info,
                           se::Stream** stream) {
   if (device == nullptr) {
     return errors::Internal("Unexpected null device.");
   }
-  auto di = device->tensorflow_gpu_device_info();
+  auto di = device->tensorflow_accelerator_device_info();
   if (di == nullptr) {
     return errors::Internal("Unexpected null device info.");
   }
@@ -97,7 +97,7 @@ static Status PrepareCopy(Device* device, const DeviceContext* ctx,
     return errors::Internal("PluggableDevice copy from non-DMA",
                             DataTypeString(src.dtype()), " tensor.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static void* GetBase(const Tensor* src) {
@@ -112,7 +112,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
     Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
     AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
     int dev_to_dev_stream_index, StatusCallback done) {
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
                          &send_stream);
@@ -164,7 +164,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
           LOG(FATAL) << "PluggableDevice->PluggableDevice Memcpy "  // Crash OK
                      << "failed.";
         }
-        done(Status::OK());
+        done(OkStatus());
       });
   send_dev_context->MaintainLifetimeOnStream(input,
                                              send_device_to_device_stream);
@@ -175,7 +175,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
     Device* device, const DeviceContext* device_context,
     const Tensor* device_tensor, Tensor* cpu_tensor, StatusCallback done) {
   VLOG(1) << "CopyPluggableDeviceTensorToCPU";
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(device, device_context, *device_tensor, cpu_tensor,
                          &dev_info, &send_stream);
@@ -213,7 +213,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
           LOG(FATAL) << "PluggableDevice->CPU Memcpy failed.";  // Crash OK
         }
         input_ref.Unref();
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 
@@ -223,7 +223,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
     Device* device, Tensor* device_tensor, StatusCallback done,
     bool sync_dst_compute) {
   VLOG(1) << "CopyCPUTensorToPluggableDevice";
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
   Status s = PrepareCopy(device, device_context, *cpu_tensor, device_tensor,
                          &dev_info, &recv_stream);
@@ -262,13 +262,13 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
         if (!recv_host_to_device_stream->ok()) {
           LOG(FATAL) << "CPU->PluggableDevice Memcpy failed.";  // Crash OK
         }
-        done(Status::OK());
+        done(OkStatus());
       });
 }
 
 Status PluggableDeviceUtil::Sync(Device* device) {
   VLOG(1) << "PluggableDeviceUtil::Sync";
-  auto* dev_info = device->tensorflow_gpu_device_info();
+  auto* dev_info = device->tensorflow_accelerator_device_info();
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo.");
   }
@@ -277,7 +277,7 @@ Status PluggableDeviceUtil::Sync(Device* device) {
 
 Status PluggableDeviceUtil::SyncAll(Device* device) {
   VLOG(1) << "PluggableDeviceUtil::SyncAll";
-  auto* dev_info = device->tensorflow_gpu_device_info();
+  auto* dev_info = device->tensorflow_accelerator_device_info();
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo.");
   }
@@ -285,7 +285,7 @@ Status PluggableDeviceUtil::SyncAll(Device* device) {
       !dev_info->stream->ok()) {
     return errors::Internal("PluggableDevice SyncAll failed.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -294,7 +294,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
     const Tensor* src_device_tensor, Tensor* dst_device_tensor,
     StatusCallback done) {
   VLOG(1) << "CopyPluggableDeviceTensorToSameDevice";
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(device, device_context, *src_device_tensor,
                          dst_device_tensor, &dev_info, &send_stream);
@@ -312,7 +312,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
     send_stream->ThenMemcpy(&device_dst_ptr, device_src_ptr, total_bytes);
   }
 
-  done(Status::OK());
+  done(OkStatus());
 }
 
 }  // namespace tensorflow

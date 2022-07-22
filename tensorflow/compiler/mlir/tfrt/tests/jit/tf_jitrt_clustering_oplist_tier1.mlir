@@ -9,7 +9,7 @@
 // RUN: | FileCheck %s --check-prefix CHECK --check-prefix=REDUCTIONS
 
 // CHECK-LABEL: func @single_cluster_one_result
-func @single_cluster_one_result(%arg0 : tensor<?xi32>, %arg1 : tensor<i32>)
+func.func @single_cluster_one_result(%arg0 : tensor<?xi32>, %arg1 : tensor<i32>)
     -> tensor<?xi32> {
   // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
   // TIER1-NOT:             "tf.Sum"
@@ -50,5 +50,5 @@ func @single_cluster_one_result(%arg0 : tensor<?xi32>, %arg1 : tensor<i32>)
 
   // REDUCTIONS: %[[SHAPE:.*]] = "tf.Shape"(%[[CLUSTER]])
   // REDUCTIONS: return %[[SHAPE]]
-  return %5 : tensor<?xi32>
+  func.return %5 : tensor<?xi32>
 }

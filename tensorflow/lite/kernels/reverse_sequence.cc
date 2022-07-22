@@ -46,14 +46,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt16 &&
       input->type != kTfLiteInt64) {
-    context->ReportError(context,
-                         "Type '%s' is not supported by reverse_sequence.",
-                         TfLiteTypeGetName(input->type));
+    TF_LITE_KERNEL_LOG(context,
+                       "Type '%s' is not supported by reverse_sequence.",
+                       TfLiteTypeGetName(input->type));
     return kTfLiteError;
   }
 
   if (seq_lengths->type != kTfLiteInt32 && seq_lengths->type != kTfLiteInt64) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Seq_lengths type '%s' is not supported by reverse_sequence.",
         TfLiteTypeGetName(seq_lengths->type));
     return kTfLiteError;
@@ -118,7 +118,7 @@ TfLiteStatus ReverseSequenceHelper(TfLiteContext* context, TfLiteNode* node) {
       return ReverseSequenceImpl<T, int64_t>(context, node);
     }
     default: {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Seq_lengths type '%s' is not supported by reverse_sequence.",
           TfLiteTypeGetName(seq_lengths_tensor->type));
@@ -150,9 +150,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return ReverseSequenceHelper<int64_t>(context, node);
     }
     default: {
-      context->ReportError(context,
-                           "Type '%s' is not supported by reverse_sequence.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Type '%s' is not supported by reverse_sequence.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   }

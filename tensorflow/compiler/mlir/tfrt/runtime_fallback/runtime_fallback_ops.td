@@ -75,7 +75,7 @@ def DelegateKernelOp : RuntimeFallbackDialect_Op<"delegate_kernel"> {
     number of input arguments, and runs a specified TF op via TFE C API. It
     returns an output chain and variable number of outputs from the TF op.
 
-    The input arguments and attributes are passed to the TF op. The ouputs are
+    The input arguments and attributes are passed to the TF op. The outputs are
     outputs of the TF op.
 
     Note that `_name` is a required attribute specifying the TF op to run.

@@ -333,7 +333,8 @@ typedef struct TFE_Executor TFE_Executor;
 // Creates a new eager Executor. Nodes in one executor are guaranteed to be
 // executed in sequence. Assigning nodes to different executors allows executing
 // nodes in parallel.
-TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(
+    bool is_async, bool enable_streaming_enqueue);
 
 // Deletes the eager Executor without waiting for enqueued nodes. Please call
 // TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to

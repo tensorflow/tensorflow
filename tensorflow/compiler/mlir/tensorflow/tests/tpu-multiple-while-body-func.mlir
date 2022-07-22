@@ -10,25 +10,25 @@
 // CHECK-NOT: expected control flow function {{.*}} to have exactly 1 use, found 2
 
 "builtin.module"() ({
-  "builtin.func"() ({
+  "func.func"() ({
   ^bb0(%arg0: tensor<i32>):
     %1617 = "tf.While"(%arg0) {_lower_using_switch_merge = true, _num_original_outputs = 7 : i64, _read_only_resource_inputs = [], body = @main_while_body_4225150, cond = @main_while_cond_4225140, device = "", is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>) -> (tensor<i32>)
     "func.return"() : () -> ()
-  }) {sym_name = "__inference_wrapped_function_4260250", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful, type = (tensor<i32>) -> ()} : () -> ()
-  "builtin.func"() ({
+  }) {sym_name = "__inference_wrapped_function_4260250", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful, function_type = (tensor<i32>) -> ()} : () -> ()
+  "func.func"() ({
   ^bb0(%arg0: tensor<i32>):
     %1617 = "tf.While"(%arg0) {_lower_using_switch_merge = true, _num_original_outputs = 7 : i64, _read_only_resource_inputs = [], body = @main_while_body_4225150, cond = @main_while_cond_4225140, device = "", is_stateless = false, parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>) -> (tensor<i32>)
     "func.return"() : () -> ()
-  }) {sym_name = "__inference_wrapped_function_4260250_0", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful, type = (tensor<i32>) -> ()} : () -> ()
-  "builtin.func"() ({
+  }) {sym_name = "__inference_wrapped_function_4260250_0", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful, function_type = (tensor<i32>) -> ()} : () -> ()
+  "func.func"() ({
   ^bb0(%arg0: tensor<i32>):
     "func.return"(%arg0) : (tensor<i32>) -> ()
-  }) {sym_name = "main_while_body_4225150", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful, type = (tensor<i32>) -> (tensor<i32>)} : () -> ()
-  "builtin.func"() ({
+  }) {sym_name = "main_while_body_4225150", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful, function_type = (tensor<i32>) -> (tensor<i32>)} : () -> ()
+  "func.func"() ({
   ^bb0(%arg0: tensor<i32>):
     %0 = "tf.Less"(%arg0, %arg0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<*xi1>
     %1 = "tf.Less"(%arg0, %arg0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<*xi1>
     %2 = "tf.LogicalAnd"(%0, %1) {device = ""} : (tensor<*xi1>, tensor<*xi1>) -> tensor<*xi1>
     "func.return"(%2) : (tensor<*xi1>) -> ()
-  }) {sym_name = "main_while_cond_4225140", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], type = (tensor<i32>) -> tensor<*xi1>} : () -> ()
+  }) {sym_name = "main_while_cond_4225140", sym_visibility = "private", tf._input_shapes = [#tf_type.shape<>], function_type = (tensor<i32>) -> tensor<*xi1>} : () -> ()
 }) {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"], tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 651 : i32}, tf_saved_model.semantics} : () -> ()

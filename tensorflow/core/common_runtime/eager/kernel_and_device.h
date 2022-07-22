@@ -56,10 +56,12 @@ class FunctionLibraryRuntime;
 const int64_t kInvalidOpId = -1;
 
 // This struc is used for:
-// 1. setting op_id and step_id for single-host remote function scenario, and
+// 1. setting op_id and step_id, is_component_function for single-client
+// remote function scenario,
 // 2. setting step_id for multi-client parallel_device scenario.
 struct EagerFunctionParams {
   int64_t op_id = kInvalidOpId;
+  bool is_component_function;
   absl::optional<int64_t> step_id = absl::nullopt;
 };
 
@@ -279,6 +281,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       const bool allow_control_flow_sync_execution,
       const bool shape_inference_on_tfe_dialect_import,
       const bool int_args_and_retvals_on_device,
+      absl::optional<string> xla_compile_device_type,
       std::function<Rendezvous*(const int64_t)> rendezvous_creator,
       std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
@@ -291,6 +294,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
         shape_inference_on_tfe_dialect_import_(
             shape_inference_on_tfe_dialect_import),
         int_args_and_retvals_on_device_(int_args_and_retvals_on_device),
+        xla_compile_device_type_(xla_compile_device_type),
         input_devices_(std::move(input_devices)),
         composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
@@ -370,6 +374,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   const bool shape_inference_on_tfe_dialect_import_;
 
   const bool int_args_and_retvals_on_device_;
+
+  const absl::optional<string> xla_compile_device_type_;
 
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.

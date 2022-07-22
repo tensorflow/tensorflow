@@ -5,7 +5,7 @@
 // that changing convolution data layout will update all the attributes.
 
 // CHECK-LABEL: func @transposeConv2D
-func @transposeConv2D(%input: tensor<1x32x32x3xf32>, %filter: tensor<1x1x3x8xf32>) -> tensor<1x7x7x8xf32> {
+func.func @transposeConv2D(%input: tensor<1x32x32x3xf32>, %filter: tensor<1x1x3x8xf32>) -> tensor<1x7x7x8xf32> {
 
   // CHECK: %[[ARG_PERM:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
   // CHECK: %[[ARG_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[ARG_PERM]])
@@ -31,11 +31,11 @@ func @transposeConv2D(%input: tensor<1x32x32x3xf32>, %filter: tensor<1x1x3x8xf32
          strides = [5, 6, 7, 8]
        } : (tensor<1x32x32x3xf32>, tensor<1x1x3x8xf32>) -> tensor<1x7x7x8xf32>
 
-  return %0 : tensor<1x7x7x8xf32>
+  func.return %0 : tensor<1x7x7x8xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DWithDefaultAttr
-func @transposeConv2DWithDefaultAttr(%input: tensor<1x32x32x3xf32>, %filter: tensor<1x1x3x8xf32>) -> tensor<?x?x?x?xf32>
+func.func @transposeConv2DWithDefaultAttr(%input: tensor<1x32x32x3xf32>, %filter: tensor<1x1x3x8xf32>) -> tensor<?x?x?x?xf32>
 {
 
   // CHECK: %[[ARG_PERM:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
@@ -63,11 +63,11 @@ func @transposeConv2DWithDefaultAttr(%input: tensor<1x32x32x3xf32>, %filter: ten
          strides = [5, 6, 7, 8]
        } : (tensor<1x32x32x3xf32>, tensor<1x1x3x8xf32>) -> tensor<?x?x?x?xf32>
 
-  return %0 : tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter
-func @transposeConv2DBackpropFilter(
+func.func @transposeConv2DBackpropFilter(
   %input: tensor<1x32x32x3xf32>,
   %filter_sizes: tensor<4xi32>,
   %out_backprop: tensor<1x32x32x8xf32>
@@ -103,11 +103,11 @@ func @transposeConv2DBackpropFilter(
        } : (tensor<1x32x32x3xf32>, tensor<4xi32>, tensor<1x32x32x8xf32>)
          -> tensor<1x1x3x8xf32>
 
-  return %0 : tensor<1x1x3x8xf32>
+  func.return %0 : tensor<1x1x3x8xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput
-func @transposeConv2DBackpropInput(
+func.func @transposeConv2DBackpropInput(
   %input_sizes: tensor<4xi32>,
   %filter: tensor<1x1x3x8xf32>,
   %out_backprop: tensor<1x32x32x8xf32>
@@ -144,11 +144,11 @@ func @transposeConv2DBackpropInput(
        } : (tensor<4xi32>, tensor<1x1x3x8xf32>, tensor<1x32x32x8xf32>)
          -> tensor<1x32x32x3xf32>
 
-  return %0 : tensor<1x32x32x3xf32>
+  func.return %0 : tensor<1x32x32x3xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3
-func @transposeFusedBatchNormV3(
+func.func @transposeFusedBatchNormV3(
   %arg0: tensor<1x28x28x64xf32>,
   %arg1: tensor<64xf32>
 ) -> tensor<1x28x28x64xf32> {
@@ -181,11 +181,11 @@ func @transposeFusedBatchNormV3(
        -> (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %y : tensor<1x28x28x64xf32>
+  func.return %y : tensor<1x28x28x64xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3
-func @transposeFusedBatchNormGradV3(
+func.func @transposeFusedBatchNormGradV3(
   %arg0: tensor<1x28x28x64xf32>,
   %arg1: tensor<1x28x28x64xf32>,
   %arg2: tensor<64xf32>
@@ -223,5 +223,5 @@ func @transposeFusedBatchNormGradV3(
        -> (tensor<1x28x28x64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %x_backprop : tensor<1x28x28x64xf32>
+  func.return %x_backprop : tensor<1x28x28x64xf32>
 }

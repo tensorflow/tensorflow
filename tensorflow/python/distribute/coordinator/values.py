@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -304,10 +303,6 @@ class PerWorkerValuesTypeSpec(type_spec_lib.TypeSpec):
     raise NotImplementedError(
         "most_specific_common_supertype is not implemented")
 
-  def most_specific_compatible_type(self, other):
-    raise NotImplementedError(
-        "most_specific_compatible_type is not implemented")
-
   @property
   def _component_specs(self):
     return self._value_spec
@@ -450,6 +445,7 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
 
 
 def get_per_worker_dataset(dataset_or_dataset_fn, coordinator):
+  """Returns a per-worker dataset from a dataset or a dataset function."""
   if callable(dataset_or_dataset_fn):
     return PerWorkerDatasetFromDatasetFunction(dataset_or_dataset_fn,
                                                coordinator)

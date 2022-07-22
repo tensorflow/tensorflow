@@ -14,7 +14,6 @@ cc_library(
     srcs = ["graph_to_func.cc"],
     hdrs = ["graph_to_func.h"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -27,8 +26,8 @@ cc_library(
 
 cc_library(
     name = "Pass",
-    srcs = ["graph_to_func_pass.cc"],
-    hdrs = ["graph_to_func_pass.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         ":GraphToFunc",
         "//tensorflow/core/ir:Dialect",

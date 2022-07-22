@@ -56,8 +56,8 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 // Requires the function to provide arguments for each of the `fn` operands
 // that is compatible for tensor cast.
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
-                         FuncOp fn, OpBuilder* builder) {
-  FunctionType fn_type = fn.getType();
+                         func::FuncOp fn, OpBuilder* builder) {
+  FunctionType fn_type = fn.getFunctionType();
   llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
@@ -225,10 +225,10 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   // as the input types of the body function. Note that it is always possible
   // for body_block and orig_block_tail to have arguments of the same types as
   // they have exactly one call-site and they are sharing the operands.
-  for (Type type : cond_fn.getType().getInputs()) {
+  for (Type type : cond_fn.getFunctionType().getInputs()) {
     cond_block->addArgument(type, loc);
   }
-  for (Type type : body_fn.getType().getInputs()) {
+  for (Type type : body_fn.getFunctionType().getInputs()) {
     body_block->addArgument(type, loc);
     orig_block_tail->addArgument(type, loc);
   }
@@ -302,7 +302,8 @@ void FunctionalControlFlowToCFG::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

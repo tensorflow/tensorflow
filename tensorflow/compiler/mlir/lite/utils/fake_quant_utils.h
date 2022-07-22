@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_FAKE_QUANT_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_FAKE_QUANT_UTILS_H_
 
+#include <string>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -155,7 +157,7 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
 
 // Removes the wrapper of the tf.FakeQuant* ops and creates the tfl.quantize
 // and tfl.dequantize pairs before tf.FakeQuant* being foled.
-LogicalResult ConvertFakeQuantOps(FuncOp func, MLIRContext *ctx,
+LogicalResult ConvertFakeQuantOps(func::FuncOp func, MLIRContext *ctx,
                                   bool use_fake_quant_num_bits = false);
 
 // Returns the names of all the considered tf.FakeQuant* ops.

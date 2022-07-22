@@ -17,6 +17,7 @@ limitations under the License.
 #include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -95,11 +96,11 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   for (int i = 0; i < graph_cl.outputs().size(); ++i) {
     // Assumed that graph outputs have batch size = 1.
     auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
-    RETURN_IF_ERROR(CreateTensor(
-        env.context(), graph_cl.outputs()[i]->tensor.shape,
-        TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
-                         Layout::HWC},
-        &outputs[i]));
+    TensorDescriptor required_tensor_desc = TensorDescriptor{
+        data_type, TensorStorageType::TEXTURE_ARRAY, Layout::HWC};
+    required_tensor_desc.SetBHWCShape(graph_cl.outputs()[i]->tensor.shape);
+    RETURN_IF_ERROR(
+        CreateTensor(env.context(), required_tensor_desc, &outputs[i]));
     create_info.external_immutable_tensors[graph_cl.outputs()[i]->id] =
         &outputs[i];
   }
@@ -226,6 +227,53 @@ absl::Status RunSerializedTest(const std::string& model_name) {
   return absl::OkStatus();
 }
 
+absl::Status RunCommandBufferSample(int num_tests, int num_runs_per_sec,
+                                    Environment* env,
+                                    InferenceContext* context) {
+  if (!env->device().GetInfo().SupportsExtension("cl_khr_command_buffer")) {
+    return absl::OkStatus();
+  }
+
+  cl_command_queue command_queue = env->queue()->queue();
+  cl_int errcode_ret;
+  std::vector<cl_command_buffer_khr> cbs(num_runs_per_sec);
+  for (auto& cb : cbs) {
+    cb = clCreateCommandBufferKHR(1, &command_queue, nullptr, &errcode_ret);
+    if (errcode_ret != CL_SUCCESS) {
+      return absl::InternalError("Failed clCreateCommandBufferKHR.");
+    }
+    RETURN_IF_ERROR(context->AddToCommanBuffer(cb));
+    errcode_ret = clFinalizeCommandBufferKHR(cb);
+    if (errcode_ret != CL_SUCCESS) {
+      return absl::InternalError("Failed clFinalizeCommandBufferKHR.");
+    }
+  }
+
+  for (int i = 0; i < num_tests; ++i) {
+    const auto start = std::chrono::high_resolution_clock::now();
+    for (auto& cb : cbs) {
+      cl_int error_code =
+          clEnqueueCommandBufferKHR(1, &command_queue, cb, 0, nullptr, nullptr);
+      if (error_code != CL_SUCCESS) {
+        return absl::UnknownError(
+            absl::StrCat("Failed to clEnqueueCommandBufferKHR - ",
+                         CLErrorCodeToString(error_code)));
+      }
+      clFlush(command_queue);
+    }
+    clFinish(command_queue);
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
+    const double average_inference_time = total_time_ms / num_runs_per_sec;
+    std::cout << "Total time CB - " << average_inference_time << "ms"
+              << std::endl;
+  }
+  for (auto& cb : cbs) {
+    clReleaseCommandBufferKHR(cb);
+  }
+  return absl::OkStatus();
+}
+
 absl::Status RunModelSample(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
@@ -280,6 +328,9 @@ absl::Status RunModelSample(const std::string& model_name) {
     const double average_inference_time = total_time_ms / num_runs_per_sec;
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }
+
+  RETURN_IF_ERROR(
+      RunCommandBufferSample(kNumRuns, num_runs_per_sec, &env, &context));
 
   return absl::OkStatus();
 }

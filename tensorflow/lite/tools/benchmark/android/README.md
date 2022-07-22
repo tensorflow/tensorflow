@@ -82,9 +82,9 @@ adb shell am start -S \
 (5) The results will be available in Android's logcat, e.g.:
 
 ```
-adb logcat | grep "Average inference"
+adb logcat | grep "Inference timings in us"
 
-... tflite  : Average inference timings in us: Warmup: 91471, Init: 4108, Inference: 80660.1
+... tflite  : Inference timings in us: Init: 1007529, First inference: 4098, Warmup (avg): 1686.59, Inference (avg): 1687.92
 ```
 
 ## To trace Tensorflow Lite internals including operator invocation
@@ -128,9 +128,9 @@ adb shell am start -S \
 messages, e.g.,
 
 ```
-adb logcat | grep "Average inference"
+adb logcat | grep "Inference timings in us"
 
-... tflite  : Average inference timings in us: Warmup: 91471, Init: 4108, Inference: 80660.1
+... tflite  : Inference timings in us: Init: 1007529, First inference: 4098, Warmup (avg): 1686.59, Inference (avg): 1687.92
 ```
 
 (9) Stop tracing by tapping either the System Tracing tile in the Quick Settings

@@ -423,7 +423,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun(experimental_relax_shapes=True)
+    @function.defun(reduce_retracing=True)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -434,7 +434,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(func), 1)
 
     func(constant_op.constant([1.0]))
-    self.assertFalse(unknown_dim[0])
+    self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
     func(constant_op.constant([1.0, 2.0]))
@@ -442,13 +442,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(func), 2)
 
   def testInputShapeRelaxationOnInstanceMethod(self):
-    # Test that experimental_relax_shapes is passed during
+    # Test that reduce_retracing is passed during
     # instance method bounding.
     unknown_dim = [False]
 
     class Foo(object):
 
-      @def_function.function(experimental_relax_shapes=True)
+      @def_function.function(reduce_retracing=True)
       def func(self, a):
         if a._shape_tuple()[0] is None:
           unknown_dim[0] = True
@@ -459,7 +459,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(unknown_dim[0])
 
     foo.func(constant_op.constant([1.0]))
-    self.assertFalse(unknown_dim[0])
+    self.assertTrue(unknown_dim[0])
 
     foo.func(constant_op.constant([1.0, 2.0]))
     self.assertTrue(unknown_dim[0])
@@ -467,7 +467,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxationWithRaggedTensors(self):
     traced_type_spec = [None]
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def func(x):
       traced_type_spec[0] = x._type_spec
       return x
@@ -484,12 +484,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         ragged_factory_ops.constant([[1, 2], [3, 4]]), None)
     check_trace(  # Even if component tensor shapes change -> no retrace.
         ragged_factory_ops.constant([[1, 2], [3, 4, 5, 6]]), None)
-    check_trace(  # Different TypeSpec shape (nrows): retrace
+    check_trace(  # Different TypeSpec shape (nrows): relax & retrace
         ragged_factory_ops.constant([[1], [2], [3]]),
-        ragged_tensor.RaggedTensorSpec([3, None], dtypes.int32))
-    check_trace(  # Different nrows again: relax & retrace
-        ragged_factory_ops.constant([[1], [2], [3], [4]]),
         ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32))
+    check_trace(  # Different nrows again: relax & retrace
+        ragged_factory_ops.constant([[1], [2], [3], [4]]), None)
     check_trace(  # Different nrows yet again: not retrace
         ragged_factory_ops.constant([[1]]), None)
     check_trace(  # Different ragged_rank: retrace
@@ -502,7 +501,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxationWithStructuredTensors(self):
     traced_type_spec = [None]
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def func(x):
       traced_type_spec[0] = x._type_spec
       return x
@@ -516,26 +515,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # then retrace each time.
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'a': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'a': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'b': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'b': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'b': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
     check_trace(
         structured_tensor.StructuredTensor.from_pyval({'c': [1]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'c': tensor_spec.TensorSpec((1,), dtypes.int32)}))
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'c': tensor_spec.TensorSpec((1,), dtypes.int32)},
+            rank=0))
 
     # But if we call again with only shape different, then do relax:
-    check_trace(  # retrace
-        structured_tensor.StructuredTensor.from_pyval({'a': [1, 2]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((2,), dtypes.int32)}))
     check_trace(  # relax & retrace
+        structured_tensor.StructuredTensor.from_pyval({'a': [1, 2]}),
+        structured_tensor.StructuredTensor.Spec._from_fields_and_rank(
+            fields={'a': tensor_spec.TensorSpec((None,), dtypes.int32)},
+            rank=0))
+    check_trace(   # use relaxed graph
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3]}),
-        structured_tensor.StructuredTensorSpec(
-            [], {'a': tensor_spec.TensorSpec((None,), dtypes.int32)}))
+        None)
     check_trace(  # use relaxed graph
         structured_tensor.StructuredTensor.from_pyval({'a': [1, 2, 3, 4]}),
         None)
@@ -547,7 +549,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     traced_type_spec = [None]
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def func(x):
       traced_type_spec[0] = x._type_spec
       return x
@@ -568,14 +570,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
             tensor_spec.TensorSpec([1, 2], dtypes.float32)))
     check_trace(  # shape=[1, 2]: no retrace (use the [1, 2] graph)
         dataset_ops.make_one_shot_iterator(ds_1_2), None)
-    check_trace(  # shape=[2, 2]: retrace
+    check_trace(  # shape=[2, 2]: relax to [None, 2] and retrace
         dataset_ops.make_one_shot_iterator(ds_2_2),
         iterator_ops.IteratorSpec(
-            tensor_spec.TensorSpec([2, 2], dtypes.float32)))
-    check_trace(  # shape=[3, 2]: relax to [None, 2] and retrace
-        dataset_ops.make_one_shot_iterator(ds_3_2),
-        iterator_ops.IteratorSpec(
             tensor_spec.TensorSpec([None, 2], dtypes.float32)))
+    check_trace(  # shape=[3, 2]: no retrace (use the [None, 2] graph)
+        dataset_ops.make_one_shot_iterator(ds_3_2), None)
     check_trace(  # shape=[4, 2]: no retrace (use the [None, 2] graph)
         dataset_ops.make_one_shot_iterator(ds_4_2), None)
     check_trace(  # shape=[2, 1]: relax to [None, None] and retrace
@@ -609,7 +609,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun(experimental_relax_shapes=True)
+    @function.defun(reduce_retracing=True)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -624,7 +624,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(func), 1)
 
     func(a, b_=[b0, constant_op.constant([1.0])])
-    self.assertFalse(unknown_dim[0])
+    self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
     func(a, b_=[b0, constant_op.constant([1.0, 1.0])])
@@ -640,36 +640,34 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(unknown_dim[0])
     self.assertLen(total_function_cache(func), 3)
 
-    # Since we already marked a cache miss for a function with the same
-    # non-input signatures, here we will immediately start relaxing shapes.
+    # We relax the type traced previously.
     func(a, b_=[b0, constant_op.constant([1.0])])
     self.assertTrue(unknown_dim[0])
-    self.assertLen(total_function_cache(func), 3)
+    self.assertLen(total_function_cache(func), 4)
 
   def testNestedShapeFunctionRelaxation(self):
-
-    got_shape = [None]
-
+    traced_shape = None
     # The inner function will go through shape relaxation because the shapes it
     # receives will be [1], [2], [3], ...
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def bar(x_shape):
-      got_shape[0] = x_shape._shape_tuple()
+      nonlocal traced_shape
+      traced_shape = x_shape._shape_tuple()
       return x_shape
 
     # The outer function will not go through shape relaxation because the shapes
     # it receives will be [1], [[1]], [[[1]]], ...
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def foo(ones):
       return bar(array_ops.shape(ones))
 
-    for rank in range(1, 6):
+    self.assertAllEqual(self.evaluate(foo(array_ops.ones([1]))), [1])
+    self.assertEqual(traced_shape, (1,))
+
+    for rank in range(2, 6):
       x_shape = self.evaluate(foo(array_ops.ones([1] * rank)))
       self.assertAllEqual(x_shape, [1] * rank)
-      if rank < 3:
-        self.assertEqual(got_shape[0], (rank,))
-      else:
-        self.assertEqual(got_shape[0], (None,))
+      self.assertEqual(traced_shape, (None,))
 
   def testNoHash(self):
 
@@ -2015,7 +2013,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = function.defun(func, experimental_relax_shapes=True)
+      defined = function.defun(func, reduce_retracing=True)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)
@@ -2030,16 +2028,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       # Gradual shape relaxation is performed; and the common shape between
       # [1] and [2] is one containing unknown dimensions.
       self.assertLen(total_function_cache(defined), 2)
-
-      # pylint: disable=protected-access
-      self.assertLen(defined._function_cache.arg_relaxed_specs, 1)
-      relaxed_specs = (
-          list(defined._function_cache.arg_relaxed_specs.values())[0])
-      self.assertLen(relaxed_specs, 1)
-      relaxed_shape = relaxed_specs[0].shape
-      # pylint: enable=protected-access
-      self.assertEqual(relaxed_shape.rank, 1)
-      self.assertEqual(tensor_shape.dimension_value(relaxed_shape[0]), None)
 
       t = constant_op.constant([1.0, 1.0, 1.0], dtype=dtypes.float32)
       defined(t)
@@ -5530,6 +5518,55 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([0, 1]))
     with self.assertRaises(ValueError):
       lazy_capture()
+
+  def testMaybeCreateCapturePlaceholderWithValidCapture(self):
+    @def_function.function
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+
+    x = {
+        'tensor': constant_op.constant(0),
+        'list': [constant_op.constant(1), 2],
+        'dict': {
+            'float': constant_op.constant(0.5)
+        }
+    }
+
+    out = f()
+    # tf.function output should have same structure/values with the side input
+    self.assertEqual(x['tensor'].numpy(), out['tensor'].numpy())
+    self.assertEqual(x['list'][0].numpy(), out['list'][0].numpy())
+    self.assertEqual(x['list'][1], out['list'][1].numpy())
+    self.assertEqual(x['dict']['float'].numpy(), out['dict']['float'].numpy())
+
+  def testMaybeCreateCapturePlaceholderWithInvalidCapture(self):
+    @def_function.function
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._maybe_create_capture_placeholder(func)
+
+    # Set is not supported
+    x = set([1, 2])
+    with self.assertRaises(NotImplementedError):
+      f()
+
+  @parameterized.parameters(
+      (1, int, 2, int, 2),
+      (1, constant_op.constant, 2, constant_op.constant, 1))
+  def testRetraceLogicWithSideInputs(self, val_before, type_before, val_after,
+                                     type_after, expected_len):
+    @def_function.function
+    def f():
+      func = lambda: x
+      return ops.get_default_graph()._experimental_capture_side_input_by_ref(  # pylint: disable=protected-access
+          'lambda: x', func)
+
+    x = type_before(val_before)
+    _ = f()
+    x = type_after(val_after)
+    _ = f()
+    self.assertLen(total_function_cache(f), expected_len)
 
   def testFunctoolsLruCache(self):
     self.skipTest(

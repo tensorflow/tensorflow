@@ -8,7 +8,7 @@
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @memcpy(%dst: memref<4x4xf32>, %src: memref<4x4xf32>) {
+func.func @memcpy(%dst: memref<4x4xf32>, %src: memref<4x4xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 

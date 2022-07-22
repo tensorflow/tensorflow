@@ -15,7 +15,6 @@ pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    module_name = "format_converter_wrapper_pybind11",
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",

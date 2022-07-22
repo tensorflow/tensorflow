@@ -54,7 +54,7 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag) {
 
   TensorSliceSet::SliceInfo info = {slice, tag, result_shape.num_elements()};
   slices_.insert(std::make_pair(str, info));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool TensorSliceSet::QueryMeta(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/quantized_conv_2d_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -116,6 +117,10 @@ void QuantizedConv2DTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
+
   if (Unsigned()) {
     Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
   } else {
@@ -138,7 +143,7 @@ std::vector<char> QuantizedConv2DTester::CreateTfLiteModel() const {
       {CreateOperatorCode(builder, BuiltinOperator_CONV_2D)}};
 
   std::vector<int8_t> filter_data(OutputChannels() * KernelHeight() *
-                                  KernelWidth() * InputChannels());
+                                  KernelWidth() * KernelInputChannels());
   std::generate(filter_data.begin(), filter_data.end(), std::ref(filter_rng));
   std::vector<int32_t> bias_data(OutputChannels());
   std::generate(bias_data.begin(), bias_data.end(), std::ref(bias_rng));
@@ -160,7 +165,7 @@ std::vector<char> QuantizedConv2DTester::CreateTfLiteModel() const {
   const std::array<int32_t, 4> output_shape{
       {BatchSize(), OutputHeight(), OutputWidth(), OutputChannels()}};
   const std::array<int32_t, 4> filter_shape{
-      {OutputChannels(), KernelHeight(), KernelWidth(), InputChannels()}};
+      {OutputChannels(), KernelHeight(), KernelWidth(), KernelInputChannels()}};
   const std::array<int32_t, 1> bias_shape{{OutputChannels()}};
 
   flatbuffers::Offset<flatbuffers::Vector<float>> filter_scale_offset = 0;

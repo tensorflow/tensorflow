@@ -258,7 +258,7 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   TF_RETURN_IF_ERROR(
       graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddShuffleDataset(MutableGraphView* graph, const NodeDef& add_before,
@@ -287,7 +287,7 @@ Status AddShuffleDataset(MutableGraphView* graph, const NodeDef& add_before,
 
   TF_RETURN_IF_ERROR(
       graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddShuffleDatasetV2(MutableGraphView* graph, const NodeDef& add_before,
@@ -310,7 +310,7 @@ Status AddShuffleDatasetV2(MutableGraphView* graph, const NodeDef& add_before,
 
   TF_RETURN_IF_ERROR(
       graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddShuffleDatasetV3(MutableGraphView* graph, const NodeDef& add_before,
@@ -341,7 +341,7 @@ Status AddShuffleDatasetV3(MutableGraphView* graph, const NodeDef& add_before,
 
   TF_RETURN_IF_ERROR(
       graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ReaderOpInFunction(const NodeDef& node,
@@ -384,7 +384,7 @@ Status RemoveShuffleDataset(MutableGraphView* graph, const NodeDef& node,
   }
 
   // TODO(frankchn): Traverse functions too.
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveShuffleDatasetV2(MutableGraphView* graph, const NodeDef& node,
@@ -406,7 +406,7 @@ Status RemoveShuffleDatasetV2(MutableGraphView* graph, const NodeDef& node,
   }
 
   // TODO(frankchn): Traverse functions too.
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveShuffleDatasetV3(MutableGraphView* graph, const NodeDef& node,
@@ -433,7 +433,7 @@ Status RemoveShuffleDatasetV3(MutableGraphView* graph, const NodeDef& node,
   }
 
   // TODO(frankchn): Traverse functions too.
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
@@ -475,7 +475,7 @@ Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
         seed_generator_node, reshuffle_each_iteration));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 const NodeDef* FindFuncAndTensorSliceDataset(
@@ -564,7 +564,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
       TF_RETURN_IF_ERROR(RecursivelyHandleOp(*input_node, num_workers, index,
                                              flib, graph, nodes_to_delete));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // This handles the case for the following subgraph:
@@ -661,7 +661,7 @@ Status RewriteRebatchV2ToV1(const NodeDef& sink_node, int64_t num_replicas,
   // sink_node to get the RebatchDataset.
   NodeDef* input_node = graph_utils::GetInputNode(sink_node, *graph);
   if (input_node->op() != kRebatchDatasetV2OpName) {
-    return Status::OK();
+    return OkStatus();
   }
 
   NodeDef* rebatch_node = input_node;
@@ -698,7 +698,7 @@ Status RewriteRebatchV2ToV1(const NodeDef& sink_node, int64_t num_replicas,
     shape->mutable_dim(0)->set_size(-1);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShardByData(const NodeDef& sink_node, int64_t num_workers, int64_t index,
@@ -750,7 +750,7 @@ Status ShardByHint(const NodeDef& sink_node, int64_t num_workers, int64_t index,
     (*(mutable_node->mutable_attr()))[data::ShardDatasetOp::kRequireNonEmpty]
         .set_b(true);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
@@ -762,7 +762,7 @@ Status ApplyAutoShard(const NodeDef& sink_node, int64_t num_workers,
                                  graph->graph()->library());
   switch (policy) {
     case AutoShardPolicy::OFF:
-      return Status::OK();
+      return OkStatus();
     case AutoShardPolicy::FILE:
       return ShardByFile(sink_node, num_workers, index, &flib, graph);
     case AutoShardPolicy::DATA:
@@ -816,7 +816,7 @@ Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
     metrics::RecordTFDataAutoShard(id, policy_applied, num_workers,
                                    num_replicas);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace
@@ -935,7 +935,7 @@ Status AutoShard::Init(
     return errors::InvalidArgument(kNumReplicasAttrName, " should be >= 0");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AutoShard::OptimizeAndCollectStats(Cluster* cluster,
@@ -946,7 +946,7 @@ Status AutoShard::OptimizeAndCollectStats(Cluster* cluster,
   TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_,
                                    auto_shard_policy_, num_replicas_, output));
   stats->num_changes++;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(AutoShard, "tf_auto_shard");

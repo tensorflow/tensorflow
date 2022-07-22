@@ -37,7 +37,8 @@ TEST(DialectUtilityTest, TestLookupControlDependency) {
     }
   )mlir";
 
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
@@ -71,7 +72,8 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
     }
   )mlir";
 
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
@@ -105,7 +107,8 @@ TEST(DialectUtilityTest, TestLookupDataValueNoData) {
     }
   )mlir";
 
-  OwningOpRef<mlir::ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);

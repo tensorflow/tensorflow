@@ -25,19 +25,18 @@ namespace tfg {
 // Lifts a graph into a function, using the provided array of `feeds` for
 // function arguments, `fetches` for function returned values, and
 // `control_rets` for returned control values. The Graph op is replaced in-place
-// by a GraphFuncOp with the provided `name`.
+// by a GraphFuncOp with a name defined in the dialect.
 tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
                                ArrayRef<Value> fetches,
-                               ArrayRef<Value> control_rets, StringRef name);
+                               ArrayRef<Value> control_rets);
 
 // Lifts a graph into a function, using the provided array of `feeds` for
 // function arguments, `fetches` for function returned values, and
 // `control_rets` for returned control values. The Graph op is replaced in-place
-// by a GraphFuncOp with the provided `name`.
+// by a GraphFuncOp with a name defined in the dialect.
 tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<std::string> feeds_names,
                                ArrayRef<std::string> fetches_names,
-                               ArrayRef<std::string> control_rets,
-                               StringRef name);
+                               ArrayRef<std::string> control_rets);
 
 }  // namespace tfg
 }  // namespace mlir

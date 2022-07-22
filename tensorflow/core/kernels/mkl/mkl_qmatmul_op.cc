@@ -98,6 +98,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace {
@@ -292,11 +293,15 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       std::shared_ptr<stream> cpu_stream;
       MklDnnThreadPool eigen_tp(context);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_fwd->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_fwd, context);
+
       // Execute inner-product
       Tbias* bias_data = this->GetBiasHandle(
           context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);
       matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data,
-                          cpu_stream);
+                          scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",

@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<10xf32> }) -> tensor<?xf32> {
+func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<10xf32> }) -> tensor<?xf32> {
   %0 = "tf.Sub"(%V__0, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.Sqrt"(%0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.Pow"(%V__0, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
@@ -13,5 +13,5 @@ builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor
   %11 = "tf.Asin"(%10) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %12 = "tf.Floor"(%11) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %13 = "tf.FloorDiv"(%1, %12) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %13 : tensor<?xf32>
+  func.return %13 : tensor<?xf32>
 }

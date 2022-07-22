@@ -53,6 +53,8 @@ constexpr const char* kTFRTDevice = "tfrt.device";
 struct DistRemoteRunEncapsulatePass
     : public PassWrapper<DistRemoteRunEncapsulatePass,
                          OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DistRemoteRunEncapsulatePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-dist-remote-run-encapsulate";
   }
@@ -68,11 +70,11 @@ struct DistRemoteRunEncapsulatePass
   }
 };
 
-LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
-  SmallVector<FuncOp, 4> referenced({entry_func});
+  SmallVector<func::FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -80,10 +82,10 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   SymbolTable symbol_table(module_for_func.get());
 
   while (!referenced.empty()) {
-    FuncOp func = referenced.pop_back_val();
+    func::FuncOp func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<func::FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -91,7 +93,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+      func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
           use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
@@ -100,7 +102,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       referenced.emplace_back(referenced_func);
     }
 
-    FuncOp clone = func.clone();
+    func::FuncOp clone = func.clone();
     if (clone.getName() == entry_func.getName()) {
       clone.setPublic();
     } else {
@@ -123,7 +125,7 @@ void DistRemoteRunEncapsulatePass::runOnOperation() {
   Type tensor_handle_ty = tfrt::corert::TensorHandleType::get(&getContext());
   module.walk([&](tfrt::dist::RemoteExecuteFuncOp remote_exec_op) {
     FlatSymbolRefAttr callee_sym = remote_exec_op.calleeAttr();
-    FuncOp callee = symtab.lookup<FuncOp>(callee_sym.getValue());
+    func::FuncOp callee = symtab.lookup<func::FuncOp>(callee_sym.getValue());
     if (!callee) {
       remote_exec_op.emitOpError("callee function ")
           << callee_sym.getValue() << " is not found";

@@ -10,7 +10,7 @@
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @test_infeed_0(%dummy: memref<3xf32>) -> () {
+func.func @test_infeed_0(%dummy: memref<3xf32>) -> () {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
   // CHECK: [[CHAIN:%[0-9]+]] = xlir.infeed %arg1, %arg0
@@ -28,7 +28,7 @@ func @test_infeed_0(%dummy: memref<3xf32>) -> () {
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @test_infeed_2(%output0: memref<3xf32>, %output1: memref<4x5xf32>) -> () {
+func.func @test_infeed_2(%output0: memref<3xf32>, %output1: memref<4x5xf32>) -> () {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
   // CHECK: [[CHAIN:%[0-9]+]] = xlir.infeed %arg1, %arg2, %arg3, %arg0
@@ -45,7 +45,7 @@ func @test_infeed_2(%output0: memref<3xf32>, %output1: memref<4x5xf32>) -> () {
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @test_outfeed_1(%input0: memref<3x5xf32>) -> () {
+func.func @test_outfeed_1(%input0: memref<3x5xf32>) -> () {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
   // CHECK:[[CHAIN:%[0-9]+]] = xlir.outfeed %arg1, %arg2, %arg0

@@ -23,10 +23,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -661,6 +663,13 @@ def _apply_op(g, *args, **kwargs):
 
 class OperationTest(test_util.TensorFlowTestCase):
 
+  def testTraceback(self):
+    g = ops.Graph()
+    op1 = ops.Operation(
+        ops._NodeDef("None", "op1"), g, [],
+        [dtypes.float32_ref, dtypes.float32])
+    self.assertIn("testTraceback", op1.traceback[-1])
+
   @test_util.run_deprecated_v1
   def testNoInputs(self):
     op = test_ops.float_output_string_output(name="myop").a.op
@@ -950,6 +959,20 @@ class OperationTest(test_util.TensorFlowTestCase):
     # TODO(skyewm): add node_def check
     self.assertEqual(op.get_attr("foo"), 2)
 
+  @test_util.run_v2_only
+  def testSetFullType(self):
+    @def_function.function
+    def test_fn():
+      ds = dataset_ops.Dataset.range(3)._variant_tensor
+
+      ds.op.experimental_set_type(
+          full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_PRODUCT))
+
+      self.assertEqual(ds.op.node_def.experimental_type.type_id,
+                       full_type_pb2.TFT_PRODUCT)
+
+    test_fn()
+
   # TODO(nolivia): test all error cases
   def testAddControlInput(self):
     with ops.Graph().as_default():
@@ -1230,6 +1253,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.graph, g)
     self.assertEqual(x.consumers(), [op])
     self.assertIsNotNone(op.traceback)
+    self.assertIn("testBasic", op.traceback[-1])
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
 

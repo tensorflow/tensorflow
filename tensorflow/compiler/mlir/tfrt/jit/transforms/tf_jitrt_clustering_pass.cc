@@ -76,7 +76,7 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // Run clustering only if the clustering tier or supported operations are
     // explicitly defined by the oplist.
-    if (!tier.hasValue() && opset.empty()) return;
+    if (!tier.has_value() && opset.empty()) return;
 
     // If the clustering tier is not defined, it means that the opset will later
     // filter supported operations, so it's ok to use `all` tier.
@@ -114,6 +114,9 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
     // Traverse all users until we find all operations that could be hoisted.
     while (!work_list.empty()) {
       mlir::Operation* op = work_list.pop_back_val();
+
+      // Skip operations that are already in the hoisted set.
+      if (hoisted_ops.contains(op)) continue;
 
       // Add operation to hoisted ops set if all operands can be hoisted.
       bool all_operands_hoisted =
@@ -153,13 +156,14 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTfJitRtClusteringPass() {
   return std::make_unique<ClusteringPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTfJitRtClusteringPass(
-    llvm::ArrayRef<std::string> oplist, int min_cluster_size) {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfJitRtClusteringPass(llvm::ArrayRef<std::string> oplist,
+                            int min_cluster_size) {
   return std::make_unique<ClusteringPass>(oplist, min_cluster_size);
 }
 

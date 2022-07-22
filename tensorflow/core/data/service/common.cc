@@ -61,7 +61,7 @@ Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
         "specify a valid sharding policy. Please add the policy to either "
         "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<AutoShardPolicy> ToAutoShardPolicy(
@@ -129,6 +129,11 @@ StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
   return errors::InvalidArgument("Invalid tf.data service deployment mode: ", s,
                                  ". Supported modes are "
                                  "COLOCATED, REMOTE, and HYBRID.");
+}
+
+bool IsPreemptedError(const Status& status) {
+  return errors::IsAborted(status) || errors::IsCancelled(status) ||
+         errors::IsUnavailable(status);
 }
 }  // namespace data
 }  // namespace tensorflow

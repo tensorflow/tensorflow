@@ -69,6 +69,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitGemm(
       const xla::HloCustomCallInstruction* custom_call);
+  xla::StatusOr<Operation*> EmitCublasLtMatmul(
+      const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitDnnConvolution(
       const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitDnnBatchNorm(
@@ -125,7 +127,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // actual number of operands and results generated for MLIR in `num_arguments`
   // and `num_results`.
   xla::Status CreateOperands(const xla::HloInstruction* instr,
-                             absl::optional<int64_t> num_operands,
+                             std::optional<int64_t> num_operands,
                              TokenLoweringMode token_mode,
                              SmallVectorImpl<Value>& operands,
                              size_t& num_arguments, size_t& num_results);
@@ -133,7 +135,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr,
-      absl::optional<int64_t> num_operands = absl::nullopt) {
+      std::optional<int64_t> num_operands = std::nullopt) {
     size_t unused;
     return CreateOpWithoutAttrs<OpType>(instr, unused, unused, num_operands);
   }
@@ -141,8 +143,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   template <typename OpType>
   xla::StatusOr<OpType> CreateOpWithoutAttrs(
       const xla::HloInstruction* instr, size_t& num_arguments,
-      size_t& num_results,
-      absl::optional<int64_t> num_operands = absl::nullopt);
+      size_t& num_results, std::optional<int64_t> num_operands = std::nullopt);
 
   template <typename OpType>
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
@@ -180,7 +181,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // Computation parameters don't need any specific handling when they are
   // visited, they are already processed when we enter a new computation.
   tensorflow::Status HandleParameter(const xla::HloInstruction* instr) final {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Helper function that recursively visits the tuple structure in

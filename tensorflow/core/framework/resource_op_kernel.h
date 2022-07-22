@@ -127,7 +127,7 @@ class ResourceOpKernel : public OpKernel {
   // it is compatible with this op's configuration. The verification may fail in
   // cases such as two graphs asking queues of the same shared name to have
   // inconsistent capacities.
-  virtual Status VerifyResource(T* resource) { return Status::OK(); }
+  virtual Status VerifyResource(T* resource) { return OkStatus(); }
 
   Tensor tensor_ TF_GUARDED_BY(mu_);
 

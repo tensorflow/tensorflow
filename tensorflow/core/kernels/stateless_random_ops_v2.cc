@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/random_poisson_op.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
+#include "tensorflow/core/kernels/stateless_random_ops_v2_util.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -47,46 +48,19 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace {
 
-template <typename T>
-Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
-  auto dtype = DataTypeToEnum<T>::v();
-  if (tensor.dims() != 0) {
-    return errors::InvalidArgument("input ", std::to_string(input_idx),
-                                   " (0-based) must have shape [], not ",
-                                   tensor.shape().DebugString());
-  }
-  if (tensor.dtype() != dtype) {
-    return errors::InvalidArgument("dtype of input ", std::to_string(input_idx),
-                                   " (0-based) must be ", DataTypeString(dtype),
-                                   ", not ", DataTypeString(tensor.dtype()));
-  }
-  *result = tensor.flat<T>()(0);
-  return Status::OK();
-}
-
 class StatelessRandomOpBase : public OpKernel {
  public:
   explicit StatelessRandomOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    // Sanitize input
-    const Tensor& shape_t = ctx->input(0);
-    const Tensor& key_t = ctx->input(1);
-    const Tensor& counter_t = ctx->input(2);
-    const int alg_input_idx = 3;
-    const Tensor& alg_t = ctx->input(alg_input_idx);
-
-    int alg_id;
-    OP_REQUIRES_OK(ctx, GetScalar(alg_t, alg_input_idx, &alg_id));
-    Algorithm alg = Algorithm(alg_id);
-    if (alg == RNG_ALG_AUTO_SELECT) {
-      alg = RNG_ALG_PHILOX;
-    }
+    OP_REQUIRES_VALUE(auto key_counter_alg, ctx,
+                      GetKeyCounterAlgFromInputs(ctx, 1, 2, 3));
+    auto key_t = std::get<0>(key_counter_alg);
+    auto counter_t = std::get<1>(key_counter_alg);
+    auto alg = std::get<2>(key_counter_alg);
 
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
-    OP_REQUIRES_OK(ctx,
-                   CheckKeyCounterShape(alg, key_t.shape(), counter_t.shape()));
+    OP_REQUIRES_OK(ctx, tensor::MakeShape(ctx->input(0), &shape));
 
     // Allocate output
     Tensor* output;
@@ -99,7 +73,8 @@ class StatelessRandomOpBase : public OpKernel {
     Fill(ctx, alg, key_t, counter_t, output);
   }
 
-  // The part of Compute that depends on device, type, and distribution
+  // The part of Compute that depends on device, type, and distribution.
+  // Must be a tail call because it doesn't report error via return value.
   virtual void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
                     const Tensor& counter, Tensor* output) = 0;
 };

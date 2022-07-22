@@ -45,7 +45,7 @@ TfLiteStatus ReduceOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         graph_builder_->AddConstNodeWithData(tensor_id, axes_tensor);
     AddInput(TensorID(const_axes_node->GetID(), 0));
   } else {
-    context->ReportError(context, "Reduction op doesn't have constant axis");
+    TF_LITE_KERNEL_LOG(context, "Reduction op doesn't have constant axis");
     return kTfLiteError;
   }
 

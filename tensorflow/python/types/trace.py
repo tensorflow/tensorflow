@@ -30,6 +30,7 @@ from typing import Optional, Sequence
 from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 @tf_export("types.experimental.TraceType", v1=[])
@@ -152,6 +153,42 @@ class TraceType(metaclass=abc.ABCMeta):
     ```
     """
 
+  # TODO(b/221309709): Polish into a stable placeholder_value.
+  @doc_controls.do_not_doc_inheritable
+  def _placeholder_value(self):
+    """Creates a placeholder for tracing.
+
+    Often it is more useful to trace with a placeholder value than an actual
+    one. For example, a placeholder value can represent multiple different
+    actual values. This means that the trace generated with that placeholder
+    value is more general and reusable which saves expensive retracing.
+
+    For the `Fruit` example shared above, implementing:
+
+    ```python
+    class FruitTraceType:
+      def _placeholder_value():
+        return Fruit()
+    ```
+    instructs tf.function to trace with the `Fruit()` objects
+    instead of the actual `Apple()` and `Mango()` objects when it receives a
+    call to `get_mixed_flavor(Apple(), Mango())`. For example, Tensor arguments
+    are replaced with Tensors of similar shape and dtype, output from
+    a tf.Placeholder op.
+
+    More generally, placeholder values are the arguments of a tf.function,
+    as seen from the function's body:
+    ```python
+    @tf.function
+    def foo(x):
+      # Here `x` can be the placeholder value
+      ...
+
+    foo(x) # Here `x` is the actual value
+    ```
+    """
+    raise NotImplementedError
+
   @abc.abstractmethod
   def __hash__(self) -> int:
     pass
@@ -178,6 +215,7 @@ class TracingContext(metaclass=abc.ABCMeta):
 class SupportsTracingProtocol(Protocol):
   """A protocol allowing custom classes to control tf.function retracing."""
 
+  @doc_controls.doc_private
   @abc.abstractmethod
   def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
     """Returns the tracing type of this object.

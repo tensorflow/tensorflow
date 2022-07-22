@@ -15,6 +15,7 @@ limitations under the License.
 #include <ctype.h>
 
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -95,6 +96,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteHashtableSizeParams",
                                       "TfLiteConv3DTransposeParams",
                                       "TfLiteVarHandleParams",
+                                      "TfLiteUnsortedSegmentSumParams",
                                       nullptr};
 }  // namespace
 
@@ -200,6 +202,7 @@ class OpOptionData {
     op_to_option_["LOGISTIC"] = "";
     op_to_option_["RELU"] = "";
     op_to_option_["RELU_N1_TO_1"] = "";
+    op_to_option_["RELU_0_TO_1"] = "";
     op_to_option_["RELU6"] = "";
     op_to_option_["ROUND"] = "";
     op_to_option_["TANH"] = "";

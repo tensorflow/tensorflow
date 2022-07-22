@@ -27,10 +27,13 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
+StatusOr<bool> MultiOutputFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     computation_ = computation;
     candidates_.clear();
     candidates_index_.clear();
@@ -130,7 +133,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
   reachability_.reset();
   if (changed) {
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
   }
   return changed;
 }

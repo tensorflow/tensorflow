@@ -98,7 +98,7 @@ LogicalResult BuildAliasingInfo(
 }
 
 void AddAliasingAttributeToDeviceFunc(
-    FuncOp device_func,
+    func::FuncOp device_func,
     llvm::DenseMap<Value, AliasInfo>& resource_alias_info_map) {
   OpBuilder builder(device_func.getContext());
   for (const auto& resource_alias_entry : resource_alias_info_map) {
@@ -133,7 +133,8 @@ void MarkInputOutputAliasesPass::runOnOperation() {
     }
 
     FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
-    FuncOp device_func = module.lookupSymbol<FuncOp>(func_attr.getValue());
+    func::FuncOp device_func =
+        module.lookupSymbol<func::FuncOp>(func_attr.getValue());
     AddAliasingAttributeToDeviceFunc(device_func, resource_alias_info_map);
   });
 }

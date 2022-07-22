@@ -220,7 +220,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     for (int i = 0; i < ancestors.size(); i++) {
       replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
                                  new_loops[i].getInductionVar(),
-                                 new_loops.back().region());
+                                 new_loops.back().getRegion());
     }
     return new_loops.front();
   }
@@ -526,7 +526,7 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
 
 }  // namespace
 
-StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
+StatusOr<mlir::func::FuncOp> EmitConvolutionForwardAsMlir(
     HloInstruction* conv, absl::string_view function_name,
     mlir::MLIRContext* context) {
   OpBuilder builder(context);
@@ -547,7 +547,7 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
       dim_nums.output_feature_dimension(), dim_nums.output_spatial_dimensions(),
       builder);
 
-  auto function = mlir::FuncOp::create(
+  auto function = mlir::func::FuncOp::create(
       mlir::UnknownLoc::get(builder.getContext()),
       llvm_ir::AsStringRef(function_name),
       builder.getFunctionType(
@@ -602,7 +602,7 @@ Status ConvIsImplemented(const HloInstruction* conv) {
   if (window_util::HasDilation(conv->window())) {
     return Unimplemented("Dilation is not implemented.");
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace experimental

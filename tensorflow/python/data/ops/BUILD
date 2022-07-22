@@ -22,7 +22,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":iterator_ops",
+        ":load_ops",
         ":options",
+        ":save_ops",
         ":structured_function",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -49,6 +51,9 @@ py_library(
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/trackable:asset",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:resource",
         "//third_party/py/numpy",
     ],
 )
@@ -71,7 +76,33 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+py_library(
+    name = "load_ops",
+    srcs = ["load_op.py"],
+    deps = [
+        ":structured_function",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "save_ops",
+    srcs = ["save_op.py"],
+    deps = [
+        ":structured_function",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
     ],
 )
 

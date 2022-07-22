@@ -40,6 +40,7 @@ inline double MilliToUni(double m) { return m / 1E3; }
 inline uint64_t UniToPico(double uni) { return uni * 1E12; }
 inline uint64_t UniToNano(double uni) { return uni * 1E9; }
 inline double UniToMicro(double uni) { return uni * 1E6; }
+inline double UniToGiga(double uni) { return uni / 1E9; }
 inline double GigaToUni(double giga) { return giga * 1E9; }
 inline double GigaToTera(double giga) { return giga / 1E3; }
 inline double TeraToGiga(double tera) { return tera * 1E3; }

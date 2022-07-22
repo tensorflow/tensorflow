@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/framework/types.h"
-
 namespace tensorflow {
 namespace tfprof {
 struct Options;
@@ -31,23 +29,23 @@ struct Options;
 
 // Multi-step Profiler.
 //
-bool NewProfiler(const string* graph, const string* op_log);
+bool NewProfiler(const std::string* graph, const std::string* op_log);
 
 void DeleteProfiler();
 
-double AddStep(int64_t step, const string* graph, const string* run_meta,
-               const string* op_log);
+double AddStep(int64_t step, const std::string* graph,
+               const std::string* run_meta, const std::string* op_log);
 
 // Write the profiler's profile to a proto buffer.
-void WriteProfile(const string* filename);
+void WriteProfile(const std::string* filename);
 
 // Load the profile to profiler from a proto buffer file.
-void ProfilerFromFile(const string* filename);
+void ProfilerFromFile(const std::string* filename);
 
 // Returns a binary string that represents the serialized ProfileProto.
-string SerializeToString();
+std::string SerializeToString();
 
-string Profile(const string* command, const string* options);
+std::string Profile(const std::string* command, const std::string* options);
 
 // Single-step Profiler.
 //
@@ -56,9 +54,11 @@ string Profile(const string* command, const string* options);
 // OpLogProto strings, respectively.
 // 'graph', 'command' and 'options' are required. Others can be nullptr
 // if not available.
-string PrintModelAnalysis(const string* graph, const string* run_meta,
-                          const string* op_log, const string* command,
-                          const string* options);
+std::string PrintModelAnalysis(const std::string* graph,
+                               const std::string* run_meta,
+                               const std::string* op_log,
+                               const std::string* command,
+                               const std::string* options);
 
 }  // namespace tfprof
 }  // namespace tensorflow

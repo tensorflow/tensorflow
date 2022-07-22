@@ -201,7 +201,8 @@ void ParallelExecuteToIslandsPass::runOnOperation() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
 

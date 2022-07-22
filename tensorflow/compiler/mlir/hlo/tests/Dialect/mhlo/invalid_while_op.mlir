@@ -2,7 +2,7 @@
 
 // -----
 
-func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -20,12 +20,12 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -43,12 +43,12 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<3xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -66,12 +66,12 @@ func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<3xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -88,12 +88,12 @@ func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %3 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %3) : (tensor<1xi32>, tensor<3xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_cond_return_width_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_cond_return_width_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -108,12 +108,12 @@ func @while_with_cond_return_width_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf3
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_cond_return_rank_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_cond_return_rank_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -129,12 +129,12 @@ func @while_with_cond_return_rank_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_cond_return_type_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_cond_return_type_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -149,12 +149,12 @@ func @while_with_cond_return_type_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -170,12 +170,12 @@ func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     // expected-error @+1 {{'mhlo.return' op type mismatch between operand #3 and the enclosing WhileOp returned value: 'tensor<1xf32>' vs 'tensor<3xf32>'}}
     "mhlo.return"(%arg1, %arg2, %arg3, %arg3) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<1xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_with_multiple_operand_in_cond_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_multiple_operand_in_cond_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -193,12 +193,12 @@ func @while_with_multiple_operand_in_cond_return(%arg0: tensor<3xf32>) -> tensor
     %4 = mhlo.add %3, %arg4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }
 
 // -----
 
-func @while_mismatch_operand_count_with_body_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_mismatch_operand_count_with_body_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -216,5 +216,5 @@ func @while_mismatch_operand_count_with_body_return(%arg0: tensor<3xf32>) -> ten
   // expected-error @+1 {{'mhlo.return' op expects body to return a many value as the operands (4), got 3}}
     "mhlo.return"(%arg1, %arg2, %arg3) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %1#3: tensor<3xf32>
+  func.return %1#3: tensor<3xf32>
 }

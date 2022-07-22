@@ -229,6 +229,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core/kernels:math",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -754,7 +755,6 @@ filegroup(
         "tensor_handle_data.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
         "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],

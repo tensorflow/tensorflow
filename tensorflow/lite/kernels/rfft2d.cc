@@ -174,9 +174,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TF_LITE_ENSURE(context, NumDimensions(input) >= 2);
   if (input->type != kTfLiteFloat32) {
-    context->ReportError(context,
-                         "Type '%s' for input is not supported by rfft2d.",
-                         TfLiteTypeGetName(input->type));
+    TF_LITE_KERNEL_LOG(context,
+                       "Type '%s' for input is not supported by rfft2d.",
+                       TfLiteTypeGetName(input->type));
     return kTfLiteError;
   }
 
@@ -189,9 +189,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(fft_length), 1);
   TF_LITE_ENSURE_EQ(context, fft_length_shape.Dims(0), 2);
   if (fft_length->type != kTfLiteInt32) {
-    context->ReportError(context,
-                         "Type '%s' for fft_length is not supported by rfft2d.",
-                         TfLiteTypeGetName(fft_length->type));
+    TF_LITE_KERNEL_LOG(context,
+                       "Type '%s' for fft_length is not supported by rfft2d.",
+                       TfLiteTypeGetName(fft_length->type));
     return kTfLiteError;
   }
 
@@ -435,9 +435,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   if (output->type != kTfLiteComplex64) {
-    context->ReportError(context,
-                         "Type '%s' for output is not supported by rfft2d.",
-                         TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(context,
+                       "Type '%s' for output is not supported by rfft2d.",
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

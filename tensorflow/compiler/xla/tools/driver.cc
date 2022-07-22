@@ -57,7 +57,7 @@ Run with an environment variable VERBOSE set to see logging.
 struct XlaCustomCallStatus {
   // If 'failed' is true then 'message' is present; otherwise it is absent.
   // (The 'bool' followed by 'std::string' is ABI-compatible with
-  // 'absl::optional<std::string>').
+  // 'std::optional<std::string>').
   bool failed;
   std::string message;
   // To account for extra struct padding at the end.

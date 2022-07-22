@@ -87,12 +87,12 @@ KernelFallbackCompatRequestState::KernelFallbackCompatRequestState(
   DCHECK(resource_array_);
   DCHECK(rendezvous_);
 
-  // TODO(tfrt-devs): Support customizing non-CPU devices.
-  auto* device = device_manager_->HostCPU();
   if (user_intra_op_threadpool != nullptr) {
-    custom_device_ = tensorflow::RenamedDevice::NewRenamedDevice(
-        device->name(), device, /*owns_underlying=*/false,
-        /*isolate_session_state=*/false, user_intra_op_threadpool);
+    for (auto* device : device_manager_->ListDevices()) {
+      custom_device_[device] = tensorflow::RenamedDevice::NewRenamedDevice(
+          device->name(), device, /*owns_underlying=*/false,
+          /*isolate_session_state=*/false, user_intra_op_threadpool);
+    }
   }
   if (model_metadata.has_value()) {
     session_metadata_ = *model_metadata;

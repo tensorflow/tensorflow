@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
+#include <utility>
+
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 
 namespace tensorflow {
 
-xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
+xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list) {
   std::set<int> gpu_ids;
   if (visible_device_list.empty()) {
-    return {{absl::nullopt}};
+    return {{std::nullopt}};
   }
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
@@ -43,11 +46,16 @@ xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
 Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache) {
+  XlaCompilationCache::Config cache_config(
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(
-        platform_info.xla_device_metadata()->client(),
+        std::move(cache_config), platform_info.xla_device_metadata()->client(),
         platform_info.xla_device_metadata()->jit_device_type());
-    return Status::OK();
+    return OkStatus();
   }
 
   auto platform =
@@ -85,7 +93,7 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
   if (flr->config_proto()) {
     string allowed_gpus =
         flr->config_proto()->gpu_options().visible_device_list();
-    TF_ASSIGN_OR_RETURN(absl::optional<std::set<int>> gpu_ids,
+    TF_ASSIGN_OR_RETURN(std::optional<std::set<int>> gpu_ids,
                         ParseVisibleDeviceList(allowed_gpus));
     client_options.set_allowed_devices(gpu_ids);
   }
@@ -101,8 +109,9 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                    platform_info.device_type().type());
   }
   *cache = new XlaCompilationCache(
-      client.ValueOrDie(), DeviceType(registration->compilation_device_name));
-  return Status::OK();
+      std::move(cache_config), client.ValueOrDie(),
+      DeviceType(registration->compilation_device_name));
+  return OkStatus();
 }
 
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
@@ -114,7 +123,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
   } else if (device->device_type() == DEVICE_GPU) {
-    platform_id = device->tensorflow_gpu_device_info()
+    platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();

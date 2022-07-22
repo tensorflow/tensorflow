@@ -18,6 +18,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -55,6 +56,8 @@ LayerShapeNHWC = collections.namedtuple('LayerShapeNHWC',
                                         'batch, height, width, channels')
 FilterShape2D = collections.namedtuple(
     'FilterShape2D', 'height, width, in_channels, out_channels')
+FilterShape2DTranspose = collections.namedtuple(
+    'FilterShape2DTranspose', 'height, width, out_channels, in_channels')
 
 LayerShapeNCDHW = collections.namedtuple(
     'LayerShapeNCDHW', 'batch, channels, depth, height, width')
@@ -71,21 +74,22 @@ class ConvolutionTest(test.TestCase):
     return constant_op.constant(
         2 * np.random.random_sample(shape) - 1, dtype=dtypes.float32)
 
-  def _random_out_op(self, in_shape, filter_shape, strides, padding):
+  def _random_out_op(self, in_shape, filter_shape, strides, padding, dilations):
     # Choosing not to use array_op.zeros() to prevent possible removal by
     # optimization
     in_op = self._random_data_op(in_shape)
     filter_op = self._random_data_op(filter_shape)
     # Use the forward op's shape-inference
-    conv_op = nn_ops.conv2d(in_op, filter_op, strides=strides, padding=padding)
+    conv_op = nn_ops.conv2d(
+        in_op, filter_op, strides=strides, padding=padding, dilations=dilations)
     out_shape = conv_op.get_shape()
     out_op = self._random_data_op(out_shape)
     return out_op
 
   def _assert_reproducible(self, operation):
-    with self.cached_session(force_gpu=True):
-      result_1 = self.evaluate(operation)
-      result_2 = self.evaluate(operation)
+    with test_util.force_gpu():
+      result_1 = operation()
+      result_2 = operation()
     self.assertAllEqual(result_1, result_2)
 
   # The default forward algorithm choice, when using cuDNN 7, does not support
@@ -93,76 +97,196 @@ class ConvolutionTest(test.TestCase):
   # an alternative algorithm is selected. Note that, in cuDNN 7, all forward
   # algorithms are determnistic.
   @test_util.run_cuda_only
-  def testForward(self):
+  def testConvForwardDefaultAlgorithmChoice(self):
     in_shape = LayerShapeNCDHW(batch=2, channels=3, depth=5, height=7, width=6)
     filter_shape = FilterShape3D(
         depth=3, height=3, width=3, in_channels=3, out_channels=2)
     in_op = self._random_data_op(in_shape)
     filter_op = self._random_data_op(filter_shape)
-    strides = [1, 1, 1, 1, 1]
-    padding = 'VALID'
-    dilations = [1, 1, 2, 2, 2]
-    out_op = nn_ops.conv3d(
+    self._assert_reproducible(lambda: nn_ops.conv3d(
         in_op,
         filter_op,
+        strides=[1, 1, 1, 1, 1],
+        padding='VALID',
+        data_format='NCDHW',
+        dilations=[1, 1, 2, 2, 2]))
+
+  # This test is primarily testing XLA since cuDNN forward convolutions are
+  # always deterministic, even when determinism is not enabled. The convolution
+  # configuration tested is nondeterministic with XLA when determinism is not
+  # enabled.
+  @test_util.run_cuda_only
+  def testConvForwardXLA(self):
+    in_shape = LayerShapeNCDHW(
+        batch=2, channels=8, depth=5, height=12, width=15)
+    filter_shape = FilterShape3D(
+        depth=3, height=3, width=3, in_channels=8, out_channels=1)
+    in_op = self._random_data_op(in_shape)
+    filter_op = self._random_data_op(filter_shape)
+    self._assert_reproducible(lambda: nn_ops.conv3d(
+        in_op,
+        filter_op,
+        strides=[1, 1, 1, 1, 1],
+        padding='VALID',
+        data_format='NCDHW',
+        dilations=[1, 1, 2, 2, 2]))
+
+  @test_util.run_cuda_only
+  def testConvBackwardFilterGradient(self, rate=1):
+    in_shape = LayerShapeNHWC(batch=8, height=64, width=64, channels=8)
+    filter_shape = FilterShape2D(
+        height=3, width=3, in_channels=8, out_channels=8)
+    in_op = self._random_data_op(in_shape)
+    strides = [1, 1, 1, 1]
+    padding = 'SAME'
+    dilations = [1, rate, rate, 1]
+    out_op = self._random_out_op(in_shape, filter_shape, strides, padding,
+                                 dilations)
+    self._assert_reproducible(lambda: nn_ops.conv2d_backprop_filter(
+        in_op,
+        filter_shape,
+        out_op,
         strides=strides,
         padding=padding,
-        data_format='NCDHW',
-        dilations=dilations)
-    self._assert_reproducible(out_op)
+        dilations=dilations))
+
+  # A configuration for this test could not be found that exercises
+  # nondeterminism when using XLA with determinism not enabled.
+  @test_util.run_cuda_only
+  def testConvBackwardFilterGradientWithDilations(self):
+    self.testConvBackwardFilterGradient(rate=2)
 
   @test_util.run_cuda_only
-  def testBackwardFilterGradient(self):
-    in_shape = LayerShapeNHWC(batch=8, height=128, width=128, channels=8)
+  def testConvBackwardInputGradient(self, rate=1):
+    in_shape = LayerShapeNHWC(batch=1, height=16, width=16, channels=1)
     filter_shape = FilterShape2D(
-        height=3, width=3, in_channels=8, out_channels=8)
-    in_op = self._random_data_op(in_shape)
-    strides = [1, 1, 1, 1]
-    padding = 'SAME'
-    out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
-    filter_gradient_op = nn_ops.conv2d_backprop_filter(
-        in_op, filter_shape, out_op, strides=strides, padding=padding)
-    self._assert_reproducible(filter_gradient_op)
-
-  @test_util.run_cuda_only
-  def testBackwardFilterGradientWithDilations(self):
-    in_shape = LayerShapeNHWC(batch=8, height=128, width=128, channels=8)
-    filter_shape = FilterShape2D(
-        height=3, width=3, in_channels=8, out_channels=8)
-    in_op = self._random_data_op(in_shape)
-    strides = [1, 1, 1, 1]
-    padding = 'SAME'
-    dilations = [1, 2, 2, 1]
-    out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
-    filter_gradient_op = nn_ops.conv2d_backprop_filter(
-        in_op, filter_shape, out_op, strides=strides, padding=padding,
-        dilations=dilations)
-    self._assert_reproducible(filter_gradient_op)
-
-  @test_util.run_cuda_only
-  def testBackwardInputGradient(self):
-    in_shape = LayerShapeNHWC(batch=8, height=32, width=32, channels=8)
-    filter_shape = FilterShape2D(
-        height=7, width=7, in_channels=8, out_channels=128)
+        height=7, width=7, in_channels=1, out_channels=3)
     filter_op = self._random_data_op(filter_shape)
     strides = [1, 1, 1, 1]
     padding = 'SAME'
-    out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
-    input_gradient_op = nn_ops.conv2d_backprop_input(
-        in_shape, filter_op, out_op, strides=strides, padding=padding)
-    self._assert_reproducible(input_gradient_op)
+    dilations = [1, rate, rate, 1]
+    out_op = self._random_out_op(in_shape, filter_shape, strides, padding,
+                                 dilations)
+    self._assert_reproducible(lambda: nn_ops.conv2d_backprop_input(
+        in_shape,
+        filter_op,
+        out_op,
+        strides=strides,
+        padding=padding,
+        dilations=dilations))
+
+  # A configuration for this test could not be found that exercises
+  # nondeterminism when using XLA with determinism not enabled.
+  @test_util.run_cuda_only
+  def testConvBackwardInputGradientWithDilations(self):
+    self.testConvBackwardInputGradient(rate=2)
 
   @test_util.run_cuda_only
-  def testBackwardInputGradientWithDilations(self):
-    in_shape = LayerShapeNHWC(batch=8, height=32, width=32, channels=8)
-    filter_shape = FilterShape2D(
-        height=7, width=7, in_channels=8, out_channels=128)
+  def testConvTransposeForward(self, rate=1):
+    in_channels = 3
+    out_channels = 1
+    in_shape = LayerShapeNHWC(
+        batch=1, height=16, width=16, channels=in_channels)
+    filter_shape = FilterShape2DTranspose(
+        height=7, width=7, out_channels=out_channels, in_channels=in_channels)
+    in_op = self._random_data_op(in_shape)
     filter_op = self._random_data_op(filter_shape)
-    strides = [1, 1, 1, 1]
-    padding = 'SAME'
-    dilations = [1, 2, 2, 1]
-    out_op = self._random_out_op(in_shape, filter_shape, strides, padding)
-    input_gradient_op = nn_ops.conv2d_backprop_input(
-        in_shape, filter_op, out_op, strides=strides, padding=padding,
-        dilations=dilations)
-    self._assert_reproducible(input_gradient_op)
+    out_shape = LayerShapeNHWC(
+        batch=in_shape.batch,
+        height=in_shape.height,
+        width=in_shape.width,
+        channels=out_channels)
+    self._assert_reproducible(lambda: nn_ops.conv2d_transpose_v2(
+        in_op,
+        filter_op,
+        out_shape,
+        strides=1,
+        padding='SAME',
+        data_format='NHWC',
+        dilations=[1, rate, rate, 1]))
+
+  # A configuration for this test could not be found that exercises
+  # nondeterminism when using XLA with determinism not enabled.
+  @test_util.run_cuda_only
+  def testConvTransposeForwardWithDilations(self):
+    self.testConvTransposeForward(rate=2)
+
+  @test_util.run_cuda_only
+  def testConvTransposeBackwardFilterGradient(self, rate=1):
+    in_channels = 8
+    out_channels = 8
+    in_shape = LayerShapeNHWC(
+        batch=8, height=64, width=64, channels=in_channels)
+    filter_shape = FilterShape2DTranspose(
+        height=3, width=3, out_channels=out_channels, in_channels=in_channels)
+    in_op = self._random_data_op(in_shape)
+    filter_op = self._random_data_op(filter_shape)
+    out_shape = LayerShapeNHWC(
+        batch=in_shape.batch,
+        height=in_shape.height,
+        width=in_shape.width,
+        channels=out_channels)
+    upstream_gradients = self._random_data_op(out_shape)
+
+    def gradient():
+      with backprop.GradientTape() as tape:
+        tape.watch(filter_op)
+        op_output = nn_ops.conv2d_transpose_v2(
+            in_op,
+            filter_op,
+            out_shape,
+            strides=1,
+            padding='SAME',
+            data_format='NHWC',
+            dilations=[1, rate, rate, 1])
+        gradient_injector_output = op_output * upstream_gradients
+      return tape.gradient(gradient_injector_output, [filter_op])[0]
+
+    self._assert_reproducible(gradient)
+
+  # A configuration for this test could not be found that exercises
+  # nondeterminism when using XLA with determinism not enabled.
+  @test_util.run_cuda_only
+  def testConvTransposeBackwardFilterGradientWithDilations(self):
+    self.testConvTransposeBackwardFilterGradient(rate=2)
+
+  # A configuration for this test could not be found that exercises
+  # nondeterminism when determinism is not enabled (for either XLA or non-XLA).
+  @test_util.run_cuda_only
+  def testConvTransposeBackwardInputGradient(self, rate=1):
+    in_channels = 1
+    out_channels = 3
+    in_shape = LayerShapeNHWC(
+        batch=1, height=16, width=16, channels=in_channels)
+    filter_shape = FilterShape2DTranspose(
+        height=7, width=7, out_channels=out_channels, in_channels=in_channels)
+    in_op = self._random_data_op(in_shape)
+    filter_op = self._random_data_op(filter_shape)
+    out_shape = LayerShapeNHWC(
+        batch=in_shape.batch,
+        height=in_shape.height,
+        width=in_shape.width,
+        channels=out_channels)
+    upstream_gradients = self._random_data_op(out_shape)
+
+    def gradient():
+      with backprop.GradientTape() as tape:
+        tape.watch(in_op)
+        op_output = nn_ops.conv2d_transpose_v2(
+            in_op,
+            filter_op,
+            out_shape,
+            strides=1,
+            padding='SAME',
+            data_format='NHWC',
+            dilations=[1, rate, rate, 1])
+        gradient_injector_output = op_output * upstream_gradients
+      return tape.gradient(gradient_injector_output, [in_op])[0]
+
+    self._assert_reproducible(gradient)
+
+  # A configuration for this test could not be found that exercises
+  # nondeterminism when determinism is not enabled (for either XLA or non-XLA).
+  @test_util.run_cuda_only
+  def testConvTransposeBackwardInputGradientWithDilations(self):
+    self.testConvTransposeBackwardInputGradient(rate=2)

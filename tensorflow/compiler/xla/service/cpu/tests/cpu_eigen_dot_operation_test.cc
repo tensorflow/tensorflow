@@ -95,8 +95,10 @@ TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
 
 std::vector<DotTestSpec> GetDotTestCases() {
   std::vector<DotTestSpec> result;
+  // The fp16 test runs a 32-bit matmul because we promote fp16 gemms to fp32
+  // (they run much faster).
   result.push_back(
-      {F16, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF16)"});
+      {F16, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF32)"});
   result.push_back(
       {F32, R"(CHECK: call void @__xla_cpu_runtime_EigenMatMulF32)"});
   result.push_back(

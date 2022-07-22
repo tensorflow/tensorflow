@@ -16,8 +16,11 @@ limitations under the License.
 
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "absl/types/optional.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
@@ -36,6 +39,7 @@ namespace {
 
 using ::tensorflow::data::testing::EqualsProto;
 using ::tensorflow::testing::StatusIs;
+using ::testing::AllOf;
 using ::testing::HasSubstr;
 
 constexpr const char kProtocol[] = "grpc";
@@ -43,16 +47,16 @@ constexpr const char kProtocol[] = "grpc";
 class DispatcherClientTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    test_cluster_ = absl::make_unique<TestCluster>(/*num_workers=*/1);
+    test_cluster_ = std::make_unique<TestCluster>(/*num_workers=*/1);
     TF_ASSERT_OK(test_cluster_->Initialize());
-    dispatcher_client_ = absl::make_unique<DataServiceDispatcherClient>(
+    dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<int64_t> RegisterDataset(const DataServiceMetadata& metadata) {
+  StatusOr<std::string> RegisterDataset(const DataServiceMetadata& metadata) {
     const auto dataset_def = testing::RangeDataset(10);
-    int64_t dataset_id = 0;
+    std::string dataset_id;
     TF_RETURN_IF_ERROR(
         dispatcher_client_->RegisterDataset(dataset_def, metadata, dataset_id));
     return dataset_id;
@@ -67,7 +71,8 @@ TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
   metadata.set_element_spec("encoded_element_spec");
   metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
   metadata.set_cardinality(kInfiniteCardinality);
-  TF_ASSERT_OK_AND_ASSIGN(const int64_t dataset_id, RegisterDataset(metadata));
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
 
   DataServiceMetadata result;
   TF_ASSERT_OK(dispatcher_client_->GetDataServiceMetadata(dataset_id, result));
@@ -78,8 +83,8 @@ TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
   DataServiceMetadata metadata;
   EXPECT_THAT(
       dispatcher_client_->GetDataServiceMetadata(
-          /*dataset_id=*/-1000, metadata),
-      StatusIs(error::NOT_FOUND, HasSubstr("Dataset id -1000 not found")));
+          /*dataset_id=*/"not-found", metadata),
+      StatusIs(error::NOT_FOUND, HasSubstr("Dataset id not-found not found")));
 }
 
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
@@ -88,6 +93,91 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
   EXPECT_EQ(config.deployment_mode(), DEPLOYMENT_MODE_COLOCATED);
 }
 
+TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
+  DataServiceMetadata metadata;
+  metadata.set_element_spec("encoded_element_spec");
+  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  metadata.set_cardinality(kInfiniteCardinality);
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
+
+  ProcessingModeDef processing_mode;
+  processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
+  std::string job_name = "job";
+  int64_t job_id;
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
+      dataset_id, processing_mode, job_name,
+      /*num_consumers=*/std::nullopt,
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id));
+  int64_t iteration_client_id;
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateIteration(
+      job_id, /*repetition=*/0, iteration_client_id));
+
+  WorkerHeartbeatRequest worker_heartbeat_request;
+  worker_heartbeat_request.set_worker_address(test_cluster_->WorkerAddress(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      WorkerHeartbeatResponse worker_heartbeat_response,
+      dispatcher_client_->WorkerHeartbeat(worker_heartbeat_request));
+  ASSERT_EQ(worker_heartbeat_response.new_tasks_size(), 1);
+  EXPECT_TRUE(worker_heartbeat_response.new_tasks(0).use_cross_trainer_cache());
+}
+
+TEST_F(DispatcherClientTest, CreateNamedJob) {
+  DataServiceMetadata metadata;
+  metadata.set_element_spec("encoded_element_spec");
+  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  metadata.set_cardinality(kInfiniteCardinality);
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
+
+  ProcessingModeDef processing_mode;
+  processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
+  std::string job_name = "job";
+  int64_t job_id_1 = -1;
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
+      dataset_id, processing_mode, job_name,
+      /*num_consumers=*/absl::nullopt,
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id_1));
+
+  int64_t job_id_2 = -2;
+  // Creating the same job should succeed and receive the same job id.
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
+      dataset_id, processing_mode, job_name,
+      /*num_consumers=*/absl::nullopt,
+      /*use_cross_trainer_cache=*/true, TARGET_WORKERS_AUTO, job_id_2));
+  ASSERT_EQ(job_id_1, job_id_2);
+}
+
+TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
+  DataServiceMetadata metadata;
+  metadata.set_element_spec("encoded_element_spec");
+  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  metadata.set_cardinality(kInfiniteCardinality);
+  TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
+                          RegisterDataset(metadata));
+
+  int64_t job_id = 0;
+  ProcessingModeDef processing_mode;
+  processing_mode.set_sharding_policy(ProcessingModeDef::OFF);
+  std::string job_name = "job";
+  TF_ASSERT_OK(dispatcher_client_->GetOrCreateJob(
+      dataset_id, processing_mode, job_name,
+      /*num_consumers=*/absl::nullopt,
+      /*use_cross_trainer_cache=*/false, TARGET_WORKERS_AUTO, job_id));
+
+  // Creating the same iteration with a different argument should fail.
+  processing_mode.set_sharding_policy(ProcessingModeDef::DYNAMIC);
+  EXPECT_THAT(
+      dispatcher_client_->GetOrCreateJob(dataset_id, processing_mode, job_name,
+                                         /*num_consumers=*/std::nullopt,
+                                         /*use_cross_trainer_cache=*/true,
+                                         TARGET_WORKERS_AUTO, job_id),
+      StatusIs(error::INVALID_ARGUMENT,
+               AllOf(HasSubstr("but found an existing job with different "
+                               "parameters: "),
+                     HasSubstr("Existing processing mode: <>"),
+                     HasSubstr("Existing cross-trainer cache: <disabled>"))));
+}
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

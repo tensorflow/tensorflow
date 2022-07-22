@@ -91,7 +91,7 @@ Status GetAndValidateAttributes(OpKernelConstruction* ctx,
     paddings.assign(expected_rank, 0);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<int64_t> GetSliceIndices(absl::Span<const int64> num_partitions,
@@ -174,10 +174,10 @@ class XlaSplitNDBaseOp : public XlaOpKernel {
           xla::Pad(input,
                    xla::ConstantR0WithType(ctx->builder(), type, /*value=*/0),
                    padding_config));
-      return Status::OK();
+      return OkStatus();
     } else if (num_slices_ == 1) {
       ctx->SetOutput(/*index=*/0, input);
-      return Status::OK();
+      return OkStatus();
     }
 
     // Slice shape with optional padding.
@@ -242,7 +242,7 @@ class XlaSplitNDBaseOp : public XlaOpKernel {
                                      slice_limit_indices, slice_strides));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -426,7 +426,7 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
       output_shape.push_back(max_dim_size - paddings_[dim]);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<int64_t> num_concats_;
@@ -456,8 +456,8 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto output_or = this->CompileInternal(ctx);
     OP_REQUIRES_OK(ctx, output_or.status());
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable("resource", dtype_,
-                                            output_or.ConsumeValueOrDie()));
+    OP_REQUIRES_OK(ctx,
+                   ctx->AssignVariable("resource", dtype_, output_or.value()));
   }
 };
 

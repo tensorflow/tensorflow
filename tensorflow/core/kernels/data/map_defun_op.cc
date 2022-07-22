@@ -102,7 +102,7 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
       // The function is calling for a captured input
       *val =
           &compute_opts_->captured_inputs[index - compute_opts_->args.size()];
-      return Status::OK();
+      return OkStatus();
     }
 
     // NOTE: If contention on mu_ becomes problematic, we could create a vector
@@ -118,7 +118,7 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
       sliced_args_[index] = tensor::DeepCopy(sliced_args_[index]);
     }
     *val = &sliced_args_[index];
-    return Status::OK();
+    return OkStatus();
   }
 
   Status SetRetval(int index, const Tensor& val) override {
@@ -287,7 +287,7 @@ Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
   *compute_opts =
       new ComputeOptions(ctx, arguments, captured_inputs, std::move(arg_shapes),
                          batch_size, output_shapes_, max_intra_op_parallelism_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MapDefunOp::SetupOutputs(OpKernelContext* ctx, ComputeOptions* opts) {
@@ -303,7 +303,7 @@ Status MapDefunOp::SetupOutputs(OpKernelContext* ctx, ComputeOptions* opts) {
       TF_RETURN_IF_ERROR(opts->output.allocate(i, output_shape, &out));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {

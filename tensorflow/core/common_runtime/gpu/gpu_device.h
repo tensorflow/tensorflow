@@ -47,8 +47,30 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
+namespace Eigen {
+class StreamInterface;
+}
+
 namespace tensorflow {
 class GPUKernelTracker;
+
+class ConcretePerOpGpuDevice : public PerOpGpuDevice {
+ public:
+  ConcretePerOpGpuDevice();
+
+  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+                    TfDeviceId tf_device_id, Allocator* base_allocator,
+                    char* scratch);
+
+  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+                    PlatformDeviceId platform_device_id,
+                    Allocator* base_allocator, char* scratch);
+
+  const Eigen::GpuDevice& device() const override;
+
+ private:
+  std::unique_ptr<::Eigen::StreamInterface> stream_device_;
+};
 
 class BaseGPUDevice : public LocalDevice {
  public:
@@ -151,7 +173,7 @@ class BaseGPUDevice : public LocalDevice {
   mutex scratch_init_mutex_;
   char* scratch_ = nullptr;
   GPUDeviceContext* device_context_;
-  GpuDeviceInfo* gpu_device_info_ = nullptr;
+  DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_ = nullptr;
   mutex trace_mu_;
   TfDeviceId tf_device_id_;
   const bool sync_every_op_ = false;

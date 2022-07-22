@@ -34,10 +34,6 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
 
 StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   HloInstruction* top_tuple = nullptr;
-  if (tuple->parent()->root_instruction() == tuple &&
-      tuple->parent()->HasSideEffect()) {
-    return false;
-  }
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
     HloInstruction* operand = tuple->mutable_operand(operand_number);
@@ -63,10 +59,12 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   return changed;
 }
 
-StatusOr<bool> TupleSimplifier::Run(HloModule* module) {
+StatusOr<bool> TupleSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.
   bool changed = false;
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     if (exclude_entry_computation_ &&
         computation == module->entry_computation()) {
       continue;

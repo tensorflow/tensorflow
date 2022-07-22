@@ -228,6 +228,10 @@ class BatchDatasetV2OpConversion
 class TFToTFRTDataRewritePass
     : public mlir::PassWrapper<TFToTFRTDataRewritePass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFToTFRTDataRewritePass)
+
+ private:
   llvm::StringRef getArgument() const final { return "tf-to-tfrt-data"; }
   llvm::StringRef getDescription() const final {
     return "Convert Tensorflow dialect to TFRT's data dialect.";
@@ -245,13 +249,14 @@ class TFToTFRTDataRewritePass
     target.addIllegalDialect<TF::TensorFlowDialect>();
     target.addLegalDialect<tfrt::data::DataDialect>();
     target.addLegalDialect<tfrt::compiler::TFRTDialect>();
-    target.addDynamicallyLegalOp<mlir::FuncOp>([&data_converter](FuncOp op) {
-      return data_converter.isSignatureLegal(op.getType());
-    });
+    target.addDynamicallyLegalOp<mlir::func::FuncOp>(
+        [&data_converter](func::FuncOp op) {
+          return data_converter.isSignatureLegal(op.getFunctionType());
+        });
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<RangeDatasetOpConversion, BatchDatasetV2OpConversion,
                  ConstOpConversion, ReturnOpConversion>(context);
-    mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(
+    mlir::populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
         patterns, data_converter);
 
     auto result =
@@ -296,7 +301,7 @@ Status TFDataGraphDefToTFDataMLIR(
                                        graph_def, tensorflow::GraphDebugInfo(),
                                        std::move(import_config), mlir_ctx));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CompileTFDataMLIRToBEF(mlir::ModuleOp module,
@@ -319,7 +324,7 @@ Status CompileTFDataMLIRToBEF(mlir::ModuleOp module,
     return diag_handler.Combine(
         errors::Internal("failed to convert MLIR to BEF."));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -336,7 +341,7 @@ Status TFDataGraphDefToHostBEF(const GraphDef &graph_def,
       TFDataGraphDefToTFDataMLIR(graph_def, &mlir_ctx, &module_ref));
   TF_RETURN_IF_ERROR(CompileTFDataMLIRToBEF(module_ref.get(), bef));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static mlir::PassRegistration<TFToTFRTDataRewritePass> pass;

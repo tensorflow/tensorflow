@@ -31,13 +31,13 @@ from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class MetricsTests(test.TestCase):
 
   def _create_save_v2_model(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(root, save_dir)
     self.addCleanup(shutil.rmtree, save_dir)

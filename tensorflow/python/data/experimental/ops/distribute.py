@@ -199,7 +199,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
       return False
 
     def get_batch_dim(type_spec):
-      shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+      try:
+        shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+      except NotImplementedError:
+        return None
       if not isinstance(shape, tensor_shape.TensorShape):
         return None
       if shape.rank is None:
@@ -508,7 +511,10 @@ def compute_batch_size(dataset):
   """
 
   def get_static_batch_dim(type_spec):
-    output_shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+    try:
+      output_shape = type_spec._to_legacy_output_shapes()  # pylint: disable=protected-access
+    except NotImplementedError:
+      return None
     if not isinstance(output_shape, tensor_shape.TensorShape):
       return None
     if output_shape.rank is None:

@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
+
 #include "absl/meta/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -136,6 +138,30 @@ static inline void STLStringResizeUninitialized(string* s, size_t new_size) {
   ResizeUninitializedTraits<string>::Resize(s, new_size);
 }
 
+// Used to ensure exponential growth so that the amortized complexity of
+// increasing the string size by a small amount is O(1), in contrast to
+// O(str->size()) in the case of precise growth.
+// TODO(b/217943845): Would be better to use absl::strings so we don't need to
+// keep cherry-picking performance fixes.
+template <typename string_type>
+void STLStringReserveAmortized(string_type *s, size_t new_size) {
+  const size_t cap = s->capacity();
+  if (new_size > cap) {
+    // Make sure to always grow by at least a factor of 2x.
+    s->reserve((std::max)(new_size, 2 * cap));
+  }
+}
+
+// Like STLStringResizeUninitialized(str, new_size), except guaranteed to use
+// exponential growth so that the amortized complexity of increasing the string
+// size by a small amount is O(1), in contrast to O(str->size()) in the case of
+// precise growth.
+template <typename string_type>
+void STLStringResizeUninitializedAmortized(string_type *s, size_t new_size) {
+  STLStringReserveAmortized(s, new_size);
+  STLStringResizeUninitialized(s, new_size);
+}
+
 }  // namespace
 namespace internal {
 
@@ -170,7 +196,7 @@ void AppendPieces(string *result, std::initializer_list<StringPiece> pieces) {
     DCHECK_NO_OVERLAP(*result, piece);
     total_size += piece.size();
   }
-  STLStringResizeUninitialized(result, total_size);
+  STLStringResizeUninitializedAmortized(result, total_size);
 
   char *const begin = &*result->begin();
   char *out = begin + old_size;
@@ -193,7 +219,7 @@ void StrAppend(string *result, const AlphaNum &a, const AlphaNum &b) {
   DCHECK_NO_OVERLAP(*result, a);
   DCHECK_NO_OVERLAP(*result, b);
   string::size_type old_size = result->size();
-  STLStringResizeUninitialized(result, old_size + a.size() + b.size());
+  STLStringResizeUninitializedAmortized(result, old_size + a.size() + b.size());
   char *const begin = &*result->begin();
   char *out = Append2(begin + old_size, a, b);
   DCHECK_EQ(out, begin + result->size());
@@ -205,8 +231,8 @@ void StrAppend(string *result, const AlphaNum &a, const AlphaNum &b,
   DCHECK_NO_OVERLAP(*result, b);
   DCHECK_NO_OVERLAP(*result, c);
   string::size_type old_size = result->size();
-  STLStringResizeUninitialized(result,
-                               old_size + a.size() + b.size() + c.size());
+  STLStringResizeUninitializedAmortized(
+      result, old_size + a.size() + b.size() + c.size());
   char *const begin = &*result->begin();
   char *out = Append2(begin + old_size, a, b);
   out = Append1(out, c);
@@ -220,7 +246,7 @@ void StrAppend(string *result, const AlphaNum &a, const AlphaNum &b,
   DCHECK_NO_OVERLAP(*result, c);
   DCHECK_NO_OVERLAP(*result, d);
   string::size_type old_size = result->size();
-  STLStringResizeUninitialized(
+  STLStringResizeUninitializedAmortized(
       result, old_size + a.size() + b.size() + c.size() + d.size());
   char *const begin = &*result->begin();
   char *out = Append4(begin + old_size, a, b, c, d);

@@ -50,7 +50,7 @@ Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
   }
 
   // All good!
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

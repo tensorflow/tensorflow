@@ -122,7 +122,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   if (driverVersion < 11020) {
     LOG(FATAL)  // Crash OK.
         << "Disable cuda_malloc_async or update your CUDA driver to a version"
-        << " compitible with CUDA 11.2 or higher."
+        << " compatible with CUDA 11.2 or higher."
         << " We detected a version compatible with: " << driverVersion;
   }
 
@@ -138,7 +138,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
 
-  // Check the the CUDA runtime is recent enough.
+  // Check the CUDA runtime is recent enough.
   if (auto status2 = cuDriverGetVersion(&driverVersion)) {
     LOG(FATAL)  // Crash OK.
         << "Error while fetching driver version: "

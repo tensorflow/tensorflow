@@ -38,7 +38,7 @@ Status ControlFlowDepsToChainsPass::Run(
 
   if (options.graph == nullptr) {
     VLOG(1) << "ControlFlowDepsToChainsPass::Run Aborted";
-    return Status::OK();
+    return OkStatus();
   }
 
   Graph* g = options.graph->get();
@@ -334,7 +334,7 @@ Status ControlFlowDepsToChainsPass::Run(
     DumpGraphToFile("control_flow_deps_to_chains_after", *g, flib_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Note: This needs to run before functional control flow lowering, which is 10.

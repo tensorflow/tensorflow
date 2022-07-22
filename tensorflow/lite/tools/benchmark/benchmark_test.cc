@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
@@ -75,7 +77,8 @@ BenchmarkParams CreateStringParams() {
 }
 
 std::string CreateFilePath(const std::string& file_name) {
-  return std::string(getenv("TEST_TMPDIR")) + file_name;
+  const char* tmp_dir = getenv("TEST_TMPDIR");
+  return std::string(tmp_dir ? tmp_dir : "./") + file_name;
 }
 
 void WriteInputLayerValueFile(const std::string& file_path,
@@ -157,6 +160,30 @@ TEST(BenchmarkTest, DoesntCrashStringModel) {
   benchmark.Run();
 }
 
+TEST(BenchmarkTest, SplitInputLayerNameAndValueFile) {
+  std::vector<std::string> input_layer_value_files = {
+      "input:/tmp/input",       "input\\:0:/tmp/input",
+      "input\\\\0:/tmp/input",  "input\\\\:0:/tmp/input",
+      "input\\:0:\\tmp\\input",
+  };
+  std::vector<std::pair<std::string, std::string>> expected = {
+      {"input", "/tmp/input"},      {"input:0", "/tmp/input"},
+      {"input\\\\0", "/tmp/input"}, {"input\\:0", "/tmp/input"},
+      {"input:0", "\\tmp\\input"},
+  };
+  std::pair<std::string, std::string> name_file_pair;
+  for (int i = 0; i < input_layer_value_files.size(); ++i) {
+    SplitInputLayerNameAndValueFile(input_layer_value_files[i], name_file_pair);
+    EXPECT_EQ(name_file_pair.first, expected[i].first);
+    EXPECT_EQ(name_file_pair.second, expected[i].second);
+  }
+
+  EXPECT_EQ(SplitInputLayerNameAndValueFile("a:b:c", name_file_pair),
+            kTfLiteError);
+  EXPECT_EQ(SplitInputLayerNameAndValueFile("abc", name_file_pair),
+            kTfLiteError);
+}
+
 class TestMultiRunStatsRecorder : public MultiRunStatsRecorder {
  public:
   void OutputStats() override {
@@ -185,7 +212,7 @@ TEST(BenchmarkTest, DoesntCrashMultiPerfOptions) {
 
   TestBenchmark benchmark(CreateFp32Params());
   BenchmarkPerformanceOptions all_options_benchmark(
-      &benchmark, absl::make_unique<TestMultiRunStatsRecorder>());
+      &benchmark, std::make_unique<TestMultiRunStatsRecorder>());
   all_options_benchmark.Run();
 }
 

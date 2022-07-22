@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -68,7 +69,8 @@ struct ResourceDeviceInference
 class PerFunctionResult {
  public:
   explicit PerFunctionResult(
-      FuncOp func_op, const TF::ResourceAliasAnalysis::Info& alias_analysis)
+      func::FuncOp func_op,
+      const TF::ResourceAliasAnalysis::Info& alias_analysis)
       : alias_analysis_(alias_analysis) {}
 
   // Returns the recorded device assignment for a resource, if any.
@@ -126,7 +128,7 @@ LogicalResult AddResourceDeviceAndEmitError(Value resource, StringRef device,
 }
 
 // Extracts and canonicalizes the device attribute.
-inline StringRef GetDeviceAttr(FuncOp func, int arg_no) {
+inline StringRef GetDeviceAttr(func::FuncOp func, int arg_no) {
   auto device_attr =
       func.getArgAttrOfType<mlir::StringAttr>(arg_no, kFuncDeviceAttr);
   return device_attr ? device_attr.getValue() : "";
@@ -146,7 +148,7 @@ void dump(StringRef message, Operation* op) {
 }
 
 // Propagates device assignment inside a function.
-LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
+LogicalResult ComputeResourceDevicesInComputation(func::FuncOp func_op,
                                                   PerFunctionResult* result) {
   OpBuilder builder(func_op);
   // Function arguments.
@@ -229,9 +231,9 @@ void ResourceDeviceInference::runOnOperation() {
   const auto& resource_alias_analysis =
       getAnalysis<TF::ResourceAliasAnalysis>();
 
-  llvm::SmallDenseMap<FuncOp, PerFunctionResult, 4> per_function_results;
-  llvm::SetVector<FuncOp> worklist;
-  for (auto func_op : module.getOps<FuncOp>()) {
+  llvm::SmallDenseMap<func::FuncOp, PerFunctionResult, 4> per_function_results;
+  llvm::SetVector<func::FuncOp> worklist;
+  for (auto func_op : module.getOps<func::FuncOp>()) {
     worklist.insert(func_op);
     per_function_results.try_emplace(
         func_op, func_op, resource_alias_analysis.GetAnalysisForFunc(func_op));
@@ -240,8 +242,8 @@ void ResourceDeviceInference::runOnOperation() {
   // called function's arguments.
   auto propagate_operands_to_callee_arguments =
       [&](Operation* caller, Operation::operand_range caller_operands,
-          ArrayRef<FuncOp> callees, const PerFunctionResult& caller_res) {
-        for (FuncOp callee : callees) {
+          ArrayRef<func::FuncOp> callees, const PerFunctionResult& caller_res) {
+        for (func::FuncOp callee : callees) {
           assert(callee);
           auto& callee_res = per_function_results.find(callee)->getSecond();
           bool callee_needs_recompute = false;
@@ -286,7 +288,7 @@ void ResourceDeviceInference::runOnOperation() {
                 {if_op.then_function(), if_op.else_function()}, func_res)))
           return WalkResult::interrupt();
       } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-        auto func = dyn_cast<FuncOp>(call.resolveCallable());
+        auto func = dyn_cast<func::FuncOp>(call.resolveCallable());
         if (!func) {
           op->emitError(
               "Cannot propagate device attribute to callee: Unable to resolve "

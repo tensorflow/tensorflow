@@ -78,7 +78,7 @@ Status FillServerDef(const string& cluster_spec, const string& job_name,
                                    " is invalid (job \"", options->job_name(),
                                    "\" contains ", my_num_tasks, " tasks");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

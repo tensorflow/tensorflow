@@ -11,11 +11,11 @@ package(
 
 cc_library(
     name = "Pass",
-    srcs = ["cf_sink.cc"],
-    hdrs = ["cf_sink.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/ir:interfaces",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/transforms:PassDetail",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",

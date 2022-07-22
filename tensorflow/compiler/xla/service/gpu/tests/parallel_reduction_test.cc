@@ -71,6 +71,47 @@ CHECK-NOT: reduce-group-2
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(ParallelReductionTest, TwoParallelReductionsWithBroadcastOutput) {
+  const char* hlo_text = R"(
+HloModule TwoParallelReductions
+
+%add_f32 {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+%fused_computation {
+  %param0 = f32[] parameter(0)
+  %param1 = f32[] parameter(1)
+  %param2 = f32[] parameter(2)
+  %bcast0 = f32[1024] broadcast(f32[] %param0)
+  %reduce1 = f32[] reduce(%bcast0, %param1), dimensions={0}, to_apply=%add_f32
+  %reduce2 = f32[] reduce(%bcast0, %param2), dimensions={0}, to_apply=%add_f32
+  ROOT %tuple = (f32[], f32[], f32[1024]) tuple(%reduce1, %reduce2, %bcast0)
+}
+
+ENTRY %cluster {
+  %param0 = f32[] parameter(0)
+  %param1 = f32[] parameter(1)
+  %param2 = f32[] parameter(2)
+  ROOT %fusion = (f32[], f32[], f32[1024])
+      fusion(%param0, %param1, %param2), kind=kInput, calls=%fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+CHECK: reduce-group-0
+CHECK: reduce-group-1
+CHECK-NOT: reduce-group-2
+)",
+                     /*match_optimized_ir=*/false);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(ParallelReductionTest, ManyParallelReductions) {
   std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
   // Simply use a number not too large to avoid long compilation time

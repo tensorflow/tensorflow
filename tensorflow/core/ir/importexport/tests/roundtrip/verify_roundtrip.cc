@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -22,20 +25,20 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/export.h"
-#include "tensorflow/core/ir/importexport/import.h"
+#include "tensorflow/core/ir/importexport/graphdef_export.h"
+#include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
 
 using mlir::MLIRContext;
-using mlir::tfg::ImportGraphDefToMlir;
 using tensorflow::GraphDef;
 using tensorflow::LoadProtoFromFile;
 using tensorflow::Status;
@@ -54,7 +57,8 @@ int main(int argc, char **argv) {
   }
   tensorflow::GraphDebugInfo debug_info;
   MLIRContext context;
-  auto errorOrModule = ImportGraphDefToMlir(&context, debug_info, graphdef);
+  auto errorOrModule =
+      mlir::tfg::ImportGraphDef(&context, debug_info, graphdef);
   if (!errorOrModule.ok()) {
     LOG(ERROR) << errorOrModule.status();
     return 3;
@@ -70,15 +74,29 @@ int main(int argc, char **argv) {
     llvm::raw_string_ostream os(module_txt);
     module->print(os, mlir::OpPrintingFlags().enableDebugInfo());
 
-    auto new_module = mlir::parseSourceString(os.str(), module->getContext());
+    auto new_module =
+        mlir::parseSourceString<mlir::ModuleOp>(os.str(), module->getContext());
     if (!new_module) {
       llvm::errs() << "Couldn't reparse module: \n" << *module.get() << "\n";
       return 4;
     }
     module = std::move(new_module);
   }
+
+  {
+    // Run the reify attributes roundtrip to ensure that the passes are
+    // perfectly roundtrippable.
+    mlir::PassManager mgr(&context);
+    mgr.addPass(mlir::tfg::CreateConsolidateAttributesPass());
+    mgr.addPass(mlir::tfg::CreatePrepareAttributesForExportPass());
+    if (mlir::failed(mgr.run(*module))) {
+      llvm ::errs() << "Reify attributes roundtrip failed\n";
+      return 4;
+    }
+  }
+
   GraphDef new_graphdef;
-  status = tensorflow::ExportMlirToGraphdef(*module, &new_graphdef);
+  status = mlir::tfg::ConvertToGraphDef(*module, &new_graphdef);
   if (!status.ok()) {
     llvm::errs()
         << "\n\n=========\n=========\n=========\n=========\n=========\n"
@@ -102,8 +120,8 @@ int main(int argc, char **argv) {
     }
     graph.ToGraphDef(&graphdef);
   }
-  NormalizeTensorData(graphdef);
-  NormalizeTensorData(new_graphdef);
+  NormalizeTensorData(graphdef, /*add_fulltype=*/true);
+  NormalizeTensorData(new_graphdef, /*add_fulltype=*/false);
 #if defined(PLATFORM_GOOGLE)
   // This compares the protos with some extra tolerance (NaN, ordering, ...).
   if (!Matches(::testing::proto::TreatingNaNsAsEqual(

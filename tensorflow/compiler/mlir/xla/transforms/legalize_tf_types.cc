@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -101,8 +102,8 @@ class TfTypeConversionTarget : public ConversionTarget {
     markUnknownOpDynamicallyLegal([this](Operation *op) {
       // The FuncOp type can contain types that the op's operand and result
       // types do not contain.
-      if (auto func = dyn_cast<FuncOp>(op)) {
-        if (!converter_.isSignatureLegal(func.getType())) return false;
+      if (auto func = dyn_cast<func::FuncOp>(op)) {
+        if (!converter_.isSignatureLegal(func.getFunctionType())) return false;
       }
       return converter_.isLegal(op);
     });
@@ -140,7 +141,7 @@ class TfTypePattern : public ConversionPattern {
       if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
         return failure();
     }
-    rewriter.replaceOp(op, rewriter.createOperation(state)->getResults());
+    rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
     return success();
   }
@@ -155,7 +156,8 @@ void LegalizeTfTypesPass::runOnOperation() {
   TfTypeConverter converter;
   RewritePatternSet patterns(&getContext());
   patterns.add<TfTypePattern>(&getContext(), converter);
-  populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
   TfTypeConversionTarget target(getContext(), converter);
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();

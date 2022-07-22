@@ -71,6 +71,9 @@ namespace {
 
 class ComputeCostPass
     : public mlir::PassWrapper<ComputeCostPass, mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ComputeCostPass)
+
  private:
   llvm::StringRef getArgument() const final { return "tfl-compute-cost"; }
   llvm::StringRef getDescription() const final {
@@ -82,13 +85,13 @@ class ComputeCostPass
 void ComputeCostPass::runOnOperation() {
   auto module = getOperation();
 
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     // We only care about those functions annotated with "tac.interface_name".
     auto interface_name = GetInterFaceName(func);
-    if (!interface_name.hasValue()) continue;
+    if (!interface_name.has_value()) continue;
 
     auto target = GetTargetAnnotation(func);
-    if (!target.hasValue()) {
+    if (!target.has_value()) {
       func.emitError("we cannot get hardware info for this function.");
       signalPassFailure();
     }

@@ -327,6 +327,12 @@ message OpMetadata {
 
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
+
+  // Information about the replaced operation. We store the HLO canonical text,
+  // which contains canonicalized instruction name, operand shape, and full
+  // bodies of the subcomputations besides the HLO itself. This is set
+  // independently of other fields.
+  string replaced_op = 11;
 }
 
 // Profile data from the execution of a computation.

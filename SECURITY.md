@@ -160,11 +160,8 @@ a vulnerability.
 ### Reporting vulnerabilities
 
 Please email reports about any security related issues you find to
-`security@tensorflow.org`. This mail is delivered to a small security team. Your
-email will be acknowledged within one business day, and you'll receive a more
-detailed response to your email within 7 days indicating the next steps in
-handling your report. For critical problems, you may encrypt your report (see
-below).
+`security@tensorflow.org`. This mail is delivered to a small security team. For
+critical problems, you may encrypt your report (see below).
 
 Please use a descriptive subject line for your report email. After the initial
 reply to your report, the security team will endeavor to keep you informed of
@@ -186,9 +183,19 @@ an email to `security@tensorflow.org`. The email should include the issue ID and
 a short description of why it should be handled according to this security
 policy.
 
+For each vulnerability, we try to ingress it as soon as possible, given the size
+of the team and the number of reports. If the vulnerability is not high impact,
+we will delay ingress during the period before a branch cut and the final
+release. For these cases, vulnerabilities will always be batched to be fixed at
+the same time as a quarterly release.
+
+If a vulnerability is high impact, we will acknowledge reception and issue
+patches within an accelarated timeline and not wait for the patch release.
+
 Once an issue is reported, TensorFlow uses the following disclosure process:
 
-* When a report is received, we confirm the issue and determine its severity.
+* When a report is received, we confirm the issue and determine its severity,
+  according to the timeline listed above.
 * If we know of specific third-party services or software based on TensorFlow
   that require mitigation before publication, those projects will be notified.
 * An advisory is prepared (but not published) which details the problem and

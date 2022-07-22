@@ -48,6 +48,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
+#ifdef XLA_CPU_USE_ACL
+  opts.set_xla_cpu_use_acl(true);
+#endif
+  opts.set_xla_cpu_use_jitrt(false);
   opts.set_xla_gpu_max_kernel_unroll_factor(4);
 
   // Run all GPU work on one stream by default.  Using multiple streams
@@ -68,6 +72,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_cudnn_frontend(true);
 
+  opts.set_xla_gpu_enable_cublaslt(false);
+
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
   opts.set_xla_gpu_enable_fast_min_max(false);
@@ -76,6 +82,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
+  opts.set_xla_gpu_enable_async_all_reduce(true);
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
@@ -83,11 +90,16 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_bef_executable(false);
   opts.set_xla_gpu_bef_thunk(false);
+  opts.set_xla_gpu_jitrt_executable(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
+  opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
+  opts.set_xla_cpu_enable_mlir_lowering(false);
+  opts.set_xla_gpu_enable_mlir_lowering(false);
+  opts.set_xla_gpu_normalize_layouts(false);
   return opts;
 }
 
@@ -434,6 +446,14 @@ static void AllocateFlags() {
                        flag_values->xla_cpu_use_mkl_dnn(),
                        "Generate calls to MKL-DNN in the CPU backend."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
+      flag_values->xla_cpu_use_acl(),
+      "Generate calls to ACL (Arm Compute Library) in the CPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_use_jitrt",
+      bool_setter_for(&DebugOptions::set_xla_cpu_use_jitrt),
+      flag_values->xla_cpu_use_jitrt(), "Enable JitRt in the CPU backend."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_crash_on_verification_failures",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_crash_on_verification_failures),
@@ -657,6 +677,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_deterministic_ops(),
       "Guarantees run-to-run determinism on GPU."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_simplify_scatters",
+      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_scatters),
+      flag_values->xla_gpu_simplify_scatters(),
+      "Simplifies all Scatters to a canonical form."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       flag_values->xla_gpu_enable_async_all_reduce(),
@@ -689,6 +714,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_enable_cudnn_frontend(),
       "Use the cuDNN frontend API for convolutions when possible."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_cublaslt",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
+      flag_values->xla_gpu_enable_cublaslt(),
+      "Use cuBLASLt for GEMMs when possible."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_disable_metadata",
       bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),
       flag_values->xla_dump_disable_metadata(),
@@ -710,6 +740,11 @@ static void AllocateFlags() {
       flag_values->xla_gpu_bef_thunk(),
       "Whether to enable XLIR to compile thunks to TFRT BEF."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_jitrt_executable",
+      bool_setter_for(&DebugOptions::set_xla_gpu_jitrt_executable),
+      flag_values->xla_gpu_jitrt_executable(),
+      "Whether to enable XLIR to compile gpu programs to JitRt."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
           &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
@@ -726,6 +761,34 @@ static void AllocateFlags() {
           &DebugOptions::set_xla_gpu_redzone_scratch_max_megabytes),
       flag_values->xla_gpu_redzone_scratch_max_megabytes(),
       "Max size (in megabytes) for the GPU redzone scratch allocator."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_simplify_all_fp_conversions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_all_fp_conversions),
+      flag_values->xla_gpu_simplify_all_fp_conversions(),
+      "Allows any chain of floating-point conversions to be simplified."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_enable_mlir_lowering",
+      bool_setter_for(&DebugOptions::set_xla_cpu_enable_mlir_lowering),
+      flag_values->xla_cpu_enable_mlir_lowering(),
+      "Enable MLIR-based lowering in XLA:CPU instead of LLVM emitters."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_mlir_lowering",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_mlir_lowering),
+      flag_values->xla_gpu_enable_mlir_lowering(),
+      "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_normalize_layouts",
+      bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),
+      flag_values->xla_gpu_normalize_layouts(),
+      "An experimental option to force all layouts present in the "
+      "after-optimizations HLO to be descending"));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_cpu_strict_dot_conv_math",
+      bool_setter_for(&DebugOptions::set_xla_cpu_strict_dot_conv_math),
+      flag_values->xla_cpu_strict_dot_conv_math(),
+      "By default, XLA:CPU will run fp16 dot/conv as fp32, as this is "
+      "generally (much) faster on our hardware.  Set this flag to true to "
+      "disable this behavior."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)

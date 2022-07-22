@@ -47,9 +47,9 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
     const char* filename, ErrorReporter* error_reporter) {
   std::unique_ptr<Allocation> allocation;
   if (MMAPAllocation::IsSupported()) {
-    allocation.reset(new MMAPAllocation(filename, error_reporter));
+    allocation = std::make_unique<MMAPAllocation>(filename, error_reporter);
   } else {
-    allocation.reset(new FileCopyAllocation(filename, error_reporter));
+    allocation = std::make_unique<FileCopyAllocation>(filename, error_reporter);
   }
   return allocation;
 }

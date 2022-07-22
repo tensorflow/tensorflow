@@ -47,7 +47,7 @@ namespace gpu {
 // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionForward
 //
 // For now we restrict ourselves to only the int8xN -> int8xN cases.  We could
-// allow the int8x4 -> float case in the future if desireable.
+// allow the int8x4 -> float case in the future if desirable.
 static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     HloComputation* comp) {
   std::vector<HloCustomCallInstruction*> convs;
@@ -92,8 +92,8 @@ static StatusOr<HloComputation*> BuilderToHloComputation(
 static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
   Shape shape = b.GetShape(instr).ValueOrDie();
-  absl::InlinedVector<int64_t, 6> new_dims(shape.dimensions().begin(),
-                                           shape.dimensions().end());
+  DimensionVector new_dims(shape.dimensions().begin(),
+                           shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
@@ -106,8 +106,8 @@ static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
 // For example given shape=s8[10, 32, 20], dim=1, vect_size=4, returns
 // s8[10, 8, 4, 20].
 static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
-  absl::InlinedVector<int64_t, 5> new_dims(shape.dimensions().begin(),
-                                           shape.dimensions().end());
+  DimensionVector new_dims(shape.dimensions().begin(),
+                           shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
@@ -119,7 +119,7 @@ static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
   XlaBuilder& b = *instr.builder();
   int64_t rank = b.GetShape(instr)->dimensions_size();
 
-  absl::InlinedVector<int64_t, 6> idxs(rank);
+  DimensionVector idxs(rank);
   absl::c_iota(idxs, 0);
   if (src < dst) {
     idxs.insert(idxs.begin() + dst, src);
@@ -266,9 +266,9 @@ static StatusOr<bool> TryRevectorizeConv(
   const auto& dnums = conv->convolution_dimension_numbers();
 
   // Find the vectorized-features dim in the input/kernel/output.
-  absl::optional<int64_t> input_vect_dim;
-  absl::optional<int64_t> kernel_vect_dim;
-  absl::optional<int64_t> output_vect_dim;
+  std::optional<int64_t> input_vect_dim;
+  std::optional<int64_t> kernel_vect_dim;
+  std::optional<int64_t> output_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, output_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, output_shape);
 
@@ -335,8 +335,8 @@ static StatusOr<bool> TryRevectorizeConv(
 
   // The custom-call returns a tuple (new_output_shape, u8[0]), where the second
   // value in the tuple represents the convolution's scratch memory.
-  absl::InlinedVector<int64_t, 5> new_output_dims(
-      output_shape.dimensions().begin(), output_shape.dimensions().end());
+  DimensionVector new_output_dims(output_shape.dimensions().begin(),
+                                  output_shape.dimensions().end());
   new_output_dims[dnums.output_feature_dimension()] /=
       (vect_size / output_vect_size);
   new_output_dims[*output_vect_dim] = vect_size;
@@ -364,11 +364,24 @@ static StatusOr<bool> TryRevectorizeConv(
           b, Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch}),
           conv->parent()));
 
+  // Set the name on the new conv.  This is purely cosmetic, but we attempt to
+  // preserve e.g. "cudnn-conv.42" instead of "custom-call.42".
+  auto new_conv_comp_instrs = new_conv_comp->instructions();
+  auto new_conv_it =
+      absl::c_find_if(new_conv_comp_instrs, [](HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kCustomCall;
+      });
+  if (new_conv_it != new_conv_comp_instrs.end()) {
+    new_conv_comp->parent()->SetAndUniquifyInstrName(*new_conv_it,
+                                                     conv->name());
+  }
+
   // Replace the old conv with a call to the computation we just created.
   VLOG(1) << "Re-vectorized conv to " << new_conv_comp->ToString();
   TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
       conv, HloInstruction::CreateCall(conv->shape(), conv->operands(),
                                        new_conv_comp)));
+
   return true;
 }
 
@@ -479,9 +492,12 @@ static StatusOr<bool> TryVectorizeConv(
   return true;
 }
 
-StatusOr<bool> CudnnVectorizeConvolutions::Run(HloModule* module) {
+StatusOr<bool> CudnnVectorizeConvolutions::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       // Try to (re)vectorize to int8x32 if this is an sm75+ GPU.  If we can't,
       // fall back to int8x4.

@@ -401,7 +401,7 @@ tensorflow::DataType TensorHandleInterface::DataType() const {
 
 tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
   if (context_.IsAsync()) {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   } else {
     auto metadata = Metadata();
     if (!metadata.hasValue()) {
@@ -423,7 +423,7 @@ tensorflow::Status TensorHandleInterface::TensorHandleStatus() const {
       return tensorflow::errors::Internal(async_tensor->GetError().message);
     }
 
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 }
 
@@ -436,12 +436,12 @@ tensorflow::Status TensorHandleInterface::Shape(
   }
   int num_dims = metadata.getValue()->shape.GetRank();
   if (num_dims == -1) {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   llvm::SmallVector<Index, 8> dims;
   metadata.getValue()->shape.GetDimensions(&dims);
   TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status TensorHandleInterface::NumDims(int* num_dims) const {
@@ -452,7 +452,7 @@ tensorflow::Status TensorHandleInterface::NumDims(int* num_dims) const {
   }
   *num_dims = metadata.getValue()->shape.GetRank();
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status TensorHandleInterface::NumElements(
@@ -464,7 +464,7 @@ tensorflow::Status TensorHandleInterface::NumElements(
   }
   *num_elements = metadata.getValue()->shape.GetNumElements();
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status TensorHandleInterface::Dim(int dim_index,
@@ -476,7 +476,7 @@ tensorflow::Status TensorHandleInterface::Dim(int dim_index,
   }
   *dim = metadata.getValue()->shape.GetDimensionSize(dim_index);
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 const char* TensorHandleInterface::DeviceName(
@@ -939,7 +939,7 @@ tensorflow::Status ContextInterface::AddDevices(
   }
   TF_RETURN_IF_ERROR(GetEagerContext()->AddDevices(std::move(devices)));
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void ContextInterface::ClearCachesAndThreadExecutors() {
@@ -1003,7 +1003,7 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
       GetEagerContext()->local_device_mgr());
   TF_RETURN_IF_ERROR(local_device_mgr->AddDevices(std::move(dummy_tf_devices)));
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
@@ -1025,7 +1025,7 @@ tensorflow::Status ContextInterface::BuildFunctionRequestContext(
         StrCat(expected_request_context.takeError()));
   }
   *request_context = std::move(expected_request_context.get());
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status ContextInterface::BuildOpRequestContext(
@@ -1229,7 +1229,7 @@ tensorflow::Status ContextInterface::RunMetadataRecordFunction(
   *function_graphs->mutable_post_optimization_graph() = def;
   *function_graphs->add_partition_graphs() = def;
   *run_metadata_->add_partition_graphs() = def;
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void ContextInterface::SetExecutorForThread(
@@ -1388,7 +1388,7 @@ tensorflow::Status OperationInterface::Execute(
     (*op_)(exec_ctx, th_args, OpAttrsRef(attrs_), result_ths, chain);
   }
 
-  tensorflow::Status s = tensorflow::Status::OK();
+  tensorflow::Status s = ::tensorflow::OkStatus();
 
   if (TF_PREDICT_FALSE(!this->context_->IsAsync() && !chain->IsAvailable()))
     host->Await({chain->CopyRCRef()});
@@ -1452,7 +1452,7 @@ tensorflow::Status OperationInterface::Initialize() {
     // Update device name since op_handler_selecter may choose an op_handler
     // that's different from what the user specifies.
     device_name_ = op_->DeviceName().str();
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   bool compile_with_xla = false;
@@ -1470,7 +1470,7 @@ tensorflow::Status OperationInterface::Initialize() {
                  " on fallback op handler.", expected_op.takeError()));
     }
     op_ = expected_op.get();
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Note(fishx): We need eager context for now because we need
@@ -1552,7 +1552,7 @@ tensorflow::Status OperationInterface::Initialize() {
     TF_RETURN_IF_ERROR(context_->RunMetadataRecordFunction(op_name_));
   }
   function_state_ = std::move(result.function_state);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status OperationInterface::SetDeviceName(const char* name) {
@@ -1562,7 +1562,7 @@ tensorflow::Status OperationInterface::SetDeviceName(const char* name) {
         "name of a fallback op if it is initialized.");
   }
   device_name_ = name ? name : "";
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status OperationInterface::AddInput(
@@ -1577,7 +1577,7 @@ tensorflow::Status OperationInterface::AddInput(
   args_.push_back(
       tensorflow::core::RefCountPtr<tensorflow::ImmediateExecutionTensorHandle>(
           h));
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status OperationInterface::SetInput(
@@ -1597,7 +1597,7 @@ tensorflow::Status OperationInterface::SetInput(
   args_[index] =
       tensorflow::core::RefCountPtr<tensorflow::ImmediateExecutionTensorHandle>(
           input);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status OperationInterface::AddInputList(
@@ -1619,7 +1619,7 @@ tensorflow::Status OperationInterface::SetAttrString(const char* attr_name,
                                                      size_t length) {
   fallback_attrs_.Set(attr_name, tensorflow::StringPiece(data, length));
   if (attrs_.SetString(attr_name, string_view(data, length)))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrString failed");
 }
@@ -1627,14 +1627,14 @@ tensorflow::Status OperationInterface::SetAttrString(const char* attr_name,
 tensorflow::Status OperationInterface::SetAttrInt(const char* attr_name,
                                                   int64_t value) {
   fallback_attrs_.Set(attr_name, static_cast<int64_t>(value));
-  if (attrs_.Set(attr_name, value)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, value)) return ::tensorflow::OkStatus();
   return tensorflow::errors::Internal("OperationInterface::SetAttrInt failed");
 }
 
 tensorflow::Status OperationInterface::SetAttrFloat(const char* attr_name,
                                                     float value) {
   fallback_attrs_.Set(attr_name, value);
-  if (attrs_.Set(attr_name, value)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, value)) return ::tensorflow::OkStatus();
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrFloat failed");
 }
@@ -1642,7 +1642,7 @@ tensorflow::Status OperationInterface::SetAttrFloat(const char* attr_name,
 tensorflow::Status OperationInterface::SetAttrBool(const char* attr_name,
                                                    bool value) {
   fallback_attrs_.Set(attr_name, value);
-  if (attrs_.Set(attr_name, value)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, value)) return ::tensorflow::OkStatus();
   return tensorflow::errors::Internal("OperationInterface::SetAttrBool failed");
 }
 
@@ -1656,13 +1656,13 @@ tensorflow::Status OperationInterface::SetAttrType(const char* attr_name,
   if (attrs_.Set(attr_name,
                  tfrt::GetOpAttrTypeFromDType(
                      tensorflow::tfd::ConvertTfDataTypeToBefAttrType(value))))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   // TODO(fishx): Remove this workaround once we support all dtype in TF.
   // This is fine for now since attribute "T", "U", "Tidx" is not used by TFRT
   // native ops.
   if (std::strcmp(attr_name, "T") == 0 || std::strcmp(attr_name, "U") == 0 ||
       std::strcmp(attr_name, "Tidx") == 0) {
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   return tensorflow::errors::Internal("OperationInterface::SetAttrType failed");
 }
@@ -1700,7 +1700,7 @@ tensorflow::Status OperationInterface::SetAttrShape(const char* attr_name,
   auto buf = bef_attr_encoder_.TakeResult();
   tfrt::ShapeAttr shape_attr(buf.data() + offset);
   // TODO(tfrt-devs): Avoid the copy.
-  if (attrs_.Set(attr_name, shape_attr)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, shape_attr)) return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrShape failed");
@@ -1717,7 +1717,7 @@ tensorflow::Status OperationInterface::SetAttrFunction(
   fallback_attrs_.Set(attr_name, attr_value);
 
   if (attrs_.SetFunc(attr_name, {string_view(value_operation->Name())}))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrFunction failed");
@@ -1732,7 +1732,7 @@ tensorflow::Status OperationInterface::SetAttrFunctionName(
   func->set_name(data);
   fallback_attrs_.Set(attr_name, attr_value);
 
-  if (attrs_.SetFunc(attr_name, {data})) return tensorflow::Status::OK();
+  if (attrs_.SetFunc(attr_name, {data})) return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrFunctionName failed");
@@ -1761,7 +1761,7 @@ tensorflow::Status OperationInterface::SetAttrTensor(
   const size_t offset = SerializeTFETensorToDenseAttr(tensor, &encoder);
   auto buffer = encoder.TakeResult();
   DenseAttr dense_attr(buffer.data() + offset);
-  if (attrs_.Set(attr_name, dense_attr)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, dense_attr)) return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrTensor failed");
@@ -1783,7 +1783,7 @@ tensorflow::Status OperationInterface::SetAttrStringList(
   auto buf = encoder.TakeResult();
   tfrt::AggregateAttr aggr_attr(buf.data() + offset);
   // TODO(tfrt-devs): Avoid the copy.
-  if (attrs_.Set(attr_name, aggr_attr)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, aggr_attr)) return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrStringList failed");
@@ -1796,7 +1796,7 @@ tensorflow::Status OperationInterface::SetAttrFloatList(const char* attr_name,
       attr_name, tensorflow::gtl::ArraySlice<const float>(values, num_values));
 
   if (attrs_.SetArray(attr_name, tfrt::ArrayRef<float>(values, num_values)))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrFloatList failed");
 }
@@ -1809,7 +1809,7 @@ tensorflow::Status OperationInterface::SetAttrIntList(const char* attr_name,
                      reinterpret_cast<const int64_t*>(values), num_values));
 
   if (attrs_.SetArray(attr_name, tfrt::ArrayRef<int64_t>(values, num_values)))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrIntList failed");
@@ -1830,7 +1830,7 @@ tensorflow::Status OperationInterface::SetAttrTypeList(
 
   if (attrs_.SetRaw(attr_name, tfrt_dtypes.data(), tfrt::OpAttrType::DTYPE,
                     num_values, OpAttrsRawEntryType::kArray))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrTypeList failed");
@@ -1853,7 +1853,7 @@ tensorflow::Status OperationInterface::SetAttrBoolList(
   }
   if (attrs_.SetArray(attr_name,
                       tfrt::ArrayRef<bool>(bool_array.data(), num_values)))
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrBoolList failed");
@@ -1892,7 +1892,7 @@ tensorflow::Status OperationInterface::SetAttrShapeList(const char* attr_name,
   const size_t offset = encoder.EncodeShapeListAttr(dims, num_dims, num_values);
   auto buf = encoder.TakeResult();
   tfrt::AggregateAttr aggr_attr(buf.data() + offset);
-  if (attrs_.Set(attr_name, aggr_attr)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, aggr_attr)) return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrShapeList failed");
@@ -1917,7 +1917,7 @@ tensorflow::Status OperationInterface::SetAttrFunctionList(
       encoder.EncodeFuncListAttr(func_attrs.data(), lengths.data(), num_values);
   auto buf = encoder.TakeResult();
   tfrt::AggregateAttr aggr_attr(buf.data() + offset);
-  if (attrs_.Set(attr_name, aggr_attr)) return tensorflow::Status::OK();
+  if (attrs_.Set(attr_name, aggr_attr)) return ::tensorflow::OkStatus();
 
   return tensorflow::errors::Internal(
       "OperationInterface::SetAttrFunctionList failed");

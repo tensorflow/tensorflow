@@ -22,6 +22,7 @@ package(
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
+        "//tensorflow/stream_executor:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -166,6 +167,7 @@ filegroup(
         "flatmap.h",
         "flatset.h",
         "inlined_vector.h",
+        "iterator_range.h",
         "optional.h",
         "priority_queue_util.h",
     ],
@@ -177,7 +179,6 @@ filegroup(
     srcs = [
         "edit_distance.h",
         "int_type.h",
-        "iterator_range.h",
         "manual_constructor.h",
         "map_util.h",
         "top_n.h",

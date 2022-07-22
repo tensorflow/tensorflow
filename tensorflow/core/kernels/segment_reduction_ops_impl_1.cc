@@ -34,7 +34,7 @@ Status ValidateSegmentReduction(OpKernelContext* context, const Tensor& input,
         " input.");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // check routines not in the templated class to reduce code size
@@ -55,7 +55,7 @@ Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
                                    segment_ids.shape().DebugString());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateSparseSegmentReduction(OpKernelContext* context,
@@ -97,7 +97,7 @@ Status ValidateSparseSegmentReduction(OpKernelContext* context,
     return errors::InvalidArgument("Shape must be at least rank 1");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace internal

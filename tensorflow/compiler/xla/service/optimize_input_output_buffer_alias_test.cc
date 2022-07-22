@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -37,7 +36,7 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     r3f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6});
     r4f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
 
-    optimize_pass_ = absl::make_unique<OptimizeInputOutputBufferAlias>();
+    optimize_pass_ = std::make_unique<OptimizeInputOutputBufferAlias>();
   }
 
   // Returns the number of output indices that aliases with the input.

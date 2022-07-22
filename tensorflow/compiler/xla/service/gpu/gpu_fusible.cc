@@ -58,26 +58,22 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
 
 }  // namespace
 
-bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
-                                         const HloInstruction& reduce) {
-  if (producer.opcode() == HloOpcode::kCopy) {
-    return false;
-  }
-  if (producer.opcode() == HloOpcode::kFusion) {
-    for (const HloInstruction* instr : producer.fused_instructions()) {
-      if (instr->opcode() == HloOpcode::kCopy) {
-        // Elementwise copies are only inserted in input fusion for
-        // transposition, and those are never friendly to the reduction.
-        return false;
+bool IsPhysicallyTransposing(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* fused_instr : instr.fused_instructions()) {
+      if (IsPhysicallyTransposing(*fused_instr)) {
+        return true;
       }
     }
   }
 
   // A fusion iterates over its output in physically-contiguous order. This
   // applies "upwards" to operands.  Only an operator that changes an operand's
-  // physical layout can create a "bad" memory access pattern, and layout
-  // assignment guarantees kCopy is the only such operator.
-  return true;
+  // physical layout can create a "bad" memory access pattern.
+  return instr.opcode() == HloOpcode::kCopy ||
+         (instr.opcode() == HloOpcode::kTranspose &&
+          !ShapeUtil::TransposeIsBitcast(instr.operand(0)->shape(),
+                                         instr.shape(), instr.dimensions()));
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
@@ -222,12 +218,10 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the fusion would create a nested loop";
   }
 
-  // Do not fuse into reduce input fusions if the resulting kernel would suffer
-  // from poor data locality (due to unfriendly input layouts).
-  if (IsInputFusibleReduction(consumer) &&
-      !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
-    return "the producer layout is not fusion-friendly for the consumer "
-           "reduction";
+  // Do not fuse into fusions if the resulting kernel would suffer from
+  // uncoalesced reads due to a transposed memory access pattern.
+  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
+    return "fusing the producer would break read coalescing";
   }
 
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
@@ -244,7 +238,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "not fusing constant";
   }
 
-  return {};
+  // Make sure the new fusion obeys the in-place semantics.
+  return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
@@ -254,6 +249,33 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
     return false;
   }
 
+  // Allowing multi-output fusions that contain in-place operations makes code
+  // generation more difficult. For the generated loop to iterate over all
+  // outputs in parallel, it must find an iteration order that guarantees that
+  // no loop iteration writes an element of any in-place operand that is read
+  // or written by any other iteration. For example:
+  //
+  //   %fused_computation {
+  //     %param_0 = s32[4,4]{1,0} parameter(0)
+  //     ...
+  //     %updated = s32[4,4]{1,0} dynamic-update-slice(
+  //         %param_0, %add, %constant_1, %constant_0)
+  //     %transpose = s32[4,4]{0,1} transpose(%updated), dimensions={1,0}
+  //     ROOT %tuple.5 = tuple(%transpose, %updated)
+  //   }
+  //
+  // Iterating 'transpose' and 'updated' in parallel by array index is
+  // not valid, because an iteration that produces some element of 'transpose'
+  // will read from an element of 'param_0' that has been overwritten by some
+  // other iteration (writing to 'updated').
+  //
+  // To avoid these problems, we simply ban fusion altogether when the producer
+  // is in-place. (We can relax this restriction by establishing an explicit
+  // contract that describes what multi-output fusion scenarios are supported by
+  // codegen and then changing this check to allow exactly those fusions).
+  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
+    return false;
+  }
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
@@ -263,7 +285,7 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+  if (IsPhysicallyTransposing(producer)) {
     return false;
   }
   return true;

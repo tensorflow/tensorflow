@@ -357,6 +357,9 @@ def random_shuffle(value, seed=None, name=None):
       value, seed=seed1, seed2=seed2, name=name)
 
 
+ops.NotDifferentiable("RandomShuffle")
+
+
 @tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("random_crop")

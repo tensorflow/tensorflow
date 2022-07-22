@@ -64,6 +64,9 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 constexpr char kRelu[] = "RELU";
 constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
@@ -92,31 +95,17 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-class OptimizePass : public PassWrapper<OptimizePass, OperationPass<FuncOp>> {
+class OptimizePass : public OptimizePassBase<OptimizePass> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
+
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
   explicit OptimizePass(bool enable_canonicalization) {
-    enable_canonicalization_ = enable_canonicalization;
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-optimize";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Optimize within the TensorFlow Lite dialect";
+    this->enable_canonicalization_ = enable_canonicalization;
   }
 
   void runOnOperation() override;
-
- private:
-  Option<bool> enable_canonicalization_{
-      *this, "enable-canonicalization",
-      llvm::cl::desc("Enable canonicalization during optimization pass."),
-      llvm::cl::init(false)};
 };
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -151,14 +140,9 @@ bool IsTailOfShape(Type type1, Type type2) {
 bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
                                       const ArrayRef<int64_t> elements_shape,
                                       bool is_depthwise) {
-  // Make sure the val tensor has shape where all dimensions are 1 except
-  // last one.
-  // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
+  // Also, val tensor must be of rank 1 or 0 (scalar).
   const auto elements_rank = elements_shape.size();
-  for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
-    if (elements_shape[i] != 1) return false;
-  }
-  if (elements_rank != 1 && elements_rank != 0 && elements_rank != 4) {
+  if (elements_rank != 1 && elements_rank != 0) {
     return false;
   }
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
@@ -983,11 +967,9 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     }
 
     // Make sure that the fused bias will be a 1D tensor.
-    if (isa<TFL::DepthwiseConv2DOp>(mul_op_lhs)) {
-      auto gamma_shape = gamma.getType().cast<ShapedType>();
-      if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
-        return failure();
-      }
+    auto gamma_shape = gamma.getType().cast<ShapedType>();
+    if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
+      return failure();
     }
 
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
@@ -1595,7 +1577,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
 
     auto k_values_or = ComputeSliceK(values);
     auto k_indices_or = ComputeSliceK(indices);
-    if (!k_values_or.hasValue() || !k_indices_or.hasValue()) return failure();
+    if (!k_values_or.has_value() || !k_indices_or.has_value()) return failure();
     int32_t k_values = k_values_or.getValue();
     int32_t k_indices = k_indices_or.getValue();
     // We don't match two SliceOp with different sizes.
@@ -1676,7 +1658,8 @@ void OptimizePass::runOnOperation() {
                FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
                FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
                FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>>(ctx);
-  if (enable_canonicalization_) AddCanonicalizationPatterns(ctx, &patterns);
+  if (this->enable_canonicalization_)
+    AddCanonicalizationPatterns(ctx, &patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
@@ -1695,19 +1678,21 @@ void OptimizePass::runOnOperation() {
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
       FuseUnpackAndConcatToReshape, OptimizeTopK>(ctx);
-  if (enable_canonicalization_)
+  if (this->enable_canonicalization_)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
     bool enable_canonicalization) {
   return std::make_unique<OptimizePass>(enable_canonicalization);
 }
 
-static PassRegistration<OptimizePass> pass;
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
+  return std::make_unique<OptimizePass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

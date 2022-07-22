@@ -36,7 +36,7 @@ def make_split_tests(options):
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = tf.split(input_tensor, parameters["num_or_size_splits"],
                    parameters["axis"])
-    return [input_tensor], [out[0]]
+    return [input_tensor], out
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -63,8 +66,10 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
-                                 op_def.src_tensors[i], &src[i]));
+    TensorDescriptor descriptor_with_shape = op_def.src_tensors[i];
+    descriptor_with_shape.SetBHWCShape(src_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -76,8 +81,10 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[i], &dst[i]));
+    TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
+    descriptor_with_shape.SetBHWCShape(dst_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }
@@ -117,8 +124,10 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
-                                 op_def.src_tensors[i], &src[i]));
+    TensorDescriptor descriptor_with_shape = op_def.src_tensors[i];
+    descriptor_with_shape.SetBHWDCShape(src_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -130,8 +139,10 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[i], &dst[i]));
+    TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
+    descriptor_with_shape.SetBHWDCShape(dst_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }
@@ -182,8 +193,10 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[i], &dst[i]));
+    TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
+    descriptor_with_shape.SetBHWDCShape(dst_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }
@@ -215,8 +228,10 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, src_shape,
-                                 op_def.src_tensors[i], &src[i]));
+    TensorDescriptor descriptor_with_shape = op_def.src_tensors[i];
+    descriptor_with_shape.SetBHWCShape(src_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &src[i]));
     RETURN_IF_ERROR(src[i].WriteData(creation_context.queue, src_cpu[i]));
     operation->SetSrc(&src[i], i);
   }
@@ -228,8 +243,10 @@ absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
       return absl::InvalidArgumentError(
           "Layout doesn't have Batch dimension, but shape.b != 1");
     }
-    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
-                                 op_def.dst_tensors[i], &dst[i]));
+    TensorDescriptor descriptor_with_shape = op_def.dst_tensors[i];
+    descriptor_with_shape.SetBHWCShape(dst_shape);
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context,
+                                 descriptor_with_shape, &dst[i]));
 
     operation->SetDst(&dst[i], i);
   }

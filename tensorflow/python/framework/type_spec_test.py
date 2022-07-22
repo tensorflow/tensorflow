@@ -22,12 +22,15 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
+from tensorflow.core.framework import full_type_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -623,6 +626,16 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      [tensor_spec.TensorSpec([5], dtypes.int32),
                       tensor_spec.TensorSpec([5, 8], dtypes.float32)])
 
+  def testFullTypesForFlatTensors(self):
+    spec = TwoTensorsSpec([5], dtypes.int32, [5, 8], dtypes.float32, "red")
+    full_type_list = fulltypes_for_flat_tensors(spec)
+    expect = [
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET)
+    ]
+    self.assertEqual(len(spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
+
   def testRepr(self):
     spec = TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool)
     self.assertEqual(
@@ -710,6 +723,10 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, "TypeSpec __main__.Foo has not been registered."):
       type_spec.get_name(Foo)
 
+  def testSerialization(self):
+    spec = TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)
+    self.assertEqual(spec, trace_type.deserialize(trace_type.serialize(spec)))
+
 
 class BatchableTypeSpecTest(test_util.TensorFlowTestCase,
                             parameterized.TestCase):
@@ -775,6 +792,23 @@ class BatchableTypeSpecTest(test_util.TensorFlowTestCase,
         tensor_spec.TensorSpec(None, dtypes.variant),
         tensor_spec.TensorSpec(None, dtypes.variant)
     ])
+
+  def testFullTypesForFlatTensors(self):
+    a = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        ragged_factory_ops.constant([[5], [6, 7, 8]]))
+    a_spec = type_spec.type_spec_from_value(a)
+    full_type_list = fulltypes_for_flat_tensors(a_spec)
+    expect = [
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+    ]
+    self.assertEqual(len(a_spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
 
   def testToTensorList(self):
     a = TwoComposites(

@@ -53,6 +53,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -221,7 +222,7 @@ def _Enter(tensor,
            is_constant=False,
            parallel_iterations=10,
            use_ref=True,
-           shape_invariant=None,
+           use_input_shape=True,
            name=None):
   """Creates or finds a child frame, and makes `tensor` available to it.
 
@@ -236,7 +237,7 @@ def _Enter(tensor,
     is_constant: If true, the output is constant within the child frame.
     parallel_iterations: The number of iterations allowed to run in parallel.
     use_ref: If true, use ref_enter if tensor is of ref type.
-    shape_invariant: The shape invariant for `tensor`.
+    use_input_shape: If true, set the result's shape based on tensor's shape.
     name: A name for this operation (optional).
 
   Returns:
@@ -254,21 +255,14 @@ def _Enter(tensor,
     else:
       result = gen_control_flow_ops.enter(
           tensor, frame_name, is_constant, parallel_iterations, name=name)
-    if shape_invariant is not None:
-      if _ShapeLessThanOrEqual(tensor.get_shape(), shape_invariant):
-        result.set_shape(shape_invariant)
-      else:
-        raise ValueError(
-            f"The shape invariant specified for {tensor.name} is not "
-            "compatible with the initial shape of the loop variable. It enters "
-            f"the loop with shape {tensor.get_shape()}, but the specified "
-            f"shape invariant is {shape_invariant}.")
+    if use_input_shape:
+      result.set_shape(tensor.get_shape())
     return result
   elif isinstance(tensor, composite_tensor.CompositeTensor):
 
     def enter_component(t):
       return _Enter(t, frame_name, is_constant, parallel_iterations, use_ref,
-                    shape_invariant)
+                    use_input_shape)
 
     return nest.map_structure(enter_component, tensor, expand_composites=True)
   else:
@@ -1032,11 +1026,15 @@ class CondContext(ControlFlowContext):
         if original_result is None:
           return no_op(), None
         elif not isinstance(original_result, ops.Operation):
+          original_result = variable_utils.convert_variables_to_tensors(
+              original_result)
           original_result = nest.map_structure(
               array_ops.identity, original_result, expand_composites=True)
     if original_result is None:
       return None, None
 
+    original_result = variable_utils.convert_variables_to_tensors(
+        original_result)
     result = nest.map_structure(
         self._BuildCondTensor, original_result, expand_composites=True)
     if not isinstance(result, (list, _basetuple)):
@@ -2064,6 +2062,7 @@ class WhileContext(ControlFlowContext):
             self._name,
             is_constant=False,
             parallel_iterations=self._parallel_iterations,
+            use_input_shape=False,
             name="b_acc") for x in init_acc
     ]
     # Manually set appropriate partial shapes.
@@ -2130,7 +2129,17 @@ class WhileContext(ControlFlowContext):
             self._name,
             is_constant=False,
             parallel_iterations=self._parallel_iterations,
-            shape_invariant=shape_invariant)
+            use_input_shape=False)
+
+        if _ShapeLessThanOrEqual(real_var.get_shape(), shape_invariant):
+          enter_var.set_shape(shape_invariant)
+        else:
+          raise ValueError(
+              f"The shape invariant specified for {real_var.name} is not "
+              "compatible with the initial shape of the loop variable. It "
+              f"enters the loop with shape {real_var.get_shape()}, but the "
+              f"specified shape invariant is {shape_invariant}.")
+
         enter_var.graph.prevent_feeding(enter_var)
         if self._outer_context:
           self._outer_context.AddInnerOp(enter_var.op)
@@ -2185,7 +2194,7 @@ class WhileContext(ControlFlowContext):
     pre_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
     body_result = body(*packed_vars_for_body)
     post_summaries = ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
-    if not nest.is_nested_or_composite(body_result):
+    if not nest.is_nested(body_result):
       body_result = [body_result]
     if len(post_summaries) > len(pre_summaries):
       new_summaries = post_summaries[len(pre_summaries):]
@@ -2202,6 +2211,7 @@ class WhileContext(ControlFlowContext):
         body_result = nest.map_structure(
             map_fn, body_result, expand_composites=True)
 
+    body_result = variable_utils.convert_variables_to_tensors(body_result)
     # Compare the structure types of input and output of body.
     # For backwards compatibility, the first layer is forced to a list
     # during this comparison, because inputs are typically lists and
@@ -2694,6 +2704,8 @@ def while_loop(cond,
   if parallel_iterations < 1:
     raise TypeError("'parallel_iterations' must be a positive integer.")
 
+  loop_vars = variable_utils.convert_variables_to_tensors(loop_vars)
+
   # Always enable control flow v2 if building a function, regardless of toggle.
   executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
@@ -2857,12 +2869,12 @@ def with_dependencies(dependencies, output_tensor, name=None):
     with ops.colocate_with(output_tensor):
       with ops.control_dependencies(dependencies):
         output_tensor = ops.convert_to_tensor_or_composite(output_tensor)
-        if isinstance(output_tensor, ops.Tensor):
-          return _Identity(output_tensor, name=name)
-        else:
+        if isinstance(output_tensor, indexed_slices.IndexedSlices):
           return indexed_slices.IndexedSlices(
               _Identity(output_tensor.values, name=name), output_tensor.indices,
               output_tensor.dense_shape)
+        else:
+          return _Identity(output_tensor, name=name)
 
 
 def _GroupControlDeps(dev, deps, name=None):

@@ -63,7 +63,7 @@ LogicalResult ExtractEmbeddingAttribute(
 }
 
 LogicalResult FindTPUEmbeddingOps(
-    FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
+    func::FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
     llvm::StringMap<Operation*>* recv_activation_op_map,
     llvm::StringMap<Operation*>* send_gradient_op_map) {
   auto walk_result = func_op.walk([&](Operation* op) {
@@ -172,7 +172,7 @@ void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass() {
   return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputsPass>();
 }

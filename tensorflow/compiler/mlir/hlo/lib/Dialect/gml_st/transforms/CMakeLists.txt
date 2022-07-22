@@ -16,21 +16,60 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_mlir_library(GmlStTilingInterface
-  tiling_interface.cc
+set(LLVM_OPTIONAL_SOURCES
+  bufferizable_op_interface_impl.cc
+)
+
+add_mlir_library(GmlStFusionInterface
+  fusion_interface.cc
 
   LINK_LIBS PUBLIC
-  MLIRArithmetic
+  MLIRArithmeticDialect
   MLIRIR
   MLIRSupport
 
   DEPENDS
-  MLIRGmlStTilingInterfaceIncGen
+  MLIRGmlStFusionInterfaceIncGen
+)
+
+add_mlir_library(GmlStFusionInterfaceImpl
+  fusion_interface_impl.cc
+
+  LINK_LIBS PUBLIC
+  GmlStFusionInterface
+  MLIRArithmeticDialect
+  MLIRIR
+  MLIRSupport
+)
+
+add_mlir_library(GmlStComposeSetInterface
+  compose_set_interface.cc
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+
+  DEPENDS
+  MLIRGmlStComposeSetInterfaceIncGen
+)
+
+add_mlir_library(GmlStBufferizableOpInterface
+  bufferizable_op_interface_impl.cc
+
+  LINK_LIBS PUBLIC
+  MLIRBufferizationDialect
+  MLIRBufferizationTransforms
+  MLIRIR
+  MLIRSupport
 )
 
 add_mlir_library(GmlStPasses
-  greedy_tiling.cc
+  bufferize_tiled_loop.cc
+  compose_set_ops.cc
+  fusion.cc
   gml_st_to_scf.cc
+  legalize_mhlo_to_gml.cc
+  tiling.cc
+  vectorization.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -39,10 +78,16 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStTilingInterface
+  GmlStComposeSetInterface
+  GmlStFusionInterface
+  GmlStFusionInterfaceImpl
+  MLIRFuncDialect
   MLIRIR
+  MLIRLinalgDialect
+  MLIRLinalgTransforms
   MLIRPass
   MLIRSupport
+  MLIRVectorDialect
 )
 
 add_mlir_library(GmlStTransforms
@@ -52,7 +97,7 @@ add_mlir_library(GmlStTransforms
   Core
 
   LINK_LIBS PUBLIC
-  MLIRAffine
+  MLIRAffineDialect
   MLIRDialectUtils
   MLIRIR
   MLIRSCFUtils
@@ -68,6 +113,7 @@ add_mlir_library(GmlStTestPasses
   Core
 
   LINK_LIBS PUBLIC
+  GmlStBufferizableOpInterface
   GmlStTransforms
   MLIRPass
   MLIRTransforms

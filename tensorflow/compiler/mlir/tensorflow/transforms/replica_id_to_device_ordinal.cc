@@ -99,7 +99,8 @@ void ReplicaIDToDeviceOrdinalPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateReplicaIDToDeviceOrdinalPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateReplicaIDToDeviceOrdinalPass() {
   return std::make_unique<ReplicaIDToDeviceOrdinalPass>();
 }
 

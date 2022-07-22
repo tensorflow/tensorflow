@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
@@ -33,7 +34,7 @@ namespace tfrt_compiler {
 
 // Create a pass to insert kernels that copy fallback tensors when they are
 // passed to multiple threads, to avoid atomic contention on their refcounts.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateInsertFallbackTensorCopyPass();
 
 // Create a pass to reorder tf.Assert ops or tf.If ops that contains only
@@ -63,11 +64,11 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 
 // Create a pass to fuse the TPU Ops for TFRT.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();
 
 // Create a pass to optimize TF dialect for TFRT workflow.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateOptimizeTfForTfrtPass();
 
 }  // namespace tfrt_compiler
@@ -87,7 +88,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // Run *ToCoreRTConversionPassRun as free functions. Useful for
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
-    mlir::MLIRContext* context, mlir::FuncOp func,
+    mlir::MLIRContext* context, mlir::func::FuncOp func,
     mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
@@ -104,7 +105,7 @@ CreateRemoveDeviceAttributePass();
 
 // Create an operation pass that inserts corert.transfer op to make sure any
 // argument of any op is on the same device of the op itself.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateCrossDeviceTransferPass();
 
 struct TfrtPipelineOptions
@@ -222,8 +223,7 @@ struct TfrtPipelineOptions
       llvm::cl::desc("A list of Tensorflow operations to cluster together for "
                      "JIT compilation. Alternatively use 'tier1', ..., 'all' "
                      "to allow clustering for all operations included in the "
-                     "given clustering tier."),
-      llvm::cl::MiscFlags::CommaSeparated};
+                     "given clustering tier.")};
 
   Option<int> auto_fusion_min_cluster_size{
       *this, "auto-fusion-min-cluster-size",

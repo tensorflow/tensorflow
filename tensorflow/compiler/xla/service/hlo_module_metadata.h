@@ -17,8 +17,8 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_
 
 #include <functional>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -43,7 +43,7 @@ class HloModuleMetadata {
   // for the currently running pass cannot be found.
   Status RecordPassEnd();
 
-  const absl::optional<HloModuleMetadataProto>& prepartitioning_metadata()
+  const std::optional<HloModuleMetadataProto>& prepartitioning_metadata()
       const {
     return prepartitioning_metadata_;
   }
@@ -123,8 +123,8 @@ class HloModuleMetadata {
   std::vector<HloPassMetadata*> running_passes_;
 
   // Metadata from before the module was partitioned, if applicable.
-  absl::optional<HloModuleMetadataProto> prepartitioning_metadata_ =
-      absl::nullopt;
+  std::optional<HloModuleMetadataProto> prepartitioning_metadata_ =
+      std::nullopt;
 };
 
 }  // namespace xla

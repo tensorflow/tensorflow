@@ -15,6 +15,7 @@ limitations under the License.
 
 // Converts DeviceIndex to constant device.
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -52,7 +53,7 @@ struct DeviceIndexSelector
 }  // namespace
 
 void DeviceIndexSelector::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   // Convert all the DeviceIndex ops to constant values.
   func.getBody().walk([](TF::DeviceIndexOp op) {
     // This just selects the default in all cases where DeviceIndex feeds into
@@ -75,7 +76,7 @@ void DeviceIndexSelector::runOnOperation() {
 }
 
 // Creates an instance of the TensorFlow DeviceIndex selector pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceIndexSelectorPass() {
   return std::make_unique<DeviceIndexSelector>();
 }
 

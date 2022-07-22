@@ -422,7 +422,7 @@ LlvmVariable::LlvmVariable(llvm::Type* type, llvm::IRBuilder<>* b) : b_(b) {
 }
 
 llvm::Value* LlvmVariable::Get() const {
-  return b_->CreateLoad(alloca_->getType()->getPointerElementType(), alloca_);
+  return b_->CreateLoad(alloca_->getAllocatedType(), alloca_);
 }
 
 void LlvmVariable::Set(llvm::Value* new_value) {

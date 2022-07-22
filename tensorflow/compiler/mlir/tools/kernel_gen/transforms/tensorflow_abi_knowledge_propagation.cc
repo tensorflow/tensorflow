@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -45,7 +45,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     : public PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
   void runOnOperation() override {
-    FuncOp function = getOperation();
+    func::FuncOp function = getOperation();
     llvm::SmallVector<Value, 4> worklist;
     // We currently only handle entry functions and do not propagate across
     // functions.
@@ -173,7 +173,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
         }
         if (auto cast = dyn_cast<memref::ReinterpretCastOp>(user)) {
           // Check that we have offset 0.
-          Value result = cast.result();
+          Value result = cast.getResult();
           if (!cast.isDynamicOffset(0) && cast.getStaticOffset(0) == 0) {
             offset_is_zero.insert(result);
           }
@@ -210,7 +210,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateTfAbiKnowledgeToKernels() {
   return std::make_unique<PropagateTfAbiKnowledgeToKernelsPass>();
 }

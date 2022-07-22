@@ -16,9 +16,18 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H
 #define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSDETAIL_H
 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+namespace arith {
+class ArithmeticDialect;
+}  // namespace arith
+namespace func {
+class FuncOp;
+}  // namespace func
 namespace scf {
 class SCFDialect;
 }  // namespace scf
@@ -28,6 +37,9 @@ class MemRefDialect;
 namespace tensor {
 class TensorDialect;
 }  // namespace tensor
+namespace shape {
+class ShapeDialect;
+}  // namespace shape
 
 namespace mhlo {
 class MhloDialect;

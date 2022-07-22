@@ -116,7 +116,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
@@ -178,7 +178,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace internal {

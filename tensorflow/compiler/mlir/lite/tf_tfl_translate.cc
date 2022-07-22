@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <iostream>
 
 #include "absl/strings/str_split.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -55,9 +57,9 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+using mlir::func::FuncOp;
 using stream_executor::port::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.
@@ -218,7 +220,7 @@ int main(int argc, char **argv) {
       module = xla::HloToMlirHloTranslateFunction(content, &context, false);
     } else {
       module = mlir::OwningOpRef<mlir::ModuleOp>(
-          mlir::parseSourceString(content, &context));
+          mlir::parseSourceString<mlir::ModuleOp>(content, &context));
     }
   } else {
     // Graphdef import path.

@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -136,7 +136,7 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
       pass_through.operand->parent()->set_root_instruction(gte);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For tuple shardings if every element have the same sharsing then we want to
@@ -165,7 +165,7 @@ Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
               << instruction->sharding();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return the ShapeTree<HloSharding> of the user argument. The user argument
@@ -376,7 +376,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
     }
   }
   // Should we error out if unassigned > 0?
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
@@ -410,9 +410,9 @@ StatusOr<std::shared_ptr<const HloSharding>> ExtractOriginalCommonSharding(
 std::unique_ptr<DomainMetadata> ShardingMetadata::Clone() const {
   std::unique_ptr<HloSharding> sharding;
   if (sharding_ != nullptr) {
-    sharding = absl::make_unique<HloSharding>(*sharding_);
+    sharding = std::make_unique<HloSharding>(*sharding_);
   }
-  return absl::make_unique<ShardingMetadata>(std::move(sharding));
+  return std::make_unique<ShardingMetadata>(std::move(sharding));
 }
 
 bool ShardingMetadata::Matches(const DomainMetadata& other) const {
@@ -465,7 +465,7 @@ Status ShardingMetadata::NormalizeShardingDomain(
       VLOG(1) << "Unable to find common sharding";
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates a kDomain instruction to be placed between instruction and operand.
@@ -510,8 +510,8 @@ HloInstruction* ShardingDomainCreator::operator()(HloInstruction* instruction,
   HloInstruction* domain =
       operand->parent()->AddInstruction(HloInstruction::CreateDomain(
           operand->shape(), operand,
-          absl::make_unique<ShardingMetadata>(root_sharding),
-          absl::make_unique<ShardingMetadata>(instruction_sharding)));
+          std::make_unique<ShardingMetadata>(root_sharding),
+          std::make_unique<ShardingMetadata>(instruction_sharding)));
   domain_cse_map_.emplace(DomainCseMapKey{operand, instruction_sharding},
                           domain);
   return domain;

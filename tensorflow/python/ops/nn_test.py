@@ -96,6 +96,8 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _softmax(self, x):
     assert len(x.shape) == 2
+    if x.shape[1] == 0:
+      return x
     m = x.max(1)[:, np.newaxis]
     u = np.exp(x - m)
     z = u.sum(1)[:, np.newaxis]

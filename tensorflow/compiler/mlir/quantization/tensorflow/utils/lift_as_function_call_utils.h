@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
@@ -33,7 +34,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
     OpBuilder builder, Location location, StringRef func_name,
     const llvm::SmallVector<Value> &arguments,
     const llvm::SmallVector<Value> &results,
-    const llvm::SmallVector<Attribute> &attributes);
+    const llvm::SmallVector<NamedAttribute> &attributes);
 
 // Same as above but with empty attributes.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(

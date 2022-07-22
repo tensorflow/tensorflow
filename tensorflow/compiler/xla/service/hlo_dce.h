@@ -49,12 +49,17 @@ class HloDCE : public HloModulePass {
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Finds all computations that are not called by any instruction and removes
   // them from the module. Returns whether any dead code was removed.
-  StatusOr<bool> RecursivelyRemoveDeadComputations(HloModule* module);
+  StatusOr<bool> RecursivelyRemoveDeadComputations(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Given a dead computation, decrements the ref count of all its called
   // computations and checks if any of the subcomputations become dead after the

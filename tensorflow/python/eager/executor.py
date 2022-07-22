@@ -69,6 +69,6 @@ class Executor(object):
     pywrap_tfe.TFE_ExecutorClearError(self._handle)
 
 
-def new_executor(enable_async):
-  handle = pywrap_tfe.TFE_NewExecutor(enable_async)
+def new_executor(enable_async, enable_streaming_enqueue=True):
+  handle = pywrap_tfe.TFE_NewExecutor(enable_async, enable_streaming_enqueue)
   return Executor(handle)

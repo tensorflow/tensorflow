@@ -17,13 +17,27 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SHARDING_PROPAGATION_H_
 
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
+
+// Remove Sharding custom-call instruction by folding the sharding attribute
+// to its operand. If the operand already has a different sharding, insert a
+// copy node for reshard.
+// partially_specified will be populated with the converted copies if the custom
+// call is partially specified.
+StatusOr<bool> ProcessShardingInstruction(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool replace_sharding_with_copy,
+    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
+        unspecified_dims);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
@@ -35,14 +49,24 @@ class ShardingPropagation : public HloModulePass {
   explicit ShardingPropagation(
       bool is_spmd = false, bool propagate_metadata = false,
       bool allow_spmd_sharding_propagation_to_output = false,
-      bool cse_prevention_only = false)
+      bool cse_prevention_only = false,
+      std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
         allow_spmd_sharding_propagation_to_output_(
             allow_spmd_sharding_propagation_to_output),
-        cse_prevention_only_(cse_prevention_only) {}
+        cse_prevention_only_(cse_prevention_only) {
+    if (sharding_helper) {
+      sharding_helper_ = std::move(sharding_helper);
+    } else {
+      sharding_helper_ = std::make_unique<CustomCallShardingHelper>();
+    }
+  }
   absl::string_view name() const override { return "sharding-propagation"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Function which can be used to apply a spatially partitioned sharding onto a
   // given domain. It will apply the sharding into the exit edges of the domain
@@ -51,7 +75,7 @@ class ShardingPropagation : public HloModulePass {
   static Status NormalizeDomain(const DomainMetadata::Domain& domain,
                                 const DomainMetadata* metadata);
 
-  static absl::optional<HloSharding> GetShardingFromUser(
+  static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
       int64_t aggressiveness, bool is_spmd);
 
@@ -59,6 +83,8 @@ class ShardingPropagation : public HloModulePass {
   bool InferShardingFromOperands(HloInstruction* instruction,
                                  const ComputationMap& computation_map,
                                  int64_t aggressiveness);
+
+  std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;

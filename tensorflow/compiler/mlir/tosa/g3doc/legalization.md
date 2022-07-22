@@ -1356,13 +1356,13 @@ Computes the "logical and" of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.all(%input, %reduction_indicies) {keep_dims}
+%output = tf.all(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
 
 ```
-%output = lower_reduce_op<tosa.REDUCE_ALL>(%input, %output.shape, %reduction_indicies, keep_dims)
+%output = lower_reduce_op<tosa.REDUCE_ALL>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tf.Any
@@ -1372,13 +1372,13 @@ Computes the "logical or" of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.any(%input, %reduction_indicies) {keep_dims}
+%output = tf.any(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
 
 ```
-%output = lower_reduce_op<tosa.REDUCE_ANY>(%input, %output.shape, %reduction_indicies, keep_dims)
+%output = lower_reduce_op<tosa.REDUCE_ANY>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tf.ArgMax
@@ -1744,7 +1744,7 @@ DepthToSpace for tensors of type T.
 
 ### tf.DepthwiseConv2dNative
 
-Computes a 2-D depthwise convlution given 4-D input and filter tensors.
+Computes a 2-D depthwise convolution given 4-D input and filter tensors.
 
 **TensorFlow Dialect**
 
@@ -1858,7 +1858,7 @@ Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 
 ### tf.FakeQuantWithMinMaxVars
 
-Fake-quantize the 'inputs' tensor of type float via global flats sclars min.
+Fake-quantize the 'inputs' tensor of type float via global flats scalars min.
 
 **TensorFlow Dialect**
 
@@ -2018,12 +2018,12 @@ Gather slices from params into a Tensor with shape specified by indices.
 **TOSA Lowering**
 
 ```
-%output = lower_gather_nd_op(%params, %indicies)
+%output = lower_gather_nd_op(%params, %indices)
 ```
 
 ### tf.Gather
 
-Gathers slices from params according to indicies.
+Gathers slices from params according to indices.
 
 **TensorFlow Dialect**
 
@@ -2034,12 +2034,12 @@ Gathers slices from params according to indicies.
 **TOSA Lowering**
 
 ```
-%output = lower_gather_op(%params, %indicies, 0, 0)
+%output = lower_gather_op(%params, %indices, 0, 0)
 ```
 
 ### tf.GatherV2
 
-Gathers slices from params axis according to indicies.
+Gathers slices from params axis according to indices.
 
 **TensorFlow Dialect**
 
@@ -2050,7 +2050,7 @@ Gathers slices from params axis according to indicies.
 **TOSA Lowering**
 
 ```
-%output = lower_gather_op(%params, %indicies, batch_dims, %axis.to_constant())
+%output = lower_gather_op(%params, %indices, batch_dims, %axis.to_constant())
 ```
 
 ### tf.GreaterEqual
@@ -2333,13 +2333,13 @@ Computes the maximum of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.Max(%input, %reduction_indicies) {keep_dims}
+%output = tf.Max(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
 
 ```
-%output = lower_reduce_op<tosa.REDUCE_MAX>(%input, %output.shape, %reduction_indicies, keep_dims)
+%output = lower_reduce_op<tosa.REDUCE_MAX>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tf.MaxPoolGrad
@@ -2378,7 +2378,7 @@ Computes the mean of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.Mean(%input, %reduction_indicies) {keep_dims}
+%output = tf.Mean(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
@@ -2391,7 +2391,7 @@ for (int32 axis : %reduction_indices) {
 float32 div_scale = 1.0 / num_elements_on_axis
 
 %cst_div_scale = tosa.CONST() {value={div_scale}}
-%op1_rsum_in = lower_reduce_op<tosa.REDUCE_SUM>(%input, %output.shape, %reduction_indicies, keep_dims)
+%op1_rsum_in = lower_reduce_op<tosa.REDUCE_SUM>(%input, %output.shape, %reduction_indices, keep_dims)
 %op2_mul_op1 = tosa.MUL(%op1_rsum_in, %cst_div_scale)
 ```
 
@@ -2402,13 +2402,13 @@ Computes the minimum of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.Min(%input, %reduction_indicies) {keep_dims}
+%output = tf.Min(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
 
 ```
-%output = lower_reduce_op<tosa.REDUCE_MIN>(%input, %output.shape, %reduction_indicies, keep_dims)
+%output = lower_reduce_op<tosa.REDUCE_MIN>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tf.Minimum
@@ -2547,13 +2547,13 @@ Computes the product of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.Prod(%input, %reduction_indicies) {keep_dims}
+%output = tf.Prod(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
 
 ```
-%output = lower_reduce_op<tosa.REDUCE_PRODUCT>(%input, %output.shape, %reduction_indicies, keep_dims)
+%output = lower_reduce_op<tosa.REDUCE_PRODUCT>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tf.QuantizeAndDequantize
@@ -3099,13 +3099,13 @@ Computes the sum of elements across dimensions of a tensor.
 **TensorFlow Dialect**
 
 ```
-%output = tf.Sum(%input, %reduction_indicies) {keep_dims}
+%output = tf.Sum(%input, %reduction_indices) {keep_dims}
 ```
 
 **TOSA Lowering**
 
 ```
-%output = lower_reduce_op<tosa.REDUCE_SUM>(%input, %output.shape, %reduction_indicies, keep_dims)
+%output = lower_reduce_op<tosa.REDUCE_SUM>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tf.TPUCompilationResult
@@ -3943,7 +3943,7 @@ Gather_nd operator.
 **TOSA Lowering**
 
 ```
-%output = lower_gather_nd_op(%params, %indicies)
+%output = lower_gather_nd_op(%params, %indices)
 ```
 
 ### tfl.gather
@@ -3959,7 +3959,7 @@ Gather operator.
 **TOSA Lowering**
 
 ```
-%output = lower_gather_op(%params, %indicies, 0, axis)
+%output = lower_gather_op(%params, %indices, 0, axis)
 ```
 
 ### tfl.greater_equal
@@ -4337,7 +4337,7 @@ If input/output tensors are all quantized typed,
 Legalization:
 
 ```
-%rsum = lower_reduce_op<tosa.REDUCE_SUM>(%op1_rescale_in, %output.shape, %reduction_indicies, keep_dims, 1.0f, %input_zp, div_scale * %input.scale / %output.scale, %output.zp)
+%rsum = lower_reduce_op<tosa.REDUCE_SUM>(%op1_rescale_in, %output.shape, %reduction_indices, keep_dims, 1.0f, %input_zp, div_scale * %input.scale / %output.scale, %output.zp)
 ```
 
 ### tfl.minimum
@@ -4541,7 +4541,7 @@ Computes the "logical or" of elements across dimensions of a tensor.
 Legalization:
 
 ```
-%op1_rsum_in = lower_reduce_op<tosa.REDUCE_ANY>(%input, %output.shape, %reduction_indicies, keep_dims)
+%op1_rsum_in = lower_reduce_op<tosa.REDUCE_ANY>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tfl.reduce_max
@@ -4559,7 +4559,7 @@ Max-reduction operator.
 Legalization:
 
 ```
-%op1_rsum_in = lower_reduce_op<tosa.REDUCE_MAX>(%input, %output.shape, %reduction_indicies, keep_dims)
+%op1_rsum_in = lower_reduce_op<tosa.REDUCE_MAX>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tfl.reduce_min
@@ -4577,7 +4577,7 @@ Computes the min reduction along the specified axes.
 Legalization:
 
 ```
-%op1_rsum_in = lower_reduce_op<tosa.REDUCE_MIN>(%input, %output.shape, %reduction_indicies, keep_dims)
+%op1_rsum_in = lower_reduce_op<tosa.REDUCE_MIN>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tfl.reduce_prod
@@ -4597,7 +4597,7 @@ If input/output tensors are all float typed,
 Legalization:
 
 ```
-%op1_rsum_in = lower_reduce_op<tosa.REDUCE_PROD>(%input, %output.shape, %reduction_indicies, keep_dims)
+%op1_rsum_in = lower_reduce_op<tosa.REDUCE_PROD>(%input, %output.shape, %reduction_indices, keep_dims)
 ```
 
 ### tfl.relu_n1_to_1
@@ -5051,7 +5051,7 @@ If input/output tensors are all quantized typed,
 Legalization:
 
 ```
-%rsum = lower_reduce_op<tosa.REDUCE_SUM>(%op1_rescale_in, %output.shape, %reduction_indicies, keep_dims, 1.0f, %input_zp, (%input.scale / %output.scale), %output.zp)
+%rsum = lower_reduce_op<tosa.REDUCE_SUM>(%op1_rescale_in, %output.shape, %reduction_indices, keep_dims, 1.0f, %input_zp, (%input.scale / %output.scale), %output.zp)
 ```
 
 ### tfl.tanh

@@ -32,7 +32,7 @@ namespace toco {
   const auto switch_it = model->operators.begin() + op_index;
   const auto* switch_op = switch_it->get();
   if (switch_op->type != OperatorType::kSwitch) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(switch_op->inputs.size(), 2);
@@ -44,7 +44,7 @@ namespace toco {
     AddMessageF(
         "Waiting for the boolean predicate of %s to be resolved to a constant",
         LogName(*switch_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // The predicate should be boolean, and should consist of a single value.
@@ -132,7 +132,7 @@ namespace toco {
   AddMessageF("Removing already-resolved %s", LogName(*switch_op));
   DeleteOpAndArrays(model, switch_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -233,7 +233,7 @@ class SkipgramOp : public OpKernel {
     }
     precalc_examples_.resize(kPrecalc);
     sentence_.resize(kSentenceSize);
-    return Status::OK();
+    return OkStatus();
   }
 };
 

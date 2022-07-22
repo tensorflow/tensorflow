@@ -449,6 +449,7 @@ TEST_F(XlaBuilderTest, AllToAll) {
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {8, 8})));
 }
 
+// Test the special case where split_dimension is the same as concat_dimension.
 TEST_F(XlaBuilderTest, AllToAllSpecial) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {4, 16, 8}), "x");
@@ -461,6 +462,28 @@ TEST_F(XlaBuilderTest, AllToAllSpecial) {
   EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
   EXPECT_TRUE(
       ShapeUtil::Equal(root->shape(), ShapeUtil::MakeShape(F32, {4, 16, 8})));
+}
+
+TEST_F(XlaBuilderTest, AllToAllTuple) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {2, 4}), "p1");
+  ReplicaGroup replica_group;
+  replica_group.add_replica_ids(0);
+  replica_group.add_replica_ids(1);
+
+  AllToAllTuple({p0, p1}, {replica_group}, LayoutUtil::MakeAscendingLayout(2));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
+  auto expected_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, /* dimensions= */ {2, 4},
+                                     /* minor_to_major= */ {0, 1});
+  EXPECT_THAT(root, op::ShapeWithLayout(ShapeUtil::MakeTupleShape(
+                        {expected_shape, expected_shape})));
+  EXPECT_THAT(root, op::ReplicaGroups({{0, 1}}));
 }
 
 TEST_F(XlaBuilderTest, CollectivePermute) {
@@ -778,6 +801,34 @@ TEST_F(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(), {true}))
       << result_shape;
+}
+
+TEST_F(XlaBuilderTest, SelectIntoConditional) {
+  XlaBuilder b(TestName());
+  Shape selector_shape = ShapeUtil::MakeShape(PRED, {});
+  Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {})});
+  XlaOp p0 = Parameter(&b, 0, selector_shape, "p0");
+  XlaOp p1 = Parameter(&b, 1, tuple_param_shape, "p1");
+  XlaOp p2 = Parameter(&b, 2, tuple_param_shape, "p2");
+
+  Select(p0, p1, p2);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          BuildHloModule(&b));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Conditional(op::Parameter(0), op::Parameter(1), op::Parameter(2)));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->branch_computation(0)
+                  ->root_instruction(),
+              op::Parameter(0));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->branch_computation(1)
+                  ->root_instruction(),
+              op::Parameter(0));
 }
 
 TEST_F(XlaBuilderTest, DynamicPad) {

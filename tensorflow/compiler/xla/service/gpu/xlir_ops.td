@@ -57,15 +57,15 @@ def XLIR_ModuleLoadOp : XLIR_Op<"module.load"> {
     Example:
       %module = tfrt_gpu.module.load %ctx
   }];
-  let arguments = (ins GPU_ContextType:$ctx);
-  let results = (outs GPU_ModuleType);
+  let arguments = (ins TFRTGPU_ContextType:$ctx);
+  let results = (outs TFRTGPU_ModuleType);
 }
 
 def XLIR_ReplicaIdOp : XLIR_Op<"replica_id"> {
   let description = [{
     xlir.replica_id copies the 4-byte replica ID to the output buffer.
   }];
-  let arguments = (ins GPU_StreamType:$stream, GPU_BufferType:$output,
+  let arguments = (ins TFRTGPU_StreamType:$stream, TFRTGPU_BufferType:$output,
                    TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
@@ -77,7 +77,7 @@ def XLIR_PartitionIdOp : XLIR_Op<"partition_id"> {
   let description = [{
     xlir.partition_id copies the 4-byte partition ID to the output buffer.
   }];
-  let arguments = (ins GPU_StreamType:$stream, GPU_BufferType:$output,
+  let arguments = (ins TFRTGPU_StreamType:$stream, TFRTGPU_BufferType:$output,
                    TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
@@ -95,9 +95,9 @@ def XLIR_CclCreateOp : XLIR_Op<"ccl.create"> {
     hlo.unique_id value if in cross-replica mode, or the op's channel ID if in
     cross-module mode.
   }];
-  let arguments = (ins GPU_ContextType:$context, I64Attr:$group_mode,
-                   I64Attr:$op_id);
-  let results = (outs GPU_CclHandleType);
+  let arguments = (ins TFRTGPU_ContextType:$context, I64Attr:$group_mode,
+                   I64Attr:$op_id, TFRT_ChainType:$chain);
+  let results = (outs TFRTGPU_CclHandleType);
 }
 
 def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
@@ -108,8 +108,8 @@ def XLIR_CclCollectivePermuteOp : XLIR_Op<"ccl.collective_permute"> {
     group_mode is the int64_t-cast CollectiveOpGroupMode (as described in
     tensorflow/compiler/xla/service/collective_ops_utils.h).
   }];
-  let arguments = (ins GPU_CclHandleType:$handle, GPU_BufferType:$input,
-                   GPU_BufferType:$output, GPU_CclDataTypeAttr:$data_type,
+  let arguments = (ins TFRTGPU_CclHandleType:$handle, TFRTGPU_BufferType:$input,
+                   TFRTGPU_BufferType:$output, TFRTGPU_CclDataTypeAttr:$data_type,
                    I64Attr:$group_mode, I64ArrayAttr:$source_peers,
                    I64ArrayAttr:$target_peers, TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
@@ -133,8 +133,8 @@ def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
 
     'opaque' is an arbitrary array of bytes passed as extra arguments.
   }];
-  let arguments = (ins GPU_StreamType:$stream,
-                   Variadic<GPU_BufferType>:$buffers,
+  let arguments = (ins TFRTGPU_StreamType:$stream,
+                   Variadic<TFRTGPU_BufferType>:$buffers,
                    TFRT_ChainType:$chain, StrAttr:$symbol,
                    I32ArrayAttr:$indices, StrAttr:$opaque);
   let results = (outs TFRT_ChainType);
@@ -148,8 +148,8 @@ def XLIR_InfeedOp : XLIR_Op<"infeed"> {
     xlir.infeed copies data from the streaming interface of the device to the
     output buffers.
   }];
-  let arguments = (ins GPU_StreamType:$stream,
-                   Variadic<GPU_BufferType>:$outputs,
+  let arguments = (ins TFRTGPU_StreamType:$stream,
+                   Variadic<TFRTGPU_BufferType>:$outputs,
                    TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
@@ -162,8 +162,8 @@ def XLIR_OutfeedOp : XLIR_Op<"outfeed"> {
     xlir.outfeed outputs data from the input buffers to the streaming interface
     to the host.
   }];
-  let arguments = (ins GPU_StreamType:$stream,
-                   Variadic<GPU_BufferType>:$inputs,
+  let arguments = (ins TFRTGPU_StreamType:$stream,
+                   Variadic<TFRTGPU_BufferType>:$inputs,
                    TFRT_ChainType:$chain);
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{

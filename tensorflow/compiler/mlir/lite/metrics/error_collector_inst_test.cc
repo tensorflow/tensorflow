@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -49,6 +50,8 @@ class MockSuccessPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockSuccessPass)
+
   explicit MockSuccessPass() {}
 
  private:
@@ -68,6 +71,8 @@ class MockFailurePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockFailurePass)
+
   explicit MockFailurePass() {}
 
  private:
@@ -103,6 +108,7 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
   std::string input_file = tensorflow::GetDataDependencyFilepath(
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
   context.allowUnregisteredDialects();
   context.enableMultithreading();
 
@@ -124,6 +130,7 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
 TEST(ErrorCollectorTest, TessFailurePass) {
   using tflite::metrics::ConverterErrorData;
   MLIRContext context;
+  context.getOrLoadDialect<mlir::func::FuncDialect>();
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
   auto input_file_id = StringAttr::get(&context, input_file);

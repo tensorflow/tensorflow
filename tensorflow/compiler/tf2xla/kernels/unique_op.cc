@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -99,7 +100,7 @@ class UniqueOpBase : public XlaOpKernel {
       auto limit = xla::ConstantR0<int32_t>(builder.get(), size);
       xla::Lt(counter, limit);
 
-      cond = builder->Build().ConsumeValueOrDie();
+      cond = builder->Build().value();
     }
 
     {
@@ -132,7 +133,7 @@ class UniqueOpBase : public XlaOpKernel {
       counter = counter + xla::One(builder.get(), xla::S32);
 
       xla::Tuple(builder.get(), {counter, data_stack, mask_stack, accum_stack});
-      body = builder->Build().ConsumeValueOrDie();
+      body = builder->Build().value();
     }
 
     auto zero = xla::Zero(ctx->builder(), xla::S32);
@@ -174,8 +175,8 @@ class UniqueOpBase : public XlaOpKernel {
     sort_keys.push_back(iota);
     sort_types.push_back(xla::S32);
 
-    std::vector<absl::optional<xla::XlaOp (*)(xla::XlaOp, xla::XlaOp,
-                                              absl::Span<const int64_t>)>>
+    std::vector<std::optional<xla::XlaOp (*)(xla::XlaOp, xla::XlaOp,
+                                             absl::Span<const int64_t>)>>
         generators(sort_types.size(), xla::LtTotalOrder);
     auto lt_chain = xla::CreateScalarComparisonComputation(
         "UniqueV2Lt", sort_types, generators, ctx->builder());

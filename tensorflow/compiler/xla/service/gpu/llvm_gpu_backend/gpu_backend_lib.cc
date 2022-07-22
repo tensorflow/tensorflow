@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -61,12 +60,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -312,14 +309,14 @@ Status LinkWithBitcodeVector(
                                 bitcode_path);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 const std::string& libdevice_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // CUDA 9+ uses a single libdevice file for all devices, and we don't support
@@ -356,7 +353,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -457,7 +454,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // One-time module initializer.
@@ -536,7 +533,7 @@ StatusOr<std::string> CompileToPtx(
     }
 
     auto compute_capability =
-        absl::get_if<se::CudaComputeCapability>(&gpu_version);
+        std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");
@@ -579,7 +576,7 @@ StatusOr<std::string> CompileToPtx(
 namespace {
 
 // Gets the ROCm-Device-Libs filenames for a particular AMDGPU version.
-std::vector<std::string> GetROCDLPaths(std::string amdgpu_version,
+std::vector<std::string> GetROCDLPaths(std::string gcn_arch_name,
                                        const std::string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes.
   static std::vector<std::string>* rocdl_filenames =
@@ -596,7 +593,8 @@ std::vector<std::string> GetROCDLPaths(std::string amdgpu_version,
   }
 
   // Add AMDGPU version-specific bitcodes.
-  std::vector<std::string> tokens = absl::StrSplit(amdgpu_version, ':');
+  std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
+  std::string amdgpu_version = gcn_arch_name;
   if (!tokens.empty() && tokens[0].size() >= 3) {
     amdgpu_version = tokens[0].substr(3);
   }
@@ -777,27 +775,30 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
-Status LinkROCDLIfNecessary(llvm::Module* module, std::string amdgpu_version,
+Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                             const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
-                               GetROCDLPaths(amdgpu_version, rocdl_dir_path));
+                               GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
 }
 
 Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  auto amdgpu_version = absl::get_if<std::string>(&gpu_version);
-  if (!amdgpu_version) {
-    return xla::InternalError(
-        "Incompatible AMD GCN ISA version was specified.");
+
+  auto compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  if (!compute_capability) {
+    return xla::InternalError("Incompatible compute capability was specified.");
   }
+
+  std::string gcn_arch_name = compute_capability->gcn_arch_name();
   TF_RETURN_IF_ERROR(
-      LinkROCDLIfNecessary(module, *amdgpu_version, device_bitcode_dir_path));
+      LinkROCDLIfNecessary(module, gcn_arch_name, device_bitcode_dir_path));
 
   // If ftz is enabled, set it as an attribute on every function in the module.
   if (hlo_module_config.debug_options().xla_gpu_ftz()) {
@@ -806,7 +807,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // The following routine maps a feature token extracted from the
@@ -859,8 +860,10 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config) {
-  auto amdgpu_version = absl::get_if<std::string>(&gpu_version);
-  std::string gcn_arch_name = *amdgpu_version;
+  auto compute_capability =
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
+
+  std::string gcn_arch_name = compute_capability->gcn_arch_name();
   auto arch = GetFeatureStrFromGCNArchName(gcn_arch_name);
   return GetTargetMachine(std::move(target_triple), arch.first,
                           hlo_module_config, arch.second);
@@ -917,13 +920,17 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto amdgpu_version = absl::get_if<std::string>(&gpu_version);
-    if (!amdgpu_version) {
+    auto compute_capability =
+        std::get_if<se::RocmComputeCapability>(&gpu_version);
+    if (!compute_capability) {
       return xla::InternalError(
-          "Incompatible AMD GCN ISA version was specified.");
+          "Incompatible compute capability was specified.");
     }
+
+    std::string gcn_arch_name = compute_capability->gcn_arch_name();
+
     uint64_t hash;
-    if (HsacoCache::Find(str, hash, *amdgpu_version, hsaco)) {
+    if (HsacoCache::Find(str, hash, gcn_arch_name, hsaco)) {
       VLOG(1) << "HSACO cache hit";
       return hsaco;
     }
@@ -952,7 +959,7 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
 
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
-    HsacoCache::Add(str, hash, *amdgpu_version, hsaco);
+    HsacoCache::Add(str, hash, gcn_arch_name, hsaco);
   }
   return hsaco;
 }

@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -103,7 +104,7 @@ TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
   m.SetBegin({1});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
 }
 
@@ -113,7 +114,7 @@ TYPED_TEST(StridedSliceOpTest, In1D) {
   m.SetBegin({1});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
 }
@@ -128,7 +129,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_Int32End) {
   m.SetBegin({0});
   m.SetEnd({32768});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({32768}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(values));
 }
@@ -139,7 +140,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_EmptyOutput) {
   m.SetBegin({10});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
 }
 
@@ -149,7 +150,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeBegin) {
   m.SetBegin({-3});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
 }
@@ -160,7 +161,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeBegin) {
   m.SetBegin({-5});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
@@ -171,7 +172,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeEnd) {
   m.SetBegin({1});
   m.SetEnd({-2});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
 }
@@ -182,7 +183,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeEnd) {
   m.SetBegin({-3});
   m.SetEnd({5});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
 }
@@ -193,7 +194,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_BeginMask) {
   m.SetBegin({1});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
@@ -204,7 +205,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeBeginNegativeStride) {
   m.SetBegin({-2});
   m.SetEnd({-3});
   m.SetStrides({-1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
 }
@@ -215,7 +216,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeBeginNegativeStride) {
   m.SetBegin({5});
   m.SetEnd({2});
   m.SetStrides({-1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4}));
 }
@@ -226,7 +227,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeEndNegativeStride) {
   m.SetBegin({2});
   m.SetEnd({-4});
   m.SetStrides({-1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2}));
 }
@@ -237,7 +238,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeEndNegativeStride) {
   m.SetBegin({-3});
   m.SetEnd({-5});
   m.SetStrides({-1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 1}));
 }
@@ -248,7 +249,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_EndMask) {
   m.SetBegin({1});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3, 4}));
 }
@@ -259,7 +260,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegStride) {
   m.SetBegin({-1});
   m.SetEnd({-4});
   m.SetStrides({-1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1}));
 }
@@ -270,7 +271,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_EvenLenStride2) {
   m.SetBegin({0});
   m.SetEnd({2});
   m.SetStrides({2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
@@ -281,7 +282,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_OddLenStride2) {
   m.SetBegin({0});
   m.SetEnd({3});
   m.SetStrides({2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
 }
@@ -292,7 +293,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_Identity) {
   m.SetBegin({0, 0});
   m.SetEnd({2, 3});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -303,7 +304,7 @@ TYPED_TEST(StridedSliceOpTest, In2D) {
   m.SetBegin({1, 0});
   m.SetEnd({2, 2});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5}));
 }
@@ -314,7 +315,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_Stride2) {
   m.SetBegin({0, 0});
   m.SetEnd({2, 3});
   m.SetStrides({2, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
 }
@@ -325,7 +326,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_NegStride) {
   m.SetBegin({1, -1});
   m.SetEnd({2, -4});
   m.SetStrides({2, -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 5, 4}));
 }
@@ -336,7 +337,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_BeginMask) {
   m.SetBegin({1, 0});
   m.SetEnd({2, 2});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
 }
@@ -347,7 +348,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_EndMask) {
   m.SetBegin({1, 0});
   m.SetEnd({2, 2});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5, 6}));
 }
@@ -358,7 +359,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_NegStrideBeginMask) {
   m.SetBegin({1, -2});
   m.SetEnd({2, -4});
   m.SetStrides({1, -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 5, 4}));
 }
@@ -369,7 +370,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_NegStrideEndMask) {
   m.SetBegin({1, -2});
   m.SetEnd({2, -3});
   m.SetStrides({1, -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 4}));
 }
@@ -380,7 +381,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_Identity) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 3, 2});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
@@ -392,7 +393,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_NegStride) {
   m.SetBegin({-1, -1, -1});
   m.SetEnd({-3, -4, -3});
   m.SetStrides({-1, -1, -1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}));
@@ -404,7 +405,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_Strided2) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 3, 2});
   m.SetStrides({2, 2, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 5}));
 }
@@ -415,7 +416,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1) {
   m.SetBegin({1});
   m.SetEnd({2});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
 }
@@ -428,7 +429,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1_NegativeSlice) {
   m.SetEnd({0});
   m.SetStrides({1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
 }
@@ -441,7 +442,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis3_NegativeSlice) {
   m.SetEnd({-1, 0});
   m.SetStrides({1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
 }
@@ -454,7 +455,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
   m.SetEnd({0, 0});
   m.SetStrides({1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3}));
 }
@@ -465,7 +466,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_BeginMaskShrinkAxisMask1) {
   m.SetBegin({1});
   m.SetEnd({1});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
@@ -476,7 +477,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask1) {
   m.SetBegin({0, 0});
   m.SetEnd({1, 3});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
@@ -487,7 +488,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask2) {
   m.SetBegin({0, 0});
   m.SetEnd({2, 1});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 4}));
 }
@@ -498,7 +499,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask3) {
   m.SetBegin({0, 0});
   m.SetEnd({1, 1});
   m.SetStrides({1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
@@ -509,7 +510,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 2});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -520,7 +521,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis2) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 1, 2});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 7, 8}));
 }
@@ -531,7 +532,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis3) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 1, 2});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2}));
 }
@@ -542,7 +543,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis4) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 3, 1});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
 }
@@ -553,7 +554,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis5) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 1});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5}));
 }
@@ -564,7 +565,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis6) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({2, 1, 1});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 7}));
 }
@@ -575,7 +576,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis7) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 1, 1});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
@@ -592,11 +593,11 @@ TYPED_TEST(StridedSliceOpTest, RunTwice) {
   };
 
   setup_inputs();
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
 
   setup_inputs();
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Prior to cl/188403234 this was {4, 5}.
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 4, 5}));
 }
@@ -607,7 +608,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 2});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -618,7 +619,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 2});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -630,7 +631,7 @@ TYPED_TEST(StridedSliceOpTest, In5D_Identity) {
   m.SetBegin({0, 0, 0, 0, 0});
   m.SetEnd({2, 1, 2, 1, 2});
   m.SetStrides({1, 1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 9, 10, 11, 12}));
 }
@@ -642,7 +643,7 @@ TYPED_TEST(StridedSliceOpTest, In5D_IdentityShrinkAxis1) {
   m.SetBegin({0, 0, 0, 0, 0});
   m.SetEnd({2, 1, 2, 1, 2});
   m.SetStrides({1, 1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4}));
 }
@@ -653,7 +654,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_SmallBegin) {
   m.SetBegin({0});
   m.SetEnd({1});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -664,7 +665,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_SmallBeginWithhrinkAxis1) {
   m.SetBegin({0});
   m.SetEnd({1});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -675,7 +676,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBegin) {
   m.SetBegin({1});
   m.SetEnd({0});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
 }
 
@@ -685,7 +686,7 @@ TYPED_TEST(StridedSliceOpTest, In3D_Backward) {
   m.SetBegin({1, 0, 0});
   m.SetEnd({0, -1, -1});
   m.SetStrides({1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
 }
 
@@ -695,7 +696,7 @@ TEST(StridedSliceOpTest, In1D_String_NegativeBegin) {
   m.SetBegin({-3});
   m.SetEnd({3});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"b", "c"}));
 }
@@ -706,7 +707,7 @@ TEST(StridedSliceOpTest, In3D_String_BackwardSmallBegin) {
   m.SetBegin({1});
   m.SetEnd({0});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
 }
 
@@ -717,7 +718,7 @@ TEST(StridedSliceOpTest, In3D_String_SmallBeginWithhrinkAxis1) {
   m.SetBegin({0});
   m.SetEnd({1});
   m.SetStrides({1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetStringOutput(),
               ElementsAreArray({"1", "2", "3", "4", "5", "6"}));
@@ -731,7 +732,7 @@ TEST(StridedSliceOpTest, In5D_String_IdentityShrinkAxis1) {
   m.SetBegin({0, 0, 0, 0, 0});
   m.SetEnd({2, 1, 2, 1, 2});
   m.SetStrides({1, 1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"1", "2", "3", "4"}));
 }
@@ -743,7 +744,7 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis_Endmask_AtSameAxis) {
   m.SetEnd({0, 0});
   m.SetStrides({1, -1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
@@ -755,7 +756,7 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask1_NewAxisMask2) {
   m.SetEnd({1, 2, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
 }
@@ -767,7 +768,7 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask1) {
   m.SetEnd({1, 2, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
 }
@@ -779,7 +780,7 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask5) {
   m.SetEnd({1, 2, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 2, 1}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
@@ -792,7 +793,7 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask2) {
   m.SetEnd({1, 2, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5}));
 }
@@ -804,7 +805,7 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask4_NewAxisMask2) {
   m.SetEnd({1, 2, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -816,7 +817,7 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2) {
   m.SetEnd({1, 2, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5}));
 }
@@ -828,7 +829,7 @@ TYPED_TEST(StridedSliceOpTest, NewAxisMask2) {
   m.SetEnd({1, 3, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2}));
 }
@@ -840,7 +841,7 @@ TYPED_TEST(StridedSliceOpTest, NewAxisMask1) {
   m.SetEnd({1, 3, 1});
   m.SetStrides({1, 1, 1});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 7, 8}));
 }
@@ -850,7 +851,7 @@ TYPED_TEST(StridedSliceOpTest, NoInfiniteLoop) {
   m.SetBegin({1, 1, 1, 1, 1, 1});
   m.SetEnd({3, 3, 3, 3, 3, 3});
   m.SetStrides({1, 1, 1, 1, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 }
 
 }  // namespace

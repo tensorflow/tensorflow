@@ -37,16 +37,6 @@ add_mlir_dialect_library(ChloDialect
   MLIRMhloUtils
 )
 
-add_mlir_library(MhloInferShapeEqualityOpInterface
-  infer_shape_equality_op_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRIR
-
-  DEPENDS
-  MLIRinfer_shape_equality_op_interfaceIncGen
-)
-
 add_mlir_library(HloOpsCommon
   hlo_ops_common.cc
 
@@ -56,19 +46,15 @@ add_mlir_library(HloOpsCommon
 
 add_mlir_dialect_library(MhloDialect
   hlo_ops.cc
-  hlo_ops_base_structs.cc
-  hlo_ops_base_enums.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRMhloCanonicalizeIncGen
   MLIRMhloRewriterIncGen
-  MLIRinfer_shape_equality_op_interfaceIncGen
 )
 target_link_libraries(MhloDialect
   PUBLIC
   MLIRIR
-  MhloInferShapeEqualityOpInterface
   MLIRMhloUtils
   HloOpsCommon
 )

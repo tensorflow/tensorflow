@@ -281,11 +281,14 @@ class LeakyReluTest(test.TestCase):
   def _testLeakyRelu(self, np_features, alpha):
     np_leaky_relu = self._npLeakyRelu(np_features, alpha)
     tf_leaky_relu = nn_ops.leaky_relu(np_features, alpha)
-    self.assertAllClose(np_leaky_relu, tf_leaky_relu)
+    self.assertAllCloseAccordingToType(np_leaky_relu, tf_leaky_relu)
     self.assertShapeEqual(np_leaky_relu, tf_leaky_relu)
 
   def testNumbersCPU(self):
-    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+    for t in [
+        np.int32, np.int64, np.float16, np.float32, np.float64,
+        dtypes.bfloat16.as_numpy_dtype
+    ]:
       # Force execution on CPU even if a GPU kernel is available for the type.
       with ops.device("/device:CPU:0"):
         self._testLeakyRelu(

@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -200,7 +201,7 @@ bool CanAddToIfSegment(
 
   for (auto iter = std::prev(last); std::next(iter) != first; iter--) {
     TF::IfRegionOp first_if_op = *iter;
-    FuncOp func = first_if_op->getParentOfType<FuncOp>();
+    func::FuncOp func = first_if_op->getParentOfType<func::FuncOp>();
     const TF::SideEffectAnalysis::Info& analysis =
         side_effect_analysis->GetAnalysisForFunc(func);
     auto all_ops = GetAllOpsFromIf(*(std::next(iter)));
@@ -245,7 +246,7 @@ absl::flat_hash_set<Operation*> GetMoveOpsBetweenTwoIfRegions(
   absl::flat_hash_set<Operation*> visited;
   absl::flat_hash_set<Operation*> moved_ops;
 
-  FuncOp func = result_op->getParentOfType<FuncOp>();
+  func::FuncOp func = result_op->getParentOfType<func::FuncOp>();
   const TF::SideEffectAnalysis::Info& analysis =
       side_effect_analysis->GetAnalysisForFunc(func);
 
@@ -406,15 +407,24 @@ void ReplaceInternalUsage(llvm::SmallVector<TF::IfRegionOp, 8>& if_op_segment) {
   }
 }
 
-// Move ops in the `moved_ops_ordered` after `after_op`.
-void MoveOpsAfter(Operation* after_op,
-                  const llvm::SmallVector<Operation*, 8>& moved_ops_ordered) {
+// Move ops in the `moved_ops_ordered` after `last_op`.
+void MoveOpsAfter(Operation* last_op,
+                  llvm::SmallVector<Operation*, 8>& moved_ops_ordered) {
+  auto block = last_op->getBlock();
+  absl::flat_hash_set<Operation*> all_moved_ops(moved_ops_ordered.begin(),
+                                                moved_ops_ordered.end());
+  moved_ops_ordered.clear();
+  for (Operation& op : *block) {
+    // There are no mutations in the loop. So each call of `isBeforeInBlock`
+    // is O(1).
+    if (all_moved_ops.count(&op) && op.isBeforeInBlock(last_op)) {
+      moved_ops_ordered.push_back(&op);
+    }
+  }
   // Move ops in order.
   for (Operation* op : moved_ops_ordered) {
-    if (op->isBeforeInBlock(after_op)) {
-      op->moveAfter(after_op);
-      after_op = op;
-    }
+    op->moveAfter(last_op);
+    last_op = op;
   }
 }
 
@@ -445,30 +455,18 @@ void UpdateMovedOpList(
     llvm::SmallVector<Operation*, 8>& moved_ops_list) {
   llvm::SmallDenseSet<TF::IfRegionOp> new_if_ops;
   bool need_add_new_if_op = false;
-  Block* block = nullptr;
   for (auto iter = moved_ops_list.begin(); iter != moved_ops_list.end();
        iter++) {
     if (old_to_new_IfRegion_map.count(*iter)) {
       need_add_new_if_op = true;
       auto new_if_op = old_to_new_IfRegion_map[*iter];
       new_if_ops.insert(new_if_op);
-      if (block == nullptr) {
-        block = new_if_op.getOperation()->getBlock();
-      }
       moved_ops_list.erase(iter--);
     }
   }
   if (need_add_new_if_op) {
-    absl::flat_hash_set<Operation*> all_moved_ops(moved_ops_list.begin(),
-                                                  moved_ops_list.end());
     for (auto& new_if_op : new_if_ops) {
-      all_moved_ops.insert(new_if_op.getOperation());
-    }
-    moved_ops_list.clear();
-    for (Operation& op : *block) {
-      if (all_moved_ops.count(&op)) {
-        moved_ops_list.push_back(&op);
-      }
+      moved_ops_list.push_back(new_if_op.getOperation());
     }
   }
 }
@@ -648,7 +646,6 @@ void MergeControlFlowPass::runOnOperation() {
     OptimizeIfRegions(&cluster.GetBody(), module);
     return WalkResult::advance();
   });
-
   if (result.wasInterrupted()) return signalPassFailure();
 }
 

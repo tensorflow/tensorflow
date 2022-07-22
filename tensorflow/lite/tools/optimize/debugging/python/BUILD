@@ -37,7 +37,7 @@ py_strict_test(
         "//tensorflow/lite/python/metrics",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

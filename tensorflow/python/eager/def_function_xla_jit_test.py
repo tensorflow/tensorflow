@@ -198,10 +198,10 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       @def_function.function(jit_compile=True)
       def fn(x):
-        group_key = collective_ops.assign_group_v2(
-            group_assignment=[[0]], device_index=0)
+        group_size, group_key = collective_ops.assign_group_v2(
+            group_assignment=[[0]], device_index=0, base_key=1000)
         t0 = collective_ops.all_reduce_v2(
-            t=x, group_size=1, group_key=group_key, instance_key=1)
+            t=x, group_size=group_size, group_key=group_key, instance_key=1)
         return t0
 
       inputs = constant_op.constant([1.0, 2.0, 3.0])
@@ -667,9 +667,9 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
                                  'support tf.unique via jit_compile')
-  def testUniqueErrMsg(self):
-    if 'tpu' in self.device.lower():
-      self.skipTest('We do not check shapes on TPU')
+  def testUniqueDifferentSizes(self):
+    if not 'gpu' in self.device.lower():
+      self.skipTest('Currently works only on GPU')
 
     with ops.device('device:{}:0'.format(self.device)):
 
@@ -677,10 +677,12 @@ class DefFunctionTest(xla_test.XLATestCase):
       def f(x, y):
         return array_ops.unique(x).y + array_ops.unique(y).y
 
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'Fail to proof the equality'):
-        f(constant_op.constant([3.1, 3.2]),
-          constant_op.constant([3.3, 3.2]))
+      f(constant_op.constant([3.1, 3.2]), constant_op.constant([3.3, 3.2]))
+
+      with self.assertRaisesRegex(errors.InternalError, 'different size'):
+        f(
+            constant_op.constant([3.1, 3.2]),
+            constant_op.constant([3.1, 3.2, 3.3]))
 
   @test_util.disable_mlir_bridge('TODO(b/199737685): MLIR bridge does not'
                                  'support tf.unique via jit_compile')

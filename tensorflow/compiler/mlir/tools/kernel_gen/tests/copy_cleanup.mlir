@@ -3,7 +3,7 @@
 #map0 = affine_map<(d0)[s0] -> (d0 * s0)>
 #map1 = affine_map<(d0) -> (d0)>
 builtin.module {
-  builtin.func @Copy(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
+  func.func @Copy(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %size = memref.dim %rhs, %c0 : memref<?xi16>
@@ -19,7 +19,7 @@ builtin.module {
       %and = arith.andi %arg1, %arg2 : i16
       linalg.yield %and : i16
     }
-    return
+    func.return
   }
 }
 
@@ -45,7 +45,7 @@ builtin.module {
 #map0 = affine_map<(d0)[s0] -> (d0 * s0)>
 #map1 = affine_map<(d0) -> (d0)>
 builtin.module {
-  builtin.func @CopyWithWrite(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
+  func.func @CopyWithWrite(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %size = memref.dim %rhs, %c0 : memref<?xi16>
@@ -60,7 +60,7 @@ builtin.module {
       %and = arith.andi %arg1, %arg2 : i16
       linalg.yield %and : i16
     }
-    return
+    func.return
   }
 }
 
@@ -87,7 +87,7 @@ builtin.module {
 #map0 = affine_map<(d0)[s0] -> (d0 * s0)>
 #map1 = affine_map<(d0) -> (d0)>
 builtin.module {
-  builtin.func @CopyWithMutation(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
+  func.func @CopyWithMutation(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c42 = arith.constant 42 : i16
@@ -105,7 +105,7 @@ builtin.module {
       %and = arith.andi %arg1, %arg2 : i16
       linalg.yield %and : i16
     }
-    return
+    func.return
   }
 }
 
@@ -132,7 +132,7 @@ builtin.module {
 
 #map0 = affine_map<(d0) -> (d0)>
 builtin.module  {
-  func @testCopyAfterLinalg(%arg2: memref<4xi32>, %arg3: memref<4xi32>, %arg4: memref<4xi32>) {
+  func.func @testCopyAfterLinalg(%arg2: memref<4xi32>, %arg3: memref<4xi32>, %arg4: memref<4xi32>) {
     %0 = memref.alloc() : memref<4xi32>
     linalg.generic {indexing_maps = [#map0, #map0, #map0], iterator_types = ["parallel"]} ins(%arg2, %arg3 : memref<4xi32>, memref<4xi32>) outs(%0 : memref<4xi32>) {
     ^bb0(%arg5: i32, %arg6: i32, %arg7: i32):
@@ -140,7 +140,7 @@ builtin.module  {
       linalg.yield %1 : i32
     }
     memref.copy %0, %arg4 : memref<4xi32> to memref<4xi32>
-    return
+    func.return
   }
 }
 
@@ -159,7 +159,7 @@ builtin.module  {
 
 #map0 = affine_map<(d0) -> (d0)>
 builtin.module  {
-  func @testCopyAfterLinalgMutated(%arg2: memref<4xi32>, %arg3: memref<4xi32>, %arg4: memref<4xi32>) {
+  func.func @testCopyAfterLinalgMutated(%arg2: memref<4xi32>, %arg3: memref<4xi32>, %arg4: memref<4xi32>) {
     %c0 = arith.constant 0 : index
     %c42 = arith.constant 42 : i32
     %0 = memref.alloc() : memref<4xi32>
@@ -170,7 +170,7 @@ builtin.module  {
     }
     memref.copy %0, %arg4 : memref<4xi32> to memref<4xi32>
     memref.store %c42, %0[%c0] : memref<4xi32>
-    return
+    func.return
   }
 }
 

@@ -40,7 +40,7 @@ namespace TFL {
 namespace tac {
 namespace {
 
-// This pass is used to fold tfl.const ops to each subgraph (FuncOp):
+// This pass is used to fold tfl.const ops to each subgraph (func::FuncOp):
 // See the example below:
 //
 // In main:
@@ -60,6 +60,8 @@ class FoldConstantsToSubgraphPass
     : public mlir::PassWrapper<FoldConstantsToSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FoldConstantsToSubgraphPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-fold-constants-to-subgraph";
   }
@@ -84,7 +86,7 @@ class FoldConstantsToSubgraphPass
 };
 
 void CopyConstantIntoFunc(int argument_index, Operation* const_op,
-                          FuncOp func) {
+                          func::FuncOp func) {
   assert((llvm::isa<TFL::ConstOp, TFL::QConstOp>(const_op)) &&
          "Expect QConst or Const op.");
   OpBuilder builder(func.getBody());
@@ -120,7 +122,7 @@ bool IsConstOrQConstInt(Operation* op) {
 void FoldConstantsToSubgraphPass::runOnOperation() {
   auto module = getOperation();
 
-  for (auto fn : module.getOps<FuncOp>()) {
+  for (auto fn : module.getOps<func::FuncOp>()) {
     fn.walk([&](Operation* op) {
       if (!llvm::isa<TFL::ConstOp, TFL::QConstOp>(op)) return;
 
@@ -149,7 +151,7 @@ void FoldConstantsToSubgraphPass::runOnOperation() {
         }
 
         // Copy the const into the consumer func and replace their usages.
-        FuncOp func = module.lookupSymbol<FuncOp>(function_name);
+        func::FuncOp func = module.lookupSymbol<func::FuncOp>(function_name);
 
         CopyConstantIntoFunc(argument_index, op, func);
       }

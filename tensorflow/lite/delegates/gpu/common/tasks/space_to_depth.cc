@@ -43,11 +43,11 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def) {
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT tmp[4];\n";
-  c += "  tmp[0] = INIT_FLT(0.0f);\n";
-  c += "  tmp[1] = INIT_FLT(0.0f);\n";
-  c += "  tmp[2] = INIT_FLT(0.0f);\n";
-  c += "  tmp[3] = INIT_FLT(0.0f);\n";
+  c += "  args.src_tensor::scalar_type tmp[4];\n";
+  c += "  tmp[0] = args.src_tensor::scalar_zero_value;\n";
+  c += "  tmp[1] = args.src_tensor::scalar_zero_value;\n";
+  c += "  tmp[2] = args.src_tensor::scalar_zero_value;\n";
+  c += "  tmp[3] = args.src_tensor::scalar_zero_value;\n";
   c += "  for (int i = 0; i < 4; ++i) {\n";
   c += "    int dst_c = 4 * S + i;\n";
   c += "    int block_id = dst_c / args.src_tensor.Channels();\n";
@@ -56,7 +56,7 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "    int src_c = dst_c % args.src_tensor.Channels();\n";
   c += "    args.src_tensor.ReadPerChannel(tmp[i], src_x, src_y, src_c);\n";
   c += "  }\n";
-  c += "  FLT4 result;\n";
+  c += "  args.src_tensor::type result;\n";
   c += "  result.x = tmp[0];\n";
   c += "  result.y = tmp[1];\n";
   c += "  result.z = tmp[2];\n";

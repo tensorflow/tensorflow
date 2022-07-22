@@ -1280,7 +1280,7 @@ class Lower_UnaryOpsComposition
       // result type.
       OperationState state(op.getLoc(), full_name, /*operands=*/{result},
                            /*types=*/{op.getType()}, /*attributes=*/{});
-      Operation *op = rewriter.createOperation(state);
+      Operation *op = rewriter.create(state);
       result = op->getResult(0);
     }
     rewriter.replaceOp(op, {result});

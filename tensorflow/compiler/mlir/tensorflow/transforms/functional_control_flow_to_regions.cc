@@ -55,7 +55,7 @@ struct FunctionalControlFlowToRegions
 // the input arguments are used as is (for IfOp) or block arguments of the same
 // type as the input arguments are created and then used as call arguments (for
 // While).
-YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
+YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
                    ValueRange args, bool use_region_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");
@@ -64,13 +64,13 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
 
   auto loc = op->getLoc();
   if (use_region_args) {
-    auto inputs = func.getType().getInputs();
+    auto inputs = func.getFunctionType().getInputs();
     entry->addArguments(inputs, SmallVector<Location>(inputs.size(), loc));
     args = entry->getArguments();
   }
   llvm::SmallVector<Value, 4> casted_args;
   casted_args.reserve(func.getNumArguments());
-  for (const auto& ArgAndType : zip(args, func.getType().getInputs())) {
+  for (const auto& ArgAndType : zip(args, func.getFunctionType().getInputs())) {
     Value arg = std::get<0>(ArgAndType);
     Type expected_type = std::get<1>(ArgAndType);
     if (arg.getType() != expected_type) {

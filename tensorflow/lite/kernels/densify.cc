@@ -98,8 +98,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(context, "Type %d not supported.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not supported.",
+                         op_context.input->type);
       return kTfLiteError;
   }
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // TODO(jpienaar): Move this somewhere general.

@@ -7,7 +7,7 @@
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @replica_id(%output: memref<ui32>) {
+func.func @replica_id(%output: memref<ui32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -25,7 +25,7 @@ func @replica_id(%output: memref<ui32>) {
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @partition_id(%output: memref<ui32>) {
+func.func @partition_id(%output: memref<ui32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 

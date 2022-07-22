@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_DATA_SERVICE_OPS_H_
 
+#include <string>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
@@ -44,6 +46,7 @@ class RegisterDatasetOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
+  int op_version_;
   SerializationContext::ExternalStatePolicy external_state_policy_;
   std::string element_spec_;
   std::string serialized_metadata_;

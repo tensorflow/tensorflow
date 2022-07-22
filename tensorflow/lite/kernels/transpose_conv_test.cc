@@ -79,7 +79,7 @@ class BaseTransposeConvOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
         CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
             .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter(
         {GetShape(output_shape_), GetShape(filter_), GetShape(input_)});
@@ -148,7 +148,7 @@ TEST_P(TransposeConvOpTest, SimpleTest) {
       {1, 2, 3, 4, 5, 6, 7, 8, 9}, {TensorType_FLOAT32, {1, 4, 4, 1}},
       {TensorType_FLOAT32, {}}, Padding_SAME, 1, 1, GetTestType());
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({29, 62, 83, 75, 99, 192, 237, 198, 207, 372,
@@ -178,7 +178,7 @@ TEST_P(TransposeConvOpTest, TwoFiltersTest) {
   model.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                   12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
                   23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({184, 412, 568, 528, 678, 1347, 1689, 1434, 1494,
@@ -207,7 +207,7 @@ TEST_P(TransposeConvOpTest, PaddingValidTest) {
   model.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                   12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
                   23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetOutput(),
@@ -234,7 +234,7 @@ TEST_P(TransposeConvOpTest, StrideValidTest) {
       {1, 2, 3, 4, 5, 6, 7, 8, 9}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {}}, Padding_VALID, 2, 2, GetTestType());
   model.SetInput({1, 2, 3, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetOutput(),
@@ -260,7 +260,7 @@ TEST_P(TransposeConvOpTest, MultiChannelTest) {
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
       Padding_VALID, 2, 2, GetTestType());
   model.SetInput({1, 2, 3, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetOutput(),
@@ -289,7 +289,7 @@ TEST_P(TransposeConvOpTest, AccuracyTest) {
       {9, 5, 6, 9, 8, 5, 3, 1, 4}, {TensorType_FLOAT32, {1, 1, 2, 1}},
       {TensorType_FLOAT32, {}}, Padding_SAME, 3, 3, GetTestType());
   model.SetInput({323, 521});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray(
@@ -318,7 +318,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantized) {
       {TensorType_UINT8, {1, 4, 4, 1}, -63.5, 64},
       {TensorType_UINT8, {}, -508, 512}, Padding_SAME, 1, 1, GetTestType());
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
@@ -344,7 +344,7 @@ TEST_P(TransposeConvOpTest, TwoFiltersTestQuantized) {
   model.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                   12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
                   23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -368,7 +368,7 @@ TEST_P(TransposeConvOpTest, PaddingValidTestQuantized) {
   model.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
                   12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
                   23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -410,7 +410,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannelSingleChannel) {
   if (GetTestType() == TestType::kDynamic) {
     model.SetFilter(filter_data);
   }
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
@@ -448,7 +448,7 @@ TEST_P(TransposeConvOpTest, TestQuantizedPerChannelMultiChannel) {
   if (GetTestType() == TestType::kDynamic) {
     model.SetFilter(filter_data);
   }
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
@@ -488,7 +488,7 @@ TEST_P(TransposeConvOpTest, TestQuantizedPerTensorMultiChannel) {
   if (GetTestType() == TestType::kDynamic) {
     model.SetFilter(filter_data);
   }
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
@@ -566,7 +566,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8) {
       -3, -4,  // batch = 0, y = 1, x = 2
   });
   model.SetFilter(filter_data);
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -634,7 +634,7 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
         CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
             .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter({GetShape(output_shape_), GetShape(filter_),
                       GetShape(input_), GetShape(bias_)});
@@ -705,7 +705,7 @@ TEST_P(TransposeConvOpTest, MultiChannelBiasTest) {
       /*stride_w=*/2, /*stride_h=*/2, GetTestType(), /* version */ 3);
   model.SetInput({1, 2, 3, 4});
   model.SetBias({3, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetOutput(),
@@ -739,7 +739,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantized) {
       /* version */ 3);
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   model.SetBias({1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
@@ -786,7 +786,7 @@ TEST_P(TransposeConvOpTest, SimpleBiasTestQuantizedPerChannelSingleChannel) {
     model.SetFilter(filter_data);
   }
   model.SetBias({1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),

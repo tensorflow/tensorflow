@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -89,6 +89,10 @@ std::string TfrtCpuDevice::DebugString() const {
   return absl::StrCat("TFRT_CPU_", id());
 }
 
+std::string TfrtCpuDevice::ToString() const {
+  return absl::StrCat("CpuDevice(id=", id(), ")");
+}
+
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
 }
@@ -105,9 +109,9 @@ static int CpuDeviceCount() {
 }
 
 static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
-    bool asynchronous) {
+    bool asynchronous, int cpu_device_count) {
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
-  for (int i = 0; i < CpuDeviceCount(); ++i) {
+  for (int i = 0; i < cpu_device_count; ++i) {
     auto device = std::make_unique<TfrtCpuDevice>(
         /*id=*/i, asynchronous);
     devices.push_back(std::move(device));
@@ -115,11 +119,12 @@ static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
   return std::move(devices);
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
+                                                       int cpu_device_count) {
   // TODO(zhangqiaorjc): Allow users set the number of threads.
   // `num_blocking_threads=16` is picked arbitrarily for now.
   // Need at least CpuDeviceCount threads to launch one collective.
-  int num_threads = std::max(DefaultThreadPoolSize(), CpuDeviceCount());
+  int num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
   auto host_context = std::make_unique<tfrt::HostContext>(
       [](const tfrt::DecodedDiagnostic& diag) {
         LOG(ERROR) << "Encountered runtime error: " << diag.message << "\n";
@@ -130,10 +135,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
           /*num_blocking_threads=*/16));
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                      GetTfrtCpuDevices(asynchronous));
+                      GetTfrtCpuDevices(asynchronous, cpu_device_count));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       /*process_index=*/0, std::move(devices), std::move(host_context)));
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous) {
+  return GetTfrtCpuClient(asynchronous, CpuDeviceCount());
 }
 
 TfrtCpuClient::TfrtCpuClient(
@@ -172,6 +181,8 @@ TfrtCpuClient::TfrtCpuClient(
   LOG(INFO) << "TfrtCpuClient created.";
 }
 
+TfrtCpuClient::~TfrtCpuClient() { LOG(INFO) << "TfrtCpuClient destroyed."; }
+
 StatusOr<PjRtDevice*> TfrtCpuClient::LookupDevice(int device_id) const {
   auto it = id_to_device_.find(device_id);
   if (it != id_to_device_.end()) {
@@ -198,12 +209,12 @@ StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis() {
-  return absl::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
 }
 
-StatusOr<absl::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
+StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
     const PjRtExecutable& executable) const {
-  return absl::optional<std::string>();
+  return std::optional<std::string>();
 }
 
 static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
@@ -218,7 +229,7 @@ static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
       std::unique_ptr<HloModuleConfig> hlo_module_config,
       CreateModuleConfig(program_shape, argument_layouts, &execution_options,
                          execution_options.num_replicas(),
-                         /*num_threads=*/absl::nullopt,
+                         /*num_threads=*/std::nullopt,
                          /*aot_options=*/nullptr));
 
   // Unoptimized HloModule.
@@ -452,7 +463,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateUninitializedBuffer(
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-    absl::optional<absl::Span<int64_t const>> byte_strides,
+    std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostBuffer");
@@ -577,11 +588,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     // It is OK to capture `buffer` pointer because the `output_buffer` can't be
     // deleted until all the usage holds have gone away.
     tfrt::EnqueueWork(
-        GetHostContext(),
-        [literal, av = avs[0].CopyRef(),
-         movable_device_buffer{device_buffer.ToClosure()}, shape]() mutable {
+        GetHostContext(), [literal, av = avs[0].CopyRef(),
+                           db = std::move(device_buffer), shape]() mutable {
           tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           const std::shared_ptr<MaybeOwningCpuMemory>& b =
               device_buffer->Buffers()[0];
           CHECK_EQ(literal.size_bytes(), b->size());
@@ -598,11 +608,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
       // It is OK to capture `buffer` pointer because the `output_buffer` can't
       // be deleted until all the usage holds have gone away.
       tfrt::EnqueueWork(
-          GetHostContext(),
-          [i, literal, av = avs[i].CopyRef(), shape,
-           movable_device_buffer{device_buffer.ToClosure()}]() mutable {
+          GetHostContext(), [i, literal, av = avs[i].CopyRef(), shape,
+                             db = std::move(device_buffer)]() mutable {
             tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-            TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+            TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
             auto slice = LiteralSlice(literal, {i});
             const std::shared_ptr<MaybeOwningCpuMemory>& b =
                 device_buffer->Buffers()[i];
@@ -632,6 +641,22 @@ TfrtCpuBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
   other.SetState(kMoved);
 }
 
+TfrtCpuBuffer::ScopedHold& TfrtCpuBuffer::ScopedHold::operator=(
+    ScopedHold&& other) {
+  if (ok()) {
+    parent_->DropHold(type_, buffer().get());
+  }
+  parent_ = other.parent_;
+  type_ = other.type_;
+  state_ = other.state_;
+  status_ = std::move(other.status_);
+  buffer_ = std::move(other.buffer_);
+  // Preserve the invariant that status is invalid if buffer == nullptr.
+  other.SetState(kMoved);
+
+  return *this;
+}
+
 void TfrtCpuBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
@@ -645,14 +670,6 @@ void TfrtCpuBuffer::ScopedHold::Acquire(
   }
   // Check the invariant holds.
   CHECK(!ok() || buffer_ != nullptr);
-}
-
-TfrtCpuBuffer::ScopedHold::ForClosure TfrtCpuBuffer::ScopedHold::ToClosure() {
-  CHECK(ok());
-  ForClosure for_closure(parent_, type_, state_, std::move(status_),
-                         std::move(buffer_));
-  SetState(kReleased);
-  return for_closure;
 }
 
 void TfrtCpuBuffer::ScopedHold::ConvertUsageHold(
@@ -1027,7 +1044,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
       }
     }
     // Unblock ToLiteral caller.
-    return PjRtFuture<Status>(Status::OK());
+    return PjRtFuture<Status>(OkStatus());
   } else {
     auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
     // Wait for buffer definition events to finish before d2h dispatch.
@@ -1036,11 +1053,11 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     // parallel.
     EnqueueWorkWhenReady(
         host_ctx, device_buffer_wait_avs,
-        [this, movable_device_buffer{device_buffer.ToClosure()},
+        [this, db = std::move(device_buffer),
          device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, ready_event = ready_event.CopyRef()] {
+         literal, ready_event = ready_event.CopyRef()]() mutable {
           tensorflow::profiler::TraceMe traceme("D2H Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
@@ -1065,10 +1082,10 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           }
 
           // Unblock ToLiteral event.
-          ready_event.emplace(Status::OK());
+          ready_event.emplace(OkStatus());
         });
     return PjRtFuture<Status>(
-        client_->GetHostContext(), std::move(ready_event),
+        std::move(ready_event),
         /*on_block_start=*/
         []() {
           tensorflow::profiler::TraceMeProducer traceme(
@@ -1233,7 +1250,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           definition_event.emplace(FailedPrecondition(
               "Buffer Definition Event: %s", error->message));
         } else {
-          definition_event.emplace(Status::OK());
+          definition_event.emplace(OkStatus());
         }
       } else {
         event.AndThen([event = event.CopyRef(),
@@ -1242,7 +1259,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
             definition_event.emplace(FailedPrecondition(
                 "Buffer Definition Event: %s", error->message));
           } else {
-            definition_event.emplace(Status::OK());
+            definition_event.emplace(OkStatus());
           }
         });
       }
@@ -1263,7 +1280,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
                                             error->message));
               }
             }
-            definition_event.emplace(s);
+            definition_event.emplace(std::move(s));
           });
     }
   }
@@ -1271,7 +1288,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
     return PjRtFuture<Status>(*definition_event);
   } else {
     return PjRtFuture<Status>(
-        client_->GetHostContext(), definition_event.CopyRef(),
+        definition_event.CopyRef(),
         /*on_block_start=*/
         []() {
           tensorflow::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
@@ -1344,15 +1361,15 @@ void TfrtCpuExecutable::Delete() {}
 
 bool TfrtCpuExecutable::IsDeleted() { return false; }
 
-StatusOr<absl::optional<std::string>> TfrtCpuExecutable::Fingerprint() const {
-  return absl::optional<std::string>();
+StatusOr<std::optional<std::string>> TfrtCpuExecutable::Fingerprint() const {
+  return std::optional<std::string>();
 }
 
 Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
                       ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
@@ -1433,15 +1450,14 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
           i, input_buffer_sizes_in_bytes_[i], buffer->Buffers()[0]->size());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-TfrtCpuExecutable::ExecuteHelper(
+StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
-    TfrtCpuDevice* device) {
+    bool fill_future, TfrtCpuDevice* device) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
   auto* host_context = client_->GetHostContext();
 
@@ -1621,7 +1637,7 @@ TfrtCpuExecutable::ExecuteHelper(
                                        buffer_pointers.data(), &status,
                                        nullptr);
 
-    absl::optional<absl::string_view> error_message =
+    std::optional<absl::string_view> error_message =
         xla::CustomCallStatusGetMessage(&status);
     if (error_message) {
       return InternalError("Generated function failed: %s", *error_message);
@@ -1672,7 +1688,7 @@ TfrtCpuExecutable::ExecuteHelper(
                                              nullptr, buffer_pointers.data(),
                                              &status, nullptr);
 
-          absl::optional<absl::string_view> error_message =
+          std::optional<absl::string_view> error_message =
               xla::CustomCallStatusGetMessage(&status);
           if (error_message) {
             // CPU computation fails with an error.
@@ -1728,13 +1744,27 @@ TfrtCpuExecutable::ExecuteHelper(
         result_shape, std::move(tracked_device_buffer), client_, device);
     res.push_back(std::move(tfrt_output_buffer));
   }
-  return res;
+  std::optional<PjRtFuture<Status>> future;
+  if (fill_future) {
+    auto done_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
+    execute_event.AndThen(
+        [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
+          Status s;
+          if (auto* error = event.GetErrorIfPresent()) {
+            s = InternalError("Compute error: %s", error->message);
+          }
+          done_event.emplace(std::move(s));
+        });
+    future = PjRtFuture<Status>(std::move(done_event));
+  }
+  return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-    const ExecuteOptions& options) {
+    const ExecuteOptions& options,
+    std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::Execute");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
@@ -1760,8 +1790,7 @@ TfrtCpuExecutable::Execute(
           << " num_partitions=" << num_partitions()
           << " num_addressable_devices=" << num_addressable_devices;
 
-  std::vector<StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>> results(
-      num_addressable_devices);
+  std::vector<StatusOr<Result>> results(num_addressable_devices);
   if (num_addressable_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
@@ -1769,7 +1798,8 @@ TfrtCpuExecutable::Execute(
     const int partition = addressable_device_logical_ids_[0].partition;
     results[0] = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
-        /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>());
+        /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
+        returned_futures.has_value());
   } else {
     // Gang schedule collectives to ensure that collectives with the same RunId
     // are run at the same time. We conservatively run only one collective at a
@@ -1789,7 +1819,8 @@ TfrtCpuExecutable::Execute(
       tfrt::EnqueueWork(client_->GetHostContext(), [&, replica, partition, i] {
         results[i] =
             ExecuteHelper(argument_handles[i], replica, partition, run_id,
-                          options, last_collective_launch_event.CopyRef());
+                          options, last_collective_launch_event.CopyRef(),
+                          returned_futures.has_value());
 
         absl::MutexLock lock(&mu);
         --running;
@@ -1813,11 +1844,17 @@ TfrtCpuExecutable::Execute(
 
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(
       num_addressable_devices);
+  if (returned_futures.has_value()) {
+    returned_futures->reserve(num_addressable_devices);
+  }
   for (int i = 0; i < num_addressable_devices; ++i) {
     const int replica = addressable_device_logical_ids_[i].replica;
     const int partition = addressable_device_logical_ids_[i].partition;
     auto& statusor = results[i];
     if (!statusor.ok()) {
+      if (returned_futures.has_value()) {
+        returned_futures->clear();
+      }
       if (num_addressable_devices == 1) {
         return statusor.status();
       } else {
@@ -1829,7 +1866,10 @@ TfrtCpuExecutable::Execute(
                             replica, partition));
       }
     }
-    wrapped_results[i] = std::move(statusor.ValueOrDie());
+    wrapped_results[i] = std::move(statusor->buffers);
+    if (returned_futures.has_value()) {
+      returned_futures->push_back(*std::move(statusor->future));
+    }
   }
   return wrapped_results;
 }
@@ -1837,7 +1877,8 @@ TfrtCpuExecutable::Execute(
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options) {
+    const ExecuteOptions& options,
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteSharded");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
@@ -1847,10 +1888,15 @@ TfrtCpuExecutable::ExecuteSharded(
       VLOG(1) << "ExecuteShard executes computation " << name()
               << " on assigned replica/partition on device "
               << device->DebugString();
-      return ExecuteHelper(
-          argument_handles, addressable_device_logical_ids_[i].replica,
-          addressable_device_logical_ids_[i].partition, RunId(), options,
-          /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>());
+      TF_ASSIGN_OR_RETURN(
+          auto result,
+          ExecuteHelper(
+              argument_handles, addressable_device_logical_ids_[i].replica,
+              addressable_device_logical_ids_[i].partition, RunId(), options,
+              /*last_collective_launch_event=*/
+              tfrt::AsyncValueRef<CpuEvent>(), fill_future));
+      returned_future = std::move(result.future);
+      return std::move(result.buffers);
     }
   }
   return InvalidArgument(
@@ -1862,7 +1908,8 @@ TfrtCpuExecutable::ExecuteSharded(
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfrtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options) {
+    const ExecuteOptions& options,
+    std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecutePortable");
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
@@ -1878,11 +1925,15 @@ TfrtCpuExecutable::ExecutePortable(
   }
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  return ExecuteHelper(
-      argument_handles,
-      /*replica=*/0,
-      /*partition=*/0, RunId(), options,
-      /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
-      tensorflow::down_cast<TfrtCpuDevice*>(device));
+  TF_ASSIGN_OR_RETURN(
+      auto result,
+      ExecuteHelper(
+          argument_handles,
+          /*replica=*/0,
+          /*partition=*/0, RunId(), options,
+          /*last_collective_launch_event=*/tfrt::AsyncValueRef<CpuEvent>(),
+          fill_future, tensorflow::down_cast<TfrtCpuDevice*>(device)));
+  returned_future = std::move(result.future);
+  return std::move(result.buffers);
 }
 }  // namespace xla

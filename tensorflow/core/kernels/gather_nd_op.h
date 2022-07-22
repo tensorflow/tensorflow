@@ -165,7 +165,7 @@ Status DoGatherNd(OpKernelContext* c, const Tensor& params,
           ", node name: ", c->op_kernel().name());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace functor

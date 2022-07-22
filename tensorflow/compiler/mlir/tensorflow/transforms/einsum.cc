@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -55,15 +56,37 @@ namespace TF {
 
 namespace {
 
+// Creates ConstOp for int32_t value.
+ConstOp createI32ConstOp(int32_t value, Location loc,
+                         PatternRewriter* rewriter) {
+  auto int_attr = IntegerAttr::get(rewriter->getIntegerType(32), value);
+  return rewriter->create<ConstOp>(loc, int_attr);
+}
+
+// Creates ConstantOp for array of int32_t.
+arith::ConstantOp createI32ConstantOp(llvm::ArrayRef<int32_t> values,
+                                      Location loc, PatternRewriter* rewriter) {
+  auto values_type = RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, rewriter->getIntegerType(32));
+  auto constant_attr = rewriter->getI32TensorAttr(values);
+  return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
+}
+
+// Creates ConstantOp for array of int64_t.
+arith::ConstantOp createI64ConstantOp(llvm::ArrayRef<int64_t> values,
+                                      Location loc, PatternRewriter* rewriter) {
+  auto values_type = RankedTensorType::get(
+      {static_cast<int64_t>(values.size())}, rewriter->getIntegerType(64));
+  auto constant_attr = rewriter->getI64TensorAttr(values);
+  return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
+}
+
 TF::TransposeOp createTransposeOp(Value value, Location loc,
                                   llvm::ArrayRef<int32_t> permutation,
                                   PatternRewriter* rewriter) {
+  auto perm_op = createI32ConstantOp(permutation, loc, rewriter);
   auto value_type = value.getType().cast<RankedTensorType>();
   auto shape = value_type.getShape();
-  auto perm_type = RankedTensorType::get(
-      {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
-  auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
-  auto perm_op = rewriter->create<arith::ConstantOp>(loc, perm_type, perm_attr);
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
@@ -77,15 +100,41 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
-  int64_t shape_rank = shape.size();
-  auto shape_spec_type =
-      RankedTensorType::get({shape_rank}, rewriter->getIntegerType(64));
+  auto shape_tensor = createI64ConstantOp(shape, loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
-  auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
-  auto shape_tensor =
-      rewriter->create<arith::ConstantOp>(loc, shape_spec_type, constant_attr);
   return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                          /*shape=*/shape_tensor);
+}
+
+// Creates ReshapeOp with runtime calcuation of required shape to support
+// dynamic shapes. The shape is calculated by Shape and UnsortedSegmentProd op.
+// `reshape_segids` and `num_reshape_segids` for UnsortedSegmentProd is
+// calculated in `reshapeForBatchMatmul`.
+TF::ReshapeOp createReshapeOpForDynamic(Value value, ArrayRef<int64_t> shape,
+                                        ArrayRef<int32_t> reshape_segids,
+                                        int32_t num_reshape_segids,
+                                        Location loc,
+                                        PatternRewriter* rewriter) {
+  // Build ShapeOp
+  auto input_shape =
+      rewriter->create<TF::ShapeOp>(loc, value, rewriter->getBoolAttr(true));
+
+  // Build UnsortedSegmentProdOp
+  Type segProdresultType =
+      RankedTensorType::get(num_reshape_segids, rewriter->getIntegerType(32));
+  auto segids_tensor = createI32ConstantOp(reshape_segids, loc, rewriter);
+  auto num_reshape_segids_tensor =
+      createI32ConstOp(num_reshape_segids, loc, rewriter);
+  auto segprod = rewriter->create<TF::UnsortedSegmentProdOp>(
+      loc, segProdresultType, input_shape->getResults()[0], segids_tensor,
+      num_reshape_segids_tensor);
+
+  // Build ReshapeOp with the result of UnsortedSegmentProdOp.
+  Type out_tensor_type =
+      RankedTensorType::get(shape, getElementTypeOrSelf(value.getType()));
+  return rewriter->create<TF::ReshapeOp>(loc, out_tensor_type,
+                                         /*tensor=*/value,
+                                         /*shape=*/segprod->getResults()[0]);
 }
 
 struct EinsumDimensionNumbers {
@@ -100,6 +149,59 @@ struct EinsumDimensionNumbers {
   std::vector<std::tuple<int64_t, int64_t>> rhs_out;
   std::vector<std::tuple<int64_t, int64_t, int64_t>> lhs_rhs_out;
 };
+
+TF::ReshapeOp createOutputReshapeOpForDynamic(
+    Value value, ArrayRef<int64_t> shape, Value org_lhs, Value org_rhs,
+    EinsumDimensionNumbers& dnums, Location loc, PatternRewriter* rewriter) {
+  BoolAttr true_attr = rewriter->getBoolAttr(true);
+  // Build ShapeOp
+  auto shape_lhs = rewriter->create<TF::ShapeOp>(loc, org_lhs, true_attr);
+  auto shape_rhs = rewriter->create<TF::ShapeOp>(loc, org_rhs, true_attr);
+
+  std::vector<int32_t> bl_index;  // Indexes of B0,...,Bn and L0,...,Ln
+  bl_index.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size());
+  for (auto i : dnums.lhs_rhs_out) {
+    bl_index.push_back(std::get<0>(i));
+  }
+  for (auto i : dnums.lhs_out) {
+    bl_index.push_back(std::get<0>(i));
+  }
+  std::vector<int32_t> r_index;  // Indexes of R0,...,Rn
+  r_index.reserve(dnums.rhs_out.size());
+  for (auto i : dnums.rhs_out) {
+    r_index.push_back(std::get<0>(i));
+  }
+
+  auto lhs_index_tensor = createI32ConstantOp(bl_index, loc, rewriter);
+  auto gather_lhs = rewriter->create<TF::GatherOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(bl_index.size())},
+                            rewriter->getIntegerType(32)),
+      shape_lhs->getResults()[0], lhs_index_tensor->getResults()[0], true_attr);
+  auto rhs_index_tensor = createI32ConstantOp(r_index, loc, rewriter);
+  auto gather_rhs = rewriter->create<TF::GatherOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(r_index.size())},
+                            rewriter->getIntegerType(32)),
+      shape_rhs->getResults()[0], rhs_index_tensor->getResults()[0], true_attr);
+  Value zero_value = createI32ConstOp(0, loc, rewriter);
+  auto concat_out_shape = rewriter->create<TF::ConcatOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(bl_index.size()) +
+                             static_cast<int>(r_index.size())},
+                            rewriter->getIntegerType(32)),
+      zero_value,
+      ArrayRef<Value>(
+          {gather_lhs->getResults()[0], gather_rhs->getResults()[0]}));
+
+  // Build ReshapeOp with the calculated output shape.
+  Type out_type =
+      RankedTensorType::get(shape, getElementTypeOrSelf(value.getType()));
+  return rewriter->create<TF::ReshapeOp>(
+      loc, out_type,
+      /*tensor=*/value,
+      /*shape=*/concat_out_shape->getResults()[0]);
+}
 
 llvm::Optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
     llvm::StringRef equation) {
@@ -257,7 +359,7 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   int lhs_named_label, rhs_named_label;
   auto avaiable_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!avaiable_labels.hasValue()) return llvm::None;
+  if (!avaiable_labels.has_value()) return llvm::None;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
@@ -268,15 +370,15 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
   out = std::get<2>(flattended_labels);
 
   auto lhs_map_or = EquationToMap(lhs);
-  if (!lhs_map_or.hasValue()) return llvm::None;
+  if (!lhs_map_or.has_value()) return llvm::None;
   auto lhs_map = lhs_map_or.getValue();
 
   auto rhs_map_or = EquationToMap(rhs);
-  if (!rhs_map_or.hasValue()) return llvm::None;
+  if (!rhs_map_or.has_value()) return llvm::None;
   auto rhs_map = rhs_map_or.getValue();
 
   auto out_map_or = EquationToMap(out);
-  if (!out_map_or.hasValue()) return llvm::None;
+  if (!out_map_or.has_value()) return llvm::None;
   auto out_map = out_map_or.getValue();
 
   EinsumDimensionNumbers dnums;
@@ -326,6 +428,8 @@ std::vector<int64_t> inverseTransposeVector(
 
 // Computes the transpositions required to convert dnums to one supported by
 // tf.BatchMatmulV2 and returns the new set of dimension numbers with them.
+// Transposed LHS shape will be B0,...,Bn,L0,...,Ln,C0,...,Cn and,
+// transposed RHS shape will be B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
 LogicalResult transposeForBatchMatmul(
     const Location& loc, EinsumDimensionNumbers& dnums, Value* lhs, Value* rhs,
     std::vector<int32_t>* out_inverse_transpose, PatternRewriter* rewriter) {
@@ -338,6 +442,7 @@ LogicalResult transposeForBatchMatmul(
                         dnums.lhs_rhs.size());
   out_transpose.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size() +
                         dnums.rhs_out.size());
+  // Generate transpose matrix for B0,...,Bn
   for (int64_t i = 0, e = dnums.lhs_rhs_out.size(); i < e; ++i) {
     lhs_transpose.push_back(std::get<0>(dnums.lhs_rhs_out[i]));
     rhs_transpose.push_back(std::get<1>(dnums.lhs_rhs_out[i]));
@@ -345,12 +450,14 @@ LogicalResult transposeForBatchMatmul(
     dnums.lhs_rhs_out[i] = std::make_tuple(i, i, i);
   }
 
+  // Generate transpose matrix for L0,...,Ln
   for (int64_t i = 0, e = dnums.lhs_out.size(); i < e; ++i) {
     lhs_transpose.push_back(std::get<0>(dnums.lhs_out[i]));
     out_transpose.push_back(std::get<1>(dnums.lhs_out[i]));
     dnums.lhs_out[i] =
         std::make_tuple(lhs_transpose.size() - 1, out_transpose.size() - 1);
   }
+  // Generate transpose matrix for C0,...,Cn
   for (int64_t i = 0, e = dnums.lhs_rhs.size(); i < e; ++i) {
     lhs_transpose.push_back(std::get<0>(dnums.lhs_rhs[i]));
     rhs_transpose.push_back(std::get<1>(dnums.lhs_rhs[i]));
@@ -398,6 +505,17 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   RankedTensorType lhs_type = lhs->getType().cast<RankedTensorType>();
   RankedTensorType rhs_type = rhs->getType().cast<RankedTensorType>();
 
+  int32_t num_lhs_reshape_segids = 0;
+  int32_t num_rhs_reshape_segids = 0;
+  std::vector<int32_t> lhs_reshape_segids;
+  int lhs_rank =
+      dnums.lhs_rhs_out.size() + dnums.lhs_out.size() + dnums.lhs_rhs.size();
+  lhs_reshape_segids.resize(lhs_rank);
+  std::vector<int32_t> rhs_reshape_segids;
+  int rhs_rank =
+      dnums.lhs_rhs_out.size() + dnums.rhs_out.size() + dnums.lhs_rhs.size();
+  rhs_reshape_segids.resize(rhs_rank);
+
   // Labels exist in all lhs, rhs and output are the batch labels B0,...,Bn.
   std::vector<int64_t> lhs_shape;
   std::vector<int64_t> rhs_shape;
@@ -408,6 +526,9 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
     lhs_shape.push_back(b1);
     const int64_t b2 = rhs_type.getShape()[std::get<1>(i)];
     rhs_shape.push_back(b2);
+
+    lhs_reshape_segids.at(std::get<0>(i)) = num_lhs_reshape_segids++;
+    rhs_reshape_segids.at(std::get<1>(i)) = num_rhs_reshape_segids++;
   }
   if (!OpTrait::util::getBroadcastedShape(lhs_shape, rhs_shape, *out_shape)) {
     return failure();
@@ -418,6 +539,7 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
     lhs_shape.push_back(1);
     out_shape->push_back(1);
     dnums.lhs_out.emplace_back(lhs_shape.size() - 1, out_shape->size() - 1);
+    ++num_lhs_reshape_segids;
   } else if (dnums.lhs_rhs_out.empty()) {
     // If there is not batch labels B0,...,Bn, it is safe to use L0,...,Ln as
     // the batch labels in lhs, the rhs will be broadcasted.
@@ -425,12 +547,19 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
       const int64_t b = lhs_type.getShape()[std::get<0>(i)];
       lhs_shape.push_back(b);
       out_shape->push_back(b);
+
+      lhs_reshape_segids.at(std::get<0>(i)) = num_lhs_reshape_segids++;
     }
   } else {
     const int64_t lhs_out_size =
         ProdShapeWithIndexInTuple<0>(lhs_type.getShape(), dnums.lhs_out);
     lhs_shape.push_back(lhs_out_size);
     out_shape->push_back(lhs_out_size);
+
+    for (auto i : dnums.lhs_out) {
+      lhs_reshape_segids.at(std::get<0>(i)) = num_lhs_reshape_segids;
+    }
+    ++num_lhs_reshape_segids;
   }
 
   // Calculates dimension for the common label C from labels C0,...,Cn that
@@ -442,20 +571,50 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   lhs_shape.push_back(lhs_size);
   rhs_shape.push_back(rhs_size);
 
+  for (auto i : dnums.lhs_rhs) {
+    lhs_reshape_segids.at(std::get<0>(i)) = num_lhs_reshape_segids;
+    rhs_reshape_segids.at(std::get<1>(i)) = num_rhs_reshape_segids;
+  }
+  ++num_lhs_reshape_segids;
+  ++num_rhs_reshape_segids;
+
   // Calculates dimension for the label R from R0,...,Rn in rhs.
   const int64_t rhs_out_size =
       ProdShapeWithIndexInTuple<0>(rhs_type.getShape(), dnums.rhs_out);
   rhs_shape.push_back(rhs_out_size);
   out_shape->push_back(rhs_out_size);
 
-  if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
-      failed(VerifyShapeOfReshapeOp(rhs_shape)))
-    return failure();
+  for (auto i : dnums.rhs_out) {
+    rhs_reshape_segids.at(std::get<0>(i)) = num_rhs_reshape_segids;
+  }
+  ++num_rhs_reshape_segids;
 
-  *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
-                         rewriter);
-  *rhs = createReshapeOp(*rhs, rhs_shape, rhs_type.getElementType(), loc,
-                         rewriter);
+  // If LHS requires reshapes.
+  if (lhs_rank != num_lhs_reshape_segids) {
+    if (succeeded(VerifyShapeOfReshapeOp(lhs_shape))) {
+      *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
+                             rewriter);
+    } else {
+      // Check if lhs LHS shape can be calculated with SegmentProd. It requires
+      // to have at least 1 common index in lhs_out and lhs_rhs.
+      if (dnums.lhs_out.empty() || dnums.lhs_rhs.empty()) return failure();
+      *lhs = createReshapeOpForDynamic(*lhs, lhs_shape, lhs_reshape_segids,
+                                       num_lhs_reshape_segids, loc, rewriter);
+    }
+  }
+  // If RHS requires reshapes.
+  if (rhs_rank != num_rhs_reshape_segids) {
+    if (succeeded(VerifyShapeOfReshapeOp(rhs_shape))) {
+      *rhs = createReshapeOp(*rhs, rhs_shape, rhs_type.getElementType(), loc,
+                             rewriter);
+    } else {
+      // Check if lhs RHS shape can be calculated with SegmentProd. It requires
+      // to have at least 1 common index in rhs_out and lhs_rhs.
+      if (dnums.rhs_out.empty() || dnums.lhs_rhs.empty()) return failure();
+      *rhs = createReshapeOpForDynamic(*rhs, rhs_shape, rhs_reshape_segids,
+                                       num_rhs_reshape_segids, loc, rewriter);
+    }
+  }
 
   dnums.lhs_rhs.assign(
       {std::make_tuple(dnums.lhs_rhs_out.size() + dnums.lhs_out.size(),
@@ -475,6 +634,11 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   if (inputs.size() != 2) return failure();
   Value lhs = inputs.front();
   Value rhs = inputs.back();
+  // Back original values for the later output shape calculation in
+  // `createOutputReshapeOpForDynamic`.
+  Value original_lhs = lhs;
+  Value original_rhs = rhs;
+  EinsumDimensionNumbers original_dnums = dnums;
 
   RankedTensorType original_type =
       op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
@@ -492,7 +656,6 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 
   std::vector<int64_t> reshape_shape =
       inverseTransposeVector(original_type.getShape(), out_transpose);
-  if (failed(VerifyShapeOfReshapeOp(reshape_shape))) return failure();
 
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());
@@ -500,8 +663,17 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
       op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
       rewriter.getBoolAttr(false));
 
-  out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
-                        op.getLoc(), &rewriter);
+  bool out_reshape_need = (reshape_shape.size() != matmul_shape.size() ||
+                           original_type.getRank() != matmul_shape.size());
+  // Always add reshape for concrete output shapes.
+  if (succeeded(VerifyShapeOfReshapeOp(reshape_shape))) {
+    out = createReshapeOp(out, reshape_shape, original_type.getElementType(),
+                          op.getLoc(), &rewriter);
+  } else if (out_reshape_need) {
+    out = createOutputReshapeOpForDynamic(out, reshape_shape, original_lhs,
+                                          original_rhs, original_dnums,
+                                          op.getLoc(), &rewriter);
+  }
   out = createTransposeOp(out, op.getLoc(), out_transpose, &rewriter);
 
   rewriter.replaceOp(op, out);
@@ -543,7 +715,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTransformEinsumPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTransformEinsumPass() {
   return std::make_unique<TransformEinsumPass>();
 }
 

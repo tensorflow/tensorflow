@@ -72,7 +72,7 @@ TYPED_TEST(MatrixDiagOpTest, ThreeByThreeDiag) {
       {TypeParam::tensor_type, {3}});
   model.template PopulateTensor<typename TypeParam::ScalarType>(model.input(),
                                                                 {1, 2, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 3));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0,  //
                                                    0, 2, 0,  //
@@ -84,7 +84,7 @@ TYPED_TEST(MatrixDiagOpTest, ThreeByThreeDiag) {
 TEST(MatrixDiagTest, Int32TestTwoDimDiag) {
   MatrixDiagOpModel<int32_t> model({TensorType_INT32, {2, 4}});
   model.PopulateTensor<int32_t>(model.input(), {1, 2, 3, 4, 5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 4, 4));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0,  //
                                                    0, 2, 0, 0,  //
@@ -100,7 +100,7 @@ TEST(MatrixDiagTest, Int32TestTwoDimDiag) {
 TEST(MatrixDiagTest, DegenerateCase) {
   MatrixDiagOpModel<uint8_t> model({TensorType_UINT8, {1}});
   model.PopulateTensor<uint8_t>(model.input(), {1});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1}));
   EXPECT_THAT(model.GetOutputType(), TfLiteType::kTfLiteUInt8);

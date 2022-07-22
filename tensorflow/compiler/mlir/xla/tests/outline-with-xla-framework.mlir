@@ -8,6 +8,6 @@
 // CHECK-NEXT: %[[BUF1:.*]] = call @func_to_outline(%[[BUF0]])
 // CHECK-NEXT: %[[RESULT:.*]] = xla_framework.mem_to_buffer %[[BUF1]] : memref<?xf32>
 // CHECK-NEXT: return %[[RESULT]] : !xla_framework.buffer
-func @func_to_outline(%arg0: memref<?xf32>) -> memref<?xf32> {
-  return %arg0 : memref<?xf32>
+func.func @func_to_outline(%arg0: memref<?xf32>) -> memref<?xf32> {
+  func.return %arg0 : memref<?xf32>
 }

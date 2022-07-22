@@ -243,7 +243,7 @@ class AddNOp<Device, Variant> : public OpKernel {
     TF_RETURN_IF_ERROR(
         BinaryOpVariants<Device>(ctx, ADD_VARIANT_BINARY_OP, a, b, c));
     temp_filled->at(lhs_ix) = true;
-    return Status::OK();
+    return OkStatus();
   }
 };
 

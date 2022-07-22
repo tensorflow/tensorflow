@@ -103,11 +103,10 @@ class BufferedProfiler : public tflite::Profiler {
     buffer_.EndEvent(event_handle, &event_metadata1, &event_metadata2);
   }
 
-  void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                uint64_t end, int64_t event_metadata1,
-                int64_t event_metadata2) override {
+  void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                int64_t event_metadata1, int64_t event_metadata2) override {
     if (!ShouldAddEvent(event_type)) return;
-    buffer_.AddEvent(tag, event_type, start, end, event_metadata1,
+    buffer_.AddEvent(tag, event_type, elapsed_time, event_metadata1,
                      event_metadata2);
   }
 

@@ -71,7 +71,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     fdef = flib_def.Find(func.name());
   } else if (n->type_string() == FunctionLibraryDefinition::kGradientOp) {
     VLOG(2) << "Skip SymbolicGradient lowering";
-    return Status::OK();
+    return OkStatus();
   } else {
     fdef = flib_def.Find(n->type_string());
   }
@@ -94,7 +94,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
             << can_inline_function_call.error_message();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

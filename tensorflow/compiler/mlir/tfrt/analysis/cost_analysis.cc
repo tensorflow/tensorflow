@@ -125,7 +125,7 @@ void RegisterCostFunction(absl::string_view op_name,
                        std::move(cost_function));
 }
 
-void CostAnalysis::AnalyzeArguments(mlir::FuncOp func_op) {
+void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
   for (auto arg : func_op.getArguments()) {

@@ -55,10 +55,8 @@ class InterpreterImpl implements InterpreterApi {
     Boolean allowBufferHandleOutput;
 
     // See Interpreter.Options#setUseXNNPACK(boolean).
-    // TODO(b/171856982): update the comment when applying XNNPACK delegate by default is
-    // enabled for C++ TfLite library on Android platform.
-    // Note: the initial "null" value indicates default behavior which may mean XNNPACK
-    // delegate will be applied by default.
+    // Note: the initial "null" value indicates default behavior (XNNPACK delegate will be applied
+    // by default whenever possible).
     Boolean useXNNPACK;
   }
 

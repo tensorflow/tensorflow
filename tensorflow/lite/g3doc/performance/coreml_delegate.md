@@ -62,7 +62,7 @@ TensorFlow Lite 2.4.0 release, this was the only option.
     } else {
       interpreter = try Interpreter(modelPath: modelPath)
     }
-      </pre></p>
+  </pre></p>
     </section>
     <section>
       <h3>Objective-C</h3>
@@ -92,7 +92,7 @@ TensorFlow Lite 2.4.0 release, this was the only option.
     if (error != nil) { /* Error handling... */ }
 
     // Run inference ...
-      </pre></p>
+  </pre></p>
     </section>
     <section>
       <h3>C (Until 2.3.0)</h3>
@@ -159,7 +159,7 @@ pass `TfLiteCoreMlDelegateAllDevices`. Following example shows how to do this:
                                           initWithOptions:coreMLOptions];
 
     // Initialize interpreter with delegate
-      </pre></p>
+  </pre></p>
     </section>
     <section>
       <h3>C</h3>
@@ -191,7 +191,7 @@ performance benefits. Following example shows how to do this:
 
     let interpreter = try Interpreter(modelPath: modelPath,
                                       delegates: [delegate!])
-      </pre></p>
+  </pre></p>
     </section>
     <section>
       <h3>Objective-C</h3>

@@ -18,10 +18,8 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Types.h"
 #include "tensorflow/stream_executor/dnn.h"
-#include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime
-#include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
-#include "tfrt/gpu/wrapper/miopen_wrapper.h"  // from @tf_runtime
-#include "tfrt/gpu/wrapper/rocblas_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/blas_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/dnn_wrapper.h"  // from @tf_runtime
 
 namespace tensorflow {
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -49,8 +50,6 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
@@ -129,7 +128,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
 };
 
 LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
-                                         mlir::FuncOp &function) {
+                                         mlir::func::FuncOp &function) {
   size_t num_blocks_in_main = 0;
   mlir::Region *region = function.getCallableRegion();
   OpBuilder builder(&context);
@@ -329,7 +328,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 void ConvertUint8ToInt8::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto &ctx = getContext();
-  mlir::FuncOp func = getOperation();
+  mlir::func::FuncOp func = getOperation();
 
   // Convert uint8 const tensor. const needs to be handled specifically.
   patterns.add<ConvertUint8QConstOp>(&ctx);
@@ -341,7 +340,7 @@ void ConvertUint8ToInt8::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass() {
   return std::make_unique<ConvertUint8ToInt8>();
 }
 

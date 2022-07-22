@@ -37,7 +37,7 @@ Status ParseAny(const google::protobuf::Any& any, T* message,
   if (!any.UnpackTo(message)) {
     return errors::FailedPrecondition("Failed to unpack: ", any.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

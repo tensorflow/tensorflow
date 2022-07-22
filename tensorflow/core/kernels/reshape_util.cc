@@ -75,7 +75,7 @@ struct ReshapeSparseTensorFunctor<CPUDevice> {
         id %= output_strides[j];
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

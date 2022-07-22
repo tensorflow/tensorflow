@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -127,7 +128,8 @@ void TPUColocateCompositeResourceOps::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUColocateCompositeResourceOps() {
   return std::make_unique<TPUColocateCompositeResourceOps>();
 }
 

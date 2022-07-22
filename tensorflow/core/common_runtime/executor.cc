@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -145,7 +146,7 @@ class ExecutorImpl : public Executor {
   Status Initialize(const Graph& graph) {
     TF_RETURN_IF_ERROR(immutable_state_.Initialize(graph));
     kernel_stats_.Initialize(immutable_state_.graph_view());
-    return Status::OK();
+    return OkStatus();
   }
 
   void RunAsync(const Args& args, DoneCallback done) override;
@@ -162,7 +163,7 @@ class ExecutorImpl : public Executor {
     void Initialize(const GraphView& gview) {
       is_expensive_.resize(gview.num_nodes());
       cost_estimates_ =
-          absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
+          std::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
       for (int32_t i = 0; i < gview.num_nodes(); ++i) {
         if (gview.node(i)) {
           is_expensive_[i] =
@@ -373,6 +374,7 @@ class ExecutorState {
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
   CoordinationServiceAgent* coordination_service_agent_;
+  absl::optional<ManagedStackTrace> stack_trace_ = absl::nullopt;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
@@ -422,6 +424,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       kernel_stats_(kernel_stats),
       cancellation_manager_(args.cancellation_manager),
       coordination_service_agent_(args.coordination_service_agent),
+      stack_trace_(args.stack_trace),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
@@ -486,7 +489,7 @@ void ExecutorState<PropagatorStateType>::RunAsync(Executor::DoneCallback done) {
   num_outstanding_ops_ = ready.size();
   if (ready.empty()) {
     delete this;
-    done(Status::OK());
+    done(OkStatus());
   } else {
     done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
@@ -504,8 +507,9 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
   AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
              const NodeItem* _item, Entry* _first_input,
              NodeExecStatsInterface* _stats)
-      : saved_inputs(*p.inputs),
-        saved_input_alloc_attrs(*p.input_alloc_attrs),
+      : saved_inputs(p.inputs.begin(), p.inputs.end()),
+        saved_input_alloc_attrs(p.input_alloc_attrs.begin(),
+                                p.input_alloc_attrs.end()),
         params(p),
         tagged_node(_tagged_node),
         item(_item),
@@ -514,8 +518,8 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
         //   params.eigen_gpu_device = nullptr;
         ctx(ParamsButClearingEigenGPUDevice(&params), item->num_outputs),
         stats(_stats) {
-    params.inputs = &saved_inputs;
-    params.input_alloc_attrs = &saved_input_alloc_attrs;
+    params.inputs = saved_inputs;
+    params.input_alloc_attrs = saved_input_alloc_attrs;
   }
 
   TensorValueVec saved_inputs;
@@ -717,13 +721,12 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.coordination_service_agent = coordination_service_agent_;
+  params.stack_trace = stack_trace_;
   params.call_frame = call_frame_;
   params.function_library = immutable_state_.params().function_library;
   params.resource_manager = device->resource_manager();
   params.step_container = step_container_;
   params.slice_reader_cache = slice_reader_cache_;
-  params.inputs = &inputs;
-  params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.run_all_kernels_inline = run_all_kernels_inline_;
   params.stats_collector = stats_collector_;
@@ -818,6 +821,8 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
       params.output_attr_array = item.output_attrs();
       params.forward_from_array = item.forward_from();
       params.outputs_required_array = item.outputs_required.get();
+      params.inputs = inputs;
+      params.input_alloc_attrs = input_alloc_attrs;
 
       if (item.kernel_is_async) {
         ProcessAsync(item, params, tagged_node, first_input, stats);
@@ -976,7 +981,7 @@ Status ExecutorState<PropagatorStateType>::PrepareInputs(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class PropagatorStateType>
@@ -1416,7 +1421,7 @@ class DefaultExecutorRegistrar {
       Executor* ret = nullptr;
       TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(graph), &ret));
       out_executor->reset(ret);
-      return Status::OK();
+      return OkStatus();
     }
   };
 };

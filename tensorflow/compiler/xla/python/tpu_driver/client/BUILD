@@ -60,7 +60,6 @@ pybind_extension(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    module_name = "tpu_client_extension",
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client",

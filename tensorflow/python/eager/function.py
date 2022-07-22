@@ -27,6 +27,7 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -34,7 +35,8 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function_cache
+from tensorflow.python.eager import function_context
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
@@ -58,7 +60,7 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
@@ -112,15 +114,6 @@ def _is_type_subset(a, b):
   if isinstance(a, type_spec.TypeSpec):
     return a.most_specific_compatible_type(b) == a
   return True
-
-
-def _shape_relaxed_type_for_composite_tensor(x):
-  """Returns a shape-relaxed TypeSpec for x (if composite) or x (if not)."""
-  if isinstance(x, composite_tensor.CompositeTensor):
-    # pylint: disable=protected-access
-    return x._type_spec._with_tensor_ranks_only()
-  else:
-    return x
 
 
 def common_shape(x, y):
@@ -363,18 +356,19 @@ class _EagerDefinedFunction(object):
         output_names = []
     else:
       output_names = []
-    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
-        graph._c_graph,  # pylint: disable=protected-access
-        compat.as_str(name),
-        False,
-        [o._c_op for o in operations],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
-        output_names,
-        [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
-        [],  # control_output_names
-        None,
-        compat.as_str(""))
+    with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+      fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
+          c_graph,
+          compat.as_str(name),
+          False,
+          [o._c_op for o in operations],  # pylint: disable=protected-access
+          [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
+          [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+          output_names,
+          [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
+          [],  # control_output_names
+          None,
+          compat.as_str(""))
 
     self._c_func = c_api_util.ScopedTFFunction(fn, name)
 
@@ -2366,6 +2360,45 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     else:
       return self.__repr__()
 
+  def _trackable_children(self, save_type="checkpoint", **kwargs):
+    """Implements `Trackable`."""
+    if save_type == "checkpoint":
+      # Checkpoint dependencies do not include functions at all. Users
+      # expect the checkpointed variables to be saved using the model
+      # architecture, e.g. `model.layers[1].kernel` or `model.variables`.
+      return {}
+
+    captured_trackables = {}
+    for n, (capture, _) in enumerate(self.graph.captures):
+      if (capture.dtype not in (dtypes.variant, dtypes.resource) and
+          not resource_variable_ops.is_resource_variable(capture)):
+        # Variant/resource type tensors are skipped since we have no way of
+        # getting the `Trackable` wrapper for these tensors. The wrappers are
+        # expected to be elsewhere in the saved object graph.
+        # TODO(b/223866972): Directly encode/decode tensor captures.
+
+        # Resource variable captures are also skipped at this time, to maintain
+        # existing behavior.
+        # TODO(b/217979389): Return the non-constant captures as children.
+
+        captured_trackables[f"capture_{n}"] = capture
+
+    return captured_trackables
+
+  def _deserialization_dependencies(self, children):
+    return children
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   **unused_kwargs):
+    if not self.graph.saveable:
+      raise ValueError(
+          (f"Unable to save function {self.name} for the following reason(s):\n"
+           + "\n".join(self.graph.saving_errors)))
+    self.add_to_graph()
+    object_map[self] = function_saved_model_utils.ExportedConcreteFunction(
+        self, tensor_map)
+    return []
+
 
 _pywrap_utils.RegisterType("Tensor", ops.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
@@ -2395,7 +2428,7 @@ class Function(object):
                attributes=None,
                autograph=True,
                autograph_options=None,
-               experimental_relax_shapes=False,
+               reduce_retracing=False,
                capture_by_value=None,
                jit_compile=None,
                experimental_follow_type_hints=False):
@@ -2415,8 +2448,9 @@ class Function(object):
       autograph_options: Experimental knobs to control behavior
         `when autograph=True`. See https://www.tensorflow.org/guide/autograph
         for more information.
-      experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unnecessary retracing.
+      reduce_retracing: When True, `tf.function` uses
+        `tf.types.experimental.TraceType` to trace supertypes of arguments to
+        reduce the number of traces.
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
@@ -2438,12 +2472,14 @@ class Function(object):
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
-    self._experimental_relax_shapes = experimental_relax_shapes
+    self._reduce_retracing = reduce_retracing
     self._function_cache = function_cache.FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
     self.tracing_count = 0
-
+    # Maintein a dict of all captures: identifier -> lambda function. It's used
+    # to get runtime values for all captures during ConcreteFunction dispatch,
+    self._captures_container = func_graph_module.CapturesContainer()
     self._lock = threading.RLock()
     # _descriptor_cache is a of instance of a class to an instance-specific
     # `Function`, used to make sure defun-decorated methods create different
@@ -2650,48 +2686,6 @@ class Function(object):
         shared_func_graph=False)
     return graph_function
 
-  def _graph_function_with_shape_relaxation(self, args, kwargs):
-    """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
-    # For the rank-only cache key, replace any composite tensors with
-    # shape-relaxed TypeSpecs.
-    all_args = (args, kwargs)
-    all_args_relaxed = nest.map_structure(
-        _shape_relaxed_type_for_composite_tensor, all_args)
-    # Build a cache key where TensorShapes include only rank information (and
-    # not information about the size of each dimension).
-    rank_only_cache_key, _ = function_cache.make_cache_key(
-        all_args_relaxed, include_tensor_ranks_only=True)
-
-    flat_all_arg_specs = [_type_spec_for(x) for x in nest.flatten(all_args)]
-    flat_all_arg_specs_relaxed = self._function_cache.arg_relaxed_specs.get(
-        rank_only_cache_key, None)
-    arg_relaxed_function = self._function_cache.arg_relaxed.get(
-        rank_only_cache_key, None)
-
-    if (arg_relaxed_function is not None
-        and all(_is_type_subset(x, y) for (x, y) in
-                zip(flat_all_arg_specs_relaxed, flat_all_arg_specs))):
-      return arg_relaxed_function
-
-    if flat_all_arg_specs_relaxed is None:
-      flat_all_arg_specs_relaxed = flat_all_arg_specs
-    else:
-      if len(flat_all_arg_specs) != len(flat_all_arg_specs_relaxed):
-        raise RuntimeError("Expected arg_specs len to match arg_specs_relaxed "
-                           f"len: {len(flat_all_arg_specs):d} vs. "
-                           f"{len(flat_all_arg_specs_relaxed):d}.")
-      flat_all_arg_specs_relaxed = [
-          x.most_specific_compatible_type(y)
-          if isinstance(x, type_spec.TypeSpec) else x
-          for (x, y) in zip(flat_all_arg_specs, flat_all_arg_specs_relaxed)]
-    self._function_cache.arg_relaxed_specs[rank_only_cache_key] = (
-        flat_all_arg_specs_relaxed)
-    all_arg_specs_relaxed = nest.pack_sequence_as(all_args,
-                                                  flat_all_arg_specs_relaxed)
-    graph_function = self._create_graph_function(*all_arg_specs_relaxed)
-    self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
-    return graph_function
-
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
 
@@ -2721,21 +2715,27 @@ class Function(object):
     else:
       filtered_flat_args = []
 
+    # Get runtime values of captures
+    captures = self._captures_container.get_snapshot()
+
+    # cache_key_deletion_observer is useless here. It's based on all captures.
+    # A new cache key will be built later when saving ConcreteFunction because
+    # only active captures should be saved.
     if self.input_signature is None:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
-          (args, kwargs))
+      func_cache_key, _ = function_context.make_cache_key(
+          (args, kwargs), captures)
     else:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
-          self.flat_input_signature)
+      func_cache_key, _ = function_context.make_cache_key(
+          self.flat_input_signature, captures)
 
     try:
-      hash(cache_key)
+      hash(func_cache_key)
     except TypeError as e:
       raise TypeError(
-          "Arguments supplied to `defun`-generated functions must be "
-          f"hashable.  Original error: {e}.")
+          "Arguments supplied to `defun`-generated functions must be hashable."
+          ) from e
 
-    graph_function = self._function_cache.lookup(cache_key, True)
+    graph_function = self._function_cache.lookup(func_cache_key, True)
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
@@ -2743,28 +2743,38 @@ class Function(object):
       with trace.Trace("tf.function-graph_building"):
         logging.vlog(1,
                      "Creating new FuncGraph for Python function %r (key: %r)",
-                     self._python_function, cache_key)
+                     self._python_function, func_cache_key)
         logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]",
                      args, kwargs)
-
         ag_status = (
             ag_ctx.Status.ENABLED
             if self._autograph else ag_ctx.Status.DISABLED)
         with ag_ctx.ControlStatusCtx(
             status=ag_status, options=self._autograph_options):
 
-          # Build a function with shape relaxation retracing if:
-          # 1. shape relaxation is explicitly enabled
-          # and 2. there's no provided input signature
-          # and 3. there's been a cache miss for this calling context
-          if (self._experimental_relax_shapes and
-              self.input_signature is None and
-              self._function_cache.has_call_context(cache_key.call_context)):
-            return (self._graph_function_with_shape_relaxation(args, kwargs),
-                    filtered_flat_args)
-
-          self._function_cache.add_call_context(cache_key.call_context)
+          if (self._reduce_retracing and self.input_signature is None):
+            func_cache_key = self._function_cache.generalize(func_cache_key)
+            placeholder_dict = func_cache_key._placeholder_value()  # pylint: disable=protected-access
+            # Only get placeholders for arguments, not captures
+            args, kwargs = placeholder_dict["args"]
           graph_function = self._create_graph_function(args, kwargs)
+
+          graph_capture_container = graph_function.graph._capture_func_lib  # pylint: disable=protected-access
+          # Maintain the list of all captures
+          self._captures_container.update(graph_capture_container)
+          # Get current active captures snapshot
+          captures = graph_capture_container.get_snapshot()
+
+          # Create a cache_key with args and captures
+          if self.input_signature is None:
+            cache_key, cache_key_deletion_observer = (
+                function_context.make_cache_key(
+                    (args, kwargs), captures))
+          else:
+            cache_key, cache_key_deletion_observer = (
+                function_context.make_cache_key(
+                    self.flat_input_signature, captures))
+
           self._function_cache.add(cache_key, cache_key_deletion_observer,
                                    graph_function)
 
@@ -2821,7 +2831,7 @@ def defun(func=None,
           input_signature=None,
           autograph=True,
           experimental_autograph_options=None,
-          experimental_relax_shapes=False):
+          reduce_retracing=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") compiles a Python function
@@ -3138,8 +3148,9 @@ def defun(func=None,
     experimental_autograph_options: Experimental knobs (in the form of a tuple
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
-    experimental_relax_shapes: When true, argument shapes may be relaxed to
-      avoid unnecessary retracing.
+    reduce_retracing: When True, `tf.function` uses
+      `tf.types.experimental.TraceType` to trace supertypes of arguments to
+      reduce the number of traces.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -3156,7 +3167,7 @@ def defun(func=None,
       input_signature=input_signature,
       autograph=autograph,
       experimental_autograph_options=experimental_autograph_options,
-      experimental_relax_shapes=experimental_relax_shapes)
+      reduce_retracing=reduce_retracing)
 
 
 @tf_export("__internal__.function.defun_with_attributes", v1=[])
@@ -3166,7 +3177,7 @@ def defun_with_attributes(func=None,
                           autograph=True,
                           experimental_autograph_options=None,
                           jit_compile=None,
-                          experimental_relax_shapes=False,
+                          reduce_retracing=False,
                           experimental_follow_type_hints=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
@@ -3188,7 +3199,7 @@ def defun_with_attributes(func=None,
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
     jit_compile: same as defun()'s jit_compile.
-    experimental_relax_shapes: same as defun()'s experimental_relax_shapes
+    reduce_retracing: same as defun()'s reduce_retracing
     experimental_follow_type_hints: see `tf.function`.
 
   Returns:
@@ -3217,7 +3228,7 @@ def defun_with_attributes(func=None,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
             jit_compile=jit_compile,
-            experimental_relax_shapes=experimental_relax_shapes,
+            reduce_retracing=reduce_retracing,
             experimental_follow_type_hints=experimental_follow_type_hints))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
@@ -3315,7 +3326,7 @@ def class_method_to_instance_method(original_function, instance):
       name=original_function._name,
       autograph=original_function._autograph,
       input_signature=original_function.input_signature,
-      experimental_relax_shapes=original_function._experimental_relax_shapes,
+      reduce_retracing=original_function._reduce_retracing,
       jit_compile=original_function._jit_compile)
   # pylint: enable=protected-access
 

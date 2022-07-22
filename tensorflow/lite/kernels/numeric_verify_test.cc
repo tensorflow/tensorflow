@@ -88,7 +88,7 @@ TEST(NumericVerifyOpTest, Uint8) {
 
   m.SetInputs<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255},
                        {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
 }
 
 TEST(NumericVerifyOpTest, Int8) {
@@ -97,7 +97,7 @@ TEST(NumericVerifyOpTest, Int8) {
 
   m.SetInputs<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127},
                       {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
 }
 
 TEST(NumericVerifyOpTest, Float16) {
@@ -110,7 +110,7 @@ TEST(NumericVerifyOpTest, Float16) {
   m.PopulateTensor(0, 0, reinterpret_cast<TfLiteFloat16*>(half.data()),
                    reinterpret_cast<TfLiteFloat16*>(half.data()) + half.size());
   m.PopulateTensor(1, {-535.54f, -100.0f, -1.0f, 0.f, 1.0f, 100.32f});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
 }
 
 TEST(NumericVerifyOpTest, Int16) {
@@ -118,7 +118,7 @@ TEST(NumericVerifyOpTest, Int16) {
   m.SetInputs<int16_t>(
       {-130, -127, -126, -125, -124, 123, 124, 125, 126, 130},
       {-64.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 65.5});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
 }
 
 TEST(NumericVerifyOpFailedTest, Int8) {
@@ -128,7 +128,7 @@ TEST(NumericVerifyOpFailedTest, Int8) {
   // The 5th element is set to 0.
   m.SetInputs<int8_t>({-128, -127, -126, -125, -124, 0, 124, 125, 126, 127},
                       {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteError);
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(NumericVerifyOpDebugModeTest, Int8) {
@@ -138,7 +138,7 @@ TEST(NumericVerifyOpDebugModeTest, Int8) {
   // The 5th element is set to 0.
   m.SetInputs<int8_t>({-128, -127, -126, -125, -124, 0, 124, 125, 126, 127},
                       {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
   // The 5th element has discrepancy -61.5 (=dequantized - reference=0-(61.5)).
   EXPECT_THAT(
       m.GetOutput(),

@@ -1067,6 +1067,7 @@ cc_library(
         ":session_options",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:cpu_feature_guard",
         "//third_party/eigen3",
     ],
 )
@@ -1129,6 +1130,7 @@ cc_library(
         "//platforms/performance/tf_sim:__subpackages__",
     ],
     deps = [
+        ":device_propagation",
         ":function_utils",
         ":inline_function_utils",
         ":lower_case_op",
@@ -1140,6 +1142,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -1213,6 +1217,7 @@ cc_library(
         ":bfc_allocator",
         ":pool_allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:onednn_env_vars",
     ],
 )
 
@@ -2073,6 +2078,18 @@ cc_library(
     deps = [],
 )
 
+cc_library(
+    name = "device_propagation",
+    srcs = ["device_propagation.cc"],
+    hdrs = ["device_propagation.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -2379,6 +2396,7 @@ tf_cc_test_mkl(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/util:onednn_env_vars",
     ],
 )
 
@@ -3143,5 +3161,22 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "device_propagation_test",
+    size = "small",
+    srcs = ["device_propagation_test.cc"],
+    deps = [
+        ":device_propagation",
+        "//tensorflow/cc:array_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

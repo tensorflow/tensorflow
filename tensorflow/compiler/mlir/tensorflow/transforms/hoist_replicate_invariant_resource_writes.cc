@@ -140,7 +140,7 @@ void HoistReplicateInvariantResourceWritesPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateHoistReplicateInvariantResourceWritesPass() {
   return std::make_unique<HoistReplicateInvariantResourceWritesPass>();
 }

@@ -32,7 +32,8 @@ bazel_args=(
   --build_tag_filters="${tag_filters}" \
   --test_sharding_strategy=disabled \
   --test_tag_filters="${tag_filters}" \
-  --test_output=errors --verbose_failures=true --keep_going
+  --test_output=errors --verbose_failures=true --keep_going \
+  --build_tests_only
 )
 
 bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"

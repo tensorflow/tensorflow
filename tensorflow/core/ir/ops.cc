@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
@@ -101,6 +102,10 @@ void TFGraphDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/core/ir/ops.cc.inc"
       >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/core/ir/attributes.cc.inc"
+      >();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
@@ -109,15 +114,30 @@ void TFGraphDialect::initialize() {
   // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
 
+  // Register the memory effects interface adaptor.
+  addInterfaces<StatefulMemoryEffectInterface>();
+
+  // Initialized the cached operation names.
+#define GET_OP_NAME_DEFS
+#include "tensorflow/core/ir/tf_op_names.inc"
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
   assigned_device_key_ =
       StringAttr::get(getContext(), getAssignedDeviceAttrKey());
+  fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
+  lifted_graph_func_name_ =
+      StringAttr::get(getContext(), getLiftedGraphFuncNameKey());
   tfg_name_key_ = StringAttr::get(getContext(), getTfgNameAttrKey());
+  tfg_description_key_ =
+      StringAttr::get(getContext(), getTfgDescriptionAttrKey());
+  tfg_is_ref_key_ = StringAttr::get(getContext(), getTfgIsRefAttrKey());
+  tfg_handle_data_key_ =
+      StringAttr::get(getContext(), getTfgHandleDataAttrKey());
+  tfg_full_type_key_ = StringAttr::get(getContext(), getTfgFullTypeAttrKey());
+
   control_ty_ = ControlType::get(getContext());
-  tfg_tpu_replicate_key_ =
-      StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
 }
 
 // Provides a hook for op interface.
@@ -125,13 +145,25 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
                                                   OperationName opName) {
   if (interface == TypeID::get<OpAsmOpInterface>()) {
     return fallbackOpAsmInterface_;
-  } else if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
+  }
+
+  // Intrinsic operations explicitly implement intefaces.
+  if (opName.hasTrait<OpTrait::IntrinsicOperation>()) {
+    return nullptr;
+  }
+
+  if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
     if (auto *instance =
             getRegisteredInterface<TensorFlowRegistryInterfaceBase>()) {
       // Important: cast to (Concept *) to shift the pointer off the vtable.
       return static_cast<TensorFlowRegistryInterfaceBase::Concept *>(
           const_cast<TensorFlowRegistryInterfaceBase *>(instance));
     }
+  } else if (interface == TypeID::get<MemoryEffectOpInterface>()) {
+    auto *instance = getRegisteredInterface<StatefulMemoryEffectInterface>();
+    assert(instance && "expected the memory interface to be registered");
+    return static_cast<StatefulMemoryEffectInterface::Concept *>(
+        const_cast<StatefulMemoryEffectInterface *>(instance));
   }
 
   return nullptr;
@@ -139,21 +171,24 @@ void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
 
 TFGraphDialect::~TFGraphDialect() { delete fallbackOpAsmInterface_; }
 
+// The name of certain optional attributes.
+static std::array<StringRef, 3> keyword_attrs{
+    "_mlir_device", "_mlir_assigned_device", "_mlir_name"};
+
 static void PrintKeywordAttributes(Operation *op, OpAsmPrinter &printer,
                                    ArrayRef<StringRef> elided_attrs = {}) {
   // Handles the optional "device" and "name" attribute.
-  std::array<StringRef, 3> keywords{"_mlir_device", "_mlir_assigned_device",
-                                    "_mlir_name"};
-  for (StringRef keyword : keywords) {
-    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword))
-      if (!value_attr.getValue().empty())
-        printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
-                << value_attr.getValue() << "\")";
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op->getAttrOfType<StringAttr>(keyword)) {
+      assert(!value_attr.getValue().empty());
+      printer << " " << keyword.drop_front(/*len(_mlir_)*/ 6) << "(\""
+              << value_attr.getValue() << "\")";
+    }
   }
 
   // Print attributes (other than name and device).
   SmallVector<StringRef> attrs_to_elide = llvm::to_vector(elided_attrs);
-  llvm::append_range(attrs_to_elide, keywords);
+  llvm::append_range(attrs_to_elide, keyword_attrs);
   printer.printOptionalAttrDict(op->getAttrs(), attrs_to_elide);
 }
 
@@ -258,7 +293,7 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
                                    OperationState &result) {
   MLIRContext *context = parser.getBuilder().getContext();
   // Parse optional argument list
-  SmallVector<OpAsmParser::OperandType, 4> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> op_infos;
   if (parser.parseOperandList(op_infos, AsmParser::Delimiter::OptionalParen))
     return failure();
   unsigned numNonControlOperands = op_infos.size();
@@ -291,7 +326,8 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
   // The control input are elided from the type list, add them here.
   arg_types.resize(op_infos.size(), control_type);
   if (!arg_types.empty())
-    parser.resolveOperands(op_infos, arg_types, loc, result.operands);
+    if (parser.resolveOperands(op_infos, arg_types, loc, result.operands))
+      return failure();
   if (result.name.getStringRef() != "tfg.return")
     result.types.push_back(control_type);
   return success();
@@ -328,6 +364,18 @@ static bool VerifyGenericTFGOperation(Operation &op) {
   };
   if (!check_ctl_at_end(op.getOperandTypes(), "input")) return false;
   if (!check_ctl_at_end(op.getResultTypes(), "result")) return false;
+
+  // Certain attributes are supposed to be inserted with non-empty value.
+  for (StringRef keyword : keyword_attrs) {
+    if (StringAttr value_attr = op.getAttrOfType<StringAttr>(keyword)) {
+      if (value_attr.getValue().empty()) {
+        op.emitOpError() << keyword
+                         << " has empty value. Only insert this attribute when "
+                            "it has a value";
+      }
+    }
+  }
+
   return true;
 }
 
@@ -363,7 +411,7 @@ bool GraphFuncOp::isMarkedForCompilation() {
 // attribute is present and checks if it holds a function type. Ensures
 // getType, getNumFuncArguments, and getNumFuncResults can be called safely
 LogicalResult GraphFuncOp::verifyType() {
-  auto type = getTypeAttr().getValue();
+  auto type = getFunctionTypeAttr().getValue();
   if (!type.isa<FunctionType>())
     return emitOpError("requires '" + getTypeAttrName() +
                        "' attribute of function type");
@@ -373,17 +421,18 @@ LogicalResult GraphFuncOp::verifyType() {
 // Hook for OpTrait::FunctionLike, called after verifying the function
 // type and the presence of the (potentially empty) function body.
 LogicalResult GraphFuncOp::verifyBody() {
+  FunctionType type = getFunctionType();
   // Check that the body is terminated with a tfg.return.
   if (getRegion().empty() || getBody()->empty())
     return emitOpError() << "expects a non empty body";
 
-  if (getBody()->getNumArguments() != getType().getNumInputs())
-    return emitOpError() << "function type indicated "
-                         << getType().getNumInputs() << " args but block has "
+  if (getBody()->getNumArguments() != type.getNumInputs())
+    return emitOpError() << "function type indicated " << type.getNumInputs()
+                         << " args but block has "
                          << getBody()->getNumArguments();
 
   for (auto &arg_types : llvm::enumerate(
-           llvm::zip(getType().getInputs(), getBody()->getArgumentTypes()))) {
+           llvm::zip(type.getInputs(), getBody()->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
     if (signature_arg != block_arg)
@@ -398,7 +447,6 @@ LogicalResult GraphFuncOp::verifyBody() {
            << getBody()->back().getName().getStringRef();
 
   ReturnOp return_op = cast<ReturnOp>(getBody()->getTerminator());
-  FunctionType type = getType();
 
   if (type.getNumResults() > return_op->getNumOperands())
     return emitOpError() << "expects " << type.getNumResults()
@@ -459,16 +507,12 @@ LogicalResult GraphFuncOp::verify() {
   if (func_op.getNumArguments() % 2)
     return func_op.emitOpError() << "expects an even number of arguments";
   ArrayAttr args_attrs = func_op.getAllArgAttrs();
-  if (!args_attrs)
-    return func_op.emitOpError() << "missing argument attributes array";
-  if (args_attrs.size() != func_op.getNumArguments())
+  if (args_attrs && args_attrs.size() != func_op.getNumArguments())
     return func_op.emitOpError()
            << "expects argument attributes for each argument ("
            << args_attrs.size() << " vs " << func_op.getNumArguments() << ")";
   ArrayAttr res_attrs = func_op.getAllResultAttrs();
-  if (!res_attrs)
-    return func_op.emitOpError() << "missing results attributes array";
-  if (res_attrs.size() != func_op.getNumResults())
+  if (res_attrs && res_attrs.size() != func_op.getNumResults())
     return func_op.emitOpError()
            << "expects results attributes for each result (" << res_attrs.size()
            << " vs " << func_op.getNumResults() << ")";
@@ -476,7 +520,7 @@ LogicalResult GraphFuncOp::verify() {
 }
 
 ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType> entry_args;
+  SmallVector<OpAsmParser::UnresolvedOperand> entry_args;
   SmallVector<Attribute> arg_attrs;
   SmallVector<Attribute> result_attrs;
   SmallVector<Type> arg_types;
@@ -515,7 +559,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // Parse argument name if present.
     entry_args.emplace_back();
     arg_types.emplace_back();
-    if (parser.parseRegionArgument(entry_args.back()) ||
+    if (parser.parseOperand(entry_args.back(), /*allowResultNumber=*/false) ||
         parser.parseColonType(arg_types.back()))
       return failure();
 
@@ -529,7 +573,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // implementation of:
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
-    OpAsmParser::OperandType control_operand = entry_args.back();
+    OpAsmParser::UnresolvedOperand control_operand = entry_args.back();
     control_operand_names.push_back((control_operand.name + ".ctl").str());
     control_operand.name = control_operand_names.back();
     entry_args.push_back(control_operand);
@@ -549,17 +593,19 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the result types and their attributes.
   if (succeeded(parser.parseOptionalArrow())) {
     if (failed(parser.parseLParen())) return failure();
-    // Parse individual function results.
-    do {
-      result_types.emplace_back();
-      NamedAttrList result_attr;
-      if (parser.parseType(result_types.back()) ||
-          parser.parseOptionalAttrDict(result_attr)) {
-        return failure();
-      }
-      result_attrs.push_back(builder.getDictionaryAttr(result_attr));
-    } while (succeeded(parser.parseOptionalComma()));
-    if (parser.parseRParen()) return failure();
+    if (failed(parser.parseOptionalRParen())) {
+      // Parse individual function results.
+      do {
+        result_types.emplace_back();
+        NamedAttrList result_attr;
+        if (parser.parseType(result_types.back()) ||
+            parser.parseOptionalAttrDict(result_attr)) {
+          return failure();
+        }
+        result_attrs.push_back(builder.getDictionaryAttr(result_attr));
+      } while (succeeded(parser.parseOptionalComma()));
+      if (parser.parseRParen()) return failure();
+    }
   }
 
   auto type = builder.getFunctionType(arg_types, result_types);
@@ -584,10 +630,16 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the function body.
   auto *body = result.addRegion();
   llvm::SMLoc loc = parser.getCurrentLocation();
-  if (failed(parser.parseRegion(
-          *body, entry_args, entry_args.empty() ? ArrayRef<Type>() : arg_types,
-          /*argLocations=*/{},
-          /*enableNameShadowing=*/false)))
+  SmallVector<OpAsmParser::Argument> args;
+  if (entry_args.size()) {
+    for (auto argAndType : llvm::zip(entry_args, arg_types)) {
+      auto &arg = args.emplace_back();
+      arg.ssaName = std::get<0>(argAndType);
+      arg.type = std::get<1>(argAndType);
+    }
+  }
+
+  if (failed(parser.parseRegion(*body, args, /*enableNameShadowing=*/false)))
     return failure();
 
   // Function body was parsed, make sure it's not empty.
@@ -614,7 +666,7 @@ void GraphFuncOp::print(OpAsmPrinter &p) {
   p.printSymbolName(funcName);
   argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
-  FunctionType fnType = getType();
+  FunctionType fnType = getFunctionType();
   ArrayRef<Type> arg_types = fnType.getInputs();
   ArrayRef<Type> result_types = fnType.getResults();
   assert((arg_types.size() % 2) == 0);
@@ -741,13 +793,13 @@ ParseResult ReturnOp::parse(OpAsmParser &parser, OperationState &result) {
   // ReturnOp has the same assembly format as generic TFG ops except that the
   // control result attributes are embedded with the control operands:
   // [%ctl {tfg.name = "foo"}, %ctl_0 {tfg.name = "bar"}]
-  SmallVector<OpAsmParser::OperandType> operands;
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
   if (parser.parseOperandList(operands, AsmParser::Delimiter::OptionalParen))
     return failure();
 
   SmallVector<Attribute> control_ret_attrs;
   if (succeeded(parser.parseOptionalLSquare())) {
-    OpAsmParser::OperandType operand;
+    OpAsmParser::UnresolvedOperand operand;
     do {
       NamedAttrList attrs;
       OptionalParseResult parse_result = parser.parseOptionalOperand(operand);
@@ -826,8 +878,8 @@ static FailureOr<TypeRange> VerifyOperands(Operation *op) {
       llvm::find(op->getOperandTypes(), control_ty);
   if (!std::all_of(it, op->operand_type_end(),
                    [&](Type type) { return type == control_ty; })) {
-    return {op->emitOpError(
-        "not all control tokens come after non-control operands")};
+    return op->emitOpError(
+        "not all control tokens come after non-control operands");
   }
   return {Operation::operand_type_range(op->operand_type_begin(), it)};
 }
@@ -840,10 +892,10 @@ static FailureOr<TypeRange> VerifyResults(Operation *op) {
   Operation::result_type_iterator it =
       llvm::find(op->getResultTypes(), control_ty);
   if (it == op->result_type_end())
-    return {op->emitOpError("does not define a control result")};
+    return op->emitOpError("does not define a control result");
   if (it != std::prev(op->result_type_end())) {
-    return {op->emitOpError(
-        "must have a control token result as and only as its last result")};
+    return op->emitOpError(
+        "must have a control token result as and only as its last result");
   }
   return {Operation::result_type_range(op->result_type_begin(), it)};
 }
@@ -858,8 +910,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
            << "\nsee referenced function";
   };
 
-  ArrayRef<Type> arguments = func.getType().getInputs();
-  ArrayRef<Type> returns = func.getType().getResults();
+  ArrayRef<Type> arguments = func.getFunctionType().getInputs();
+  ArrayRef<Type> returns = func.getFunctionType().getResults();
   if (operands.size() * 2 != arguments.size()) {
     return attach_func(op->emitOpError(func_name)
                        << " function has " << arguments.size() / 2
@@ -874,23 +926,23 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
   if (func.generic()) return success();
 
   for (auto &it : llvm::enumerate(operands)) {
-    auto arg_type = getElementTypeOrSelf(arguments[it.index() * 2]);
-    auto op_type = getElementTypeOrSelf(it.value());
-    if (arg_type != op_type) {
+    Type arg_type = arguments[it.index() * 2];
+    Type op_type = it.value();
+    if (!tf_type::HasCompatibleElementTypes(arg_type, op_type)) {
       return attach_func(
           op->emitOpError(func_name)
-          << " function argument #" << it.index() << " dtype " << arg_type
-          << " does not match corresponding operand dtype: " << op_type);
+          << " function argument #" << it.index() << " type " << arg_type
+          << " is not compatible with corresponding operand type: " << op_type);
     }
   }
   for (auto &it : llvm::enumerate(results)) {
-    auto ret_type = getElementTypeOrSelf(returns[it.index()]);
-    auto res_type = getElementTypeOrSelf(it.value());
-    if (ret_type != res_type) {
+    Type ret_type = returns[it.index()];
+    Type res_type = it.value();
+    if (!tf_type::HasCompatibleElementTypes(ret_type, res_type)) {
       return attach_func(
           op->emitOpError(func_name)
-          << " function result #" << it.index() << " dtype " << ret_type
-          << " does not match corresponding op result dtype: " << res_type);
+          << " function result #" << it.index() << " type " << ret_type
+          << " is not compatible with corresponding result type: " << res_type);
     }
   }
   return success();
@@ -901,6 +953,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 // to be an array of type attributes.
 static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
                                      ArrayAttr types, StringRef kind) {
+  // Don't verify if the types are not present.
+  if (!types) return success();
   if (values.size() != types.size()) {
     return op->emitOpError("has ") << values.size() << " " << kind << "s but "
                                    << types.size() << " " << kind << " types";
@@ -909,10 +963,11 @@ static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
        llvm::zip(llvm::enumerate(values), types.getAsRange<TypeAttr>())) {
     Type type = std::get<0>(it).value().getType();
     Type dtype = std::get<1>(it).getValue();
-    if (getElementTypeOrSelf(type) != dtype) {
+    if (!tf_type::HasCompatibleElementTypes(type,
+                                            UnrankedTensorType::get(dtype))) {
       return op->emitOpError(kind)
-             << " #" << std::get<0>(it).index() << " expected to have dtype "
-             << dtype << " but got: " << type;
+             << " #" << std::get<0>(it).index()
+             << " is incompatible with dtype " << dtype << ", got: " << type;
     }
   }
   return success();
@@ -929,13 +984,13 @@ using detect_has_T = llvm::is_detected<has_T, OpT>;
 // use it for both input and output. Otherwise, return separate type arrays.
 template <typename OpT, bool = detect_has_T<OpT>::value>
 struct GetTypeArray {
-  static ArrayAttr getInputTypes(OpT op) { return op.Tin(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.Tout(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TinAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.ToutAttr(); }
 };
 template <typename OpT>
 struct GetTypeArray<OpT, true> {
-  static ArrayAttr getInputTypes(OpT op) { return op.T(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.T(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.TAttr(); }
 };
 }  // namespace detail
 
@@ -1028,7 +1083,7 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
 
   auto cond_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
       op, op.cond().getName());
-  auto i1_type = Builder(op.getContext()).getI1Type();
+  auto i1_type = UnrankedTensorType::get(Builder(op.getContext()).getI1Type());
   if (cond_func &&
       failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
     return failure();
@@ -1067,6 +1122,49 @@ LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 // Region Ops and Terminators
 //===----------------------------------------------------------------------===//
 
+// If a region op has preserved attributes, verify that they match the number of
+// results and block arguments.
+static LogicalResult VerifyPreservedAttrs(Operation *op,
+                                          ArrayRef<Attribute> preserved_attrs) {
+  assert(op->getNumRegions() == preserved_attrs.size());
+  for (auto it : llvm::zip(preserved_attrs, op->getRegions())) {
+    // Preserved attributes for a particular region may not exist.
+    auto attrs = std::get<0>(it).dyn_cast_or_null<RegionAttr>();
+    if (!attrs) continue;
+    Region &region = std::get<1>(it);
+
+    const auto emit_region_error = [&](StringRef msg) {
+      return op->emitOpError("region #")
+             << region.getRegionNumber() << " " << msg;
+    };
+
+    unsigned num_args = GetLoopRegionDataArgs(region).size();
+    if (num_args != attrs.getArgAttrs().size()) {
+      return emit_region_error("has ")
+             << num_args << " argument(s) but preserved attributes has "
+             << attrs.getArgAttrs().size();
+    }
+
+    // All regions are terminated by either a YieldOp or a ConditionOp. In the
+    // latter case, the function will only have one result.
+    unsigned num_rets;
+    Operation *terminator = region.front().getTerminator();
+    if (isa<ConditionOp>(terminator)) {
+      num_rets = 1;
+    } else {
+      num_rets = cast<RegionBranchTerminatorOpInterface>(terminator)
+                     .getMutableSuccessorOperands(region.getRegionNumber())
+                     .size();
+    }
+    if (num_rets != attrs.getResAttrs().size()) {
+      return emit_region_error("has ")
+             << num_rets << " result(s) but preserved attributes has "
+             << attrs.getResAttrs().size();
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // YieldOp
 
@@ -1091,7 +1189,8 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
     return op.emitOpError("then region must be terminated by a 'tfg.yield'");
   if (!TerminatedByYield(op.else_block()))
     return op.emitOpError("else region must be terminated by a 'tfg.yield'");
-  return success();
+  return VerifyPreservedAttrs(
+      op, {op.then_region_attrsAttr(), op.else_region_attrsAttr()});
 }
 
 // Given an potentially null attribute that would represent a constant value,
@@ -1111,20 +1210,23 @@ template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
     IfLikeRegionOp op, Optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
-  assert(index.hasValue() ||
+  assert(index.has_value() ||
          !operands.empty() && "if-like op expected at least 1 operand");
   // Both regions branch back to the parent op.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
-    regions.emplace_back(*cond ? &op.then_region() : &op.else_region());
+    Region &region = *cond ? op.then_region() : op.else_region();
+    regions.emplace_back(&region, GetLoopRegionDataArgs(region));
   } else {
     // Unknown successor.
-    regions.emplace_back(&op.then_region());
-    regions.emplace_back(&op.else_region());
+    regions.emplace_back(&op.then_region(),
+                         GetLoopRegionDataArgs(op.then_region()));
+    regions.emplace_back(&op.else_region(),
+                         GetLoopRegionDataArgs(op.else_region()));
   }
 }
 
@@ -1146,6 +1248,15 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
            << op.branches().size() << " regions but "
            << op.branch_attrs()->size() << " branch function attributes";
   }
+  if (auto region_attrs = op.region_attrsAttr()) {
+    if (region_attrs.size() != op.getNumRegions()) {
+      return op.emitOpError("expected ")
+             << op.getNumRegions() << " region attribute(s) but got "
+             << region_attrs.size();
+    }
+    if (failed(VerifyPreservedAttrs(op, region_attrs.getValue())))
+      return failure();
+  }
   return success();
 }
 
@@ -1164,19 +1275,21 @@ template <typename CaseLikeRegionOp>
 void GetCaseLikeRegionOpSuccessorRegions(
     CaseLikeRegionOp op, Optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
-  assert(index.hasValue() ||
+  assert(index.has_value() ||
          !operands.empty() && "case-like op expected at least 1 operand");
   // All branch regions branch back to the parent op.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
-    regions.emplace_back(&op.branches()[*branch_index]);
+    Region &region = op.branches()[*branch_index];
+    regions.emplace_back(&region, GetLoopRegionDataArgs(region));
   } else {
     // Unknown successor. Add all of them.
-    for (Region &branch : op.branches()) regions.emplace_back(&branch);
+    for (Region &branch : op.branches())
+      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
   }
 }
 
@@ -1227,6 +1340,9 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
   if (failed(VerifyLoopRegionArgs(op, op.cond_region())) ||
       failed(VerifyLoopRegionArgs(op, op.body_region())))
     return failure();
+  if (failed(VerifyPreservedAttrs(
+          op, {op.cond_region_attrsAttr(), op.body_region_attrsAttr()})))
+    return failure();
 
   return success();
 }
@@ -1272,27 +1388,17 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<RankedTensorType>();
-  if (!index || index.getRank() != 0 ||
-      !index.getElementType().isSignlessInteger(32)) {
-    return emitOpError("expected first body block argument to be tensor<i32>");
+  auto index = args.front().getType().dyn_cast<TensorType>();
+  if (!index || !index.getElementType().isSignlessInteger(32)) {
+    return emitOpError(
+        "expected first body block argument to be an i32 tensor");
   }
 
-  return VerifyLoopRegionArgs(*this, body_region());
+  if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();
+  return VerifyPreservedAttrs(*this, {region_attrsAttr()});
 }
 
-LogicalResult ForRegionOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  TypeRange arg_types =
-      ForRegionOp::Adaptor(operands, attributes).init().getTypes();
-  inferredReturnTypes.assign(arg_types.begin(), arg_types.end());
-  inferredReturnTypes.push_back(tf_type::ControlType::get(context));
-  return success();
-}
-
-OperandRange ForRegionOp::getSuccessorEntryOperands(unsigned index) {
+OperandRange ForRegionOp::getSuccessorEntryOperands(Optional<unsigned> index) {
   return init();
 }
 
@@ -1321,6 +1427,10 @@ BlockArgument ForRegionOp::getControlToken(Region &region, unsigned idx) {
   return GetLoopRegionControlTokens(region)[idx];
 }
 
+//===----------------------------------------------------------------------===//
+// Function Table
+//===----------------------------------------------------------------------===//
+
 FunctionTable::FunctionTable(ModuleOp module) {
   // Collect function names (to be used for disambiguating legacy call
   // behavior).
@@ -1329,21 +1439,29 @@ FunctionTable::FunctionTable(ModuleOp module) {
   }
 }
 
-bool FunctionTable::MaybeCall(Operation *op) {
-  if (functions.count(op->getName().stripDialect())) return true;
-  for (NamedAttribute named_attr : op->getAttrs()) {
-    // Treat any operation that references a FuncAttr as a call.
-    if (named_attr.getValue().isa<FuncAttr>()) return true;
-  }
-  return false;
+bool FunctionTable::MayBeCall(Operation *op) const {
+  if (IsLegacyCall(op)) return true;
+  // The operation might be a call if it references a symbol.
+  bool references_symbol = false;
+  op->getAttrDictionary().walkSubAttrs(
+      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  return references_symbol;
+}
+
+bool FunctionTable::IsLegacyCall(Operation *op) const {
+  // If the operation name refers to a function in the module, then it is
+  // guaranteed to be a legacy call. Otherwise, it is not.
+  return functions.count(op->getName().stripDialect());
 }
 
 }  // namespace tfg
 }  // namespace mlir
 
 //===----------------------------------------------------------------------===//
-// ODS Op Definitions
+// ODS Definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/core/ir/ops.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/core/ir/attributes.cc.inc"

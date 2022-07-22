@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/ir/interfaces.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
 namespace mlir {
 namespace tfg {
+
 LogicalResult ControlArgumentInterface::verifyRegion(Operation *op,
                                                      Region &region) {
   unsigned num_ctl = 0, num_data = 0;
@@ -35,6 +42,21 @@ LogicalResult ControlArgumentInterface::verifyRegion(Operation *op,
   }
   return success();
 }
+
+void StatefulMemoryEffectInterface::getEffects(
+    Operation *op,
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) const {
+  auto registry = dyn_cast<TensorFlowRegistryInterface>(op);
+  // If the registry interface is not available, conservatively assume stateful.
+  // Otherwise, add a write effect if the operation is known to be stateful.
+  // FIXME: Prevent ops in GraphOp being pruned. Remove this when GraphToFunc
+  // and FuncToGraph land.
+  if (!registry || registry.isStateful() || op->getParentOfType<GraphOp>()) {
+    effects.emplace_back(MemoryEffects::Write::get());
+  }
+}
+
 }  // namespace tfg
 }  // namespace mlir
 

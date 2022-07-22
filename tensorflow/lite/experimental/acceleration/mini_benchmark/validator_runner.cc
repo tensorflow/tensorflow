@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
-#include <fcntl.h>
-
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <sys/file.h>
@@ -25,13 +23,16 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -43,15 +44,13 @@ namespace acceleration {
 constexpr int kMaxAttempts = 2;
 constexpr int64_t ValidatorRunner::kDefaultEventTimeoutUs;
 
-using ::tflite::nnapi::NnApiSupportLibrary;
-
 ValidatorRunner::ValidatorRunner(const std::string& model_path,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
                                  const NnApiSLDriverImplFL5* nnapi_sl,
                                  const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
-    : model_path_(model_path),
+    : fd_or_model_path_(model_path),
       storage_path_(storage_path),
       data_directory_path_(data_directory_path),
       storage_(storage_path_, error_reporter),
@@ -66,44 +65,32 @@ ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
                                  const NnApiSLDriverImplFL5* nnapi_sl,
                                  const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
-    :
-#ifndef _WIN32
-      model_fd_(dup(model_fd)),
-#else   // _WIN32
-      model_fd_(-1),
-#endif  // !_WIN32
-      model_offset_(model_offset),
-      model_size_(model_size),
-      storage_path_(storage_path),
+    : storage_path_(storage_path),
       data_directory_path_(data_directory_path),
       storage_(storage_path_, error_reporter),
       validation_function_name_(validation_function_name),
       error_reporter_(error_reporter),
       nnapi_sl_(nnapi_sl) {
+  std::stringstream ss;
+  ss << "fd:" << model_fd << ":" << model_offset << ":" << model_size;
+  fd_or_model_path_ = ss.str();
 }
 
 MinibenchmarkStatus ValidatorRunner::Init() {
-  flatbuffers::FlatBufferBuilder fbb;
-  fbb.Finish(CreateComputeSettings(fbb, tflite::ExecutionPreference_ANY,
-                                   CreateTFLiteSettings(fbb)));
-  std::unique_ptr<Validator> check_validator;
-  // We are not configuring the validator to use the NNAPI Support Library
-  // even if specified since we just want to check that the model can be loaded
-  // from disk and we are not interacting with NNAPI.
-  if (!model_path_.empty()) {
-    check_validator = std::make_unique<Validator>(
-        model_path_,
-        flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
-  } else {
-    check_validator = std::make_unique<Validator>(
-        model_fd_, model_offset_, model_size_,
-        flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer()));
+  std::unique_ptr<ModelLoader> model_loader =
+      CreateModelLoaderFromPath(fd_or_model_path_);
+  if (!model_loader) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to parse model path %s",
+                         fd_or_model_path_.c_str());
+    return kMinibenchmarkPreconditionNotMet;
   }
-  MinibenchmarkStatus load_status =
-      check_validator->CheckModel(/* load_only */ true);
+
+  // Check that the model can be loaded from disk.
+  MinibenchmarkStatus load_status = model_loader->Init();
   if (load_status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Could not load model %s: %d",
-                         model_path_.c_str(), static_cast<int>(load_status));
+                         fd_or_model_path_.c_str(),
+                         static_cast<int>(load_status));
     return load_status;
   }
 
@@ -211,18 +198,9 @@ int ValidatorRunner::TriggerMissingValidation(
     return 0;
   }
 
-  std::string model_path;
-  if (!model_path_.empty()) {
-    model_path = model_path_;
-  } else {
-    std::stringstream ss;
-    ss << "fd:" << model_fd_ << ":" << model_offset_ << ":" << model_size_;
-    model_path = ss.str();
-  }
-
   // We purposefully detach the thread and have it own all the data. The
   // runner may potentially hang, so we can't wait for it to terminate.
-  std::thread detached_thread([model_path = model_path,
+  std::thread detached_thread([model_path = fd_or_model_path_,
                                storage_path = storage_path_,
                                data_directory_path = data_directory_path_,
                                to_be_run,

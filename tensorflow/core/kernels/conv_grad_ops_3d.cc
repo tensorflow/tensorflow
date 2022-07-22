@@ -16,6 +16,8 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <utility>
+
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -741,6 +743,10 @@ class Conv3DBackpropFilterOp : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32>(), &filter_shape));
     } else {
@@ -875,6 +881,10 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                   filter_sizes.vec<int32>(), &filter_shape));
     } else {
@@ -1302,7 +1312,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
       OP_REQUIRES_OK(
           context, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr,
-                                        k, a_ptr, k, &c_ptr, n));
+                                        k, a_ptr, k, &c_ptr, n,
+                                        se::blas::kDefaultComputePrecision));
       return;
     } else if (!is_grouped_convolution &&
                dims.filter_size(0) == dims.input_size(0) &&
@@ -1326,7 +1337,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
 
       OP_REQUIRES_OK(
           context, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr,
-                                        k, a_ptr, k, &c_ptr, n));
+                                        k, a_ptr, k, &c_ptr, n,
+                                        se::blas::kDefaultComputePrecision));
       return;
     }
 
@@ -1358,8 +1370,8 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
@@ -1482,7 +1494,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                        pre_transformed_in_backprop.template flat<T>().size());
 
     static int64_t ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 33);  // 8GB by default
 
     const int device_id = stream->parent()->device_ordinal();
     // To make sure the Conv3DBackpropInputV2 get the correct dtype, we infer
@@ -1512,7 +1524,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         input_desc, in_backprop_ptr, filter_desc, filter_ptr, conv_desc,
         output_desc, out_backprop_ptr, ConvolveBackwardDataScratchSize);
     OP_REQUIRES_OK(context, entry_or.status());
-    auto autotune_entry = entry_or.ConsumeValueOrDie();
+    auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
@@ -1638,6 +1650,10 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
+      OP_REQUIRES(context, TensorShapeUtils::IsVector(filter_sizes.shape()),
+                  errors::InvalidArgument(
+                      "filter_sizes shape must be rank 1 but is rank ",
+                      filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, tensor::MakeShape(filter_sizes, &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
@@ -1690,7 +1706,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       OP_REQUIRES_OK(context,
                      stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                           se::blas::Transpose::kTranspose, n, m,
-                                          k, a_ptr, n, b_ptr, m, &c_ptr, n));
+                                          k, a_ptr, n, b_ptr, m, &c_ptr, n,
+                                          se::blas::kDefaultComputePrecision));
       return;
     } else if (!is_grouped_convolution &&
                dims.filter_size(0) == dims.input_size(0) &&
@@ -1712,7 +1729,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       OP_REQUIRES_OK(context,
                      stream->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                                           se::blas::Transpose::kTranspose, n, m,
-                                          k, b_ptr, n, a_ptr, m, &c_ptr, n));
+                                          k, b_ptr, n, a_ptr, m, &c_ptr, n,
+                                          se::blas::kDefaultComputePrecision));
       return;
     }
 
@@ -1748,8 +1766,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         << ", " << padding_planes << ")";
 
 #if GOOGLE_CUDA
-    const bool compute_in_nhwc =
-        CUDNN_VERSION >= 8000 && DataTypeToEnum<T>::value == DT_HALF;
+    const bool compute_in_nhwc = ComputeInNhwcEnabled(
+        DataTypeToEnum<T>::value, stream, /*is_conv2d=*/false);
 #else
     // fast NDHWC implementation is a CUDA only feature
     const bool compute_in_nhwc = false;
@@ -1876,8 +1894,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         AsDeviceMemory(transformed_input.template flat<T>().data(),
                        transformed_input.template flat<T>().size());
 
-    static int64_t ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
-        "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
+    static int64_t ConvolveBackwardFilterScratchSize =
+        GetDnnWorkspaceLimitOrDefault();
 
     const int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
@@ -1905,7 +1923,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         input_desc, input_ptr, filter_desc, filter_backprop_ptr, conv_desc,
         output_desc, out_backprop_ptr, ConvolveBackwardFilterScratchSize);
     OP_REQUIRES_OK(context, entry_or.status());
-    auto autotune_entry = entry_or.ConsumeValueOrDie();
+    auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);

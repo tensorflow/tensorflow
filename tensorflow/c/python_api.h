@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 
 // These functions can be removed without notice. They exist to facilitate some
 // refactoring of graph construction code in the Python API.
@@ -36,6 +37,10 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 // completion.
 void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                TF_Status* status);
+
+// Sets the experimental_type` field in the node_def Protocol Buffer.
+void SetFullType(TF_Graph* graph, TF_Operation* op,
+                 const FullTypeDef& full_type);
 
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 

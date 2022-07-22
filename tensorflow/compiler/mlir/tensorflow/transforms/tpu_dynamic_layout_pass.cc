@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -55,8 +56,10 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 struct TPUDynamicLayoutPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TPUDynamicLayoutPass, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TPUDynamicLayoutPass)
+
   void runOnFunction(
-      FuncOp func,
+      func::FuncOp func,
       const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
 
   StringRef getArgument() const final { return "tf-tpu-dynamic-layout-pass"; }
@@ -90,7 +93,7 @@ bool IsSupportedInputOp(
   };
 
   // Check all generator aliases (ops or function argument) are on CPU.
-  FuncOp func = iterator_op->getParentOfType<FuncOp>();
+  func::FuncOp func = iterator_op->getParentOfType<func::FuncOp>();
   return llvm::all_of(aliases, [&](Value alias) {
     // Ignore non-generator aliases.
     if (!is_generator(alias)) return true;
@@ -258,7 +261,7 @@ void HandleCompileAndExecutes(
 }
 
 void TPUDynamicLayoutPass::runOnFunction(
-    FuncOp func,
+    func::FuncOp func,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   func.walk([&](TF::_TPUCompileMlirOp compile) {
     // Detect tf._TPUCompileMlir -> tf.TPUExecute(s).

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -44,10 +45,11 @@ llvm::SmallVector<mlir::OpOperand*> FindBufferForwardingCandidates(
     if (!alloc || !mlir::isa<mlir::memref::AllocOp>(alloc)) continue;
 
     // Find input users that are after linalg.generic operation in the block.
-    auto users = llvm::make_filter_range(alloc->getUsers(),
-                                         [&](mlir::Operation* user) -> bool {
-                                           return op->isBeforeInBlock(user);
-                                         });
+    auto users = llvm::make_filter_range(
+        alloc->getUsers(), [&](mlir::Operation* user) -> bool {
+          return user->getBlock() == op->getBlock() &&
+                 op->isBeforeInBlock(user);
+        });
 
     // Input buffer must have exactly one user after linalg.generic.
     llvm::SmallVector<mlir::Operation*> input_users(users.begin(), users.end());
@@ -99,7 +101,8 @@ struct LinalgTrivialBufferForwardingPattern
       // We cannot forward the buffer if there are any users before the
       // linalg.generic op in the block.
       if (llvm::any_of(alloc->getUsers(), [op](mlir::Operation* user) {
-            return user->isBeforeInBlock(op);
+            return user->getBlock() == op->getBlock() &&
+                   user->isBeforeInBlock(op);
           })) {
         continue;
       }
@@ -192,7 +195,7 @@ struct LinalgTrivialBufferForwardingPass
     : public LinalgTrivialBufferForwardingBase<
           LinalgTrivialBufferForwardingPass> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
@@ -204,7 +207,7 @@ struct LinalgTrivialBufferForwardingPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLinalgTrivialBufferForwardingPass() {
   return std::make_unique<LinalgTrivialBufferForwardingPass>();
 }

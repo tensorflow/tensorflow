@@ -143,6 +143,7 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
+# TODO(b/225045380): Move to a "leaf" library to use in trace_type.
 def is_namedtuple(instance, strict=False):
   """Returns True iff `instance` is a `namedtuple`.
 
@@ -168,6 +169,7 @@ _is_mutable_mapping = _pywrap_utils.IsMutableMapping
 _is_mapping = _pywrap_utils.IsMapping
 
 
+# TODO(b/225045380): Move to a "leaf" library to use in trace_type.
 @tf_export("__internal__.nest.is_attrs", v1=[])
 def is_attrs(obj):
   """Returns a true if its input is an instance of an attr.s decorated class."""
@@ -211,9 +213,10 @@ def _sequence_like(instance, args):
   elif _is_mapping(instance):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
-    tf_logging.log_first_n(
-        tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer"
-        " using MutableMapping for {}".format(instance_type), 1)
+    if not getattr(instance_type, "__supported_by_tf_nest__", False):
+      tf_logging.log_first_n(
+          tf_logging.WARN, "Mapping types may not work well with tf.nest. "
+          "Prefer using MutableMapping for {}".format(instance_type), 1)
     try:
       return instance_type((key, result[key]) for key in instance)
     except TypeError as err:

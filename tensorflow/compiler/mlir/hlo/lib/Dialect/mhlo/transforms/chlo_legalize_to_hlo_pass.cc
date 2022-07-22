@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
@@ -32,12 +32,12 @@ namespace {
 
 struct ChloLegalizeToHloPass
     : public ChloLegalizeToHloPassBase<ChloLegalizeToHloPass> {
-  explicit ChloLegalizeToHloPass(bool legalize_broadcasts,
-                                 bool expand_compositions)
+  explicit ChloLegalizeToHloPass(bool legalizeBroadcasts,
+                                 bool expandCompositions)
       : ChloLegalizeToHloPassBase<
             ChloLegalizeToHloPass>::ChloLegalizeToHloPassBase() {
-    this->legalize_broadcasts_ = legalize_broadcasts;
-    this->expand_compositions_ = expand_compositions;
+    this->legalize_broadcasts_ = legalizeBroadcasts;
+    this->expand_compositions_ = expandCompositions;
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -47,7 +47,7 @@ struct ChloLegalizeToHloPass
   void runOnOperation() override {
     ConversionTarget conversionTarget(getContext());
     RewritePatternSet conversionPatterns(&getContext());
-    conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
+    conversionTarget.addIllegalDialect<chlo::ChloDialect>();
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
@@ -58,12 +58,12 @@ struct ChloLegalizeToHloPass
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 
     if (legalize_broadcasts_) {
-      chlo::PopulateChloBroadcastingPatterns(&getContext(),
+      chlo::populateChloBroadcastingPatterns(&getContext(),
                                              &conversionPatterns);
     }
 
     if (expand_compositions_) {
-      chlo::PopulateDecomposeChloPatterns(&getContext(), &conversionPatterns);
+      chlo::populateDecomposeChloPatterns(&getContext(), &conversionPatterns);
     } else {
       conversionTarget
           .addLegalOp<chlo::NextAfterOp, chlo::PolygammaOp, chlo::ZetaOp>();
@@ -78,10 +78,10 @@ struct ChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createChloLegalizeToHloPass(
-    bool legalize_broadcasts, bool expand_compositions) {
-  return std::make_unique<ChloLegalizeToHloPass>(legalize_broadcasts,
-                                                 expand_compositions);
+std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
+    bool legalizeBroadcasts, bool expandCompositions) {
+  return std::make_unique<ChloLegalizeToHloPass>(legalizeBroadcasts,
+                                                 expandCompositions);
 }
 
 }  // namespace mhlo

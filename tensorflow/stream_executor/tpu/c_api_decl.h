@@ -150,9 +150,6 @@ typedef struct SE_DeviceDescription {
   int cuda_compute_capability_major;
   int cuda_compute_capability_minor;
 
-  int rocm_amdgpu_isa_version;
-  char* rocm_amdgpu_gcn_arch_name;
-
   int numa_node;
   int core_count;
   bool ecc_enabled;
@@ -302,6 +299,9 @@ typedef struct XLA_HloModuleConfig {
   int64_t replica_count;
   int64_t num_partitions;
   bool use_spmd_partitioning;
+  bool use_auto_spmd_partitioning;
+  Int64List auto_spmd_partitioning_mesh_shape;
+  Int64List auto_spmd_partitioning_mesh_ids;
   TpuSerializedProto debug_options;
   bool has_static_device_assignment;
   TpuSerializedProto static_device_assignment;

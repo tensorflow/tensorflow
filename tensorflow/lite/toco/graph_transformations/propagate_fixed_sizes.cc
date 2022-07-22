@@ -371,7 +371,9 @@ void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_GE(input_shape.dimensions_count(), 1);
+  if (input_shape.dimensions_count() < 1) {
+    return;
+  }
 
   const auto& weights_array = model->GetArray(op->inputs[1]);
   // Yield until weights dims have been resolved.
@@ -1616,7 +1618,7 @@ void ProcessPackOperator(Model* model, PackOperator* op) {
 
     Shape shape = input_array.shape();
     if (!packed_shape) {
-      packed_shape.reset(new Shape(shape));
+      packed_shape = std::make_unique<Shape>(shape);
     } else {
       CHECK(*packed_shape == shape) << "All input arrays to Pack operators "
                                        "must have the same shape. Input \""
@@ -1737,6 +1739,7 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
 
   std::vector<int> squeeze_dims;
   const int input_num_dims = input_dims.size();
+  squeeze_dims.reserve(op->squeeze_dims.size());
   for (int i : op->squeeze_dims) {
     squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
   }
@@ -2395,7 +2398,7 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
           static_cast<TensorFlowUnsupportedOperator*>(op);
       // Attribute can be not specified, ignore it.
       if (unsupported_op->output_shapes.size() < op->outputs.size()) {
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
       for (size_t i = 0; i < op->outputs.size(); ++i) {
         const std::string& output = op->outputs[i];
@@ -2489,10 +2492,10 @@ void ProcessScatterNdOperator(Model* model, ScatterNdOperator* op) {
       AddMessageF("Set shape of %s to [%s]", output,
                   absl::StrJoin(model->GetArray(output).shape().dims(), ","));
       *modified = true;
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

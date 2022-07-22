@@ -1,8 +1,6 @@
 # Description:
 #   Contains the Keras initializer API (internal TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
 package(
     default_visibility = ["//tensorflow/python/keras:__subpackages__"],
     licenses = ["notice"],
@@ -38,25 +36,5 @@ py_library(
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:tf_inspect",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-tf_py_test(
-    name = "initializers_test",
-    size = "small",
-    srcs = ["initializers_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":initializers",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:tf2",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:combinations",
-        "//tensorflow/python/keras:models",
-        "//tensorflow/python/keras/engine",
-        "//third_party/py/numpy",
     ],
 )

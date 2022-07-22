@@ -77,10 +77,10 @@ struct XlaArgument {
   Tensor constant_value;
 
   // The upper bounds of the value.
-  absl::optional<Tensor> value_bound;
+  std::optional<Tensor> value_bound;
 
   // Indicates whether each value is dynamic or constant.
-  absl::optional<Tensor> value_dynamism;
+  std::optional<Tensor> value_dynamism;
 
   // The name of this argument, used for debugging.
   string name;
@@ -125,7 +125,7 @@ struct XlaArgument {
   // When true, xla_compiler should input/output alias this arg to prevent
   // unnecessary HBM usage.
   bool requires_broadcast = false;
-  absl::optional<ManagedStackTrace> definition_stack_trace;
+  std::optional<ManagedStackTrace> definition_stack_trace;
 };
 
 // Returns true if any of `args` is an uninitialized resource variable.

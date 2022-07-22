@@ -848,8 +848,10 @@ def central_crop(image, central_fraction):
   """Crop the central region of the image(s).
 
   Remove the outer parts of an image but retain the central region of the image
-  along each dimension. If we specify central_fraction = 0.5, this function
-  returns the region marked with "X" in the below diagram.
+  along each dimension. If we specify `central_fraction = 0.5`, this function
+  returns the region marked with "X" in the below diagram. The larger the value
+  of `central_fraction`, the larger the dimension of the region to be cropped
+  and retained.
 
        --------
       |        |
@@ -1192,7 +1194,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   Raises:
     ValueError: `image` is not a 3-D or 4-D `Tensor`.
     ValueError: `offset_width < 0` or `offset_height < 0`.
-    ValueError: `target_width <= 0` or `target_width <= 0`.
+    ValueError: `target_width <= 0` or `target_height <= 0`.
     ValueError: `width < offset_width + target_width` or
       `height < offset_height + target_height`.
   """
@@ -2244,6 +2246,8 @@ def adjust_contrast(images, contrast_factor):
   channel and then adjusts each component `x` of each pixel to
   `(x - mean) * contrast_factor + mean`.
 
+  `contrast_factor` must be in the interval `(-inf, inf)`.
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
@@ -2790,12 +2794,12 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
   Usage Example:
 
-  >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],
-  ...     [[7.0, 8.0, 9.0],
-  ...       [10.0, 11.0, 12.0]]]
+  >>> x = tf.constant([[[1, 2, 3],
+  ...                   [4, 5, 6]],
+  ...                  [[7, 8, 9],
+  ...                   [10, 11, 12]]], dtype=tf.uint8)
   >>> tf.image.random_jpeg_quality(x, 75, 95)
-  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+  <tf.Tensor: shape=(2, 2, 3), dtype=uint8, numpy=...>
 
   For producing deterministic results given a `seed` value, use
   `tf.image.stateless_random_jpeg_quality`. Unlike using the `seed` param
@@ -2851,13 +2855,12 @@ def stateless_random_jpeg_quality(image,
 
   Usage Example:
 
-  >>> x = [[[1, 2, 3],
-  ...       [4, 5, 6]],
-  ...      [[7, 8, 9],
-  ...       [10, 11, 12]]]
-  >>> x_uint8 = tf.cast(x, tf.uint8)
+  >>> x = tf.constant([[[1, 2, 3],
+  ...                   [4, 5, 6]],
+  ...                  [[7, 8, 9],
+  ...                   [10, 11, 12]]], dtype=tf.uint8)
   >>> seed = (1, 2)
-  >>> tf.image.stateless_random_jpeg_quality(x_uint8, 75, 95, seed)
+  >>> tf.image.stateless_random_jpeg_quality(x, 75, 95, seed)
   <tf.Tensor: shape=(2, 2, 3), dtype=uint8, numpy=
   array([[[ 0,  4,  5],
           [ 1,  5,  6]],
@@ -2901,7 +2904,21 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   `jpeg_quality` must be in the interval `[0, 100]`.
 
-  Usage Example:
+  Usage Examples:
+
+  >>> x = [[[0.01, 0.02, 0.03],
+  ...       [0.04, 0.05, 0.06]],
+  ...      [[0.07, 0.08, 0.09],
+  ...       [0.10, 0.11, 0.12]]]
+  >>> x_jpeg = tf.image.adjust_jpeg_quality(x, 75)
+  >>> x_jpeg.numpy()
+  array([[[0.00392157, 0.01960784, 0.03137255],
+          [0.02745098, 0.04313726, 0.05490196]],
+         [[0.05882353, 0.07450981, 0.08627451],
+          [0.08235294, 0.09803922, 0.10980393]]], dtype=float32)
+
+  Note that floating point values are expected to have values in the range
+  [0,1) and values outside this range are clipped.
 
   >>> x = [[[1.0, 2.0, 3.0],
   ...       [4.0, 5.0, 6.0]],
@@ -2913,6 +2930,19 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
           [1., 1., 1.]],
          [[1., 1., 1.],
           [1., 1., 1.]]], dtype=float32)>
+
+  Note that `jpeg_quality` 100 is still lossy compresson.
+
+  >>> x = tf.constant([[[1, 2, 3],
+  ...                   [4, 5, 6]],
+  ...                  [[7, 8, 9],
+  ...                   [10, 11, 12]]], dtype=tf.uint8)
+  >>> tf.image.adjust_jpeg_quality(x, 100)
+  <tf.Tensor: shape(2, 2, 3), dtype=uint8, numpy=
+  array([[[ 0,  1,  3],
+          [ 3,  4,  6]],
+         [[ 6,  7,  9],
+          [ 9, 10, 12]]], dtype=uint8)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -3057,6 +3087,8 @@ def adjust_saturation(image, saturation_factor, name=None):
   `image` is an RGB image or images.  The image saturation is adjusted by
   converting the images to HSV and multiplying the saturation (S) channel by
   `saturation_factor` and clipping. The images are then converted back to RGB.
+
+  `saturation_factor` must be in the interval `[0, inf)`.
 
   Usage Example:
 

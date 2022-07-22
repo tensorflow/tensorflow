@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Interface to TensorFlow Lite model interpreter, excluding experimental methods.
@@ -86,9 +87,11 @@ import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 public interface InterpreterApi extends AutoCloseable {
 
   /** An options class for controlling runtime interpreter behavior. */
-  public static class Options {
+  class Options {
+
     public Options() {
       this.delegates = new ArrayList<>();
+      this.delegateFactories = new ArrayList<>();
     }
 
     public Options(Options other) {
@@ -96,6 +99,7 @@ public interface InterpreterApi extends AutoCloseable {
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
       this.delegates = new ArrayList<>(other.delegates);
+      this.delegateFactories = new ArrayList<>(other.delegateFactories);
       this.runtime = other.runtime;
     }
 
@@ -166,22 +170,57 @@ public interface InterpreterApi extends AutoCloseable {
       return allowCancellation != null && allowCancellation;
     }
 
-    /** Adds a {@link Delegate} to be applied during interpreter creation. */
+    /**
+     * Adds a {@link Delegate} to be applied during interpreter creation.
+     *
+     * <p>Delegates added here are applied before any delegates created from a {@link
+     * DelegateFactory} that was added with {@link #addDelegateFactory}.
+     *
+     * <p>Note that TF Lite in Google Play Services (see {@link #setRuntime}) does not support
+     * external (developer-provided) delegates, and adding a {@link Delegate} other than {@link
+     * NnApiDelegate} here is not allowed when using TF Lite in Google Play Services.
+     */
     public Options addDelegate(Delegate delegate) {
       delegates.add(delegate);
       return this;
     }
 
     /**
-     * Returns the list of delegates intended to be applied during interpreter creation (that have
-     * been registered via {@code addDelegate}).
+     * Returns the list of delegates intended to be applied during interpreter creation that have
+     * been registered via {@code addDelegate}.
      */
     public List<Delegate> getDelegates() {
       return Collections.unmodifiableList(delegates);
     }
 
-    /** Enum to represent where to get the TensorFlow Lite runtime implementation from. */
-    public static enum TfLiteRuntime {
+    /**
+     * Adds a {@link DelegateFactory} which will be invoked to apply its created {@link Delegate}
+     * during interpreter creation.
+     *
+     * <p>Delegates from a delegated factory that was added here are applied after any delegates
+     * added with {@link #addDelegate}.
+     */
+    public Options addDelegateFactory(DelegateFactory delegateFactory) {
+      delegateFactories.add(delegateFactory);
+      return this;
+    }
+
+    /**
+     * Returns the list of delegate factories that have been registered via {@code
+     * addDelegateFactory}).
+     */
+    public List<DelegateFactory> getDelegateFactories() {
+      return Collections.unmodifiableList(delegateFactories);
+    }
+
+    /**
+     * Enum to represent where to get the TensorFlow Lite runtime implementation from.
+     *
+     * <p>The difference between this class and the RuntimeFlavor class: This class specifies a
+     * <em>preference</em> which runtime to use, whereas {@link RuntimeFlavor} specifies which exact
+     * runtime <em>is</em> being used.
+     */
+    public enum TfLiteRuntime {
       /**
        * Use a TF Lite runtime implementation that is linked into the application. If there is no
        * suitable TF Lite runtime implementation linked into the application, then attempting to
@@ -219,7 +258,7 @@ public interface InterpreterApi extends AutoCloseable {
        * coming from (e.g. middleware layers).
        */
       PREFER_SYSTEM_OVER_APPLICATION,
-    };
+    }
 
     /** Specify where to get the TF Lite runtime implementation from. */
     public Options setRuntime(TfLiteRuntime runtime) {
@@ -237,8 +276,10 @@ public interface InterpreterApi extends AutoCloseable {
     Boolean useNNAPI;
     Boolean allowCancellation;
 
-    // See InterpreterApi.Options#addDelegate(boolean).
+    // See InterpreterApi.Options#addDelegate.
     final List<Delegate> delegates;
+    // See InterpreterApi.Options#addDelegateFactory.
+    private final List<DelegateFactory> delegateFactories;
   }
 
   /**
@@ -251,7 +292,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     model.
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  public static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
+  static InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options) {
     TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
     InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(modelFile, options);
@@ -270,8 +311,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  public static InterpreterApi create(
-      @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
+  static InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
     TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
     InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(byteBuffer, options);
@@ -316,7 +356,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
    *     interrupted by {@code setCancelled(true)}.
    */
-  public void run(Object input, Object output);
+  void run(Object input, Object output);
 
   /**
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
@@ -357,7 +397,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code inputs} is null or empty, if {@code outputs} is
    *     null, or if an error occurs when running inference.
    */
-  public void runForMultipleInputsOutputs(
+  void runForMultipleInputsOutputs(
       Object @NonNull [] inputs, @NonNull Map<Integer, Object> outputs);
 
   /**
@@ -385,7 +425,7 @@ public interface InterpreterApi extends AutoCloseable {
    *
    * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
    */
-  public void allocateTensors();
+  void allocateTensors();
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -393,7 +433,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input.
    */
-  public void resizeInput(int idx, @NonNull int[] dims);
+  void resizeInput(int idx, @NonNull int[] dims);
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -405,10 +445,10 @@ public interface InterpreterApi extends AutoCloseable {
    *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
    */
-  public void resizeInput(int idx, @NonNull int[] dims, boolean strict);
+  void resizeInput(int idx, @NonNull int[] dims, boolean strict);
 
   /** Gets the number of input tensors. */
-  public int getInputTensorCount();
+  int getInputTensorCount();
 
   /**
    * Gets index of an input given the op name of the input.
@@ -416,7 +456,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any input in the model used
    *     to initialize the interpreter.
    */
-  public int getInputIndex(String opName);
+  int getInputIndex(String opName);
 
   /**
    * Gets the Tensor associated with the provided input index.
@@ -424,10 +464,10 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code inputIndex} is negative or is not smaller than the
    *     number of model inputs.
    */
-  public Tensor getInputTensor(int inputIndex);
+  Tensor getInputTensor(int inputIndex);
 
   /** Gets the number of output Tensors. */
-  public int getOutputTensorCount();
+  int getOutputTensorCount();
 
   /**
    * Gets index of an output given the op name of the output.
@@ -435,7 +475,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code opName} does not match any output in the model used
    *     to initialize the interpreter.
    */
-  public int getOutputIndex(String opName);
+  int getOutputIndex(String opName);
 
   /**
    * Gets the Tensor associated with the provided output index.
@@ -450,16 +490,16 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code outputIndex} is negative or is not smaller than the
    *     number of model outputs.
    */
-  public Tensor getOutputTensor(int outputIndex);
+  Tensor getOutputTensor(int outputIndex);
 
   /**
    * Returns native inference timing.
    *
    * @throws IllegalArgumentException if the model is not initialized by the interpreter.
    */
-  public Long getLastNativeInferenceDurationNanoseconds();
+  Long getLastNativeInferenceDurationNanoseconds();
 
   /** Release resources associated with the {@code InterpreterApi} instance. */
   @Override
-  public void close();
+  void close();
 }

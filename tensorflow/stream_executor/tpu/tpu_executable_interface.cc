@@ -42,7 +42,7 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
     if (transfer_stream && transfer_stream != stream) {
       stream->ThenWaitFor(transfer_stream);
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   } else {
     return transfer_manager->WriteTupleIndexTablesAsync(stream, result);
   }
@@ -76,7 +76,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
 
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          absl::optional<HloInputOutputAliasConfig::Alias> alias) {
+          std::optional<HloInputOutputAliasConfig::Alias> alias) {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
           const MaybeOwningDeviceMemory& original_input =
@@ -89,7 +89,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }));
 
   if (VLOG_IS_ON(3)) {
@@ -121,7 +121,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
                            result_index.ToString());
     }
 
-    absl::optional<HloInputOutputAliasConfig::Alias> alias =
+    std::optional<HloInputOutputAliasConfig::Alias> alias =
         alias_config.GetAliasedParameter(result_index);
     if (alias) {
       TF_RET_CHECK(alias->parameter_number < arguments->size());
@@ -204,7 +204,7 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
           run_options->run_options().host_to_device_stream()));
 
   // Address of the buffer in TPU memory that is being speculated.
-  absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
+  std::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
   if (hlo_module_) {
     for (const auto& prefetch : hlo_module_->CrossProgramPrefetches()) {
       const auto& parameter = prefetch.first;

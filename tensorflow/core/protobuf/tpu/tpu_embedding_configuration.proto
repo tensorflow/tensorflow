@@ -132,3 +132,7 @@ message TPUEmbeddingConfiguration {
   reserved "output_layout";
   reserved 8;
 }
+
+// A placeholder message that is used to define a unique Status payload
+// URL for TPU embedding errors.
+message TPUEmbeddingError {}

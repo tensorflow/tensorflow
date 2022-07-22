@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tf-jitrt-tile-cwise %s | FileCheck %s
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
-func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %dim0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -16,7 +16,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %2 = math.tanh %arg1 : f32
     linalg.yield %2 : f32
   } -> tensor<?x?xf32>
-  return %1 : tensor<?x?xf32>
+  func.return %1 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @tanh_2d(
@@ -38,22 +38,22 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-SAME:          outs (%[[OUT_TENS:.*]] = %[[INIT]]: tensor<?x?xf32>) {
 // CHECK:           %[[IN_SLICE:.*]] = tensor.extract_slice
 // CHECK-SAME:          %[[IN_TENS]]{{\[}}%[[ARG1]], %[[ARG2]]]
-// CHECK-SAME:          {{\[}}%[[C1]], %{{.*}}] [1, 1]
+// CHECK-SAME:          {{\[}}1, %{{.*}}] [1, 1]
 // CHECK:           %[[OUT_SLICE:.*]] = tensor.extract_slice
 // CHECK-SAME:          %[[OUT_TENS]]{{\[}}%[[ARG1]], %[[ARG2]]]
-// CHECK-SAME:          {{\[}}%[[C1]], %{{.*}}] [1, 1]
+// CHECK-SAME:          {{\[}}1, %{{.*}}] [1, 1]
 // CHECK:           %[[VECTOR_RESULT:.*]] = linalg.generic
 // CHECK-SAME:          {indexing_maps = [#map1, #map1],
 // CHECK-SAME:          iterator_types = ["parallel", "parallel"]}
-// CHECK-SAME:          ins(%[[IN_SLICE]] : tensor<?x?xf32>)
-// CHECK-SAME:          outs(%[[OUT_SLICE]] : tensor<?x?xf32>) {
+// CHECK-SAME:          ins(%[[IN_SLICE]] : tensor<1x?xf32>)
+// CHECK-SAME:          outs(%[[OUT_SLICE]] : tensor<1x?xf32>) {
 // CHECK-NEXT:        ^bb0(%[[SCALAR_INPUT:.*]]: f32, %[[VAL_20:.*]]: f32):
 // CHECK-NEXT:          %[[TANH_OUT:.*]] = math.tanh %[[SCALAR_INPUT]] : f32
 // CHECK-NEXT:          linalg.yield %[[TANH_OUT]] : f32
-// CHECK-NEXT:        } -> tensor<?x?xf32>
+// CHECK-NEXT:        } -> tensor<1x?xf32>
 // CHECK-NEXT:        %[[INSERT_RESULT:.*]] = tensor.insert_slice
 // CHECK-SAME:            %[[VAL_23:.*]] into %[[OUT_TENS]]
-// CHECK-SAME:            {{\[}}%[[ARG1]], %[[ARG2]]] [%[[C1]],
+// CHECK-SAME:            {{\[}}%[[ARG1]], %[[ARG2]]] [1,
 // CHECK-SAME:            %{{.*}}] [1, 1]
 // CHECK-NEXT:        gml_st.yield %[[INSERT_RESULT]] : tensor<?x?xf32>
 // CHECK-NEXT:      }

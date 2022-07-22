@@ -27,9 +27,11 @@ limitations under the License.
 #include <type_traits>
 #include <unordered_map>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -298,6 +300,15 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     return xla_state_.getOrCreate<T>(se);
   }
 
+  Stream* FindAllocatedStream(void* gpu_stream) override {
+    absl::MutexLock lock(&alive_gpu_streams_mu_);
+    auto it = alive_gpu_streams_.find(gpu_stream);
+    if (it == alive_gpu_streams_.end()) {
+      return nullptr;
+    }
+    return it->second;
+  }
+
  private:
   // Attempts to find a more specific version of the file indicated by
   // filename by looking for compute-capability-specific suffixed versions; i.e.
@@ -368,8 +379,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // On-device constants that can be shared between multiple executables. A
   // pointer for a given constant will expire when no executables require use
   // of that constant anymore.
-  using SHA256Digest = std::array<uint8_t, 32>;
-  std::map<const SHA256Digest, std::weak_ptr<DeviceMemoryBase>>
+  std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
@@ -412,6 +422,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   // Type erased XLA specific state attached to GpuExecutor.
   Object xla_state_;
+
+  absl::Mutex alive_gpu_streams_mu_;
+
+  // Lookup map for alive streams, from raw stream pointers.
+  absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
+      TF_GUARDED_BY(alive_gpu_streams_mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
 };

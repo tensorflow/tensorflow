@@ -51,11 +51,11 @@ class HloFunctionImporter {
  public:
   // Imports the given computation as a function in the given module. This also
   // imports any computations referred by instructions in this computation.
-  static Status ImportAsFunc(const xla::HloComputation& computation,
-                             mlir::ModuleOp module,
-                             std::unordered_map<const xla::HloComputation*,
-                                                mlir::FuncOp>* function_map,
-                             mlir::Builder* builder);
+  static Status ImportAsFunc(
+      const xla::HloComputation& computation, mlir::ModuleOp module,
+      std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
+          function_map,
+      mlir::Builder* builder, bool is_main);
 
   // Imports the given hlo computation to the specified region. If
   // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
@@ -134,7 +134,7 @@ class HloFunctionImporter {
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
-                                         mlir::FuncOp>* function_map,
+                                         mlir::func::FuncOp>* function_map,
                       mlir::Builder* builder)
       : context_(module.getContext()),
         module_(module),
@@ -147,7 +147,8 @@ class HloFunctionImporter {
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
-  StatusOr<mlir::FuncOp> ImportAsFunc(const xla::HloComputation& computation);
+  StatusOr<mlir::func::FuncOp> ImportAsFunc(
+      const xla::HloComputation& computation, bool is_main);
 
   // Imports the given computation in the specified region.
   tensorflow::Status ImportAsRegion(const HloComputation& computation,
@@ -210,17 +211,20 @@ class HloFunctionImporter {
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
-      llvm::ArrayRef<int64_t> op_dimensions);
+      absl::Span<const int64_t> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
+
+  // Converts Array ref of bools to a DenseIntElementsAttr of I1 type.
+  mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<bool> elements);
 
   // Converts Array ref to padding attribute. Input is a flattened list of
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
   // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(absl::optional<int64_t> channel_id);
+  mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
 
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
@@ -230,7 +234,8 @@ class HloFunctionImporter {
   mlir::Builder* builder_;
 
   // Mapping from HloComputation to the created MLIR function.
-  std::unordered_map<const xla::HloComputation*, mlir::FuncOp>* function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
+      function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
   std::unordered_map<const xla::HloInstruction*, mlir::Value>

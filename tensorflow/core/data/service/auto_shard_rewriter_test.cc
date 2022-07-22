@@ -47,9 +47,6 @@ using ::tensorflow::data::testing::RangeSquareDataset;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
-using ::testing::MakePolymorphicMatcher;
-using ::testing::MatchResultListener;
-using ::testing::PolymorphicMatcher;
 using ::testing::SizeIs;
 
 StatusOr<NodeDef> GetNode(const GraphDef& graph_def, absl::string_view name) {

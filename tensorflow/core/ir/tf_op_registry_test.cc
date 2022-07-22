@@ -36,11 +36,13 @@ namespace {
 void PrepareContext(MLIRContext *context) {
   DialectRegistry registry;
   registry.insert<TFGraphDialect>();
-  registry.addDialectInterface<TFGraphDialect, TensorFlowOpRegistryInterface>();
+  registry.addExtension(+[](mlir::MLIRContext *ctx, TFGraphDialect *dialect) {
+    dialect->addInterfaces<TensorFlowOpRegistryInterface>();
+  });
   context->appendDialectRegistry(registry);
 }
 
-TEST(TensorFlowOpRegistryInterface, TestStatelessFuncAndReturn) {
+TEST(TensorFlowOpRegistryInterface, TestIntrinsicOps) {
   MLIRContext context(MLIRContext::Threading::DISABLED);
   PrepareContext(&context);
 
@@ -49,13 +51,14 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessFuncAndReturn) {
       return(%arg) : tensor<i32>
     }
   )mlir";
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   auto func_op = cast<GraphFuncOp>(&module->front());
   auto ret_op = cast<ReturnOp>(func_op.body().front().getTerminator());
-  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*func_op).isStateful());
-  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*ret_op).isStateful());
+  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*func_op));
+  EXPECT_FALSE(dyn_cast<TensorFlowRegistryInterface>(*ret_op));
 }
 
 TEST(TensorFlowOpRegistryInterface, TestStatelessTFOps) {
@@ -68,7 +71,8 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessTFOps) {
       return(%Add) : tensor<i32>
     }
   )mlir";
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   Operation *add = &cast<GraphFuncOp>(&module->front()).body().front().front();
@@ -93,7 +97,8 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessAndStatefulRegionOps) {
   SmallVector<bool, 2> expected = {true, false};
   for (auto it : llvm::zip(prefixes, expected)) {
     std::string code = llvm::formatv(code_template, std::get<0>(it)).str();
-    OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+    OwningOpRef<ModuleOp> module =
+        mlir::parseSourceString<mlir::ModuleOp>(code, &context);
     ASSERT_TRUE(module);
 
     Operation *case_op =

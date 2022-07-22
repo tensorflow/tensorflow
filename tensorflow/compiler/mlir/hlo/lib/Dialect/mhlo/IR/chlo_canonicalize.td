@@ -26,5 +26,5 @@ def UnaryToBinaryEinsumEq : NativeCodeCall<
 // operand.
 def UnaryEinsumToEinsum : Pat<
   (HLO_UnaryEinsumOp $operand, $equation),
-  (HLO_EinsumOp (HLO_ConstOp (GetScalarOfType<1> $operand)),
+  (HLO_EinsumOp (HLO_ConstantOp (GetScalarOfType<1> $operand)),
                 $operand, (UnaryToBinaryEinsumEq $equation))>;

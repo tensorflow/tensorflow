@@ -25,8 +25,8 @@ limitations under the License.
 
 namespace xla {
 
-using absl::nullopt;
-using absl::optional;
+using std::nullopt;
+using std::optional;
 namespace m = match;
 
 // Finds and returns the non-constant operand in instr.

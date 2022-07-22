@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -30,14 +31,18 @@ namespace {
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::failure;
+using mlir::LogicalResult;
+using mlir::MLIRContext;
+using mlir::PatternRewriter;
+using mlir::RewritePatternSet;
 using mlir::success;
 using mlir::arith::ConstantIndexOp;
 using mlir::gml_st::LoopOp;
-using mlir::linalg::CodegenStrategy;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
+using mlir::vector::TransferWriteOp;
 
 // The upper limit for vectorization of untiled `linalg.fill`. If a tensor has a
 // static shape with more elements, then `linalg.fill` won't be vectorized. It
@@ -53,10 +58,10 @@ struct TransferReadOfOneDimExpandShape
   mlir::LogicalResult matchAndRewrite(
       TransferReadOp vector_read,
       mlir::PatternRewriter &rewriter) const override {
-    auto expand = vector_read.source().getDefiningOp<ExpandShapeOp>();
+    auto expand = vector_read.getSource().getDefiningOp<ExpandShapeOp>();
     if (!expand) return failure();
 
-    auto expand_src = expand.src();
+    auto expand_src = expand.getSrc();
     auto expand_src_type = expand.getSrcType();
     auto expand_dst_type = expand.getResultType();
     if (expand_src_type.getRank() != 1 || expand_dst_type.getRank() != 2)
@@ -78,13 +83,58 @@ struct TransferReadOfOneDimExpandShape
         mlir::VectorType::get(expand_src_type.getShape(),
                               expand_src_type.getElementType()),
         expand_src, mlir::ValueRange{zero}, mlir::AffineMapAttr::get(map),
-        vector_read.padding(),
+        vector_read.getPadding(),
         /*mask=*/mlir::Value(), rewriter.getBoolArrayAttr({true}));
     rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
         vector_read, vector_read.getType(), new_read);
     return success();
   }
 };
+
+template <typename OpTy>
+struct VectorizationPattern : public mlir::OpRewritePattern<OpTy> {
+  VectorizationPattern(MLIRContext *context,
+                       llvm::function_ref<bool(OpTy)> match_fn,
+                       mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<OpTy>(context, benefit), match_fn(match_fn) {}
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    if (!match_fn(op)) return failure();
+    return mlir::linalg::vectorize(rewriter, op);
+  }
+
+ private:
+  llvm::function_ref<bool(OpTy)> match_fn;
+};
+
+RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
+  RewritePatternSet patterns(ctx);
+  mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
+  mlir::vector::populateVectorReductionToContractPatterns(patterns);
+  patterns.add<mlir::linalg::LinalgCopyVTRForwardingPattern,
+               mlir::linalg::LinalgCopyVTWForwardingPattern>(ctx,
+                                                             /*benefit=*/2);
+  TransferReadOp::getCanonicalizationPatterns(patterns, ctx);
+  TransferWriteOp::getCanonicalizationPatterns(patterns, ctx);
+  return patterns;
+}
+
+bool isFillTiledOrSmall(FillOp fill) {
+  if (fill->getParentOfType<LoopOp>()) return true;
+
+  // Allow vectorization for static shapes with low number of elements.
+  auto output_type = fill.output().getType().cast<mlir::RankedTensorType>();
+  return output_type.hasStaticShape() &&
+         output_type.getNumElements() < kNumElementsThreshold;
+}
+
+bool isGenericOpTiledOrOneDimReduction(GenericOp generic) {
+  if (generic->getParentOfType<LoopOp>()) return true;
+
+  // Allow vectorization of 1D reductions.
+  return generic.getNumLoops() == 1 && generic.getNumReductionLoops() == 1;
+}
 
 struct VectorizeTiledOpsPass
     : public VectorizeTiledOpsBase<VectorizeTiledOpsPass> {
@@ -93,58 +143,21 @@ struct VectorizeTiledOpsPass
   }
 
   void runOnOperation() override {
-    auto funcOp = getOperation();
+    auto func = getOperation();
+    auto ctx = func.getContext();
 
-    // Vectorize linalg.fill and linalg.generic operations.
-    mlir::OpPassManager dynamicPM("builtin.func");
-    CodegenStrategy strategy;
-    strategy.vectorize(FillOp::getOperationName(), [](mlir::Operation *op) {
-      auto fill = mlir::dyn_cast<FillOp>(op);
-      if (!fill) return failure();
-
-      if (op->getParentOfType<LoopOp>()) return success();
-
-      // Allow vectorization for static shapes with low number of elements.
-      auto output_type = fill.output().getType().cast<mlir::RankedTensorType>();
-      if (output_type.hasStaticShape() &&
-          output_type.getNumElements() < kNumElementsThreshold)
-        return success();
-
-      return failure();
-    });
-
-    strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
-    if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
-
-    mlir::OpPassManager dynamicPM2("builtin.func");
-    CodegenStrategy strategy2;
-    strategy2.vectorize(GenericOp::getOperationName(), [](mlir::Operation *op) {
-      auto generic = mlir::dyn_cast<GenericOp>(op);
-      if (!generic) return failure();
-
-      if (op->getParentOfType<LoopOp>()) return success();
-
-      // Allow vectorization of 1D reductions.
-      return success(generic.getNumLoops() == 1 &&
-                     generic.getNumReductionLoops() == 1);
-    });
-
-    strategy2.configurePassPipeline(dynamicPM2, funcOp.getContext());
-    if (failed(runPipeline(dynamicPM2, funcOp))) return signalPassFailure();
-
-    // Vectorize padding.
-    mlir::RewritePatternSet patterns(funcOp.getContext());
-    mlir::linalg::populatePadOpVectorizationPatterns(patterns);
-    mlir::vector::populateVectorTransferPermutationMapLoweringPatterns(
-        patterns);
-    patterns.add<TransferReadOfOneDimExpandShape>(funcOp.getContext());
-    (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+    RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
+    patterns.add<TransferReadOfOneDimExpandShape>(func.getContext());
+    patterns.add<VectorizationPattern<FillOp>>(ctx, isFillTiledOrSmall);
+    patterns.add<VectorizationPattern<GenericOp>>(
+        ctx, isGenericOpTiledOrOneDimReduction);
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVectorizeTiledOpsPass() {
   return std::make_unique<VectorizeTiledOpsPass>();
 }

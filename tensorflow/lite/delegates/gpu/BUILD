@@ -73,6 +73,7 @@ objc_library(
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
     copts = ["-std=c++17"],
+    features = ["-layering_check"],
     module_name = "TensorFlowLiteCMetal",
     sdk_frameworks = ["Metal"],
     deps = [
@@ -103,9 +104,7 @@ objc_library(
     hdrs = ["metal_delegate_internal.h"],
     copts = ["-std=c++17"],
     sdk_frameworks = ["Metal"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu:metal_delegate",
-    ],
+    deps = ["//tensorflow/lite/delegates/gpu:metal_delegate"],
     alwayslink = 1,
 )
 

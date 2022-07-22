@@ -15,12 +15,16 @@
 """Tests for lookup ops."""
 import os
 import tempfile
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.checkpoint import checkpoint as trackable
+from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
@@ -46,11 +50,10 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import save as saved_model_save
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util as trackable
 from tensorflow.python.util import compat
 
 
@@ -598,7 +601,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     default_value = -1
     keys = constant_op.constant([11, 12, 13], dtypes.int64)
@@ -1265,9 +1268,8 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
             vocab_file, vocab_size=vocab_size),
         oov_buckets,
         experimental_is_anonymous=is_anonymous)
-    object_graph_view = graph_view.ObjectGraphView(table)
-    objects = object_graph_view.list_objects()
-    assets = list(filter(lambda obj: isinstance(obj, tracking.Asset), objects))
+    objects = checkpoint_util.list_objects(graph_view.ObjectGraphView(table))
+    assets = list(filter(lambda obj: isinstance(obj, asset.Asset), objects))
     self.assertLen(assets, 1)
     self.assertEqual(
         self.evaluate(assets[0].asset_path), compat.as_bytes(vocab_file))
@@ -1445,7 +1447,7 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     vocab_file = self._createVocabFile("feat_to_id_3.txt", ("11", "12", "13"))
     vocab_size = 3
@@ -2029,7 +2031,7 @@ class DenseHashTableOpTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     default_value = -1
     empty_key = 0
@@ -3354,6 +3356,31 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
     self.assertAllEqual([0, 1, 2], sorted_values)
 
+  # TODO(https://github.com/tensorflow/tensorflow/issues/24439): remove exepectedFailure when fixed
+  @unittest.expectedFailure
+  @test_util.run_v2_only
+  def testImportedHashTable(self, is_anonymous):
+    g = ops.Graph()
+    with g.as_default():
+      default_val = -1
+      keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
+      values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+      table = lookup_ops.MutableHashTable(
+          dtypes.string,
+          dtypes.int64,
+          default_val,
+          experimental_is_anonymous=is_anonymous)
+      self.evaluate(table.insert(keys, values))
+      op = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
+      meta_graph = saver.export_meta_graph()
+
+    def f():
+      saver.import_meta_graph(meta_graph)
+      return ops.get_default_graph().get_tensor_by_name(op.name)
+
+    wrapped = wrap_function.wrap_function(f, [])
+    self.assertAllEqual([0, 1, -1], wrapped())
+
   @test_util.run_v1_only("SaverV1")
   def testSaveRestore(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
@@ -3559,7 +3586,7 @@ class MutableHashTableOpTest(test.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     default_value = -1
     keys = constant_op.constant([11, 12, 13], dtypes.int64)

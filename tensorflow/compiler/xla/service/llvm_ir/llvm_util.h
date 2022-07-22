@@ -112,13 +112,13 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name = "");
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
-// (1-dimensional array), equivalent to array[index]. The type is automatically
-// determined from the element type of the array.  The int64_t index overload
+// (1-dimensional array), equivalent to array[index]. The element type of the
+// array must be explicitly passed in.  The int64_t index overload
 // wraps the index in a i64 llvm::Value.
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* b);
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64_t index,
-                                   llvm::IRBuilder<>* b);
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   llvm::Value* index, llvm::IRBuilder<>* b);
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   int64_t index, llvm::IRBuilder<>* b);
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,

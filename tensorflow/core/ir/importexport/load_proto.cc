@@ -32,7 +32,7 @@ inline llvm::StringRef StringViewToRef(absl::string_view view) {
 
 Status LoadProtoFromBuffer(absl::string_view input, protobuf::Message* proto) {
   // Attempt to parse as text.
-  if (mlir::tfg::ParseTextProto(input, "", proto).ok()) return Status::OK();
+  if (mlir::tfg::ParseTextProto(input, "", proto).ok()) return OkStatus();
 
   // Else attempt to parse as binary.
   return LoadProtoFromBuffer(input, static_cast<protobuf::MessageLite*>(proto));
@@ -42,7 +42,7 @@ Status LoadProtoFromBuffer(absl::string_view input,
                            protobuf::MessageLite* proto) {
   // Attempt to parse as binary.
   protobuf::io::ArrayInputStream binary_stream(input.data(), input.size());
-  if (proto->ParseFromZeroCopyStream(&binary_stream)) return Status::OK();
+  if (proto->ParseFromZeroCopyStream(&binary_stream)) return OkStatus();
 
   LOG(ERROR) << "Error parsing Protobuf";
   return errors::InvalidArgument("Could not parse input proto");

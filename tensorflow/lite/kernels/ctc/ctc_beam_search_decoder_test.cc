@@ -99,7 +99,7 @@ TEST(CTCBeamSearchTest, SimpleTest) {
   m.PopulateTensor<float>(m.inputs(),
                           {-0.50922557, -1.35512652, -2.55445064, -1.58419356});
   m.PopulateTensor<int>(m.sequence_length(), {2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Make sure the output shapes are right.
   const std::vector<std::vector<int>>& output_shapes = m.GetOutputShapes();
@@ -131,7 +131,7 @@ TEST(CTCBeamSearchTest, MultiBatchTest) {
        -0.2065197,  -0.18725838, -1.42770405, -0.86051965, -1.61642301,
        -2.07275114, -0.9201845});
   m.PopulateTensor<int>(m.sequence_length(), {3, 3, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Make sure the output shapes are right.
   const std::vector<std::vector<int>>& output_shapes = m.GetOutputShapes();
@@ -163,7 +163,7 @@ TEST(CTCBeamSearchTest, MultiPathsTest) {
        -0.31328673, -0.27462716, -0.65975336, -1.53671973, -2.76554225,
        -0.23920634, -1.2370502,  -4.98751576, -3.12995717, -0.43129368});
   m.PopulateTensor<int>(m.sequence_length(), {3, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Make sure the output shapes are right.
   const std::vector<std::vector<int>>& output_shapes = m.GetOutputShapes();
@@ -204,7 +204,7 @@ TEST(CTCBeamSearchTest, NonEqualSequencesTest) {
        -1.66337589, -0.70800793, -2.52272352, -0.67329562, -2.49145522,
        -0.49786342});
   m.PopulateTensor<int>(m.sequence_length(), {1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Make sure the output shapes are right.
   const std::vector<std::vector<int>>& output_shapes = m.GetOutputShapes();

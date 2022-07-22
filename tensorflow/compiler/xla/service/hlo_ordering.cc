@@ -430,15 +430,10 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     return false;
   }
 
-  if (a.instruction()->parent() == b.instruction()->parent()) {
-    for (const HloPosition& position : a.positions()) {
-      if (position.instruction ==
-          a.instruction()->parent()->root_instruction()) {
-        VLOG(4) << a << " is live out of computation and defined before " << b
-                << " which is in same computation";
-        return false;
-      }
-    }
+  if (a.IsRootOf(b.instruction()->parent())) {
+    VLOG(4) << a << " is live out of computation and defined before " << b
+            << " which is in same computation";
+    return false;
   }
 
   return true;

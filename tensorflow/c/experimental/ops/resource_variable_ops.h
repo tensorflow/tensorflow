@@ -24,26 +24,34 @@ limitations under the License.
 namespace tensorflow {
 namespace ops {
 
+// Creates a handle to a Variable resource.
 Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
                    DataType dtype, const PartialTensorShape shape,
                    const char* container = "", const char* shared_name = "",
                    absl::Span<string const> allowed_devices = {},
-                   const char* name = nullptr);
+                   const char* name = nullptr,
+                   const char* raw_device_name = nullptr);
 
+// Reads the value of a variable.
 Status ReadVariableOp(AbstractContext* ctx,
                       AbstractTensorHandle* const resource,
                       AbstractTensorHandle** value, DataType dtype,
-                      const char* name = nullptr);
+                      const char* name = nullptr,
+                      const char* raw_device_name = nullptr);
 
+// Assigns a new value to a variable.
 Status AssignVariableOp(AbstractContext* ctx,
                         AbstractTensorHandle* const resource,
                         AbstractTensorHandle* const value,
-                        const char* name = nullptr);
+                        bool validate_shape = false, const char* name = nullptr,
+                        const char* raw_device_name = nullptr);
 
+// Deletes the resource specified by the handle.
 Status DestroyResourceOp(AbstractContext* ctx,
                          AbstractTensorHandle* const resource,
                          bool ignore_lookup_error = true,
-                         const char* name = nullptr);
+                         const char* name = nullptr,
+                         const char* raw_device_name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

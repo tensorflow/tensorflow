@@ -1,8 +1,8 @@
 // RUN: mlir-hlo-opt -test-print-userange -split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: Testing : func_empty
-func @func_empty() {
-  return
+func.func @func_empty() {
+  func.return
 }
 //      CHECK:  ---- UserangeAnalysis -----
 // CHECK-NEXT:  ---------------------------
@@ -10,7 +10,7 @@ func @func_empty() {
 // -----
 
 // CHECK-LABEL: Testing : useRangeGap
-func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
@@ -24,7 +24,7 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
   "lmhlo.negate"(%arg2, %1) : (memref<2xf32>, memref<2xf32>) -> ()
   cf.br ^bb3
 ^bb3:
-  return
+  func.return
 }
 //      CHECK:  Value: %0 {{ *}}
 // CHECK-NEXT:  Userange: {(7, 7), (13, 13)}
@@ -34,7 +34,7 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 // -----
 
 // CHECK-LABEL: Testing : loopWithNestedRegion
-func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
@@ -55,7 +55,7 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
 ^bb3:
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %3) : (memref<2xf32>, memref<2xf32>) -> ()
-  return
+  func.return
 }
 //      CHECK:  Value: %0 {{ *}}
 // CHECK-NEXT:  Userange: {(11, 23)}
@@ -71,7 +71,7 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
 // -----
 
 // CHECK-LABEL: Testing : condBranchWithAlias
-func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   cf.cond_br %arg0, ^bb1, ^bb2
@@ -91,7 +91,7 @@ func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
   cf.br ^bb4(%0 : memref<2xf32>)
 ^bb4(%5 : memref<2xf32>):
   "lmhlo.copy"(%5, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
-  return
+  func.return
 }
 //      CHECK:  Value: %0 {{ *}}
 // CHECK-NEXT:  Userange: {(5, 7), (15, 27)}

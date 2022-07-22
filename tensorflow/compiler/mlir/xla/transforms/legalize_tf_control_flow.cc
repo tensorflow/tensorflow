@@ -95,21 +95,21 @@ void ReplaceBlockArgumentsWithImplicitOperands(
 // `tuple_arg` allows any branch that requires additional arguments to have
 // their values be tupled together. Similarly, `tuple_return` allows the results
 // of the if/while operation to be tupled together.
-void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
+void ImportXlaRegion(mlir::func::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true, bool tuple_arg = true) {
   OpBuilder builder(dest_region);
 
   auto entry_block = builder.createBlock(dest_region);
   func::CallOp result;
   if (!tuple_arg) {
-    auto inputs = func.getType().getInputs();
+    auto inputs = func.getFunctionType().getInputs();
     auto args = entry_block->addArguments(
         inputs, SmallVector<Location>(inputs.size(), loc));
     ArrayRef<Value> callop_args(args.begin(), args.end());
     result = builder.create<func::CallOp>(loc, func, callop_args);
   } else {
     auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getType().getInputs()), loc);
+        builder.getTupleType(func.getFunctionType().getInputs()), loc);
     llvm::SmallVector<Value, 4> detupled_args;
     detupled_args.reserve(func.getNumArguments());
 
@@ -166,7 +166,7 @@ void LowerCase(TF::CaseOp op) {
 
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.num_branches(); ++i) {
-    mlir::FuncOp branch_func = op.branch_function(i);
+    mlir::func::FuncOp branch_func = op.branch_function(i);
     ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
                     /*tuple_return=*/false, /*tuple_arg=*/false);
   }

@@ -38,10 +38,10 @@ constexpr absl::string_view kTPUEmbeddingOps[] = {
     "EnqueueTPUEmbeddingArbitraryTensorBatch"};
 
 constexpr absl::string_view kTPURecvOps[] = {"RecvTPUEmbeddingActivations",
-                                             "_RecvTPUEmbeddingActivations"};
+                                             "XlaRecvTPUEmbeddingActivations"};
 
 constexpr absl::string_view kTPUGradientSendOps[] = {
-  "SendTPUEmbeddingGradients", "_SendTPUEmbeddingGradients"};
+    "SendTPUEmbeddingGradients", "XlaSendTPUEmbeddingGradients"};
 
 }  // namespace
 
@@ -59,7 +59,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   options.device_set->FindMatchingDevices(tpu_device_spec, &tpu_devices);
   if (tpu_devices.empty()) {
     // If there are no TPUs don't run this pass.
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RET_CHECK(options.graph != nullptr);
@@ -74,7 +74,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
 
   // Only run if there are embedding nodes.
   if (embedding_nodes.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   DeviceNameUtils::ParsedName single_tpu_device_spec =
@@ -105,7 +105,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   }
 
   VLOG(1) << "UpdateTPUEmbeddingEnqueueOrdinalPass::Run() finished";
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename A, typename N>
@@ -142,7 +142,7 @@ Status UpdateMapsForModeOverride(
       (*enqueue_op)[layer_call_index] = node_identifier;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename M, typename N>
@@ -166,7 +166,7 @@ Status ComputeEnqueueTrainingStatus(
     // for this
     (*enqueue)[node.second] = send_exists;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Get the enqueue ops and their status (training or eval) from a graph.
@@ -211,7 +211,7 @@ Status UpdateTPUEmbeddingModePass::UpdateGraphEnqueueOp(bool training,
     graph->RemoveEdge(select_edge);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Get the enqueue ops and their status (training or eval) from a function def.
@@ -273,7 +273,7 @@ Status UpdateTPUEmbeddingModePass::UpdateFunctionDefEnqueueOp(
     *updated = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UpdateTPUEmbeddingModePass::Run(
@@ -323,7 +323,7 @@ Status UpdateTPUEmbeddingModePass::Run(
   }
 
   VLOG(1) << "UpdateTPUEmbeddingModePass::Run() finished";
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

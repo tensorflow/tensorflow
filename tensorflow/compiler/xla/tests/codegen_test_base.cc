@@ -32,7 +32,7 @@ StatusOr<std::unique_ptr<AotCompilationResult>>
 CodegenTestBase::CompileToAotCompilationResult(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& options) {
-  auto module_group = absl::make_unique<HloModuleGroup>(std::move(hlo_module));
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> results,
       backend().compiler()->CompileAheadOfTime(std::move(module_group),

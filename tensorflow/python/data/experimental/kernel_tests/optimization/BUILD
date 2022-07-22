@@ -116,6 +116,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "filter_parallelization_test",
+    size = "medium",
+    srcs = ["filter_parallelization_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "make_deterministic_test",
     size = "small",
     srcs = ["make_deterministic_test.py"],

@@ -63,7 +63,9 @@ absl::Status TensorBHWCTest(const BHWC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
+  TensorDescriptor descriptor_with_shape = descriptor;
+  descriptor_with_shape.SetBHWCShape(shape);
+  RETURN_IF_ERROR(CreateTensor(env->context(), descriptor_with_shape, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
@@ -127,7 +129,9 @@ absl::Status TensorBHWDCTest(const BHWDC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
+  TensorDescriptor descriptor_with_shape = descriptor;
+  descriptor_with_shape.SetBHWDCShape(shape);
+  RETURN_IF_ERROR(CreateTensor(env->context(), descriptor_with_shape, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
@@ -253,6 +257,11 @@ TEST_F(OpenCLTest, BufferUint8) {
                                          TensorStorageType::BUFFER, &env_));
 }
 
+TEST_F(OpenCLTest, BufferBool) {
+  ASSERT_OK(TensorTests<DataType::BOOL>(DataType::BOOL,
+                                        TensorStorageType::BUFFER, &env_));
+}
+
 TEST_F(OpenCLTest, Texture2DF32) {
   ASSERT_OK(TensorTests<DataType::FLOAT32>(
       DataType::FLOAT32, TensorStorageType::TEXTURE_2D, &env_));
@@ -290,6 +299,11 @@ TEST_F(OpenCLTest, Texture2DUint16) {
 
 TEST_F(OpenCLTest, Texture2DUint8) {
   ASSERT_OK(TensorTests<DataType::UINT8>(DataType::UINT8,
+                                         TensorStorageType::TEXTURE_2D, &env_));
+}
+
+TEST_F(OpenCLTest, Texture2DBool) {
+  ASSERT_OK(TensorTests<DataType::UINT8>(DataType::BOOL,
                                          TensorStorageType::TEXTURE_2D, &env_));
 }
 
@@ -333,6 +347,11 @@ TEST_F(OpenCLTest, Texture3DUint8) {
                                          TensorStorageType::TEXTURE_3D, &env_));
 }
 
+TEST_F(OpenCLTest, Texture3DBool) {
+  ASSERT_OK(TensorTests<DataType::BOOL>(DataType::BOOL,
+                                        TensorStorageType::TEXTURE_3D, &env_));
+}
+
 TEST_F(OpenCLTest, TextureArrayF32) {
   ASSERT_OK(TensorTests<DataType::FLOAT32>(
       DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY, &env_));
@@ -373,6 +392,11 @@ TEST_F(OpenCLTest, TextureArrayUint8) {
       DataType::UINT8, TensorStorageType::TEXTURE_ARRAY, &env_));
 }
 
+TEST_F(OpenCLTest, TextureArrayBool) {
+  ASSERT_OK(TensorTests<DataType::BOOL>(
+      DataType::BOOL, TensorStorageType::TEXTURE_ARRAY, &env_));
+}
+
 TEST_F(OpenCLTest, ImageBufferF32) {
   ASSERT_OK(TensorTests<DataType::FLOAT32>(
       DataType::FLOAT32, TensorStorageType::IMAGE_BUFFER, &env_));
@@ -411,6 +435,11 @@ TEST_F(OpenCLTest, ImageBufferUint16) {
 TEST_F(OpenCLTest, ImageBufferUint8) {
   ASSERT_OK(TensorTests<DataType::UINT8>(
       DataType::UINT8, TensorStorageType::IMAGE_BUFFER, &env_));
+}
+
+TEST_F(OpenCLTest, ImageBufferBool) {
+  ASSERT_OK(TensorTests<DataType::BOOL>(
+      DataType::BOOL, TensorStorageType::IMAGE_BUFFER, &env_));
 }
 
 TEST_F(OpenCLTest, SingleTextureF32) {

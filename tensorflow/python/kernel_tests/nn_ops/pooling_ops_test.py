@@ -537,6 +537,18 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         expected=[],
         **kwargs)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRawAvgPoolLargeKsizeRaiseError(self):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      with self.cached_session():
+        t = gen_nn_ops.avg_pool(
+            value=np.ones([1, 1, 1, 1]),
+            ksize=[1, 1e20, 1, 1],
+            strides=[1, 1, 1, 1],
+            padding="SAME",
+            data_format="NHWC")
+        self.evaluate(t)
+
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, gen_nn_ops.max_pool_v2))
   @test_util.run_deprecated_v1
@@ -2469,6 +2481,22 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           gen_nn_ops.max_pool_grad_grad_with_argmax(
               inp, grad, argmax, ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1],
               padding="VALID")
+
+  def testAvgPoolGradInvalidInputShapeRaiseError(self):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      with self.cached_session():
+        orig_input_shape = constant_op.constant(
+            -536870912, shape=[4], dtype=dtypes.int32)
+        grad = constant_op.constant(
+            .0890338004362538, shape=[1, 5, 7, 1], dtype=dtypes.float64)
+        t = gen_nn_ops.AvgPoolGrad(
+            orig_input_shape=orig_input_shape,
+            grad=grad,
+            ksize=[1, 2, 2, 1],
+            strides=[1, 2, 2, 1],
+            padding="VALID",
+            data_format="NHWC")
+        self.evaluate(t)
 
 
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):

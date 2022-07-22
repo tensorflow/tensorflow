@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -43,10 +44,9 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
   // transferred from the device successfully.
   std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
       XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
-    XlaComputation computation = builder->Build().ConsumeValueOrDie();
+    XlaComputation computation = builder->Build().value();
     auto global_data =
-        client_->Execute(computation, arguments, &execution_options_)
-            .ConsumeValueOrDie();
+        client_->Execute(computation, arguments, &execution_options_).value();
     TF_CHECK_OK(client_->Transfer(*global_data).status());
     return global_data;
   }
@@ -63,7 +63,7 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
   EXPECT_TRUE(result_status.ok());
 
   // Try copying the elements back and comparing it
-  auto handles = result_status.ConsumeValueOrDie();
+  auto handles = std::move(result_status).value();
   Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
@@ -83,8 +83,8 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   auto result_status2 = client_->DeconstructTuple(*global_data);
   EXPECT_TRUE(result_status2.ok());
 
-  auto handles1 = result_status1.ConsumeValueOrDie();
-  auto handles2 = result_status2.ConsumeValueOrDie();
+  auto handles1 = std::move(result_status1).value();
+  auto handles2 = std::move(result_status2).value();
 
   Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
@@ -114,7 +114,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   // Verify the returned GlobalDataHandle arrays have repeated elements like the
   // tuple does. That is, in the returned vector of handles, handle[0] should be
   // the same as handle[3] and handle[1] should be the same as handle[2].
-  auto handles = result_status.ConsumeValueOrDie();
+  auto handles = std::move(result_status).value();
 
   Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
@@ -136,7 +136,7 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_TRUE(result_status.ok());
-  auto handles = result_status.ConsumeValueOrDie();
+  auto handles = std::move(result_status).value();
 
   // Deallocate the tuple, then try copying the elements back. The elements
   // should not have been deallocated because of reference counting.
@@ -172,14 +172,14 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).value();
   auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
   Tuple(&builder, {p});
   auto global_data = ExecuteAndCheckTransfer(&builder, {param0_data.get()});
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_TRUE(result_status.ok());
-  auto handles = result_status.ConsumeValueOrDie();
+  auto handles = std::move(result_status).value();
   EXPECT_NE(handles[0]->handle().handle(), param0_data->handle().handle());
 }
 

@@ -1,7 +1,7 @@
-From 12c0db4e4d7d36137536885142ac226b526794a8 Mon Sep 17 00:00:00 2001
+From 681ce638cbf9a115054071d7549f10cb0d3e37ac Mon Sep 17 00:00:00 2001
 From: Kaixi Hou <kaixih@nvidia.com>
 Date: Tue, 4 May 2021 15:21:11 -0700
-Subject: [PATCH] Update headers path
+Subject: [PATCH] Update headers path to TF-compat
 
 ---
  include/cudnn_backend_base.h                | 2 +-
@@ -21,12 +21,12 @@ Subject: [PATCH] Update headers path
  14 files changed, 25 insertions(+), 25 deletions(-)
 
 diff --git a/include/cudnn_backend_base.h b/include/cudnn_backend_base.h
-index b07b336..3fb06a7 100644
+index 56d8bec..8ceb19c 100644
 --- a/include/cudnn_backend_base.h
 +++ b/include/cudnn_backend_base.h
-@@ -22,7 +22,7 @@
+@@ -24,7 +24,7 @@
  
- #pragma once
+ #include <ostream>
  
 -#include <cudnn.h>
 +#include "third_party/gpus/cudnn/cudnn.h"
@@ -34,7 +34,7 @@ index b07b336..3fb06a7 100644
  namespace cudnn_frontend {
  
 diff --git a/include/cudnn_frontend_ConvDesc.h b/include/cudnn_frontend_ConvDesc.h
-index 2bcf0bc..fa26dc7 100644
+index 871822b..115d542 100644
 --- a/include/cudnn_frontend_ConvDesc.h
 +++ b/include/cudnn_frontend_ConvDesc.h
 @@ -29,8 +29,8 @@
@@ -49,7 +49,7 @@ index 2bcf0bc..fa26dc7 100644
  #include "cudnn_frontend_utils.h"
  
 diff --git a/include/cudnn_frontend_Engine.h b/include/cudnn_frontend_Engine.h
-index 644a759..0e2f76b 100644
+index 83d3f80..a1b0301 100644
 --- a/include/cudnn_frontend_Engine.h
 +++ b/include/cudnn_frontend_Engine.h
 @@ -30,8 +30,8 @@
@@ -64,7 +64,7 @@ index 644a759..0e2f76b 100644
  #include "cudnn_frontend_OperationGraph.h"
  #include "cudnn_frontend_utils.h"
 diff --git a/include/cudnn_frontend_EngineConfig.h b/include/cudnn_frontend_EngineConfig.h
-index 3e37848..1980207 100644
+index a9cdb7f..0bb47ae 100644
 --- a/include/cudnn_frontend_EngineConfig.h
 +++ b/include/cudnn_frontend_EngineConfig.h
 @@ -29,8 +29,8 @@
@@ -79,7 +79,7 @@ index 3e37848..1980207 100644
  #include "cudnn_frontend_Engine.h"
  #include "cudnn_frontend_utils.h"
 diff --git a/include/cudnn_frontend_EngineFallbackList.h b/include/cudnn_frontend_EngineFallbackList.h
-index e7d918b..7298ef3 100644
+index 323106a..d90a1ea 100644
 --- a/include/cudnn_frontend_EngineFallbackList.h
 +++ b/include/cudnn_frontend_EngineFallbackList.h
 @@ -22,7 +22,7 @@
@@ -89,10 +89,10 @@ index e7d918b..7298ef3 100644
 -#include <cudnn.h>
 +#include "third_party/gpus/cudnn/cudnn.h"
  #include <numeric>
+ #include "cudnn_frontend_Heuristics.h"
  
- namespace cudnn_frontend {
 diff --git a/include/cudnn_frontend_ExecutionPlan.h b/include/cudnn_frontend_ExecutionPlan.h
-index 858e067..b10ee88 100644
+index 42fd09b..f4a294f 100644
 --- a/include/cudnn_frontend_ExecutionPlan.h
 +++ b/include/cudnn_frontend_ExecutionPlan.h
 @@ -29,8 +29,8 @@
@@ -120,12 +120,12 @@ index b244766..3e9273b 100644
  namespace cudnn_frontend {
  
 diff --git a/include/cudnn_frontend_Heuristics.h b/include/cudnn_frontend_Heuristics.h
-index 3f61156..ce040b7 100644
+index 3d0dacd..fec5e31 100644
 --- a/include/cudnn_frontend_Heuristics.h
 +++ b/include/cudnn_frontend_Heuristics.h
-@@ -24,8 +24,8 @@
- 
+@@ -25,8 +25,8 @@
  #include <vector>
+ #include <mutex>
  
 -#include <cudnn.h>
 -#include <cudnn_backend.h>
@@ -135,7 +135,7 @@ index 3f61156..ce040b7 100644
  #include "cudnn_frontend_OperationGraph.h"
  #include "cudnn_frontend_EngineConfig.h"
 diff --git a/include/cudnn_frontend_MatMulDesc.h b/include/cudnn_frontend_MatMulDesc.h
-index e416002..da2deb1 100644
+index 5f3161a..c357cc1 100644
 --- a/include/cudnn_frontend_MatMulDesc.h
 +++ b/include/cudnn_frontend_MatMulDesc.h
 @@ -29,8 +29,8 @@
@@ -150,7 +150,7 @@ index e416002..da2deb1 100644
  #include "cudnn_frontend_utils.h"
  
 diff --git a/include/cudnn_frontend_Operation.h b/include/cudnn_frontend_Operation.h
-index 15f9b7c..c4a4cbb 100644
+index 4d4e2dc..32fd1b1 100644
 --- a/include/cudnn_frontend_Operation.h
 +++ b/include/cudnn_frontend_Operation.h
 @@ -29,8 +29,8 @@
@@ -165,12 +165,12 @@ index 15f9b7c..c4a4cbb 100644
  #include "cudnn_frontend_ConvDesc.h"
  #include "cudnn_frontend_PointWiseDesc.h"
 diff --git a/include/cudnn_frontend_OperationGraph.h b/include/cudnn_frontend_OperationGraph.h
-index 75d58fb..3d7c3d1 100644
+index b240496..756f67e 100644
 --- a/include/cudnn_frontend_OperationGraph.h
 +++ b/include/cudnn_frontend_OperationGraph.h
-@@ -29,8 +29,8 @@
- #include <sstream>
+@@ -30,8 +30,8 @@
  #include <utility>
+ #include <vector>
  
 -#include <cudnn.h>
 -#include <cudnn_backend.h>
@@ -180,12 +180,12 @@ index 75d58fb..3d7c3d1 100644
  #include "cudnn_frontend_Operation.h"
  #include "cudnn_frontend_utils.h"
 diff --git a/include/cudnn_frontend_PointWiseDesc.h b/include/cudnn_frontend_PointWiseDesc.h
-index 050a15f..7c07589 100644
+index bf0ad54..869bbfd 100644
 --- a/include/cudnn_frontend_PointWiseDesc.h
 +++ b/include/cudnn_frontend_PointWiseDesc.h
-@@ -29,8 +29,8 @@
- #include <sstream>
+@@ -30,8 +30,8 @@
  #include <utility>
+ #include <limits>
  
 -#include <cudnn.h>
 -#include <cudnn_backend.h>
@@ -195,7 +195,7 @@ index 050a15f..7c07589 100644
  #include "cudnn_frontend_utils.h"
  
 diff --git a/include/cudnn_frontend_ReductionDesc.h b/include/cudnn_frontend_ReductionDesc.h
-index d4de814..8aa447d 100644
+index 046af46..f82a643 100644
 --- a/include/cudnn_frontend_ReductionDesc.h
 +++ b/include/cudnn_frontend_ReductionDesc.h
 @@ -29,8 +29,8 @@
@@ -210,7 +210,7 @@ index d4de814..8aa447d 100644
  #include "cudnn_frontend_utils.h"
  
 diff --git a/include/cudnn_frontend_VariantPack.h b/include/cudnn_frontend_VariantPack.h
-index ab2aab3..94aae89 100644
+index 0fe4f2f..41a2552 100644
 --- a/include/cudnn_frontend_VariantPack.h
 +++ b/include/cudnn_frontend_VariantPack.h
 @@ -30,8 +30,8 @@
@@ -225,5 +225,5 @@ index ab2aab3..94aae89 100644
  #include "cudnn_frontend_utils.h"
  
 -- 
-2.17.1
+2.25.1
 

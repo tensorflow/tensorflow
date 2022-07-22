@@ -102,10 +102,14 @@ PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterJVPFunction(PyObject* e);
 
+namespace tensorflow {
+
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
+
+}  // namespace tensorflow
 
 // Returns 0 if 'status' is ok. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via

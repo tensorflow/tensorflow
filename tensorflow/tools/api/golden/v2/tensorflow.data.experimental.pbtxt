@@ -121,6 +121,10 @@ tf_module {
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
+    name: "from_list"
+    argspec: "args=[\'elements\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "from_variant"
     argspec: "args=[\'variant\', \'structure\'], varargs=None, keywords=None, defaults=None"
   }

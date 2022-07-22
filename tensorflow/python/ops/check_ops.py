@@ -679,6 +679,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
 
 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x == y` holds element-wise.
@@ -714,6 +715,7 @@ def assert_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_equal', 'assert_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @_binary_assert_doc('==', '[1, 2]')
 def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -726,6 +728,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):  # p
 
 
 @tf_export('debugging.assert_none_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
   """Assert the condition `x != y` holds for all elements.
@@ -765,6 +768,7 @@ def assert_none_equal_v2(x, y, summarize=None, message=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_none_equal', 'assert_none_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_none_equal')
 @_binary_assert_doc('!=', '[2, 1]')
@@ -775,6 +779,7 @@ def assert_none_equal(
 
 
 @tf_export('debugging.assert_near', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
                    name=None):
@@ -829,6 +834,7 @@ def assert_near_v2(x, y, rtol=None, atol=None, message=None, summarize=None,
 
 
 @tf_export(v1=['debugging.assert_near', 'assert_near'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_near')
 def assert_near(
@@ -912,6 +918,7 @@ def assert_near(
 
 
 @tf_export('debugging.assert_less', 'assert_less', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_less_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x < y` holds element-wise.
@@ -948,6 +955,7 @@ def assert_less_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_less', 'assert_less'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @_binary_assert_doc('<', '[2, 3]')
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
@@ -956,6 +964,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_less_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x <= y` holds element-wise.
@@ -993,6 +1002,7 @@ def assert_less_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_less_equal', 'assert_less_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_less_equal')
 @_binary_assert_doc('<=', '[1, 3]')
@@ -1002,6 +1012,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
 
 
 @tf_export('debugging.assert_greater', 'assert_greater', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_greater_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x > y` holds element-wise.
@@ -1039,6 +1050,7 @@ def assert_greater_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_greater', 'assert_greater'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @_binary_assert_doc('>', '[0, 1]')
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  # pylint: disable=missing-docstring
@@ -1047,6 +1059,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):  #
 
 
 @tf_export('debugging.assert_greater_equal', v1=[])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
   """Assert the condition `x >= y` holds element-wise.
@@ -1085,6 +1098,7 @@ def assert_greater_equal_v2(x, y, message=None, summarize=None, name=None):
 
 
 @tf_export(v1=['debugging.assert_greater_equal', 'assert_greater_equal'])
+@dispatch.register_binary_elementwise_assert_api
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints('assert_greater_equal')
 @_binary_assert_doc('>=', '[1, 0]')
@@ -1235,7 +1249,7 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
             '%sTensor %s must have rank %d.  Received rank %d, shape %s' %
             (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
-        raise
+        raise ValueError(e.args[0])
 
   return assert_op
 
@@ -1962,8 +1976,8 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
             specified_size = int(size_symbol)
             size_check_message = 'Specified explicitly'
           else:
-            specified_size, specified_by_y, specified_at_dim = \
-                size_specifications[size_symbol]
+            specified_size, specified_by_y, specified_at_dim = (
+                size_specifications[size_symbol])
             size_check_message = (
                 'Specified by tensor %s dimension %d' %
                 (tensor_name(specified_by_y), specified_at_dim))

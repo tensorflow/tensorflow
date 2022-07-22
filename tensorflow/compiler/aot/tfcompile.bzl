@@ -20,7 +20,112 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+
+def _tfcompile_model_library_rule_impl(ctx):
+    header_file = ctx.outputs.header_out
+    metadata_object_file = ctx.actions.declare_file("%s_tfcompile_metadata.o" % ctx.attr.model_name)
+    function_object_file = ctx.actions.declare_file("%s_tfcompile_function.o" % ctx.attr.model_name)
+    session_module_pb = ctx.actions.declare_file("%s_session_module.pb" % ctx.attr.model_name)
+
+    output_dict = {}
+    output_dict["header_files"] = [header_file]
+    output_dict["object_files"] = [metadata_object_file, function_object_file]
+
+    output_flags = [
+        "--out_header=" + header_file.path,
+        "--out_metadata_object=" + metadata_object_file.path,
+        "--out_function_object=" + function_object_file.path,
+        "--out_session_module=" + session_module_pb.path,
+    ]
+
+    tfcompile_env = {
+        "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
+                      "--xla_cpu_fast_math_honor_nans=false " +
+                      "--xla_cpu_fast_math_honor_infs=false " +
+                      "--xla_cpu_fast_math_honor_functions=false " +
+                      "--xla_cpu_fast_math_honor_division=false " +
+                      "--xla_cpu_enable_fast_min_max=true " +
+                      "$${XLA_FLAGS:-}' "),
+        "CUDA_VISIBLE_DEVICES": "",
+    }
+
+    dfsan_flags = []
+    dfsan_deps = []
+
+    # DFSan is only supported on linux.
+    if ctx.attr.is_linux and ctx.attr.dfsan:
+        dfsan_flags = [
+            "--sanitize_dataflow",
+            "--sanitize_abilists_dataflow=" + ",".join([f.path for f in ctx.files.dfsan_abilists]),
+        ]
+        dfsan_deps = ctx.files.dfsan_abilists
+
+    cpu_flags = ["--target_cpu=" + ctx.attr.target_cpu] if ctx.attr.target_cpu else []
+
+    flags = [
+        "--graph=" + ctx.file.tfcompile_graph.path,
+        "--config=" + ctx.file.tfcompile_config.path,
+        "--entry_point=" + ctx.attr.entry_point,
+        "--cpp_class=" + ctx.attr.cpp_class,
+        "--target_triple=" + ctx.attr.target_triple,
+    ] + cpu_flags + output_flags + ctx.attr.extra_flags + dfsan_flags
+
+    full_cmd = (
+        ctx.executable.tfcompile_tool.path + " " + " ".join(flags) + " " + ctx.attr.flags
+    )
+    ctx.actions.run_shell(
+        inputs = ctx.files.srcs,
+        outputs = [header_file, metadata_object_file, function_object_file, session_module_pb],
+        tools = [ctx.executable.tfcompile_tool] + dfsan_deps,
+        env = tfcompile_env,
+        command = full_cmd,
+        progress_message = "tfcompile for model %s (%s)" % (ctx.attr.model_name, ctx.file.tfcompile_graph.path),
+        mnemonic = "TensorflowCompile",
+    )
+    out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
+    dep_files = [ctx.executable.tfcompile_tool]
+    return [
+        DefaultInfo(
+            files = depset(out_files),
+            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
+        ),
+        OutputGroupInfo(**output_dict),
+    ]
+
+# Use tf_library macro instead of using this rule directly.
+_tfcompile_model_library = rule(
+    implementation = _tfcompile_model_library_rule_impl,
+    attrs = {
+        "model_name": attr.string(),
+        "srcs": attr.label_list(mandatory = True, allow_files = True),
+        "header_out": attr.output(),
+        "cmd": attr.string(),
+        "tfcompile_tool": attr.label(cfg = "exec", executable = True, allow_files = True),
+        "tfcompile_graph": attr.label(allow_single_file = True),
+        "tfcompile_config": attr.label(allow_single_file = True),
+        "entry_point": attr.string(),
+        "cpp_class": attr.string(),
+        "target_triple": attr.string(),
+        "target_cpu": attr.string(),
+        # The tfcompile_flags passed into tf_library macro may be a string
+        # containing multiple flags (and there are cases that do this).
+        "flags": attr.string(),
+        # Extra flags are built in the tf_library macro as a list.
+        "extra_flags": attr.string_list(),
+        "dfsan": attr.bool(default = False),
+        "dfsan_abilists": attr.label_list(default = [], allow_files = True),
+        "is_linux": attr.bool(),
+    },
+)
 
 def tf_library(
         name,
@@ -169,9 +274,6 @@ def tf_library(
 
     # Rule that runs tfcompile to produce the header and object file.
     header_file = name + ".h"
-    metadata_object_file = name + "_tfcompile_metadata.o"
-    function_object_file = name + "_tfcompile_function.o"
-    session_module_pb = name + "_session_module.pb"
 
     # The XLA backends morph kernal name prefix __ that is not in the form of
     # __xla_.
@@ -189,74 +291,64 @@ def tf_library(
     # `find` on such an object.
     need_xla_data_proto = flags and flags.find("--gen_program_shape") != -1
 
-    target_cpu = tfcompile_target_cpu()
-    extra_flags = "--target_cpu=" + target_cpu + " " if target_cpu else " "
-    flags = extra_flags + flags
-
     if enable_xla_hlo_profiling:
-        profiling_flag = "--xla_hlo_profile"
+        profiling_flags = ["--xla_hlo_profile"]
     else:
-        profiling_flag = ""
+        profiling_flags = []
 
     if enable_tracemes:
-        traceme_flag = "--xla_cpu_enable_xprof_traceme=true"
+        traceme_flags = ["--xla_cpu_enable_xprof_traceme=true"]
     else:
-        traceme_flag = "--xla_cpu_enable_xprof_traceme=false"
+        traceme_flags = ["--xla_cpu_enable_xprof_traceme=false"]
 
-    mlir_flag = "--mlir_components=" + mlir_components
+    mlir_flags = ["--mlir_components=" + mlir_components]
 
     srcs = [tfcompile_graph, config]
-    debug_info_flag = ""
+    debug_info_flags = []
     if debug_info:
         srcs.append(debug_info)
-        debug_info_flag = " --debug_info=$(location " + debug_info + ")"
+        debug_info_flags = ["--debug_info=$(location " + debug_info + ")"]
 
-    default_fast_math_xla_flags = ("XLA_FLAGS='" +
-                                   "--xla_cpu_enable_fast_math=true " +
-                                   "--xla_cpu_fast_math_honor_nans=false " +
-                                   "--xla_cpu_fast_math_honor_infs=false " +
-                                   "--xla_cpu_fast_math_honor_functions=false " +
-                                   "--xla_cpu_fast_math_honor_division=false " +
-                                   "--xla_cpu_enable_fast_min_max=true " +
-                                   "$${XLA_FLAGS:-}' ")
-
-    native.genrule(
-        name = ("gen_" + name),
+    tfcompile_gen = "gen_" + name
+    _tfcompile_model_library(
+        name = tfcompile_gen,
+        model_name = name,
         srcs = srcs,
-        outs = [
-            header_file,
-            metadata_object_file,
-            function_object_file,
-            session_module_pb,
-        ],
-        cmd = (
-            default_fast_math_xla_flags +
-            "CUDA_VISIBLE_DEVICES='' " +
-            "$(location " + tfcompile_tool + ")" +
-            " --graph=$(location " + tfcompile_graph + ")" +
-            debug_info_flag +
-            " --config=$(location " + config + ")" +
-            " --entry_point=" + ep +
-            " --cpp_class=" + cpp_class +
-            " --target_triple=" + target_llvm_triple() +
-            " --out_header=$(@D)/" + header_file +
-            " --out_metadata_object=$(@D)/" + metadata_object_file +
-            " --out_function_object=$(@D)/" + function_object_file +
-            " --out_session_module=$(@D)/" + session_module_pb +
-            " " + flags + " " + profiling_flag + " " + mlir_flag + " " + traceme_flag
-        ),
-        tools = [tfcompile_tool],
+        header_out = header_file,
+        tfcompile_tool = tfcompile_tool,
+        tfcompile_graph = tfcompile_graph,
+        tfcompile_config = config,
+        entry_point = ep,
+        cpp_class = cpp_class,
+        target_cpu = tfcompile_target_cpu(),
+        target_triple = target_llvm_triple(),
+        flags = flags,
+        extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
+        dfsan = tfcompile_dfsan_enabled(),
+        dfsan_abilists = tfcompile_dfsan_abilists(),
+        is_linux = select({
+            "//tensorflow:linux_x86_64": True,
+            "//conditions:default": False,
+        }),
         visibility = visibility,
         testonly = testonly,
-        local = 1,
         tags = tags,
+    )
+
+    tfcompile_gen_object_files = tfcompile_gen + "_object_files"
+    native.filegroup(
+        name = tfcompile_gen_object_files,
+        srcs = [tfcompile_gen],
+        output_group = "object_files",
+        visibility = visibility,
+        testonly = testonly,
     )
 
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
     native.cc_library(
         name = name,
-        srcs = [function_object_file, metadata_object_file],
+        srcs = [tfcompile_gen_object_files],
         hdrs = [header_file],
         visibility = visibility,
         testonly = testonly,
@@ -285,7 +377,7 @@ def tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
-                "@llvm-project//mlir:mlir_c_runner_utils",
+                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (deps or []),
         tags = tags,

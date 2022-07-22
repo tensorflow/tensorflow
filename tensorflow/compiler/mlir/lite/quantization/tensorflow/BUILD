@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "@com_google_absl//absl/base:core_headers",
         "@flatbuffers",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",

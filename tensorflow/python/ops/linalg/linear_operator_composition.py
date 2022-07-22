@@ -20,6 +20,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -167,7 +168,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     # Auto-set and check hints.
     if all(operator.is_non_singular for operator in operators):
-      if is_non_singular is False:
+      if is_non_singular is False:  # pylint:disable=g-bool-id-comparison
         raise ValueError(
             "The composition of non-singular operators is always non-singular.")
       is_non_singular = True
@@ -278,6 +279,16 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       solution = operator.solve(solution, adjoint=adjoint)
     return solution
 
+  def _assert_non_singular(self):
+    if all(operator.is_square for operator in self.operators):
+      asserts = [operator.assert_non_singular() for operator in self.operators]
+      return control_flow_ops.group(asserts)
+    return super(LinearOperatorComposition, self)._assert_non_singular()
+
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operators": [0] * len(self.operators)}
