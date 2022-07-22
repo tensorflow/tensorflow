@@ -127,7 +127,7 @@ class OutputSaver : public BenchmarkListener {
   }
 
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
-    std::string path = params_->Get<std::string>("save_outputs_in_file");
+    std::string path = params_->Get<std::string>("output_filepath");
     if (path == "") return;
 
     std::ofstream ofs(path, std::ofstream::out);
@@ -330,7 +330,7 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("optimize_memory_for_large_tensors",
                           BenchmarkParam::Create<int32_t>(0));
-  default_params.AddParam("save_outputs_in_file",
+  default_params.AddParam("output_filepath",
                           BenchmarkParam::Create<std::string>(""));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
@@ -409,7 +409,7 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "optimize_memory_for_large_tensors", &params_,
           "Optimize memory usage for large tensors with sacrificing latency."),
       CreateFlag<std::string>(
-          "save_outputs_in_file", &params_,
+          "output_filepath", &params_,
           "File path to export outputs layer as binary data.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
@@ -453,7 +453,7 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Release dynamic tensor memory", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
                       "Optimize memory usage for large tensors", verbose);
-  LOG_BENCHMARK_PARAM(std::string, "save_outputs_in_file",
+  LOG_BENCHMARK_PARAM(std::string, "output_filepath",
                       "File path to export outputs layer to", verbose);  
 
   for (const auto& delegate_provider :
