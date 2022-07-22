@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace xla {
 
-void HostCallbackContext::OnSend(int arg_num,
-                                 const PjRtTransferMetadata& metadata,
-                                 PjRtChunk data) {
+Status HostCallbackContext::OnSend(int arg_num,
+                                   const PjRtTransferMetadata& metadata,
+                                   PjRtChunk data) {
   auto* host_memory_for_device_manager =
       client_->GetPjRtHostMemoryForDeviceManager();
   const auto& arg_info = host_callback_->operands.at(arg_num);
@@ -42,7 +42,7 @@ void HostCallbackContext::OnSend(int arg_num,
   args_.at(arg_num) = std::move(delinearized);
 
   DCHECK_GE(ready_count_.load(), 1);
-  if (ready_count_.fetch_sub(1) != 1) return;
+  if (ready_count_.fetch_sub(1) != 1) return Status::OK();
 
   // This atomic store won't race against the next invocation of OnSend()
   // (e.g. by the next iteration of while loop) because we always insert a
@@ -66,7 +66,8 @@ void HostCallbackContext::OnSend(int arg_num,
     result_ptrs.push_back(results.back().data());
   }
 
-  host_callback_->callback(result_ptrs.data(), arg_ptrs.data());
+  auto status = host_callback_->callback(result_ptrs.data(), arg_ptrs.data());
+  // TODO(chky): Consider populating garbage data in results upon errors.
 
   // Clear the arguments for this invocation. This won't race with next
   // invocation as we always insert recvs after these sends.
@@ -80,6 +81,8 @@ void HostCallbackContext::OnSend(int arg_num,
     auto& result_channel = result_channels_[i];
     result_channel->Push(std::move(results[i]));
   }
+
+  return status;
 }
 
 void HostCallbackContext::Receive(int res_num,
@@ -112,7 +115,7 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
         /*callback=*/[arg_num, context = context.get()](
                          const PjRtTransferMetadata& metadata, PjRtChunk input,
                          size_t total_size_in_bytes, bool done) {
-          context->OnSend(arg_num, metadata, std::move(input));
+          return context->OnSend(arg_num, metadata, std::move(input));
         }});
   }
 

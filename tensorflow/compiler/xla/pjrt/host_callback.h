@@ -74,8 +74,10 @@ struct HostCallback {
   // The host callback function takes two pointer arrays, each element of which
   // points to allocated host buffer according to corresponding operand or
   // result's shape. The first is for the outputs and the second is for the
-  // inputs. The buffers are only guaranteed to be alive during the call.
-  std::function<void(void**, void**)> callback;
+  // inputs. The buffers are only guaranteed to be alive during the call. The
+  // callback can also return error status to indicate the entire execution
+  // should fail.
+  std::function<Status(void**, void**)> callback;
 };
 
 // A helper class that maintains the send/recv states for a host callback.
@@ -94,8 +96,8 @@ class HostCallbackContext {
     }
   }
 
-  void OnSend(int arg_num, const PjRtTransferMetadata& metadata,
-              PjRtChunk data);
+  Status OnSend(int arg_num, const PjRtTransferMetadata& metadata,
+                PjRtChunk data);
 
   void Receive(int res_num, const PjRtTransferMetadata& metadata,
                CopyToDeviceStream& stream);

@@ -998,13 +998,19 @@ struct SendCallback {
   // each invocation of the corresponding Send op in the HLO program (So it can
   // be invoked multiple times if it is in a loop). Currently there is no
   // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Send ops.
+  // corresponding HLO Send ops. The callback can also return errors to indicate
+  // the execution should fail.
+  //
+  // IMPORTANT: the implementation might NOT signal the error to the execution,
+  // and the execution will run to completion with UNDEFINED DATA returned by
+  // the callback. If there is any potential control flow that depends on the
+  // value of the returned data, an error return is unsafe.
   //
   // TODO(chky): Currently the callback invocation order may not be consistent
   // with the HLO send op invocation order, due to limitations in some PjRt
   // implementation. Consider making it strictly the same order as HLO program.
-  std::function<void(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                     size_t total_size_in_bytes, bool done)>
+  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
+                       size_t total_size_in_bytes, bool done)>
       callback;
 };
 
