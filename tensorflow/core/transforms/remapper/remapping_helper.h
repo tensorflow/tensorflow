@@ -120,12 +120,9 @@ class OpPropertyHelper : public OpCatHelper {
   // This function is currently used by contraction ops.
   bool IsGpuCompatibleDataType(Operation* contraction_op,
                                const StringRef& attr_name = "T") const {
-    Type dtype;
-    if (auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name)) {
-      dtype = attr.getValue();
-    } else {
-      return false;
-    }
+    auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name);
+    if (!attr) return false;
+    Type dtype = attr.getValue();
     if (dialect_->IsConv2D(contraction_op)) {
       return dtype.isa<Float32Type>();
     } else if (dialect_->IsMatMul(contraction_op)) {
@@ -138,13 +135,9 @@ class OpPropertyHelper : public OpCatHelper {
   // This function is currently used by contraction ops.
   bool IsCpuCompatibleDataType(Operation* contraction_op,
                                const StringRef& attr_name = "T") const {
-    Type dtype;
-    if (auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name)) {
-      dtype = attr.getValue();
-    } else {
-      return false;
-    }
-
+    auto attr = contraction_op->getAttrOfType<TypeAttr>(attr_name);
+    if (!attr) return false;
+    Type dtype = attr.getValue();
     if (is_onednn_enabled_) {
       // Only contraction ops (MatMul, Conv2D, Conv3D, and
       // DepthwiseConv2dNative) and BatchMatMul are supported. BatchMatMul
