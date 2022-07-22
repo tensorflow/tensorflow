@@ -512,14 +512,6 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_i64 = [&](StringRef name, int64_t value) {
-      set_attr(name, b.getI64IntegerAttr(value));
-    };
-
-    auto set_i64s = [&](StringRef name, ArrayRef<int64_t> values) {
-      set_attr(name, b.getI64TensorAttr(values));
-    };
-
     auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
@@ -538,19 +530,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     };
 
     // Copy dimension number attributes.
-    ConvDimensionNumbersAttr dims = op.getDimensionNumbers();
-
-    set_i64("input_batch_dim", dims.getInputBatchDimension());
-    set_i64("input_feature_dim", dims.getInputFeatureDimension());
-    set_i64s("input_spatial_dims", dims.getInputSpatialDimensions());
-
-    set_i64("kernel_in_feature_dim", dims.getKernelInputFeatureDimension());
-    set_i64("kernel_out_feature_dim", dims.getKernelOutputFeatureDimension());
-    set_i64s("kernel_spatial_dims", dims.getKernelSpatialDimensions());
-
-    set_i64("output_batch_dim", dims.getOutputBatchDimension());
-    set_i64("output_feature_dim", dims.getOutputFeatureDimension());
-    set_i64s("output_spatial_dims", dims.getOutputSpatialDimensions());
+    call->setAttr(b.getStringAttr("conv_dims"), op.getDimensionNumbers());
 
     // Copy convolution window attributes.
     set_xi1("window_reversal", op.getWindowReversal());
@@ -560,19 +540,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     set_xi64("padding", op.getPadding());
 
     // Copy backend config.
-    ConvolutionBackendConfigAttr backend = op.getBackendConfig();
-
-    set_i64("algorithm", backend.getAlgorithm());
-    set_attr("tensor_ops_enabled",
-             b.getBoolAttr(backend.getTensorOpsEnabled()));
-    set_attr("is_cudnn_frontend", b.getBoolAttr(backend.getIsCudnnFrontend()));
-    set_i64("workspace_size", backend.getWorkspaceSize());
-
-    set_i64s("knob_ids", backend.getKnobIds());
-    set_i64s("knob_values", backend.getKnobValues());
-    set_i64s("operand_0_layout", backend.getOperand_0Layout());
-    set_i64s("operand_1_layout", backend.getOperand_1Layout());
-    set_i64s("result_layout", backend.getResultLayout());
+    call->setAttr(b.getStringAttr("backend_config"), op.getBackendConfig());
 
     // Copy remaining attributes.
     set_attr("feature_group_count", op.getFeatureGroupCountAttr());

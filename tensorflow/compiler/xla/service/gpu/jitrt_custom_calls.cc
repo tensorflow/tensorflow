@@ -132,6 +132,38 @@ void PopulateLmhloToXlaAttrEncoding(
           .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
           .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
+
+  using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
+  encoding.Add<
+      jitrt::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
+      encoding,
+      jitrt::AggregateAttrDef<ConvDimsAttr>()
+          .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
+          .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
+          .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
+          .Add("kernel_in_feature_dim",
+               &ConvDimsAttr::getKernelInputFeatureDimension)
+          .Add("kernel_out_feature_dim",
+               &ConvDimsAttr::getKernelOutputFeatureDimension)
+          .Add("kernel_spatial_dims", &ConvDimsAttr::getKernelSpatialDimensions)
+          .Add("output_batch_dim", &ConvDimsAttr::getOutputBatchDimension)
+          .Add("output_feature_dim", &ConvDimsAttr::getOutputFeatureDimension)
+          .Add("output_spatial_dims",
+               &ConvDimsAttr::getOutputSpatialDimensions));
+
+  using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
+  encoding.Add<jitrt::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
+      encoding,
+      jitrt::AggregateAttrDef<ConvConfigAttr>()
+          .Add("algorithm", &ConvConfigAttr::getAlgorithm)
+          .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
+          .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)
+          .Add("knob_ids", &ConvConfigAttr::getKnobIds)
+          .Add("knob_values", &ConvConfigAttr::getKnobValues)
+          .Add("operand_0_layout", &ConvConfigAttr::getOperand_0Layout)
+          .Add("operand_1_layout", &ConvConfigAttr::getOperand_1Layout)
+          .Add("result_layout", &ConvConfigAttr::getResultLayout)
+          .Add("workspace_size", &ConvConfigAttr::getWorkspaceSize));
 }
 
 // -------------------------------------------------------------------------- //
@@ -536,42 +568,12 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 namespace {
 
-struct InputDimensions {
-  int64_t input_batch_dim;
-  int64_t input_feature_dim;
-  ArrayRef<int64_t> input_spatial_dims;
-};
-
-struct KernelDimensions {
-  int64_t kernel_in_feature_dim;
-  int64_t kernel_out_feature_dim;
-  ArrayRef<int64_t> kernel_spatial_dims;
-};
-
-struct OutputDimensions {
-  int64_t output_batch_dim;
-  int64_t output_feature_dim;
-  ArrayRef<int64_t> output_spatial_dims;
-};
-
 struct Window {
   ArrayRef<int64_t> window_strides;
   ArrayRef<int64_t> padding;
   ArrayRef<int64_t> lhs_dilation;
   ArrayRef<int64_t> rhs_dilation;
   ArrayRef<int64_t> window_reversal;
-};
-
-struct BackendConfig {
-  int64_t algorithm;
-  bool tensor_ops_enabled;
-  bool is_cudnn_frontend;
-  ArrayRef<int64_t> knob_ids;
-  ArrayRef<int64_t> knob_values;
-  ArrayRef<int64_t> operand_0_layout;
-  ArrayRef<int64_t> operand_1_layout;
-  ArrayRef<int64_t> result_layout;
-  int64_t workspace_size;
 };
 
 struct ConvAttrs {
@@ -595,8 +597,7 @@ static GpuConvDescriptor GetConvDescriptor(
     jitrt::StridedMemrefView operand0, jitrt::StridedMemrefView operand1,
     jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
     // Attributes
-    InputDimensions i, KernelDimensions k, OutputDimensions o, Window w,
-    BackendConfig b, ConvAttrs attrs,
+    ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
     Optional<FusedConvAttrs> fused = llvm::None,
     Optional<SideInputAttrs> side_input = llvm::None) {
@@ -618,15 +619,17 @@ static GpuConvDescriptor GetConvDescriptor(
 
   // Set up convolution dimensions numbers.
   ConvolutionDimensionNumbers dns;
-  dns.set_input_batch_dimension(i.input_batch_dim);
-  dns.set_input_feature_dimension(i.input_feature_dim);
-  dns.set_kernel_input_feature_dimension(k.kernel_in_feature_dim);
-  dns.set_kernel_output_feature_dimension(k.kernel_out_feature_dim);
-  dns.set_output_batch_dimension(o.output_batch_dim);
-  dns.set_output_feature_dimension(o.output_feature_dim);
-  for (int64_t d : i.input_spatial_dims) dns.add_input_spatial_dimensions(d);
-  for (int64_t d : k.kernel_spatial_dims) dns.add_kernel_spatial_dimensions(d);
-  for (int64_t d : o.output_spatial_dims) dns.add_output_spatial_dimensions(d);
+  dns.set_input_batch_dimension(dims.input_batch_dim);
+  dns.set_input_feature_dimension(dims.input_feature_dim);
+  dns.set_kernel_input_feature_dimension(dims.kernel_in_feature_dim);
+  dns.set_kernel_output_feature_dimension(dims.kernel_out_feature_dim);
+  dns.set_output_batch_dimension(dims.output_batch_dim);
+  dns.set_output_feature_dimension(dims.output_feature_dim);
+  for (int64_t d : dims.input_spatial_dims) dns.add_input_spatial_dimensions(d);
+  for (int64_t d : dims.kernel_spatial_dims)
+    dns.add_kernel_spatial_dimensions(d);
+  for (int64_t d : dims.output_spatial_dims)
+    dns.add_output_spatial_dimensions(d);
   descriptor.dnums = std::move(dns);
 
   // Put together convolution window config.
@@ -686,24 +689,13 @@ struct Conv {
       jitrt::StridedMemrefView operand1, Optional<jitrt::FlatMemrefView> bias,
       Optional<jitrt::StridedMemrefView> side_input,
       jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
-      // Convolution input dimensions numbers
-      int64_t input_batch_dim, int64_t input_feature_dim,
-      ArrayRef<int64_t> input_spatial_dims,
-      // Convolution kernel dimensions numbers
-      int64_t kernel_in_feature_dim, int64_t kernel_out_feature_dim,
-      ArrayRef<int64_t> kernel_spatial_dims,
-      // Output dimensions numbers
-      int64_t output_batch_dim, int64_t output_feature_dim,
-      ArrayRef<int64_t> output_spatial_dims,
+      ConvDimensionNumbers conv_dims,
       // Window config
       ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
       ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
       ArrayRef<int64_t> window_reversal,
       // Backend config attributes
-      int64_t algorithm, bool tensor_ops_enabled, bool is_cudnn_frontend,
-      ArrayRef<int64_t> knob_ids, ArrayRef<int64_t> knob_values,
-      ArrayRef<int64_t> operand_0_layout, ArrayRef<int64_t> operand_1_layout,
-      ArrayRef<int64_t> result_layout, int64_t workspace_size,
+      ConvBackendConfig backend_config,
       // Remaining attributes
       int64_t feature_group_count, double result_scale,
       // Optional attributes for fused convolutions.
@@ -718,15 +710,10 @@ struct Conv {
 
     // Prepare a descriptor for the XLA convolution.
     GpuConvDescriptor descriptor = GetConvDescriptor(
-        kind, operand0, operand1, output, scratch,
-        {input_batch_dim, input_feature_dim, input_spatial_dims},
-        {kernel_in_feature_dim, kernel_out_feature_dim, kernel_spatial_dims},
-        {output_batch_dim, output_feature_dim, output_spatial_dims},
+        kind, operand0, operand1, output, scratch, conv_dims,
         {window_strides, padding, lhs_dilation, rhs_dilation, window_reversal},
-        {algorithm, tensor_ops_enabled, is_cudnn_frontend, knob_ids,
-         knob_values, operand_0_layout, operand_1_layout, result_layout,
-         workspace_size},
-        {feature_group_count, result_scale}, fused_attrs, side_input_attrs);
+        backend_config, {feature_group_count, result_scale}, fused_attrs,
+        side_input_attrs);
 
     // Convert descriptor to the Conv config.
     StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
@@ -768,17 +755,7 @@ template <typename... Ts>
 static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       // Convolution dimensions numbers
-      .template Attr<int64_t>("input_batch_dim")
-      .template Attr<int64_t>("input_feature_dim")
-      .template Attr<ArrayRef<int64_t>>("input_spatial_dims")
-      // Convolution kernel dimensions
-      .template Attr<int64_t>("kernel_in_feature_dim")
-      .template Attr<int64_t>("kernel_out_feature_dim")
-      .template Attr<ArrayRef<int64_t>>("kernel_spatial_dims")
-      // Output dimensions
-      .template Attr<int64_t>("output_batch_dim")
-      .template Attr<int64_t>("output_feature_dim")
-      .template Attr<ArrayRef<int64_t>>("output_spatial_dims")
+      .template Attr<ConvDimensionNumbers>("conv_dims")
       // Window config
       .template Attr<ArrayRef<int64_t>>("window_strides")
       .template Attr<ArrayRef<int64_t>>("padding")
@@ -786,15 +763,7 @@ static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
       .template Attr<ArrayRef<int64_t>>("rhs_dilation")
       .template Attr<ArrayRef<int64_t>>("window_reversal")
       // Backend config attributes
-      .template Attr<int64_t>("algorithm")
-      .template Attr<bool>("tensor_ops_enabled")
-      .template Attr<bool>("is_cudnn_frontend")
-      .template Attr<ArrayRef<int64_t>>("knob_ids")
-      .template Attr<ArrayRef<int64_t>>("knob_values")
-      .template Attr<ArrayRef<int64_t>>("operand_0_layout")
-      .template Attr<ArrayRef<int64_t>>("operand_1_layout")
-      .template Attr<ArrayRef<int64_t>>("result_layout")
-      .template Attr<int64_t>("workspace_size")
+      .template Attr<ConvBackendConfig>("backend_config")
       // Remaining attributes.
       .template Attr<int64_t>("feature_group_count")
       .template Attr<double>("result_scale");
