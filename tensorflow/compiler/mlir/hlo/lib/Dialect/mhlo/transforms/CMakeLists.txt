@@ -230,6 +230,7 @@ add_mlir_library(MhloToLinalg
   Core
 
   LINK_LIBS PUBLIC
+  HloToLinalgUtils
   LmhloDialect
   MhloDialect
   MhloTypeConversion
