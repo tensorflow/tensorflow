@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 
 #include "tensorflow/c/tf_status_helper.h"

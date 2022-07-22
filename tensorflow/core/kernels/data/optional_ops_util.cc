@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
 
+#include <functional>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

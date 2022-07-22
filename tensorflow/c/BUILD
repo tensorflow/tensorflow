@@ -659,6 +659,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels:tensor_list_util",
         "//tensorflow/core/kernels:variant_ops_util",
         "//tensorflow/core/kernels/data:optional_ops_util",
+        "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",

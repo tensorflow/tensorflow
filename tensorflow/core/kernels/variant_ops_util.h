@@ -24,7 +24,7 @@ class Tensor;
 class Variant;
 class Status;
 
-void AddNVariant(OpKernelContext* context,
+void AddNVariant(OpKernelContext* ctx,
                  std::function<Status(OpKernelContext*, const Variant&,
                                       const Variant&, Variant*)>
                      binary_add_variant);

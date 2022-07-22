@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_OPTIONAL_OPS_UTIL_H_
 
 #include <functional>
+#include <memory>
 #include <utility>
 #include <vector>
 
