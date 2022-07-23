@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/tensor_list_util.h"
+#include "tensorflow/core/framework/tensor_list_util.h"
 
 #include <functional>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_list.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/kernels/tensor_list.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
