@@ -56,6 +56,10 @@ TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
 TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                    xla::gpu::JitRtGemmConfigCache);
 TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
+                                   xla::gpu::JitRtCollectiveSupport);
+TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
+                                   xla::gpu::JitRtAsyncCollectiveSupport);
+TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                    const xla::ServiceExecutableRunOptions);
 TFRT_DEFINE_EXPLICIT_DENSE_TYPE_ID(tfrt::jitrt::CustomCall,
                                    const xla::DebugOptions);
@@ -65,8 +69,6 @@ namespace gpu {
 
 using llvm::ArrayRef;
 using llvm::Optional;
-using llvm::orc::MangleAndInterner;
-using llvm::orc::SymbolMap;
 
 using mlir::failure;
 using mlir::FailureOr;
@@ -76,6 +78,7 @@ using mlir::succeeded;
 using mlir::success;
 
 using tfrt::jitrt::CustomCall;
+using tfrt::jitrt::DirectCustomCallLibrary;
 using tfrt::jitrt::Executable;
 
 namespace se = ::stream_executor;
@@ -148,6 +151,47 @@ const GemmConfig* JitRtGemmConfigCache::Set(int64_t uid, GemmConfig config) {
 
 // -------------------------------------------------------------------------- //
 
+JitRtAsyncCollectiveSupport::JitRtAsyncCollectiveSupport(
+    se::Stream* async_comm_stream)
+    : async_comm_stream_(async_comm_stream) {}
+
+Status JitRtCollectiveSupport::MaybeBlockAfterFirstRun(int32_t uid,
+                                                       int32_t device_ordinal,
+                                                       se::Stream* stream) {
+  bool block = [&] {
+    absl::MutexLock lock(&mutex_);
+    return executed_.try_emplace(Key(uid, device_ordinal), true).second;
+  }();
+  return block ? stream->BlockHostUntilDone() : Status::OK();
+}
+
+FailureOr<se::Event> JitRtAsyncCollectiveSupport::PopEvent(
+    int32_t uid, int32_t device_ordinal) {
+  const int64_t key = EventKey(uid, device_ordinal);
+
+  absl::MutexLock lock(&mutex_);
+  auto it = done_events_.find(key);
+  if (it == done_events_.end()) return failure();
+
+  se::Event done_event = std::move(it->second);
+  done_events_.erase(it);
+  return done_event;
+}
+
+LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
+                                                     int32_t device_ordinal,
+                                                     se::Event done_event) {
+  const int64_t key = EventKey(uid, device_ordinal);
+
+  absl::MutexLock lock(&mutex_);
+  auto result = done_events_.try_emplace(key, std::move(done_event));
+  if (!result.second) return failure();  // done event has not been consumed
+
+  return success();
+}
+
+// -------------------------------------------------------------------------- //
+
 static PrimitiveType ToPrimitiveType(tfrt::DType dtype) {
   switch (dtype) {
     // Unsigned integer types.
@@ -215,13 +259,13 @@ static Shape ToShape(const jitrt::StridedMemrefView& memref) {
 static StatusOr<GemmConfig> GetGemmConfig(
     const DebugOptions* debug_options, const jitrt::StridedMemrefView& lhs,
     const jitrt::StridedMemrefView& rhs, const jitrt::StridedMemrefView& out,
-    int64_t algorithm, double alpha_real, double alpha_imag,
+    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
     ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-    llvm::Optional<double> beta = llvm::None) {
+    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract) {
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
-                         alpha_imag, beta.getValueOr(0.0), algorithm,
+                         alpha_imag, beta, algorithm,
+                         se::blas::kDefaultComputePrecision,
                          debug_options->xla_gpu_enable_cublaslt());
 }
 
@@ -368,7 +412,7 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(LaunchFunc::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -381,7 +425,7 @@ struct Gemm {
       const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
       jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
       jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-      double alpha_imag, ArrayRef<int64_t> lhs_batch,
+      double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
       ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
       ArrayRef<int64_t> rhs_contract, int64_t uid) const;
 
@@ -394,7 +438,7 @@ LogicalResult Gemm::operator()(
     const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
     jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
     jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-    double alpha_imag, ArrayRef<int64_t> lhs_batch,
+    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
     ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
     ArrayRef<int64_t> rhs_contract, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
@@ -408,21 +452,34 @@ LogicalResult Gemm::operator()(
   const GemmConfig* config = configs->Get(uid);
   if (config == nullptr) {
     auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_real, alpha_imag, lhs_batch, lhs_contract,
-                             rhs_batch, rhs_contract);
+                             alpha_real, alpha_imag, beta, lhs_batch,
+                             lhs_contract, rhs_batch, rhs_contract);
     if (!cfg.ok()) return failure();
     config = configs->Set(uid, std::move(*cfg));
   }
 
-  Status executed;
-  if (config->use_cublaslt && stream->parent()->SupportsBlasPlans()) {
-    se::OwningScratchAllocator<> scratch_allocator(
-        run_options->device_ordinal(), run_options->allocator());
-    executed = RunBlasLtMatmul(*config, lhs_data, rhs_data, output_data, stream,
-                               scratch_allocator);
-  } else {
-    executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }
+  Status executed = [&] {
+    if (config->use_cublaslt) {
+      TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
+                          GetBlasLtMatmulPlanParams(*config));
+
+      // TODO(cjfj): Cache the plan.
+      se::cuda::BlasLt::MatmulPlan matmul_plan;
+      TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
+
+      if (matmul_plan_params.must_swap_operands) {
+        std::swap(lhs_data, rhs_data);
+      }
+
+      se::OwningScratchAllocator<> scratch_allocator(
+          run_options->device_ordinal(), run_options->allocator());
+
+      return RunBlasLtMatmul(matmul_plan, {alpha_real, alpha_imag}, lhs_data,
+                             rhs_data, beta, output_data, stream,
+                             scratch_allocator);
+    }
+    return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
+  }();
 
   if (!executed.ok()) return failure();
 
@@ -441,6 +498,7 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
           .Attr<int64_t>("algorithm")
           .Attr<double>("alpha_real")
           .Attr<double>("alpha_imag")
+          .Attr<double>("beta")
           .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
           .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
           .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
@@ -449,96 +507,7 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(Gemm::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct GemmBias {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-      jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-      jitrt::StridedMemrefView bias, jitrt::StridedMemrefView out,
-      int64_t algorithm, double alpha_real, double alpha_imag, double beta,
-      ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-      ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-      int64_t uid) const;
-  static GemmBias Handler() { return GemmBias(); }
-};
-}  // namespace
-
-LogicalResult GemmBias::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-    jitrt::StridedMemrefView bias, jitrt::StridedMemrefView out,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
-    ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract,
-    int64_t uid) const {
-  se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
-  se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
-  se::DeviceMemoryBase bias_data = GetDeviceAddress(bias);
-  se::DeviceMemoryBase output_data = GetDeviceAddress(out);
-
-  VLOG(3) << "Running GEMM + Bias [beta=" << beta << "]";
-  se::Stream* stream = run_options->stream();
-
-  // Find the gemm config for this instance of operation based on uid.
-  const GemmConfig* config = configs->Get(uid);
-  if (config == nullptr) {
-    auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_real, alpha_imag, lhs_batch, lhs_contract,
-                             rhs_batch, rhs_contract, beta);
-    if (!cfg.ok()) return failure();
-    config = configs->Set(uid, std::move(*cfg));
-  }
-
-  // Copy bias to the output buffer of they are different.
-  if (out.data != bias.data)
-    stream->ThenMemcpy(&output_data, bias_data, bias_data.size());
-
-  Status executed;
-  if (config->use_cublaslt && stream->parent()->SupportsBlasPlans()) {
-    se::OwningScratchAllocator<> scratch_allocator(
-        run_options->device_ordinal(), run_options->allocator());
-    executed = RunBlasLtMatmul(*config, lhs_data, rhs_data, output_data, stream,
-                               scratch_allocator);
-  } else {
-    executed = RunGemm(*config, lhs_data, rhs_data, output_data, stream);
-  }
-
-  if (!executed.ok()) return failure();
-
-  return success();
-}
-
-static bool GemmBias(runtime::KernelContext* ctx, void** args, void** attrs) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.gemm.bias")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<const DebugOptions*>()
-          .UserData<JitRtGemmConfigCache*>()
-          .Arg<jitrt::StridedMemrefView>()  // lhs
-          .Arg<jitrt::StridedMemrefView>()  // rhs
-          .Arg<jitrt::StridedMemrefView>()  // bias
-          .Arg<jitrt::StridedMemrefView>()  // out
-          .Attr<int64_t>("algorithm")
-          .Attr<double>("alpha_real")
-          .Attr<double>("alpha_imag")
-          .Attr<double>("beta")
-          .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_contracting_dimensions")
-          .Attr<int64_t>("uid")
-          .To<RuntimeChecks()>(GemmBias::Handler())
-          .release();
-
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -829,7 +798,7 @@ static bool ConvFn(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 template <CudnnConvKind kind>
@@ -850,7 +819,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 template <CudnnConvKind kind>
@@ -872,7 +841,7 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
           .To(Conv::Handler(kind))
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -938,7 +907,7 @@ static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Infeed::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1007,7 +976,7 @@ static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Outfeed::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1069,7 +1038,52 @@ static bool MemcpyFn(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Memcpy<direction>::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// -------------------------------------------------------------------------- //
+
+namespace {
+
+struct Memset {
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           jitrt::FlatMemrefView dst,
+                           CustomCall::VariantArg constant) const;
+  static Memset Handler() { return Memset(); }
+};
+
+}  // namespace
+
+LogicalResult Memset::operator()(const ServiceExecutableRunOptions* run_options,
+                                 jitrt::FlatMemrefView dst,
+                                 CustomCall::VariantArg constant) const {
+  uint32_t pattern;
+  if (constant.isa<int32_t>())
+    pattern = *constant.get<int32_t>();
+  else if (constant.isa<float>())
+    pattern = reinterpret_cast<uint32_t&>(*constant.get<float>());
+  else
+    return failure();
+
+  se::Stream* stream = run_options->stream();
+
+  if (dst.size_in_bytes % 4 != 0) return failure();
+
+  se::DeviceMemoryBase dst_data = GetDeviceAddress(dst);
+  stream->ThenMemset32(&dst_data, pattern, dst.size_in_bytes);
+
+  return success();
+}
+
+static bool MemsetFn(runtime::KernelContext* ctx, void** args, void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.memset")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .Arg<jitrt::FlatMemrefView>()   // dst
+                             .Arg<CustomCall::VariantArg>()  // constant
+                             .To<RuntimeChecks()>(Memset::Handler())
+                             .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1142,7 +1156,7 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Fft::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1204,7 +1218,7 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(Cholesky::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1422,7 +1436,7 @@ static bool CustomCall(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // ------------------------------------------------------------------------- //
@@ -1431,8 +1445,10 @@ namespace {
 struct AllReduce {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           int64_t op_id, int64_t reduction_kind,
+                           JitRtCollectiveSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, int64_t op_id,
+                           int64_t reduction_kind,
                            ArrayRef<int64_t> replica_group_offsets,
                            ArrayRef<int64_t> replica_group_values) const;
   static AllReduce Handler() { return AllReduce(); }
@@ -1441,8 +1457,9 @@ struct AllReduce {
 
 LogicalResult AllReduce::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+    ArrayRef<int64_t> replica_group_offsets,
     ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running AllReduce";
@@ -1460,6 +1477,10 @@ LogicalResult AllReduce::operator()(
                                *device_buffers, *stream, **comm);
   if (!executed.ok()) return failure();
 
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return failure();
+
   return success();
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
@@ -1471,7 +1492,9 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_reduce")
           .UserData<const ServiceExecutableRunOptions*>()
-          .RemainingArgs()              // args
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
           .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
           .Attr<int64_t>("op_id")
           .Attr<int64_t>("reduction_kind")  // ReductionKind
@@ -1480,7 +1503,134 @@ static bool AllReduce(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllReduce::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// ------------------------------------------------------------------------- //
+
+namespace {
+struct AllReduceStart {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           JitRtAsyncCollectiveSupport* async_collectives,
+                           CustomCall::RemainingArgs args, int64_t group_mode,
+                           int64_t op_id, int64_t reduction_kind,
+                           ArrayRef<int64_t> replica_group_offsets,
+                           ArrayRef<int64_t> replica_group_values,
+                           int32_t uid) const;
+  static AllReduceStart Handler() { return AllReduceStart(); }
+};
+}  // namespace
+
+LogicalResult AllReduceStart::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtAsyncCollectiveSupport* async_collectives,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    ArrayRef<int64_t> replica_group_values, int32_t uid) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduceStart";
+  se::Stream* stream = run_options->stream();
+  NcclExecuteParams params(*run_options, stream);
+
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values);
+  if (failed(comm)) return comm;
+
+  auto device_buffers = GetDeviceBufferPairs(args);
+  if (failed(device_buffers)) return device_buffers;
+
+  // Wait until compute inputs are ready.
+  async_collectives->async_comm_stream()->ThenWaitFor(params.stream);
+
+  auto executed =
+      RunAllReduce(static_cast<ReductionKind>(reduction_kind), *device_buffers,
+                   *async_collectives->async_comm_stream(), **comm);
+  if (!executed.ok()) return failure();
+
+  // Create an event on the async stream for the completion of the all-reduce.
+  se::Event done_event(async_collectives->async_comm_stream()->parent());
+  if (!done_event.Init()) return failure();
+  async_collectives->async_comm_stream()->ThenRecordEvent(&done_event);
+
+  if (failed(async_collectives->PushEvent(
+          uid, stream->parent()->device_ordinal(), std::move(done_event))))
+    return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  return failure();  // NCCL disabled.
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduceStart(runtime::KernelContext* ctx, void** args,
+                           void** attrs) {
+  static auto* handler =
+      CustomCall::Bind("xla.gpu.all_reduce_start")
+          .UserData<const ServiceExecutableRunOptions*>()
+          .UserData<JitRtAsyncCollectiveSupport*>()
+          .RemainingArgs()              // args
+          .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
+          .Attr<int64_t>("op_id")
+          .Attr<int64_t>("reduction_kind")  // ReductionKind
+          .Attr<ArrayRef<int64_t>>("replica_group_offsets")
+          .Attr<ArrayRef<int64_t>>("replica_group_values")
+          .Attr<int32_t>("uid")
+          .To<RuntimeChecks()>(AllReduceStart::Handler())
+          .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
+}
+
+// ------------------------------------------------------------------------- //
+
+namespace {
+struct AllReduceDone {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           JitRtCollectiveSupport* collectives,
+                           JitRtAsyncCollectiveSupport* async_collectives,
+                           CustomCall::RemainingArgs args, int32_t uid) const;
+  static AllReduceDone Handler() { return AllReduceDone(); }
+};
+}  // namespace
+
+LogicalResult AllReduceDone::operator()(
+    const ServiceExecutableRunOptions* run_options,
+    JitRtCollectiveSupport* collectives,
+    JitRtAsyncCollectiveSupport* async_collectives,
+    CustomCall::RemainingArgs args, int32_t uid) const {
+#if XLA_ENABLE_XCCL
+  VLOG(3) << "Running AllReduceDone";
+  se::Stream* stream = run_options->stream();
+
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  auto event = async_collectives->PopEvent(uid, device_ordinal);
+  if (failed(event)) return failure();
+
+  stream->ThenWaitFor(&*event);
+
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return failure();
+
+  return success();
+#else   // XLA_ENABLE_XCCL
+  return failure();  // NCCL disabled.
+#endif  // XLA_ENABLE_XCCL
+}
+
+static bool AllReduceDone(runtime::KernelContext* ctx, void** args,
+                          void** attrs) {
+  static auto* handler = CustomCall::Bind("xla.gpu.all_reduce_done")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<JitRtCollectiveSupport*>()
+                             .UserData<JitRtAsyncCollectiveSupport*>()
+                             .RemainingArgs()  // args
+                             .Attr<int32_t>("uid")
+                             .To<RuntimeChecks()>(AllReduceDone::Handler())
+                             .release();
+
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1489,8 +1639,10 @@ namespace {
 struct ReduceScatter {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           int64_t op_id, int64_t reduction_kind,
+                           JitRtCollectiveSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, int64_t op_id,
+                           int64_t reduction_kind,
                            ArrayRef<int64_t> replica_group_offsets,
                            ArrayRef<int64_t> replica_group_values) const;
   static ReduceScatter Handler() { return ReduceScatter(); }
@@ -1499,8 +1651,9 @@ struct ReduceScatter {
 
 LogicalResult ReduceScatter::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
-    int64_t reduction_kind, ArrayRef<int64_t> replica_group_offsets,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id, int64_t reduction_kind,
+    ArrayRef<int64_t> replica_group_offsets,
     ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running ReduceScatter";
@@ -1518,6 +1671,10 @@ LogicalResult ReduceScatter::operator()(
                                    *device_buffers, *stream, **comm);
   if (!executed.ok()) return failure();
 
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return failure();
+
   return success();
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
@@ -1530,7 +1687,9 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
   static auto* handler =
       CustomCall::Bind("xla.gpu.reduce_scatter")
           .UserData<const ServiceExecutableRunOptions*>()
-          .RemainingArgs()              // args
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
           .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
           .Attr<int64_t>("op_id")
           .Attr<int64_t>("reduction_kind")  // ReductionKind
@@ -1539,7 +1698,7 @@ static bool ReduceScatter(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(ReduceScatter::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1548,8 +1707,9 @@ namespace {
 struct AllGather {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           int64_t op_id,
+                           JitRtCollectiveSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, int64_t op_id,
                            ArrayRef<int64_t> replica_group_offsets,
                            ArrayRef<int64_t> replica_group_values) const;
   static AllGather Handler() { return AllGather(); }
@@ -1558,7 +1718,8 @@ struct AllGather {
 
 LogicalResult AllGather::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id,
     ArrayRef<int64_t> replica_group_offsets,
     ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
@@ -1573,8 +1734,11 @@ LogicalResult AllGather::operator()(
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers)) return device_buffers;
 
-  auto executed = RunAllGather(*device_buffers, *stream, **comm);
-  if (!executed.ok()) return failure();
+  if (!RunAllGather(*device_buffers, *stream, **comm).ok()) return failure();
+
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return failure();
 
   return success();
 #else   // XLA_ENABLE_XCCL
@@ -1587,7 +1751,9 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_gather")
           .UserData<const ServiceExecutableRunOptions*>()
-          .RemainingArgs()              // args
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
           .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
           .Attr<int64_t>("op_id")
           .Attr<ArrayRef<int64_t>>("replica_group_offsets")
@@ -1595,7 +1761,7 @@ static bool AllGather(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllGather::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1604,8 +1770,10 @@ namespace {
 struct AllToAll {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           bool has_split_dimension, int64_t op_id,
+                           JitRtCollectiveSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, bool has_split_dimension,
+                           int64_t op_id,
                            ArrayRef<int64_t> replica_group_offsets,
                            ArrayRef<int64_t> replica_group_values) const;
   static AllToAll Handler() { return AllToAll(); }
@@ -1614,8 +1782,8 @@ struct AllToAll {
 
 LogicalResult AllToAll::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, int64_t group_mode,
-    bool has_split_dimension, int64_t op_id,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, bool has_split_dimension, int64_t op_id,
     ArrayRef<int64_t> replica_group_offsets,
     ArrayRef<int64_t> replica_group_values) const {
 #if XLA_ENABLE_XCCL
@@ -1630,9 +1798,12 @@ LogicalResult AllToAll::operator()(
   auto device_buffers = GetDeviceBufferPairs(args);
   if (failed(device_buffers)) return device_buffers;
 
-  auto executed =
-      RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm);
-  if (!executed.ok()) return failure();
+  if (!RunAllToAll(has_split_dimension, *device_buffers, *stream, **comm).ok())
+    return failure();
+
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return failure();
 
   return success();
 #else   // XLA_ENABLE_XCCL
@@ -1645,7 +1816,9 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
   static auto* handler =
       CustomCall::Bind("xla.gpu.all_to_all")
           .UserData<const ServiceExecutableRunOptions*>()
-          .RemainingArgs()              // args
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
           .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
           .Attr<bool>("has_split_dimension")
           .Attr<int64_t>("op_id")
@@ -1654,7 +1827,7 @@ static bool AllToAll(runtime::KernelContext* ctx, void** args, void** attrs) {
           .To<RuntimeChecks()>(AllToAll::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1663,8 +1836,9 @@ namespace {
 struct CollectivePermute {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
   LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args, int64_t group_mode,
-                           int64_t op_id,
+                           JitRtCollectiveSupport* collectives,
+                           CustomCall::RemainingArgs args, int32_t uid,
+                           int64_t group_mode, int64_t op_id,
                            ArrayRef<int64_t> replica_group_offsets,
                            ArrayRef<int64_t> replica_group_values,
                            ArrayRef<int64_t> source_peers,
@@ -1675,7 +1849,8 @@ struct CollectivePermute {
 
 LogicalResult CollectivePermute::operator()(
     const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    JitRtCollectiveSupport* collectives, CustomCall::RemainingArgs args,
+    int32_t uid, int64_t group_mode, int64_t op_id,
     ArrayRef<int64_t> replica_group_offsets,
     ArrayRef<int64_t> replica_group_values, ArrayRef<int64_t> source_peers,
     ArrayRef<int64_t> target_peers) const {
@@ -1721,6 +1896,10 @@ LogicalResult CollectivePermute::operator()(
                            device_string, current_id);
   if (!executed.ok()) return failure();
 
+  int32_t device_ordinal = stream->parent()->device_ordinal();
+  if (!collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream).ok())
+    return failure();
+
   return success();
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
@@ -1733,7 +1912,9 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
   static auto* handler =
       CustomCall::Bind("xla.gpu.collective_permute")
           .UserData<const ServiceExecutableRunOptions*>()
-          .RemainingArgs()              // args
+          .UserData<JitRtCollectiveSupport*>()
+          .RemainingArgs()  // args
+          .Attr<int32_t>("uid")
           .Attr<int64_t>("group_mode")  // CollectiveOpGroupMode
           .Attr<int64_t>("op_id")
           .Attr<ArrayRef<int64_t>>("replica_group_offsets")
@@ -1743,7 +1924,7 @@ static bool CollectivePermute(runtime::KernelContext* ctx, void** args,
           .To<RuntimeChecks()>(CollectivePermute::Handler())
           .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1785,7 +1966,7 @@ static bool ReplicaId(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .To<RuntimeChecks()>(ReplicaId::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
@@ -1828,49 +2009,48 @@ static bool PartitionId(runtime::KernelContext* ctx, void** args,
                              .To<RuntimeChecks()>(PartitionId::Handler())
                              .release();
 
-  return succeeded(handler->call(args, attrs, Executable::GetUserData(ctx)));
+  return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
 
 // -------------------------------------------------------------------------- //
 
-SymbolMap JitRtCustomCallsSymbolMap(MangleAndInterner mangle) {
-  SymbolMap symbol_map;
+DirectCustomCallLibrary JitRtGpuCustomCalls() {
+  DirectCustomCallLibrary lib;
 
-  auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
-  };
+  lib.Insert("xla.gpu.fft", &xla::gpu::Fft);
+  lib.Insert("xla.gpu.cholesky", &xla::gpu::Cholesky);
+  lib.Insert("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
+  lib.Insert("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
+  lib.Insert("xla.gpu.gemm", &xla::gpu::Gemm);
 
   auto conv = [](StringRef name) { return ("xla.gpu.conv." + name).str(); };
+  lib.Insert(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
+  lib.Insert(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
+  lib.Insert(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
+  lib.Insert(conv("forward.fused"),
+             &ConvFusedFn<CudnnConvKind::kForwardActivation>);
+  lib.Insert(conv("forward.fused.side_input"),
+             &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
 
-  bind("xla.gpu.all_gather", &xla::gpu::AllGather);
-  bind("xla.gpu.all_reduce", &xla::gpu::AllReduce);
-  bind("xla.gpu.all_to_all", &xla::gpu::AllToAll);
-  bind("xla.gpu.fft", &xla::gpu::Fft);
-  bind("xla.gpu.cholesky", &xla::gpu::Cholesky);
-  bind("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
-  bind("xla.gpu.func.launch", &xla::gpu::LaunchFunc);
-  bind("xla.gpu.gemm", &xla::gpu::Gemm);
-  bind("xla.gpu.gemm.bias", &xla::gpu::GemmBias);
+  lib.Insert("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
+  lib.Insert("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
+  lib.Insert("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
+  lib.Insert("xla.gpu.memset", &MemsetFn);
+  lib.Insert("xla.gpu.infeed", &xla::gpu::Infeed);
+  lib.Insert("xla.gpu.outfeed", &xla::gpu::Outfeed);
+  lib.Insert("xla.gpu.custom_call", &xla::gpu::CustomCall);
 
-  bind(conv("forward"), &ConvFn<CudnnConvKind::kForward>);
-  bind(conv("backward.input"), &ConvFn<CudnnConvKind::kBackwardInput>);
-  bind(conv("backward.filter"), &ConvFn<CudnnConvKind::kBackwardFilter>);
-  bind(conv("forward.fused"), &ConvFusedFn<CudnnConvKind::kForwardActivation>);
-  bind(conv("forward.fused.side_input"),
-       &ConvFuseSideInputdFn<CudnnConvKind::kForwardActivation>);
+  // Collective operations.
+  lib.Insert("xla.gpu.all_gather", &xla::gpu::AllGather);
+  lib.Insert("xla.gpu.all_reduce", &xla::gpu::AllReduce);
+  lib.Insert("xla.gpu.all_reduce_done", &xla::gpu::AllReduceDone);
+  lib.Insert("xla.gpu.all_reduce_start", &xla::gpu::AllReduceStart);
+  lib.Insert("xla.gpu.all_to_all", &xla::gpu::AllToAll);
+  lib.Insert("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
+  lib.Insert("xla.gpu.partition_id", &xla::gpu::PartitionId);
+  lib.Insert("xla.gpu.replica_id", &xla::gpu::ReplicaId);
 
-  bind("xla.gpu.memcpy.d2d", &MemcpyFn<MemcpyDirection::kDeviceToDevice>);
-  bind("xla.gpu.memcpy.h2d", &MemcpyFn<MemcpyDirection::kHostToDevice>);
-  bind("xla.gpu.memcpy.d2h", &MemcpyFn<MemcpyDirection::kDeviceToHost>);
-  bind("xla.gpu.infeed", &xla::gpu::Infeed);
-  bind("xla.gpu.outfeed", &xla::gpu::Outfeed);
-  bind("xla.gpu.partition_id", &xla::gpu::PartitionId);
-  bind("xla.gpu.reduce_scatter", &xla::gpu::ReduceScatter);
-  bind("xla.gpu.replica_id", &xla::gpu::ReplicaId);
-  bind("xla.gpu.custom_call", &xla::gpu::CustomCall);
-
-  return symbol_map;
+  return lib;
 }
 
 }  // namespace gpu

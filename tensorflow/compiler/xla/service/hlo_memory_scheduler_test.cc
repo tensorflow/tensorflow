@@ -44,14 +44,14 @@ int64_t PeakMemoryUseOfEntryComputation(
   CHECK(module->has_schedule());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+      HloAliasAnalysis::Run(module).value();
 
   const HloSchedule& schedule = module->schedule();
 
   HloComputation* computation = module->entry_computation();
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   return HeapSimulator::Run(
-             absl::make_unique<NoFragmentationStatsHeap<HloValue>>(),
+             std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
              *computation, sequence, *alias_analysis, size_function)
       .ValueOrDie()
       .heap_size;

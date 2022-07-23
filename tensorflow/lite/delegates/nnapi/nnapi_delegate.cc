@@ -4843,8 +4843,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         }
       }
       if (total_input_byte_size > nn_input_memory_->get_byte_size()) {
-        nn_input_memory_.reset(
-            new NNMemory(nnapi_, "input_pool", total_input_byte_size));
+        nn_input_memory_ = std::make_unique<NNMemory>(nnapi_, "input_pool",
+                                                      total_input_byte_size);
         // Reset all cached executions when the memory pool is recreated.
         nn_execution_cache_.Clear();
       }
@@ -4871,8 +4871,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
         total_output_byte_size += GetNumPaddingBytes(tensor_size);
       }
       if (total_output_byte_size > nn_output_memory_->get_byte_size()) {
-        nn_output_memory_.reset(
-            new NNMemory(nnapi_, "output_pool", total_output_byte_size));
+        nn_output_memory_ = std::make_unique<NNMemory>(nnapi_, "output_pool",
+                                                       total_output_byte_size);
         // Reset all cached executions when the memory pool is recreated.
         nn_execution_cache_.Clear();
       }
@@ -6206,10 +6206,10 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
       "finalizing the model", nnapi_errno);
 
   // Create shared memory pool for inputs and outputs.
-  nn_input_memory_.reset(
-      new NNMemory(nnapi_, "input_pool", total_input_byte_size));
-  nn_output_memory_.reset(
-      new NNMemory(nnapi_, "output_pool", total_output_byte_size));
+  nn_input_memory_ =
+      std::make_unique<NNMemory>(nnapi_, "input_pool", total_input_byte_size);
+  nn_output_memory_ =
+      std::make_unique<NNMemory>(nnapi_, "output_pool", total_output_byte_size);
 
   return kTfLiteOk;
 }
@@ -6727,7 +6727,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   delegates::SerializationParams params = {model_token, cache_dir};
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12 && cache_dir &&
       model_token) {
-    delegate_data->cache.reset(new delegates::Serialization(params));
+    delegate_data->cache = std::make_unique<delegates::Serialization>(params);
   }
 
   delegates::Serialization* cache_ptr = delegate_data->cache.get();

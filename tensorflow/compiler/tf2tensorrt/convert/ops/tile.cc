@@ -86,8 +86,14 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
                       [](int i) { return i <= 0; })) {
         const auto &mul = absl::StrJoin(multiplies, multiplies + nb_dims, ", ");
         return errors::InvalidArgument(
-            "All replications of the Tile operation in ",
-            params.node_def.name(), " should be positive, got (", mul, ").");
+            "All replications of the Tile operation in '",
+            params.node_def.name(), "' should be positive, got (", mul, ").");
+      }
+
+      if (params.use_implicit_batch && multiplies[0] > 1) {
+        return errors::Unimplemented(
+            "The Tile operation along the batch dimension in '",
+            params.node_def.name(), "' is not implemented.");
       }
     } else {
       const auto &repl_dims = repl.GetTrtDims();
@@ -131,6 +137,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       dynamic_flag = std::any_of(pSize + 1 - dim_adj, pSize + nb_dims,
                                  [](int i) { return i < 0; });
       const int *pMultiplies = replics.weights().GetPointer<int>() + dim_adj;
+      size.d[0] = pMultiplies[0];
       for (int i = 1 - dim_adj; i < nb_dims; i++)
         size.d[i] = pMultiplies[i] * pSize[i];
     }
@@ -198,6 +205,8 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     return Status::OK();
   }
 };
+
+REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertTile>(), "Tile");
 
 }  // namespace convert
 }  // namespace tensorrt

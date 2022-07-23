@@ -72,14 +72,14 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
 
   LogicalResult matchAndRewrite(DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
-    auto input_op = op.arg().getDefiningOp();
+    auto input_op = op.getArg().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeCastOp>(input_op)) {
       if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
         // Don't remove leading and trailing QDQ for PTQ workflow, so the io
         // modifying lib can work correctly.
-        if (!q.arg().getDefiningOp()) return failure();
+        if (!q.getArg().getDefiningOp()) return failure();
         if (op->hasOneUse() &&
             op->user_begin()->hasTrait<OpTrait::IsTerminator>())
           return failure();
@@ -88,14 +88,14 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
       // adjustments and should be kept. Instead, moving dequantize op before
       // the requantize op to remove the unnecessary requantize op.
       if (auto qtype =
-              QuantizedType::getQuantizedElementType(q.arg().getType())) {
+              QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
         rewriter.replaceOpWithNewOp<DequantizeCastOp>(
-            op, op.getResult().getType(), q.arg());
+            op, op.getResult().getType(), q.getArg());
         return success();
       }
 
-      op.replaceAllUsesWith(q.arg());
+      op.replaceAllUsesWith(q.getArg());
       return success();
     }
     return failure();

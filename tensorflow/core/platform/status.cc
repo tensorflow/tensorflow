@@ -117,11 +117,34 @@ void Status::SetStackTrace(std::vector<StackFrame> stack_trace) {
 
 std::vector<StackFrame> Status::GetStackTrace() const { return stack_trace_; }
 
-Status::Status(tensorflow::error::Code code, absl::string_view msg) {
+absl::Span<const SourceLocation> Status::GetSourceLocations() const {
+  return state_ != nullptr ? state_->source_locations
+                           : absl::Span<const SourceLocation>();
+}
+
+void Status::MaybeAddSourceLocation(SourceLocation loc) {
+  if (state_ == nullptr) {
+    return;
+  }
+  if (loc.line <= 0) {
+    return;
+  }
+  if (loc.file_name == nullptr) {
+    return;
+  }
+  if (loc.file_name[0] == '\0') {
+    return;
+  }
+  state_->source_locations.push_back(loc);
+}
+
+Status::Status(tensorflow::error::Code code, absl::string_view msg,
+               SourceLocation loc) {
   assert(code != tensorflow::error::OK);
   state_ = std::make_unique<State>();
   state_->code = code;
   state_->msg = std::string(msg);
+  MaybeAddSourceLocation(loc);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
 }

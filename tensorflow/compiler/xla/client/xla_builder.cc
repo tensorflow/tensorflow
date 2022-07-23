@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <queue>
 #include <string>
@@ -24,7 +25,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -130,6 +130,19 @@ XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     return builder->AddInstruction(std::move(instr), HloOpcode::kBitcast,
+                                   {operand});
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildDomain(XlaBuilder* builder, XlaOp operand,
+                                    const OpSharding entry,
+                                    const OpSharding exit, const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_domain_entry_sharding() = entry;
+    *instr.mutable_domain_exit_sharding() = exit;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kDomain,
                                    {operand});
   });
 }
@@ -387,7 +400,7 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
         // Set bound is considered constant -- the bound is used as the value.
         break;
       }
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -441,7 +454,7 @@ Status XlaBuilder::SetDynamicBinding(int64_t dynamic_size_param_num,
                                              /*is_dynamic=*/true);
       *instr.mutable_shape() = param_shape.ToProto();
       instruction_shapes_[index] =
-          absl::make_unique<Shape>(std::move(param_shape));
+          std::make_unique<Shape>(std::move(param_shape));
     }
   }
   if (!param_exists) {
@@ -456,7 +469,7 @@ Status XlaBuilder::SetDynamicBinding(int64_t dynamic_size_param_num,
                                                 dynamic_size_param_index},
       DynamicParameterBinding::DynamicDimension{
           target_param_num, target_param_index, target_dim_num}));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
@@ -465,7 +478,7 @@ Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp op,
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
   (*frontend_attributes->mutable_map())[attribute] = std::move(value);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 XlaComputation XlaBuilder::BuildAndNoteError() {
@@ -476,7 +489,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
         AddStatus(build_status.status(), absl::StrCat("error from: ", name_)));
     return {};
   }
-  return build_status.ConsumeValueOrDie();
+  return std::move(build_status).value();
 }
 
 Status XlaBuilder::GetCurrentStatus() const {
@@ -485,7 +498,7 @@ Status XlaBuilder::GetCurrentStatus() const {
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
@@ -592,7 +605,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
                                          alias.param_index, alias.kind));
   }
   *module->mutable_input_output_alias() = config.ToProto();
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
@@ -1415,7 +1428,7 @@ Status XlaBuilder::VerifyConvolution(
                                field_name, i, numbers[i]);
       }
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   };
   TF_RETURN_IF_ERROR(
       check_spatial_dimensions("input_spatial_dimensions",
@@ -2205,6 +2218,10 @@ XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
                                          *operand_shape, new_element_type));
+    if (primitive_util::IsComplexType(operand_shape->element_type()) &&
+        !primitive_util::IsComplexType(new_element_type)) {
+      operand = Real(operand);
+    }
     return AddOpWithShape(HloOpcode::kConvert, shape, {operand});
   });
 }
@@ -2570,7 +2587,7 @@ Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
         "it in builder '%s'",
         op.handle(), op.builder()->name(), name());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
@@ -3818,7 +3835,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
 
 std::unique_ptr<XlaBuilder> XlaBuilder::CreateSubBuilder(
     const std::string& computation_name) {
-  auto sub_builder = absl::make_unique<XlaBuilder>(computation_name);
+  auto sub_builder = std::make_unique<XlaBuilder>(computation_name);
   sub_builder->parent_builder_ = this;
   sub_builder->die_immediately_on_error_ = this->die_immediately_on_error_;
   return sub_builder;
@@ -3891,7 +3908,7 @@ XlaBuilder::CreateDefaultConvDimensionNumbers(int num_spatial_dims) {
         dnum.output_batch_dimension(), dnum.output_feature_dimension(),
         dnum.output_spatial_dimensions(0), dnum.output_spatial_dimensions(1));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
@@ -3930,7 +3947,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
   handle_to_index_[handle] = instructions_.size();
   instructions_.push_back(std::move(instr));
   instruction_shapes_.push_back(
-      absl::make_unique<Shape>(instructions_.back().shape()));
+      std::make_unique<Shape>(instructions_.back().shape()));
 
   XlaOp op(handle, this);
   return op;
@@ -4754,6 +4771,9 @@ XlaOp Ceil(const XlaOp operand) {
 }
 XlaOp Round(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kRoundNearestAfz, operand);
+}
+XlaOp RoundNearestEven(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRoundNearestEven, operand);
 }
 XlaOp Log(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kLog, operand);

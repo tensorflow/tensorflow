@@ -169,11 +169,11 @@ Status IrEmitterNested::CodegenNestedComputation() {
   }
   b_.SetInsertPoint(ret_instr);
   emitted_function_ = function;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitterNested::EmitTargetElementLoop(
@@ -187,7 +187,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
@@ -241,7 +241,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     }
     ir_emitter_context_->constants().push_back(std::move(info));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

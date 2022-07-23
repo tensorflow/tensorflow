@@ -25,14 +25,16 @@ limitations under the License.
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/GPU/Passes.h"
+#include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
 using ::mlir::func::FuncOp;
+using ::mlir::gpu::GPUModuleOp;
 
 // TODO(b/233761238): We only want to have this pipeline temporarily, as it is
 // not yet clear how exactly it will look like. The goal is to merge this with
@@ -43,13 +45,14 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
                                   ArrayRef<int64_t> unrollFactors) {
   // HLO -> Loops
   pm.addNestedPass<FuncOp>(mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<FuncOp>(createLinalgElementwiseOpFusionPass());
   pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
-  pm.addPass(CreateComputeOpAndFuncBufferizePass());
+  pm.addPass(createComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToParallelLoopsPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
   // Loops -> GPU
-  pm.addNestedPass<FuncOp>(CreateTileLoopsPass(tileSizes, unrollFactors));
+  pm.addNestedPass<FuncOp>(createTileLoopsPass(tileSizes, unrollFactors));
   pm.addNestedPass<FuncOp>(createGpuMapParallelLoopsPass());
   pm.addNestedPass<FuncOp>(createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(createParallelLoopToGpuPass());
@@ -58,10 +61,14 @@ void mlir::createHloToGpuPipeline(OpPassManager &pm,
   constexpr llvm::StringRef kGpuDataLayoutSpec =
       "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
   pm.addPass(createGpuKernelOutliningPass(kGpuDataLayoutSpec));
-  pm.addNestedPass<gpu::GPUModuleOp>(createLowerAffinePass());
-  pm.addNestedPass<gpu::GPUModuleOp>(createCanonicalizerPass());
-  pm.addNestedPass<gpu::GPUModuleOp>(createConvertSCFToCFPass());
+  pm.addNestedPass<GPUModuleOp>(createForLoopSpecializationPass());
+  pm.addNestedPass<GPUModuleOp>(createLowerAffinePass());
+  pm.addNestedPass<GPUModuleOp>(createCanonicalizerPass());
+  pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());
   // GPU -> low-level IR
-  pm.addNestedPass<gpu::GPUModuleOp>(CreateGpuKernelToNvvmPass());
-  pm.addPass(CreatePropagateStaticShapesToKernelPass());
+  pm.addNestedPass<GPUModuleOp>(createGpuKernelToNvvmPass());
+  pm.addPass(createPropagateStaticShapesToKernelPass());
+  // Some instructions crash ptxas down the line if they have debug info
+  // attached.
+  pm.addNestedPass<GPUModuleOp>(createStripDebugInfoPass());
 }

@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -139,7 +139,7 @@ static Status RunLmhloGpuToTfrtConversionPipeline(mlir::ModuleOp module) {
   tensorflow::populateLmhloToTfrtGpuPasses(pass_manager);
   if (failed(pass_manager.run(module)))
     return tensorflow::errors::Internal("Failed to run pass pipeline.");
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // Converts `module` to BEF.
@@ -161,7 +161,7 @@ ConvertToBef(mlir::ModuleOp module, tfrt::HostContext* host) {
 }
 
 static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
-  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(op)) {
+  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp>(op)) {
     return Thunk::Kind::kGemm;
   }
   if (mlir::isa<mlir::lmhlo::AllGatherOp>(op)) {
@@ -413,7 +413,7 @@ static Status InsertKernelRequestContext(
   }
   request_context_builder->context_data().emplace<GpuModuleData>(
       *gpu_module_data);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status BefThunk::Initialize(const GpuExecutable& executable,
@@ -434,7 +434,7 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
       gpu_module_data_ = module_data;
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -510,7 +510,7 @@ Status BefThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (auto* error = result->GetErrorIfPresent())
     return tensorflow::errors::Internal(tfrt::StrCat(*error));
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

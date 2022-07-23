@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -60,7 +62,7 @@ absl::Status LinearStorage::GetGPUResources(
         "Expected TensorLinearDescriptor on input.");
   }
 
-  resources->ints.push_back({"length", depth_});
+  resources->AddInt("length", depth_);
 
   if (storage_type_ == LinearStorageType::BUFFER) {
     resources->buffers.push_back({"buffer", memory_});

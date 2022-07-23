@@ -1139,10 +1139,10 @@ static LogicalResult VerifyPreservedAttrs(Operation *op,
     };
 
     unsigned num_args = GetLoopRegionDataArgs(region).size();
-    if (num_args != attrs.getArg_attrs().size()) {
+    if (num_args != attrs.getArgAttrs().size()) {
       return emit_region_error("has ")
              << num_args << " argument(s) but preserved attributes has "
-             << attrs.getArg_attrs().size();
+             << attrs.getArgAttrs().size();
     }
 
     // All regions are terminated by either a YieldOp or a ConditionOp. In the
@@ -1156,10 +1156,10 @@ static LogicalResult VerifyPreservedAttrs(Operation *op,
                      .getMutableSuccessorOperands(region.getRegionNumber())
                      .size();
     }
-    if (num_rets != attrs.getRes_attrs().size()) {
+    if (num_rets != attrs.getResAttrs().size()) {
       return emit_region_error("has ")
              << num_rets << " result(s) but preserved attributes has "
-             << attrs.getRes_attrs().size();
+             << attrs.getResAttrs().size();
     }
   }
   return success();
@@ -1398,7 +1398,7 @@ LogicalResult ForRegionOp::verify() {
   return VerifyPreservedAttrs(*this, {region_attrsAttr()});
 }
 
-OperandRange ForRegionOp::getSuccessorEntryOperands(unsigned index) {
+OperandRange ForRegionOp::getSuccessorEntryOperands(Optional<unsigned> index) {
   return init();
 }
 

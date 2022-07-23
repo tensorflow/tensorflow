@@ -24,16 +24,38 @@ limitations under the License.
 namespace mlir {
 namespace lmhlo {
 
+// TODO(b/236017415): remove when mhlo uses prefix accessor.
+namespace accessor_dispatch {
 template <typename OpT>
-static LogicalResult VerifyAllReduce(OpT op) {
-  if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/false)))
+auto getOutputs(OpT op, int) -> decltype(op.getOutputs(), ValueRange{}) {
+  return op.getOutputs();
+}
+template <typename OpT>
+auto getOutputs(OpT op, char) -> decltype(op.results(), ValueRange{}) {
+  return op.results();
+}
+
+template <typename OpT>
+auto getInputs(OpT op, int) -> decltype(op.getInputs(), ValueRange{}) {
+  return op.getInputs();
+}
+template <typename OpT>
+auto getInputs(OpT op, char) -> decltype(op.operands(), ValueRange{}) {
+  return op.operands();
+}
+}  // namespace accessor_dispatch
+
+template <typename OpT>
+static LogicalResult verifyAllReduce(OpT op) {
+  if (failed(mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/false)))
     return failure();
 
   // AllReduce has variadic operands and results that have the same size.
   // Each member of the operand should have the same type as the corresponding
   // member of the result.
   for (auto it : llvm::enumerate(
-           llvm::zip(op.operands().getTypes(), op.results().getTypes()))) {
+           llvm::zip(accessor_dispatch::getInputs(op, 0).getTypes(),
+                     accessor_dispatch::getOutputs(op, 0).getTypes()))) {
     Type operandType = std::get<0>(it.value());
     Type resultType = std::get<1>(it.value());
     if (operandType != resultType)

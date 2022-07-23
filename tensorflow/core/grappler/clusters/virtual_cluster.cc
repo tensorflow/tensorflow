@@ -26,7 +26,7 @@ namespace grappler {
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices)
-    : VirtualCluster(devices, absl::make_unique<OpLevelCostEstimator>(),
+    : VirtualCluster(devices, std::make_unique<OpLevelCostEstimator>(),
                      ReadyNodeManagerFactory("FirstReady")) {}
 
 VirtualCluster::VirtualCluster(
@@ -38,7 +38,7 @@ VirtualCluster::VirtualCluster(
 
   // Note that we do not use aggressive shape inference to preserve unknown
   // shapes from the input graph.
-  estimator_ = absl::make_unique<AnalyticalCostEstimator>(
+  estimator_ = std::make_unique<AnalyticalCostEstimator>(
       this, std::move(node_estimator), std::move(node_manager),
       /*use_static_shapes=*/true, /*use_aggressive_shape_inference=*/false);
 }

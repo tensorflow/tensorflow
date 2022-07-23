@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -207,7 +207,7 @@ StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis() {
-  return absl::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  return std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
 }
 
 StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
@@ -586,11 +586,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     // It is OK to capture `buffer` pointer because the `output_buffer` can't be
     // deleted until all the usage holds have gone away.
     tfrt::EnqueueWork(
-        GetHostContext(),
-        [literal, av = avs[0].CopyRef(),
-         movable_device_buffer{device_buffer.ToClosure()}, shape]() mutable {
+        GetHostContext(), [literal, av = avs[0].CopyRef(),
+                           db = std::move(device_buffer), shape]() mutable {
           tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           const std::shared_ptr<MaybeOwningCpuMemory>& b =
               device_buffer->Buffers()[0];
           CHECK_EQ(literal.size_bytes(), b->size());
@@ -607,11 +606,10 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
       // It is OK to capture `buffer` pointer because the `output_buffer` can't
       // be deleted until all the usage holds have gone away.
       tfrt::EnqueueWork(
-          GetHostContext(),
-          [i, literal, av = avs[i].CopyRef(), shape,
-           movable_device_buffer{device_buffer.ToClosure()}]() mutable {
+          GetHostContext(), [i, literal, av = avs[i].CopyRef(), shape,
+                             db = std::move(device_buffer)]() mutable {
             tensorflow::profiler::TraceMe traceme("H2D Dispatch");
-            TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+            TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
             auto slice = LiteralSlice(literal, {i});
             const std::shared_ptr<MaybeOwningCpuMemory>& b =
                 device_buffer->Buffers()[i];
@@ -641,6 +639,22 @@ TfrtCpuBuffer::ScopedHold::ScopedHold(ScopedHold&& other)
   other.SetState(kMoved);
 }
 
+TfrtCpuBuffer::ScopedHold& TfrtCpuBuffer::ScopedHold::operator=(
+    ScopedHold&& other) {
+  if (ok()) {
+    parent_->DropHold(type_, buffer().get());
+  }
+  parent_ = other.parent_;
+  type_ = other.type_;
+  state_ = other.state_;
+  status_ = std::move(other.status_);
+  buffer_ = std::move(other.buffer_);
+  // Preserve the invariant that status is invalid if buffer == nullptr.
+  other.SetState(kMoved);
+
+  return *this;
+}
+
 void TfrtCpuBuffer::ScopedHold::Acquire(
     StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or) {
   CHECK(!ok());
@@ -654,14 +668,6 @@ void TfrtCpuBuffer::ScopedHold::Acquire(
   }
   // Check the invariant holds.
   CHECK(!ok() || buffer_ != nullptr);
-}
-
-TfrtCpuBuffer::ScopedHold::ForClosure TfrtCpuBuffer::ScopedHold::ToClosure() {
-  CHECK(ok());
-  ForClosure for_closure(parent_, type_, state_, std::move(status_),
-                         std::move(buffer_));
-  SetState(kReleased);
-  return for_closure;
 }
 
 void TfrtCpuBuffer::ScopedHold::ConvertUsageHold(
@@ -1036,7 +1042,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
       }
     }
     // Unblock ToLiteral caller.
-    return PjRtFuture<Status>(::tensorflow::OkStatus());
+    return PjRtFuture<Status>(OkStatus());
   } else {
     auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
     // Wait for buffer definition events to finish before d2h dispatch.
@@ -1045,11 +1051,11 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     // parallel.
     EnqueueWorkWhenReady(
         host_ctx, device_buffer_wait_avs,
-        [this, movable_device_buffer{device_buffer.ToClosure()},
+        [this, db = std::move(device_buffer),
          device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, ready_event = ready_event.CopyRef()] {
+         literal, ready_event = ready_event.CopyRef()]() mutable {
           tensorflow::profiler::TraceMe traceme("D2H Dispatch");
-          TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
+          TfrtCpuBuffer::ScopedHold device_buffer = std::move(db);
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
@@ -1074,7 +1080,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
           }
 
           // Unblock ToLiteral event.
-          ready_event.emplace(::tensorflow::OkStatus());
+          ready_event.emplace(OkStatus());
         });
     return PjRtFuture<Status>(
         client_->GetHostContext(), std::move(ready_event),
@@ -1242,7 +1248,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           definition_event.emplace(FailedPrecondition(
               "Buffer Definition Event: %s", error->message));
         } else {
-          definition_event.emplace(::tensorflow::OkStatus());
+          definition_event.emplace(OkStatus());
         }
       } else {
         event.AndThen([event = event.CopyRef(),
@@ -1251,7 +1257,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
             definition_event.emplace(FailedPrecondition(
                 "Buffer Definition Event: %s", error->message));
           } else {
-            definition_event.emplace(::tensorflow::OkStatus());
+            definition_event.emplace(OkStatus());
           }
         });
       }
@@ -1361,7 +1367,7 @@ Status TfrtCpuExecutable::SetUpDonation(bool tuple_inputs) {
   TF_ASSIGN_OR_RETURN(parameters_that_must_be_donated_,
                       ComputeParametersThatMustBeDonated(
                           *cpu_executable_->shared_module(), tuple_inputs));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
@@ -1442,7 +1448,7 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
           i, input_buffer_sizes_in_bytes_[i], buffer->Buffers()[0]->size());
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(

@@ -38,6 +38,7 @@ func.func @gemm(%lhs: memref<3x4xf32>, %rhs: memref<4x5xf32>, %output:memref<3x5
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 12,
     rhs_stride = 20
@@ -88,6 +89,7 @@ func.func @gemm_batch(%lhs: memref<42x3x4xf32>, %rhs: memref<4x5xf32>, %output:m
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 42,
     lhs_stride = 12,
     rhs_stride = 0
@@ -95,58 +97,6 @@ func.func @gemm_batch(%lhs: memref<42x3x4xf32>, %rhs: memref<4x5xf32>, %output:m
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return [[CHAIN]] : !tfrt.chain
-  "lmhlo.terminator"() : () -> ()
-}
-
-// CHECK:      func @gemm_bias(
-// CHECK-SAME:   %arg0: !tfrt.chain,
-// CHECK-SAME:   %arg1: !tfrt_gpu.stream,
-// CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
-// CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
-// CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
-// CHECK-SAME:   %arg5: !tfrt_gpu.buffer
-// CHECK-SAME: ) -> !tfrt.chain
-func.func @gemm_bias(%lhs: memref<3x4xf32>, %rhs: memref<4x5xf32>,
-                %bias: memref<3x5xf32>, %output:memref<3x5xf32>) {
-  // CHECK-NOT: cast
-  // CHECK-NOT: async.execute
-
-  // CHECK: [[CHAIN0:%[0-9]+]] = tfrt_gpu.mem.copy %arg5, %arg4, %arg1, %arg0
-  // CHECK-SAME: : !tfrt_gpu.buffer, !tfrt_gpu.buffer
-
-  // CHECK-DAG: [[M:%[0-9]+]] = tfrt.constant.i32 3
-  // CHECK-DAG: [[N:%[0-9]+]] = tfrt.constant.i32 5
-  // CHECK-DAG: [[K:%[0-9]+]] = tfrt.constant.i32 4
-  // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f32 5.000000e-01
-  // CHECK-DAG: [[BETA:%[0-9]+]] = tfrt.constant.f32 1.000000e+00
-  // CHECK: [[ALGO:%[0-9]+]] = tfrt_gpu.blas.gemm.algo CUBLAS_GEMM_DEFAULT
-  // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
-  // CHECK: [[HANDLE:%[0-9]+]] = tfrt.once @tfrt_gpu.blas.create{{.*}}([[CONTEXT]])
-
-  // CHECK: [[CHAIN1:%[0-9]+]] = tfrt_gpu.blas.gemm [[HANDLE]], %arg1
-  // CHECK-SAME: CUBLAS_OP_N, CUBLAS_OP_N, [[N]], [[M]], [[K]], [[ALPHA]],
-  // CHECK-SAME: %arg3, CUDA_R_32F, [[N]],
-  // CHECK-SAME: %arg2, CUDA_R_32F, [[K]], [[BETA]],
-  // CHECK-SAME: %arg5, CUDA_R_32F, [[N]],
-  // CHECK-SAME: CUBLAS_COMPUTE_32F, [[ALGO]], [[CHAIN0]]
-
-  "lmhlo_gpu.gemm_bias"(%lhs, %rhs, %bias, %output) {
-    dot_dimension_numbers = #mhlo.dot<
-      lhs_batching_dimensions = [],
-      rhs_batching_dimensions = [],
-      lhs_contracting_dimensions = [1],
-      rhs_contracting_dimensions = [0]
-    >,
-    alpha_real = 0.5,
-    alpha_imag = 0.0,
-    beta = 1.0,
-    batch_size = 1,
-    lhs_stride = 12,
-    rhs_stride = 20
-  } : (memref<3x4xf32>, memref<4x5xf32>, memref<3x5xf32>, memref<3x5xf32>) -> ()
-
-  // CHECK-NOT: cast
-  // CHECK: tfrt.return [[CHAIN1]] : !tfrt.chain
   "lmhlo.terminator"() : () -> ()
 }
 
@@ -178,7 +128,7 @@ func.func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: m
       layout_a = dense<[0, 1]> : tensor<2xindex>,
       layout_b = dense<[0, 1]> : tensor<2xindex>,
       layout_output = dense<[0, 1]> : tensor<2xindex>,
-      left_side = true, lower = true, transpose_a = #mhlo<"transpose NO_TRANSPOSE">,
+      left_side = true, lower = true, transpose_a = #mhlo<transpose NO_TRANSPOSE>,
       unit_diagonal = true
   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 

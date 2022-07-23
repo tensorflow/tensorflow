@@ -2107,6 +2107,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         "Call graph must be flattened before copy insertion.");
   }
 
+  int64_t num_copies_before = GetNumExistingCopies(module);
+
   TF_RETURN_IF_ERROR(AddCopiesToResolveInterference(module));
 
   // Simplify the tuple structures introduced by the deep copies. This should be
@@ -2134,19 +2136,9 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
 
-  if (VLOG_IS_ON(1)) {
-    int64_t num_total_copies = 0;
-    for (HloComputation* computation : module->computations()) {
-      for (HloInstruction* instruction : computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCopy) {
-          num_total_copies++;
-        }
-      }
-    }
-    VLOG(1) << "Num copies before copy-insertion: "
-            << GetNumExistingCopies(module);
-    VLOG(1) << "Num copies after copy-insertion: " << num_total_copies;
-  }
+  VLOG(1) << "Num copies before copy-insertion: " << num_copies_before;
+  VLOG(1) << "Num copies after copy-insertion: "
+          << GetNumExistingCopies(module);
 
   return true;
 }

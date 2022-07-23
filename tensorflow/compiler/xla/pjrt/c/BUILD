@@ -14,3 +14,25 @@ cc_library(
         ":pjrt_c_api_hdrs",
     ],
 )
+
+cc_library(
+    name = "pjrt_c_api_wrapper_impl",
+    srcs = ["pjrt_c_api_wrapper_impl.cc"],
+    hdrs = ["pjrt_c_api_wrapper_impl.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_helpers",
+    srcs = ["pjrt_c_api_helpers.cc"],
+    hdrs = ["pjrt_c_api_helpers.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla:status",
+    ],
+)

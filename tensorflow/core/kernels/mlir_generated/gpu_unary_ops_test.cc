@@ -172,6 +172,22 @@ DstT baseline_cast(SrcT x) {
   return static_cast<DstT>(x);
 }
 
+template <typename DstT,
+          std::enable_if_t<!llvm::is_one_of<DstT, std::complex<float>,
+                                            std::complex<double>>::value,
+                           bool> = true>
+DstT baseline_cast(const std::complex<float>& x) {
+  return static_cast<DstT>(x.real());
+}
+
+template <typename DstT,
+          std::enable_if_t<!llvm::is_one_of<DstT, std::complex<float>,
+                                            std::complex<double>>::value,
+                           bool> = true>
+DstT baseline_cast(const std::complex<double>& x) {
+  return static_cast<DstT>(x.real());
+}
+
 #define TEST_CAST_FROM_TO(from_type, to_type)                    \
   GENERATE_DEFAULT_TEST(Cast, from_type, to_type, baseline_cast, \
                         test::OpsTestConfig()                    \
@@ -235,6 +251,10 @@ TEST_CAST_TO_NO_UNSIGNED(DT_FLOAT)
 TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_FLOAT)
 TEST_CAST_TO_NO_UNSIGNED(DT_DOUBLE)
 TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_DOUBLE)
+TEST_CAST_TO_NO_UNSIGNED(DT_COMPLEX64)
+TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_COMPLEX64)
+TEST_CAST_TO_NO_UNSIGNED(DT_COMPLEX128)
+TEST_NON_NEGATIVE_VALUES_CAST_TO_UNSIGNED(DT_COMPLEX128)
 
 #undef TEST_CAST_FROM_TO
 #undef TEST_NON_NEGATIVE_VALUES_CAST_FROM_TO

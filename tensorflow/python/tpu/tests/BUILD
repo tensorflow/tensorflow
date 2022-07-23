@@ -332,6 +332,7 @@ tpu_py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss",
+        "noasan",
     ],
     deps = [
         "//tensorflow/python/tpu:tpu_py",

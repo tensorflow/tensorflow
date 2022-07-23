@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/broadcast_args.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 

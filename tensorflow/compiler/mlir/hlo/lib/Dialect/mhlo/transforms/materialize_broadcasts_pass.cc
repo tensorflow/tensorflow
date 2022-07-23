@@ -41,8 +41,8 @@ struct TestMaterializeBroadcastsPass
     conversionTarget
         .addLegalDialect<arith::ArithmeticDialect, mlir::func::FuncDialect>();
 
-    SetupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
-    PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
+    setupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
+    populateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {

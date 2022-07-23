@@ -109,7 +109,7 @@ Literal ExecuteWithRunner(std::unique_ptr<HloModule> module,
   TF_QCHECK_OK(result_status.status())
       << "Failed to execute on " << runner->Name() << "\n";
 
-  return result_status.ConsumeValueOrDie();
+  return std::move(result_status).value();
 }
 }  // namespace
 
@@ -137,7 +137,7 @@ Status RunAndCompare(
 
   std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
                                                 options.use_large_float_range)
-                                  .ConsumeValueOrDie();
+                                  .value();
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -182,7 +182,7 @@ Status RunAndCompare(
     reference_module =
         PrepareReferenceModule(*test_module, test_runner, config_modifier_hook,
                                reference_module_modifier_hook)
-            .ConsumeValueOrDie();
+            .value();
   }
 
   Literal test_result = ExecuteWithRunner(
@@ -199,7 +199,7 @@ Status RunAndCompare(
 
   if (reference_module == nullptr) {
     std::cerr << "Skipping reference runner\n";
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Literal reference_result =

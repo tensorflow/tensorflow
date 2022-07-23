@@ -244,7 +244,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
     auto accumulator = rewriter.create<GenericOp>(
         tiled_op.getLoc(), partial_result.getType(),
         makeArrayRef(partial_result),
-        makeArrayRef(extract_output_slice.result()),
+        makeArrayRef(extract_output_slice.getResult()),
         makeArrayRef({id_map, id_map}), parallel_iter_types,
         [&](OpBuilder &b, Location nested_loc, ValueRange args) {
           BlockAndValueMapping bvm;
@@ -254,7 +254,7 @@ struct FuseFillIntoTiledReductionPattern : public OpRewritePattern<GenericOp> {
         });
 
     rewriter.updateRootInPlace(insert_output_slice, [&]() {
-      insert_output_slice.sourceMutable().assign(accumulator.getResult(0));
+      insert_output_slice.getSourceMutable().assign(accumulator.getResult(0));
     });
     return success();
   }

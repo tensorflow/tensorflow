@@ -185,6 +185,7 @@ build:macos --copt=-DGRPC_BAZEL_BUILD
 
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
+build:macos_arm64 --macos_minimum_os=11.0
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
@@ -227,6 +228,7 @@ build:mkl_threadpool -c opt
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 build:mkl_aarch64 --define=build_with_mkl_aarch64=true
 build:mkl_aarch64 --define=build_with_openmp=true
+build:mkl_aarch64 --define=build_with_acl=true
 build:mkl_aarch64 -c opt
 
 # This config refers to building CUDA op kernels with nvcc.
@@ -524,8 +526,8 @@ build:rbe_linux_py3_base --python_path="/usr/local/bin/python3.9"
 build:rbe_linux_py3_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_python3.9"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_04112022:toolchain"
-build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_04112022:cc-toolchain-x64_windows"
+build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_06152022:toolchain"
+build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_06152022:cc-toolchain-x64_windows"
 build:rbe_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
@@ -661,23 +663,3 @@ build:ubsan --linkopt -lubsan
 # Disable TFRT integration for now unless --config=tfrt is specified.
 build      --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compiler/mlir/tfrt/benchmarks,tensorflow/compiler/mlir/tfrt/jit/python_binding,tensorflow/compiler/mlir/tfrt/jit/transforms,tensorflow/compiler/mlir/tfrt/python_tests,tensorflow/compiler/mlir/tfrt/tests,tensorflow/compiler/mlir/tfrt/tests/ir,tensorflow/compiler/mlir/tfrt/tests/analysis,tensorflow/compiler/mlir/tfrt/tests/jit,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_tfrt,tensorflow/compiler/mlir/tfrt/tests/lhlo_to_jitrt,tensorflow/compiler/mlir/tfrt/tests/tf_to_corert,tensorflow/compiler/mlir/tfrt/tests/tf_to_tfrt_data,tensorflow/compiler/mlir/tfrt/tests/saved_model,tensorflow/compiler/mlir/tfrt/transforms/lhlo_gpu_to_tfrt_gpu,tensorflow/core/runtime_fallback,tensorflow/core/runtime_fallback/conversion,tensorflow/core/runtime_fallback/kernel,tensorflow/core/runtime_fallback/opdefs,tensorflow/core/runtime_fallback/runtime,tensorflow/core/runtime_fallback/util,tensorflow/core/tfrt/common,tensorflow/core/tfrt/eager,tensorflow/core/tfrt/eager/backends/cpu,tensorflow/core/tfrt/eager/backends/gpu,tensorflow/core/tfrt/eager/core_runtime,tensorflow/core/tfrt/eager/cpp_tests/core_runtime,tensorflow/core/tfrt/gpu,tensorflow/core/tfrt/run_handler_thread_pool,tensorflow/core/tfrt/runtime,tensorflow/core/tfrt/saved_model,tensorflow/core/tfrt/graph_executor,tensorflow/core/tfrt/saved_model/tests,tensorflow/core/tfrt/tpu,tensorflow/core/tfrt/utils
 build:tfrt --deleted_packages=
-
-# Experimental configuration for building XLA GPU lowering to TFRT.
-build:experimental_enable_xlir --config=tfrt
-build:experimental_enable_xlir --@tf_runtime//:enable_gpu
-build:experimental_enable_xlir --@rules_cuda//cuda:cuda_runtime=//tensorflow/compiler/xla/service/gpu:cuda_runtime_for_xlir
-build:experimental_enable_xlir --nocheck_visibility
-build:experimental_enable_xlir --incompatible_strict_action_env
-build:experimental_enable_xlir --config=monolithic
-build:experimental_enable_xlir --//tensorflow/compiler/xla/service/gpu:enable_xlir
-
-# bazel test --config=experimental_enable_bef_thunk \
-#   //tensorflow/compiler/xla/service/gpu:bef_thunk_tests
-build:experimental_enable_bef_thunk      --config=experimental_enable_xlir
-test:experimental_enable_bef_thunk       --test_env=XLA_FLAGS=--xla_gpu_bef_thunk
-
-# bazel test --config=experimental_enable_bef_executable \
-#   //tensorflow/compiler/xla/service/gpu:bef_executable_tests
-build:experimental_enable_bef_executable --config=experimental_enable_xlir
-test:experimental_enable_bef_executable  --test_env=XLA_FLAGS=--xla_gpu_bef_executable
-

@@ -94,6 +94,7 @@ class Embedder {
  private:
   const Model* main_model_;
   std::vector<std::string> jpeg_data_;
+  int32_t jpeg_output_channels_;
   float scale_;
   int64_t zero_point_;
   const Model* validation_model_;

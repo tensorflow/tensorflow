@@ -24,15 +24,18 @@ limitations under the License.
 namespace mlir {
 namespace gml_st {
 
-/// Experimental pass to lower MHLO to destination-style ops in GML and linalg.
+/// Pass to lower MHLO to destination-style ops in GML and linalg.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToGMLPass();
 
-/// Experimental pass to fuse producers into `gml_st.materialize` ops.
+/// Pass to fuse producers into `gml_st.materialize` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass();
 
-/// Experimental pass to tile operations.
+/// Pass to tile operations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingPass(
     ArrayRef<int64_t> tileSizes = {});
+
+/// Pass to compose set operations.
+std::unique_ptr<OperationPass<func::FuncOp>> createComposeSetOpsPass();
 
 /// Create a pass to convert `gml_st.loop` to `scf.for` and `scf.parallel`
 /// loops and memref.load/memref.store accesses.
@@ -41,6 +44,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
 // Pass to bufferize `linalg.tiled_loop` including the operations contained in
 // its body.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
+
+/// Pass to vectorize linalg.generic ops tiled to gml_st.parallel and gml_st.for
+/// loops.
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"

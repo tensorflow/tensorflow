@@ -67,19 +67,9 @@ describing the desired TPUEmbedding configuration.
 
 REGISTER_OP("_ConfigureTPUEmbeddingMemory")
     .Input("common_config: string")
-    .Output("task_host_config: string")
-    .Attr("config: string")
+    .Output("memory_config: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
-      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
-      TPUEmbeddingConfiguration config;
-      TF_RET_CHECK(config.ParseFromString(config_string));
-      if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
-            "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
-            "TRAINING, or BACKWARD_PASS_ONLY");
-      }
       TF_RET_CHECK(c->num_inputs() == 1);
       // Validate that all the input shape is compatible.
       ShapeHandle input(c->Scalar());
@@ -91,20 +81,41 @@ REGISTER_OP("_ConfigureTPUEmbeddingMemory")
 
 An op that configures the TPUEmbedding software on a host.
 
-common_config: A string-encoded tpu_embedding CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and the HBM
-size (in bytes) required for operation.
-task_host_config: A string-encoded tpu_embedding PerHostConfiguration proto
-containing metadata about the memory allocations reserved for TPUEmbedding.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
+common_config: A string-encoded CommonConfiguration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.
+memory_config: A string-encoded HbmBuffersConfig proto containing metadata about
+the memory allocations reserved for TPUEmbedding.
+)doc");
+
+REGISTER_OP("_CollateTPUEmbeddingMemory")
+    .Input("memory_configs: N * string")
+    .Output("merged_memory_config: string")
+    .Attr("N: int >= 1")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      TF_RET_CHECK(c->num_inputs() > 0);
+      ShapeHandle input(c->Scalar());
+      // Validate that all the inputs are compatible with the correct
+      // vector shape.
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
+      }
+      c->set_output(0, c->Scalar());
+      return OkStatus();
+    })
+    .Doc(R"doc(
+
+An op that merges the string-encoded HbmBufferConfig protos from all hosts.
+
+memory_configs: String-encoded HbmBuffersConfig protos containing metadata about
+the memory allocations reserved for TPUEmbedding across all hosts.
 )doc");
 
 REGISTER_OP("_ConfigureTPUEmbeddingHost")
     .Input("common_config: string")
-    .Input("task_host_config: N * string")
-    .Output("host_config: string")
-    .Attr("N: int >= 1")
+    .Input("memory_config: string")
+    .Output("network_config: string")
     .Attr("config: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
@@ -117,9 +128,10 @@ REGISTER_OP("_ConfigureTPUEmbeddingHost")
             "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
-      TF_RET_CHECK(c->num_inputs() > 0);
+      TF_RET_CHECK(c->num_inputs() == 2);
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       c->set_output(0, c->Scalar());
       return OkStatus();
     })
@@ -127,17 +139,18 @@ REGISTER_OP("_ConfigureTPUEmbeddingHost")
 
 An op that configures the TPUEmbedding software on a host.
 
-common_config: A string-encoded tpu_embedding CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output.
-task_host_config: A string-encoded tpu_embedding PerHostConfiguration proto from
-each host containing metadata about the memory allocations reserved for
-TPUEmbedding.
+common_config: A string-encoded CommonConfiguration proto containing metadata
+about the TPUEmbedding partitioner output.
+memory_config: A string-encoded HbmBuffersConfig proto containing metadata about
+the memory allocations reserved for TPUEmbedding.
+network_config: A string containing metadata about the hostname and RPC port
+used for communication with this host.
 config: An TPUEmbeddingConfiguration proto serialized to a string,
 describing the desired TPUEmbedding configuration.
 )doc");
 
-REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
-    .Input("host_config: N * string")
+REGISTER_OP("_ConnectTPUEmbeddingHosts")
+    .Input("network_configs: N * string")
     .Attr("N: int >= 1")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
@@ -152,41 +165,41 @@ REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
     })
     .Doc(R"doc(
 
-An op that sets up communication between TPUEmbedding host software instances after
-ConfigureTPUEmbeddingHost has been called on each host.
+An op that sets up communication between TPUEmbedding host software instances
+after ConfigureTPUEmbeddingHost has been called on each host.
 
-host_config: A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the RPC port used for communication
-with that host.
+network_configs: Strings containing metadata about the hostname and RPC port
+used for communication with all hosts.
 )doc");
 
-REGISTER_OP("_FinalizeTPUEmbeddingSystemConfiguration")
-    .Input("host_config: N * string")
-    .Attr("N: int >= 1")
+REGISTER_OP("_FinalizeTPUEmbedding")
+    .Input("common_config: string")
+    .Input("memory_config: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) -> Status {
-      ShapeHandle input(c->Scalar());
       // Validate that all the inputs are compatible with the correct
       // vector shape.
-      for (int i = 0; i < c->num_inputs(); ++i) {
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
-      }
+      TF_RET_CHECK(c->num_inputs() == 2);
+      ShapeHandle input(c->Scalar());
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       return OkStatus();
     })
     .Doc(R"doc(
 
-An op that finalizes the TPUEmbedding system configuration after
-ConfigureTPUEmbeddingHost has been called on each host.
+An op that finalizes the TPUEmbedding configuration.
 
-host_config: A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the HBM base byte address reserved for
-the TPUEmbedding on that host.
+common_config: A string-encoded CommonConfiguration proto containing metadata
+about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+for operation.
+memory_config: A string-encoded HbmBuffersConfig proto containing metadata about
+the memory allocations reserved for TPUEmbedding.
 )doc");
 
 // After configuring the TPU system (detailed in tpu_configuration_ops.cc),
 // you may, if desired, run _ExecuteTPUEmbeddingPartitioner,
 // _ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
-// _FinalizeTPUEmbeddingSystemConfiguration Ops to configure the TPUEmbeddings.
+// _FinalizeTPUEmbedding Ops to configure the TPUEmbeddings.
 //
 // 1) The _ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
 //    runs the embedding layer partitioner and computes the HBM size (in bytes)
@@ -212,7 +225,7 @@ the TPUEmbedding on that host.
 //    It uses the hostname:port output from all _ConfigureTPUEmbeddingHost Ops
 //    to form all-to-all connections between all tasks for inter-TPUEmbedding
 //    agreement.
-// 5) The _FinalizeTPUEmbeddingSystemConfiguration Op runs on TPU_SYSTEM of
+// 5) The _FinalizeTPUEmbedding Op runs on TPU_SYSTEM of
 //    task 0. It takes as input the outputs from all _ConfigureTPUEmbeddingHost
 //    Ops and validates that the HBM base address (in bytes) used for
 //    TPUEmbedding operation is the same. Also stores the common HBM base
@@ -424,7 +437,7 @@ REGISTER_OP("EnqueueTPUEmbeddingBatch")
       return OkStatus();
     });
 
-REGISTER_OP("_RecvTPUEmbeddingActivations")
+REGISTER_OP("XlaRecvTPUEmbeddingActivations")
     .Input("deduplication_data: variant")
     .Output("outputs: num_tables * float32")
     .Attr("num_tables: int >= 1")
@@ -435,7 +448,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
       TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
       if (c->num_outputs() != num_tables) {
         return errors::InvalidArgument(absl::StrFormat(
-            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the num_tables attribute: %d.",
             c->num_outputs(), num_tables));
       }
@@ -444,7 +457,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
         return errors::InvalidArgument(
-            "Malformed config attribute in the _RecvTPUEmbeddingActivations "
+            "Malformed config attribute in the XlaRecvTPUEmbeddingActivations "
             "node.");
       }
       std::vector<TensorShapeProto> output_shapes;
@@ -456,7 +469,7 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
       }
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument(absl::StrFormat(
-            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the number of tables or features in the TPU "
             "embedding config: %d.",
             c->num_outputs(), output_shapes.size()));
@@ -468,30 +481,9 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
         c->set_output(i, output_shape);
       }
       return OkStatus();
-    })
-    .Doc(R"doc(
-An op that receives embeddng activations on the TPU.
+    });
 
-The TPU system performs the embedding lookups and aggregations. The results of
-these aggregations are visible to the Tensorflow Graph as the outputs of a
-_RecvTPUEmbeddingActivations Op. This op returns a list containing one
-Tensor of activations per table specified in the model.
-
-deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
-    data. The tensor is an XLA nested tuple containing N elements (where N is
-    the ratio of the number of embedding to tensor cores per TPU chip). Each
-    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
-outputs: A TensorList of embedding activations containing one Tensor per
-    embedding table in the model.
-num_tables: The number of output activation tensors. If feature descriptor is
-    present in the tpu embedding config, it is equal to the number of features
-    otherwise equal to number of embedding tables in the model.
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
-
-REGISTER_OP("_SendTPUEmbeddingGradients")
+REGISTER_OP("XlaSendTPUEmbeddingGradients")
     .Input("gradients: NumTables * float32")
     .Input("learning_rates: NumLearningRateTags * float32")
     .Input("deduplication_data: variant")
@@ -513,46 +505,12 @@ REGISTER_OP("_SendTPUEmbeddingGradients")
       }
 
       return OkStatus();
-    })
-    .Doc(R"doc(
-An op that performs gradient updates of embedding tables.
+    });
 
-The gradients argument is a TensorList having the same length and shapes as the
-return value of _RecvTPUEmbeddingActivations, but contains gradients of the
-model's loss with respect to the embedding activations. The embedding tables are
-updated from these gradients via the optimizer specified in the
-TPUEmbeddingConfiguration proto given to tpu.initialize_system.
-
-gradients: A TensorList of gradients with which to update embedding tables.
-learning_rates: A TensorList of learning rates used for updating the embedding
-    tables via the optimizer. The length of the TensorList must be equal to the
-    number of dynamic learning rate tags specified in the
-    TPUEmbeddingConfiguration proto.
-deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
-    data. The tensor is an XLA nested tuple containing N elements (where N is
-    the ratio of the number of embedding to tensor cores per TPU chip). Each
-    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
-
-REGISTER_OP("_RecvTPUEmbeddingDeduplicationData")
+REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationData")
     .Output("output: variant")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
-    .Doc(R"doc(
-Receives deduplication data (indices and weights) from the embedding core.
-
-The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
-XLA nested tuple containing N elements (where N is the ratio of the number of
-embedding to tensor cores per TPU chip). Each element of the nested tuple is a
-tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
-embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
-of the embedding lookup operation.
-
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 }  // namespace tensorflow

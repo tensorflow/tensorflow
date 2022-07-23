@@ -113,7 +113,7 @@ func.func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @greater
 func.func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type SIGNED">, comparison_direction = #mhlo<"comparison_direction GT">}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<comparison_type SIGNED>, comparison_direction = #mhlo<comparison_direction GT>}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
@@ -175,7 +175,7 @@ func.func @dynamic_update_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2x2xi32>, 
   // CHECK-SAME: (tensor<2xi32>) -> tensor<1xi32>
   // CHECK: %[[DIM1:.*]] = "mhlo.reshape"(%[[SLICE1]]) : (tensor<1xi32>) -> tensor<i32>
 
-  // CHECK: "mhlo.dynamic-update-slice"(%[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]])
+  // CHECK: "mhlo.dynamic_update_slice"(%[[ARG0]], %[[ARG1]], %[[DIM0]], %[[DIM1]])
 
   %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<3x4xi32>, tensor<2x2xi32>, tensor<2xi32>) -> tensor<3x4xi32>
   func.return %0: tensor<3x4xi32>

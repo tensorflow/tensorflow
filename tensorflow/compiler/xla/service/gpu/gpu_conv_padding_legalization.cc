@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
@@ -379,7 +380,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   Shape slice_shape =
       ShapeInference::InferSliceShape(new_backward_conv->shape(), start_indices,
                                       limit_indices, strides)
-          .ConsumeValueOrDie();
+          .value();
   CHECK(ShapeUtil::Compatible(slice_shape, backward_conv_shape))
       << ShapeUtil::HumanString(slice_shape) << " vs "
       << ShapeUtil::HumanString(backward_conv_shape);

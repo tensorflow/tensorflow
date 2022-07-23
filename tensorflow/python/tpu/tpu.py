@@ -58,6 +58,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import traceback_utils
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -1312,6 +1313,8 @@ def split_compile_and_replicate(
   for i in range(1, num_replicas):
     nest.assert_same_structure(inputs[0], inputs[i])
 
+  # Explicitly read variables.
+  inputs = variable_utils.convert_variables_to_tensors(inputs)
   # Flatten inputs. This structure may contain None values, which will be
   # handled later.
   flat_inputs_with_nones = [
@@ -1517,6 +1520,8 @@ def split_compile_and_replicate(
 
       vscope.set_use_resource(saved_use_resource)
       vscope.set_custom_getter(saved_custom_getter)
+
+      outputs = variable_utils.convert_variables_to_tensors(outputs)
 
     need_spmd_partitioning = (
         xla_options.use_spmd_for_xla_partitioning and

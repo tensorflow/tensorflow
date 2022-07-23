@@ -34,13 +34,28 @@ def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
   ];
 }
 
+def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
+  let summary = "Compose set operations.";
+  let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
+}
+
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lower `gml_st.loop` to SCF loops and parallel loops";
   let constructor = "::mlir::gml_st::createGmlStToScfPass()";
   let dependentDialects = ["::mlir::scf::SCFDialect"];
 }
 
-def TiledLoopBufferizePass : Pass<"gml-tiled-loop-bufferize", "mlir::func::FuncOp"> {
+def TiledLoopBufferizePass :
+    Pass<"gml-tiled-loop-bufferize", "mlir::func::FuncOp"> {
   let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
   let constructor = "::mlir::gml_st::CreateTiledLoopBufferizePass()";
+}
+
+def VectorizeGmlStLoopsPass :
+    Pass<"vectorize-gml-st-loops", "mlir::func::FuncOp"> {
+  let summary =
+      "Pass to vectorize linalg.generic ops tiled to gml_st.parallel and " #
+      "gml_st.for loops.";
+  let constructor = "::mlir::gml_st::createVectorizeGmlStLoopsPass()";
+  let dependentDialects = ["::mlir::vector::VectorDialect"];
 }

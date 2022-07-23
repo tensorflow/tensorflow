@@ -76,17 +76,16 @@ Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
           cardinality,
           ". Consider adding a `.repeat()` transformation to the dataset.");
     }
-    out = absl::make_unique<RoundRobinTaskRunner>(std::move(iterator),
-                                                  task_def.num_consumers(),
-                                                  task_def.worker_address());
+    out = std::make_unique<RoundRobinTaskRunner>(std::move(iterator),
+                                                 task_def.num_consumers(),
+                                                 task_def.worker_address());
   } else if (task_def.use_cross_trainer_cache()) {
-    // TODO(b/221104308): Add a validation to check enough RAM is available.
     const size_t max_cache_size_bytes =
         worker_config.cross_trainer_cache_size_bytes() > 0
             ? worker_config.cross_trainer_cache_size_bytes()
             : kDefaultCrossTrainerCacheSizeBytes;
-    out = std::make_unique<CachingTaskRunner>(
-        std::move(iterator), /*max_cache_size_bytes=*/max_cache_size_bytes);
+    out = std::make_unique<CachingTaskRunner>(std::move(iterator),
+                                              max_cache_size_bytes);
   } else {
     out = std::make_unique<FirstComeFirstServedTaskRunner>(std::move(iterator));
   }
@@ -158,7 +157,7 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
                                      size_t max_cache_size_bytes)
     : fcfs_task_runner_(std::move(iterator)),
       cache_(max_cache_size_bytes,
-             absl::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
+             std::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
   LOG(INFO) << "Initialized tf.data service cross-trainer cache with "
             << FormatBytes(max_cache_size_bytes) << " of memory.";
 }
@@ -376,7 +375,7 @@ void PrefetchThread::Run() {
       return;
     }
     mutex_lock l(mu_);
-    buffer_.push_back(absl::make_unique<Element>(std::move(element), index_++));
+    buffer_.push_back(std::make_unique<Element>(std::move(element), index_++));
     cv_.notify_all();
   }
 }

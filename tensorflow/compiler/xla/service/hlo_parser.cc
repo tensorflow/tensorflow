@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -1010,7 +1009,8 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
   return true;
 }
 
-// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
+// computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list(,
+// 'thread_name='thread_name)?
 bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
@@ -1043,7 +1043,13 @@ bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
             computation->root_instruction()->name(), ", ",
             ShapeUtil::HumanString(computation->root_instruction()->shape())));
   }
-
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  optional<std::string> thread_name = HloInstruction::kMainThreadName;
+  attrs["thread_name"] = {/*required=*/false, AttrTy::kString, &thread_name};
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+  computation->SetThreadName(*thread_name);
   if (is_entry_computation) {
     if (*entry_computation != nullptr) {
       return Error(maybe_entry_loc, "expects only one ENTRY");
@@ -1607,6 +1613,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return shape.IsTuple() && shape.tuple_shapes_size() >= 2 &&
                shape.tuple_shapes(0).IsTuple();
       };
+      optional<int64_t> async_group_id;
+      attrs["async_group_id"] = {/*required=*/false, AttrTy::kInt64,
+                                 &async_group_id};
+      optional<std::string> async_thread_name = HloInstruction::kMainThreadName;
+      attrs["async_thread_name"] = {/*required=*/false, AttrTy::kString,
+                                    &async_thread_name};
       if (async_wrapped_opcode) {
         std::vector<HloInstruction*> async_wrapped_operands;
         std::vector<Shape> async_wrapped_operand_shapes;
@@ -1667,14 +1679,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAsyncStart) {
         return builder->AddInstruction(HloInstruction::CreateAsyncStart(
-            *shape, operands, *async_computation));
+            *shape, operands, *async_computation, async_group_id,
+            *async_thread_name));
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
-            *shape, operands[0], *async_computation));
+            *shape, operands[0], *async_computation, async_group_id,
+            *async_thread_name));
       }
       return builder->AddInstruction(HloInstruction::CreateAsyncDone(
-          *shape, operands[0], *async_computation));
+          *shape, operands[0], *async_computation, async_group_id,
+          *async_thread_name));
     }
     case HloOpcode::kCopyStart: {
       // If the is_cross_program_prefetch attribute is not present then default
@@ -3217,14 +3232,14 @@ bool HloParserImpl::ParseDomain(DomainData* domain) {
     return false;
   }
   if (*kind == ShardingMetadata::KindName()) {
-    auto entry_sharding_ptr = absl::make_unique<HloSharding>(
+    auto entry_sharding_ptr = std::make_unique<HloSharding>(
         HloSharding::FromProto(*entry_sharding).ValueOrDie());
-    auto exit_sharding_ptr = absl::make_unique<HloSharding>(
+    auto exit_sharding_ptr = std::make_unique<HloSharding>(
         HloSharding::FromProto(*exit_sharding).ValueOrDie());
     domain->entry_metadata =
-        absl::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
+        std::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
     domain->exit_metadata =
-        absl::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
+        std::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
   } else {
     return TokenError(StrCat("unsupported domain kind: ", *kind));
   }
@@ -5870,7 +5885,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
 
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
+  auto module = std::make_unique<HloModule>(/*name=*/"_", config);
   HloParserImpl parser(str);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
@@ -5925,7 +5940,7 @@ StatusOr<Shape> ParseShape(absl::string_view str) {
 
 std::unique_ptr<HloParser> HloParser::CreateHloParserForTests(
     absl::string_view str) {
-  return absl::make_unique<HloParserImpl>(str);
+  return std::make_unique<HloParserImpl>(str);
 }
 
 }  // namespace xla

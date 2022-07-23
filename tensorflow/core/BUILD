@@ -98,6 +98,9 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",

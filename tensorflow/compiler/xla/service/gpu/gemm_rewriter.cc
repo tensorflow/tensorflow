@@ -49,7 +49,7 @@ Status SetName(HloModule *module, HloInstruction *gemm) {
 
   module->SetAndUniquifyInstrName(
       gemm, is_batch_dot ? "cublas-batch-gemm" : "cublas-gemm");
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 // If the bias is a sequence of ops that depend only on broadcasts of
@@ -134,13 +134,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       gemm_config.set_beta(0.0);
       *gemm_config.mutable_dot_dimension_numbers() =
           instr->dot_dimension_numbers();
+      *gemm_config.mutable_precision_config() = instr->precision_config();
 
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
       TF_RETURN_IF_ERROR(
           ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Status HandleMultiply(HloInstruction *instr) override {
@@ -155,7 +156,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Do not fuse alpha into S32 GEMM, as they only support fixed values for
       // alpha/beta.
       if (existing_gemm->shape().element_type() == S32) {
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }
 
       if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
@@ -168,7 +169,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(instr, existing_gemm));
       }
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Status HandleAdd(HloInstruction *instr) override {
@@ -224,7 +225,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 .WithElementType(BF16))) {
       return FuseBiasedGemm(instr, bias, existing_gemm);
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   Status FuseBiasedGemm(HloInstruction *instr, HloInstruction *bias,
@@ -232,14 +233,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
     if (existing_gemm->shape().element_type() == S32) {
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
     auto config =
         existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
     if (config.beta() != 0 || bias->user_count() != 1 ||
         existing_gemm->user_count() != 1 ||
         bias->shape() != existing_gemm->shape()) {
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
 
     config.set_beta(1.0);
@@ -252,9 +253,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                 MaybeConstantFoldBias(bias),
                             });
     TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
+    // Force bias input to alias with output, as GEMM operates in-place.
+    xla::Cast<HloCustomCallInstruction>(gemm_call.get())
+        ->set_output_to_operand_aliasing({{{}, {2, {}}}});
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
     TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(gemm_call)));
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 };
 

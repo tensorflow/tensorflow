@@ -83,12 +83,14 @@ class SignatureRunnerTensorHandle : public TensorHandleImpl {
 class TensorHandle {
  public:
   TensorHandle(Interpreter* interpreter, int tensor_index) {
-    impl_.reset(new InterpreterTensorHandle(interpreter, tensor_index));
+    impl_ =
+        std::make_unique<InterpreterTensorHandle>(interpreter, tensor_index);
   }
 
 #if !TFLITE_DISABLE_SELECT_JAVA_APIS
   TensorHandle(SignatureRunner* runner, const char* name, bool is_input) {
-    impl_.reset(new SignatureRunnerTensorHandle(runner, name, is_input));
+    impl_ =
+        std::make_unique<SignatureRunnerTensorHandle>(runner, name, is_input);
   }
 #endif
 

@@ -123,7 +123,7 @@ class NcclTestBase : public ::testing::Test {
       VLOG(2) << device->name();
     }
     if (!dev_mgr_)
-      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
+      dev_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ =
         new BaseCollectiveExecutor(&col_exec_mgr_, /*remote_access=*/nullptr,
                                    kStepId, dev_mgr_.get(), work_queue_);
@@ -147,7 +147,7 @@ class NcclTestBase : public ::testing::Test {
       col_params_->group.members.push_back(member);
     }
     for (int rank = 0; rank < num_ranks; ++rank) {
-      instances_.push_back(absl::make_unique<DeviceInstance>(
+      instances_.push_back(std::make_unique<DeviceInstance>(
           rank, col_params_->group.members[rank].device.name(), this));
     }
   }

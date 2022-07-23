@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <string>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/example/feature_util.h"

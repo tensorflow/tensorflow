@@ -394,7 +394,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"TensorScatterAdd", 2, {0, 2}},
       {"TensorScatterSub", 2, {0, 2}},
       {"TensorScatterUpdate", 1, {0}},
-      {"TensorStridedSliceUpdate", 2, {0, 4}},
+      {"TensorStridedSliceUpdate", 1, {0}},
       {"TensorSummary"},
       {"TensorSummaryV2"},
       {"TextLineReader"},

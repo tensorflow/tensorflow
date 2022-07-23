@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -27,9 +28,9 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -66,11 +67,8 @@ using LayoutCanonicalizationCallback =
 // attached to.
 class HloModule {
  public:
-  // Constructor without a versioned computation handle. This constructor should
-  // only be used for HloModules used outside of the XLA service (eg
-  // tests). The versioned handle is used by the service in the compilation
-  // cache. A default configuration is created for this module.
-  explicit HloModule(const std::string& name, HloModuleConfig config);
+  // Constructor.
+  HloModule(const std::string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -207,6 +205,24 @@ class HloModule {
             MakeUnwrappingIterator(computations_.end())};
   }
 
+  // Similar as above, but return a vector of computations for specified
+  // threads. Empty threads list means all threads are included.
+  std::vector<HloComputation*> computations(
+      const absl::flat_hash_set<absl::string_view>& threads) const {
+    std::vector<HloComputation*> computations;
+    if (threads.empty()) {
+      computations.assign(MakeUnwrappingIterator(computations_.begin()),
+                          MakeUnwrappingIterator(computations_.end()));
+      return computations;
+    }
+    for (auto& computation : computations_) {
+      if (threads.find(computation->thread_name()) != threads.end()) {
+        computations.push_back(computation.get());
+      }
+    }
+    return computations;
+  }
+
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
   HloComputation* GetComputationWithName(absl::string_view name);
@@ -233,16 +249,29 @@ class HloModule {
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::vector<HloComputation*> MakeComputationPostOrder() const;
-
-  // Same as MakeComputationPostOrder() but only returns the computations
-  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder() const {
+    return MakeComputationPostOrder({});
+  }
+  // Similar as above but only returns computations with specified threads.
+  // Empty threads list means all threads are included.
   std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
+  // Same as MakeComputationPostOrder() but only returns the computations that
+  // are on specified threads and are also found in the passed in allowList.
+  // Empty threads list means all threads are included.
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& threads,
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
-  std::vector<HloComputation*> MakeComputationSorted() const;
+  std::vector<HloComputation*> MakeComputationSorted() const {
+    return MakeComputationSorted({});
+  }
+  // Same as above but only for specified threads. Empty threads list means all
+  // threads are included.
+  std::vector<HloComputation*> MakeComputationSorted(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -253,10 +282,22 @@ class HloModule {
   // of the module's non-fusion computations -- that is, it's OK to add or
   // remove computations from a module while iterating over
   // MakeNonfusionComputations().
-  std::vector<HloComputation*> MakeNonfusionComputations() const;
+  std::vector<HloComputation*> MakeNonfusionComputations() const {
+    return MakeNonfusionComputations({});
+  }
+  // Same as above but only for specified threads. Empty threads list means all
+  // threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputations(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
-  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
+    return MakeNonfusionComputationsSorted({});
+  }
+  // Same as above but only for specified threads. Empty threads list means all
+  // threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted(
+      const absl::flat_hash_set<absl::string_view>& threads) const;
 
   HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
@@ -459,7 +500,14 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+
  private:
+  // This constructor is used in Clone() to copy the ComputationEnvironments.
+  // comp_envs may be null, in which case a clean one will be created.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs);
+
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
@@ -532,6 +580,11 @@ class HloModule {
   // Layout canonicalization callback, used only when
   // use_auto_spmd_partitioning_ = true.
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
+
+  // Compilation environments (protos that carry command line flags and
+  // environment variables).
+  std::unique_ptr<CompilationEnvironments> comp_envs_ =
+      std::make_unique<CompilationEnvironments>();
 };
 
 }  // namespace xla

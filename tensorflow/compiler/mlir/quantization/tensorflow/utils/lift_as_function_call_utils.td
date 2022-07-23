@@ -28,8 +28,14 @@ def ArgumentList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
 // The list of results of the composite function.
 def ResultList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
 
-// The list of attributes to collect and pass to the quantized function.
-def AttributeList : NativeCodeCall<"llvm::SmallVector<Attribute>{$0...}">;
+// Creates a list of NamedAttributes. An example usage would be:
+// (NamedAttributeList (NamedAttr<"transpose_a"> $transpose_a))
+def NamedAttributeList : NativeCodeCall<"llvm::SmallVector<NamedAttribute>{$0...}">;
+
+// Creates a NamedAttribute given its name and value. Essentially creates
+// a pair: {attribute_name, attribute_value}.
+class NamedAttr<string attr_name> :
+    NativeCodeCall<"NamedAttribute{$_builder.getStringAttr(\"" # attr_name # "\"), $0}">;
 
 // Checks if the value is not defined inside a lifted function by checking the
 // `tf_quant.composite_function` attribute.

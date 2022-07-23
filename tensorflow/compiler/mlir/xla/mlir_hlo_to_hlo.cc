@@ -303,7 +303,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
     llvm::Optional<mlir::ArrayAttr> optional_precision_config_attr) {
   if (!optional_precision_config_attr.hasValue()) return nullptr;
 
-  auto precision_config = absl::make_unique<xla::PrecisionConfig>();
+  auto precision_config = std::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.getValue()) {
     xla::PrecisionConfig::Precision p;
     auto operand_precision =
@@ -360,16 +360,16 @@ static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
   return xla::ConvertConvDimensionNumbers(input);
 }
 
-xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
+xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandleAttr attr) {
   xla::ChannelHandle channel_handle;
-  channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
-  channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
-      ConvertAPInt(attr.type().getValue())));
+  channel_handle.set_handle(attr.getHandle());
+  channel_handle.set_type(
+      static_cast<xla::ChannelHandle::ChannelType>(attr.getType()));
   return channel_handle;
 }
 
 std::optional<xla::ChannelHandle> Convert_channel_handle(
-    llvm::Optional<mlir::mhlo::ChannelHandle> attr) {
+    llvm::Optional<mlir::mhlo::ChannelHandleAttr> attr) {
   if (!attr.hasValue()) return std::nullopt;
   return Convert_channel_handle(attr.getValue());
 }
@@ -723,7 +723,7 @@ LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
   xla::XlaOp operand;
   if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
   if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  auto operand_shape = ctx.builder->GetShape(operand).ConsumeValueOrDie();
+  auto operand_shape = ctx.builder->GetShape(operand).value();
   value_map[op] = xla::internal::XlaBuilderFriend::BuildAddDependency(
       ctx.builder, operand, token, operand_shape);
   return success();
@@ -811,6 +811,17 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(CosineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Cos(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
@@ -836,6 +847,23 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
       Unwrap(Convert_precision_config(op.precision_config())),
       preferred_element_type);
   return mlir::success();
+}
+
+LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
+  auto& valueMap = *ctx.values;
+
+  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), valueMap, &operand, op))) return failure();
+
+  auto entry = CreateOpShardingFromStringRef(op.entry_metadata());
+  if (!entry) return failure();
+  auto exit = CreateOpShardingFromStringRef(op.exit_metadata());
+  if (!exit) return failure();
+
+  valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
+      ctx.builder, operand, *exit, *entry, shape);
+  return success();
 }
 
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
@@ -1010,11 +1038,11 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(ConstantOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(mlir::mhlo::ConvolutionOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
@@ -1408,24 +1436,20 @@ LogicalResult ExportXlaOp(BatchNormTrainingOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp mu, sigma;
-  if (failed(GetXlaOp(op.mu(), value_map, &mu, op))) return failure();
-  if (failed(GetXlaOp(op.sigma(), value_map, &sigma, op))) return failure();
-
-  value_map[op] = xla::RngNormal(mu, sigma, xla::TypeToShape(op.getType()));
-  return success();
-}
-
-LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp a, b;
   if (failed(GetXlaOp(op.a(), value_map, &a, op))) return failure();
   if (failed(GetXlaOp(op.b(), value_map, &b, op))) return failure();
 
-  value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
-  return success();
+  if (op.rng_distribution() == RngDistribution::UNIFORM) {
+    value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  } else if (op.rng_distribution() == RngDistribution::NORMAL) {
+    value_map[op] = xla::RngNormal(a, b, xla::TypeToShape(op.getType()));
+    return success();
+  }
+  return failure();
 }
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
@@ -1502,14 +1526,24 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
 
   if (op.is_host_transfer()) {
     value_map[op] = xla::SendToHost(
-        operand, token,
-        operand.builder()->GetShape(operand).ConsumeValueOrDie(),
+        operand, token, operand.builder()->GetShape(operand).value(),
         Convert_channel_handle(op.channel_handle()));
     return success();
   }
   value_map[op] = xla::SendWithToken(
       operand, token, Convert_channel_handle(op.channel_handle()));
   return success();
+}
+
+mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp arg;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &arg, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sin(Unwrap(arg));
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
@@ -1543,6 +1577,20 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
     value_map[it.value()] = xla::GetTupleElement(sorted, it.index());
   }
   return success();
+}
+
+LogicalResult ExportXlaOp(SubtractOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  xla::XlaOp lhs;
+  if (failed(GetXlaOp(*op.getODSOperands(0).begin(), value_map, &lhs, op)))
+    return mlir::failure();
+  xla::XlaOp rhs;
+  if (failed(GetXlaOp(*op.getODSOperands(1).begin(), value_map, &rhs, op)))
+    return mlir::failure();
+  auto xla_result = xla::Sub(Unwrap(lhs), Unwrap(rhs));
+  value_map[result] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
@@ -1695,10 +1743,6 @@ LogicalResult ExportXlaOp(DynamicGatherOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(DynamicConvOp op, OpLoweringContext ctx) {
-  return failure();
-}
-
-LogicalResult ExportXlaOp(PrintOp op, OpLoweringContext ctx) {
   return failure();
 }
 

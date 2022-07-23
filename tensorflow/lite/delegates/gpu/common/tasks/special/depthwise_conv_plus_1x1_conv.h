@@ -34,7 +34,7 @@ namespace gpu {
 bool IsDepthwiseConvPlus1x1ConvSupported(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr);
+    const Convolution2DAttributes& conv_attr, const BHWC* dst_shape = nullptr);
 
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const OperationDef& definition, const GpuInfo& gpu_info,

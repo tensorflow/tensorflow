@@ -25,7 +25,7 @@ def LmhloGpuDialect : Dialect {
   let cppNamespace = "::mlir::lmhlo_gpu";
 
   let useDefaultAttributePrinterParser = 1;
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // LHLO_GPU_OPS_BASE

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -93,7 +93,7 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 class PjRtClient;
 
 using PjRtDeviceAttribute =
-    absl::variant<std::string, int64_t, std::vector<int64_t>>;
+    std::variant<std::string, int64_t, std::vector<int64_t>>;
 
 class PjRtDevice {
  public:
@@ -248,6 +248,11 @@ struct CompileOptions {
 // implementations can customize how the memory is allocated and deallocated.
 class PjRtChunk {
  public:
+  // Allocate a PjRtChunk using malloc.
+  static PjRtChunk AllocateDefault(size_t size) {
+    return PjRtChunk(malloc(size), size, [](void* ptr) { free(ptr); });
+  }
+
   PjRtChunk() = default;
   PjRtChunk(void* data, size_t size, std::function<void(void*)> deleter)
       : data_(static_cast<uint8_t*>(data)),
@@ -346,6 +351,26 @@ class CopyToDeviceStream {
   mutable absl::Mutex mu_;
 };
 
+class PjRtHostMemoryForDeviceManager {
+ public:
+  virtual ~PjRtHostMemoryForDeviceManager();
+
+  // Transforms the host memory representations of a shape with the host layout
+  // to the host memory representation of the same shape with the device layout.
+  // `src_shape` and `dst_shape` may only differ in their layouts.
+  virtual StatusOr<PjRtChunk> ToDeviceLayout(const void* src_data,
+                                             size_t src_size,
+                                             const Shape& host_shape,
+                                             const Shape& device_shape) = 0;
+
+  // Transforms the host memory representations of a shape with the device
+  // layout to the host memory representation of the same shape with the host
+  // layout. `src_shape` and `dst_shape` may only differ in their layouts.
+  virtual Status ToHostLayout(const void* src_data, size_t src_size,
+                              const Shape& src_shape, void* dst_data,
+                              size_t dst_size, const Shape& dst_shape) = 0;
+};
+
 class PjRtExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -397,6 +422,12 @@ class PjRtExecutable;
 // will eventually be able to make progress.
 class PjRtClient {
  public:
+  PjRtClient() = default;
+  explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
+                          host_memory_for_device_manager)
+      : host_memory_for_device_manager_(
+            std::move(host_memory_for_device_manager)) {}
+
   virtual ~PjRtClient() = default;
 
   // Return the process index of this client. Always 0 in single-process
@@ -412,11 +443,11 @@ class PjRtClient {
   // the client can issue commands to.
   virtual int addressable_device_count() const = 0;
 
-  // Return all devices in the entire computation, including addressable and
+  // Return all devices known to the client, including addressable and
   // non-addressable devices.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // Return only addressable devices.
+  // Return only addressable devices. The devices are in no particular order.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
@@ -713,6 +744,16 @@ class PjRtClient {
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
   virtual Status Defragment() = 0;
+
+  // Return the PjRtHostMemoryForDeviceManager for this client. It can be
+  // nullptr if the implementation does not provide one.
+  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+    return host_memory_for_device_manager_.get();
+  }
+
+ private:
+  std::unique_ptr<PjRtHostMemoryForDeviceManager>
+      host_memory_for_device_manager_;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer

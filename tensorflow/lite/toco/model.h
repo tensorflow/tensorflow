@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_LITE_TOCO_MODEL_H_
 
+#include <algorithm>
 #include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -1792,7 +1794,7 @@ struct GatherOperator : Operator {
   // Axis is populated explicitly or implicitly from the axis input by
   // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
   // be resolved.
-  absl::optional<int> axis;
+  std::optional<int> axis;
 
   // This field is not used by the standard TF Lite export but it is still need
   // for legacy Gather implementations.
@@ -2241,13 +2243,13 @@ struct Array {
   }
   Alloc& GetOrCreateAlloc() {
     if (!alloc) {
-      alloc = std::unique_ptr<Alloc>(new Alloc);
+      alloc = std::make_unique<Alloc>();
     }
     return *alloc;
   }
   MinMax& GetOrCreateMinMax() {
     if (!minmax) {
-      minmax = std::unique_ptr<MinMax>(new MinMax);
+      minmax = std::make_unique<MinMax>();
     }
     return *minmax;
   }
@@ -2257,8 +2259,7 @@ struct Array {
   }
   QuantizationParams& GetOrCreateQuantizationParams() {
     if (!quantization_params) {
-      quantization_params =
-          std::unique_ptr<QuantizationParams>(new QuantizationParams);
+      quantization_params = std::make_unique<QuantizationParams>();
     }
     return *quantization_params;
   }
@@ -2306,7 +2307,7 @@ struct Array {
   }
   Shape* mutable_shape() {
     if (!array_shape) {
-      array_shape.reset(new Shape);
+      array_shape = std::make_unique<Shape>();
     }
     return array_shape.get();
   }

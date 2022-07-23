@@ -164,7 +164,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -211,7 +211,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
                                 split_providers) const override {
     split_providers->push_back(
-        absl::make_unique<RangeSplitProvider>(start_, stop_, step_));
+        std::make_unique<RangeSplitProvider>(start_, stop_, step_));
     return OkStatus();
   }
 
@@ -257,7 +257,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {
-        counter_ = absl::make_unique<RangeCounter>(
+        counter_ = std::make_unique<RangeCounter>(
             dataset()->start_, dataset()->stop_, dataset()->step_);
       } else {
         TF_ASSIGN_OR_RETURN(split_provider_,

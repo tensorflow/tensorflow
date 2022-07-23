@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -171,12 +171,12 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
                                             PatternRewriter& rewriter) const {
   if (while_op->getNumOperands() != 1)
     return rewriter.notifyMatchFailure(while_op, "expected single condition");
-  if (while_op.trip_count())
+  if (while_op.getTripCount())
     return rewriter.notifyMatchFailure(while_op, "trip count not supported");
 
   // Collect condition value and implicit captures.
   llvm::SetVector<Value> while_args;
-  while_args.insert(while_op.cond_val().front());
+  while_args.insert(while_op.getCondVal().front());
   getUsedValuesDefinedAbove(while_op.getOperation()->getRegions(), while_args);
   auto return_types = llvm::to_vector<4>(TypeRange(while_args.getArrayRef()));
   auto i1_type = rewriter.getI1Type();
@@ -186,11 +186,11 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
   // Insert while_cond function.
   rewriter.setInsertionPoint(while_op->getParentOfType<func::FuncOp>());
   auto cond_func_type = rewriter.getFunctionType(argument_types, i1_type);
-  auto cond_func = rewriter.create<func::FuncOp>(while_op.cond().getLoc(),
+  auto cond_func = rewriter.create<func::FuncOp>(while_op.getCond().getLoc(),
                                                  "while_cond", cond_func_type);
   symbol_table.insert(cond_func);
   auto cond_return =
-      CloneRegionToFunc(rewriter, while_op.cond(), cond_func, while_args);
+      CloneRegionToFunc(rewriter, while_op.getCond(), cond_func, while_args);
   rewriter.setInsertionPoint(cond_return);
   Value cond_result = rewriter.create<memref::LoadOp>(cond_return.getLoc(),
                                                       cond_func.getArgument(0));
@@ -199,11 +199,11 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
   // Insert while_body function.
   rewriter.setInsertionPointAfter(cond_func);
   auto body_func_type = rewriter.getFunctionType(argument_types, return_types);
-  auto body_func = rewriter.create<func::FuncOp>(while_op.body().getLoc(),
+  auto body_func = rewriter.create<func::FuncOp>(while_op.getBody().getLoc(),
                                                  "while_body", body_func_type);
   symbol_table.insert(body_func);
   auto body_return =
-      CloneRegionToFunc(rewriter, while_op.body(), body_func, while_args);
+      CloneRegionToFunc(rewriter, while_op.getBody(), body_func, while_args);
   rewriter.setInsertionPoint(body_return);
   auto body_call = rewriter.create<tfrt::compiler::CallOp>(
       body_return.getLoc(), i1_type, cond_func.getSymName(),
@@ -225,7 +225,7 @@ LogicalResult WhilePattern::matchAndRewrite(lmhlo::WhileOp while_op,
 
 LogicalResult CasePattern::matchAndRewrite(lmhlo::CaseOp case_op,
                                            PatternRewriter& rewriter) const {
-  mlir::Value index_memref = case_op.index();
+  mlir::Value index_memref = case_op.getIndex();
   auto int_type = index_memref.getType()
                       .cast<mlir::ShapedType>()
                       .getElementType()
@@ -253,12 +253,12 @@ LogicalResult CasePattern::matchAndRewrite(lmhlo::CaseOp case_op,
   auto arg_types = llvm::to_vector<4>(TypeRange(args));
 
   // Outline each branching region as a function and record the FuncOp.
-  size_t branch_count = case_op.branches().size();
+  size_t branch_count = case_op.getBranches().size();
   SmallVector<func::FuncOp, 4> branch_funcs;
   branch_funcs.reserve(branch_count);
   auto func_type = rewriter.getFunctionType(arg_types, {});
   for (size_t i = 0; i < branch_count; ++i) {
-    Region* region = &case_op.branches()[i];
+    Region* region = &case_op.getBranches()[i];
     rewriter.setInsertionPoint(case_op->getParentOfType<func::FuncOp>());
     auto func =
         rewriter.create<func::FuncOp>(region->getLoc(), "case_func", func_type);

@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -267,7 +267,7 @@ void RemoveDeadMemrefCode(func::FuncOp func) {
       for (auto user : alias.getUsers()) {
         if (!(isa<ViewLikeOpInterface>(user) ||
               (isa<memref::CopyOp>(user) &&
-               alias == cast<memref::CopyOp>(user).target()) ||
+               alias == cast<memref::CopyOp>(user).getTarget()) ||
               (isa<linalg::FillOp>(user) &&
                alias == cast<linalg::FillOp>(user).output()))) {
           return;

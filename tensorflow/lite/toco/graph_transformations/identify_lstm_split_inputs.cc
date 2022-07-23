@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -59,7 +61,7 @@ namespace toco {
   }
 
   // Emplace a new LstmCell operator with extended inputs (kernel/lstm.cc).
-  auto lstm_cell_op = absl::make_unique<LstmCellOperator>();
+  auto lstm_cell_op = std::make_unique<LstmCellOperator>();
   lstm_cell_op->kernel_type = LstmCellOperator::KERNEL_FULL;
   lstm_cell_op->inputs.resize(kExtendedLstmInputCount);
   int num_input = model->GetArray(curr_op->inputs[LstmCellOperator::DATA_INPUT])

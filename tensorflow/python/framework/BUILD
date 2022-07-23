@@ -325,6 +325,7 @@ py_library(
     deps = [
         ":_dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/lib/core:_pywrap_bfloat16",
         "//tensorflow/python/types:doc_typealias",
@@ -1262,6 +1263,7 @@ py_library(
     deps = [
         ":dtypes",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/util",
@@ -1854,6 +1856,7 @@ tf_py_test(
         ":for_generated_wrappers",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2042,6 +2045,7 @@ tf_py_test(
         ":test_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],

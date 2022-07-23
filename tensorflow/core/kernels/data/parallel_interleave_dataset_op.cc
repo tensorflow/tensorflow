@@ -87,6 +87,7 @@ namespace {
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBlockIndex[] = "block_index";
 constexpr char kCycleIndex[] = "cycle_index";
+constexpr char kMaxBufferedElements[] = "max_buffered_elements";
 constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kElementIdCounter[] = "element_id_counter";
 constexpr char kCurrentElements[] = "current_elements";
@@ -109,7 +110,7 @@ constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 // elements that will be prefetched ahead of time. The purpose of prefetching
 // future cycle elements is to overlap expensive initialization (e.g. opening of
 // a remote file) with other computation.
-constexpr double kDefaultCyclePrefetchFactor = 2.0L;
+constexpr int kDefaultCyclePrefetchFactor = 2;
 
 // `kPerIteratorPrefetchFactor * block_length + 1` is the default number of
 // per-iterator results that will be prefetched ahead of time. The `+ 1` is to
@@ -136,7 +137,18 @@ int64_t ComputePrefetchInputElements(int64_t configured_prefetch_input_elements,
   if (configured_prefetch_input_elements != model::kAutotune) {
     return configured_prefetch_input_elements;
   }
+  if (GetExperiments().contains("reduce_interleave_prefetch")) {
+    return std::min(
+        static_cast<int64_t>(8),
+        static_cast<int64_t>(kDefaultCyclePrefetchFactor * cycle_length));
+  }
   return kDefaultCyclePrefetchFactor * cycle_length;
+}
+
+int64_t ComputeMaxBufferedElements(int64_t prefetch_input_elements,
+                                   int64_t buffer_output_elements,
+                                   int64_t cycle_length) {
+  return (prefetch_input_elements + cycle_length) * buffer_output_elements;
 }
 
 int64_t OpVersionFromOpName(absl::string_view op_name) {
@@ -199,7 +211,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     params.op_version = op_version_;
     bool deterministic =
         deterministic_.IsDeterministic() || deterministic_.IsDefault();
-    return absl::make_unique<ParallelInterleaveIterator>(
+    return std::make_unique<ParallelInterleaveIterator>(
         ParallelInterleaveIterator::Params{
             this,
             name_utils::IteratorPrefix(
@@ -348,7 +360,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             GetAutotuneDefaultParallelism(ctx), dataset()->cycle_length_);
       }
       ctx_ = std::make_unique<IteratorContext>(*ctx);
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       IteratorContext::Params params(ctx);
       params.interleave_depth += 1;
       params.cancellation_manager = cancellation_manager_.get();
@@ -419,7 +431,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
            model::MakeNonTunableParameter(kCycleLength,
                                           dataset()->cycle_length_),
            model::MakeNonTunableParameter(kDeterministic,
-                                          deterministic_ ? 1.0 : 0.0)});
+                                          deterministic_ ? 1.0 : 0.0),
+           model::MakeNonTunableParameter(
+               kMaxBufferedElements,
+               ComputeMaxBufferedElements(dataset()->prefetch_input_elements_,
+                                          dataset()->buffer_output_elements_,
+                                          dataset()->cycle_length_))});
     }
 
     // TODO(aaudibert): Refactor the implementations to avoid the need for
@@ -1053,7 +1070,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           continue;
         }
         element->inputs =
-            absl::make_unique<std::vector<Tensor>>(std::move(inputs));
+            std::make_unique<std::vector<Tensor>>(std::move(inputs));
         IteratorContext::Params params(ctx_.get());
         params.interleave_depth += 1;
         IteratorContext ctx(params);

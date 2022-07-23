@@ -163,7 +163,7 @@ class ExecutorImpl : public Executor {
     void Initialize(const GraphView& gview) {
       is_expensive_.resize(gview.num_nodes());
       cost_estimates_ =
-          absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
+          std::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
       for (int32_t i = 0; i < gview.num_nodes(); ++i) {
         if (gview.node(i)) {
           is_expensive_[i] =

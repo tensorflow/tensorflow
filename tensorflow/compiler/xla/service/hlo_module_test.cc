@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -29,6 +35,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
+
+// In order to use TestCompilationEnvironment* with CompilationEnvironments, we
+// must define CreateDefaultEnv for them.
+template <>
+std::unique_ptr<test::TestCompilationEnvironment1>
+CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment1>() {
+  auto env = std::make_unique<test::TestCompilationEnvironment1>();
+  env->set_some_flag(100);
+  return env;
+}
 
 namespace {
 
@@ -96,10 +112,20 @@ TEST_F(HloModuleTest, CloneTest) {
       module->AddEmbeddedComputation(CreateCallComputation({computation1}));
   module->AddEntryComputation(
       CreateCallComputation({computation2, computation3}));
+  // Add a compilation environment to module
+  auto env = std::make_unique<test::TestCompilationEnvironment1>();
+  env->set_some_flag(10);
+  module->comp_envs().AddEnv(std::move(env));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
   auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  // Make sure module's CompilationEnvironments were copied to cloned_module
+  EXPECT_EQ(cloned_module->comp_envs()
+                .GetEnv<test::TestCompilationEnvironment1>()
+                .some_flag(),
+            10);
 
   EXPECT_EQ(post_order.size(), post_order_copied.size());
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
@@ -311,7 +337,8 @@ ENTRY ReduceR3ToR2.v3 {
   EXPECT_NE(module->unique_id(), module_copy->unique_id());
 
   // Verify that the computations and instructions all have the same unique id.
-  auto computation_copy_it = module_copy->computations().begin();
+  auto computation_copy = module_copy->computations();
+  auto computation_copy_it = computation_copy.begin();
   for (const HloComputation* computation_orig : module->computations()) {
     const HloComputation* computation_copy = *computation_copy_it++;
     EXPECT_EQ(computation_orig->unique_id(), computation_copy->unique_id())
@@ -401,7 +428,7 @@ TEST_F(HloModuleTest, OneComputationAllAllowed) {
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {computation};
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
+  EXPECT_THAT(module->MakeComputationPostOrder(/*threads=*/{}, allowList),
               ::testing::ElementsAre(computation));
 }
 
@@ -411,8 +438,8 @@ TEST_F(HloModuleTest, OneComputationAllFiltered) {
   module->AddEntryComputation(CreateConstantComputation());
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  module->MakeComputationPostOrder(allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
+  module->MakeComputationPostOrder(/*threads=*/{}, allowList);
+  EXPECT_THAT(module->MakeComputationPostOrder(/*threads=*/{}, allowList),
               ::testing::IsEmpty());
 }
 
@@ -430,7 +457,7 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllAllowed) {
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation2,
                                                     computation3, computation4};
-  auto post_order = module->MakeComputationPostOrder(allowList);
+  auto post_order = module->MakeComputationPostOrder(/*threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation2,
                                               computation3, computation4));
@@ -451,7 +478,7 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderMiddleFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {computation1, computation4};
-  auto post_order = module->MakeComputationPostOrder(allowList);
+  auto post_order = module->MakeComputationPostOrder(/*threads=*/{}, allowList);
   EXPECT_THAT(post_order,
               ::testing::UnorderedElementsAre(computation1, computation4));
 }
@@ -469,9 +496,39 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrderAllFiltered) {
       CreateCallComputation({computation2, computation3}));
 
   absl::flat_hash_set<HloComputation*> allowList = {};
-  auto post_order = module->MakeComputationPostOrder(allowList);
-  EXPECT_THAT(module->MakeComputationPostOrder(allowList),
+  auto post_order = module->MakeComputationPostOrder(/*threads=*/{}, allowList);
+  EXPECT_THAT(module->MakeComputationPostOrder(/*threads=*/{}, allowList),
               ::testing::IsEmpty());
+}
+
+TEST_F(HloModuleTest, TwoComputationsFilterThreads) {
+  // Create a module with two computations with different threads and
+  // ensure thread name filtering can return proper computations.
+  HloComputation::Builder builder(TestName());
+  constexpr char kParallelThreadName[] = "parallel_thread";
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* main_thread_computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      main_thread_computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));
+  auto* parallel_thread_computation = async_done->async_wrapped_computation();
+
+  EXPECT_THAT(
+      module->MakeComputationPostOrder({HloInstruction::kMainThreadName}),
+      ::testing::ElementsAre(main_thread_computation));
+  EXPECT_THAT(module->MakeComputationPostOrder(),
+              ::testing::ElementsAre(parallel_thread_computation,
+                                     main_thread_computation));
+  EXPECT_THAT(module->MakeComputationPostOrder({kParallelThreadName}),
+              ::testing::ElementsAre(parallel_thread_computation));
 }
 
 }  // namespace

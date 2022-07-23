@@ -14,17 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/optimize_input_output_buffer_alias.h"
 
-#include <queue>
-#include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {

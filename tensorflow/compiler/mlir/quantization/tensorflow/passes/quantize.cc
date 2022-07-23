@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -152,7 +152,7 @@ class RemoveUnusedQdqPattern : public OpRewritePattern<QuantizeCastOp> {
         !llvm::isa<DequantizeCastOp>(*op->getUsers().begin())) {
       return failure();
     }
-    op->getUsers().begin()->getResult(0).replaceAllUsesWith(op.arg());
+    op->getUsers().begin()->getResult(0).replaceAllUsesWith(op.getArg());
     return success();
   }
 };
@@ -206,11 +206,11 @@ class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
         Type elem_type = operand_type.cast<TensorType>().getElementType();
         if (auto dq_op =
                 dyn_cast_or_null<DequantizeCastOp>(operand.getDefiningOp())) {
-          auto dq_arg_type = dq_op.arg().getType().cast<TensorType>();
+          auto dq_arg_type = dq_op.getArg().getType().cast<TensorType>();
           auto qtype = dq_arg_type.getElementType().cast<QuantizedType>();
           auto scast_op = rewriter.create<StorageCastOp>(
               dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
-              dq_op.arg());
+              dq_op.getArg());
           inputs.push_back(scast_op.getResult());
         } else if (!elem_type.isF32()) {
           // If the operand is an integer tensor, then it doesn't require the
@@ -302,14 +302,14 @@ struct QuantizeAvgPoolOpPattern : public OpRewritePattern<QuantizeCastOp> {
 
   LogicalResult matchAndRewrite(QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
-    auto avg_pool_op = q_op.arg().getDefiningOp<TF::AvgPoolOp>();
+    auto avg_pool_op = q_op.getArg().getDefiningOp<TF::AvgPoolOp>();
     if (!avg_pool_op) return failure();
     auto dq_op =
         dyn_cast_or_null<DequantizeCastOp>(avg_pool_op.value().getDefiningOp());
     if (!dq_op) return failure();
 
     // Check if the same-scale requirement is met.
-    auto dq_arg_type = dq_op.arg().getType().cast<TensorType>();
+    auto dq_arg_type = dq_op.getArg().getType().cast<TensorType>();
     auto qtype = dq_arg_type.getElementType().cast<QuantizedType>();
     auto q_result_type = q_op.getType().cast<TensorType>();
     auto out_qtype = q_result_type.getElementType().cast<QuantizedType>();
@@ -325,7 +325,7 @@ struct QuantizeAvgPoolOpPattern : public OpRewritePattern<QuantizeCastOp> {
     rewriter.setInsertionPointAfter(dq_op);
     auto scast_op = rewriter.create<StorageCastOp>(
         dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
-        dq_op.arg());
+        dq_op.getArg());
     auto fcast_op = rewriter.create<TF::CastOp>(
         dq_op->getLoc(), dq_arg_type.clone(rewriter.getF32Type()),
         scast_op.getResult());

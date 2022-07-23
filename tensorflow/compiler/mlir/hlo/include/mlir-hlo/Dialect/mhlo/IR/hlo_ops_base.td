@@ -32,7 +32,6 @@ def HLO_Dialect : Dialect {
 
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
 
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
@@ -43,6 +42,7 @@ def HLO_UInt : UnsignedIntOfWidths<[4, 8, 16, 32, 64]>;
 def HLO_Int : AnyTypeOf<[HLO_SInt, HLO_UInt]>;
 
 def HLO_Float : AnyTypeOf<[F16, F32, F64, BF16]>;
+def HLO_Float32Or64 : AnyTypeOf<[F32, F64]>;
 
 def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
@@ -52,22 +52,34 @@ def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 
 // TODO(b/230381284): Upstream width-specific uniform quantized element types.
 class UniformQuantizedSignedInt<int width>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # width>,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".isSigned()">]>,
+  : Type<Or<[
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".isSigned()">]>,
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedPerAxisType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".isSigned()">]>]>,
     "QI" # width # " type"> {
   string name = "UniformQuantizedSignedInt";
   int bitwidth = width;
 }
 
 class UniformQuantizedUnsignedInt<int width>
-  : Type<And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
-              CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".getStorageTypeIntegralWidth() == " # width>,
-              CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
-                    ".isSigned()">]>,
+  : Type<Or<[
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"!$_self.cast<mlir::quant::UniformQuantizedType>()" #
+                 ".isSigned()">]>,
+      And<[CPred<"$_self.isa<mlir::quant::UniformQuantizedPerAxisType>()">,
+           CPred<"$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".getStorageTypeIntegralWidth() == " # width>,
+           CPred<"!$_self.cast<mlir::quant::UniformQuantizedPerAxisType>()" #
+                 ".isSigned()">]>]>,
     "QUI" # width # " type"> {
   string name = "UniformQuantizedUnsignedInt";
   int bitwidth = width;
@@ -111,6 +123,9 @@ def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[HLO_Float]>;
+
+// 32 or 64 bits floating-point tensor types
+def HLO_Fp32Or64Tensor : TensorOf<[HLO_Float32Or64]>;
 
 // Any quantized integer tensor types
 def HLO_QuantizedIntTensor : TensorOf<[HLO_QuantizedInt]>;

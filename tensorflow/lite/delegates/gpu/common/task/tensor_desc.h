@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -29,11 +30,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-enum class AddressMode {
-  kDontCare,
-  kZero,
-};
-
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -44,22 +40,29 @@ enum class TensorStorageType {
   SINGLE_TEXTURE_2D
 };
 
-struct TensorDescriptor : public GPUObjectDescriptor {
+class TensorDescriptor : public GPUObjectDescriptor {
+ public:
   TensorDescriptor() = default;
-  TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
-      : data_type(dt), storage_type(st), layout(l) {}
+  TensorDescriptor(DataType data_type, TensorStorageType storage_type,
+                   Layout layout)
+      : data_type_(data_type), storage_type_(storage_type), layout_(layout) {}
 
   TensorDescriptor(const TensorDescriptor&) = default;
   TensorDescriptor& operator=(const TensorDescriptor&) = default;
   TensorDescriptor(TensorDescriptor&& desc);
   TensorDescriptor& operator=(TensorDescriptor&& desc);
 
+  void CopyWithoutData(TensorDescriptor* desc) const;
+
   bool operator==(const TensorDescriptor& d) const {
-    return data_type == d.data_type && storage_type == d.storage_type &&
-           layout == d.layout;
+    return data_type_ == d.data_type_ && storage_type_ == d.storage_type_ &&
+           layout_ == d.layout_;
   }
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
+
+  void GetGpuResources(const BHWDC& tensor_shape,
+                       GenericGPUResourcesWithValue* resources) const;
 
   absl::Status PerformConstExpr(const GpuInfo& gpu_info,
                                 const std::string& const_expr,
@@ -73,12 +76,11 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   GPUResources GetGPUResources(const GpuInfo& gpu_info) const override;
 
-  void Release() override { data.clear(); }
-  uint64_t GetSizeInBytes() const override { return data.size(); };
+  void Release() override { data_.clear(); }
+  uint64_t GetSizeInBytes() const override { return data_.size(); };
   size_t GetSizeInBytesForShape(const BHWDC& shape5d) const;
 
   bool HasAxis(Axis axis) const;
-  void SetAddressMode(AddressMode mode);
   int GetWidthSize(BHWDC shape) const;
   int GetSliceStrideSize(BHWDC shape) const;
 
@@ -101,6 +103,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool CanReadOutOfBorder(const Axis& axis) const;
   bool IsLinear() const;
 
+  DataType GetDataType() const { return data_type_; }
+  TensorStorageType GetStorageType() const { return storage_type_; }
+
   // applicable only for types that: IsLinear -> true.
   // In this case for address we have 1d component - addr (int)
   // If for addr == -1 this linear storage type returns zero value, this
@@ -113,39 +118,45 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status CanCreateTensorWithShape(const GpuInfo& gpu_info,
                                         const BHWC& shape) const;
 
-  DataType data_type = DataType::UNKNOWN;
-  TensorStorageType storage_type = TensorStorageType::UNKNOWN;
-  // This field describes logical layout, actual(physical) GPU layout can be
-  // totally different.
-  Layout layout =
-      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+  // Can udate storage type if in the current storage type this tensor can not
+  // be allocated with shape on specified device(gpu_info)
+  // Usual scenario is to create new tensor_desc on base of another and may be
+  // update storage type for new tensor_desc shape because it can be unsuported
+  // with old storage type
+  absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
+                                            const BHWC& shape);
+
+  void SetUseBufferForWriteOnlyTexture2d(bool value) {
+    use_buffer_for_write_only_2d_texture_ = value;
+  }
+  bool GetUseBufferForWriteOnlyTexture2d() const {
+    return use_buffer_for_write_only_2d_texture_;
+  }
+
+  void SetUseBufferForWriteOnlyImageBuffer(bool value) {
+    use_buffer_for_write_only_image_buffer_ = value;
+  }
+  bool GetUseBufferForWriteOnlyImageBuffer() const {
+    return use_buffer_for_write_only_image_buffer_;
+  }
 
   void SetBHWCShape(const BHWC& new_shape) {
-    shape = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
+    shape_ = BHWDC(new_shape.b, new_shape.h, new_shape.w, 1, new_shape.c);
   }
-  void SetBHWDCShape(const BHWDC& new_shape) { shape = new_shape; }
-  BHWC GetBHWCShape() const { return BHWC(shape.b, shape.h, shape.w, shape.c); }
-  BHWDC GetBHWDCShape() const { return shape; }
-  void SetData(std::vector<uint8_t>&& new_data) { data = new_data; }
-  const std::vector<uint8_t>& GetData() const { return data; }
-
-  // applicable only for TEXTURE_2D.
-  // When Texture 2d created from buffer, we can use it as texture or as buffer.
-  // This option allows to use texture 2d as buffer when we use it as dst
-  // tensor(write only).
-  // Currently supported only for Metal/OpenCL.
-  // By default false.
-  bool use_buffer_for_write_only_2d_texture = false;
-
-  // applicable only for IMAGE_BUFFER.
-  // We can use image buffer as image or as buffer.
-  // This option allows to use image buffer as buffer when we use it as dst
-  // tensor(write only).
-  // Currently supported only for Metal/OpenCL.
-  // By default true.
-  bool use_buffer_for_write_only_image_buffer = true;
+  void SetBHWDCShape(const BHWDC& new_shape) { shape_ = new_shape; }
+  BHWC GetBHWCShape() const {
+    return BHWC(shape_.b, shape_.h, shape_.w, shape_.c);
+  }
+  BHWDC GetBHWDCShape() const { return shape_; }
+  void SetData(std::vector<uint8_t>&& new_data) { data_ = new_data; }
+  const std::vector<uint8_t>& GetData() const { return data_; }
 
  private:
+  friend flatbuffers::Offset<data::TensorDescriptor> Encode(
+      const TensorDescriptor& desc, flatbuffers::FlatBufferBuilder* builder);
+  friend void Decode(const data::TensorDescriptor* fb_desc,
+                     TensorDescriptor* desc);
+
   absl::Status PerformReadSelector(
       const GpuInfo& gpu_info, const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
@@ -196,8 +207,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool IsBatchedWidth() const;
 
-  AddressMode AddressModeFromState() const;
-
   absl::Status MaybeGetDataTypeFromTemplateArgs(
       const std::vector<std::string>& template_args, DataType* result) const;
 
@@ -238,45 +247,69 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   template <typename T>
   void DownloadData(T* dst);
 
+  DataType data_type_ = DataType::UNKNOWN;
+  TensorStorageType storage_type_ = TensorStorageType::UNKNOWN;
+
+  // This field describes logical layout, actual(physical) GPU layout can be
+  // totally different.
+  Layout layout_ =
+      Layout::UNKNOWN;  // Supported layouts is HWC, BHWC, HWDC, BHWDC
+
+  // applicable only for TEXTURE_2D.
+  // When Texture 2d created from buffer, we can use it as texture or as buffer.
+  // This option allows to use texture 2d as buffer when we use it as dst
+  // tensor(write only).
+  // Currently supported only for Metal/OpenCL.
+  // By default false.
+  bool use_buffer_for_write_only_2d_texture_ = false;
+
+  // applicable only for IMAGE_BUFFER.
+  // We can use image buffer as image or as buffer.
+  // This option allows to use image buffer as buffer when we use it as dst
+  // tensor(write only).
+  // Currently supported only for Metal/OpenCL.
+  // By default true.
+  bool use_buffer_for_write_only_image_buffer_ = true;
+
   // optional
-  BHWDC shape;
-  std::vector<uint8_t> data;
+  BHWDC shape_;
+  std::vector<uint8_t> data_;
 };
 
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
-  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
+  shape_ = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
   UploadData(src.data.data());
 }
 
 template <DataType T>
 void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWC, T>* dst) {
-  dst->shape = BHWC(shape.b, shape.h, shape.w, shape.c);
+  dst->shape = BHWC(shape_.b, shape_.h, shape_.w, shape_.c);
   dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
   DownloadData(dst->data.data());
 }
 
 template <typename T>
 void TensorDescriptor::UploadData(const T* src) {
-  data.resize(GetSizeInBytesForShape(shape));
-  if (data_type == DataType::FLOAT16) {
-    half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataFromBHWDC(src, shape, *this, gpu_data);
+  data_.resize(GetSizeInBytesForShape(shape_));
+  if (data_type_ == DataType::FLOAT16) {
+    half* gpu_data = reinterpret_cast<half*>(data_.data());
+    DataFromBHWDC(src, shape_, *this, gpu_data);
   } else {
-    T* gpu_data = reinterpret_cast<T*>(data.data());
-    DataFromBHWDC(src, shape, *this, gpu_data);
+    T* gpu_data = reinterpret_cast<T*>(data_.data());
+    DataFromBHWDC(src, shape_, *this, gpu_data);
   }
 }
 
 template <typename T>
 void TensorDescriptor::DownloadData(T* dst) {
-  data.resize(GetSizeInBytesForShape(shape));
-  if (data_type == DataType::FLOAT16) {
-    half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataToBHWDC(gpu_data, shape, *this, dst);
+  data_.resize(GetSizeInBytesForShape(shape_));
+  if (data_type_ == DataType::FLOAT16) {
+    half* gpu_data = reinterpret_cast<half*>(data_.data());
+    DataToBHWDC(gpu_data, shape_, *this, dst);
   } else {
-    T* gpu_data = reinterpret_cast<T*>(data.data());
-    DataToBHWDC(gpu_data, shape, *this, dst);
+    T* gpu_data = reinterpret_cast<T*>(data_.data());
+    DataToBHWDC(gpu_data, shape_, *this, dst);
   }
 }
 
@@ -284,7 +317,8 @@ template <typename FromType, typename ToType>
 void DataFromBHWDC(const FromType* src, const BHWDC& shape,
                    const TensorDescriptor& desc, ToType* dst) {
   const int channels_alignment =
-      desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c : 4;
+      desc.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
+                                                                    : 4;
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
     for (int s = 0; s < slices; ++s) {
@@ -314,7 +348,8 @@ template <typename FromType, typename ToType>
 void DataToBHWDC(const FromType* src, const BHWDC& shape,
                  const TensorDescriptor& desc, ToType* dst) {
   const int channels_alignment =
-      desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c : 4;
+      desc.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
+                                                                    : 4;
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
     for (int s = 0; s < slices; ++s) {

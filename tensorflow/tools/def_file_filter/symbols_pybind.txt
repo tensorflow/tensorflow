@@ -52,6 +52,7 @@ tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 [//tensorflow/python:bfloat16_lib] # bfloat16
 tensorflow::RegisterNumpyBfloat16
 tensorflow::Bfloat16Dtype
+tensorflow::Float8_E4M3B11Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -421,6 +422,9 @@ tensorflow::metrics::CheckpointWriteDuration
 tensorflow::metrics::TrainingTimeSaved
 tensorflow::metrics::CheckpointSize
 
+[//tensorflow/cc/saved_model:fingerprinting_impl] # SavedModel Fingerprinting
+tensorflow::fingerprinting::CreateFingerprintDef
+
 
 [//tensorflow/compiler/jit:flags] # tfe
 tensorflow::IsXlaEnabled
@@ -520,3 +524,4 @@ tensorflow::dtensor::Unpack
 tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
+tensorflow::dtensor::GetFunctionCacheHitAndMissCount

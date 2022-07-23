@@ -14,11 +14,11 @@
 # ==============================================================================
 """Iterator ops."""
 
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.training import basic_session_run_hooks
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import deprecation

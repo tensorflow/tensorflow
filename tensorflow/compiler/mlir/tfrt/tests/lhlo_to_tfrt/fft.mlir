@@ -22,7 +22,7 @@ func.func @fft(%input: memref<3x5xf32>, %output: memref<3x5xcomplex<f32>>) {
   // CHECK-SAME: %arg2, %arg3, [[WORKSPACE]], CUFFT_FORWARD, %arg0
   "lmhlo.fft"(%input, %output) {
     fft_length = dense<5> : tensor<1xi64>,
-    fft_type = #mhlo<"fft_type RFFT">
+    fft_type = #mhlo<fft_type RFFT>
   } : (memref<3x5xf32>, memref<3x5xcomplex<f32>>) -> ()
 
   // CHECK-NOT: cast

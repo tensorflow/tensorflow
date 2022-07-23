@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/conditional_code_motion.h"
 
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -1407,7 +1408,7 @@ ENTRY main {
         HloInstruction* root = module->entry_computation()->root_instruction();
         switch (flip_start) {
           case 0:
-            ABSL_FALLTHROUGH_INTENDED;
+            [[fallthrough]];
           case 1:
             // After flipping the corresponding decisions,
             // instructions has been moved inside the conditionals.
@@ -1535,7 +1536,7 @@ ENTRY main {
         HloInstruction* root = module->entry_computation()->root_instruction();
         switch (flip_start) {
           case 0:
-            ABSL_FALLTHROUGH_INTENDED;
+            [[fallthrough]];
           case 1:
             // After flipping the corresponding decisions,
             // instructions has been moved inside the conditionals.

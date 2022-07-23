@@ -47,7 +47,7 @@ using ::testing::UnorderedElementsAre;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
-constexpr absl::Duration kShutdownBarrierTimeout = absl::Seconds(1);
+constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
 constexpr char kCoordinationServiceType[] = "standalone";
 
 KeyValueEntry CreateKv(const std::string& key, const std::string& value) {

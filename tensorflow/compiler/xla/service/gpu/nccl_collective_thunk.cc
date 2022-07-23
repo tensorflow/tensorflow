@@ -186,7 +186,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

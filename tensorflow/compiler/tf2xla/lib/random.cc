@@ -69,7 +69,7 @@ xla::XlaOp ParameterizedTruncatedNormal(xla::XlaOp uniform, xla::XlaOp mu,
   // computation precision.
   xla::XlaOp v = two * p - one;
   xla::PrimitiveType primitive_type =
-      uniform.builder()->GetShape(uniform).ConsumeValueOrDie().element_type();
+      uniform.builder()->GetShape(uniform).value().element_type();
   xla::XlaOp epsilon = xla::Epsilon(uniform.builder(), primitive_type);
   v = xla::Clamp(-one + epsilon, v, one - epsilon);
   xla::XlaOp x = mu + sigma * sqrt_2 * xla::ErfInv(v);

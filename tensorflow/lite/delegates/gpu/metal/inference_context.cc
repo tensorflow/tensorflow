@@ -401,7 +401,7 @@ InferenceContext::TensorMemoryType InferenceContext::GetTensorMemoryType(
     return TensorMemoryType::kExternal;
   } else if (const_tensors_.find(id) != const_tensors_.end()) {
     return TensorMemoryType::kConst;
-  } else if (IsBufferBased(tensors_descs_[id].storage_type)) {
+  } else if (IsBufferBased(tensors_descs_[id].GetStorageType())) {
     return TensorMemoryType::kBuffer;
   } else {
     return TensorMemoryType::kStrongShape;
@@ -477,19 +477,20 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
     const auto& t = tensors_descs_[usage.first];
     const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size = SizeOf(descriptor.data_type);
+    const size_t element_size = SizeOf(descriptor.GetDataType());
     size_t buffer_size;
     size_t row_bytes_alignment = [device->device()
         minimumLinearTextureAlignmentForPixelFormat:DataTypeToRGBAPixelFormat(
-                                                        descriptor.data_type,
+                                                        descriptor
+                                                            .GetDataType(),
                                                         false)];
-    if (descriptor.storage_type == TensorStorageType::TEXTURE_2D) {
+    if (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D) {
       min_common_alignment =
           std::lcm(min_common_alignment, row_bytes_alignment);
       const size_t bytes_per_row = element_size * shape.b * shape.w * 4;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
       buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
-    } else if (descriptor.storage_type ==
+    } else if (descriptor.GetStorageType() ==
                TensorStorageType::SINGLE_TEXTURE_2D) {
       min_common_alignment =
           std::lcm(min_common_alignment, row_bytes_alignment);
@@ -570,11 +571,12 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
         base_buffer = shared_buffers_[buffer_index];
         base_buffer_offset = 0;
       }
-      if (tensor_dummy.storage_type == TensorStorageType::TEXTURE_2D ||
-          tensor_dummy.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+      if (tensor_dummy.GetStorageType() == TensorStorageType::TEXTURE_2D ||
+          tensor_dummy.GetStorageType() ==
+              TensorStorageType::SINGLE_TEXTURE_2D) {
         size_t row_bytes_alignment = [device->device()
             minimumLinearTextureAlignmentForPixelFormat:
-                DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];
+                DataTypeToRGBAPixelFormat(tensor_dummy.GetDataType(), false)];
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
             base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
             row_bytes_alignment, &shared_buffer_tensors_[tensor_index],
@@ -603,9 +605,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
     TensorDescriptor tensor_desc;
 
     bool operator==(const TensorDescComparator& t) const {
-      return tensor_desc.data_type == t.tensor_desc.data_type &&
-             tensor_desc.storage_type == t.tensor_desc.storage_type &&
-             tensor_desc.layout == t.tensor_desc.layout &&
+      return tensor_desc == t.tensor_desc &&
              tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };

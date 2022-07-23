@@ -293,7 +293,7 @@ using Visit2D = std::function<StatusOr<Literal>(Literal, Literal)>;
 
 // A postorder dfs node can be visited once its dependency requests are all
 // fulfilled.
-struct ABSL_MUST_USE_RESULT PostorderDFSNode {
+struct [[nodiscard]] PostorderDFSNode {
   PostorderDFSNode& AddDependency(int64_t handle, PostorderDFSNodeType type,
                                   InferenceContext context,
                                   std::string annotation = "") {

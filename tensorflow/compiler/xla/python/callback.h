@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_CALLBACK_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_CALLBACK_H_
 
+#include <optional>
 #include <utility>
 
 #include "pybind11/pybind11.h"
@@ -61,7 +62,12 @@ class CpuCallback {
   const std::vector<Result>& results() const { return results_; }
   size_t num_results() const { return results_.size(); }
 
-  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
+  xla::TransposePlanCache& transpose_cache() { return transpose_cache_; }
+
+  void PrepareAndCall(void* result, void** arg_ptrs,
+                      XlaCustomCallStatus* status);
+  std::optional<pybind11::tuple> Call(pybind11::tuple args,
+                                      XlaCustomCallStatus* status);
 
  private:
   pybind11::function callable_;

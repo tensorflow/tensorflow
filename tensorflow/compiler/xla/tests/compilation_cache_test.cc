@@ -47,7 +47,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
             ->ExecuteAndTransfer(computation, arguments,
                                  /*execution_options=*/&execution_options_,
                                  &execution_profile)
-            .ConsumeValueOrDie();
+            .value();
     EXPECT_TRUE(LiteralTestUtil::Near(
         LiteralUtil::CreateR0<float>(expected_result), result, error_spec_));
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
@@ -62,8 +62,8 @@ class CompilationCacheTest : public ClientLibraryTestBase {
     auto data_handle = client_
                            ->Execute(computation, arguments,
                                      &execution_options_, &execution_profile)
-                           .ConsumeValueOrDie();
-    Literal result = client_->Transfer(*data_handle).ConsumeValueOrDie();
+                           .value();
+    Literal result = client_->Transfer(*data_handle).value();
     EXPECT_TRUE(LiteralTestUtil::Near(
         LiteralUtil::CreateR2<float>(expected_result), result, error_spec_));
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
@@ -76,7 +76,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
 XLA_TEST_F(CompilationCacheTest, DISABLED_ComputationCalledMultipleTimes) {
   XlaBuilder builder(TestName());
   Neg(ConstantR0<float>(&builder, 42.0));
-  XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().value();
 
   ExecuteComputationR0F32(computation, {}, -42.0, /*expect_cache_hit=*/false);
   ExecuteComputationR0F32(computation, {}, -42.0, /*expect_cache_hit=*/true);
@@ -87,18 +87,15 @@ XLA_TEST_F(CompilationCacheTest, DISABLED_ComputationCalledMultipleTimes) {
 XLA_TEST_F(CompilationCacheTest,
            DISABLED_ComputationCalledWithDifferentParameters) {
   std::unique_ptr<GlobalData> data_42 =
-      client_->TransferToServer(LiteralUtil::CreateR0<float>(42.0f))
-          .ConsumeValueOrDie();
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(42.0f)).value();
   std::unique_ptr<GlobalData> data_123 =
-      client_->TransferToServer(LiteralUtil::CreateR0<float>(123.0f))
-          .ConsumeValueOrDie();
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(123.0f)).value();
   std::unique_ptr<GlobalData> data_456 =
-      client_->TransferToServer(LiteralUtil::CreateR0<float>(456.0f))
-          .ConsumeValueOrDie();
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(456.0f)).value();
 
   XlaBuilder builder(TestName());
   Neg(Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "param"));
-  XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().value();
 
   ExecuteComputationR0F32(computation, {data_42.get()}, -42.0,
                           /*expect_cache_hit=*/false);
@@ -114,16 +111,16 @@ XLA_TEST_F(CompilationCacheTest,
 XLA_TEST_F(CompilationCacheTest, DISABLED_MultipleComputations) {
   XlaBuilder builder_neg(TestName() + "_neg");
   Neg(ConstantR0<float>(&builder_neg, 42.0));
-  XlaComputation computation_neg = builder_neg.Build().ConsumeValueOrDie();
+  XlaComputation computation_neg = builder_neg.Build().value();
 
   XlaBuilder builder_exp(TestName() + "_exp");
   Exp(ConstantR0<float>(&builder_exp, 1.0));
-  XlaComputation computation_exp = builder_exp.Build().ConsumeValueOrDie();
+  XlaComputation computation_exp = builder_exp.Build().value();
 
   XlaBuilder builder_add(TestName() + "_add");
   Add(ConstantR0<float>(&builder_add, 2.0),
       ConstantR0<float>(&builder_add, 3.0));
-  XlaComputation computation_add = builder_add.Build().ConsumeValueOrDie();
+  XlaComputation computation_add = builder_add.Build().value();
 
   ExecuteComputationR0F32(computation_neg, {}, -42.0,
                           /*expect_cache_hit=*/false);
@@ -143,17 +140,15 @@ XLA_TEST_F(CompilationCacheTest, DISABLED_DifferentParameterLayouts) {
   // miss).
   auto rowmaj_array = LiteralUtil::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({1, 0}));
-  auto rowmaj_handle =
-      client_->TransferToServer(rowmaj_array).ConsumeValueOrDie();
+  auto rowmaj_handle = client_->TransferToServer(rowmaj_array).value();
 
   auto colmaj_array = LiteralUtil::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1}));
-  auto colmaj_handle =
-      client_->TransferToServer(colmaj_array).ConsumeValueOrDie();
+  auto colmaj_handle = client_->TransferToServer(colmaj_array).value();
 
   XlaBuilder builder(TestName());
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "param0");
-  XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  XlaComputation computation = builder.Build().value();
 
   ExecuteComputationR2F32(computation, {colmaj_handle.get()},
                           {{1.0f, 2.0f}, {3.0f, 4.0f}},

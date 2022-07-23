@@ -785,17 +785,19 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
       GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
   BufferOffset<tflite::QuantizationParameters> q_params = 0;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    std::vector<float> scales = {static_cast<float>(qtype.getScale())};
+    std::vector<int64_t> zero_points = {qtype.getZeroPoint()};
     q_params = tflite::CreateQuantizationParameters(
-        builder_, /*min=*/0, /*max=*/0,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
+        builder_.CreateVector<int64_t>(zero_points));
   } else if (auto qtype =
                  element_type
                      .dyn_cast<mlir::quant::CalibratedQuantizedType>()) {
+    std::vector<float> mins = {static_cast<float>(qtype.getMin())};
+    std::vector<float> maxs = {static_cast<float>(qtype.getMax())};
     q_params = tflite::CreateQuantizationParameters(
-        builder_,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getMin())}),
-        builder_.CreateVector<float>({static_cast<float>(qtype.getMax())}));
+        builder_, builder_.CreateVector<float>(mins),
+        builder_.CreateVector<float>(maxs));
   }
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type,
@@ -869,20 +871,23 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   BufferOffset<tflite::QuantizationParameters> q_params;
   if (auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    std::vector<float> scales = {static_cast<float>(qtype.getScale())};
+    std::vector<int64_t> zero_points = {qtype.getZeroPoint()};
     q_params = tflite::CreateQuantizationParameters(
         // min and max values are not stored in the quantized type from MLIR, so
         // both are set to 0 in the flatbuffer when they are exported.
-        builder_, /*min=*/0, /*max=*/0,
-        builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
-        builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+        builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
+        builder_.CreateVector<int64_t>(zero_points));
   } else if (auto qtype =
                  element_type
                      .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
     std::vector<float> scales(qtype.getScales().begin(),
                               qtype.getScales().end());
+    std::vector<int64_t> zero_points(qtype.getZeroPoints().begin(),
+                                     qtype.getZeroPoints().end());
     q_params = tflite::CreateQuantizationParameters(
         builder_, /*min=*/0, /*max=*/0, builder_.CreateVector<float>(scales),
-        builder_.CreateVector<int64_t>(qtype.getZeroPoints()),
+        builder_.CreateVector<int64_t>(zero_points),
         tflite::QuantizationDetails_NONE, /*details=*/0,
         qtype.getQuantizedDimension());
   } else if (quant_parameters.hasValue()) {
@@ -1343,9 +1348,9 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
 BufferOffset<tflite::QuantizationParameters>
 Translator::GetQuantizationForQuantStatsOpOutput(
     mlir::quant::StatisticsOp stats_op) {
-  auto layer_stats = stats_op.layerStats().cast<mlir::DenseFPElementsAttr>();
-  Optional<mlir::ElementsAttr> axis_stats = stats_op.axisStats();
-  Optional<uint64_t> axis = stats_op.axis();
+  auto layer_stats = stats_op.getLayerStats().cast<mlir::DenseFPElementsAttr>();
+  Optional<mlir::ElementsAttr> axis_stats = stats_op.getAxisStats();
+  Optional<uint64_t> axis = stats_op.getAxis();
   std::vector<float> mins, maxs;
   mlir::DenseFPElementsAttr min_max_attr =
       axis_stats.hasValue()
@@ -1499,7 +1504,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       else if (auto stats_op =
                    llvm::dyn_cast_or_null<mlir::quant::StatisticsOp>(
                        operand.getDefiningOp()))
-        operands.push_back(tensor_index_map.lookup(stats_op.arg()));
+        operands.push_back(tensor_index_map.lookup(stats_op.getArg()));
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }
@@ -2031,22 +2036,22 @@ Optional<std::string> Translator::TranslateInternal() {
 
 BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
     const mlir::TFL::SparsityParameterAttr& s_attr) {
-  const int dim_size = s_attr.dim_metadata().size();
+  const int dim_size = s_attr.getDimMetadata().size();
   std::vector<flatbuffers::Offset<tflite::DimensionMetadata>> fb_dim_metadata(
       dim_size);
   for (int i = 0; i < dim_size; i++) {
     const auto dim_metadata =
-        s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
-    if (dim_metadata.format().getValue() == mlir::TFL::DimensionType::DENSE) {
-      fb_dim_metadata[i] =
-          tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
-                                          dim_metadata.dense_size().getInt());
+        s_attr.getDimMetadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
+    if (dim_metadata.getFormat().getValue() ==
+        mlir::TFL::DimensionType::DENSE) {
+      fb_dim_metadata[i] = tflite::CreateDimensionMetadata(
+          builder_, tflite::DimensionType_DENSE, dim_metadata.getDenseSize());
 
     } else {
-      auto segments = dim_metadata.segments();
+      auto segments = dim_metadata.getSegments();
       std::vector<int> vector_segments(segments.size(), 0);
       for (int j = 0, end = segments.size(); j < end; j++) {
-        vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
+        vector_segments[j] = segments[j];
       }
       tflite::SparseIndexVector segments_type;
       BufferOffset<void> array_segments;
@@ -2074,11 +2079,11 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
                              .Union();
       }
 
-      auto indices = dim_metadata.indices();
+      auto indices = dim_metadata.getIndices();
       std::vector<int> vector_indices(indices.size(), 0);
       int max_of_indices = 0;
       for (int j = 0, end = indices.size(); j < end; j++) {
-        vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
+        vector_indices[j] = indices[j];
         if (vector_indices[j] > max_of_indices) {
           max_of_indices = vector_indices[j];
         }
@@ -2114,13 +2119,12 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
 
   std::vector<int> traversal_order(dim_size);
   for (int i = 0; i < dim_size; i++) {
-    traversal_order[i] =
-        s_attr.traversal_order()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+    traversal_order[i] = s_attr.getTraversalOrder()[i];
   }
-  const int block_map_size = s_attr.block_map().size();
+  const int block_map_size = s_attr.getBlockMap().size();
   std::vector<int> block_map(block_map_size);
   for (int i = 0; i < block_map_size; i++) {
-    block_map[i] = s_attr.block_map()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+    block_map[i] = s_attr.getBlockMap()[i];
   }
 
   return tflite::CreateSparsityParameters(

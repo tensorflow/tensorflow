@@ -22,6 +22,9 @@ limitations under the License.
 
 namespace mlir {
 
+namespace arith {
+class ArithmeticDialect;
+}  // namespace arith
 namespace func {
 class FuncOp;
 }  // namespace func
@@ -34,6 +37,9 @@ class MemRefDialect;
 namespace tensor {
 class TensorDialect;
 }  // namespace tensor
+namespace shape {
+class ShapeDialect;
+}  // namespace shape
 
 namespace mhlo {
 class MhloDialect;

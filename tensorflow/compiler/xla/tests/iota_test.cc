@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <numeric>
+#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"

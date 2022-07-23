@@ -39,10 +39,6 @@ tf_class {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
-  member {
-    name: "variables"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'learning_rate\', \'rho\', \'epsilon\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.95\', \'1e-07\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'Adadelta\'], "
@@ -90,6 +86,10 @@ tf_class {
   member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'grad\', \'variable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_name_scope"

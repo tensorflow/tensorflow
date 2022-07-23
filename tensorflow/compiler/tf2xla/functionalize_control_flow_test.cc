@@ -276,7 +276,7 @@ void ConditionalTestFixture::RunTest() {
 
   if (wrap_condition_in_function_) {
     // Check if function body was functionalized.
-    auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
         /*device_mgr=*/nullptr, tensorflow::Env::Default(),
         /*config=*/nullptr, TF_GRAPH_DEF_VERSION, &library,
         tensorflow::OptimizerOptions());

@@ -866,9 +866,8 @@ LogicalResult ConvertTFLAveragePool2DOp::matchAndRewrite(
     // quantized average pool, while TOSA does. Force the TOSA
     // zero_points to zero to ensure that the calculations match
 
-    auto zero = rewriter.getI32IntegerAttr(0);
-    auto quant_attr = tosa::UnaryOpQuantizationAttr::get(
-        /*input_zp=*/zero, /*output_zp=*/zero, rewriter.getContext());
+    auto quant_attr = rewriter.getAttr<tosa::UnaryOpQuantizationAttr>(
+        /*input_zp=*/0, /*output_zp=*/0);
     result = CreateOpAndInfer<tosa::AvgPool2dOp>(
         rewriter, op->getLoc(), average_type, tfl_avgpool_op.input(),
         kernel_size, stride, pad, quant_attr);
@@ -1063,7 +1062,6 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
   }
 
   ArrayAttr stride;
-  ArrayAttr dilation;
   ArrayAttr outpad;
   ArrayAttr output_shape;
   {
@@ -1071,9 +1069,6 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     int64_t stride_w = tfl_conv_op.stride_w();
     stride = rewriter.getI64ArrayAttr({stride_h, stride_w});
   }
-
-  // tfl.transpose_conv doesn't support dilations
-  dilation = rewriter.getI64ArrayAttr({1, 1});
 
   {
     tensorflow::Padding tf_pad;
@@ -1084,8 +1079,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
             tf_pad,
             tensorflow::FORMAT_NHWC,  // TFLite only supports this
             1,                        // tensorflow::FORMAT_OHWI,
-            input_type, filter_type, output_type, stride, dilation, rewriter,
-            outpad))
+            input_type, filter_type, output_type, stride, rewriter, outpad))
       return failure();
   }
   {
@@ -1144,7 +1138,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety), tfl_conv_op.input(),
-      tfl_conv_op.weights(), zero_bias.getValue(), outpad, stride, dilation,
+      tfl_conv_op.weights(), zero_bias.getValue(), outpad, stride,
       output_shape);
 
   Value conv2d_output;

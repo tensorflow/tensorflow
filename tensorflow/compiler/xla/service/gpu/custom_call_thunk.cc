@@ -64,7 +64,7 @@ Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (message) {
     return InternalError("CustomCall failed: %s", *message);
   } else {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 #else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Unavailable(

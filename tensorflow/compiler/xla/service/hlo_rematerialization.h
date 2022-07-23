@@ -105,6 +105,11 @@ class HloRematerialization : public HloModulePass {
   // Get the next available channel id and increment count.
   int64_t NextChannelId() { return next_channel_id_++; }
 
+  // Get the peak memory for the computation.
+  int64_t ComputationPeakMemory(const HloComputation* computation) const {
+    return computation_peak_memory_.at(computation);
+  }
+
   // Runs rematerialization on the given module. Returns whether the module was
   // changed. Requires that the module has a schedule set
   // (HloModule::has_schedule() is true) before running. Returns whether any

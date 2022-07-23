@@ -37,7 +37,7 @@ class OptimizeMhloPass : public OptimizeMhloPassBase<OptimizeMhloPass> {
 void OptimizeMhloPass::runOnOperation() {
   // Add lowering patterns to the list.
   RewritePatternSet patterns(&getContext());
-  PopulateOptimizeMHLOPatterns(&getContext(), &patterns);
+  populateOptimizeMhloPatterns(&getContext(), &patterns);
 
   if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
     return signalPassFailure();

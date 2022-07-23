@@ -21,11 +21,25 @@ limitations under the License.
 // benchmark library should have tensor_profiler_logger dependency.
 // Strong symbol definitions can be found in tensorflow_profiler_logger.cc.
 
+namespace tflite {
+
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
-TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorAlloc(size_t num_bytes,
-                                               TfLiteTensor* tensor) {}
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpPrepare(const char* op_name,
+                                             const int node_index) {}
+
+// No-op for the weak symbol. Overridden by a strong symbol in
+// tensorflow_profiler_logger.cc.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteOpInvoke(const char* op_name,
+                                            const int node_index) {}
+
+// No-op for the weak symbol. Overridden by a strong symbol in
+// tensorflow_profiler_logger.cc.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorAlloc(TfLiteTensor* tensor,
+                                               size_t num_bytes) {}
 
 // No-op for the weak symbol. Overridden by a strong symbol in
 // tensorflow_profiler_logger.cc.
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteTensorDealloc(TfLiteTensor* tensor) {}
+
+}  // namespace tflite

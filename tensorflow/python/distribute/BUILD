@@ -98,7 +98,6 @@ cuda_py_test(
     name = "device_util_test",
     srcs = ["device_util_test.py"],
     python_version = "PY3",
-    tags = ["no_oss_py2"],
     deps = [
         ":combinations",
         ":device_util",
@@ -440,6 +439,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
@@ -448,6 +448,7 @@ py_library(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/util:tf_export",
     ],
@@ -537,8 +538,12 @@ py_library(
         ":distribute_lib",
         ":distribute_utils",
         ":input_ops",
+        ":reduce_util",
         ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:cardinality",
@@ -549,7 +554,20 @@ py_library(
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
+        "@six_archive//:six",
     ],
 )
 
@@ -1218,7 +1236,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
@@ -2279,6 +2297,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "noasan",  # TODO(b/237407459)
         "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
@@ -2317,6 +2336,7 @@ tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
     disable_experimental = True,  # b/202779350
+    disable_v3_4chips = False,
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [

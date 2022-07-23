@@ -93,6 +93,6 @@ pybind_library(
     hdrs = ["conversion_utils.h"],
     deps = [
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt:types",
+        "@tf_runtime//backends/jitrt:arguments",
     ],
 )

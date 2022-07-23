@@ -54,7 +54,7 @@ def set_handle_data(target_t, handle_data):
   if isinstance(target_t, ops.EagerTensor):
     target_t._handle_data = handle_data
     return
-  pywrap_tf_session.SetHandleShapeAndType(target_t.graph._c_graph,
-                                          target_t._as_tf_output(),
-                                          handle_data.SerializeToString())
+  with target_t.graph._c_graph.get() as c_graph:
+    pywrap_tf_session.SetHandleShapeAndType(c_graph, target_t._as_tf_output(),
+                                            handle_data.SerializeToString())
   # pylint: enable=protected-access

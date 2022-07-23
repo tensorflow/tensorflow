@@ -153,7 +153,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.buffer_interval_compare = buffer_interval_compare;
     options.prefetch_interval_picker = prefetch_interval_picker;
     options.size_fn = size_fn;
-    options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
+    if (options.is_allowed_in_alternate_mem_fn == nullptr) {
+      options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
+    }
     options.max_outstanding_prefetches = max_outstanding_async_copies;
     options.max_outstanding_evictions = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
@@ -3879,8 +3881,17 @@ TEST_P(MemorySpaceAssignmentTest,
                          negate5, negate6, add, tuple});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get());
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
+    return true;
+  };
+  std::unique_ptr<PresetAssignments> preset_assignments = AssignMemorySpace(
+      module.get(),
+      /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2, options);
 
   // Ensure that p1 is in the alternate memory and add, which has p1 as an
   // operand, has a direct dependency to p1 (no CopyStart/CopyDone).
@@ -6476,7 +6487,17 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   schedule.set_sequence(computation, {lhs, rhs, dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get());
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
+    return true;
+  };
+  std::unique_ptr<PresetAssignments> preset_assignments = AssignMemorySpace(
+      module.get(),
+      /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2, options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);
@@ -6517,7 +6538,17 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get());
+  Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.is_allowed_in_alternate_mem_fn = [](const HloValue& value) {
+    return true;
+  };
+  std::unique_ptr<PresetAssignments> preset_assignments = AssignMemorySpace(
+      module.get(),
+      /*max_outstanding_async_copies=*/-1,
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/2, options);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);

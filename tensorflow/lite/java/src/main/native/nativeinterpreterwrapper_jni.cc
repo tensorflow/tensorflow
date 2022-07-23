@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -344,7 +345,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   const char* path = env->GetStringUTFChars(model_file, nullptr);
 
   std::unique_ptr<tflite::TfLiteVerifier> verifier;
-  verifier.reset(new JNIFlatBufferVerifier());
+  verifier = std::make_unique<JNIFlatBufferVerifier>();
 
   auto model = FlatBufferModel::VerifyAndBuildFromFile(path, verifier.get(),
                                                        error_reporter);

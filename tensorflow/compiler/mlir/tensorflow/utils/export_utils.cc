@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -273,7 +274,7 @@ static bool IsRefTypeControlOp(mlir::Operation* op) {
   auto op_name_or_status = GetTensorFlowOpName(op->getName().getStringRef());
   if (!op_name_or_status.ok()) return false;
 
-  auto op_name = op_name_or_status.ConsumeValueOrDie();
+  auto op_name = std::move(op_name_or_status).value();
   if (op_name.equals("NextIteration"))
     return mlir::getElementTypeOrSelf(op->getOperand(0).getType())
         .isa<mlir::TF::TensorFlowRefType>();
@@ -311,7 +312,7 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
 
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     mlir::Operation* inst, llvm::StringRef name) {
-  auto node_def = absl::make_unique<NodeDef>();
+  auto node_def = std::make_unique<NodeDef>();
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.
 

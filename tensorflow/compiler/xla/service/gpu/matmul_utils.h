@@ -21,14 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/matmul_util.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -63,6 +66,8 @@ struct MatrixLayout {
                                     size_t rhs_num_batch_dims,
                                     size_t rhs_num_col_dims);
 
+  void Transpose();
+
   PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
   // i.e. the contracting dim has size `num_cols` for LHS operands and
@@ -81,7 +86,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 
 struct GemmConfig {
   static StatusOr<GemmConfig> For(const HloInstruction* gemm);
-  static StatusOr<GemmConfig> For(mlir::Operation* op, bool use_cublaslt);
+  static StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op,
+                                  bool use_cublaslt);
 
   static StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
@@ -89,7 +95,8 @@ struct GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
       double alpha_real, double alpha_imag, double beta,
-      std::optional<int64_t> algorithm, bool use_cublaslt);
+      std::optional<int64_t> algorithm, int64_t compute_precision,
+      bool use_cublaslt);
 
   MatrixLayout lhs_layout;
   MatrixLayout rhs_layout;
@@ -97,16 +104,9 @@ struct GemmConfig {
   complex128 alpha;
   double beta;
   std::optional<int64_t> algorithm;
+  int64_t compute_precision;
   bool use_cublaslt;
 };
-
-se::blas::MatrixDescriptor GetMatrixDesc(const MatrixLayout& layout,
-                                         se::DeviceMemoryBase data);
-
-void MakeBlasGemmCompatible(int64_t& m, int64_t& n,
-                            se::blas::MatrixDescriptor& lhs,
-                            se::blas::MatrixDescriptor& rhs,
-                            se::blas::MatrixDescriptor& output);
 
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
@@ -118,11 +118,23 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
                se::blas::ProfileResult* profile_result = nullptr);
 
+#if GOOGLE_CUDA
+
+constexpr size_t kBlasLtMaxWorkspaceSize = 1ll << 32;  // 4GB
+
+struct MatmulPlanParams {
+  se::cuda::BlasLt::MatmulPlanParams params;
+  bool must_swap_operands;
+};
+
+StatusOr<MatmulPlanParams> GetBlasLtMatmulPlanParams(const GemmConfig& config);
+
 Status RunBlasLtMatmul(
-    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream, se::ScratchAllocator& scratch_allocator,
-    const se::blas::IBlasLtMatmulAlgorithm* algorithm = nullptr,
+    const se::cuda::BlasLt::MatmulPlan& plan, complex128 alpha,
+    se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
+    double beta, se::DeviceMemoryBase output_buffer, se::Stream* stream,
+    se::ScratchAllocator& scratch_allocator,
+    const se::cuda::BlasLt::MatmulAlgorithm* algorithm = nullptr,
     se::blas::ProfileResult* profile_result = nullptr);
 
 class BlasPlansAutotuneCache {
@@ -130,17 +142,20 @@ class BlasPlansAutotuneCache {
   BlasPlansAutotuneCache() = default;
 
   std::optional<se::blas::AlgorithmConfig> Find(
-      const se::BatchMatmulParameters& params) const;
-  void Insert(se::BatchMatmulParameters params,
+      const se::cuda::BlasLt::MatmulPlanParams& params) const;
+  void Insert(se::cuda::BlasLt::MatmulPlanParams params,
               se::blas::AlgorithmConfig config);
 
  private:
   mutable absl::Mutex mu_;
-  absl::flat_hash_map<se::BatchMatmulParameters, se::blas::AlgorithmConfig>
+  absl::flat_hash_map<se::cuda::BlasLt::MatmulPlanParams,
+                      se::blas::AlgorithmConfig>
       blas_plans_algorithms_map_ ABSL_GUARDED_BY(mu_);
 };
 
 BlasPlansAutotuneCache& GetBlasPlansAutotuneCache();
+
+#endif  // GOOGLE_CUDA
 
 }  // namespace gpu
 }  // namespace xla

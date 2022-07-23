@@ -61,10 +61,9 @@ py_library(
     srcs = ["xla_client_test.py"],
     srcs_version = "PY3",
     deps = [
-        ":custom_call_for_test",
         ":xla_client",
-        ":xla_extension",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -83,6 +82,7 @@ py_test(
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ] + xla_py_test_deps(),
@@ -104,6 +104,7 @@ py_test(
         ":xla_client",
         ":xla_extension",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:framework_test_lib",
@@ -166,7 +167,6 @@ cc_library(
         "//tensorflow/python:bfloat16_lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -278,6 +278,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        ":host_callback",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -290,7 +291,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
@@ -375,7 +375,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -405,7 +404,6 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:svd",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -456,7 +454,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
@@ -598,7 +595,6 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -653,7 +649,6 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -707,6 +702,7 @@ pybind_extension(
         "//third_party/py/numpy",
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
+    visibility = ["//visibility:public"],
     deps = [
                ":dlpack",
                ":jax_jit",
@@ -748,6 +744,7 @@ pybind_extension(
                # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
                # not require Tensorflow.
                "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+               "//tensorflow/core/distributed_runtime/preemption:preemption_sync_manager",
                "//tensorflow/python:bfloat16_lib",
            ] + select({
                ":gpu_enabled": [
@@ -764,4 +761,13 @@ pybind_extension(
                ],
                "//conditions:default": [],
            }),
+)
+
+cc_library(
+    name = "host_callback",
+    srcs = ["host_callback.cc"],
+    hdrs = ["host_callback.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+    ],
 )

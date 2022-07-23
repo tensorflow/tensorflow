@@ -120,7 +120,7 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
     if (!status_or_optypes.ok()) {
       return builder->ReportError(status_or_optypes.status());
     }
-    auto op_types = status_or_optypes.ConsumeValueOrDie();
+    auto op_types = status_or_optypes.value();
 
     auto reduction_computation =
         BuildReductionComputation(builder, op_types, comparator);
@@ -172,7 +172,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   if (!status_or_optypes.ok()) {
     return builder->ReportError(status_or_optypes.status());
   }
-  auto op_types = status_or_optypes.ConsumeValueOrDie();
+  auto op_types = status_or_optypes.value();
   int64_t rank = operands_shapes[0].rank();
   if (reduction_dim < 0 || reduction_dim >= rank) {
     return builder->ReportError(
@@ -266,7 +266,7 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   if (!status_or_approx_output_size.ok()) {
     return builder->ReportError(status_or_approx_output_size.status());
   }
-  auto output_size = status_or_approx_output_size.ConsumeValueOrDie().first;
+  auto output_size = status_or_approx_output_size.value().first;
   return AggregateToTopKBuilder(builder, operands, init_values, output_size,
                                 reduction_dim, comparator);
 }

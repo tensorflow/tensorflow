@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
+#include <memory>
 #include <ostream>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -141,7 +141,7 @@ void GatherFusionInstructions(
 TuplePointsToAnalysis::Run(const HloModule* module) {
   auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
   std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, logical_buffer_analysis.ConsumeValueOrDie()));
+      module, std::move(logical_buffer_analysis).value()));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
@@ -508,7 +508,6 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
   return OkStatus();
 }
 
-
 Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
@@ -557,7 +556,7 @@ PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
   PerInstruction* pi = PerInst(instruction);
   CHECK(pi->points_to_set == nullptr)
       << "instruction should not have been present in the map.";
-  auto set = absl::make_unique<PointsToSet>(&instruction->shape());
+  auto set = std::make_unique<PointsToSet>(&instruction->shape());
   pi->points_to_set = std::move(set);
   // Return *set using the iterator returned by emplace.
   return *pi->points_to_set;

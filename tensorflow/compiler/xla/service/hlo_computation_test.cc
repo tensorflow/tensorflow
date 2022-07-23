@@ -539,6 +539,7 @@ TEST_F(HloComputationTest, Stringification) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetThreadName("MainThread");
 
   auto options = HloPrintOptions().set_print_metadata(false);
   const std::string expected_computation =
@@ -547,7 +548,7 @@ TEST_F(HloComputationTest, Stringification) {
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, thread_name="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
@@ -574,6 +575,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetThreadName("MainThread");
 
   auto options =
       HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
@@ -583,7 +585,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
       %y = f32[20,10]{1,0} parameter(1)
       %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
       ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })";
+    }, thread_name="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
 
@@ -610,6 +612,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  computation->SetThreadName("MainThread");
 
   auto options = HloPrintOptions().set_print_metadata(false);
   const std::string expected_computation1 =
@@ -618,7 +621,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   %y = f32[20,10]{1,0} parameter(1)
   %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
   ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, thread_name="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
   options = HloPrintOptions().Canonical();
@@ -627,7 +630,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, thread_name="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation2);
 }
 

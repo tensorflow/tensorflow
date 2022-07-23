@@ -34,6 +34,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import python_state
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import nest
@@ -425,7 +426,7 @@ def trace_save_restore_functions(saveable_factory, obj):
 
 def validate_saveables_for_saved_model(saveables, obj):
   """Makes sure SaveableObjects are compatible with SavedModel."""
-  if any(isinstance(saveable, trackable.PythonStateSaveable)
+  if any(isinstance(saveable, python_state.PythonStateSaveable)
          for saveable in saveables):
     logging.warn(
         f"Note that object {obj} stores python values into the checkpoint. "
@@ -508,7 +509,7 @@ def saveable_objects_from_trackable(obj):
   if trackable_has_serialize_to_tensor(obj):
     def create_saveable(name=""):
       return TrackableSaveable(obj, name)
-    return {"": create_saveable}
+    return {trackable_utils.SERIALIZE_TO_TENSORS_NAME: create_saveable}
   else:
     return obj._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
 
@@ -532,7 +533,22 @@ class TrackableSaveable(saveable_object.SaveableObject):
     restored_tensor_dict = {}
     for n, local_name in enumerate(self._local_names):
       restored_tensor_dict[local_name] = restored_tensors[n]
-    return self._trackable._restore_from_tensors(restored_tensor_dict)  # pylint: disable=protected-access
+
+    def restore_from_tensors():
+      self._trackable._restore_from_tensors(restored_tensor_dict)  # pylint: disable=protected-access
+      # In graph mode, this wrapper function is converted into a tf.function,
+      # and to ensure that _restore_from_tensors is executed, there must be at
+      # least one returned tensor. `_restore_from_tensors` may return zero
+      # tensors so create a dummy constant here.
+      return constant_op.constant(1)
+
+    if not ops.executing_eagerly_outside_functions():
+      restore_from_tensors = def_function.function(restore_from_tensors)
+    return restore_from_tensors()
+
+  def get_proto_names_and_checkpoint_keys(self):
+    return [(local_name, spec.name)
+            for local_name, spec in zip(self._local_names, self.specs)]
 
 
 def trackable_has_serialize_to_tensor(obj):

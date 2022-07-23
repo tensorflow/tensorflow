@@ -36,6 +36,7 @@ using tensorflow::dtensor::ExperimentalClearDefaultMesh;
 using tensorflow::dtensor::ExperimentalSetDefaultLayout;
 using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
+using tensorflow::dtensor::GetFunctionCacheHitAndMissCount;
 using tensorflow::dtensor::IsSparseDTensor;
 using tensorflow::dtensor::Pack;
 using tensorflow::dtensor::SetSameShapePolicy;
@@ -315,5 +316,13 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       throw py::error_already_set();
     }
     return is_sparse;
+  });
+  m.def("GetFunctionCacheHitAndMissCount", [](const py::handle& context,
+                                              const py::capsule& device_info) {
+    std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+        TF_NewStatus(), TF_DeleteStatus);
+    return GetFunctionCacheHitAndMissCount(
+        static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
+        device_info, status.get());
   });
 }

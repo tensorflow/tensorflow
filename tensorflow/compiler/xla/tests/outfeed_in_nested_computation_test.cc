@@ -74,8 +74,8 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   std::unique_ptr<tensorflow::Thread> thread(
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions(), "execute_thread", [&] {
-            comp_result = local_client_->ExecuteAndTransfer(computation, {})
-                              .ConsumeValueOrDie();
+            comp_result =
+                local_client_->ExecuteAndTransfer(computation, {}).value();
           }));
 
   VLOG(1) << "Transferring trip count to computation";
@@ -149,8 +149,8 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   std::unique_ptr<tensorflow::Thread> thread(
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions(), "execute_thread", [&] {
-            comp_result = local_client_->ExecuteAndTransfer(computation, {})
-                              .ConsumeValueOrDie();
+            comp_result =
+                local_client_->ExecuteAndTransfer(computation, {}).value();
           }));
 
   TF_ASSERT_OK(

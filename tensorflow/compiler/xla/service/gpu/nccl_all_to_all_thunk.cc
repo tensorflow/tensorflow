@@ -18,12 +18,12 @@ limitations under the License.
 #include <chrono>  // NOLINT (required by TF interfaces)
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -44,17 +44,17 @@ namespace gpu {
   // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
   config.config = GetNcclCollectiveConfigForMlir(op, std::nullopt);
-  config.has_split_dimension = op.split_dimension().hasValue();
+  config.has_split_dimension = op.getSplitDimension().hasValue();
   return config;
 }
 
 /*static*/ bool NcclAllToAllThunk::CanImplement(mlir::lmhlo::AllToAllOp op) {
-  return absl::c_all_of(op.operands(), [&op](mlir::Value operand) {
+  return absl::c_all_of(op.getInputs(), [&op](mlir::Value operand) {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
-           (!op.split_dimension() ||
-            LayoutUtil::MinorToMajor(shape).back() == *op.split_dimension());
+           (!op.getSplitDimension() ||
+            LayoutUtil::MinorToMajor(shape).back() == *op.getSplitDimension());
   });
 }
 
@@ -149,7 +149,7 @@ Status RunAllToAll(bool has_split_dimension,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

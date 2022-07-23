@@ -22,13 +22,14 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -505,6 +506,16 @@ class ShapeUtil {
   static Shape PermuteDimensions(absl::Span<const int64_t> permutation,
                                  const Shape& shape);
 
+  // Describes how we can go from shape A to shape B by inserting degenerate
+  // 1-sized dimensions in `added_dimensions` and removing degenerate 1-sized
+  // dimensions from B in `removed_dimensions`.
+  //
+  // Only exists if shapes A and B only differ by degenerate dimensions.
+  struct ShapeEqualityDescriptor {
+    std::vector<int64_t> deleted_dimensions;
+    std::vector<int64_t> inserted_dimensions;
+  };
+
   // If we can go from `shape_pre` to `shape_post` by merely inserting or
   // deleting 1-sized dimensions, return the indices in `shape_pre` of the
   // deleted dimensions and the indices in `dims_post` of the inserted
@@ -515,7 +526,7 @@ class ShapeUtil {
   // `j` and `a_(k-s) = b_(k-t)` where `s` and `t` are the number of `i`s and
   // `j`s less than `k` for all other `k`, we return the `i`s and `j`s.
   // For another example, if `shape_pre = shape_post = {}`, we return `{}`.
-  static std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+  static std::optional<ShapeEqualityDescriptor>
   InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
                                     const Shape& shape_post);
 
@@ -581,6 +592,10 @@ class ShapeUtil {
   // For example:
   // • `DeleteDimension(1, T[m, n, k]) = T[m, k]`
   static Shape DeleteDimension(int64_t dim_to_delete, Shape shape);
+
+  // Returns a shape with dimensions in `to_drop` dropped.
+  static Shape DeleteDimensions(absl::Span<int64_t const> dims_to_delete,
+                                Shape shape);
 
   // Returns a shape with all the dimensions of the input shape for which `p`
   // returns true.
@@ -762,7 +777,7 @@ class ShapeUtil {
                                      const FnType& visitor_function,
                                      bool parallel = false) {
     if (ShapeUtil::IsZeroElementArray(shape)) {
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
     CHECK_EQ(shape.rank(), base.size());
     CHECK_EQ(incr.size(), base.size());

@@ -46,6 +46,13 @@ def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> 
   let constructor = "createLegalizeToArithmeticPass()";
 }
 
+def HloLegalizeSortPass : Pass<"hlo-legalize-sort", "func::FuncOp"> {
+  let summary = "Legalize from MHLO sort to SCF control flow.";
+  let constructor = "createLegalizeSortPass()";
+  let dependentDialects = ["arith::ArithmeticDialect", "scf::SCFDialect",
+                           "tensor::TensorDialect"];
+}
+
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";
@@ -184,12 +191,12 @@ def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
 
 def ShapeReificationPass : Pass<"shape-reification", "func::FuncOp"> {
   let summary = "Iteratively reify all shape computations.";
-  let constructor = "CreateShapeReificationPass()";
+  let constructor = "createShapeReificationPass()";
 }
 
 def ConstraintFusionPass : Pass<"constraint-fusion", "func::FuncOp"> {
   let summary = "Fuse shape constraints and merge all assuming regions.";
-  let constructor = "CreateConstraintFusionPass()";
+  let constructor = "createConstraintFusionPass()";
 }
 
 def GroupReductionDimensionsPass
@@ -209,11 +216,13 @@ def GroupReductionDimensionsPass
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
+
+  let dependentDialects = ["arith::ArithmeticDialect", "shape::ShapeDialect", "tensor::TensorDialect"];
 }
 
 def ExpandHloTuplesPass : Pass<"expand-hlo-tuples", "ModuleOp"> {
   let summary = "Expand HLO tuple for the entry function of the module.";
-  let constructor = "CreateExpandHloTuplesPass()";
+  let constructor = "createExpandHloTuplesPass()";
   let options = [
     Option<"entry_function_name_", "entry-function", "std::string",
            /*default=*/"", "the name of entry function of the module">,

@@ -124,12 +124,12 @@ func.func @compare_const_like(%arg0 : tensor<*xf32>) -> tensor<*xi1> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG0]]) ({
   // CHECK: ^bb0(%[[ARG1:.*]]: tensor<*xf32>):
   // CHECK:   %[[ZERO:.*]] = "chlo.constant_like"(%[[ARG1]]) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-  // CHECK:   %[[CMP_GT:.*]] = chlo.broadcast_compare %[[ARG1]], %[[ZERO]] {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  // CHECK:   %[[CMP_GT:.*]] = chlo.broadcast_compare %[[ARG1]], %[[ZERO]] {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
   // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[CMP_GT]]) : (tensor<*xi1>) -> ()
   // CHECK: }) : (tensor<*xf32>) -> tensor<*xi1>
   // CHECK: return %[[RES]] : tensor<*xi1>
   %0 = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-  %1 = chlo.broadcast_compare %arg0, %0 {comparison_direction = #mhlo<"comparison_direction GT">}
+  %1 = chlo.broadcast_compare %arg0, %0 {comparison_direction = #mhlo<comparison_direction GT>}
       : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
   func.return %1 : tensor<*xi1>
 }
@@ -339,7 +339,7 @@ func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
   // CHECK: %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[C0]], %[[ARG0]], %[[ARG1]])
   // CHECK: ^bb0(%[[C0_:.*]]: tensor<f32>, %[[ARG0_:.*]]: tensor<*xf32>, %[[ARG1_:.*]]: tensor<*xf32>):
-  // CHECK:   %[[TMP0:.*]] = chlo.broadcast_compare %[[ARG0_]], %[[C0_]] {comparison_direction = #mhlo<"comparison_direction EQ">}
+  // CHECK:   %[[TMP0:.*]] = chlo.broadcast_compare %[[ARG0_]], %[[C0_]] {comparison_direction = #mhlo<comparison_direction EQ>}
   // CHECK:   %[[TMP1:.*]] = mhlo.log %[[ARG1_]]
   // CHECK:   %[[TMP2:.*]] = chlo.broadcast_multiply %[[ARG0_]], %[[TMP1]]
   // CHECK:   %[[TMP3:.*]] = chlo.broadcast_select %[[TMP0]], %[[C0_]], %[[TMP2]]
@@ -347,7 +347,7 @@ func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
   // CHECK: return %[[RES]]
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = tensor.cast %0 : tensor<f32> to tensor<f32>
-  %2 = chlo.broadcast_compare %arg0, %1 {comparison_direction = #mhlo<"comparison_direction EQ">}
+  %2 = chlo.broadcast_compare %arg0, %1 {comparison_direction = #mhlo<comparison_direction EQ>}
       : (tensor<*xf32>, tensor<f32>) -> tensor<*xi1>
   %3 = mhlo.log(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
   %4 = chlo.broadcast_multiply %arg0, %3
@@ -372,7 +372,7 @@ func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
 // CHECK-SCF-DAG:    %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
 // CHECK-SCF-DAG:    %[[FLAT_NON_SCALAR:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:    %[[SCALAR:.*]] = "mhlo.reshape"(%[[ARG0]])
-// CHECK-SCF-DAG:    %[[PRED:.*]] = chlo.broadcast_compare %[[SCALAR]], %[[ZERO]] {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<f32>, tensor<f32>)
+// CHECK-SCF-DAG:    %[[PRED:.*]] = chlo.broadcast_compare %[[SCALAR]], %[[ZERO]] {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>)
 // CHECK-SCF-DAG:    %[[TMP0:.*]] = mhlo.log %[[FLAT_NON_SCALAR]] : tensor<?xf32>
 // CHECK-SCF-DAG:    %[[TMP1:.*]] = chlo.broadcast_multiply %[[SCALAR]], %[[TMP0]] : (tensor<f32>, tensor<?xf32>)
 // CHECK-SCF-DAG:    %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<i1>, tensor<f32>, tensor<?xf32>)
@@ -387,7 +387,7 @@ func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
 // CHECK-SCF-DAG:      %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
 // CHECK-SCF-DAG:      %[[FLAT_NON_SCALAR:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:      %[[SCALAR:.*]] = "mhlo.reshape"(%[[ARG1]])
-// CHECK-SCF-DAG:      %[[PRED:.*]] = chlo.broadcast_compare %[[FLAT_NON_SCALAR]], %[[ZERO]] {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:      %[[PRED:.*]] = chlo.broadcast_compare %[[FLAT_NON_SCALAR]], %[[ZERO]] {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<f32>)
 // CHECK-SCF-DAG:      %[[TMP0:.*]] = mhlo.log %[[SCALAR]] : tensor<f32>
 // CHECK-SCF-DAG:      %[[TMP1:.*]] = chlo.broadcast_multiply %[[FLAT_NON_SCALAR]], %[[TMP0]] : (tensor<?xf32>, tensor<f32>)
 // CHECK-SCF-DAG:      %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<?xi1>, tensor<f32>, tensor<?xf32>)
@@ -402,7 +402,7 @@ func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
 // CHECK-SCF-DAG:        %[[FLAT_SHAPE:.*]] = tensor.from_elements %[[N]]
 // CHECK-SCF-DAG:        %[[FLAT_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:        %[[FLAT_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_SHAPE]])
-// CHECK-SCF-DAG:        %[[PRED:.*]] = chlo.broadcast_compare %[[FLAT_ARG0]], %[[ZERO]] {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:        %[[PRED:.*]] = chlo.broadcast_compare %[[FLAT_ARG0]], %[[ZERO]] {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<f32>)
 // CHECK-SCF-DAG:        %[[TMP0:.*]] = mhlo.log %[[FLAT_ARG1]] : tensor<?xf32>
 // CHECK-SCF-DAG:        %[[TMP1:.*]] = chlo.broadcast_multiply %[[FLAT_ARG0]], %[[TMP0]] : (tensor<?xf32>, tensor<?xf32>)
 // CHECK-SCF-DAG:        %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<?xi1>, tensor<f32>, tensor<?xf32>)
@@ -424,7 +424,7 @@ func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> 
 // CHECK-SCF-DAG:          %[[EXT_SHAPE_ARG1_:.*]] = tensor.cast %[[EXT_SHAPE_ARG1]]
 // CHECK-SCF-DAG:          %[[REDUCED_ARG0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[EXT_SHAPE_ARG0_]])
 // CHECK-SCF-DAG:          %[[REDUCED_ARG1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[EXT_SHAPE_ARG1_]])
-// CHECK-SCF-DAG:          %[[PRED:.*]] = chlo.broadcast_compare %[[REDUCED_ARG0]], %[[ZERO]] {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<?xf32>, tensor<f32>)
+// CHECK-SCF-DAG:          %[[PRED:.*]] = chlo.broadcast_compare %[[REDUCED_ARG0]], %[[ZERO]] {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<?xf32>, tensor<f32>)
 // CHECK-SCF-DAG:          %[[TMP0:.*]] = mhlo.log %[[REDUCED_ARG1]] : tensor<?xf32>
 // CHECK-SCF-DAG:          %[[TMP1:.*]] = chlo.broadcast_multiply %[[REDUCED_ARG0]], %[[TMP0]] : (tensor<?xf32>, tensor<?xf32>)
 // CHECK-SCF-DAG:          %[[INNER_RES:.*]] = chlo.broadcast_select %[[PRED]], %[[ZERO]], %[[TMP1]] : (tensor<?xi1>, tensor<f32>, tensor<?xf32>)
@@ -623,12 +623,12 @@ func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG1]], %[[ARG0]])
   // CHECK: ^bb0(%[[ARG1_:.*]]: tensor<*xf32>, %[[ARG0_:.*]]: tensor<*xf32>)
   // CHECK:   %[[TMP0:.*]] = "chlo.constant_like"(%[[ARG0_]]) {value = 0.0{{.*}}e+00 : f32}
-  // CHECK:   %[[TMP1:.*]] = "mhlo.compare"(%[[ARG0_]], %[[TMP0]]) {comparison_direction = #mhlo<"comparison_direction GT">}
+  // CHECK:   %[[TMP1:.*]] = "mhlo.compare"(%[[ARG0_]], %[[TMP0]]) {comparison_direction = #mhlo<comparison_direction GT>}
   // CHECK:   %[[TMP2:.*]] = "mhlo.select"(%[[TMP1]], %[[ARG1_]], %[[TMP0]])
   // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP2]])
   // CHECK: return %[[RES]]
   %0 = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
-  %1 = "mhlo.compare"(%arg0, %0) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
+  %1 = "mhlo.compare"(%arg0, %0) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
   %2 = "mhlo.select"(%1, %arg1, %0) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
@@ -643,7 +643,7 @@ func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32
 // CHECK-SCF-DAG:   %[[FLAT0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:   %[[FLAT1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:   %[[ZERO:.*]] = "chlo.constant_like"(%[[FLAT0]]) {value = 0.0{{.*}}+00 : f32}
-// CHECK-SCF-DAG:   %[[PRED:.*]] = "mhlo.compare"(%[[FLAT0]], %[[ZERO]]) {comparison_direction = #mhlo<"comparison_direction GT">}
+// CHECK-SCF-DAG:   %[[PRED:.*]] = "mhlo.compare"(%[[FLAT0]], %[[ZERO]]) {comparison_direction = #mhlo<comparison_direction GT>}
 // CHECK-SCF:       %[[UNSHAPED_RES:.*]] = "mhlo.select"(%[[PRED]], %[[FLAT1]], %[[ZERO]])
 // CHECK-SCF-DAG:   %[[RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[S1]])
 // CHECK-SCF:       return %[[RES]]
@@ -661,7 +661,7 @@ func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32
   // CHECK:       %[[INNER_RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG1]], %[[ARG0]])
   // CHECK:       ^bb0(%[[ARG1_:.*]]: tensor<*xf32>, %[[ARG0_:.*]]: tensor<*xf32>):
   // CHECK-DAG:     %[[ZERO:.*]] = "chlo.constant_like"(%[[ARG0_]]) {value = 0.0{{.*}}+00 : f32}
-  // CHECK-DAG:     %[[PRED:.*]] = "mhlo.compare"(%[[ARG0_]], %[[ZERO]]) {comparison_direction = #mhlo<"comparison_direction GT">}
+  // CHECK-DAG:     %[[PRED:.*]] = "mhlo.compare"(%[[ARG0_]], %[[ZERO]]) {comparison_direction = #mhlo<comparison_direction GT>}
   // CHECK-DAG:     %[[INNER_INNER_RES:.*]] = "mhlo.select"(%[[PRED]], %[[ARG1_]], %[[ZERO]])
   // CHECK:         "chlo.rank_specialization_cluster_yield"(%[[INNER_INNER_RES]])
   // CHECK:       shape.assuming_yield %[[INNER_RES]]
@@ -672,7 +672,7 @@ func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32
   %3 = shape.assuming %2 -> tensor<*xf32> {
     %4 = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32}
         : (tensor<*xf32>) -> tensor<*xf32>
-    %5 = "mhlo.compare"(%arg0, %4) {comparison_direction = #mhlo<"comparison_direction GT">}
+    %5 = "mhlo.compare"(%arg0, %4) {comparison_direction = #mhlo<comparison_direction GT>}
         : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
     %6 = "mhlo.select"(%5, %arg1, %4)
         : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -695,7 +695,7 @@ func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32
 // CHECK-SCF-DAG:     %[[FLAT0:.*]] = "mhlo.dynamic_reshape"(%[[ARG0]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:     %[[FLAT1:.*]] = "mhlo.dynamic_reshape"(%[[ARG1]], %[[FLAT_SHAPE]])
 // CHECK-SCF-DAG:     %[[ZERO:.*]] = "chlo.constant_like"(%[[FLAT0]]) {value = 0.0{{.*}}+00 : f32}
-// CHECK-SCF-DAG:     %[[PRED:.*]] = "mhlo.compare"(%[[FLAT0]], %[[ZERO]]) {comparison_direction = #mhlo<"comparison_direction GT">}
+// CHECK-SCF-DAG:     %[[PRED:.*]] = "mhlo.compare"(%[[FLAT0]], %[[ZERO]]) {comparison_direction = #mhlo<comparison_direction GT>}
 // CHECK-SCF:         %[[UNSHAPED_RES:.*]] = "mhlo.select"(%[[PRED]], %[[FLAT1]], %[[ZERO]])
 // CHECK-SCF-DAG:     %[[INNER_RES:.*]] = "mhlo.dynamic_reshape"(%[[UNSHAPED_RES]], %[[S1]])
 // CHECK-SCF:         shape.assuming_yield %[[INNER_RES]]

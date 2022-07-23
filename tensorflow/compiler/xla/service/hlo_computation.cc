@@ -21,16 +21,17 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <set>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -144,8 +145,8 @@ HloInstruction* HloComputation::AddInstructionInternal(
 HloInstruction* HloComputation::AddParameter(
     std::unique_ptr<HloInstruction> instruction) {
   CHECK(instruction->opcode() == HloOpcode::kParameter);
-  CHECK(IsFusionComputation());
-  CHECK(fusion_instruction_->operand_count() == param_instructions_.size());
+  CHECK(!IsFusionComputation() ||
+        fusion_instruction_->operand_count() == param_instructions_.size());
   instruction->set_parent(this);
   param_instructions_.push_back(instruction.get());
   AddInstructionInternal(std::move(instruction));
@@ -193,12 +194,11 @@ Status HloComputation::ReplaceEntryComputationParameter(
 Status HloComputation::RemoveParameter(int64_t param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
-  CHECK(IsFusionComputation());
   HloInstruction* param_instruction = param_instructions_[param_no];
   auto param_instruction_iterator = param_instructions_.begin() + param_no;
   param_instructions_.erase(param_instruction_iterator);
   // Throw removed fused parameter instruction away.
-  TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+  TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
@@ -207,7 +207,7 @@ Status HloComputation::RemoveParameter(int64_t param_no) {
             param_no, param_instruction->shape(), StrCat("param_", param_no)));
     TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     param_instructions_[param_no] = new_instr;
-    TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+    TF_RETURN_IF_ERROR(ForceRemoveInstruction(param_instruction));
     param_no++;
   }
 
@@ -219,8 +219,8 @@ HloInstruction* HloComputation::ReplaceParameter(
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
   CHECK(instruction->opcode() == HloOpcode::kParameter);
-  CHECK(IsFusionComputation());
-  CHECK_EQ(fusion_instruction_->operand_count(), param_instructions_.size());
+  CHECK(!IsFusionComputation() ||
+        fusion_instruction_->operand_count() == param_instructions_.size());
 
   instruction->set_parent(this);
   HloInstruction* new_instruction =
@@ -616,6 +616,11 @@ absl::Cord HloComputation::ToCord(
 
   result.Append(tab);
   result.Append("}");
+  if (options.print_ids() && !IsMainThread()) {
+    // When print_ids() is false, exclude entry computation's thread name
+    // because it includes and leads to non-deterministic fingerprint.
+    result.Append(StrCat(", thread_name=\"", thread_name(), "\""));
+  }
   return result;
 }
 
@@ -633,6 +638,7 @@ HloComputationProto HloComputation::ToProto() const {
   proto.set_root_id(root_instruction()->unique_id());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   proto.set_is_fusion_computation(is_fusion_computation_);
+  proto.set_thread_name(IsMainThread() ? "" : std::string(thread_name()));
   return proto;
 }
 
@@ -696,22 +702,24 @@ HloComputation::CreateFromProto(
                          /*fusion_instruction=*/nullptr));
   computation->unique_id_ = proto.id();
   computation->is_fusion_computation_ = proto.is_fusion_computation();
+  if (!proto.thread_name().empty()) {
+    computation->SetThreadName(proto.thread_name());
+  }
   return std::move(computation);
 }
 
-void HloComputation::FuseInstructionsInto(
-    absl::Span<HloInstruction* const> instructions_to_fuse,
-    HloInstruction* fusion_instruction) {
-  CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
-  HloInstruction* root = instructions_to_fuse.front();
-  TF_CHECK_OK(root->ReplaceAllUsesWith(fusion_instruction));
+void HloComputation::AppendInstructionsIntoCalledComputation(
+    absl::Span<HloInstruction* const> instructions_to_append,
+    HloInstruction* caller) {
+  HloInstruction* root = instructions_to_append.front();
+  TF_CHECK_OK(root->ReplaceAllUsesWith(caller));
   if (root == root_instruction()) {
-    set_root_instruction(fusion_instruction);
+    set_root_instruction(caller);
   }
   TF_CHECK_OK(RemoveInstruction(root));
-  for (size_t i = 1; i < instructions_to_fuse.size(); ++i) {
-    HloInstruction* instruction = instructions_to_fuse[i];
-    fusion_instruction->FuseInstruction(instruction);
+  for (size_t i = 1; i < instructions_to_append.size(); ++i) {
+    HloInstruction* instruction = instructions_to_append[i];
+    caller->AppendInstructionIntoCalledComputation(instruction);
     if (instruction->IsDead()) {
       TF_CHECK_OK(RemoveInstruction(instruction));
     }
@@ -724,12 +732,24 @@ HloInstruction* HloComputation::CreateFusionInstruction(
   HloInstruction* root = instructions_to_fuse.front();
   HloInstruction* fusion_instruction = AddInstruction(
       HloInstruction::CreateFusion(root->shape(), fusion_kind, root));
-  FuseInstructionsInto(instructions_to_fuse, fusion_instruction);
+  AppendInstructionsIntoCalledComputation(instructions_to_fuse,
+                                          fusion_instruction);
   return fusion_instruction;
 }
 
+HloInstruction* HloComputation::CreateCallInstruction(
+    absl::Span<HloInstruction* const> instructions_to_call) {
+  HloInstruction* root = instructions_to_call.front();
+  HloInstruction* call_instruction =
+      AddInstruction(HloInstruction::CreateCall(root->shape(), root));
+  AppendInstructionsIntoCalledComputation(instructions_to_call,
+                                          call_instruction);
+  return call_instruction;
+}
+
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
-    HloInstruction* instruction, absl::Span<const Shape> context_shapes) {
+    HloInstruction* instruction, absl::Span<const Shape> context_shapes,
+    absl::string_view async_thread_name) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -750,9 +770,10 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
       ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation));
+      async_computation, /*async_group_id=*/std::nullopt, async_thread_name));
   HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
-      root->shape(), async_start, async_computation));
+      root->shape(), async_start, async_computation,
+      /*async_group_id=*/std::nullopt, async_thread_name));
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
@@ -859,7 +880,8 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
 
 bool HloComputation::EqualInternal(const HloComputation& other,
                                    bool is_layout_sensitive,
-                                   bool ignore_channel_id_values) const {
+                                   bool ignore_channel_id_values,
+                                   bool ignore_thread) const {
   if (this == &other) {
     return true;
   }
@@ -883,8 +905,8 @@ bool HloComputation::EqualInternal(const HloComputation& other,
       return true;
     };
     auto comp_eq = [&](const HloComputation* a, const HloComputation* b) {
-      return a->EqualInternal(*b, is_layout_sensitive,
-                              ignore_channel_id_values);
+      return a->EqualInternal(*b, is_layout_sensitive, ignore_channel_id_values,
+                              ignore_thread);
     };
     bool identical_ignoring_operands =
         ignore_channel_id_values
@@ -898,6 +920,10 @@ bool HloComputation::EqualInternal(const HloComputation& other,
     for (size_t i = 0; i < pair.first->operands().size(); ++i) {
       worklist.push_back({pair.first->operand(i), pair.second->operand(i)});
     }
+  }
+
+  if (!ignore_thread) {
+    return thread_name() == other.thread_name();
   }
   return true;
 }
@@ -1162,7 +1188,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     const HloInstruction* new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
-    context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
+    context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
   }
   if (new_root == nullptr) {
@@ -1280,6 +1306,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   SortClonedInstructionUsersAndControlLists(*context, replace, instructions_);
 
   context->MapComputation(this, result.get());
+  result->SetThreadName(thread_name());
 
   return result;
 }

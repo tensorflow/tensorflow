@@ -608,7 +608,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetDeviceCoordinates) {
   auto status_or_device_coodinates =
       GetDeviceCoordinates(device_assignment_attr);
   ASSERT_TRUE(status_or_device_coodinates.ok());
-  auto device_coordinates = status_or_device_coodinates.ConsumeValueOrDie();
+  auto device_coordinates = status_or_device_coodinates.value();
   EXPECT_EQ(device_coordinates[0], 1);
   EXPECT_EQ(device_coordinates[1], 2);
   EXPECT_EQ(device_coordinates[2], 3);

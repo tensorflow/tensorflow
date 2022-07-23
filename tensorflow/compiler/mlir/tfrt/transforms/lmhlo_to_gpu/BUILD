@@ -183,7 +183,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:attribute_exporter",
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "@llvm-project//mlir:ArithmeticDialect",
-        "@llvm-project//mlir:ControlFlowOps",
+        "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUTransforms",

@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -89,7 +89,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
         "TransferToServer request");
   }
 
-  return absl::make_unique<GlobalData>(stub_, response.data());
+  return std::make_unique<GlobalData>(stub_, response.data());
 }
 
 Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
@@ -111,7 +111,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64_t replica_id,
     return s;
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<Literal> Client::TransferFromOutfeed(
@@ -159,7 +159,7 @@ Status Client::ResetDevice() {
     return s;
   }
   VLOG(3) << "ResetDeviceResponse: {" << response.DebugString() << "}";
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<Literal> Client::ExecuteAndTransfer(
@@ -270,7 +270,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     *execution_profile = response.profile();
   }
 
-  return absl::make_unique<GlobalData>(stub_, response.output());
+  return std::make_unique<GlobalData>(stub_, response.output());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
@@ -351,7 +351,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   std::vector<std::unique_ptr<GlobalData>> outputs;
   for (size_t i = 0, end = response.responses_size(); i < end; ++i) {
     outputs.push_back(
-        absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
+        std::make_unique<GlobalData>(stub_, response.responses(i).output()));
     if (i < computations.size() &&
         computations[i].execution_profile != nullptr) {
       *computations[i].execution_profile = response.responses(i).profile();
@@ -416,7 +416,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 
   std::vector<std::unique_ptr<GlobalData>> handles;
   for (auto& handle : response.element_handles()) {
-    handles.push_back(absl::make_unique<GlobalData>(stub_, handle));
+    handles.push_back(std::make_unique<GlobalData>(stub_, handle));
   }
   return std::move(handles);
 }
@@ -445,7 +445,7 @@ StatusOr<ComputationStats> Client::GetComputationStats(
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
-  return absl::make_unique<ProgramShape>(result);
+  return std::make_unique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {

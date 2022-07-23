@@ -83,6 +83,8 @@ cc_library(
     ],
     deps = [
         ":allocator_stats",
+        ":data_type",
+        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
         "//tensorflow/core/platform:logging",
@@ -94,33 +96,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-MATH_DEPS = [
-    "//tensorflow/core:core_cpu",
-    "//tensorflow/core:framework",
-    "//tensorflow/core:lib_internal",
-    "//tensorflow/core:math_grad",
-    "//tensorflow/core/framework:bounds_check",
-    "//third_party/eigen3",
-]
-
-cc_library(
-    name = "matmul_util",
-    srcs = ["matmul_util.cc"],
-    hdrs = ["matmul_util.h"],
-    deps = [
-        ":stream_header",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "//tensorflow/core/kernels:gpu_utils",
-        "//tensorflow/core/platform:hash",
-        "//tensorflow/core/lib/strings:str_util",
-        "//tensorflow/core/platform:stream_executor",
-        "//tensorflow/core:protos_all_cc",
-    ] + if_static(
-        ["//tensorflow/core/platform:tensor_float_32_utils"],
-        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
-    ) + MATH_DEPS,
 )
 
 cc_library(
@@ -153,8 +128,9 @@ cc_library(
     ],
     deps = [
         ":allocator_stats",
+        ":data_type",
         ":device_memory",
-        ":host_or_device_scalar",
+        ":dnn_proto_cc",
         ":kernel_cache_config",
         ":stream_executor_headers",
         "//tensorflow/core/platform:logging",
@@ -219,6 +195,8 @@ cc_library(
         "timer.h",
     ],
     deps = [
+        ":data_type",
+        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":platform",
         ":stream_executor_headers",
@@ -303,6 +281,8 @@ cc_library(
     srcs = ["blas.cc"],
     hdrs = ["blas.h"],
     deps = [
+        ":data_type",
+        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
         "//tensorflow/stream_executor/lib",
@@ -366,6 +346,8 @@ cc_library(
     ],
     deps = [
         ":allocator_stats",
+        ":data_type",
+        ":dnn_proto_cc",
         ":host_or_device_scalar",
         ":stream_executor_headers",
         "//tensorflow/core/platform:logging",
@@ -387,6 +369,7 @@ cc_library(
     deps = [
         ":platform",
         ":stream_executor_headers",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",

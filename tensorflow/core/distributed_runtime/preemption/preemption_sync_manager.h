@@ -16,10 +16,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 
 #include <memory>
+#include <string>
 
+#include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -35,12 +36,10 @@ class PreemptionSyncManager {
  public:
   virtual ~PreemptionSyncManager() = default;
 
-  // TODO(b/230630494): Allow init with PjRT distributed client.
+  virtual Status Initialize(xla::DistributedRuntimeClient* client) = 0;
   virtual Status Initialize(CoordinationServiceAgent* agent) = 0;
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
-  virtual Status InitWithBorgPreemptionNotifier(
-      CoordinationServiceAgent* agent) = 0;
-#endif
+  virtual Status Initialize(CoordinationServiceAgent* agent,
+                            const std::string& preemption_notifier_type) = 0;
   virtual Status Initialize(CoordinationServiceAgent* agent,
                             std::unique_ptr<PreemptionNotifier> notifier) = 0;
 
@@ -52,13 +51,13 @@ class PreemptionSyncManager {
   // 1) This must be called during every possible sync point so that the library
   //    is aware of each task's progress.
   // 2) This assumes that each task begins from the same point.
-  //    Internally, we use a counter to track the number of calls that have been
-  //    made to record each task's current progress.
+  //    Internally, it updates a counter to track the last `step_counter` passed
+  //    in as argument to record each task's current progress.
   // Example use case: this can be called during every training step for every
   // task. Once a preemption notice is received, all tasks will agree on a safe
   // step to pause training and handle the preemption (e.g. save checkpoint and
   // exit, or wait for preempted task to restart, then resume training).
-  virtual bool ReachedSyncPoint() = 0;
+  virtual bool ReachedSyncPoint(int step_counter) = 0;
 };
 
 std::unique_ptr<PreemptionSyncManager> CreatePreemptionSyncManager();

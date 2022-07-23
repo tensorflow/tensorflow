@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -265,7 +265,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                addressable_devices_.at(device_ordinal))
+                LookupAddressableDevice(device_ordinal).ValueOrDie())
                 ->local_device_state();
   }
   LocalClient* client() const { return client_; }
@@ -448,7 +448,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
         case kUninitialized:
           return InvalidArgument("Buffer has not been initialized");
         case kValid:
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         case kMoved:
           return InvalidArgument("Buffer has been moved.");
         case kConverted:

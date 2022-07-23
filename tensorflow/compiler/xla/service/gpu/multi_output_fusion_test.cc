@@ -904,7 +904,7 @@ TEST_F(MultiOutputFusionTest, SharedMemoryBudget) {
     }
   )"))
                     .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
   EXPECT_EQ(3, CountMultiOutputFusions(module.get()));
 }
@@ -1017,7 +1017,7 @@ TEST_F(MultiOutputFusionTest, DoNotGroupTooManyReductions) {
     }
   )"))
                     .ValueOrDie();
-  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).value());
 
   EXPECT_EQ(2, CountMultiOutputFusions(module.get()));
 }
@@ -1075,7 +1075,7 @@ ENTRY %reproducer (param_0.1090: f64[64,64], param_1.1377: f64[64,64], param_2.1
 }
   )")
                     .ValueOrDie();
-  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).ConsumeValueOrDie());
+  EXPECT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
 }
 
 TEST_F(MultiOutputFusionTest, NoFusionToAvoidCodeDuplication) {

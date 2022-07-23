@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"
 #include "pybind11/cast.h"
@@ -151,8 +151,8 @@ StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
 // invalid input.
 StatusOr<Shape> MakeShapeWithLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims,
-    absl::optional<absl::Span<const int64_t>> minor_to_major,
-    absl::optional<const std::vector<bool>> dynamic_dimensions) {
+    std::optional<absl::Span<const int64_t>> minor_to_major,
+    std::optional<const std::vector<bool>> dynamic_dimensions) {
   Shape shape;
   if (dynamic_dimensions) {
     TF_ASSIGN_OR_RETURN(
@@ -190,7 +190,7 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   }
   CustomCallTargetRegistry::Global()->Register(
       fn_name, static_cast<void*>(capsule), platform);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 template <typename T, typename Container>
@@ -234,7 +234,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
       .def(py::init([](const std::string& s) {
-        return absl::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
+        return std::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
       }))
       .def_static(
           "tuple_shape",
@@ -245,8 +245,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_static(
           "array_shape",
           [](PrimitiveType type, py::object dims_seq,
-             absl::optional<py::object> layout_seq,
-             absl::optional<std::vector<bool>> dynamic_dimensions)
+             std::optional<py::object> layout_seq,
+             std::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
             std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
             if (layout_seq) {
@@ -255,18 +255,18 @@ void BuildXlaCompilerSubmodule(py::module& m) {
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, absl::nullopt,
+              return MakeShapeWithLayout(type, dims, std::nullopt,
                                          dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = absl::nullopt,
-          py::arg("dynamic_dimensions") = absl::nullopt)
+          py::arg("layout") = std::nullopt,
+          py::arg("dynamic_dimensions") = std::nullopt)
       .def_static(
           "array_shape",
           [](py::dtype dtype, py::object dims_seq,
-             absl::optional<py::object> layout_seq,
-             absl::optional<std::vector<bool>> dynamic_dimensions)
+             std::optional<py::object> layout_seq,
+             std::optional<std::vector<bool>> dynamic_dimensions)
               -> StatusOr<Shape> {
             PrimitiveType type = ValueOrThrow(DtypeToPrimitiveType(dtype));
             std::vector<int64_t> dims = SequenceToVector<int64_t>(dims_seq);
@@ -276,13 +276,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
               return MakeShapeWithLayout(type, dims, layout,
                                          dynamic_dimensions);
             } else {
-              return MakeShapeWithLayout(type, dims, absl::nullopt,
+              return MakeShapeWithLayout(type, dims, std::nullopt,
                                          dynamic_dimensions);
             }
           },
           "Constructs an array shape.", py::arg("type"), py::arg("dims"),
-          py::arg("layout") = absl::nullopt,
-          py::arg("dynamic_dimensions") = absl::nullopt)
+          py::arg("layout") = std::nullopt,
+          py::arg("dynamic_dimensions") = std::nullopt)
       .def_static("token_shape", []() { return ShapeUtil::MakeTokenShape(); })
       .def_static(
           "scalar_shape",
@@ -396,7 +396,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         -> std::unique_ptr<XlaComputation> {
         HloModuleProto proto;
         proto.ParseFromString(std::string(serialized_hlo_module_proto));
-        return absl::make_unique<XlaComputation>(proto);
+        return std::make_unique<XlaComputation>(proto);
       }))
       .def("get_hlo_module", &GetHloModule)
       .def("program_shape", &XlaComputation::GetProgramShape)
@@ -471,15 +471,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("from_serialized_hlo_module_proto", &HloModuleFromSerializedProto)
       .def_property_readonly(
           "spmd_output_sharding",
-          [](const HloModule& m) -> absl::optional<xla::OpSharding> {
-            if (!m.has_spmd_output_sharding()) return absl::nullopt;
+          [](const HloModule& m) -> std::optional<xla::OpSharding> {
+            if (!m.has_spmd_output_sharding()) return std::nullopt;
             return m.spmd_output_sharding().ToProto();
           })
       .def_property_readonly(
           "spmd_parameters_shardings",
           [](const HloModule& m)
-              -> absl::optional<std::vector<xla::OpSharding>> {
-            if (!m.has_spmd_parameters_shardings()) return absl::nullopt;
+              -> std::optional<std::vector<xla::OpSharding>> {
+            if (!m.has_spmd_parameters_shardings()) return std::nullopt;
             std::vector<xla::OpSharding> param_shardings;
             for (const auto& parameter_sharding :
                  m.spmd_parameters_shardings()) {
@@ -508,38 +508,40 @@ void BuildXlaCompilerSubmodule(py::module& m) {
 
   py::class_<XlaBuilder>(m, "XlaBuilder")
       .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {
-        return absl::make_unique<XlaBuilder>(UniquifyName(name));
+        return std::make_unique<XlaBuilder>(UniquifyName(name));
       }))
       // TODO(phawkins): delete capitalized names after updating callers.
       .def(
           "Build",
-          [](XlaBuilder& builder, absl::optional<XlaOp> root) {
+          [](XlaBuilder& builder, std::optional<XlaOp> root) {
             return root ? builder.Build(*root) : builder.Build();
           },
           "Builds a computation from the contents of the builder.",
-          py::arg("root") = absl::nullopt)
+          py::arg("root") = std::nullopt)
       .def("GetShape", &XlaBuilder::GetShape)
       .def(
           "build",
-          [](XlaBuilder& builder, absl::optional<XlaOp> root) {
+          [](XlaBuilder& builder, std::optional<XlaOp> root) {
             return root ? builder.Build(*root) : builder.Build();
           },
           "Builds a computation from the contents of the builder.",
-          py::arg("root") = absl::nullopt)
+          py::arg("root") = std::nullopt)
       .def("clear_op_metadata", &XlaBuilder::ClearOpMetadata)
       .def("get_shape", &XlaBuilder::GetShape)
       .def(
           "get_program_shape",
           [](const XlaBuilder& builder,
-             absl::optional<XlaOp> root) -> StatusOr<ProgramShape> {
+             std::optional<XlaOp> root) -> StatusOr<ProgramShape> {
             return root ? builder.GetProgramShape(*root)
                         : builder.GetProgramShape();
           },
-          py::arg("root") = absl::nullopt)
+          py::arg("root") = std::nullopt)
       .def("is_constant", &XlaBuilder::IsConstant)
       .def("set_op_metadata", &XlaBuilder::SetOpMetadata)
       .def("set_sharding", &XlaBuilder::SetSharding)
       .def("clear_sharding", &XlaBuilder::ClearSharding)
+      .def("set_frontend_attributes", &XlaBuilder::SetFrontendAttributes)
+      .def("clear_frontend_attributes", &XlaBuilder::ClearFrontendAttributes)
       .def("setup_alias",
            [](XlaBuilder& builder, const std::vector<int64_t>& output_index,
               int64_t param_number, const std::vector<int64_t>& param_index) {
@@ -624,13 +626,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           })
       .def_property(
           "device_assignment",
-          [](const CompileOptions& options)
-              -> absl::optional<DeviceAssignment> {
+          [](const CompileOptions& options) -> std::optional<DeviceAssignment> {
             return options.executable_build_options.has_device_assignment()
-                       ? absl::optional<DeviceAssignment>(
+                       ? std::optional<DeviceAssignment>(
                              options.executable_build_options
                                  .device_assignment())
-                       : absl::nullopt;
+                       : std::nullopt;
           },
           [](CompileOptions& options,
              const DeviceAssignment& device_assignment) {
@@ -687,10 +688,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("__repr__", &ExecutableBuildOptions::ToString)
       .def_property(
           "result_layout",
-          [](const ExecutableBuildOptions& options) -> absl::optional<Shape> {
+          [](const ExecutableBuildOptions& options) -> std::optional<Shape> {
             return options.result_layout()
-                       ? absl::optional<Shape>(*options.result_layout())
-                       : absl::nullopt;
+                       ? std::optional<Shape>(*options.result_layout())
+                       : std::nullopt;
           },
           &ExecutableBuildOptions::set_result_layout)
       .def_property("num_replicas", &ExecutableBuildOptions::num_replicas,
@@ -703,11 +704,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property(
           "device_assignment",
           [](const ExecutableBuildOptions& options)
-              -> absl::optional<DeviceAssignment> {
+              -> std::optional<DeviceAssignment> {
             return options.has_device_assignment()
-                       ? absl::optional<DeviceAssignment>(
+                       ? std::optional<DeviceAssignment>(
                              options.device_assignment())
-                       : absl::nullopt;
+                       : std::nullopt;
           },
           &ExecutableBuildOptions::set_device_assignment)
       .def_property("use_spmd_partitioning",
@@ -760,6 +761,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   DefRepeatedProperty(op_sharding, "last_tile_dims",
                       &xla::OpSharding::mutable_last_tile_dims);
 
+  py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes");
+  frontend_attributes.def(py::init<>())
+      .def("__setitem__",
+           [](FrontendAttributes* attr, std::string key, std::string value) {
+             (*attr->mutable_map())[key] = value;
+           });
+
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
@@ -772,8 +780,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("HOST_TO_DEVICE", ChannelHandle::HOST_TO_DEVICE);
 
   py::class_<ChannelHandle>(m, "ChannelHandle")
-      .def_property_readonly("type", &ChannelHandle::type)
-      .def_property_readonly("handle", &ChannelHandle::handle)
+      .def_property("type", &ChannelHandle::type,
+                    [](ChannelHandle* h, ChannelHandle::ChannelType type) {
+                      h->set_type(type);
+                    })
+      .def_property(
+          "handle", &ChannelHandle::handle,
+          [](ChannelHandle* h, int64_t handle) { h->set_handle(handle); })
       .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
 
   py::enum_<FftType>(m, "FftType")

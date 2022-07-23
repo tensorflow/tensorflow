@@ -78,9 +78,11 @@ def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
 def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
   let cppNamespace = "::mlir::mhlo";
   let mnemonic = "result_alias";
-  let summary = [{
-    Attribute that models the alias relationship of an MHLO main function
-    argument to one of the results (denoted by `resultIndex`). The
+  let summary =
+    "Attribute that models the alias relationship of entry function argument";
+  let description = [{
+    This attribute captures the alias relationship of an MHLO main function
+    argument to one of the results, denoted by `resultIndex`. The
     `argTupleIndices` and `resultTupleIndices` are used to index into nested
     tuples in operand and result respectively. If `isMustAlias` is true then the
     operand-result pair must alias.
@@ -89,9 +91,10 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
     For example, in the following code it expresses that `%arg1` may alias 0-th
     result.
 
-    ```
-    func @main(%arg0: tensor<2xf32>,
-               %arg1: tensor<3xf32> {mhlo.result_alias = mhlo.result_alias<result_index = [2], ...>}) -> tensor<2xf32>, tensor<3xf32> {
+    ```mlir
+    func @main(%arg0: tensor<2xf32>, %arg1: tensor<3xf32> {mhlo.result_alias =
+        mhlo.result_alias<result_index = [2], ...>}
+      ) -> tensor<2xf32>, tensor<3xf32> {
       // function body ...
     }
     ```
@@ -103,6 +106,45 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
     "bool":$isMustAlias
   );
   let hasCustomAssemblyFormat = 1;
+}
+
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+def ChannelHandle : AttrDef<HLO_Dialect, "ChannelHandle"> {
+  let mnemonic = "channel_handle";
+  let parameters = (ins "int64_t":$handle, "int64_t":$type);
+  let summary = "two 64-bit integers 'handle' and 'type'";
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+// Note: This is an experimental attribute and shouldn't be relied upon for
+// production.
+def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions"> {
+  let mnemonic = "type_extensions";
+
+  // TODO(hinsu): Move sparsity related info here from the standalone
+  // attribute. That will allow composition of bounds and sparsity info.
+  let parameters = (ins
+    ArrayRefParameter<"int64_t">:$bounds
+  );
+
+  let summary = "Attribute that extends tensor type with MHLO type properties.";
+
+  let description = [{
+    This attribute is used to extend MLIR tensor type with MHLO tensor specific
+    properties. These properties aren't modeled in the MLIR type. This
+    attribute is set in the `encoding` field of the tensor type.
+
+    Bounds parameter specifies the maximum runtime dimension size for
+    dimensions with unknown size. If the bound are not known for any of the
+    dimensions, it is set to ShapedType::kDynamicSize. Bound is undefined for
+    static dimensions. Bounds array have the same size as rank of the tensor.
+  }];
+  let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
+
+  // TODO(hinsu): Add verification for bounds that it has the same size as rank
+  // of the tensor and static dimensions don't have bounds.
 }
 
 #endif // HLO_OPS_BASE_ATTRS

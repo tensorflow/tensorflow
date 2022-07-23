@@ -77,7 +77,7 @@ class GraphAnalyzerTest : public ::testing::Test, protected TestGraphs {
 };
 
 TEST_F(GraphAnalyzerTest, BuildMap) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
   Status st = BuildMap();
   EXPECT_THAT(st, Eq(OkStatus()));
 
@@ -90,14 +90,14 @@ TEST_F(GraphAnalyzerTest, BuildMap) {
 TEST_F(GraphAnalyzerTest, BuildMapError) {
   // A duplicate node.
   (*graph_3n_self_control_.add_node()) = MakeNodeConst("node1");
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
   Status st = BuildMap();
   ASSERT_THAT(
       st, Eq(Status(error::INVALID_ARGUMENT, "Duplicate node name 'node1'.")));
 }
 
 TEST_F(GraphAnalyzerTest, FindSubgraphs0) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 0);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_3n_self_control_, 0);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
@@ -110,7 +110,7 @@ TEST_F(GraphAnalyzerTest, FindSubgraphs0) {
 }
 
 TEST_F(GraphAnalyzerTest, FindSubgraphs1) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_3n_self_control_, 1);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
@@ -131,7 +131,7 @@ TEST_F(GraphAnalyzerTest, FindSubgraphs1) {
 
 // The required subgraphs are larger than the graph.
 TEST_F(GraphAnalyzerTest, FindSubgraphsTooLarge) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_3n_self_control_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_3n_self_control_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
@@ -146,12 +146,12 @@ TEST_F(GraphAnalyzerTest, FindSubgraphsTooLarge) {
 // Successfully propagate backwards through a multi-input link,
 // with the base (currently-extending) node already in the graph.
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseIn) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
 
   ExtendSubgraphPortAllOrNone(root.get(), GetNode("add2"),
                               GenNode::Port(true, 0));
@@ -168,13 +168,13 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseIn) {
 // Successfully propagate backwards through a multi-input link,
 // with the base (currently-extending) node not in the graph yet.
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseOut) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
-  auto parent = absl::make_unique<Subgraph>(Subgraph::Identity());
+  auto parent = std::make_unique<Subgraph>(Subgraph::Identity());
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
 
   ExtendSubgraphPortAllOrNone(parent.get(), GetNode("add2"),
                               GenNode::Port(true, 0));
@@ -191,12 +191,12 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsBaseOut) {
 // Successfully propagate backwards through a multi-input link,
 // where the target subgraph size is larger.
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsIncomplete) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 5);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 5);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
 
   ExtendSubgraphPortAllOrNone(root.get(), GetNode("add2"),
                               GenNode::Port(true, 0));
@@ -213,12 +213,12 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsIncomplete) {
 // Propagate backwards through a multi-input link, finding that the
 // resulting subgraph would be too large.
 TEST_F(GraphAnalyzerTest, MultiInputTooLargeBackwards) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 3);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 3);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
 
   ExtendSubgraphPortAllOrNone(root.get(), GetNode("add2"),
                               GenNode::Port(true, 0));
@@ -231,11 +231,11 @@ TEST_F(GraphAnalyzerTest, MultiInputTooLargeBackwards) {
 // Propagate backwards through a multi-input link, finding that nothing
 // would be added to the parent subgraph.
 TEST_F(GraphAnalyzerTest, MultiInputNothingAddedBackwards) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
-  auto root = absl::make_unique<Subgraph>(
+  auto root = std::make_unique<Subgraph>(
       Subgraph::Identity({GetNode("add2"), GetNode("const2_1"),
                           GetNode("const2_2"), GetNode("const2_3")}));
 
@@ -250,12 +250,12 @@ TEST_F(GraphAnalyzerTest, MultiInputNothingAddedBackwards) {
 // Successfully propagate forwards through a multi-input link,
 // with the base (currently-extending) node not in the subgraph yet.
 TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsBaseOut) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
 
   ExtendSubgraphPortAllOrNone(root.get(), GetNode("add2"),
                               GenNode::Port(true, 0));
@@ -271,12 +271,12 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsBaseOut) {
 
 // Successfully propagate backwards through a multi-input link.
 TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsFull) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("add2")}));
 
   ExtendSubgraph(root.get());
 
@@ -293,12 +293,12 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessBackwardsFull) {
 
 // Successfully propagate forwards through a multi-input link.
 TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsFull) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
 
   ExtendSubgraph(root.get());
 
@@ -312,30 +312,30 @@ TEST_F(GraphAnalyzerTest, MultiInputSuccessForwardsFull) {
 }
 
 TEST_F(GraphAnalyzerTest, DropInvalidSubgraphsMulti) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_multi_input_, 3);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_multi_input_, 3);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   // A good one, multi-input is all-in.
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("const1_1"),
       GetNode("const1_2"),
       GetNode("add1"),
   })));
   // A good one, multi-input is all-out
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("add1"),
       GetNode("add2"),
       GetNode("sub"),
   })));
   // A bad one, multi-input is partially in.
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("const1_1"),
       GetNode("add1"),
       GetNode("sub"),
   })));
   // A bad one, multi-input is partially in.
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("add2"),
       GetNode("const2_1"),
       GetNode("const2_2"),
@@ -358,12 +358,12 @@ TEST_F(GraphAnalyzerTest, DropInvalidSubgraphsMulti) {
 // Successfully propagate backwards through a multi-input link,
 // with the base (currently-extending) node already in the graph.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwards) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
 
   ExtendSubgraphAllOrNone(root.get(), GetNode("pass2"));
 
@@ -380,12 +380,12 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwards) {
 // but no control links propagate. It also tests the situation
 // where the target subgraph size is larger.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsNoControl) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 5);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 5);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass1")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass1")}));
 
   ExtendSubgraphAllOrNone(root.get(), GetNode("pass1"));
 
@@ -401,12 +401,12 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsNoControl) {
 // The control links propagate separately as all-or-none, even on the nodes
 // that are all-or-none for the normal inputs.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSeparateControl) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 5);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 5);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass1")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass1")}));
 
   ExtendSubgraphPortAllOrNone(root.get(), GetNode("pass1"),
                               GenNode::Port(true, -1));
@@ -423,12 +423,12 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSeparateControl) {
 // Propagate backwards from all-or-none-input node, finding that the
 // resulting subgraph would be too large.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputTooLargeBackwards) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 3);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 3);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
 
   ExtendSubgraphAllOrNone(root.get(), GetNode("pass2"));
 
@@ -440,11 +440,11 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputTooLargeBackwards) {
 // Propagate backwards from all-or-none-input node, finding that nothing
 // would be added to the parent subgraph.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputNothingAddedBackwards) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
-  auto root = absl::make_unique<Subgraph>(
+  auto root = std::make_unique<Subgraph>(
       Subgraph::Identity({GetNode("pass2"), GetNode("const2_1"),
                           GetNode("const2_2"), GetNode("const2_3")}));
 
@@ -458,12 +458,12 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputNothingAddedBackwards) {
 // Successfully propagate forwards to all-or-none-input node,
 // with the base (currently-extending) node not in the subgraph yet.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsBaseOut) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
 
   ExtendSubgraphAllOrNone(root.get(), GetNode("pass2"));
 
@@ -478,12 +478,12 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsBaseOut) {
 
 // Successfully propagate backwards from all-or-none-input node.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsFull) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("pass2")}));
 
   ExtendSubgraph(root.get());
 
@@ -502,12 +502,12 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessBackwardsFull) {
 // both all-or-none-input for the normal inputs, and multi-input by the
 // control path.
 TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsFull) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 4);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   auto root =
-      absl::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
+      std::make_unique<Subgraph>(Subgraph::Identity({GetNode("const2_1")}));
 
   ExtendSubgraph(root.get());
 
@@ -522,30 +522,30 @@ TEST_F(GraphAnalyzerTest, AllOrNoneInputSuccessForwardsFull) {
 }
 
 TEST_F(GraphAnalyzerTest, DropInvalidSubgraphsAllOrNone) {
-  gran_ = absl::make_unique<GraphAnalyzer>(graph_all_or_none_, 3);
+  gran_ = std::make_unique<GraphAnalyzer>(graph_all_or_none_, 3);
   Status st = BuildMap();
   ASSERT_THAT(st, Eq(OkStatus()));
 
   // A good one, all-or-none is all-in.
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("const1_1"),
       GetNode("const1_2"),
       GetNode("pass1"),
   })));
   // A good one, all-or-none is all-out
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("pass1"),
       GetNode("pass2"),
       GetNode("sub"),
   })));
   // A bad one, all-or-none is partially in.
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("const1_1"),
       GetNode("pass1"),
       GetNode("sub"),
   })));
   // A bad one, all-or-none is partially in.
-  GetResult().insert(absl::make_unique<Subgraph>(Subgraph::Identity({
+  GetResult().insert(std::make_unique<Subgraph>(Subgraph::Identity({
       GetNode("pass2"),
       GetNode("const2_1"),
       GetNode("const2_2"),

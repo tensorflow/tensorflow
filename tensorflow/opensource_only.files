@@ -11,8 +11,6 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
-tensorflow/dtensor/mlir/utils/BUILD:
-tensorflow/dtensor/mlir/utils/collective_lowering.cc:
 tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
 tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
@@ -63,6 +61,7 @@ tensorflow/lite/delegates/gpu/cl/serialization_generated.h:
 tensorflow/lite/delegates/gpu/common/gpu_model_generated.h:
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h:
 tensorflow/lite/delegates/hexagon/hexagon_nn/BUILD:
+tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/libjpeg.h:
 tensorflow/lite/experimental/acceleration/mini_benchmark/special_rules.bzl:
 tensorflow/lite/ios/BUILD:
@@ -140,6 +139,7 @@ tensorflow/tools/toolchains/win/tf_win_02212022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04062022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_04112022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06152021/BUILD:
+tensorflow/tools/toolchains/win/tf_win_06152022/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06212021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_06242021/BUILD:
 tensorflow/tools/toolchains/win/tf_win_08062020/BUILD:
@@ -166,6 +166,7 @@ third_party/clang_toolchain/download_clang.bzl:
 third_party/codegen.BUILD:
 third_party/common.bzl:
 third_party/compute_library/BUILD:
+third_party/compute_library/build_defs.bzl:
 third_party/coremltools.BUILD:
 third_party/cub.BUILD:
 third_party/curl.BUILD:

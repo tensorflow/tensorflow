@@ -22,6 +22,7 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -540,25 +541,24 @@ Operation* BuildVariableOp(const tflite::TensorT& tensor,
   return op.getOperation();
 }
 
-static StatusOr<mlir::ArrayAttr> ConvertSparseIndexVector(
-    const tflite::SparseIndexVectorUnion& sparse_index_vector,
-    OpBuilder& builder) {
+static StatusOr<std::vector<int32_t>> ConvertSparseIndexVector(
+    const tflite::SparseIndexVectorUnion& sparse_index_vector) {
   if (sparse_index_vector.type == tflite::SparseIndexVector_Int32Vector) {
-    return builder.getI32ArrayAttr(sparse_index_vector.AsInt32Vector()->values);
+    return sparse_index_vector.AsInt32Vector()->values;
   } else if (sparse_index_vector.type ==
              tflite::SparseIndexVector_Uint16Vector) {
     const auto& inputs = sparse_index_vector.AsUint16Vector()->values;
     std::vector<int32_t> outputs(inputs.size());
     std::transform(inputs.begin(), inputs.end(), outputs.begin(),
                    [](auto x) { return static_cast<int32_t>(x); });
-    return builder.getI32ArrayAttr(outputs);
+    return outputs;
   } else if (sparse_index_vector.type ==
              tflite::SparseIndexVector_Uint8Vector) {
     const auto& inputs = sparse_index_vector.AsUint8Vector()->values;
     std::vector<int32_t> outputs(inputs.size());
     std::transform(inputs.begin(), inputs.end(), outputs.begin(),
                    [](auto x) { return static_cast<int32_t>(x); });
-    return builder.getI32ArrayAttr(outputs);
+    return outputs;
   } else {
     return errors::Unimplemented("Unsupported SparseIndexVector type");
   }
@@ -581,40 +581,35 @@ static StatusOr<Operation*> BuildSparseConstOp(
                       tensorflow::ConvertTensorProto(repr, &builder));
 
   const int dim_metadata_size = tensor.sparsity->dim_metadata.size();
-  std::vector<mlir::Attribute> dim_metadata(dim_metadata_size);
+  std::vector<mlir::TFL::DimensionMetadataAttr> dim_metadata(dim_metadata_size);
   for (int i = 0; i < dim_metadata_size; i++) {
     if (tensor.sparsity->dim_metadata[i]->format ==
         tflite::DimensionType_DENSE) {
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
+          builder.getContext(),
           mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
                                             tfl::DimensionType::DENSE),
-          builder.getI32IntegerAttr(
-              tensor.sparsity->dim_metadata[i]->dense_size),
-          builder.getI32ArrayAttr({}), builder.getI32ArrayAttr({}),
-          builder.getContext());
+          tensor.sparsity->dim_metadata[i]->dense_size, {}, {});
     } else if (tensor.sparsity->dim_metadata[i]->format ==
                tflite::DimensionType_SPARSE_CSR) {
       TF_ASSIGN_OR_RETURN(
-          mlir::ArrayAttr segments,
-          ConvertSparseIndexVector(
-              tensor.sparsity->dim_metadata[i]->array_segments, builder));
-      TF_ASSIGN_OR_RETURN(
-          mlir::ArrayAttr indices,
-          ConvertSparseIndexVector(
-              tensor.sparsity->dim_metadata[i]->array_indices, builder));
+          auto segments, ConvertSparseIndexVector(
+                             tensor.sparsity->dim_metadata[i]->array_segments));
+      TF_ASSIGN_OR_RETURN(auto indices,
+                          ConvertSparseIndexVector(
+                              tensor.sparsity->dim_metadata[i]->array_indices));
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
+          builder.getContext(),
           mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
                                             tfl::DimensionType::SPARSE_CSR),
-          builder.getI32IntegerAttr(0), segments, indices,
-          builder.getContext());
+          0, segments, indices);
     } else {
       return errors::Unimplemented("Unsupported dimension metadata type");
     }
   }
   auto s_param = tfl::SparsityParameterAttr::get(
-      builder.getI32ArrayAttr(tensor.sparsity->traversal_order),
-      builder.getI32ArrayAttr(tensor.sparsity->block_map),
-      builder.getArrayAttr(dim_metadata), builder.getContext());
+      builder.getContext(), tensor.sparsity->traversal_order,
+      tensor.sparsity->block_map, dim_metadata);
 
   auto value_type = shaped_type;
   if (IsQuantized(tensor)) {
@@ -818,7 +813,7 @@ StatusOr<Operation*> ConvertOp(
       return emitError(loc, type_or_err.status().ToString()),
              type_or_err.status();
     }
-    auto type = type_or_err.ConsumeValueOrDie();
+    auto type = std::move(type_or_err).value();
 
     if (op_name == "tfl.quantize") {
       // Special case for quantize: return type must also be in qtype attribute
@@ -1202,7 +1197,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           << type_or_err.status().ToString();
       return type_or_err.status();
     }
-    auto type = type_or_err.ConsumeValueOrDie();
+    auto type = std::move(type_or_err).value();
     input_types.push_back(type);
   }
 
@@ -1238,7 +1233,7 @@ StatusOr<FuncOp> ConvertSubgraph(
           << type_or_err.status().ToString();
       return type_or_err.status();
     }
-    auto type = type_or_err.ConsumeValueOrDie();
+    auto type = std::move(type_or_err).value();
     ret_types.push_back(type);
   }
   auto func_type = builder.getFunctionType(input_types, ret_types);
@@ -1522,7 +1517,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                  << func_or_error.status().error_message(),
              nullptr;
     }
-    module.push_back(func_or_error.ConsumeValueOrDie());
+    module.push_back(std::move(func_or_error).value());
   }
   AddRegionsForTflWhileOp(module);
   return OwningOpRef<mlir::ModuleOp>(module);

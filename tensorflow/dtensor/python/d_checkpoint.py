@@ -18,13 +18,17 @@ from typing import Dict, List, Optional
 import weakref
 
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+
 from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import save_restore
 from tensorflow.python.checkpoint import checkpoint as util
+from tensorflow.python.checkpoint import checkpoint_options
+from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
+from tensorflow.python.checkpoint import restore as restore_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
@@ -32,9 +36,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import data_structures
+from tensorflow.python.trackable import python_state
 from tensorflow.python.training import py_checkpoint_reader
-from tensorflow.python.training.saving import checkpoint_options
-from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
@@ -172,7 +175,7 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
   def restore_saveables(
       self,
       tensor_saveables: Dict[str, saveable_object.SaveableObject],
-      python_saveables: List[base.PythonStateSaveable],
+      python_saveables: List[python_state.PythonStateSaveable],
       registered_savers: Optional[Dict[str, Dict[str, base.Trackable]]] = None
   ) -> Optional[List[ops.Operation]]:
     """Run or build restore operations for SaveableObjects.
@@ -333,7 +336,7 @@ class DTrackableSaver(util.TrackableSaver):
         graph_view=self._graph_view,
         options=options,
         saveables_cache=self._saveables_cache)
-    base.CheckpointPosition(
+    restore_lib.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
 
     # Attached dependencies are not attached to the root, so should be restored
@@ -356,7 +359,7 @@ class DTrackableSaver(util.TrackableSaver):
           # indirect connection from the attached object to the root.
           continue
 
-        base.CheckpointPosition(
+        restore_lib.CheckpointPosition(
             checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
 
     load_status = util.CheckpointLoadStatus(

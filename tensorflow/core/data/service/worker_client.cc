@@ -54,8 +54,8 @@ StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 CreateDataServiceWorkerClient(const std::string& address,
                               const std::string& protocol,
                               const std::string& transfer_protocol) {
-  auto client = absl::make_unique<DataServiceWorkerClient>(address, protocol,
-                                                           transfer_protocol);
+  auto client = std::make_unique<DataServiceWorkerClient>(address, protocol,
+                                                          transfer_protocol);
   TF_RETURN_IF_ERROR(client->Initialize());
   return client;
 }
@@ -244,7 +244,7 @@ class LocalTransferClientRegistrar {
     DataTransferClient::Register(
         kLocalTransferProtocol, [](DataTransferClient::Config config,
                                    std::unique_ptr<DataTransferClient>* out) {
-          *out = absl::make_unique<LocalDataTransferClient>(config.address);
+          *out = std::make_unique<LocalDataTransferClient>(config.address);
           return OkStatus();
         });
   }

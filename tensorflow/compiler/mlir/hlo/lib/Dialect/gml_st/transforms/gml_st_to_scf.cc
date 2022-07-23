@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/pass_detail.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/SCF/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -93,11 +93,63 @@ struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
   }
 };
 
+/// Converts gml_st.parallel to SCF loop nest.
+struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
+  using OpRewritePattern<ParallelOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ParallelOp loop,
+                                PatternRewriter &rewriter) const override {
+    // Fail conversion if the loop has not been bufferized.
+    if (!loop.hasBufferSemantics()) return failure();
+
+    auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
+      BlockAndValueMapping bvm;
+      bvm.map(loop.getInductionVars(), ivs);
+
+      for (auto &op : loop.getBody()->without_terminator())
+        builder.clone(op, bvm);
+    };
+
+    rewriter.create<scf::ParallelOp>(loop.getLoc(), loop.lowerBound(),
+                                     loop.upperBound(), loop.step(), cloneBody);
+
+    rewriter.eraseOp(loop);
+    return success();
+  }
+};
+
+/// Converts gml_st.for to SCF loop nest.
+struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp loop,
+                                PatternRewriter &rewriter) const override {
+    // Fail conversion if the loop has not been bufferized.
+    if (!loop.hasBufferSemantics()) return failure();
+
+    auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
+      BlockAndValueMapping bvm;
+      bvm.map(loop.getInductionVars(), ivs);
+      bvm.map(loop.getBody()->getArguments().take_back(loop.outputs().size()),
+              loop.outputs());
+
+      for (auto &op : loop.getBody()->without_terminator())
+        builder.clone(op, bvm);
+    };
+
+    scf::buildLoopNest(rewriter, loop.getLoc(), loop.lowerBound(),
+                       loop.upperBound(), loop.step(), cloneBody);
+    rewriter.eraseOp(loop);
+    return success();
+  }
+};
+
 struct GmlStToScfPass : public GmlStToScfBase<GmlStToScfPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    patterns.add<LoopToSCFPattern>(patterns.getContext());
+    patterns.add<ForOpToSCFPattern, LoopToSCFPattern, ParallelOpToSCFPattern>(
+        patterns.getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       signalPassFailure();

@@ -44,7 +44,7 @@ class SubgraphBuilderTest : public ::testing::Test {
  protected:
   void TestAccumulateLoopBody(int input1, int input2, int output1,
                               int output2) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     builder_->BuildAccumulateLoopBodySubgraph(
         &interpreter_->primary_subgraph());
 

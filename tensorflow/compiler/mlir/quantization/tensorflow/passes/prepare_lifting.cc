@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -24,6 +25,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
 namespace mlir {
 namespace quant {
@@ -47,7 +49,7 @@ class PrepareLiftingPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TF::TensorFlowDialect>();
+    registry.insert<TF::TensorFlowDialect, mlir::arith::ArithmeticDialect>();
   }
 
   void runOnOperation() override;
@@ -115,7 +117,7 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<RemoveIdentity>(ctx);
+  patterns.add<TF::ConvertTFEinsumOp, RemoveIdentity>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

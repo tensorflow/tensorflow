@@ -14,17 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <deque>
+#include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -33,10 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace xla {
 namespace spmd {
@@ -1960,11 +1963,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatch(
     SpmdPartitioningVisitor* visitor) {
   std::vector<std::pair<HloInstruction*, HloSharding>>
       top_level_sharding_to_reset;
-  auto cleaner = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleaner = [&] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
-  });
+  };
   std::vector<int64_t> lhs_dims;
   std::vector<int64_t> rhs_dims;
   std::vector<int64_t> output_dims;
@@ -2304,11 +2307,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
     SpmdPartitioningVisitor* visitor) {
   std::vector<std::pair<HloInstruction*, HloSharding>>
       top_level_sharding_to_reset;
-  auto cleaner = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleaner = [&] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
-  });
+  };
 
   std::vector<int64_t> output_dims;
   output_dims.reserve(partitioned_non_contracting_dims.size());
@@ -2533,11 +2536,11 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     SpmdPartitioningVisitor* visitor) {
   std::vector<std::pair<HloInstruction*, HloSharding>>
       top_level_sharding_to_reset;
-  auto cleaner = tensorflow::gtl::MakeCleanup([&] {
+  absl::Cleanup cleaner = [&] {
     for (auto& to_reset : top_level_sharding_to_reset) {
       to_reset.first->set_sharding(to_reset.second);
     }
-  });
+  };
   std::vector<int64_t> lhs_dims;
   std::vector<int64_t> rhs_dims;
   int64_t group_count = 1;
@@ -2665,21 +2668,38 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
     }
     return result;
   };
-  // Disable doing the inner reshard when the "faster windowed einsum" flag is
-  // enabled, because the windowed einsum implementation is currently slow with
-  // this kind of reshard happening.
-  if (options.choose_faster_windowed_einsum_over_mem) {
-    inner_output_base_shape = output_base_shape;
-    inner_creator = create_sharded_dot;
-    outer_output_tmp_sharding =
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            outer_output_tmp_sharding, output_slice_dims);
-  }
+
   PartitionedHlo::PartitioningState inner_state =
       CreatePerGroupPartitioningState(lhs.state(), lhs_grouped.device_groups,
                                       b);
+
+  HloInstruction* maybe_windowed_dot = nullptr;
+
+  // Tentatively disables the inner reshard when the "faster windowed einsum"
+  // flag is enabled, because the windowed einsum implementation is currently
+  // slow with this kind of reshard happening.
+  int original_num_windowed_loops = windowed_dot_general_loops->size();
+  if (options.choose_faster_windowed_einsum_over_mem) {
+    Shape predicted_inner_output_base_shape = output_base_shape;
+    auto predicted_inner_creator = create_sharded_dot;
+    TF_ASSIGN_OR_RETURN(
+        maybe_windowed_dot,
+        PartitionDot(
+            PartitionedHlo(lhs.hlo(),
+                           GetPerGroupBaseShape(lhs_grouped, lhs.base_shape()),
+                           inner_state),
+            PartitionedHlo(rhs.hlo(),
+                           GetPerGroupBaseShape(rhs_grouped, rhs.base_shape()),
+                           inner_state),
+            predicted_inner_output_base_shape, inner_output_sharding,
+            dims_mapping, num_partitions / group_count, predicted_inner_creator,
+            conv_window, module, original_hlo, options, b,
+            windowed_dot_general_loops, visitor));
+  }
+  int new_num_windowed_loops = windowed_dot_general_loops->size();
+
   TF_ASSIGN_OR_RETURN(
-      auto dot,
+      auto inner_dot,
       PartitionDot(
           PartitionedHlo(lhs.hlo(),
                          GetPerGroupBaseShape(lhs_grouped, lhs.base_shape()),
@@ -2690,20 +2710,28 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContracting(
           inner_output_base_shape, inner_output_sharding, dims_mapping,
           num_partitions / group_count, inner_creator, conv_window, module,
           original_hlo, options, b, windowed_dot_general_loops, visitor));
-  if (!dot) {
+
+  // Reenables the inner reshard if there is an inner dot and no actual
+  // windowed_dot_general_loops generated.
+  if (inner_dot && (new_num_windowed_loops == original_num_windowed_loops)) {
+    maybe_windowed_dot = inner_dot;
+  } else if (maybe_windowed_dot) {
+    if (options.choose_faster_windowed_einsum_over_mem) {
+      HloInstruction* ar = lhs.state().partitioner->AllReduceAlongShardingDims(
+          b, maybe_windowed_dot, lhs_sharding, lhs.state().next_channel_id,
+          lhs_dims, lhs.state().collective_ops_creator,
+          MakeBinaryAdd(output_base_shape.element_type(), module));
+      maybe_windowed_dot = ar;
+      outer_output_tmp_sharding =
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              outer_output_tmp_sharding, output_slice_dims);
+    }
+  } else {
     return nullptr;
   }
 
-  if (options.choose_faster_windowed_einsum_over_mem) {
-    HloInstruction* ar = lhs.state().partitioner->AllReduceAlongShardingDims(
-        b, dot, lhs_sharding, lhs.state().next_channel_id, lhs_dims,
-        lhs.state().collective_ops_creator,
-        MakeBinaryAdd(output_base_shape.element_type(), module));
-    dot = ar;
-  }
-
-  dot->set_sharding(outer_output_tmp_sharding);
-  auto d = PartitionedHlo(dot, output_base_shape, lhs.state())
+  maybe_windowed_dot->set_sharding(outer_output_tmp_sharding);
+  auto d = PartitionedHlo(maybe_windowed_dot, output_base_shape, lhs.state())
                .Reshard(output_sharding)
                .hlo();
   return d;
@@ -3684,7 +3712,7 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
                    num_partitions_, create_sharded_dot, conv_window, module_,
                    hlo, options_, &b_, &windowed_dot_general_loops_, this));
   SetPartitionedHlo(hlo, [&] { return partitioned_dot; });
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 namespace {
@@ -3768,7 +3796,7 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
   auto to_sink = std::move(input_nodes.first);
   auto new_operands = std::move(input_nodes.second);
   if (to_sink.empty()) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   auto computation = loop->parent();
   // Replace the old operand with a tuple of the found small operands.
@@ -3850,7 +3878,25 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
       TF_RETURN_IF_ERROR(body->RemoveInstruction(ou));
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
+}
+
+// Checks a condition holds true for all recursive operands of an hlo.
+bool CheckOperandsRecursive(const HloInstruction* hlo,
+                            std::function<bool(const HloInstruction*)> check) {
+  std::deque<const HloInstruction*> worklist;
+  worklist.push_front(hlo);
+  while (!worklist.empty()) {
+    auto inst = worklist.back();
+    worklist.pop_back();
+    for (HloInstruction* operand : inst->operands()) {
+      if (!check(operand)) {
+        return false;
+      }
+      worklist.push_front(operand);
+    }
+  }
+  return true;
 }
 
 // Moves a cluster of memory-reducing nodes (with reduce nodes at the end)
@@ -3970,7 +4016,33 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   // If nothing is found, to_move could contain only original_output, or
   // cleared by the above code.
   if (to_move.size() <= 1) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
+  }
+
+  // If there is a reduce that's dependent of another reduce, then we can't do
+  // code motion, as it will create a circular dependencies.
+  if (reduce_outputs.size() > 10) {
+    // When there are many reduces, it might be faster to build a reachibility
+    // map, and then check pair-wise reachability.
+    auto reachability = HloReachabilityMap::Build(computation);
+    for (const HloInstruction* reduce : reduce_outputs) {
+      for (const HloInstruction* other_reduce : reduce_outputs) {
+        if (reduce != other_reduce &&
+            reachability->IsReachable(reduce, other_reduce)) {
+          return OkStatus();
+        }
+      }
+    }
+  } else if (reduce_outputs.size() > 1) {
+    // When there are only few reduces, we can do traversal to check dependency.
+    for (const HloInstruction* reduce : reduce_outputs) {
+      auto reduce_outputs_do_not_contain = [&](const HloInstruction* inst) {
+        return !absl::c_linear_search(reduce_outputs, inst);
+      };
+      if (!CheckOperandsRecursive(reduce, reduce_outputs_do_not_contain)) {
+        return OkStatus();
+      }
+    }
   }
 
   // We will replace the original loop output with reduce-shape outputs.
@@ -4301,7 +4373,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(reduce_outputs[i]));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
@@ -4330,7 +4402,7 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, options));
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace spmd

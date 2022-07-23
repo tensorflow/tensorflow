@@ -40,16 +40,16 @@ namespace gpu {
     mlir::lmhlo::AllGatherOp op) {
   NcclAllGatherConfig config;
   config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   return config;
 }
 
 /*static*/ bool NcclAllGatherThunk::CanImplement(mlir::lmhlo::AllGatherOp op) {
-  return absl::c_all_of(op.operands(), [&](mlir::Value operand) {
+  return absl::c_all_of(op.getInputs(), [&](mlir::Value operand) {
     Shape shape = GetShape(operand);
     return LayoutUtil::IsDenseArray(shape) &&
            IsTypeSupportedByNccl(shape.element_type()) &&
-           LayoutUtil::MinorToMajor(shape).back() == op.all_gather_dimension();
+           LayoutUtil::MinorToMajor(shape).back() == op.getAllGatherDimension();
   });
 }
 
@@ -94,7 +94,7 @@ Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

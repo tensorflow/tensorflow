@@ -201,10 +201,10 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     quant::QuantizedType quant_type;
     SmallVector<double, 4> mins, maxs;
 
-    if (op.axisStats().hasValue()) {
-      int stats_num = op.axisStats()->getNumElements();
+    if (op.getAxisStats().hasValue()) {
+      int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
-      auto stats = op.axisStats()->dyn_cast<DenseFPElementsAttr>();
+      auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
@@ -219,13 +219,14 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         mins.push_back(rmin);
         maxs.push_back(rmax);
       }
-      quant_type =
-          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
-                                      maxs, narrow_range, expressed, is_signed);
+      quant_type = quant::fakeQuantAttrsToType(
+          op.getLoc(), num_bits, *op.getAxis(), mins, maxs, narrow_range,
+          expressed, is_signed);
       if (legacy_float_scale) {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
-    } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
+    } else if (auto stats =
+                   op.getLayerStats().dyn_cast<DenseFPElementsAttr>()) {
       auto statValues = stats.getValues<APFloat>();
       double rmin = FloatAttr::getValueAsDouble(statValues[0]);
       double rmax = FloatAttr::getValueAsDouble(statValues[1]);
@@ -247,12 +248,12 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
 
     rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
-    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
+    auto q = rewriter.create<Q>(op.getLoc(), result_type, op.getArg());
     q->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
 
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
-    q.getOperation()->replaceUsesOfWith(dq, op.arg());
+    q.getOperation()->replaceUsesOfWith(dq, op.getArg());
     op.erase();
 
     return success();
@@ -722,7 +723,7 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     if (!new_qtype) return failure();
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
-    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.arg());
+    rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.getArg());
     return success();
   }
 };

@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -70,14 +69,14 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
-  auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  auto evaluator = std::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
   bool changed = false;
 
   for (auto* computation : module->MakeNonfusionComputations()) {
-    for (auto instruction : computation->MakeInstructionPostOrder()) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->IsDead()) {
         continue;
@@ -175,7 +174,23 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
 
       absl::Duration slow_timeout =
           absl::Seconds(uint64_t{1} << slow_op_counter_.load());
-      SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
+      // We cannot call `instruction->ToString() within the callback, because
+      // the instruction may be modified and invalidated in place, and ToString
+      // will fail if the compilation is slow. We probably do not want to
+      // call `ToString()` for all the instructions, thus, we only display the
+      // name by default.
+      std::string instruction_msg;
+      if (VLOG_IS_ON(4)) {
+        instruction_msg = instruction->ToString();
+      } else {
+        instruction_msg =
+            absl::StrCat(instruction->name(),
+                         " (displaying the full instruction incurs a runtime "
+                         "overhead. Raise your logging level to 4 or above).");
+      }
+      SlowOperationAlarm slow_alarm(slow_timeout, [instruction_msg = std::move(
+                                                       instruction_msg),
+                                                   slow_timeout] {
         const bool ndebug =
 #if NDEBUG
             true;
@@ -196,9 +211,9 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                   "slow.  Try rebuilding with -c opt.";
         return absl::StrFormat(
             "Constant folding an instruction is taking > %s:\n\n"
-            "  %s\n\n"  // instruction->ToString()
+            "  %s\n\n"  // instruction->name() or instruction->ToString()
             "%s",       // explanation_msg
-            absl::FormatDuration(slow_timeout), instruction->ToString(),
+            absl::FormatDuration(slow_timeout), instruction_msg,
             explanation_msg);
       });
 

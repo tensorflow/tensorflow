@@ -9,7 +9,7 @@ func.func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf32>) {
       %add = mhlo.add %arg0, %arg1 : tensor<f32>
       "mhlo.return"(%add) : (tensor<f32>) -> ()
     })
-  {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+  {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
    replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 4]]> : tensor<2x4xi64>,
    use_global_device_ids = false} : (memref<2xf32>, memref<3xf32>, memref<2xf32>, memref<2xf32>) -> ()
   func.return
@@ -24,7 +24,7 @@ func.func @invalid_allreduce(%input0: memref<2xf32>, %input1: memref<3xf16>) {
       %add = mhlo.add %arg0, %arg1 : tensor<f32>
       "mhlo.return"(%add) : (tensor<f32>) -> ()
     })
-  {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+  {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
    replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
    use_global_device_ids = false} : (memref<2xf32>, memref<3xf16>, memref<2xf32>, memref<3xf16>) -> ()
   func.return
@@ -58,7 +58,7 @@ func.func @mixed_types_allgather(%a0: memref<1x1xf32>, %a1:memref<1x1xi32>) {
 func.func @invalid_allgather(%input0: memref<2xf32>, %output: memref<8xf32>) {
   // expected-error@+1 {{replica id #1 seen more than once}}
   "lmhlo.all_gather"(%input0, %output)
-    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+    {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
      replica_groups = dense<[[0, 1, 1, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
      use_global_device_ids = false, all_gather_dimension = 0 : i64} : (memref<2xf32>, memref<8xf32>) -> ()
   func.return
@@ -69,7 +69,7 @@ func.func @invalid_allgather(%input0: memref<2xf32>, %output: memref<8xf32>) {
 func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
   // expected-error@+1 {{replica id #4 not seen in replica groups}}
   "lmhlo.all_to_all"(%input0, %output)
-    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+    {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
      replica_groups = dense<[[0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>,
      use_global_device_ids = false} : (memref<2xf32>, memref<8xf32>) -> ()
   func.return
@@ -80,7 +80,7 @@ func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
 func.func @invalid_alltoall(%input0: memref<2xf32>, %output: memref<8xf32>) {
   // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
   "lmhlo.all_to_all"(%input0, %output)
-    {channel_id = {handle = 1 : i64, type = 0 : i64}, constrain_layout = false,
+    {channel_id = #mhlo.channel_handle<handle = 1, type = 0>, constrain_layout = false,
      replica_groups = dense<0> : tensor<1xi64>,
      use_global_device_ids = false} : (memref<2xf32>, memref<8xf32>) -> ()
   func.return
@@ -785,7 +785,7 @@ func.func @all_reduce_memrefs(%arg0: memref<10xf32>, %arg_out: memref<10xf32>) -
   })
   {
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_id = { handle = 5 : i64, type = 2 : i64 },
+    channel_id = #mhlo.channel_handle<handle = 5, type = 2>,
     constrain_layout = true,
     use_global_device_ids = true
   }: (memref<10xf32>, memref<10xf32>) -> ()
@@ -802,7 +802,7 @@ func.func @collective_permute_memrefs(%arg0: memref<128x32xf32>, %arg_out: memre
 
   "lmhlo.collective_permute"(%arg0, %arg_out) {
     source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
-    channel_id = { handle = 5 : i64, type = 2 : i64 }
+    channel_id = #mhlo.channel_handle<handle = 5, type = 2>
   } : (memref<128x32xf32>, memref<128x32xf32>) -> ()
   func.return
 }
@@ -841,7 +841,7 @@ func.func @invalid_collective_permute(%arg0: memref<128x32xf32>, %arg_out: memre
 
 // CHECK-LABEL: func @fft_memrefs
 func.func @fft_memrefs(%arg0: memref<3x9xf32>, %arg_out: memref<3x5xcomplex<f32>>) -> () {
-  "lmhlo.fft"(%arg0, %arg_out) {fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<"fft_type RFFT">} : (memref<3x9xf32>, memref<3x5xcomplex<f32>>) -> ()
+  "lmhlo.fft"(%arg0, %arg_out) {fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>} : (memref<3x9xf32>, memref<3x5xcomplex<f32>>) -> ()
   func.return
 }
 
@@ -920,7 +920,7 @@ func.func @triangular_solve_memrefs(%arg0: memref<4x4xf32>, %arg1: memref<3x4xf3
        {layout_a = dense<[1, 0]> : tensor<2xindex>,
         layout_b = dense<[1, 0]> : tensor<2xindex>,
         layout_output = dense<[1, 0]> : tensor<2xindex>,
-        left_side = true, lower = true, transpose_a = #mhlo<"transpose NO_TRANSPOSE">,
+        left_side = true, lower = true, transpose_a = #mhlo<transpose NO_TRANSPOSE>,
         unit_diagonal = true}
       : (memref<4x4xf32>, memref<3x4xf32>, memref<3x4xf32>) -> ()
   func.return
@@ -1045,7 +1045,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   func.return
@@ -1058,7 +1058,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   func.return
@@ -1071,7 +1071,7 @@ func.func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "lmhlo.sort"(%arg0, %arg1, %out0, %out1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   func.return
@@ -1086,12 +1086,12 @@ func.func @valid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0,3],
       results_to_target_results = [1,2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1105,12 +1105,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0],
       results_to_target_results = [1,2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1124,12 +1124,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 3],
       results_to_target_results = [1]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1143,12 +1143,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 0],
       results_to_target_results = [1, 2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1162,12 +1162,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 1],
       results_to_target_results = [1, 1]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1181,12 +1181,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 6],
       results_to_target_results = [1, 2]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }
@@ -1200,12 +1200,12 @@ func.func @invalid_custom_call(%arg0:memref<1xf32>, %arg1:memref<1xf32>) -> () {
     call_target_name = "foo",
     has_side_effects = false,
     operand_segment_sizes = dense<2> : vector<2xi32>,
-    target_arg_mapping = {
-      num_args = 4 : i64,
-      num_results = 3 : i64,
+    target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
+      num_args = 4,
+      num_results = 3,
       args_to_target_args = [0, 1],
       results_to_target_results = [1, 3]
-    }
+    >
   } : (memref<1xf32>, memref<1xf32>, memref<1xf32>, memref<1xf32>) -> ()
   func.return
 }

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_split.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
@@ -162,7 +162,8 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
   return hlo->IsCustomCall("ResizeNearest") ||
          hlo->IsCustomCall("ResizeBilinear") ||
          hlo->IsCustomCall("ResizeNearestGrad") ||
-         hlo->IsCustomCall("ResizeBilinearGrad");
+         hlo->IsCustomCall("ResizeBilinearGrad") ||
+         hlo->IsCustomCall("Cholesky");
 }
 
 // Return the operand which is the most suitable for determining the sharding
@@ -319,7 +320,8 @@ const HloInstruction* PickRepresentativeOperand(
 bool SupportSpatialPartitioning(
     const HloInstruction* instruction,
     const ShardingPropagation::ComputationMap& computation_map, bool is_spmd,
-    bool allow_spmd_sharding_propagation_to_output) {
+    bool allow_spmd_sharding_propagation_to_output,
+    const CustomCallShardingHelper* sharding_helper) {
   const bool is_entry_root = instruction->parent()
                                  ->parent()
                                  ->entry_computation()
@@ -373,7 +375,8 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kReverse:
       return is_spmd;
     case HloOpcode::kCustomCall:
-      return is_spmd && IsPassthroughCustomOps(instruction);
+      return is_spmd && (IsPassthroughCustomOps(instruction) ||
+                         sharding_helper->IsCustomCallShardable(instruction));
     default:
       return false;
   }
@@ -713,7 +716,8 @@ HloSharding InferDotOperandSharding(
 bool InferShardingFromUsers(
     HloInstruction* instruction,
     const ShardingPropagation::ComputationMap& computation_map,
-    int64_t aggressiveness, bool is_spmd) {
+    int64_t aggressiveness, bool is_spmd,
+    const CustomCallShardingHelper* sharding_helper) {
   if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
     return false;
   }
@@ -732,8 +736,8 @@ bool InferShardingFromUsers(
       return true;
     }
   }
-  if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd,
-                                  false)) {
+  if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd, false,
+                                  sharding_helper)) {
     return false;
   }
 
@@ -743,6 +747,10 @@ bool InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(*instruction, *user,
                                                  aggressiveness, is_spmd);
+    if (user_sharding && sharding_helper->IsCustomCallShardable(instruction)) {
+      user_sharding = sharding_helper->PropagateUserSharding(instruction, user,
+                                                             *user_sharding);
+    }
     if (user_sharding) {
       improved_sharding |= MaybeImproveInstructionSharding(
           std::move(*user_sharding), instruction, may_combine_partial_sharding);
@@ -1709,7 +1717,8 @@ bool ShardingPropagation::InferShardingFromOperands(
   }
   const bool may_combine_partial_sharding = is_spmd_ && aggressiveness > 0;
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd_,
-                                  allow_spmd_sharding_propagation_to_output_)) {
+                                  allow_spmd_sharding_propagation_to_output_,
+                                  sharding_helper_.get())) {
     // If an array shaped HLO doesn't support spatial partitioning but at least
     // one of its operand is replicated then we make the HLO replicated as well.
     if (instruction->shape().IsTuple() || instruction->operand_count() == 0 ||
@@ -2185,12 +2194,23 @@ bool ShardingPropagation::InferShardingFromOperands(
       if (instruction->IsCustomCall("X64Combine")) {
         return false;
       }
-      const HloInstruction* operand = PickRepresentativeOperand(instruction);
-      if (!operand || !IsSpatiallyPartitioned(operand)) {
-        return false;
+      HloSharding inferred_operand_sharding = HloSharding::Replicate();
+      if (sharding_helper_->IsCustomCallShardable(instruction)) {
+        if (auto sharding =
+                sharding_helper_->InferShardingFromOperands(instruction)) {
+          inferred_operand_sharding = *sharding;
+        } else {
+          return false;
+        }
+      } else {
+        const HloInstruction* operand = PickRepresentativeOperand(instruction);
+        if (!operand || !IsSpatiallyPartitioned(operand)) {
+          return false;
+        }
+        inferred_operand_sharding = operand->sharding();
       }
       return MaybeImproveInstructionSharding(
-          operand->sharding(), instruction, may_combine_partial_sharding,
+          inferred_operand_sharding, instruction, may_combine_partial_sharding,
           /*allow_aggressive_resharding=*/ComputeNonRootUsers(instruction) ==
               1);
     }
@@ -2509,7 +2529,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
           }
           already_inferred_from_users.insert(*it);
           if (InferShardingFromUsers(*it, computation_map, aggressiveness,
-                                     is_spmd_)) {
+                                     is_spmd_, sharding_helper_.get())) {
             ++inferred_from_user_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();

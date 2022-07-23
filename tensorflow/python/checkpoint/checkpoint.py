@@ -30,6 +30,7 @@ from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
+from tensorflow.python.checkpoint import restore as restore_lib
 from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
@@ -1180,11 +1181,19 @@ class TrackableSaver(object):
     # Op caching for restore, shared between _CheckpointRestoreCoordinators
     self._restore_op_cache = {}
 
+    # Object map used for checkpoint. This attribute is to be overridden by a
+    # Checkpoint subclass, e.g., AsyncCheckpoint, to replace the trackable
+    # objects for checkpoint saving.
+    self._object_map = None
+
   def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
     named_saveable_objects, graph_proto, feed_additions, registered_savers = (
-        util.serialize_object_graph_with_registered_savers(
-            self._graph_view, self._saveables_cache))
+        util.serialize_gathered_objects(
+            graph_view=self._graph_view,
+            object_map=self._object_map,
+            saveables_cache=self._saveables_cache))
+
     if object_graph_tensor is None:
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
@@ -1489,7 +1498,7 @@ class TrackableSaver(object):
         graph_view=self._graph_view,
         options=options,
         saveables_cache=self._saveables_cache)
-    base.CheckpointPosition(
+    restore_lib.CheckpointPosition(
         checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
 
     # Attached dependencies are not attached to the root, so should be restored
@@ -1516,7 +1525,7 @@ class TrackableSaver(object):
           # Could not find attached dependency in proto.
           continue
 
-        base.CheckpointPosition(
+        restore_lib.CheckpointPosition(
             checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
 
     load_status = CheckpointLoadStatus(

@@ -24,7 +24,7 @@ from tensorflow.lite.python import analyzer
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class AnalyzerTest(test_util.TensorFlowTestCase):
@@ -164,7 +164,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
       def sub(x, y):
         return {'sub_result': tf.subtract(x, y)}
 
-      root = tracking.AutoTrackable()
+      root = autotrackable.AutoTrackable()
       root.f1 = add.get_concrete_function()
       root.f2 = sub.get_concrete_function()
 

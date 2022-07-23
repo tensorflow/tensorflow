@@ -255,10 +255,6 @@ int StreamExecutor::PlatformDeviceCount() const {
   return implementation_->PlatformDeviceCount();
 }
 
-bool StreamExecutor::SupportsBlasPlans() const {
-  return implementation_->SupportsBlasPlans();
-}
-
 bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
@@ -372,30 +368,6 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
     return false;
   }
   return blas_support->GetBlasGemmAlgorithms(stream, out_algorithms);
-}
-
-port::StatusOr<std::unique_ptr<blas::IBlasLtMatmulPlan>>
-StreamExecutor::CreateBlasLtMatmulPlan(
-    const blas::BlasLtMatmulPlanParams& params) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the blas implementation.");
-  }
-  return blas_support->CreateBlasLtMatmulPlan(params);
-}
-
-port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
-StreamExecutor::GetBlasLtMatmulAlgorithms(const blas::IBlasLtMatmulPlan* plan,
-                                          size_t max_workspace_size,
-                                          int max_algorithm_count) {
-  blas::BlasSupport* blas_support = AsBlas();
-  if (!blas_support) {
-    return port::Status(port::error::UNKNOWN,
-                        "Fail to find the blas implementation.");
-  }
-  return blas_support->GetBlasLtMatmulAlgorithms(plan, max_workspace_size,
-                                                 max_algorithm_count);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
@@ -837,8 +809,7 @@ bool StreamExecutor::StopTimer(Stream* stream, Timer* timer) {
 
 std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
     const {
-  auto desc_status = implementation_->CreateDeviceDescription();
-  return desc_status.ConsumeValueOrDie();
+  return implementation_->CreateDeviceDescription().value();
 }
 
 bool StreamExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {

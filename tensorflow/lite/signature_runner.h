@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_CORE_SIGNATURE_RUNNER_H_
-#define TENSORFLOW_LITE_CORE_SIGNATURE_RUNNER_H_
+#ifndef TENSORFLOW_LITE_SIGNATURE_RUNNER_H_
+#define TENSORFLOW_LITE_SIGNATURE_RUNNER_H_
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -156,4 +157,4 @@ class SignatureRunner {
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_CORE_SIGNATURE_RUNNER_H_
+#endif  // TENSORFLOW_LITE_SIGNATURE_RUNNER_H_

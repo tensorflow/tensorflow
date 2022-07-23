@@ -25,7 +25,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
-include "tensorflow/compiler/mlir/lite/ir/tfl_structs.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -1202,12 +1202,12 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$indices,
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$updates,
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$updates,
     TFL_1DTensorOf<[I32]>:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$output
   );
 
   let hasVerifier = 1;
@@ -2324,7 +2324,8 @@ def TFL_SumOp: TFL_Op<"sum", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect]> {
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
 
   let summary = "Sum operator";
 
@@ -2342,6 +2343,14 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // Eight-bit types don't require same operands and results scales.
+      return bit_width != 8;
+    }
+  }];
 }
 
 def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
@@ -4829,10 +4838,9 @@ def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
   let arguments = (ins
     TFL_TensorOf<[F32, I32]>:$input,
     TFL_I32Tensor:$segment_ids,
-    I32Attr:$num_segments
+    TFL_I32Tensor:$num_segments
   );
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
-  let hasOptions = 1;
 }
 
 def TFL_YieldOp : Op<TFL_Dialect, "yield",

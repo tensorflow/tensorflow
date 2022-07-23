@@ -26,7 +26,7 @@ message LayoutAnalysis {
 }
 
 // Metrics for an operation (accumulated over all occurrences).
-// Next ID: 22
+// Next ID: 23
 message OpMetrics {
   // HLO module id. 0 for TF ops.
   uint64 hlo_module_id = 13;
@@ -75,6 +75,10 @@ message OpMetrics {
   OpMetricsDb children = 16;
   // Number of cores this op occurs.
   uint32 num_cores = 21;
+  // Computation primitive size in BITS. This is the size of the type of the
+  // hardware computation. In the future this may be extended to include info
+  // such as signed/unsigned, int/fp, etc. Currently only the size is needed.
+  uint32 computation_primitive_size = 22;
   reserved 4, 8, 9;
 }
 

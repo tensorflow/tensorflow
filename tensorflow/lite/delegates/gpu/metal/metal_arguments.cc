@@ -618,10 +618,10 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset,
 
 absl::Status MetalArguments::SetGPUResources(
     const std::string& name, const GPUResourcesWithValue& resources) {
-  for (const auto& r : resources.ints) {
+  for (const auto& r : resources.generic.ints) {
     RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
   }
-  for (const auto& r : resources.floats) {
+  for (const auto& r : resources.generic.floats) {
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {

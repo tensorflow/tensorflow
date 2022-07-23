@@ -39,6 +39,8 @@ TF_CONST_INIT extern const absl::string_view kHostThreadsPlaneName;
 TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name prefix of XPlane that contains TPU events.
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
+// Regex for XPlanes that contain TensorCore planes.
+TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
@@ -60,6 +62,7 @@ TF_CONST_INIT extern const absl::string_view kTensorFlowNameScopeLineName;
 TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
+TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 
@@ -207,6 +210,7 @@ enum StatType {
   kIsAsync,
   // Device trace arguments.
   kDeviceId,
+  kDeviceTypeString,
   kContextId,
   kCorrelationId,
   // TODO(b/176137043): These "details" should differentiate between activity
@@ -265,7 +269,16 @@ enum StatType {
   kTheoreticalOccupancyPct,
   kOccupancyMinGridSize,
   kOccupancySuggestedBlockSize,
-  kLastStatType = kOccupancySuggestedBlockSize,
+  // Aggregrated Stats
+  kSelfDurationPs,
+  kMinDurationPs,
+  kMaxIterationNum,
+  kDeviceType,
+  kUsesMegaCore,
+  kSymbolId,
+  kTfOpName,
+  kDmaStallDurationPs,
+  kLastStatType = kDmaStallDurationPs
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {

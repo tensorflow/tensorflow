@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -75,7 +74,7 @@ class HloEvaluatorTest : public HloTestBase {
       HloElementTypeConverter(F32, BF16).Run(m_.get()).ValueOrDie();
     }
     return evaluator_.Evaluate(*module->entry_computation(), arg_literals)
-        .ConsumeValueOrDie();
+        .value();
   }
 
   void TestUnaryOp(HloOpcode opcode, Literal expected, Literal input,
@@ -180,7 +179,7 @@ class HloEvaluatorTest : public HloTestBase {
     //  {  8,  9, 10, 11 },
     //  { 12, 13, 14, 15 }
     // }
-    auto arg_array = absl::make_unique<Array2D<float>>(4, 4);
+    auto arg_array = std::make_unique<Array2D<float>>(4, 4);
     arg_array->FillIota(0);
     auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -730,7 +729,7 @@ TEST_P(HloEvaluatorBf16Test, Pad4DFloatArrayWithInteriorPadding) {
 
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
-  auto expected_array = absl::make_unique<Array4D<float>>(8, 5, 1, 1);
+  auto expected_array = std::make_unique<Array4D<float>>(8, 5, 1, 1);
   expected_array->Fill(kPadValue);
   (*expected_array)(1, 0, 0, 0) = 1.0f;
   (*expected_array)(1, 2, 0, 0) = 2.0f;
@@ -754,7 +753,7 @@ TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
+  auto input_array = std::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -775,7 +774,7 @@ TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
   // f32[1,5] { 7.0, 2.718, 2.718, 2.718, 2.718 }
-  auto expected_array = absl::make_unique<Array2D<float>>(1, 5);
+  auto expected_array = std::make_unique<Array2D<float>>(1, 5);
   (*expected_array)(0, 0) = 7.0f;
   (*expected_array)(0, 1) = 2.718f;
   (*expected_array)(0, 2) = 2.718f;
@@ -795,7 +794,7 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
+  auto input_array = std::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -819,7 +818,7 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
 
   TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
-  auto expected_array = absl::make_unique<Array2D<float>>(0, 9);
+  auto expected_array = std::make_unique<Array2D<float>>(0, 9);
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(*expected_array);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
@@ -835,7 +834,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank1) {
   //  { 3 },
   //  { 4 },
   // }
-  auto lhs_array = absl::make_unique<Array2D<float>>(4, 1);
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 1);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -887,7 +886,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank1AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
+  auto rhs_array = std::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -919,7 +918,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto lhs_array = absl::make_unique<Array2D<float>>(4, 3);
+  auto lhs_array = std::make_unique<Array2D<float>>(4, 3);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -931,7 +930,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
+  auto rhs_array = std::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -962,13 +961,13 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
 TEST_P(HloEvaluatorBf16Test, DotRank4AndRank4) {
   HloComputation::Builder b(TestName());
 
-  auto lhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  auto lhs_array = std::make_unique<Array4D<float>>(2, 2, 3, 1);
   lhs_array->FillIota(1.0f);
   auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
 
-  auto rhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  auto rhs_array = std::make_unique<Array4D<float>>(2, 2, 3, 1);
   rhs_array->FillIota(2.0f);
   auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -1512,14 +1511,14 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
   std::iota(input_elems.begin(), input_elems.end(), -7);
   auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
-  auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+  auto input_r4 = input_r1.Reshape(input_dims).value();
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
   std::iota(filter_elems.begin(), filter_elems.end(), -31);
   auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
-  auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+  auto filter_r4 = filter_r1.Reshape(filter_dims).value();
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(filter_r4)));
 
@@ -2579,7 +2578,7 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
   m->AddEntryComputation(b.Build());
 
   HloEvaluator hlo_eval;
-  Literal result = hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+  Literal result = hlo_eval.Evaluate(reduce_instruction).value();
   LiteralTestUtil::ExpectR0Equal<float>(kNumElements, result);
 }
 
@@ -2616,7 +2615,7 @@ void BM_ReducePrecisely(::testing::benchmark::State& state) {
   // Benchmark loop
   for (auto s : state) {
     HloEvaluator hlo_eval;
-    hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+    hlo_eval.Evaluate(reduce_instruction).value();
   }
 }
 
@@ -2630,7 +2629,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
+  auto arg_array = std::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -2672,7 +2671,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
+  auto arg_array = std::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -2789,7 +2788,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
+  auto arg_array = std::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -3013,7 +3012,7 @@ TEST_P(HloEvaluatorBf16Test, StridedSlice) {
   //  { 9, 10, 11, 12, 13 },
   //  { 17, 18, 19, 20, 21 },
   // }
-  auto operand_array = absl::make_unique<Array2D<float>>(3, 5);
+  auto operand_array = std::make_unique<Array2D<float>>(3, 5);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -3046,7 +3045,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
+  auto operand_array = std::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -3084,7 +3083,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
+  auto operand_array = std::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -3120,7 +3119,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
+  auto operand_array = std::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -3159,7 +3158,7 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
+  auto operand_array = std::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal2 =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -3195,7 +3194,7 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetNestedTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
+  auto operand_array = std::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
 
   HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(
@@ -4312,7 +4311,7 @@ ENTRY main {
     hlo_text = absl::StrFormat(hlo_text_base, "f32", "f32", "f32");
   }
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&args[0]}));
   if (use_bfloat16_) {
     EXPECT_TRUE(
@@ -4451,7 +4450,7 @@ TEST_F(HloEvaluatorTest, PreserveFusionInputLayout) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
 
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&args[0]}));
   EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
@@ -4473,7 +4472,7 @@ TEST_F(HloEvaluatorTest, PreserveFusionOutputLayout) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&args[0]}));
   EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
 }
@@ -4495,7 +4494,7 @@ TEST_F(HloEvaluatorTest, PreserveMOFusionOutputLayout) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   TF_ASSERT_OK_AND_ASSIGN(Literal actual_tuple, Evaluate({&args[0]}));
   std::vector<Literal> actual_literals = actual_tuple.DecomposeTuple();
   EXPECT_TRUE(
@@ -4514,7 +4513,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&args[0]}).status().code(),
             ::tensorflow::error::UNIMPLEMENTED);
 }
@@ -4531,7 +4530,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler(
       [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
@@ -4556,7 +4555,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto args = MakeFakeArguments(m_.get()).ConsumeValueOrDie();
+  auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler(
       [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
@@ -4769,7 +4768,7 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto lhs_array = absl::make_unique<Array2D<int16_t>>(4, 3);
+  auto lhs_array = std::make_unique<Array2D<int16_t>>(4, 3);
   lhs_array->FillUnique(1);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<int16_t>(*lhs_array);
 
@@ -4779,7 +4778,7 @@ TEST_F(HloEvaluatorTest, DotUpcast) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = absl::make_unique<Array2D<int8_t>>(3, 2);
+  auto rhs_array = std::make_unique<Array2D<int8_t>>(3, 2);
   rhs_array->FillUnique(1);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<int8_t>(*rhs_array);
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));

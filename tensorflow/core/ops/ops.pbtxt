@@ -23817,6 +23817,63 @@ op {
   }
 }
 op {
+  name: "ListDataset"
+  input_arg {
+    name: "tensors"
+    type_list_attr: "Tinput_types"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "Tinput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ListDiff"
   input_arg {
     name: "x"
@@ -27445,6 +27502,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "allow_missing_files"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   is_stateful: true
@@ -62536,6 +62600,77 @@ op {
   }
   attr {
     name: "key"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaRecvTPUEmbeddingActivations"
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaRecvTPUEmbeddingDeduplicationData"
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSendTPUEmbeddingGradients"
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "learning_rates"
+    type: DT_FLOAT
+    number_attr: "NumLearningRateTags"
+  }
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "NumLearningRateTags"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "config"
     type: "string"
   }
   is_stateful: true

@@ -851,7 +851,7 @@ void QuantizationDriver::SetupAllStates() {
         // If the operand comes from a tfl.dequantize op, we use the quantized
         // input of this tfl.dequantize op to set the state.
         if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(inst)) {
-          operand = dq.arg();
+          operand = dq.getArg();
         }
       }
       InitializeOperandState(op, i, operand);

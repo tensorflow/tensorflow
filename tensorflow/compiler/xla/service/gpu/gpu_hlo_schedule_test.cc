@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -40,8 +40,7 @@ class GpuHloScheduleTest : public HloTestBase {
 
   static std::unique_ptr<GpuHloSchedule> BuildGpuHloSchedule(
       HloModule* module, const StreamAssignment& streams) {
-    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8)
-        .ConsumeValueOrDie();
+    return GpuHloSchedule::Build(module, streams, /*pointer_size=*/8).value();
   }
 
   std::unique_ptr<HloModule> CreateNewVerifiedModule() {
@@ -49,7 +48,7 @@ class GpuHloScheduleTest : public HloTestBase {
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
     config.set_debug_options(debug_options);
-    return absl::make_unique<HloModule>("test_module", config);
+    return std::make_unique<HloModule>("test_module", config);
   }
 
   HloVec RemoveHlo(const HloVec& input,

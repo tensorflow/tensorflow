@@ -488,7 +488,7 @@ def full_job_name(task_id: Optional[int] = None) -> str:
     task_id = client_id()
   # In local runs and unit tests, there should be exactly one client running
   # on one TF task.
-  if job_name() == "localhost" and task_id != 0:
+  if num_clients() == 1 and task_id != 0:
     raise ValueError(f"Unexpected task ID {task_id} in local runs")
   return f"{job_name()}/replica:0/task:{task_id}"
 
@@ -535,11 +535,15 @@ def heartbeat_enabled() -> bool:
 # Private methods.
 
 
-def _dtensor_device() -> dtensor_device.DTensorDevice:
+def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
   global _dtensor_singleton
+  _dtensor_singleton = device
+
+
+def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _dtensor_singleton = dtensor_device.DTensorDevice(meshes=[])
+      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
   return _dtensor_singleton
 
 

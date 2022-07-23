@@ -255,7 +255,7 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   emitted_value_[bitcast] =
       BitCast(GetEmittedValueFor(bitcast->operand(0)),
               IrShapeType(bitcast->shape())->getPointerTo(), IrName(bitcast));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
@@ -295,7 +295,7 @@ Status IrEmitter::EmitConstantGlobals() {
                 global_for_const);
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
@@ -390,7 +390,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   emitted_value_[get_tuple_element] = llvm_ir::EmitGetTupleElement(
       shape, get_tuple_element->tuple_index(), MinimumAlignmentForShape(shape),
       GetEmittedValueFor(operand), IrShapeType(operand->shape()), &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleSelect(HloInstruction* select) {
@@ -456,7 +456,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
         EmitXfeedTransfer(XfeedKind::kInfeed, data_shape, data_address));
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
@@ -523,7 +523,7 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                   acquired_pointer, shape_ptr, b_.getInt32(shape_length)},
                  b_.getVoidTy());
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
@@ -553,7 +553,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
                                          tuple_element_shape, tuple_element));
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleSort(HloInstruction* hlo) {
@@ -647,7 +647,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_);
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -657,7 +657,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(tuple), base_ptrs, &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
@@ -860,7 +860,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   output_array.EmitWriteArrayElement(selected_index, scatter_value, &b_);
 
   SetToFirstInsertPoint(source_loops.GetOuterLoopExitBasicBlock(), &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleDot(HloInstruction* dot) {
@@ -993,6 +993,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       bool use_mkl_dnn =
           hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
           convolution->feature_group_count() == 1;
+      bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
         return xs.size() >= 2 && xs.size() <= 3;
@@ -1015,8 +1016,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
                        ? runtime::kEigenConv2DF16SymbolName
                        : runtime::kEigenSingleThreadedConv2DF16SymbolName)
                 : (multi_threaded
-                       ? (use_mkl_dnn ? runtime::kMKLConv2DF32SymbolName
-                                      : runtime::kEigenConv2DF32SymbolName)
+                       ? (use_mkl_dnn
+                              ? runtime::kMKLConv2DF32SymbolName
+                              : (use_acl ? runtime::kACLConv2DF32SymbolName
+                                         : runtime::kEigenConv2DF32SymbolName))
                        : runtime::kEigenSingleThreadedConv2DF32SymbolName);
       } else if (input_dims.size() == 3) {
         fn_name =
@@ -1067,10 +1070,12 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
         args.push_back(b_.getInt64(d));
       }
       args.push_back(b_.getInt64(convolution->feature_group_count()));
+
+      VLOG(1) << "Ir emitter emitted Convolution to runtime:" << fn_name;
       EmitCallToFunc(fn_name, args, b_.getVoidTy(), /*does_not_throw=*/true,
                      /*only_accesses_arg_memory=*/true);
 
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     }
   }
   // This is a completely un-optimized version of convolution just to
@@ -1124,7 +1129,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
       /*only_accesses_arg_memory=*/false,
       /*only_accesses_inaccessible_mem_or_arg_mem=*/true);
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
@@ -1159,7 +1164,7 @@ Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
            /*SrcAlign=*/llvm::Align(1), ShapeUtil::ByteSizeOf(operand_shape));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
@@ -1180,6 +1185,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
       case F16:
       case F32:
       case F64:
+      case C64:
+      case C128:
         return true;
       default:
         return false;
@@ -1263,7 +1270,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
        /*output_buffers=*/b_.CreateBitCast(output_buffers, i8_ptr_type)},
       b_.getVoidTy());
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
@@ -1326,7 +1333,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
       b_.getVoidTy());
 
   llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
@@ -1364,7 +1371,7 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
        /*source_target_pairs_size=*/b_.getInt32(source_target_pairs.size())},
       b_.getVoidTy());
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
@@ -1378,7 +1385,7 @@ Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
       {/*run_options=*/GetExecutableRunOptionsArgument(),
        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)},
       b_.getVoidTy());
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
@@ -1392,7 +1399,7 @@ Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
       {/*run_options=*/GetExecutableRunOptionsArgument(),
        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)},
       b_.getVoidTy());
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -1906,7 +1913,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
     if (vectorization_successful) {
       VLOG(1) << "Successfully vectorized reduction " << reduce->ToString()
               << "\n";
-      return ::tensorflow::OkStatus();
+      return OkStatus();
     } else {
       VLOG(1) << "Could not vectorize reduction " << reduce->ToString() << ": "
               << vectorization_failure_reason;
@@ -1947,7 +1954,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(slice));
 
   if (ShapeUtil::IsZeroElementArray(slice->shape())) {
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   const Layout& layout = operand->shape().layout();
@@ -2064,7 +2071,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
     SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice) {
@@ -2158,7 +2165,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   output_array.EmitWriteArrayElement(output_index, operand_data, &b_);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
@@ -2210,7 +2217,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
         *dot, target_array, lhs_array, rhs_array, &addend_array,
         GetExecutableRunOptionsArgument(), &b_, mlir_context_,
         hlo_module_config_, target_machine_features_));
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");
   }
@@ -2254,7 +2261,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
     EmitGlobalCall(*computation, computation->name());
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
@@ -2296,7 +2303,7 @@ Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
     llvm_ir::IrArray::Index dest_index(linear_index, data_array.GetShape(),
                                        &b_);
     data_array.EmitWriteArrayElement(dest_index, source_element, &b_);
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   };
   return llvm_ir::LoopEmitter(loop_body_emitter, data_array.GetShape(),
                               dynamic_dims, &b_)
@@ -2363,7 +2370,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
     llvm::Value* source_element =
         GetIrArrayFor(hlo->operand(0)).EmitReadArrayElement(source_index, &b_);
     data_array.EmitWriteArrayElement(array_index, source_element, &b_);
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   };
   TF_RETURN_IF_ERROR(
       llvm_ir::LoopEmitter(loop_body_emitter, input_shape, dynamic_dims, &b_)
@@ -2371,7 +2378,7 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
 
   // Emit static tensor and dynamic sizes as one tuple.
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), tuple_operand_ptrs, &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleTopK(HloInstruction* hlo) {
@@ -2410,7 +2417,7 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 
   llvm_ir::EmitTuple(GetIrArrayFor(hlo), {out_values_ptr, out_indices_ptr},
                      &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
@@ -2499,7 +2506,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
           CustomCallApiVersion_Name(typed_custom_call->api_version()));
   }
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
@@ -2517,9 +2524,9 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
                             const ShapeIndex& index) {
           const BufferAllocation::Slice slice_a =
-              assignment_.GetUniqueSlice(a, index).ConsumeValueOrDie();
+              assignment_.GetUniqueSlice(a, index).value();
           const BufferAllocation::Slice slice_b =
-              assignment_.GetUniqueSlice(b, index).ConsumeValueOrDie();
+              assignment_.GetUniqueSlice(b, index).value();
           if (slice_a != slice_b) {
             return InternalError(
                 "instruction %s %s does not share slice with "
@@ -2527,7 +2534,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
                 a->ToString(), slice_a.ToString(), b->ToString(),
                 slice_b.ToString());
           }
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         };
         TF_RETURN_IF_ERROR(check(xla_while, xla_while->operand(0), index));
         TF_RETURN_IF_ERROR(check(
@@ -2538,7 +2545,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
                   index));
         TF_RETURN_IF_ERROR(check(
             xla_while, xla_while->while_body()->root_instruction(), index));
-        return ::tensorflow::OkStatus();
+        return OkStatus();
       }));
 
   // Set emitted value to that of 'init' with which it shares an allocation.
@@ -2589,7 +2596,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   compute_function_->function()->getBasicBlockList().push_back(exit_bb);
   b_.SetInsertPoint(exit_bb);
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
@@ -2790,7 +2797,7 @@ Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
       EmitFastConcatenate(concatenate, operands, &failure_reason));
   if (successful) {
     VLOG(1) << "Emitted fast concatenate for " << concatenate->ToString();
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
 
   VLOG(1) << "Could not emit fast concatenate for " << concatenate->ToString()
@@ -2846,7 +2853,7 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
                    IrName(conditional, "_false"));
 
     SetToFirstInsertPoint(if_data.after_block, &b_);
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   }
   // We emit a switch statement to LLVM:
   // switch (branch_index) {
@@ -2905,21 +2912,21 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   }
 
   SetToFirstInsertPoint(after_block, &b_);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
   TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   // AddDedendency just forwards its zero-th operand.
   emitted_value_[add_dependency] =
       GetEmittedValueFor(add_dependency->operand(0));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::HandleRng(HloInstruction* rng) {
@@ -2944,7 +2951,7 @@ Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
   store->setAlignment(llvm::Align(IrEmitter::MinimumAlignmentForPrimitiveType(
       rng_state->shape().element_type())));
 
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::FinishVisit(HloInstruction* root) {
@@ -2972,7 +2979,7 @@ Status IrEmitter::FinishVisit(HloInstruction* root) {
   // computations since it includes cycles spent in computations invoked by
   // While, Call etc.
   record_complete_computation(GetProfileCounterFor(*root->parent()));
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 template <typename T>
@@ -3138,7 +3145,7 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
@@ -3150,7 +3157,7 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
       (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 llvm_ir::IrArray IrEmitter::GetIrArrayFor(const HloInstruction* hlo) {
@@ -3310,7 +3317,7 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   llvm::Value* addr = EmitBufferPointer(slice, target_shape);
   addr->setName(IrName(op));
   emitted_value_[op] = addr;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitTargetElementLoop(
@@ -3369,7 +3376,7 @@ Status IrEmitter::EmitTargetElementLoop(
               .EmitLoop(IrName(target_op)));
     }
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::EmitMemcpy(const HloInstruction& source,
@@ -3380,7 +3387,7 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   // TODO(b/63762267): Be more aggressive about specifying alignment.
   MemCpy(destination_value, /*DstAlign=*/llvm::Align(1), source_value,
          /*SrcAlign=*/llvm::Align(1), source_size);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::ElementTypesSameAndSupported(
@@ -3399,7 +3406,7 @@ Status IrEmitter::ElementTypesSameAndSupported(
                          PrimitiveType_Name(primitive_type),
                          HloOpcodeString(instruction.opcode()));
   }
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {

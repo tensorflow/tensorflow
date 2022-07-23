@@ -36,13 +36,13 @@ namespace {
 // TODO(b/231360416): replace this list with "supports sparsity" trait?
 static bool canFuseWithSparseConvert(Operation *op) {
   return isa<sparse_tensor::ConvertOp>(op) || isa<AbsOp>(op) ||
-         isa<CeilOp>(op) || isa<ConvertOp>(op) || isa<CosOp>(op) ||
+         isa<CeilOp>(op) || isa<ConvertOp>(op) || isa<CosineOp>(op) ||
          isa<Expm1Op>(op) || isa<FloorOp>(op) || isa<ImagOp>(op) ||
          isa<LogOp>(op) || isa<Log1pOp>(op) || isa<NegOp>(op) ||
          isa<RealOp>(op) || isa<RoundOp>(op) || isa<SignOp>(op) ||
-         isa<SinOp>(op) || isa<SqrtOp>(op) || isa<TanhOp>(op) ||
+         isa<SineOp>(op) || isa<SqrtOp>(op) || isa<TanhOp>(op) ||
          isa<AddOp>(op) || isa<DivOp>(op) || isa<MulOp>(op) || isa<RemOp>(op) ||
-         isa<SubOp>(op);
+         isa<TransposeOp>(op) || isa<SubtractOp>(op);
 }
 
 /// Fuses a sparse tensor type from a conversion into a mhlo operation
@@ -61,7 +61,7 @@ struct SparseConvertConverter
       : OpRewritePattern(context) {}
   LogicalResult matchAndRewrite(sparse_tensor::ConvertOp op,
                                 PatternRewriter &rewriter) const override {
-    if (Operation *def = op.source().getDefiningOp()) {
+    if (Operation *def = op.getSource().getDefiningOp()) {
       if (def->hasOneUse() && canFuseWithSparseConvert(def)) {
         def->getResult(0).setType(op->getResultTypes()[0]);
         rewriter.replaceOp(op, def->getResult(0));
@@ -76,7 +76,7 @@ struct SparseRewritingPass
     : public SparseRewritingPassBase<SparseRewritingPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    PopulateSparseRewritingPatterns(&patterns, &getContext());
+    populateSparseRewritingPatterns(&patterns, &getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();
@@ -86,7 +86,7 @@ struct SparseRewritingPass
 
 }  // namespace
 
-void PopulateSparseRewritingPatterns(RewritePatternSet *patterns,
+void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx) {
   patterns->add<SparseConvertConverter>(ctx);
 }

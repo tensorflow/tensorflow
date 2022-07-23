@@ -85,7 +85,7 @@ void XlaDebugInfoManager::StopTracing(
       // In real world, hlo_module and buffer_assignment will always be
       // non-nullptr. Due to the inconvenience of creation of buffer_assignment
       // object in test, we set it to nullptr and guard this for it.
-      auto hlo_proto = absl::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
+      auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
       if (m.buffer_assignment != nullptr) {
         *hlo_proto->mutable_buffer_assignment() = *m.buffer_assignment;
       }

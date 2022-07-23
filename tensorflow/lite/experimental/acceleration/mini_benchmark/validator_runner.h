@@ -109,9 +109,7 @@ class ValidatorRunner {
       int64_t timeout_us = kDefaultEventTimeoutUs);
 
  private:
-  std::string model_path_;
-  int model_fd_ = -1;
-  size_t model_offset_, model_size_;
+  std::string fd_or_model_path_;
   std::string storage_path_;
   std::string data_directory_path_;
   FlatbufferStorage<BenchmarkEvent> storage_;

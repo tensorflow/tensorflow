@@ -339,6 +339,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
     ~ScopedHold();
     ScopedHold(ScopedHold&& other);
+    ScopedHold& operator=(ScopedHold&& other);
 
     ScopedHold(const ScopedHold&) = delete;
     ScopedHold& operator=(const ScopedHold&) = delete;
@@ -351,7 +352,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
         case kUninitialized:
           return InvalidArgument("Buffer has not been initialized");
         case kValid:
-          return ::tensorflow::OkStatus();
+          return OkStatus();
         case kMoved:
           return InvalidArgument("Buffer has been moved.");
         case kConverted:
@@ -390,22 +391,8 @@ class TfrtCpuBuffer final : public PjRtBuffer {
     friend class TfrtCpuClient;
     friend class TfrtCpuBuffer;
 
-    // Helper struct that makes it possible to move a ScopedHold through a
-    // closure.
-    using ForClosure = std::tuple<TfrtCpuBuffer*, Type, State, Status,
-                                  std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>;
-
     ScopedHold(TfrtCpuBuffer* parent, Type type)
         : parent_(parent), type_(type), state_(kUninitialized) {}
-    explicit ScopedHold(const ForClosure& closure_helper)
-        : parent_(std::get<0>(closure_helper)),
-          type_(std::get<1>(closure_helper)),
-          state_(std::get<2>(closure_helper)),
-          status_(std::get<3>(closure_helper)),
-          buffer_(std::get<4>(closure_helper)) {
-      // Check the buffer is not in an error state.
-      CHECK(status_.ok() && buffer_ != nullptr);
-    }
 
     // Sets buffer state.
     void SetState(State state) { state_ = state; }
@@ -413,14 +400,9 @@ class TfrtCpuBuffer final : public PjRtBuffer {
     // Sets buffer_ and status_. Called by parent_ to initialize the hold.
     void Acquire(
         StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or);
-    // Releases the contents of *this, so *this can subsequently be
-    // deleted without releasing the parent's hold. Should be passed to the
-    // appropriate constructor of another ScopedHold, e.g., when a hold must be
-    // passed through a closure that is incompatible with std::move.
-    ForClosure ToClosure();
 
-    TfrtCpuBuffer* const parent_;
-    const Type type_;
+    TfrtCpuBuffer* parent_;
+    Type type_;
 
     // There is an invariant that if ok() then buffer_ != nullptr.
     State state_;

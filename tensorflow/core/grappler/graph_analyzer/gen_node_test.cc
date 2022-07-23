@@ -76,7 +76,7 @@ TEST(GenNodeTest, Port) {
 TEST(GenNodeTest, ParseNodeNoInputs) {
   GenNodeMap map;
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   auto gn1 = map["node1"].get();
   ASSERT_THAT(gn1->ParseInputs(&map), Eq(OkStatus()));
@@ -88,15 +88,15 @@ TEST(GenNodeTest, ParseNodeWithControl) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeSub("node3", "node1", "node2");
   node3.add_input("^node1");  // The control link.
   node3.add_input("^node2");  // The control link.
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
@@ -134,15 +134,15 @@ TEST(GenNodeTest, ParseNodeCommutative) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   // TODO(babkin): grappler::IsCommutative() should return true for Add but
   // apparently doesn't. So use Mul in the meantime.
   NodeDef node3 = MakeNodeMul("node3", "node1", "node2");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
@@ -169,13 +169,13 @@ TEST(GenNodeTest, ParseNodeMultiInputCommutative) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeAddN("node3", "node1", "node2");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
@@ -205,13 +205,13 @@ TEST(GenNodeTest, ParseNodeMultiInputNotCommutative) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeShapeN("node3", "node1", "node2");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
@@ -239,13 +239,13 @@ TEST(GenNodeTest, ParseNodeMultiInputList) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeIdentityN("node3", "node1", "node2");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
@@ -273,20 +273,20 @@ TEST(GenNodeTest, ParseNodeMultiMultiInput) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeConst("node3");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   NodeDef node4 = MakeNodeConst("node4");
-  map["node4"] = absl::make_unique<GenNode>(&node4);
+  map["node4"] = std::make_unique<GenNode>(&node4);
 
   NodeDef node5 =
       MakeNodeQuantizedConcat("node5", "node1", "node2", "node3", "node4");
-  map["node5"] = absl::make_unique<GenNode>(&node5);
+  map["node5"] = std::make_unique<GenNode>(&node5);
 
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
@@ -325,16 +325,16 @@ TEST(GenNodeTest, ParseNodeMultiOutput) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeBroadcastGradientArgs("node3", "node1", "node2");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
 
   NodeDef node4 = MakeNodeSub("node4", "node3:1", "node3:0");
-  map["node4"] = absl::make_unique<GenNode>(&node4);
+  map["node4"] = std::make_unique<GenNode>(&node4);
 
   auto gn4 = map["node4"].get();
   ASSERT_THAT(gn4->ParseInputs(&map), Eq(OkStatus()));
@@ -352,7 +352,7 @@ TEST(GenNodeTest, ParseNodeUndefinedOp) {
   node1.set_name("node1");
   node1.set_op("Zzzx");
 
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
 
   const OpDef* opdef;
   Status nested_error = OpRegistry::Global()->LookUpOpDef("Zzzx", &opdef);
@@ -369,7 +369,7 @@ TEST(GenNodeTest, ParseNodeUnexpectedInputs) {
   GenNodeMap map;
 
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
   node1.add_input("node1");
 
   auto gn1 = map["node1"].get();
@@ -380,10 +380,10 @@ TEST(GenNodeTest, ParseNodeUnexpectedInputs) {
                         "'Const' defines only 0 inputs.")));
 
   NodeDef node2 = MakeNodeConst("node2");
-  map["node2"] = absl::make_unique<GenNode>(&node2);
+  map["node2"] = std::make_unique<GenNode>(&node2);
 
   NodeDef node3 = MakeNodeSub("node3", "node1", "node2");
-  map["node3"] = absl::make_unique<GenNode>(&node3);
+  map["node3"] = std::make_unique<GenNode>(&node3);
   node3.add_input("node1");
 
   auto gn3 = map["node3"].get();
@@ -399,7 +399,7 @@ TEST(GenNodeTest, ParseNodeUnexpectedInputs) {
 TEST(GenNodeTest, ParseNodeControlInputsAlwaysOk) {
   GenNodeMap map;
   NodeDef node1 = MakeNodeConst("node1");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
   node1.add_input("^node1");
   auto gn1 = map["node1"].get();
   ASSERT_THAT(gn1->ParseInputs(&map), Eq(OkStatus()));
@@ -414,7 +414,7 @@ TEST(GenNodeTest, ParseNodeControlInputsAlwaysOk) {
 TEST(GenNodeTest, ParseNodeInvalidInput) {
   GenNodeMap map;
   NodeDef node1 = MakeNodeAddN("node1", "node2", "node3");
-  map["node1"] = absl::make_unique<GenNode>(&node1);
+  map["node1"] = std::make_unique<GenNode>(&node1);
   node1.add_input("node1");
   auto gn1 = map["node1"].get();
   ASSERT_THAT(

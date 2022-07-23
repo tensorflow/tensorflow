@@ -47,7 +47,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, strings::StrCat(prefix, "::Random")});
   }
 
@@ -57,8 +57,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
     // These splits aren't actually used during iteration.
     // TODO(aaudibert): Avoid sending dummy splits over RPC when using tf.data
     // service with RandomDataset.
-    split_providers->push_back(
-        absl::make_unique<IndexSplitProvider>(kint64max));
+    split_providers->push_back(std::make_unique<IndexSplitProvider>(kint64max));
     return OkStatus();
   }
 

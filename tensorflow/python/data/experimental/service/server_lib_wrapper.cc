@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include "Python.h"
+#include "absl/strings/str_cat.h"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/detail/common.h"
@@ -110,7 +111,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         Py_BEGIN_ALLOW_THREADS;
         status = tensorflow::data::grpc_util::Retry(
             [&]() {
-              return client.GetDataServiceMetadata(dataset_id, metadata);
+              return client.GetDataServiceMetadata(absl::StrCat(dataset_id),
+                                                   metadata);
             },
             /*description=*/
             tensorflow::strings::StrCat(

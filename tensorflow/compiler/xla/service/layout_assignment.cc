@@ -28,7 +28,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -142,7 +141,7 @@ PointsToSet::BufferSet* LayoutAssignment::GetBufferSet(
   }
   auto& buffer_set =
       buffer_sets_cache_
-          .emplace(instruction, absl::make_unique<PointsToSet::BufferSet>())
+          .emplace(instruction, std::make_unique<PointsToSet::BufferSet>())
           .first->second;
   const auto& points_to_set = points_to_analysis_->GetPointsToSet(instruction);
   points_to_set.ForEachElement(
@@ -966,6 +965,21 @@ Layout GetBroadcastLayoutFromOutput(const Layout& layout,
   return shape.layout();
 }
 
+Status CheckBroadcastLayout(HloInstruction* broadcast) {
+  CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
+  Shape shape = ShapeUtil::FilterDimensions(
+      [&](int64_t dim) {
+        return absl::c_linear_search(broadcast->dimensions(), dim);
+      },
+      broadcast->shape());
+  if (!LayoutsInShapesEqual(shape, broadcast->operand(0)->shape())) {
+    return InternalError(
+        "broadcast instruction %s does not match the layout of its operand %s",
+        broadcast->ToString(), broadcast->operand(0)->ToString());
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
 StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
@@ -1167,6 +1181,9 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               FindOrDie(computation_layouts_, instruction->parent())
                   ->computation_layout()));
           break;
+        case HloOpcode::kBroadcast:
+          TF_RETURN_IF_ERROR(CheckBroadcastLayout(instruction));
+          break;
         case HloOpcode::kConstant:
           TF_RETURN_IF_ERROR(CheckConstantLayout(instruction));
           break;
@@ -1246,7 +1263,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // the result also has the following benefits:
     // 1) the elementwise operation can reuse its operand's buffer, and
     // 2) the input and output elements can reuse the same linear index.
-    return absl::make_unique<Layout>(output_layout);
+    return std::make_unique<Layout>(output_layout);
   }
 
   if (instruction->opcode() == HloOpcode::kReshape) {
@@ -1275,7 +1292,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       auto operand_layout = aligned_operand_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(operand_layout, operand_shape));
-      return absl::make_unique<Layout>(operand_layout);
+      return std::make_unique<Layout>(operand_layout);
     }
   }
 
@@ -1291,7 +1308,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
-    return absl::make_unique<Layout>(operand_layout);
+    return std::make_unique<Layout>(operand_layout);
   }
 
   return nullptr;
@@ -1302,11 +1319,7 @@ static Layout GetReduceLayoutFromOperand(const Layout& operand_layout,
   CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
   Shape operand_shape = hlo->operand(0)->shape();
   *operand_shape.mutable_layout() = operand_layout;
-  operand_shape = ShapeUtil::FilterDimensions(
-      [&](int64_t dim) {
-        return !absl::c_linear_search(hlo->dimensions(), dim);
-      },
-      operand_shape);
+  operand_shape = ShapeUtil::DeleteDimensions(hlo->dimensions(), operand_shape);
   return operand_shape.layout();
 }
 
@@ -1318,7 +1331,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   // Enforce standard layout on variadic reduction output to avoid having two
   // inconsistent layouts.
   if (user->opcode() == HloOpcode::kReduce && user->shape().IsTuple()) {
-    return absl::make_unique<Layout>(
+    return std::make_unique<Layout>(
         GetReduceLayoutFromOperand(operand_layout, user));
   }
 
@@ -1329,7 +1342,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       operand->shape().rank() == user->shape().rank() &&
       !InstructionCanChangeLayoutInstance(user)) {
     // Assign users the same layout as the operand.
-    return absl::make_unique<Layout>(operand_layout);
+    return std::make_unique<Layout>(operand_layout);
   }
 
   if (user->opcode() == HloOpcode::kReshape) {
@@ -1356,7 +1369,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       auto user_layout = aligned_user_shape.value().layout();
       TF_CHECK_OK(
           LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
-      return absl::make_unique<Layout>(user_layout);
+      return std::make_unique<Layout>(user_layout);
     }
   }
 
@@ -1372,7 +1385,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     }
     Layout user_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
-    return absl::make_unique<Layout>(user_layout);
+    return std::make_unique<Layout>(user_layout);
   }
 
   return nullptr;
@@ -1497,7 +1510,7 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
       return true;
     case HloOpcode::kReshape:
       return hlo.operand(0)->shape().rank() == 1 ||
-             std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
+             hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions().has_value();
     case HloOpcode::kScatter:
     case HloOpcode::kTranspose:
       return true;

@@ -38,7 +38,7 @@ class CallOpTest : public ClientLibraryTestBase {
     Parameter(&builder, 0, r0f32_, "x");
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR1S0F32AdditionComputation() {
@@ -48,7 +48,7 @@ class CallOpTest : public ClientLibraryTestBase {
     Add(x, y);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR1S2F32AdditionComputation() {
@@ -58,7 +58,7 @@ class CallOpTest : public ClientLibraryTestBase {
     Add(x, y);
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   XlaComputation CreateR0F32TupleComputation() {
@@ -66,7 +66,7 @@ class CallOpTest : public ClientLibraryTestBase {
     Tuple(&builder, {Parameter(&builder, 0, r0f32_, "x")});
     auto build_status = builder.Build();
     EXPECT_IS_OK(build_status.status());
-    return build_status.ConsumeValueOrDie();
+    return std::move(build_status).value();
   }
 
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});

@@ -38,12 +38,13 @@ add_mlir_library(MLIRBufferTransforms
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass
-  MLIRShape
+  MLIRShapeDialect
   MLIRTransforms
 )
 
 add_mlir_library(MLIRHLOGPUTransforms
   gpu_kernel_lowering_passes.cc
+  gpu_fusion_rewrite.cc
   hlo_to_gpu_pipeline.cc
 
   DEPENDS
@@ -57,6 +58,19 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRHLOAnalysis
   MLIRIR
   MLIRPass
-  MLIRShape
+  MLIRShapeDialect
+  MLIRSCFTransforms
   MLIRTransforms
+)
+
+add_mlir_library(MLIRHLOGmlStPipeline
+  gml_st_pipeline.cc
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  GmlStPasses
+  MLIRLinalgTransforms
+  MLIRPass
 )

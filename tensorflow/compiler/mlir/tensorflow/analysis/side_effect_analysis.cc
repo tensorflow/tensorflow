@@ -580,11 +580,32 @@ SideEffectAnalysisInfo::GetConflictingIds(ResourceId resource_id,
 
 void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
   VLOG(2) << "Processing op " << mlir::debugString(*op);
-  SideEffectsByResourceId side_effects_by_resource_id =
-      CollectSideEffectsByResourceId(
-          op,
-          op_side_effect_collector_.GetSideEffectsForOp(op),
-          alias_analysis_);
+  SideEffectsByResourceId side_effects_by_resource_id;
+  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
+    // For islands, collect effects for all ops that are wrapped by the island.
+    // This is important for two reasons:
+    // 1) Islands are only side-effecting if some wrapped op is side-effecting.
+    // 2) Resource variables that are used in the island are not exposed in the
+    // island's interface.
+    // Without this special handling, we would not handle such situations
+    // correctly.
+    for (Operation& wrapped_op : island_op.GetBody().without_terminator()) {
+      SideEffectsByResourceId wrapped_side_effects =
+        CollectSideEffectsByResourceId(
+            &wrapped_op,
+            op_side_effect_collector_.GetSideEffectsForOp(&wrapped_op),
+            alias_analysis_);
+      for (const auto& [resource_id, side_effect] : wrapped_side_effects) {
+        UpdateSideEffectsByResourceId(side_effect, side_effects_by_resource_id);
+      }
+    }
+  } else {
+    side_effects_by_resource_id =
+        CollectSideEffectsByResourceId(
+            op,
+            op_side_effect_collector_.GetSideEffectsForOp(op),
+            alias_analysis_);
+  }
 
   // If the side-effecting op is a control source (i.e. it has no control
   // predecessors), then `control_predecessors_` won't be updated below.

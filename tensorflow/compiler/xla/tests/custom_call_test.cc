@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"

@@ -40,7 +40,8 @@ limitations under the License.
 //   FindPath() is linear in the size of the graph.
 // The current implementation uses O(|V|+|E|) space.
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "absl/types/span.h"
 
 namespace tensorflow {

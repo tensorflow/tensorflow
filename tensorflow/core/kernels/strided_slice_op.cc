@@ -15,7 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#include "tensorflow/core/lib/core/refcount.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -27,6 +26,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
@@ -36,9 +36,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/prefetch.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
@@ -47,8 +50,8 @@ namespace {
 template <typename T>
 struct MemCpyFunctor {
   // Returns true if the copy was made with memcpy, false otherwise.
-  bool Copy(const Tensor& input, const gtl::InlinedVector<int64, 4>& begin,
-            const gtl::InlinedVector<int64, 4>& end, Tensor* result) {
+  bool Copy(const Tensor& input, const gtl::InlinedVector<int64_t, 4>& begin,
+            const gtl::InlinedVector<int64_t, 4>& end, Tensor* result) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       auto in = input.tensor<T, 2>();
       auto output = result->tensor<T, 2>();
@@ -293,7 +296,8 @@ class StridedSliceAssignOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    TensorShape processing_shape, final_shape;
+    TensorShape processing_shape;  // Without reshaping input.
+    TensorShape final_shape;       // After reshaping input.
     bool is_identity = true;
     bool slice_dim0 = true;
     bool is_simple_slice = true;
@@ -336,39 +340,53 @@ class StridedSliceAssignOp : public OpKernel {
       }
     }
 
+    StridedSliceShapeSpec shape_spec;
     OP_REQUIRES_OK(
         context, ValidateStridedSliceOp(
                      &context->input(1), &context->input(2), context->input(3),
                      old_lhs->shape(), begin_mask, end_mask, ellipsis_mask,
                      new_axis_mask, shrink_axis_mask, &processing_shape,
                      &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
-                     &begin, &end, &strides));
+                     &begin, &end, &strides, &shape_spec));
 
-    if (processing_shape.num_elements()) {
+    if (processing_shape.num_elements() > 0) {
       const Tensor& input = context->input(4);
       TensorShape input_shape = input.shape();
       TensorShape original_shape = old_lhs->shape();
-      // TODO(aselle): This check is too strong, we only should need
-      // input_shape to be broadcastable to final_shape
-      OP_REQUIRES(
-          context, final_shape == input_shape,
-          errors::Unimplemented(
-              "sliced l-value shape ", final_shape.DebugString(),
-              " does not match r-value shape ", input_shape.DebugString(),
-              ". Automatic broadcasting not ", "yet implemented."));
       const int processing_dims = processing_shape.dims();
+
+      StridedSliceAssignBCast bcast(input_shape.dim_sizes(),
+                                    final_shape.dim_sizes());
+      OP_REQUIRES(context, bcast.IsValid(),
+                  errors::InvalidArgument("Cannot broadcast input shape ",
+                                          input_shape.DebugString(),
+                                          " into final shape ",
+                                          final_shape.DebugString()));
+
+      // The assignment RHS and broadcast spec need to be remapped to
+      // the same number of dimensions as the unstrided LHS (i.e. processing
+      // dimensions).  This adds back any shrink axes and removes new axes.
+      bool remap_valid = bcast.RemapDimensions(
+          processing_dims, shape_spec.output_to_processing_mapping);
+      // Sanity check.  The following should never fail.
+      DCHECK(remap_valid) << "Failed to remap output shape "
+                          << final_shape.DebugString()
+                          << " to processing shape "
+                          << processing_shape.DebugString();
 
       // 0-dimensional case implies the left and right are exactly the same
       // scalar shape
 
-// Handle general dimensions
-#define HANDLE_DIM(NDIM)                                                       \
-  if (processing_dims == NDIM) {                                               \
-    HandleStridedSliceAssignCase<Device, T, NDIM>()(context, begin, end,       \
-                                                    strides, processing_shape, \
-                                                    is_simple_slice, old_lhs); \
-    return;                                                                    \
-  }
+// Handle general dimensions.  The do{}while(false) construct is a common
+// approach to avoid pedantic extra semicolon warnings.
+#define HANDLE_DIM(NDIM)                                 \
+  do {                                                   \
+    if (processing_dims == NDIM) {                       \
+      HandleStridedSliceAssignCase<Device, T, NDIM>()(   \
+          context, begin, end, strides, bcast, old_lhs); \
+      return;                                            \
+    }                                                    \
+  } while (false)
       HANDLE_DIM(0);
       HANDLE_DIM(1);
       HANDLE_DIM(2);

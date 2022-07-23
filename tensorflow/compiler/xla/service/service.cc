@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -56,7 +55,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -302,7 +300,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 
   CHECK_EQ(module_protos.size(), module_configs.size());
   auto module_group =
-      absl::make_unique<HloModuleGroup>(module_protos[0]->name());
+      std::make_unique<HloModuleGroup>(module_protos[0]->name());
   for (int64_t i = 0, end = module_protos.size(); i < end; ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
@@ -348,7 +346,7 @@ Service::BuildAotResults(
 
   CHECK_EQ(module_protos.size(), module_configs.size());
   auto module_group =
-      absl::make_unique<HloModuleGroup>(module_protos[0]->name());
+      std::make_unique<HloModuleGroup>(module_protos[0]->name());
   for (int64_t i = 0, end = module_protos.size(); i < end; ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
@@ -412,8 +410,7 @@ Service::ExecuteParallelAndRegisterResult(
       streams.push_back(std::move(stream));
 
       if (replica == 0 && profile != nullptr) {
-        timers.push_back(
-            absl::make_unique<se::Timer>(streams.back()->parent()));
+        timers.push_back(std::make_unique<se::Timer>(streams.back()->parent()));
         streams.back()
             ->InitTimer(timers.back().get())
             .ThenStartTimer(timers.back().get());

@@ -39,10 +39,6 @@ tf_class {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
-  member {
-    name: "variables"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'learning_rate\', \'weight_decay\', \'beta_1\', \'beta_2\', \'epsilon\', \'amsgrad\', \'clipnorm\', \'clipvalue\', \'global_clipnorm\', \'use_ema\', \'ema_momentum\', \'ema_overwrite_frequency\', \'jit_compile\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'0.001\', \'0.004\', \'0.9\', \'0.999\', \'1e-07\', \'False\', \'None\', \'None\', \'None\', \'False\', \'0.99\', \'None\', \'True\', \'AdamW\'], "
@@ -65,7 +61,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'var_list\', \'exclude_from_weight_decay\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "compute_gradients"
@@ -73,7 +69,7 @@ tf_class {
   }
   member_method {
     name: "exclude_from_weight_decay"
-    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'var_list\', \'var_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "finalize_variable_values"
@@ -94,6 +90,10 @@ tf_class {
   member_method {
     name: "update_step"
     argspec: "args=[\'self\', \'gradient\', \'variable\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_name_scope"

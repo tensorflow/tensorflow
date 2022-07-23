@@ -38,10 +38,10 @@ constexpr absl::string_view kTPUEmbeddingOps[] = {
     "EnqueueTPUEmbeddingArbitraryTensorBatch"};
 
 constexpr absl::string_view kTPURecvOps[] = {"RecvTPUEmbeddingActivations",
-                                             "_RecvTPUEmbeddingActivations"};
+                                             "XlaRecvTPUEmbeddingActivations"};
 
 constexpr absl::string_view kTPUGradientSendOps[] = {
-  "SendTPUEmbeddingGradients", "_SendTPUEmbeddingGradients"};
+    "SendTPUEmbeddingGradients", "XlaSendTPUEmbeddingGradients"};
 
 }  // namespace
 

@@ -146,7 +146,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   };
 
   if (launch_dimensions != nullptr) {

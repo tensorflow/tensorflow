@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,7 +44,7 @@ class InferenceDiff : public TaskExecutor {
   std::vector<Flag> GetFlags() final;
 
   // If the run is successful, the latest metrics will be returned.
-  absl::optional<EvaluationStageMetrics> RunImpl() final;
+  std::optional<EvaluationStageMetrics> RunImpl() final;
 
  private:
   void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
@@ -76,7 +77,7 @@ std::vector<Flag> InferenceDiff::GetFlags() {
   return flag_list;
 }
 
-absl::optional<EvaluationStageMetrics> InferenceDiff::RunImpl() {
+std::optional<EvaluationStageMetrics> InferenceDiff::RunImpl() {
   // Initialize evaluation stage.
   EvaluationStageConfig eval_config;
   eval_config.set_name("inference_profiling");
@@ -91,20 +92,20 @@ absl::optional<EvaluationStageMetrics> InferenceDiff::RunImpl() {
   if (!delegate_.empty() &&
       inference_params->delegate() == TfliteInferenceParams::NONE) {
     TFLITE_LOG(WARN) << "Unsupported TFLite delegate: " << delegate_;
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   InferenceProfilerStage eval(eval_config);
-  if (eval.Init(&delegate_providers_) != kTfLiteOk) return absl::nullopt;
+  if (eval.Init(&delegate_providers_) != kTfLiteOk) return std::nullopt;
 
   // Run inference & check diff for specified number of runs.
   for (int i = 0; i < num_runs_; ++i) {
-    if (eval.Run() != kTfLiteOk) return absl::nullopt;
+    if (eval.Run() != kTfLiteOk) return std::nullopt;
   }
 
   const auto latest_metrics = eval.LatestMetrics();
   OutputResult(latest_metrics);
-  return absl::make_optional(latest_metrics);
+  return std::make_optional(latest_metrics);
 }
 
 void InferenceDiff::OutputResult(

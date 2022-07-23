@@ -36,19 +36,19 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
   LogicalResult matchAndRewrite(arith::IndexCastOp op,
                                 PatternRewriter &rewriter) const final {
     // Only rank 1 is supported for now.
-    auto result_ty = op.getType().dyn_cast<ShapedType>();
-    if (!result_ty || result_ty.getRank() != 1) return failure();
+    auto resultTy = op.getType().dyn_cast<ShapedType>();
+    if (!resultTy || resultTy.getRank() != 1) return failure();
 
     rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
         op, op.getType(),
-        result_ty.hasStaticShape() ? ValueRange{}
-                                   : ValueRange{rewriter.create<tensor::DimOp>(
-                                         op.getLoc(), op.getIn(), 0)},
+        resultTy.hasStaticShape() ? ValueRange{}
+                                  : ValueRange{rewriter.create<tensor::DimOp>(
+                                        op.getLoc(), op.getIn(), 0)},
         [&](OpBuilder &b, Location loc, ValueRange args) {
           Value dim = args.front();
           Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), dim);
           Value casted = b.create<arith::IndexCastOp>(
-              loc, result_ty.getElementType(), extent);
+              loc, resultTy.getElementType(), extent);
           b.create<tensor::YieldOp>(loc, casted);
         });
     return success();
@@ -71,7 +71,7 @@ struct LowerIndexCastPass : public LowerIndexCastPassBase<LowerIndexCastPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass() {
   return std::make_unique<LowerIndexCastPass>();
 }
 

@@ -16,29 +16,39 @@ limitations under the License.
 #ifndef MLIR_HLO_TRANSFORMS_GPU_PASSES_H
 #define MLIR_HLO_TRANSFORMS_GPU_PASSES_H
 
-#include "mlir/Pass/Pass.h"
-
 #include <memory>
 
+#include "mlir/Pass/Pass.h"
+
 namespace mlir {
+class ModuleOp;
 class PassManager;
 namespace gpu {
 class GPUModuleOp;
 }  // namespace gpu
 
+// Create a pass which lowers a subset of lmhlo.fusion ops to gpu.launch_func
+// plus a gpu.module containing the kernel.
+std::unique_ptr<OperationPass<mlir::ModuleOp>> createGpuFusionRewritePass();
+
+// Returns array of bool attributes. The value of each element specifies whether
+// the corresponding operand is written. This attribute is attached to
+// 'gpu.launc_func' ops during the fusion rewrite pass above.
+ArrayAttr getWrittenOperandsAttribute(Operation* op);
+
 /// Pass that transforms gpu modules in standard dialect to NNVM.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-CreateGpuKernelToNvvmPass();
+createGpuKernelToNvvmPass();
 
 /// Pass that transforms gpu modules in standard dialect to ROCDL.
 std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
-CreateGpuKernelToRocdlPass();
+createGpuKernelToRocdlPass();
 
 /// Creates a pipeline that converts operations in HLO dialect to GPU kernels
 /// written in a combination of LLVM and NVVM dialects, and appends the pipeline
 /// to `pm`. `tileSizes` and `unrollFactors` are used to control loop tiling
-/// in `CreateTileLoopsPass`.
-void createHloToGpuPipeline(OpPassManager &pm, ArrayRef<int64_t> tileSizes,
+/// in `createTileLoopsPass`.
+void createHloToGpuPipeline(OpPassManager& pm, ArrayRef<int64_t> tileSizes,
                             ArrayRef<int64_t> unrollFactors);
 
 }  // namespace mlir

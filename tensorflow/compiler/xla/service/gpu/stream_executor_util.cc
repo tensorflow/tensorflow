@@ -15,17 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
+#include <memory>
 #include <random>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/determinism.h"
@@ -179,7 +178,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX,
                                             FilterLayout::kOutputInputYX,
                                             DataLayout::kBatchDepthYX)
-          .ConsumeValueOrDie();
+          .value();
 
   // NCHW4 and NCHW32 have the same Layout; we disambiguate them below.
   Layout nchw_vect_input, nchw_vect_filter, nchw_vect_output;
@@ -187,14 +186,14 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchDepthYX4,
                                             FilterLayout::kOutputInputYX4,
                                             DataLayout::kBatchDepthYX4)
-          .ConsumeValueOrDie();
+          .value();
 
   Layout nhwc_input, nhwc_filter, nhwc_output;
   std::tie(nhwc_input, nhwc_filter, nhwc_output) =
       StreamExecutorConvLayoutsToXlaLayouts(dnums, DataLayout::kBatchYXDepth,
                                             FilterLayout::kOutputYXInput,
                                             DataLayout::kBatchYXDepth)
-          .ConsumeValueOrDie();
+          .value();
 
   DataLayout input_layout;
   if (LayoutUtil::Equal(input.layout(), nchw_input)) {
@@ -340,7 +339,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
         reinterpret_cast<const char*>(cubin_data.data()), kernel_name);
   }
 
-  auto kernel_base = absl::make_unique<se::KernelBase>(stream_exec);
+  auto kernel_base = std::make_unique<se::KernelBase>(stream_exec);
   TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
 }
@@ -348,7 +347,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 template <int n>
 static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
     absl::Span<const se::DeviceMemoryBase> args) {
-  auto kernel_args = absl::make_unique<se::KernelArgsArray<n>>();
+  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
@@ -463,6 +462,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
     case xla::F64:
     case xla::C128:
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
+    case xla::PRED:
+      // Using S8 for PRED initialization, as vector<bool> has different
+      // semantics and cannot be used as a buffer.
     case xla::S8:
       return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
     case xla::S32:

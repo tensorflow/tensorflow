@@ -22,27 +22,25 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-#include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
-
-typedef struct cublasContext *cublasHandle_t;
 
 namespace stream_executor {
 
 class Stream;
 
 namespace gpu {
+class GpuExecutor;
+}  // namespace gpu
+
+namespace cuda {
 
 // Opaque and unique identifier for the cuBLAS plugin.
 extern const PluginId kCuBlasPlugin;
 
-class GpuExecutor;
 
 // BLAS plugin for CUDA platform via cuBLAS library.
 //
@@ -56,7 +54,7 @@ class GpuExecutor;
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(GpuExecutor *parent);
+  explicit CUDABlas(gpu::GpuExecutor *parent);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -65,6 +63,8 @@ class CUDABlas : public blas::BlasSupport {
   ~CUDABlas() override;
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
+
+  BlasLt &blas_lt() { return blas_lt_; }
 
  private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -132,41 +132,22 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
-  // Helper function for implementing DoBlasLtMatmul.
-  bool DoBlasLtMatmulInternal(Stream *stream, bool err_on_failure,
-                              const blas::IBlasLtMatmulPlan *plan,
-                              const HostOrDeviceScalar<void> &alpha,
-                              DeviceMemoryBase a, DeviceMemoryBase b,
-                              const HostOrDeviceScalar<void> &beta,
-                              DeviceMemoryBase c, DeviceMemoryBase d,
-                              ScratchAllocator *scratch_allocator,
-                              const blas::IBlasLtMatmulAlgorithm *algorithm,
-                              DeviceMemoryBase bias);
-
-  // Helper function for implementing GetBlasLtMatmulAlgorithms.
-  port::StatusOr<std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>>
-  GetBlasLtMatmulAlgorithmsInternal(const blas::IBlasLtMatmulPlan *plan,
-                                    size_t max_workspace_size,
-                                    int max_algorithm_count,
-                                    bool for_remainder_batch = false);
-
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
 
   // GpuExecutor which instantiated this CUDABlas.
   // Immutable post-initialization.
-  GpuExecutor *parent_;
+  gpu::GpuExecutor *parent_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
-  // cuBLASLt library handle on the device.
-  cublasLtHandle_t blas_lt_ ABSL_GUARDED_BY(mu_);
+  BlasLt blas_lt_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };
 
-}  // namespace gpu
+}  // namespace cuda
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_

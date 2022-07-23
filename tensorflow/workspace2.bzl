@@ -134,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "47ada52e5f3efc475f97e61954e8c62d378457fe0cffa210061952891e10b33c",
-        strip_prefix = "XNNPACK-da533e0114f2bf730f17853ae10556d84a3d1e89",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/da533e0114f2bf730f17853ae10556d84a3d1e89.zip"),
+        sha256 = "eb62d7fbd70994e8bb5f9cbfa433ab76a6c587f2687f07c6f4a54908192b8ee8",
+        strip_prefix = "XNNPACK-a33b227047def29b79853ef688b6dda6c6fc5386",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/a33b227047def29b79853ef688b6dda6c6fc5386.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -482,10 +482,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "93fb2cd4b880656b4e8589c912a9fd092750166d555166370247f09d18f5d0c0",
-        strip_prefix = "curl-7.83.1",
+        sha256 = "3c6893d38d054d4e378267166858698899e9d87258e8ff1419d020c395384535",
+        strip_prefix = "curl-7.84.0",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.83.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.84.0.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -584,9 +584,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "3ae89ddb2956fff081e406a94ff54ae5e52359f5d645ce977c7eba09b3b782e6",
-        strip_prefix = "nccl-2.8.3-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.8.3-1.tar.gz"),
+        sha256 = "49b4fbfeebf1f62f6ceb69e72504045d8d1b4e7609e3c2477906f3004c7e2d82",
+        strip_prefix = "nccl-2.12.12-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.12.12-1.tar.gz"),
     )
 
     java_import_external(

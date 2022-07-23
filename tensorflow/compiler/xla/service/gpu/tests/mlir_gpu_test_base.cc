@@ -34,16 +34,20 @@ namespace gpu {
 MlirGpuTestBase::MlirGpuTestBase() {
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .ConsumeValueOrDie();
+          .value();
   BackendOptions options;
   options.set_platform(platform);
-  backend_ = xla::Backend::CreateBackend(options).ConsumeValueOrDie();
+  backend_ = xla::Backend::CreateBackend(options).value();
+}
+
+StreamPool::Ptr MlirGpuTestBase::BorrowStream() {
+  return *backend_->BorrowStream(backend_->default_device_ordinal());
 }
 
 StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
     mlir::ModuleOp module, se::Stream* stream) {
   llvm::LLVMContext llvm_context;
-  auto llvm_module = absl::make_unique<llvm::Module>("", llvm_context);
+  auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 #if TENSORFLOW_USE_ROCM
   llvm_module->setTargetTriple(amdgpu::TargetTriple());
   llvm_module->setDataLayout(amdgpu::DataLayout());
@@ -109,10 +113,10 @@ MlirGpuTestBase::RunMlirModuleWithHostBuffers(
     owning_memory.push_back(
         allocator
             ->Allocate(backend_->default_device_ordinal(), host_buffer.size())
-            .ConsumeValueOrDie());
+            .value());
   }
-  auto stream = backend_->BorrowStream(backend_->default_device_ordinal())
-                    .ConsumeValueOrDie();
+  auto stream =
+      backend_->BorrowStream(backend_->default_device_ordinal()).value();
   std::vector<se::DeviceMemoryBase> args;
   for (int i = 0; i < owning_memory.size(); i++) {
     se::DeviceMemoryBase memory(*owning_memory[i]);
@@ -168,8 +172,8 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirText(
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModule(module_text, context));
-  auto stream = backend_->BorrowStream(backend_->default_device_ordinal())
-                    .ConsumeValueOrDie();
+  auto stream =
+      backend_->BorrowStream(backend_->default_device_ordinal()).value();
   return CompileMlirModule(*module, stream.get());
 }
 

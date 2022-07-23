@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def FusionIterface : OpInterface<"FusionIterface"> {
+def FusionInterface : OpInterface<"FusionInterface"> {
   let description = [{
     TBD
   }];
@@ -29,11 +29,10 @@ def FusionIterface : OpInterface<"FusionIterface"> {
       /*desc=*/"TBD",
       /*retTy=*/"::mlir::Value",
       /*methodName=*/"fuse",
-      /*args=*/(ins "::mlir::gml_st::MaterializeOp":$materialize, "OpBuilder&":$builder),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/[{
-        return {};
-      }]>,
+      /*args=*/(ins
+          "::mlir::Location":$loc,
+          "::mlir::Value":$subset,
+          "OpBuilder&":$builder)>,
   ];
 }
 

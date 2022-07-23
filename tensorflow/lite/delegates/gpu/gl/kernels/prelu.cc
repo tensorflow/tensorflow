@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/prelu.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -37,8 +40,8 @@ class PReLULinearAlpha : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const PReLUAttributes&>(ctx.op_attr);
-    auto alpha = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
+    const auto& attr = std::any_cast<const PReLUAttributes&>(ctx.op_attr);
+    auto alpha = std::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
     if (!alpha) {
       return absl::InvalidArgumentError("Alpha is missing");
     }
@@ -86,8 +89,8 @@ class PReLUFull : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const PReLUAttributes&>(ctx.op_attr);
-    auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
+    const auto& attr = std::any_cast<const PReLUAttributes&>(ctx.op_attr);
+    auto alpha = std::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
     if (!alpha) {
       return absl::InvalidArgumentError("Alpha is missing");
     }
@@ -153,8 +156,8 @@ class PReLU : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const PReLUAttributes&>(ctx.op_attr);
-    auto* alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
+    const auto& attr = std::any_cast<const PReLUAttributes&>(ctx.op_attr);
+    auto* alpha = std::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
     return alpha ? full_.GenerateCode(ctx, generated_code)
                  : linear_.GenerateCode(ctx, generated_code);
   }
@@ -167,7 +170,7 @@ class PReLU : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewPReLUNodeShader() {
-  return absl::make_unique<PReLU>();
+  return std::make_unique<PReLU>();
 }
 
 }  // namespace gl

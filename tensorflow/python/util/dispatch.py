@@ -477,7 +477,7 @@ def unregister_dispatch_for(dispatch_target):
   >>> # Define a type and register a dispatcher to override `tf.abs`:
   >>> class MyTensor(tf.experimental.ExtensionType):
   ...   value: tf.Tensor
-  >>> @dispatch_for_api(tf.abs)
+  >>> @tf.experimental.dispatch_for_api(tf.abs)
   ... def my_abs(x: MyTensor):
   ...   return MyTensor(tf.abs(x.value))
   >>> tf.abs(MyTensor(5))

@@ -201,6 +201,21 @@ MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloComparisonTypeAttrGetType(MlirAttribute attr);
 
 //
+// DomainKindAttr.
+//
+// Creates a new DomainKind attribute with the given 'kind' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx,
+                                                           MlirStringRef kind);
+
+// Returns true if the given attribute is a DomainKind attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr);
+
+// Returns the type string associated with DomainKind attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloDomainKindAttrGetType(MlirAttribute attr);
+
+//
 // PrecisionAttr.
 //
 // Creates a new Precision attribute with the given 'type' string
@@ -274,6 +289,23 @@ MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr);
 
 //
+// RngDistributionAttr.
+//
+// Creates a new RngDistribution attribute with the given 'distribution' string
+// parameter.
+MLIR_CAPI_EXPORTED MlirAttribute
+mlirMhloRngDistributionAttrGet(MlirContext ctx, MlirStringRef distribution);
+
+// Returns true if the given attribute is a RngDistribution attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsARngDistributionAttr(
+    MlirAttribute attr);
+
+// Returns the rng-distribution string associated with RngDistribution
+// attribute.
+MLIR_CAPI_EXPORTED MlirStringRef
+mlirMhloRngDistributionAttrGetRngDistribution(MlirAttribute attr);
+
+//
 // RngAlgorithmAttr.
 //
 // Creates a new RngAlgorithm attribute with the given 'algorithm' string
@@ -288,6 +320,24 @@ MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsARngAlgorithmAttr(
 // Returns the rng-algorithm string associated with RngAlgorithm attribute.
 MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr);
+
+//
+// ChannelHandle
+//
+// Creates a new ChannelHandle attribute with the given 'handle' int64_t
+// parameter and the given 'type' int64_t parameter.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloChannelHandleGet(MlirContext ctx,
+                                                          int64_t handle,
+                                                          int64_t type);
+
+// Returns true if the given attribute is a ChannelHandle attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsChannelHandle(MlirAttribute attr);
+
+// Returns the handle integer associated with the ChannelHandle attribute.
+MLIR_CAPI_EXPORTED int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr);
+
+// Returns the type integer associated with the ChannelHandle attribute.
+MLIR_CAPI_EXPORTED int64_t mlirMhloChannelHandleGetType(MlirAttribute attr);
 
 #ifdef __cplusplus
 }

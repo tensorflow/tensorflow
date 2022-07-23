@@ -70,8 +70,8 @@ Status GetTPUEmbeddingConfiguration(
   for (Node* n : graph->nodes()) {
     const auto& node_name = n->op_def().name();
     if (n->IsOp() && (load_retrieve_nodes.contains(node_name) ||
-                      node_name == "_RecvTPUEmbeddingActivations" ||
-                      node_name == "_SendTPUEmbeddingGradients" ||
+                      node_name == "XlaRecvTPUEmbeddingActivations" ||
+                      node_name == "XlaSendTPUEmbeddingGradients" ||
                       node_name == "ConfigureTPUEmbedding")) {
       std::string test_tpu_embedding_config_str;
       TF_RETURN_IF_ERROR(

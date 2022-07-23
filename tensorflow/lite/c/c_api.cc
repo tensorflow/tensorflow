@@ -16,9 +16,11 @@ limitations under the License.
 
 #include <memory>
 #include <mutex>  // NOLINT
+#include <utility>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
@@ -241,7 +243,7 @@ namespace internal {
 // forwards the methods to (C ABI) callback functions from a
 // `TfLiteOpResolverCallbacks` struct.
 
-// FindOp for buildin op query.
+// FindOp for builtin op query.
 const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
                                                      int version) const {
   // Use Registration V2 API to find op.
@@ -320,8 +322,8 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
   std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
   if (optional_options &&
       optional_options->error_reporter_callback.error_reporter != nullptr) {
-    optional_error_reporter.reset(
-        new CallbackErrorReporter(optional_options->error_reporter_callback));
+    optional_error_reporter = std::make_unique<CallbackErrorReporter>(
+        optional_options->error_reporter_callback);
   }
 
   // By default, we use the provided mutable_op_resolver, adding any builtin or

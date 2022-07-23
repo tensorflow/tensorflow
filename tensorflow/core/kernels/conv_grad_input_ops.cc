@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/conv_grad_input_ops.h"
 
+#include <utility>
+
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -153,8 +155,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k,
-                                             b_ptr, k, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(
+                            transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
+                            k, &c_ptr, n, se::blas::kDefaultComputePrecision));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -179,8 +182,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k,
-                                             b_ptr, k, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(
+                            transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
+                            k, &c_ptr, n, se::blas::kDefaultComputePrecision));
     return;
   }
 
@@ -341,15 +345,9 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       AsDeviceMemory(pre_transformed_in_backprop.template flat<T>().data(),
                      pre_transformed_in_backprop.template flat<T>().size());
 
-  int64_t workspace_bytes = 1LL << 32;  // 4GB by default.
-  // CuDNN frontend will expose more engines some of which might use too much
-  // workspace. This would increase the overall demand of memory when training
-  // models.
-  if (CudnnUseFrontend()) {
-    workspace_bytes = 1LL << 30;  // 1GB by default.
-  }
   static int64_t ConvolveBackwardDataScratchSize =
-      GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB", workspace_bytes);
+      GetDnnWorkspaceLimitOrDefault();
+
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
   ConvParameters conv_parameters = {
@@ -379,7 +377,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       filter_desc, filter_ptr, conv_desc, output_desc, out_backprop_ptr,
       ConvolveBackwardDataScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
   Status cudnn_launch_status =

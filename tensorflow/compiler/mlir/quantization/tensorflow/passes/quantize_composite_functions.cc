@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -166,7 +166,7 @@ class ReplaceQuantizePattern : public mlir::OpRewritePattern<QuantizeCastOp> {
 
     SmallVector<Type> output_types = {
         output_type.clone(elem_type.getStorageType())};
-    SmallVector<Value> args = {q_op.arg(), scale, zero_point};
+    SmallVector<Value> args = {q_op.getArg(), scale, zero_point};
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kQuantizeFuncName));
 
@@ -190,7 +190,7 @@ class ReplaceDequantizePattern
  private:
   LogicalResult matchAndRewrite(DequantizeCastOp dq_op,
                                 PatternRewriter& rewriter) const override {
-    auto input_type = dq_op.arg().getType().cast<TensorType>();
+    auto input_type = dq_op.getArg().getType().cast<TensorType>();
     auto elem_type = input_type.getElementType().dyn_cast<QuantizedType>();
     const Location loc = dq_op->getLoc();
 
@@ -202,7 +202,7 @@ class ReplaceDequantizePattern
 
     TensorType output_type = input_type.clone(elem_type.getStorageType());
     auto scast_op =
-        rewriter.create<quant::StorageCastOp>(loc, output_type, dq_op.arg());
+        rewriter.create<quant::StorageCastOp>(loc, output_type, dq_op.getArg());
 
     FlatSymbolRefAttr func_name =
         FlatSymbolRefAttr::get(rewriter.getStringAttr(kDequantizeFuncName));
@@ -347,7 +347,7 @@ class QuantizeFunctionPattern
 
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
-    auto f_attr = call_op.fAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = call_op.fAttr().dyn_cast<FlatSymbolRefAttr>();
     // removeAttr will return nullptr if no attribute was removed.
     if (!call_op->removeAttr(kQuantTraitAttrName) || !f_attr) {
       return failure();
@@ -365,15 +365,9 @@ class QuantizeFunctionPattern
       return failure();
     }
 
-    llvm::Twine quantized_function_name = llvm::Twine(
-        "quantized_", f_attr.getValue().substr(10).rsplit('_').first);
-
     SmallVector<Value, 4> args;
-    SmallVector<Value, 4> qparam_args;
-    SmallVector<Type, 4> result_types;
-
     for (Value arg : call_op.args()) {
-      if (auto arg_type = arg.getType().dyn_cast<TensorType>()) {
+      if (const auto arg_type = arg.getType().dyn_cast<TensorType>()) {
         QuantizedType qtype =
             arg_type.getElementType().dyn_cast<QuantizedType>();
         if (qtype &&
@@ -395,6 +389,8 @@ class QuantizeFunctionPattern
     }
 
     rewriter.setInsertionPoint(call_op);
+
+    SmallVector<Value, 4> qparam_args;
     for (Value arg : call_op.args()) {
       TensorType arg_type = arg.getType().dyn_cast<TensorType>();
       if (!arg_type) {
@@ -423,6 +419,8 @@ class QuantizeFunctionPattern
 
     DenseMap<Value, StorageCastOp> replace_map;
     rewriter.setInsertionPointAfter(call_op);
+
+    SmallVector<Type, 4> result_types;
     for (Value result : call_op->getResults()) {
       TensorType result_type = result.getType().dyn_cast<TensorType>();
       if (!result_type) {
@@ -463,17 +461,29 @@ class QuantizeFunctionPattern
     // Make a copy of the quantized function.
     auto module = call_op->getParentOfType<ModuleOp>();
     SymbolTable symbol_table(module);
+
     func::FuncOp float_func =
         dyn_cast<func::FuncOp>(symbol_table.lookup(f_attr.getValue()));
-    func::FuncOp quantized_func = dyn_cast<func::FuncOp>(
-        symbol_table.lookup(quantized_function_name.str()));
     rewriter.setInsertionPointAfter(float_func);
+
+    // substr(10) == strip the "composite_" prefix.
+    const llvm::Twine quantized_function_name = llvm::Twine(
+        "quantized_", f_attr.getValue().substr(10).rsplit('_').first);
+    const func::FuncOp quantized_func = dyn_cast<func::FuncOp>(
+        symbol_table.lookup(quantized_function_name.str()));
     func::FuncOp new_quantized_func =
         dyn_cast<func::FuncOp>(quantized_func->clone());
     if (new_quantized_func == nullptr) {
       return failure();
     }
-    StringAttr new_quant_func_name = symbol_table.insert(new_quantized_func);
+    new_quantized_func.setType(
+        FunctionType::get(getContext(), TypeRange(ArrayRef<Value>(args)),
+                          new_quantized_func.getResultTypes()));
+    for (auto pair : llvm::zip_first(args, new_quantized_func.getArguments())) {
+      auto new_quantized_func_arg = std::get<1>(pair);
+      auto partitioned_call_arg = std::get<0>(pair);
+      new_quantized_func_arg.setType(partitioned_call_arg.getType());
+    }
 
     // Set the attributes for ops with the attr_map attribute.
     if (failed(TransferAttributes(float_func, new_quantized_func))) {
@@ -481,6 +491,9 @@ class QuantizeFunctionPattern
     }
 
     rewriter.setInsertionPoint(call_op);
+
+    const StringAttr new_quant_func_name =
+        symbol_table.insert(new_quantized_func);
     rewriter.replaceOpWithNewOp<TF::PartitionedCallOp>(
         call_op, result_types, args,
         FlatSymbolRefAttr::get(new_quant_func_name));
@@ -500,13 +513,12 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
   LogicalResult matchAndRewrite(QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     DenseFPElementsAttr attr;
-    if (!matchPattern(q_op.arg(), m_Constant(&attr))) {
+    if (!matchPattern(q_op.getArg(), m_Constant(&attr))) {
       return failure();
     }
 
     ShapedType tensor_qtype = q_op.getResult().getType().cast<ShapedType>();
-    Attribute quantized_attr;
-    quantized_attr = Quantize(attr, tensor_qtype);
+    Attribute quantized_attr = Quantize(attr, tensor_qtype);
     if (!quantized_attr) {
       return failure();
     }
@@ -514,7 +526,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeCastOp> {
     Type storage_type =
         tensor_qtype.getElementType().cast<QuantizedType>().getStorageType();
     ShapedType new_type = tensor_qtype.clone(storage_type);
-    Location loc = q_op.arg().getLoc();
+    Location loc = q_op.getArg().getLoc();
     auto const_op = rewriter.create<TF::ConstOp>(loc, new_type, quantized_attr);
     // Add scast op to match quantize -> composition pattern. The added scast
     // is then removed by canonicalization. ([scast - scast] -> [])

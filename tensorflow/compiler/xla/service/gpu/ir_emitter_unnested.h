@@ -186,6 +186,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
+  Status EmitLaunchFunc(mlir::Operation* op);
   Status EmitLoopFusion(mlir::Operation* op);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);

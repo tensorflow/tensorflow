@@ -1833,7 +1833,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
             int64_t body_parameter_time = instruction_schedule.at(
                 body_allocation_value_it->defining_instruction());
             body_allocation_value_it->allocation_sequence()->push_back(
-                absl::make_unique<MemorySpaceAssignment::ParentAllocation>(
+                std::make_unique<MemorySpaceAssignment::ParentAllocation>(
                     **prev_allocation_in_default_mem_it, hlo_use.instruction,
                     body_allocation_value_it->defining_position(),
                     body_parameter_time));
@@ -1851,7 +1851,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
                     << after_while_allocation_value_it->ToShortString();
             int64_t while_time = instruction_schedule.at(hlo_use.instruction);
             after_while_allocation_value_it->allocation_sequence()->push_back(
-                absl::make_unique<MemorySpaceAssignment::MirroredAllocation>(
+                std::make_unique<MemorySpaceAssignment::MirroredAllocation>(
                     **prev_allocation_in_default_mem_it, while_time));
             VLOG(3) << "Created: "
                     << after_while_allocation_value_it->allocation_sequence()
@@ -2066,8 +2066,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   }
 
   Chunk chunk_candidate = FindChunkCandidate(*prefetch_candidate);
-  if (chunk_candidate.offset != 0 ||
-      chunk_candidate.chunk_end() > available_heap_size()) {
+  if (chunk_candidate.chunk_end() > available_heap_size()) {
     LOG(WARNING)
         << "Could not allocate preferred memory for cross program prefetch";
     return;
@@ -2078,7 +2077,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   module->AddCrossProgramPrefetch(parameter, buffer->index());
 
   MemorySpaceAssignment::AllocationSequence allocations;
-  allocations.push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
+  allocations.push_back(std::make_unique<MemorySpaceAssignment::Allocation>(
       buffer->defining_position(), MemorySpace::kDefault, kDummyChunk,
       prefetch_candidate->start, prefetch_candidate->end,
       /*is_scoped_allocation=*/false));
@@ -2234,7 +2233,7 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       AddToPendingChunks(interval, chunk_candidate);
 
       allocations_->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
               HloPosition{instruction_sequence[i], {}}, MemorySpace::kAlternate,
               chunk_candidate, i, i, /*is_scoped_allocation=*/true));
 
@@ -2426,6 +2425,38 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
             }
           }
         }
+      }
+    }
+  }
+
+  // Go through all of the values and pin them to the default memory if they are
+  // not allowed on the alternate memory.
+  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
+    if (!options_.is_allowed_in_alternate_mem_fn(*value)) {
+      // We won't find the instruction in the schedule if it's inside a fusion.
+      // If so, just skip.
+      auto instruction_time_it =
+          instruction_schedule.find(value->instruction());
+      if (instruction_time_it == instruction_schedule.end()) {
+        continue;
+      }
+      int64_t instruction_time = instruction_time_it->second;
+      auto& required_assignments = required_assignments_[value];
+      // Check if there is an existing matching required assignment (e.g.
+      // inserted by the logic above) and if so ensure it requires a default
+      // memory allocation.
+      auto matching_assignment = absl::c_find_if(
+          required_assignments,
+          [&](const RequiredMemoryAssignment& required_assignment) {
+            return required_assignment.time == instruction_time;
+          });
+      if (matching_assignment != required_assignments.end()) {
+        CHECK(matching_assignment->memory_space == MemorySpace::kDefault)
+            << "Mismatch in required assignments at time " << instruction_time
+            << " value: " << value->ToString();
+      } else {
+        required_assignments.push_back(
+            {MemorySpace::kDefault, instruction_time});
       }
     }
   }
@@ -2715,7 +2746,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
             Chunk{required_assignment_at_start->offset->offset, request.size};
       }
       allocation_sequence->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, required_assignment_at_start->memory_space,
               aliased_chunk, request.start_time, request.start_time,
               /*is_scoped_allocation=*/false));
@@ -2762,7 +2793,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
     prev_allocation_in_default_mem_it = allocation_sequence->rbegin();
   } else if (prev_allocation_in_default_mem_it == allocation_sequence->rend()) {
     allocation_sequence->push_back(
-        absl::make_unique<MemorySpaceAssignment::Allocation>(
+        std::make_unique<MemorySpaceAssignment::Allocation>(
             defining_position, MemorySpace::kDefault, /*chunk=*/std::nullopt,
             request.start_time, request.end_time,
             /*is_scoped_allocation=*/false));
@@ -2830,7 +2861,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
   CHECK_LT(start_time, copy_done_schedule_before_time);
 
   allocations->push_back(
-      absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
+      std::make_unique<MemorySpaceAssignment::CopyAllocation>(
           prev_allocation, memory_space, chunk, start_time, end_time,
           copy_done_schedule_before_time, is_cross_program_prefetch));
 
@@ -2977,7 +3008,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
       prev_allocation->Extend(request.end_time);
     } else {
       request.allocation_value->allocation_sequence()->push_back(
-          absl::make_unique<MemorySpaceAssignment::Allocation>(
+          std::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, MemorySpace::kAlternate, chunk_candidate,
               request.start_time, request.end_time,
               /*is_scoped_allocation=*/false));
@@ -3426,7 +3457,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
-  auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
+  auto algorithm = std::make_unique<AlternateMemoryBestFitHeap>(
       &allocations_, options_, alias_analysis, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;

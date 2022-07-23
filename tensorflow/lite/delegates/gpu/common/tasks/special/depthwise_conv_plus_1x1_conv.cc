@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -134,7 +135,6 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
                          ReLUAttributes* relu_attr_ptr, int result_depth,
                          GPUOperation* result) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   result->AddSrcTensor("src_tensor", src_desc);
   result->AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -273,7 +273,7 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
 bool IsDepthwiseConvPlus1x1ConvSupported(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr) {
+    const Convolution2DAttributes& conv_attr, const BHWC* dst_shape) {
   const auto dw_shape = dw_attr.weights.shape;
   const auto conv_shape = conv_attr.weights.shape;
   bool good_dw = dw_shape.o == 1;
@@ -298,11 +298,20 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       return good_dw && good_conv && recommended_dw && recommended_conv;
     }
   } else if (gpu_info.IsMali()) {
-    if (!gpu_info.mali_info.IsValhall()) {
+    if (gpu_info.mali_info.IsMidgard()) {
       return false;
     }
-    if (gpu_info.mali_info.IsValhallGen1()) {
-      return false;
+    if (dst_shape) {
+      const int dst_slices = DivideRoundUp(dst_shape->c, 4);
+      int task_size = dst_shape->b * dst_shape->h * dst_shape->w * dst_slices;
+      int block_size = GetRecommendedBlockSizeForConv(
+          gpu_info, definition.precision, task_size);
+      if (block_size < 4 && dst_slices >= 2) {
+        return false;
+      }
+      if (block_size < 2 && dst_slices >= 4) {
+        return false;
+      }
     }
     if (definition.precision == CalculationsPrecision::F16 &&
         definition.src_tensors[0].SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
@@ -341,6 +350,9 @@ GPUOperation CreateDepthwiseConvPlus1x1Conv(
       GenerateCode(definition, gpu_info, dw_attr, relu_attr_ptr,
                    DivideRoundUp(conv_attr.weights.shape.o, 4), &result);
   result.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
+  if (gpu_info.IsMali()) {
+    result.compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
+  }
   UploadWeights(dw_attr, conv_attr, gpu_info, definition.precision, &result);
   return result;
 }

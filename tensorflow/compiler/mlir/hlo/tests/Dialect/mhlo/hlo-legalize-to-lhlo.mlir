@@ -119,9 +119,9 @@ func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // CHECK-LABEL: func @compare
 func.func @compare(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xi1> {
   %result = "mhlo.compare"(%lhs, %rhs)
-      {comparison_direction = #mhlo<"comparison_direction EQ">}
+      {comparison_direction = #mhlo<comparison_direction EQ>}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
-  // CHECK: "lmhlo.compare"(%{{.*}}, %{{.*}}, %{{.*}}) {comparison_direction = #mhlo<"comparison_direction EQ">}
+  // CHECK: "lmhlo.compare"(%{{.*}}, %{{.*}}, %{{.*}}) {comparison_direction = #mhlo<comparison_direction EQ>}
   func.return %result : tensor<2x2xi1>
 }
 
@@ -659,6 +659,28 @@ func.func @zero_inputs() -> tensor<100x100xf32> {
 
 // -----
 
+// CHECK-LABEL: func @batch_norm_training
+func.func @batch_norm_training(%arg0 : tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<2xf32>
+  %1 = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
+  // CHECK: "lmhlo.batch_norm_training"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %2:3 = "mhlo.batch_norm_training"(%arg0, %1, %0) {epsilon = 9.99999974E-6 : f32, feature_index = 1 : i64} : (tensor<1x2x3xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<1x2x3xf32>, tensor<2xf32>, tensor<2xf32>)
+  return %2#0 : tensor<1x2x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_grad
+func.func @batch_norm_grad(%arg0 : tensor<8x8x8x8xf32>, %arg1 : tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %0 = mhlo.constant dense<0.000000e+00> : tensor<8xf32>
+  %1 = mhlo.constant dense<1.000000e+00> : tensor<8xf32>
+  // CHECK: "lmhlo.batch_norm_grad"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
+  %2:3 = "mhlo.batch_norm_grad"(%arg0, %1, %0, %1, %arg1) {epsilon = 9.99999974E-6 : f32, feature_index = 3 : i64} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8x8x8x8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>)
+  return %2#0 : tensor<8x8x8x8xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @clamp
 func.func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: "lmhlo.clamp"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
@@ -674,5 +696,4 @@ func.func @clamp_broadcast(%min: tensor<f32>, %value: tensor<4xf32>, %max: tenso
   %0 = "mhlo.clamp"(%min, %value, %max) : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>
 }
-
 

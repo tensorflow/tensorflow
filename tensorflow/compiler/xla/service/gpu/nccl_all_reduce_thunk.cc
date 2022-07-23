@@ -139,27 +139,27 @@ namespace impl {
 
 template <typename OpT>
 bool CanImplement(OpT op) {
-  return absl::c_all_of(op.operands(), IsValidOperand) &&
-         NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation())
+  return absl::c_all_of(op.getInputs(), IsValidOperand) &&
+         NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation())
              .has_value();
 }
 
 template <typename OpT>
 NcclAllReduceConfig GetNcclAllReduceConfig(OpT op) {
   std::optional<ReductionKind> reduction_kind =
-      NcclAllReduceThunkBase::MatchAllReduceComputation(op.computation());
+      NcclAllReduceThunkBase::MatchAllReduceComputation(op.getComputation());
   CHECK(reduction_kind.has_value());
 
   NcclAllReduceConfig config;
   config.config =
-      GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids());
+      GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   config.reduction_kind = *reduction_kind;
   return config;
 }
 
 template <typename OpT>
 bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
-  return GetNcclCollectiveConfigForMlir(op, op.use_global_device_ids())
+  return GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds())
       .IsDegenerate(replica_count, partition_count);
 }
 
@@ -256,7 +256,7 @@ Status NcclAllReduceThunk::RunNcclCollective(const ExecuteParams& params,
 
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
@@ -308,7 +308,7 @@ Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
   }
 
   VLOG(3) << "Done performing all-reduce-start for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 StatusOr<se::Event> NcclAllReduceStartThunk::TakeDoneEvent(int device_ordinal) {
@@ -330,7 +330,7 @@ Status NcclAllReduceDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(se::Event done_event,
                       start_thunk_.TakeDoneEvent(device_ordinal));
   params.stream->ThenWaitFor(&done_event);
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 
 NcclReduceScatterThunk::NcclReduceScatterThunk(
@@ -412,7 +412,7 @@ Status RunReduceScatter(ReductionKind reduction_kind,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

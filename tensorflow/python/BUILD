@@ -973,11 +973,21 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":control_flow_ops",
+        ":control_flow_util",
         ":math_ops",
+        ":math_ops_gen",
+        ":pywrap_tfe",
+        ":resource_variable_ops_gen",
         ":sparse_ops",
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor_util",
     ],
 )
 
@@ -1867,6 +1877,7 @@ py_library(
         ":lookup_ops_gen",
         ":math_ops",
         ":string_ops",
+        "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -2658,7 +2669,7 @@ py_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/trackable:base",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_should_use",
     ],
@@ -3276,6 +3287,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/config:flags",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
@@ -3353,6 +3365,7 @@ filegroup(
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/cc/saved_model:metrics_impl",  # SavedModel metrics
+        "//tensorflow/cc/saved_model:fingerprinting_impl",  # SavedModel fingerprinting
         "//tensorflow/compiler/jit:get_compiler_ir",  # tfe
         "//tensorflow/core/platform:statusor",  # tfe
         "//tensorflow/compiler/jit:flags",  # tfe

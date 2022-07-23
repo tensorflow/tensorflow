@@ -41,7 +41,7 @@ class HLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : HLO_Op<"constant",
+def HLO_ConstantOp : HLO_Op<"constant",
     [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant operator";
   let description = [{
@@ -219,7 +219,8 @@ def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
-def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
+
+def HLO_CosineOp: HLO_UnaryElementwiseOp<"cosine",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Cos operator";
   let description = [{
@@ -228,7 +229,10 @@ def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+
+  let hasCustomHLOConverter = 1;
 }
+
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Exponential operator";
@@ -363,10 +367,23 @@ def HLO_RealOp: HLO_UnaryElementwiseOp<"real",
 
 def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
-  let summary = "Round operator";
+  let summary = "Round operator, ties away from zero";
   let description = [{
     Returns `Round(operand)` element-wise, rounding to nearest integer with
     half-way cases rounding away from zero.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+  let hasFolder = 1;
+}
+
+def HLO_RoundNearestEvenOp: HLO_UnaryElementwiseOp<"round_nearest_even",
+    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+  let summary = "Round operator, ties to even";
+  let description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding towards even numbers.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -404,7 +421,8 @@ def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
   }];
   let hasFolder = 1;
 }
-def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
+
+def HLO_SineOp: HLO_UnaryElementwiseOp<"sine",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Sin operator";
   let description = [{
@@ -413,7 +431,9 @@ def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
+  let hasCustomHLOConverter = 1;
 }
+
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
   let summary = "Square-root operator";
@@ -508,14 +528,14 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
   }];
 }
 
-def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [NoSideEffect,
+    SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
     Performs element-wise conversion of a pair of real and imaginary values to
     a complex value.
   }];
-  let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
+  let arguments = (ins HLO_Fp32Or64Tensor:$lhs, HLO_Fp32Or64Tensor:$rhs);
   let results = (outs HLO_ComplexTensor:$result);
   let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
   let hasFolder = 1;
@@ -624,7 +644,7 @@ def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
   }];
 }
 
-def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
+def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
       [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let summary = "Subtraction operator";
   let description = [{
@@ -634,6 +654,7 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
   let hasFolder = 1;
+  let hasCustomHLOConverter = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -950,6 +971,7 @@ def HLO_WhileOp: HLO_Op<"while", [
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -1163,7 +1185,7 @@ def HLO_SliceOp: HLO_Op<
   let hasFolder = 1;
 }
 
-def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
+def HLO_DynamicSliceOp: HLO_Op<"dynamic_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
        InferTensorType]> {
   let summary = "Dynamic Slice operator";
@@ -1183,7 +1205,7 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
   let hasVerifier = 1;
 }
 
-def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
+def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic_update_slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
        AllShapesMatch<["operand", "result"]>]> {
   let summary = "Dynamic Update Slice operator";
@@ -1207,6 +1229,31 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 //===----------------------------------------------------------------------===//
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
+
+def HLO_DomainOp : HLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, InferTypeOpInterface, NoSideEffect]> {
+  let summary = "Marks groups of instructions (domains) with a property";
+  let description = [{
+    Domain instructions are used to group instructions with the same
+    DomainMetadata property. ShardingMetadata is the main use case today to
+    group instructions on the same device. Domain instructions provide two
+    major benefits:
+      - Prevent unintentionally optimizing instructions across domains.
+      - Automatically assign the metadata of the instructions created in the domain.
+    Without domain instructions, each HLO optimization pass would have to check
+    and propagate the metadata, which would be easy to miss and also adds
+    complexity to the compiler. Since domain instructions connect two different
+    domains, each domain instruction is associated with two DomainMetadata --
+    one on the operand side and one on the user side of the domain.
+  }];
+  let arguments = (ins
+    HLO_TensorOrToken:$operand,
+    HLO_DomainKindAttr:$kind,
+    StrAttr:$entry_metadata,
+    StrAttr:$exit_metadata
+  );
+  let results = (outs HLO_TensorOrToken:$result);
+  let hasCustomHLOConverter = 1;
+}
 
 def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect,
     AllShapesMatch<["scale", "mean", "variance", "grad_scale",
@@ -1523,7 +1570,7 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
   let hasVerifier = 1;
 }
 
-def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]> {
+def HLO_ConvolutionOp : HLO_Op<"convolution", [NoSideEffect]> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.
@@ -1957,7 +2004,8 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
+def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "SetDimensionSize operator";
   let description = [{
     Sets the dynamic size of operand's given dimension. Pass through the operand
@@ -1972,6 +2020,16 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect]> {
     I64Attr:$dimension
   );
   let results = (outs HLO_Tensor);
+
+  let extraClassDeclaration = [{
+    // Method from InferTypeOpInterface interface.
+    // TODO(hinsu): Use MHLO dialect level compatibility that also verifies
+    // that bounds in the encoding attribute are also compatible.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
+
 
   let hasFolder = 1;
   let hasVerifier = 1;
@@ -2044,10 +2102,27 @@ def HLO_PadOp: HLO_Op<"pad",
       [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Pad operator";
   let description = [{
-    Pads the edges of `operand` with the `padding_value` and according to
-    the passed configuration.
+    Pads edges and between the elements of `operand` with the `padding_value`
+    according to the configuration parameters described below.
 
-    See https://www.tensorflow.org/xla/operation_semantics#pad.
+    `edge_padding_low` and `edge_padding_high` specify the amount of padding
+    added at the low-end (next to index 0) and the high-end (next to the
+    highest index) of each dimension respectively. The amount of edge
+    padding can be negative -- the absolute value of negative padding indicates
+    the number of elements to remove from the specified dimension.
+
+    `interior_padding` specifies the amount of padding (non-negative) added
+    between any two elements in each dimension. Interior padding occurs
+    logically before edge padding, so in the case of negative edge padding,
+    elements are removed from the interior-padded operand.
+
+    This operation is a no-op if, for all dimensions, the edge padding pairs are
+    all (0, 0) and the interior padding values are all 0. The figure below shows
+    examples of different `edge_padding` and `interior_padding` values for a
+    two-dimensional array.
+
+    ![Examples](https://www.tensorflow.org/xla/images/ops_pad.png)
+
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
@@ -2058,10 +2133,6 @@ def HLO_PadOp: HLO_Op<"pad",
   );
 
   let results = (outs HLO_Tensor);
-
-  let description = [{
-    Pads the `operand` according to TBD.
-  }];
 
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
@@ -2083,7 +2154,7 @@ def HLO_TraceOp: HLO_Op<"trace", []> {
 
 def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType,
-       InferTensorTypeWithReify]> {
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Transpose operator";
   let description = [{
     Permutes the dimensions of `operand` according to the given `permutation`.
@@ -2259,53 +2330,35 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
+def HLO_RngOp : HLO_Op<"rng", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
-    following the uniform distribution over the interval `[a,b)`. The parameters
-    and output element type have to be a boolean type, an integral type or a
-    floating point types, and the types have to be consistent.
+    following the given `rng_distribution` with two parameters:
+      `UNIFORM`: the uniform distribution over the interval `[a,b)`. The parameters
+                 and output element type have to be a boolean type, an integral type or a
+                 floating point types, and the types have to be consistent.
 
-    See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+                 See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
+
+      `NORMAL`: the normal distribution with parameters `mu` (=`a`) and
+                `sigma` (=`b`). The parameters and output shape have to have a
+                floating point elemental type. The parameters furthermore have
+                to be scalar valued.
+
+                See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
     0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$a,
     0DTensorOf<[HLO_Pred, HLO_Int, HLO_Float]>:$b,
-    HLO_DimensionTensor:$shape
+    HLO_DimensionTensor:$shape,
+    HLO_RngDistributionAttr:$rng_distribution
   );
 
   let results = (outs HLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
-
-  let extraClassDeclaration = [{
-    // Returns whether the return types are compatible.
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(::mlir::verifyCompatibleShapes(l, r));
-    }
-  }];
-}
-
-def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElementTypesMatch<["mu", "sigma", "result"]>]> {
-  let summary = "RNG with normal distribution.";
-  let description = [{
-    Constructs an output of a given shape with random numbers generated
-    following the normal distribution with parameters `mu` and `sigma`. The
-    parameters and output shape have to have a floating point elemental type.
-    The parameters furthermore have to be scalar valued.
-
-    See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
-  }];
-  let arguments = (ins
-    0DTensorOf<[HLO_Float]>:$mu,
-    0DTensorOf<[HLO_Float]>:$sigma,
-    HLO_DimensionTensor:$shape
-  );
-
-  let results = (outs HLO_FpTensor:$result);
-
-  let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
@@ -2547,23 +2600,6 @@ def HLO_DynamicConvOp : HLO_Op<"dynamic_conv", [NoSideEffect]> {
        HLO_Tensor:$d_padding),
     ConvolutionAttributes.attributes);
   let results = (outs HLO_Tensor);
-  let hasCustomHLOConverter = 1;
-}
-
-def HLO_PrintOp : HLO_Op<"print", []> {
-  let summary = "Print operation";
-  let description = [{
-    PrintOp is used to print tensor, which can be used to debug.
-  }];
-
-  let arguments = (ins
-      HLO_Tensor:$operand
-  );
-
-  let results = (outs
-    HLO_Tensor:$output
-  );
-
   let hasCustomHLOConverter = 1;
 }
 

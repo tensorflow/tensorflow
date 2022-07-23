@@ -166,7 +166,8 @@ absl::Status GetBufferAsignment(
       [&gpu_model, &gpu_info, &create_info](ValueId id) {
         return GetTensorType(gpu_model, create_info, gpu_info, id) ==
                    TensorType::kRuntime &&
-               IsBufferBased(gpu_info, gpu_model.tensors.at(id).storage_type);
+               IsBufferBased(gpu_info,
+                             gpu_model.tensors.at(id).GetStorageType());
       },
       &buffer_usages);
 
@@ -175,15 +176,16 @@ absl::Status GetBufferAsignment(
     const auto& t = gpu_model.tensors.at(usage.first);
     const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
-    const size_t element_size = SizeOf(descriptor.data_type);
+    const size_t element_size = SizeOf(descriptor.GetDataType());
     size_t buffer_size;
-    if (descriptor.storage_type == TensorStorageType::TEXTURE_2D ||
-        descriptor.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+    if (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D ||
+        descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D) {
       has_buffer_based_images = true;
       const size_t bytes_per_pixel =
           element_size *
-          (descriptor.storage_type == TensorStorageType::TEXTURE_2D ? 4
-                                                                    : shape.c);
+          (descriptor.GetStorageType() == TensorStorageType::TEXTURE_2D
+               ? 4
+               : shape.c);
       const size_t width = shape.b * shape.w;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
       size_t width_pixel_alignment = gpu_info.opencl_info.image_pitch_alignment;
@@ -193,7 +195,7 @@ absl::Status GetBufferAsignment(
       const size_t width_aligned = AlignByN(width, width_pixel_alignment);
       buffer_size = width_aligned * bytes_per_pixel * height;
     } else {
-      if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+      if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
         has_buffer_based_images = true;
       }
       buffer_size =
@@ -522,7 +524,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       RETURN_IF_ERROR(CreateReadWriteBuffer(offset_assignment.total_size,
                                             context, &shared_buffer));
       shared_buffers_parent_ =
-          absl::make_unique<Buffer>(std::move(shared_buffer));
+          std::make_unique<Buffer>(std::move(shared_buffer));
       shared_buffers_parent_ptr_ = shared_buffers_parent_.get();
     } else if (shared_buffers_parent_ptr_->GetMemorySizeInBytes() <
                offset_assignment.total_size) {
@@ -544,7 +546,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
         RETURN_IF_ERROR(
             CreateReadWriteBuffer(total_size, context, &shared_buffer));
         shared_buffers_parent_ =
-            absl::make_unique<Buffer>(std::move(shared_buffer));
+            std::make_unique<Buffer>(std::move(shared_buffer));
         shared_buffers_parent_ptr_ = shared_buffers_parent_.get();
       } else if (shared_buffers_parent_ptr_->GetMemorySizeInBytes() <
                  total_size) {
@@ -578,7 +580,8 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
     for (auto& t : tensors) {
       if (GetTensorType(gpu_model, create_info, gpu_info, t.first) !=
               TensorType::kRuntime ||
-          !IsBufferBased(gpu_info, gpu_model.tensors.at(t.first).storage_type))
+          !IsBufferBased(gpu_info,
+                         gpu_model.tensors.at(t.first).GetStorageType()))
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
@@ -587,12 +590,13 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
       const int buffer_index = use_offset_assignment
                                    ? tensor_index
                                    : buffer_assignment.object_ids[tensor_index];
-      if (t.second.storage_type == TensorStorageType::TEXTURE_2D ||
-          t.second.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
+      if (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D ||
+          t.second.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D) {
         const size_t bytes_per_pixel =
-            SizeOf(t.second.data_type) *
-            (t.second.storage_type == TensorStorageType::TEXTURE_2D ? 4
-                                                                    : shape.c);
+            SizeOf(t.second.GetDataType()) *
+            (t.second.GetStorageType() == TensorStorageType::TEXTURE_2D
+                 ? 4
+                 : shape.c);
         size_t width_pixel_alignment =
             gpu_info.opencl_info.image_pitch_alignment;
         if (gpu_info.IsAdreno() &&
@@ -623,7 +627,8 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
       [&gpu_model, &gpu_info, &create_info](ValueId id) {
         return GetTensorType(gpu_model, create_info, gpu_info, id) ==
                    TensorType::kRuntime &&
-               !IsBufferBased(gpu_info, gpu_model.tensors.at(id).storage_type);
+               !IsBufferBased(gpu_info,
+                              gpu_model.tensors.at(id).GetStorageType());
       },
       &usages);
 
@@ -631,9 +636,7 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
     TensorDescriptor tensor_desc;
 
     bool operator==(const TensorDescComparator& t) const {
-      return tensor_desc.data_type == t.tensor_desc.data_type &&
-             tensor_desc.storage_type == t.tensor_desc.storage_type &&
-             tensor_desc.layout == t.tensor_desc.layout &&
+      return tensor_desc == t.tensor_desc &&
              tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };
@@ -656,7 +659,8 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
     for (auto& t : tensors) {
       if (GetTensorType(gpu_model, create_info, gpu_info, t.first) !=
               TensorType::kRuntime ||
-          IsBufferBased(gpu_info, gpu_model.tensors.at(t.first).storage_type)) {
+          IsBufferBased(gpu_info,
+                        gpu_model.tensors.at(t.first).GetStorageType())) {
         continue;
       }
       const auto& shape = gpu_model.tensors.at(t.first).GetBHWDCShape();

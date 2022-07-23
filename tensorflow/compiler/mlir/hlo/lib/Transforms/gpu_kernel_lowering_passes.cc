@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
@@ -89,11 +89,11 @@ void GpuKernelToROCDLPass::runOnOperation() {
 }
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
-mlir::CreateGpuKernelToNvvmPass() {
+mlir::createGpuKernelToNvvmPass() {
   return std::make_unique<GpuKernelToNVVMPass>();
 }
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp> >
-mlir::CreateGpuKernelToRocdlPass() {
+mlir::createGpuKernelToRocdlPass() {
   return std::make_unique<GpuKernelToROCDLPass>();
 }

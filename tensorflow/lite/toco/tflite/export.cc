@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/export.h"
 
+#include <string>
+
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"

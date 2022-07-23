@@ -749,6 +749,7 @@ void Select(const RuntimeShape& input_condition_shape,
             const T* input_x_data, const RuntimeShape& input_y_shape,
             const T* input_y_data, const RuntimeShape& output_shape,
             T* output_data) {
+  ruy::profiler::ScopeLabel label("Select");
   int64_t flatsize;
   // Allow select operator executions on mixed scalar tensors and one element
   // tensors.
@@ -771,6 +772,7 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const RuntimeShape& input_x_shape, const T* input_x_data,
                    const RuntimeShape& input_y_shape, const T* input_y_data,
                    const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Select/RankOneSelect");
   const int64_t outer_size = input_condition_shape.FlatSize();
   int64_t inner_size;
   if (input_condition_shape.DimensionsCount() == 0) {
@@ -791,34 +793,75 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
   }
 }
 
-template <typename D, typename T, int N = 5>
-void BroadcastSelectSlow(const RuntimeShape& input_condition_shape,
-                         const D* input_condition_data,
-                         const RuntimeShape& input_x_shape,
-                         const T* input_x_data,
-                         const RuntimeShape& input_y_shape,
-                         const T* input_y_data,
-                         const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
+template <typename D, typename T>
+void BroadcastSelect5DSlow(const RuntimeShape& input_condition_shape,
+                           const D* input_condition_data,
+                           const RuntimeShape& input_x_shape,
+                           const T* input_x_data,
+                           const RuntimeShape& input_y_shape,
+                           const T* input_y_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  ruy::profiler::ScopeLabel label("Select/BroadcastSelectSlow");
+  TFLITE_DCHECK_LE(input_condition_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(input_x_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(input_y_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 5);
 
-  NdArrayDesc<N> desc_condition;
-  NdArrayDesc<N> desc_x;
-  NdArrayDesc<N> desc_y;
-  NdArrayDesc<N> output_desc;
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
+  NdArrayDesc<5> desc_condition;
+  NdArrayDesc<5> desc_x;
+  NdArrayDesc<5> desc_y;
+  NdArrayDesc<5> desc_output;
+  const RuntimeShape extended_output_shape =
+      RuntimeShape::ExtendedShape(5, output_shape);
+  CopyDimsToDesc(extended_output_shape, &desc_output);
   NdArrayDescsForElementwiseBroadcast(input_condition_shape, input_x_shape,
                                       input_y_shape, &desc_condition, &desc_x,
                                       &desc_y);
-  auto select_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        input_condition_data[SubscriptToIndex(desc_condition, indexes)]
-            ? input_x_data[SubscriptToIndex(desc_x, indexes)]
-            : input_y_data[SubscriptToIndex(desc_y, indexes)];
-  };
-  NDOpsHelper<N>(output_desc, select_func);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest
+  // stride, typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for
+  // the best cache behavior.
+  for (int n = 0; n < desc_output.extents[0]; ++n) {
+    int out_idx_n = desc_output.extents[1] * n;
+    int cond_idx_n = desc_condition.strides[0] * n;
+    int in_idx1_n = desc_x.strides[0] * n;
+    int in_idx2_n = desc_y.strides[0] * n;
+    for (int b = 0; b < desc_output.extents[1]; ++b) {
+      int out_idx_b = (out_idx_n + b) * desc_output.extents[2];
+      int cond_idx_b = cond_idx_n + desc_condition.strides[1] * b;
+      int in_idx1_b = in_idx1_n + desc_x.strides[1] * b;
+      int in_idx2_b = in_idx2_n + desc_y.strides[1] * b;
+      for (int y = 0; y < desc_output.extents[2]; ++y) {
+        int out_idx_y = (out_idx_b + y) * desc_output.extents[3];
+        int cond_idx_y = cond_idx_b + desc_condition.strides[2] * y;
+        int in_idx1_y = in_idx1_b + desc_x.strides[2] * y;
+        int in_idx2_y = in_idx2_b + desc_y.strides[2] * y;
+        for (int x = 0; x < desc_output.extents[3]; ++x) {
+          int out_idx = (out_idx_y + x) * desc_output.extents[4];
+          int cond_idx = cond_idx_y + desc_condition.strides[3] * x;
+          int in_idx1 = in_idx1_y + desc_x.strides[3] * x;
+          int in_idx2 = in_idx2_y + desc_y.strides[3] * x;
+          for (int c = 0; c < desc_output.extents[4]; ++c) {
+            output_data[out_idx] = input_condition_data[cond_idx]
+                                       ? input_x_data[in_idx1]
+                                       : input_y_data[in_idx2];
+            out_idx++;
+            cond_idx += desc_condition.strides[4];
+            in_idx1 += desc_x.strides[4];
+            in_idx2 += desc_y.strides[4];
+          }
+        }
+      }
+    }
+  }
 }
 
 template <typename D, typename T>
@@ -1064,24 +1107,26 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
   }
 }
 
-template <typename T>
-inline void UnsortedSegmentProd(const RuntimeShape& input_shape,
-                                const T* input_data,
-                                const RuntimeShape& segment_ids_shape,
-                                const int32_t* segment_ids_data,
-                                const int32_t num_segments,
-                                const RuntimeShape& output_shape,
-                                T* output_data) {
+template <typename T, template <typename T2> typename Op>
+inline void UnsortedSegmentRef(const RuntimeShape& input_shape,
+                               const T* input_data,
+                               const RuntimeShape& segment_ids_shape,
+                               const int32_t* segment_ids_data,
+                               const RuntimeShape& output_shape,
+                               T* output_data) {
   for (int i = 0; i < output_shape.FlatSize(); ++i) {
-    output_data[i] = 1;
+    output_data[i] = Op<T>::kInitialValue;
   }
+  Op<T> op;
   const int segment_flat_size =
       MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
   for (int i = 0; i < input_shape.Dims(0); i++) {
     int output_index = segment_ids_data[i];
+    if (output_index < 0) continue;
     for (int j = 0; j < segment_flat_size; ++j) {
-      output_data[output_index * segment_flat_size + j] *=
-          input_data[i * segment_flat_size + j];
+      output_data[output_index * segment_flat_size + j] =
+          op(output_data[output_index * segment_flat_size + j],
+             input_data[i * segment_flat_size + j]);
     }
   }
 }

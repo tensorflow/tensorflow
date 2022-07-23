@@ -1,5 +1,16 @@
 // RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
 
+// CHECK-LABEL: func @transpose_splat_constant
+func.func @transpose_splat_constant() -> tensor<5x10xf32> {
+  // CHECK-NEXT: [[CST:%.+]] = mhlo.constant dense<1.000000e+00> : tensor<5x10xf32>
+  %cst = mhlo.constant dense<1.000000e+00> : tensor<10x5xf32>
+  %0 = "mhlo.transpose"(%cst) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<10x5xf32>) -> tensor<5x10xf32>
+  // CHECK-NEXT: return [[CST]]
+  func.return %0 : tensor<5x10xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @remove_noop
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func.func @remove_noop(%arg : tensor<2x3x9x5xi32>) -> tensor<2x3x9x5xi32> {
@@ -39,6 +50,36 @@ func.func @eliminate_redundant_transpose(%arg : tensor<3x4x16x2xf32>) -> tensor<
   // CHECK-SAME: dense<[0, 3, 2, 1]
   // CHECK-NEXT: return [[RET]]
   func.return %1 : tensor<3x2x16x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @simplify_transpose_case1
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func.func @simplify_transpose_case1(%arg : tensor<10x1x512xf32>) -> tensor<1x10x512xf32> {
+  %0 = "mhlo.transpose"(%arg) {permutation = dense<[1, 0, 2]> : tensor<3xi64>}: (tensor<10x1x512xf32>) -> tensor<1x10x512xf32>
+  // CHECK-NEXT: "mhlo.reshape"([[ARG]])
+  func.return %0 : tensor<1x10x512xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @simplify_transpose_case2
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func.func @simplify_transpose_case2(%arg : tensor<10x1x512x1xf32>) -> tensor<1x1x10x512xf32> {
+  %0 = "mhlo.transpose"(%arg) {permutation = dense<[1, 3, 0, 2]> : tensor<4xi64>}: (tensor<10x1x512x1xf32>) -> tensor<1x1x10x512xf32>
+  // CHECK-NEXT: "mhlo.reshape"([[ARG]])
+  func.return %0 : tensor<1x1x10x512xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @not_simplify_transpose_dynamic_shape
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func.func @not_simplify_transpose_dynamic_shape(%arg : tensor<10x?x512xf32>) -> tensor<?x10x512xf32> {
+  %0 = "mhlo.transpose"(%arg) {permutation = dense<[1, 0, 2]> : tensor<3xi64>}: (tensor<10x?x512xf32>) -> tensor<?x10x512xf32>
+  // CHECK-NEXT: "mhlo.transpose"([[ARG]])
+  func.return %0 : tensor<?x10x512xf32>
 }
 
 // -----

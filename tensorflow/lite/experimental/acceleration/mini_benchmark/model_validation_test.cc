@@ -105,8 +105,9 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     ASSERT_GE(fd, 0);
     struct stat stat_buf = {0};
     ASSERT_EQ(fstat(fd, &stat_buf), 0);
-    auto validator =
-        std::make_unique<Validator>(fd, 0, stat_buf.st_size, settings);
+    auto validator = std::make_unique<Validator>(
+        std::make_unique<ModelLoader>(fd, /*offset=*/0, stat_buf.st_size),
+        settings);
     close(fd);
 
     Validator::Results results;
@@ -130,10 +131,10 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
       }
       std::cerr << "\n";
     }
-    std::cerr << "Compilation time us " << results.compilation_time_us
+    std::cerr << "Delegate prep time us " << results.delegate_prep_time_us
               << std::endl;
-    RecordProperty(accelerator_name + " Compilation time us",
-                   results.compilation_time_us);
+    RecordProperty(accelerator_name + " Delegate prep time us",
+                   results.delegate_prep_time_us);
     std::cerr << "Execution time us";
     int test_case = 0;
     int64_t total_execution_time_us = 0;
@@ -161,6 +162,7 @@ TEST_F(LocalizerValidationRegressionTest, Cpu) {
   CheckValidation("CPU");
 }
 
+#ifndef DISABLE_PLATFORM_NNAPI_TEST
 TEST_F(LocalizerValidationRegressionTest, Nnapi) {
   fbb_.Finish(
       CreateComputeSettings(fbb_, ExecutionPreference_ANY,
@@ -172,6 +174,7 @@ TEST_F(LocalizerValidationRegressionTest, Nnapi) {
     CheckValidation("NNAPI");
   }
 }
+#endif  // DISABLE_PLATFORM_NNAPI_TEST
 
 #ifdef ENABLE_NNAPI_SL_TEST
 TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
@@ -209,7 +212,7 @@ TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
     CheckValidation("NNAPISL");
   }
 }
-#endif /* ENABLE_NNAPI_SL_TEST */
+#endif  // ENABLE_NNAPI_SL_TEST
 
 TEST_F(LocalizerValidationRegressionTest, Gpu) {
   AndroidInfo android_info;

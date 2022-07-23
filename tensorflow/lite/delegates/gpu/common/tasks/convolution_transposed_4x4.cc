@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_4x4.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -80,7 +81,6 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     WeightsUploadType weights_upload_type) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -95,7 +95,7 @@ std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
   if (op_def.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_type = op_def.src_tensors[1].GetDataType();
     desc.element_size = 4;
     desc.memory_type =
         weights_upload_type ==
@@ -417,7 +417,7 @@ void ConvolutionTransposed4x4::UploadWeights(
 
   RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
   args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 bool IsConvolutionTransposed4x4Supported(
@@ -441,7 +441,7 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 
@@ -466,7 +466,7 @@ ConvolutionTransposed4x4 CreateConvolutionTransposed4x4DynamicWeights(
   desc.element_type = new_def.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return result;
 }
 

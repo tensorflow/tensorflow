@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -710,6 +711,72 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
 }
 
+TEST_F(HloInstructionTest, BinaryCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a call instruction containing a single binary operation.
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({add});
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(call));
+  EXPECT_THAT(constant2->users(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, ChainCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of called unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp3, exp2, exp1});
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(call));
+}
+
+TEST_F(HloInstructionTest, MultiOutputCallOp) {
+  HloComputation::Builder builder(TestName());
+  // Create a chain of called unary ops.
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
+  auto exp4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, exp3, exp4));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp3, exp2, exp1});
+  call->AppendInstructionIntoCalledComputation(exp4, /*add_output=*/true);
+
+  EXPECT_THAT(call->operands(), ElementsAre(constant));
+  EXPECT_EQ(add->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(add->operand(0)->operands(), ElementsAre(call));
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(add->operand(1)->operands(), ElementsAre(call));
+}
+
 TEST_F(HloInstructionTest, AsyncOp) {
   HloComputation::Builder builder(TestName());
   // Create a call instruction containing a single binary operation.
@@ -721,14 +788,21 @@ TEST_F(HloInstructionTest, AsyncOp) {
       r0f32_, HloOpcode::kAdd, constant1, constant2));
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(auto* async_done,
-                          computation->CreateAsyncInstructions(
-                              add, {ShapeUtil::MakeScalarShape(U32)}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* async_done,
+      computation->CreateAsyncInstructions(
+          add, {ShapeUtil::MakeScalarShape(U32)}, "parallel_thread"));
   auto* async_start = async_done->operand(0);
 
   EXPECT_EQ(async_start->shape().tuple_shapes_size(), 3);
+  EXPECT_EQ(async_start->async_thread_name(), "parallel_thread");
+  EXPECT_EQ(async_done->async_thread_name(), "parallel_thread");
   EXPECT_TRUE(ShapeUtil::Equal(async_start->shape().tuple_shapes(2),
                                ShapeUtil::MakeScalarShape(U32)));
+  EXPECT_EQ(async_start->async_wrapped_computation()->thread_name(),
+            "parallel_thread");
+  EXPECT_EQ(async_done->async_wrapped_computation()->thread_name(),
+            "parallel_thread");
   EXPECT_THAT(async_start->operands(), ElementsAre(constant1, constant2));
   EXPECT_THAT(constant1->users(), ElementsAre(async_start));
   EXPECT_THAT(constant2->users(), ElementsAre(async_start));
@@ -1647,12 +1721,18 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
       HloInstruction::CreateParameter(0, s1, "p0"));
   HloInstruction* async_start =
       entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
-          s_tuple, {entry_param}, async_computation.get()));
+          s_tuple, {entry_param}, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_thread_name=*/"parallel_thread"));
   HloInstruction* async_update =
       entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
-          s_tuple, async_start, async_computation.get()));
-  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
-      s2, async_update, async_computation.get()));
+          s_tuple, async_start, async_computation.get(),
+          /*async_group_id=*/std::nullopt,
+          /*async_thread_name=*/"parallel_thread"));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(s2, async_update, async_computation.get(),
+                                      /*async_group_id=*/std::nullopt,
+                                      /*async_thread_name=*/"parallel_thread"));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(entry_builder.Build());
@@ -1663,9 +1743,9 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_thread_name="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_thread_name="parallel_thread", custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_thread_name="parallel_thread", custom_call_target="foo"
 }
 
 )";
@@ -1676,17 +1756,17 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 %AsyncOp (p0.1: f32[10]) -> f32[20] {
   %p0.1 = f32[10]{0} parameter(0)
   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1), custom_call_target="foo"
-}
+}, thread_name="parallel_thread"
 
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
-  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_thread_name="parallel_thread", calls=%AsyncOp
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_thread_name="parallel_thread", calls=%AsyncOp
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_thread_name="parallel_thread", calls=%AsyncOp
 }
 
 )";
-  auto options = HloPrintOptions().set_syntax_sugar_async_op(false);
+  auto options = HloPrintOptions().set_syntax_sugar_async_ops(false);
   EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
 }
 
@@ -1718,8 +1798,13 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
 
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
+  constexpr char kParallelThreadName[] = "parallel_thread";
+  computation->SetThreadName(kParallelThreadName);
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kLoop);
+  fusion->set_called_computations_thread_name(
+      kParallelThreadName,
+      /*skip_async_thread_name_overwrite*/ false);
 
   const std::string expected_fusion =
       R"(f32[5,20]{1,0} fusion(f32[5,10]{1,0}, f32[20,10]{1,0}), kind=kLoop, calls=
@@ -1728,7 +1813,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
+}, thread_name="parallel_thread")";
   EXPECT_EQ(fusion->ToString(options), expected_fusion);
 }
 

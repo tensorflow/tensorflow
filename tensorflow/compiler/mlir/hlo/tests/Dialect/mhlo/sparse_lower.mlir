@@ -227,8 +227,8 @@ func.func @sparse_dot(%arg0: tensor<?xf32, #SV>,
   %0 = "mhlo.dot_general"(%arg0, %arg1)
        {dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
                                           rhs_contracting_dimensions = [0]>,
-                                          precision_config = [#mhlo<"precision DEFAULT">,
-                                          #mhlo<"precision DEFAULT">]}
+                                          precision_config = [#mhlo<precision DEFAULT>,
+                                          #mhlo<precision DEFAULT>]}
                   : (tensor<?xf32, #SV>, tensor<?xf32, #SV>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
@@ -262,3 +262,20 @@ func.func @sparse_conv_eltwise(%arg0: tensor<2x3xf32, #CSR>) -> tensor<2x3xi32, 
   return %0 : tensor<2x3xi32, #DCSR>
 }
 
+// CHECK-LABEL: func @sparse_expand(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<100xf64, #{{.*}}>) -> tensor<10x10xf64, #{{.*}}> {
+// CHECK:         %[[OUT:.*]] = tensor.expand_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<100xf64, #{{.*}}> into tensor<10x10xf64, #{{.*}}>
+// CHECK:         return %[[OUT]] : tensor<10x10xf64, #{{.*}}>
+func.func @sparse_expand(%arg0: tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR>
+  return %0 : tensor<10x10xf64, #CSR>
+}
+
+// CHECK-LABEL: func @sparse_collapse(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #{{.*}}>) -> tensor<100xf64, #{{.*}}> {
+// CHECK:         %[[OUT:.*]] = tensor.collapse_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<10x10xf64, #{{.*}}> into tensor<100xf64, #{{.*}}>
+// CHECK:         return %[[OUT]] : tensor<100xf64, #{{.*}}>
+func.func @sparse_collapse(%arg0: tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV>
+  return %0 : tensor<100xf64, #SV>
+}

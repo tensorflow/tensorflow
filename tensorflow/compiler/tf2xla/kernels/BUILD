@@ -7,7 +7,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
+    "if_cuda_or_rocm",
     "tf_cuda_library",
 )
 
@@ -144,6 +144,7 @@ tf_kernel_library(
         "variable_ops.cc",
         "where_op.cc",
         "xla_broadcast_helper_op.cc",
+        "xla_call_module_op.cc",
         "xla_conv_op.cc",
         "xla_custom_call_op.cc",
         "xla_dequantize_op.cc",
@@ -173,8 +174,17 @@ tf_kernel_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "//tensorflow/compiler/jit:xla_activity_listener",
         "//tensorflow/compiler/jit:xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -219,6 +229,8 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/client/lib:tridiagonal",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -229,9 +241,9 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
         "//tensorflow/stream_executor/lib",
-    ] + if_libtpu(
-        if_false = [":gpu_tf_kernel_custom_call"],
-        if_true = [],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":gpu_tf_kernel_custom_call"],
     ),
 )
 
@@ -254,7 +266,6 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:human_readable_json",
         "//tensorflow/core/platform:status",
         "//tensorflow/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/stream_executor/gpu:gpu_stream_header",

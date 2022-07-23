@@ -306,6 +306,11 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/tools/versioning/gpu_compatibility.cc
     ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
   )
+  include_directories(
+    AFTER
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/common
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/common/task
+  )
   if(TFLITE_ENABLE_METAL AND "${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
     #
     # libmetal_delegate library
@@ -452,7 +457,11 @@ populate_tflite_source_vars("kernels/internal/reference/integer_ops"
 populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
   TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS
 )
-set(TFLITE_PROFILER_SRCS ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc)
+set(TFLITE_PROFILER_SRCS
+  ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
+  ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
+)
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
     ${TFLITE_SOURCE_DIR}/profiling/atrace_profiler.cc

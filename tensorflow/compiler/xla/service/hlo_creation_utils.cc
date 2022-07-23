@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 
+#include <memory>
+
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -41,6 +42,11 @@ StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
                       ShapeInference::InferUnaryOpShape(opcode, operand));
   return computation->AddInstruction(
       HloInstruction::CreateUnary(unary_op_shape, opcode, operand));
+}
+
+HloInstruction* MakeCopyHlo(HloInstruction* from, const Shape& to) {
+  return from->AddInstruction(
+      HloInstruction::CreateUnary(to, HloOpcode::kCopy, from));
 }
 
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
@@ -323,16 +329,19 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
       HloInstruction::CreateMap(map_shape, operands, map_computation));
 }
 
+HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
+                                       int exponent_bits, int mantissa_bits) {
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateReducePrecision(operand->shape(), operand,
+                                            exponent_bits, mantissa_bits));
+}
+
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,
                                         HloComputation* reduce_computation) {
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
-  auto result_shape = ShapeUtil::FilterDimensions(
-      [&](const int64_t dim) {
-        return !absl::c_linear_search(dimensions, dim);
-      },
-      operand->shape());
+  auto result_shape = ShapeUtil::DeleteDimensions(dimensions, operand->shape());
 
   return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
       result_shape, operand, init_value, dimensions, reduce_computation));
@@ -379,6 +388,34 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
     reduce_computation = module->AddEmbeddedComputation(b.Build());
   }
   return MakeReduceHlo(operand, init_value, all_dims, reduce_computation);
+}
+
+StatusOr<HloInstruction*> MakeReduceHlo(
+    absl::Span<HloInstruction* const> operands,
+    absl::Span<HloInstruction* const> init_values,
+    absl::Span<const int64_t> dimensions, HloComputation* reduce_computation) {
+  CHECK(!operands.empty());
+  CHECK_EQ(operands.size(), init_values.size());
+  auto root = reduce_computation->root_instruction();
+  if (root->shape().IsTuple()) {
+    CHECK_EQ(root->shape().tuple_shapes_size(), operands.size());
+  } else {
+    CHECK_EQ(operands.size(), 1);
+  }
+
+  std::vector<Shape> expected_shapes;
+  for (auto operand : operands) {
+    expected_shapes.push_back(ShapeUtil::FilterDimensions(
+        [&](const int64_t dim) {
+          return !absl::c_linear_search(dimensions, dim);
+        },
+        operand->shape()));
+  }
+
+  auto output_shape = ShapeUtil::MakeMaybeTupleShape(expected_shapes);
+
+  return operands[0]->parent()->AddInstruction(HloInstruction::CreateReduce(
+      output_shape, operands, init_values, dimensions, reduce_computation));
 }
 
 StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,

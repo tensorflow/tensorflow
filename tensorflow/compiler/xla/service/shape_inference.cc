@@ -431,14 +431,6 @@ StatusOr<PrimitiveType> MaybeUpcast(
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
-  auto old_element_type = operand_shape.element_type();
-  if (primitive_util::IsComplexType(old_element_type) &&
-      !primitive_util::IsComplexType(new_element_type)) {
-    return Unimplemented(
-        "Conversion from complex to real type %s => %s is not implemented.",
-        ShapeUtil::HumanString(operand_shape),
-        PrimitiveType_Name(new_element_type));
-  }
   if (!operand_shape.IsArray() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the

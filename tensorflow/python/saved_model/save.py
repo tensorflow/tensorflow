@@ -22,11 +22,16 @@ import traceback
 
 from absl import logging
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
+from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import checkpoint_options
+from tensorflow.python.checkpoint import functional_saver
+from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -57,15 +62,13 @@ from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
+from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.training.saving import checkpoint_options
-from tensorflow.python.training.saving import functional_saver
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import base
+from tensorflow.python.trackable import resource
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base
-from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import trackable_utils
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
@@ -140,13 +143,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     asset_paths = object_identity.ObjectIdentityDictionary()
     constant_captures = object_identity.ObjectIdentityDictionary()
     for obj in trackable_objects:
-      if isinstance(obj, tracking.Asset):
+      if isinstance(obj, asset.Asset):
         asset_paths[obj.asset_path] = obj
       if isinstance(obj, function_saved_model_utils.TrackableConstant):
         constant_captures[obj.capture] = obj
 
     def _get_merged_trackable(x):
-      if isinstance(x, tracking.Asset):
+      if isinstance(x, asset.Asset):
         return asset_paths[x.asset_path]
       if isinstance(x, function_saved_model_utils.TrackableConstant):
         if x.capture in asset_paths:
@@ -396,7 +399,7 @@ class _SaveableView(object):
           object_map=object_map,
           tensor_map=tensor_map,
           options=self._options)
-      if isinstance(obj, tracking.Asset):
+      if isinstance(obj, asset.Asset):
         _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
       if tensors:
         for tensor in tensors:
@@ -415,7 +418,7 @@ class _SaveableView(object):
   def get_concrete_resource_initializers(self):
     concrete_initializers = []
     for obj in self.nodes:
-      if isinstance(obj, tracking.CapturableResource):
+      if isinstance(obj, resource.CapturableResource):
         concrete_initializers.append(
             self.augmented_graph_view.get_child(
                 obj, "_initialize").get_concrete_function())
@@ -845,7 +848,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     meta_graph_def.saver_def.CopyFrom(saver_def)
 
   # At this point all nodes that can be added to the SavedObjectGraph have been
-  # added, so run the following to validate deserialization depenencies.
+  # added, so run the following to validate deserialization dependencies.
   _dependency_sorted_node_ids(saveable_view)
 
   graph_def = exported_graph.as_graph_def(add_shapes=True)
@@ -974,7 +977,7 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
 def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   """Saves an object into SavedObject proto."""
-  if isinstance(obj, tracking.Asset):
+  if isinstance(obj, asset.Asset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
   elif resource_variable_ops.is_resource_variable(obj):
@@ -990,7 +993,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   elif isinstance(obj, _CapturedTensor):
     proto.captured_tensor.name = obj.name
     proto.captured_tensor.concrete_function = obj.concrete_function
-  elif isinstance(obj, tracking.CapturableResource):
+  elif isinstance(obj, resource.CapturableResource):
     proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)
@@ -1227,6 +1230,7 @@ def save(obj, export_dir, signatures=None, options=None):
   # pylint: enable=line-too-long
   metrics.IncrementWriteApi(_SAVE_V2_LABEL)
   save_and_return_nodes(obj, export_dir, signatures, options)
+
   metrics.IncrementWrite(write_version="2")
 
 
@@ -1292,15 +1296,26 @@ def save_and_return_nodes(obj,
   # as we build up the C++ API.
   pywrap_saved_model.Save(export_dir)
 
+  saved_model_serialized = saved_model.SerializeToString(deterministic=True)
+
+  # Write fingerprint protobuf, if requested.
+  if flags.config().saved_model_fingerprinting.value():
+    fingerprint_path = file_io.join(
+        compat.as_str(export_dir),
+        compat.as_str(constants.FINGERPRINT_FILENAME))
+    fingerprint_proto = fingerprinting.CreateFingerprintDef(
+        saved_model_serialized)
+    file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
+
   path = file_io.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
   file_io.atomic_write_string_to_file(
       path, saved_model.SerializeToString(deterministic=True))
+
   # Save debug info, if requested.
   if options.save_debug_info:
     _export_debug_info(exported_graph, export_dir)
-
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point, we need to keep references to captured
   # constants in the saved graph.
@@ -1377,7 +1392,7 @@ def _build_meta_graph_impl(obj, signatures, options, meta_graph_def=None):
 
   # Use _SaveableView to provide a frozen listing of properties and functions.
   saveable_view = _SaveableView(augmented_graph_view, options)
-  object_saver = util.TrackableSaver(augmented_graph_view)
+  object_saver = checkpoint.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
       meta_graph_def, saveable_view, signatures, options.namespace_whitelist,
       options.experimental_custom_gradients)
@@ -1416,7 +1431,7 @@ def _build_meta_graph(obj, signatures, options, meta_graph_def=None):
   Returns:
     meta_graph_def: Filled MetaGraphDef proto
     exported_graph: `tf.Graph` object generated from `obj`.
-    object_saver: `util.TrackableSaver` of the `obj` and its dependencies.
+    object_saver: `checkpoint.TrackableSaver` of the `obj` and its dependencies.
     asset_info: `_AssetInfo` tuple containing external assets in the `obj`.
     saveable_view.nodes: _SaveableView nodes.
     saveable_view.node_paths: _SaveableView paths.

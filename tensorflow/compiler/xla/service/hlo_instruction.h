@@ -25,6 +25,8 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -35,7 +37,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -293,7 +294,7 @@ class HloPrintOptions {
   //   ROOT %async-done = f32[20]{0} custom-call-done(%async-update),
   //                                                    custom_call_target="foo"
   // }
-  HloPrintOptions& set_syntax_sugar_async_op(bool value) {
+  HloPrintOptions& set_syntax_sugar_async_ops(bool value) {
     syntax_sugar_async_ops_ = value;
     return *this;
   }
@@ -505,6 +506,8 @@ class HloInstruction {
     kCustom,
   };
 
+  inline static constexpr char kMainThreadName[] = "main";
+
   virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
 
   // Detaches an instruction from its operands and users. That is, remove the
@@ -624,13 +627,19 @@ class HloInstruction {
   // Creates an asynchronous start, update, and done op.
   static std::unique_ptr<HloInstruction> CreateAsyncStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_thread_name = kMainThreadName);
   static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
       const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_thread_name = kMainThreadName);
   static std::unique_ptr<HloInstruction> CreateAsyncDone(
       const Shape& shape, HloInstruction* operand,
-      HloComputation* async_computation);
+      HloComputation* async_computation,
+      std::optional<int64_t> async_group_id = std::nullopt,
+      absl::string_view async_thread_name = kMainThreadName);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -1087,6 +1096,9 @@ class HloInstruction {
 
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
+  static std::unique_ptr<HloInstruction> CreateCall(
+      const Shape& shape, HloInstruction* called_computation_root);
+
   static std::unique_ptr<HloInstruction> CreateCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* computation);
@@ -1666,7 +1678,7 @@ class HloInstruction {
   // dimensions.
   //
   // Precondition: this op must be a reshape.
-  std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+  std::optional<ShapeUtil::ShapeEqualityDescriptor>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
   // Gets the string identifier for this instruction.
@@ -1909,6 +1921,11 @@ class HloInstruction {
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
 
+  // Delegates to
+  // HloCallableInstruction::AppendInstructionIntoCalledComputation.
+  HloInstruction* AppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);
 
@@ -2110,6 +2127,24 @@ class HloInstruction {
 
   // Delagates to HloAsyncInstruction::async_wrapped_opcode().
   HloOpcode async_wrapped_opcode() const;
+
+  // Delegates to HloAsyncInstruction::async_group_id().
+  std::optional<int64_t> async_group_id() const;
+
+  // Delegates to HloAsyncInstruction::set_async_group_id().
+  void set_async_group_id(std::optional<int64_t> async_group_id);
+
+  // Delegates to HloAsyncInstruction::async_thread_name().
+  absl::string_view async_thread_name() const;
+
+  // Delegates to HloAsyncInstruction::set_async_thread_name().
+  void set_async_thread_name(absl::string_view async_thread_name);
+
+  // Delegates to
+  // HloCallableInstruction::RecursivelySetComputationsThreadName().
+  void set_called_computations_thread_name(
+      absl::string_view async_thread_name,
+      bool skip_async_thread_name_overwrite);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;

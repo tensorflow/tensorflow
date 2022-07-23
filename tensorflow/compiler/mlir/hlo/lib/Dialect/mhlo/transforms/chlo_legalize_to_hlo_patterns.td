@@ -50,7 +50,7 @@ def : Pat<(CHLO_AcosOp NonComplexElementType:$input),
       (HLO_ConstantLike<"2"> $input),
       (HLO_Atan2Op
         (HLO_SqrtOp
-          (HLO_SubOp
+          (HLO_SubtractOp
             (HLO_ConstantLike<"1"> $input),
             (HLO_MulOp $input, $input)
           )
@@ -133,7 +133,7 @@ def : Pat<(CHLO_AcoshOp ComplexElementType:$input),
             $input,
             (HLO_ConstantLike<"1"> $input)
           ),
-          (HLO_SubOp
+          (HLO_SubtractOp
             $input,
             (HLO_ConstantLike<"1"> $input)
           )
@@ -153,7 +153,7 @@ def : Pat<(CHLO_AsinOp NonComplexElementType:$input),
       (HLO_AddOp
         (HLO_ConstantLike<"1"> $input),
         (HLO_SqrtOp
-          (HLO_SubOp
+          (HLO_SubtractOp
             (HLO_ConstantLike<"1"> $input),
             (HLO_MulOp $input, $input)
           )
@@ -291,7 +291,7 @@ def : Pat<(CHLO_AtanhOp NonComplexElementType:$input),
     ),
     (HLO_ConstantLike<"NAN"> $input),
     (HLO_MulOp
-      (HLO_SubOp
+      (HLO_SubtractOp
         (HLO_Log1pOp $input),
         (HLO_Log1pOp
           (HLO_NegOp $input)
@@ -309,7 +309,7 @@ def : Pat<(CHLO_AtanhOp NonComplexElementType:$input),
 // because we don't yet have exhaustive tests for complex trig functions".
 def : Pat<(CHLO_AtanhOp ComplexElementType:$input),
   (HLO_MulOp
-    (HLO_SubOp
+    (HLO_SubtractOp
       (HLO_Log1pOp $input),
       (HLO_Log1pOp
         (HLO_NegOp $input)

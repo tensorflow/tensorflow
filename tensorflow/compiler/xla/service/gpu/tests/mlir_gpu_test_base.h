@@ -46,6 +46,8 @@ class MlirGpuTestBase : public HloTestBase {
                                span.size() / sizeof(T));
   }
 
+  StreamPool::Ptr BorrowStream();
+
  private:
   StatusOr<std::vector<std::vector<uint8_t>>> RunMlirModuleWithHostBuffers(
       mlir::ModuleOp module, std::vector<absl::Span<uint8_t>> arguments);

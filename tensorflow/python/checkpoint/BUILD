@@ -27,6 +27,7 @@ py_library(
         ":checkpoint_options",
         ":functional_saver",
         ":graph_view",
+        ":saveable_compat",
         ":util",
     ],
 )
@@ -42,10 +43,10 @@ py_library(
         ":checkpoint_options",
         ":functional_saver",
         ":graph_view",
+        ":restore",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -62,6 +63,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model:utils",
@@ -84,7 +86,6 @@ tf_py_test(
         ":checkpoint",
         ":checkpoint_options",
         ":graph_view",
-        "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -102,6 +103,7 @@ tf_py_test(
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -133,7 +135,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "@six_archive//:six",
     ],
 )
@@ -151,6 +153,47 @@ py_library(
     name = "checkpoint_util",
     srcs = ["checkpoint_util.py"],
     srcs_version = "PY3",
+    deps = [
+        ":saveable_compat",
+        "//tensorflow/python/trackable:trackable_utils",
+    ],
+)
+
+tf_py_test(
+    name = "checkpoint_util_test",
+    srcs = ["checkpoint_util_test.py"],
+    deps = [
+        ":checkpoint_util",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+    ],
+)
+
+py_library(
+    name = "checkpoint_view",
+    srcs = ["checkpoint_view.py"],
+    srcs_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":util",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:converter",
+    ],
+)
+
+tf_py_test(
+    name = "checkpoint_view_test",
+    srcs = ["checkpoint_view_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":checkpoint_view",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+    ],
 )
 
 py_library(
@@ -194,16 +237,49 @@ py_library(
     srcs = ["util.py"],
     srcs_version = "PY3",
     deps = [
+        ":saveable_compat",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training:optimizer",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "//tensorflow/python/training/tracking",
+    ],
+)
+
+tf_py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    deps = [
+        ":graph_view",
+        ":util",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:autotrackable",
+    ],
+)
+
+py_library(
+    name = "restore",
+    srcs = ["restore.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":checkpoint_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops_gen",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/saved_model/registration",
+        "//tensorflow/python/trackable:constants",
+        "//tensorflow/python/trackable:python_state",
+        "//tensorflow/python/trackable:trackable_utils",
     ],
 )
 
@@ -294,5 +370,46 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training:checkpoint_management",
         "//tensorflow/python/training:saver",
+    ],
+)
+
+py_library(
+    name = "saveable_compat",
+    srcs = [
+        "saveable_compat.py",
+    ],
+)
+
+tf_py_test(
+    name = "saveable_compat_test",
+    srcs = [
+        "saveable_compat_test.py",
+    ],
+    data = [
+        "testdata/table_legacy_saveable_object.data-00000-of-00001",
+        "testdata/table_legacy_saveable_object.index",
+    ],
+    tags = ["no_pip"],
+    deps = [
+        ":checkpoint",
+        ":testdata/generate_checkpoint",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_binary(
+    name = "testdata/generate_checkpoint",
+    srcs = ["testdata/generate_checkpoint.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:checkpoint",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/module",
+        "@absl_py//absl:app",
     ],
 )

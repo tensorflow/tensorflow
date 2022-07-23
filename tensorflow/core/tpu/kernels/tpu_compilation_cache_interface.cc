@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
+#include <utility>
+
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -232,7 +234,7 @@ size_t TpuCompilationCacheInterface::RemoveEntry(const std::string& key) {
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
   CHECK(parsed_key_or_status.status().ok());
   const TpuCompilationCacheKey parsed_key =
-      parsed_key_or_status.ConsumeValueOrDie();
+      std::move(parsed_key_or_status).value();
   if (!parsed_key.has_guaranteed_const) {
     return erased;
   }
@@ -348,7 +350,7 @@ void TpuCompilationCacheInterface::InsertEntry(const std::string& key,
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
   CHECK(parsed_key_or_status.status().ok());
   const TpuCompilationCacheKey parsed_key =
-      parsed_key_or_status.ConsumeValueOrDie();
+      std::move(parsed_key_or_status).value();
   if (!parsed_key.has_guaranteed_const) {
     return;
   }

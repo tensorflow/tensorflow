@@ -60,6 +60,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -833,6 +834,11 @@ cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
     compatible_with = get_compatible_with_portable(),
+    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
+    # specialization there causing build breakages.  This must be added here
+    # as "defines" so that the header is excluded in all dependent targets.
+    # TODO(b/238649163): remove this once no longer necessary.
+    defines = ["GEMM_KERNEL_H"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -965,6 +971,11 @@ cc_library(
         "eigen_spatial_convolutions-inl.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    # Hack to disable breaking AVX512 special GemmKernel. There is a conflicting
+    # specialization there causing build breakages.  This must be added here
+    # as "defines" so that the header is excluded in all dependent targets.
+    # TODO(b/238649163): remove this once no longer necessary.
+    defines = ["GEMM_KERNEL_H"],
     deps = [
         ":eigen_convolution_helpers",
     ],
@@ -1554,7 +1565,35 @@ tf_kernel_library(
 tf_cc_test(
     name = "ragged_tensor_to_variant_op_test",
     size = "small",
-    srcs = ["ragged_tensor_to_variant_op_test.cc"],
+    srcs = [
+        "ragged_tensor_to_variant_op_test.cc",
+        "ragged_tensor_to_variant_op_test.h",
+    ],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_to_variant_op",
+        ":ragged_tensor_variant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_variant_op_large_data_test",
+    timeout = "moderate",  # Set timeout to 300 sec.
+    srcs = [
+        "ragged_tensor_to_variant_op_large_data_test.cc",
+        "ragged_tensor_to_variant_op_test.h",
+    ],
+    tags = [
+        "local",
+        "manual",
+        "notap",
+    ],
     deps = [
         ":ops_testutil",
         ":ragged_tensor_to_variant_op",
@@ -3546,11 +3585,26 @@ tf_kernel_library(
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        ":matmul_util",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
     ]) + if_cuda_or_rocm([
         ":gpu_utils",
-        "//tensorflow/stream_executor:matmul_util",
     ]),
+)
+
+cc_library(
+    name = "matmul_util",
+    srcs = if_cuda(["matmul_util.cc"]),
+    hdrs = if_cuda(["matmul_util.h"]),
+    deps = if_cuda([
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/core/util:env_var",
+        "//tensorflow/stream_executor/cuda:cublas_plugin",
+    ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -4355,6 +4409,7 @@ tf_kernel_library(
     deps = [
         ":fill_functor",
         ":gpu_prim_hdrs",
+        ":sparse_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -4941,6 +4996,7 @@ cc_library(
 SPARSE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    ":sparse_utils",
 ]
 
 tf_kernel_library(
@@ -6414,6 +6470,7 @@ filegroup(
         "sparse_reorder_op.h",
         "sparse_slice_op.h",
         "sparse_tensor_dense_matmul_op.h",
+        "sparse_utils.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
@@ -6651,6 +6708,7 @@ filegroup(
         "random_ops_util.h",
         "random_poisson_op.cc",
         "shuffle_common.h",
+        "sparse_utils.cc",
         "random_shuffle_op.cc",
         "reduce_join_op.cc",
         "reduction_ops_all.cc",
@@ -6907,6 +6965,8 @@ filegroup(
             "nextafter_op.cc",
             "initializable_lookup_table.*",
             "lookup_util.*",
+            # Requires CUDA.
+            "matmul_util.*",
         ] + ANDROID_TEXTUAL_HDRS,
     ) + [
         # Referenced by stateful_random_ops.cc but excluded with the *gpu*
@@ -7858,6 +7918,7 @@ exports_files([
     "cwise_op_equal_to_1.cc",
     "cwise_op_equal_to_2.cc",
     "cwise_op_exp.cc",
+    "cwise_op_erf.cc",
     "cwise_op_floor.cc",
     "cwise_op_floor_div.cc",
     "cwise_op_floor_mod.cc",

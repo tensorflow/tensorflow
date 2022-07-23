@@ -26,7 +26,7 @@ int GpuPlugin::GetDelegateErrno(TfLiteDelegate* from_delegate) { return 0; }
 
 std::unique_ptr<DelegatePluginInterface> GpuPlugin::New(
     const TFLiteSettings& acceleration) {
-  return absl::make_unique<GpuPlugin>(acceleration);
+  return std::make_unique<GpuPlugin>(acceleration);
 }
 
 #if TFLITE_SUPPORTS_GPU_DELEGATE

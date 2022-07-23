@@ -87,7 +87,7 @@ class IteratorResource : public ResourceBase {
         : flib_def_(std::move(flib_def)),
           flr_(flr),
           pflr_(std::move(pflr)),
-          function_handle_cache_(absl::make_unique<FunctionHandleCache>(flr)),
+          function_handle_cache_(std::make_unique<FunctionHandleCache>(flr)),
           iterator_(std::move(iterator)) {}
 
     ~State() { cancellation_manager_.StartCancel(); }

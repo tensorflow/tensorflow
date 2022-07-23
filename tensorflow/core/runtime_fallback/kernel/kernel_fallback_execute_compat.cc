@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
@@ -93,22 +94,6 @@ void KernelFallbackEmitError(
       tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
-}
-
-// Return the device to be used for the fallback kernel execution. The device is
-// guaranteed to be alive during the graph execution.
-tensorflow::Device* GetDeviceFromFallbackState(
-    const KernelFallbackCompatRequestState& fallback_request_state,
-    const OpKernelRunner& kernel_runner) {
-  // Return the user-specified the custom device instead, (eg. to use a custom
-  // thread pool).
-  //
-  // The device handling is similar to TF1 code in the below link:
-  // http://cs/?q=f:common_runtime%2Fexecutor.cc:692%20package:piper&rcl=351575626
-  if (auto* custom_device = fallback_request_state.custom_device()) {
-    return custom_device;
-  }
-  return kernel_runner.device();
 }
 
 std::function<void(std::function<void()>)>* GetDefaultRunner() {
@@ -222,28 +207,6 @@ static Status ValidateInputTypes(
 }
 
 namespace {
-
-void SetUpParams(const OpKernelRunner& runner,
-                 const KernelFallbackCompatRequestState& fallback_request_state,
-                 tensorflow::Device* device, OpKernelRunState& run_state) {
-  auto& params = run_state.params;
-  params.inputs = &run_state.input_tf_tensor_values;
-  params.device = device;
-  params.op_kernel = runner.op_kernel();
-  // Still use original device's resource_manager.
-  params.resource_manager = runner.resource_manager();
-  params.input_alloc_attrs = &runner.input_alloc_attrs();
-  params.output_attr_array = runner.output_alloc_attrs().data();
-  params.step_container = fallback_request_state.step_container();
-  // Following two parameters are used to support executing tf.data via
-  // fallback.
-  params.function_library = runner.function_library_runtime();
-  params.runner = fallback_request_state.runner();
-  params.collective_executor = fallback_request_state.collective_executor();
-  params.rendezvous = fallback_request_state.rendezvous();
-  params.session_metadata = &fallback_request_state.session_metadata();
-  params.cancellation_manager = fallback_request_state.cancellation_manager();
-}
 
 // Keep states needed by kernel execution in a thread local storage to avoid
 // repeated reallocation and destruction of them.

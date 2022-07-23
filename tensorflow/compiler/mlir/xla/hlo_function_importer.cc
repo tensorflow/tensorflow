@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -498,7 +499,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
-          func_builder->create<mlir::mhlo::ConstOp>(loc, attr.ValueOrDie());
+          func_builder->create<mlir::mhlo::ConstantOp>(loc, attr.ValueOrDie());
       for (auto attr : attributes) {
         new_operation->setAttr(attr.getName(), attr.getValue());
       }
@@ -1053,19 +1054,21 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           .getOperation();
     }
     case HloOpcode::kRng: {
-      auto shape = func_builder->create<mlir::mhlo::ConstOp>(
+      auto shape = func_builder->create<mlir::mhlo::ConstantOp>(
           loc, Convert(result_type.cast<RankedTensorType>().getShape()));
       switch (instruction->random_distribution()) {
         case xla::RNG_UNIFORM:
           return func_builder
-              ->create<mlir::mhlo::RngUniformOp>(loc, result_type, operands[0],
-                                                 operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(
+                  loc, result_type, operands[0], operands[1], shape,
+                  ::mlir::mhlo::RngDistribution::UNIFORM)
               .getOperation();
 
         case xla::RNG_NORMAL:
           return func_builder
-              ->create<mlir::mhlo::RngNormalOp>(loc, result_type, operands[0],
-                                                operands[1], shape)
+              ->create<mlir::mhlo::RngOp>(loc, result_type, operands[0],
+                                          operands[1], shape,
+                                          ::mlir::mhlo::RngDistribution::NORMAL)
               .getOperation();
 
         default:
@@ -1271,7 +1274,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
 
       return func_builder
-          ->create<mlir::mhlo::ConvOp>(loc, result_type, operands, attributes)
+          ->create<mlir::mhlo::ConvolutionOp>(loc, result_type, operands,
+                                              attributes)
           .getOperation();
     }
 
@@ -1342,7 +1346,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_ASSIGN_OR_RETURN(mlir::Type type,
                           ConvertTensorShapeToType<mlir::RankedTensorType>(
                               input_shape, *func_builder));
-      auto zero = func_builder->create<mlir::mhlo::ConstOp>(
+      auto zero = func_builder->create<mlir::mhlo::ConstantOp>(
           loc, func_builder->getZeroAttr(type));
       return {func_builder->create<mlir::mhlo::CompareOp>(
           loc, operands[0], zero, mlir::mhlo::ComparisonDirection::NE)};
@@ -1358,6 +1362,43 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());
+    }
+    case HloOpcode::kDomain: {
+      auto domain_kind = mlir::mhlo::symbolizeDomainKind(
+          instruction->user_side_metadata().Kind());
+      if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
+        return tensorflow::errors::InvalidArgument(
+            "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
+            "supported");
+      }
+      attributes.push_back(builder_->getNamedAttr(
+          "kind", mlir::mhlo::DomainKindAttr::get(func_builder->getContext(),
+                                                  *domain_kind)));
+
+      // In XLA, DomainMetadata is open-world, but in the proto, it is hardcoded
+      // to be ShardingMetadata. Thankfully, the only other implementation of
+      // DomainMetadata is OpName, which is generally used for debugging and
+      // never for compiling production models.
+      //
+      // Since this is hardcoded as such in the proto, we must follow suit.
+      // TODO(b/208783683): The one improvement we can make on this is to move
+      // from the a serialized proto representation to a parsable string
+      auto exit_metadata = ShardingMetadata::ToShardingMetadata(
+          &instruction->operand_side_metadata());
+      auto entry_metadata = ShardingMetadata::ToShardingMetadata(
+          &instruction->user_side_metadata());
+      attributes.push_back(builder_->getNamedAttr(
+          "exit_metadata",
+          builder_->getStringAttr(
+              (*exit_metadata)->sharding()->ToProto().SerializeAsString())));
+      attributes.push_back(builder_->getNamedAttr(
+          "entry_metadata",
+          builder_->getStringAttr(
+              (*entry_metadata)->sharding()->ToProto().SerializeAsString())));
+
+      return func_builder
+          ->create<mlir::mhlo::DomainOp>(loc, result_type, operands, attributes)
+          .getOperation();
     }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                               \
@@ -1380,7 +1421,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kCeil, CeilOp);
       NO_ATTRIBUTE_CASE(kClamp, ClampOp);
       NO_ATTRIBUTE_CASE(kComplex, ComplexOp);
-      NO_ATTRIBUTE_CASE(kCos, CosOp);
+      NO_ATTRIBUTE_CASE(kCos, CosineOp);
       NO_ATTRIBUTE_CASE(kDivide, DivOp);
       NO_ATTRIBUTE_CASE(kExp, ExpOp);
       NO_ATTRIBUTE_CASE(kExpm1, Expm1Op);
@@ -1407,15 +1448,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // implements it as a separate transpose.
       NO_ATTRIBUTE_CASE(kReshape, ReshapeOp);
       NO_ATTRIBUTE_CASE(kRoundNearestAfz, RoundOp);
+      NO_ATTRIBUTE_CASE(kRoundNearestEven, RoundNearestEvenOp);
       NO_ATTRIBUTE_CASE(kRsqrt, RsqrtOp);
       NO_ATTRIBUTE_CASE(kSelect, SelectOp);
       NO_ATTRIBUTE_CASE(kShiftLeft, ShiftLeftOp);
       NO_ATTRIBUTE_CASE(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NO_ATTRIBUTE_CASE(kShiftRightLogical, ShiftRightLogicalOp);
       NO_ATTRIBUTE_CASE(kSign, SignOp);
-      NO_ATTRIBUTE_CASE(kSin, SinOp);
+      NO_ATTRIBUTE_CASE(kSin, SineOp);
       NO_ATTRIBUTE_CASE(kSqrt, SqrtOp);
-      NO_ATTRIBUTE_CASE(kSubtract, SubOp);
+      NO_ATTRIBUTE_CASE(kSubtract, SubtractOp);
       NO_ATTRIBUTE_CASE(kTanh, TanhOp);
       NO_ATTRIBUTE_CASE(kTuple, TupleOp);
       NO_ATTRIBUTE_CASE(kXor, XorOp);
@@ -1652,10 +1694,8 @@ mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(
     const xla::ChannelHandle& channel) {
   return builder_->getNamedAttr(
-      "channel_handle",
-      mlir::mhlo::ChannelHandle::get(
-          builder_->getI64IntegerAttr(channel.handle()),
-          builder_->getI64IntegerAttr(channel.type()), context_));
+      "channel_handle", mlir::mhlo::ChannelHandleAttr::get(
+                            context_, channel.handle(), channel.type()));
 }
 
 void HloFunctionImporter::SetLayoutForMlir(mlir::Operation* op,

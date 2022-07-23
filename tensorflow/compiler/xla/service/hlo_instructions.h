@@ -19,12 +19,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -167,10 +170,14 @@ class HloAsyncInstruction : public HloInstruction {
  public:
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       absl::Span<HloInstruction* const> operands,
-                      HloComputation* async_computation);
+                      HloComputation* async_computation,
+                      std::optional<int64_t> async_group_id = std::nullopt,
+                      absl::string_view async_thread_name = kMainThreadName);
   HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
                       HloInstruction* operand,
-                      HloComputation* async_computation);
+                      HloComputation* async_computation,
+                      std::optional<int64_t> async_group_id = std::nullopt,
+                      absl::string_view async_thread_name = kMainThreadName);
 
   ~HloAsyncInstruction() override;
   // When an async instruction is being destructed, remove it from the vector of
@@ -179,6 +186,20 @@ class HloAsyncInstruction : public HloInstruction {
 
   HloInstruction* async_wrapped_instruction() const;
   HloOpcode async_wrapped_opcode() const;
+
+  // Async group id is a unique id given to a group of async operations that
+  // consist of one async start, one async done, and zero or more async update
+  // operations. The async group participates in a single async operation. The
+  // async operation canonicalizer pass assigns async group ids.
+  std::optional<int64_t> async_group_id() const { return async_group_id_; }
+
+  // Async thread name is a unique thread name for one or more async groups.
+  // Typically one HLO module contains a main thread as well as one or more
+  // parallel threads.
+  absl::string_view async_thread_name() const { return async_thread_name_; }
+  void set_async_group_id(std::optional<int64_t> async_group_id);
+  void set_async_thread_name(absl::string_view async_thread_name);
+  HloInstructionProto ToProto() const override;
 
  private:
   std::vector<std::string> ExtraAttributesToStringImpl(
@@ -190,6 +211,8 @@ class HloAsyncInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+  std::optional<int64_t> async_group_id_;
+  std::string async_thread_name_ = kMainThreadName;
 };
 
 class HloCopyStartInstruction : public HloInstruction {
@@ -924,7 +947,52 @@ class HloConstantInstruction : public HloInstruction {
   std::optional<Literal> literal_;
 };
 
-class HloFusionInstruction : public HloInstruction {
+// Abstract class that represents an HLO instruction that "calls" a computation.
+// Fusion and Call HLOs inherit from this class.
+class HloCallableInstruction : public HloInstruction {
+ public:
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape);
+
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape,
+                         absl::Span<HloInstruction* const> operands,
+                         HloComputation* called_computation);
+
+  ~HloCallableInstruction() override;
+
+  // Adds a new operand to the callable instruction.
+  HloInstruction* AddCallOperand(HloInstruction* new_operand);
+
+  // Appends (fuses) the given instruction into this callable instruction.
+  // instruction_to_append is cloned and the clone is placed in the callable
+  // instruction.  The users of instruction_to_append will be redirected to this
+  // callable instruction. instruction_to_append is unchanged otherwise. When
+  // add_output is true, a clone of the instruction_to_append will be added as
+  // additional output resulting in a multi-output callable instruction.
+  HloInstruction* AppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+  // Clones the given instruction_to_append and inserts the clone into this
+  // callable instruction. If add_output is true, a clone of
+  // instruction_to_append will be in the output of the this callable
+  // instruction (part of the tuple of the callable root).
+  HloInstruction* CloneAndAppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+
+  HloComputation* called_computation() const;
+
+  HloInstruction* called_computation_root() const;
+
+  // Recursively sets all nested called computation to have thread name as
+  // `thread_name`. if `skip_async_thread_name_overwrite` is true, skip
+  // overwrite async instruction and its comptuations thread name overwriting.
+  void RecursivelySetComputationsThreadName(
+      absl::string_view thread_name, bool skip_async_thread_name_overwrite);
+
+ protected:
+  // Returns the default called computation name.
+  virtual std::string default_called_computation_name() const = 0;
+};
+
+class HloFusionInstruction : public HloCallableInstruction {
  public:
   explicit HloFusionInstruction(const Shape& shape, FusionKind fusion_kind,
                                 HloInstruction* fused_root);
@@ -970,7 +1038,8 @@ class HloFusionInstruction : public HloInstruction {
   // instruction would violate the single-result invariant of HLO instructions
   // and significantly complicate code generation.
   HloInstruction* FuseInstruction(HloInstruction* instruction_to_fuse) {
-    return FuseInstructionInternal(instruction_to_fuse);
+    CHECK(instruction_to_fuse->IsFusible()) << instruction_to_fuse->ToString();
+    return AppendInstructionIntoCalledComputation(instruction_to_fuse);
   }
 
   // Fuses the given instruction in this fusion instruction and generates a
@@ -980,7 +1049,8 @@ class HloFusionInstruction : public HloInstruction {
   // instruction_to_fuse is unchanged otherwise.
   HloInstruction* FuseInstructionIntoMultiOutput(
       HloInstruction* instruction_to_fuse) {
-    return FuseInstructionInternal(instruction_to_fuse, /* add_output */ true);
+    return AppendInstructionIntoCalledComputation(instruction_to_fuse,
+                                                  /*add_output=*/true);
   }
 
   // Returns the computation for this fused instruction.
@@ -1023,22 +1093,12 @@ class HloFusionInstruction : public HloInstruction {
   // If multiple operands are the same instruction, keeps only one of them.
   Status DeduplicateFusionOperands();
 
- private:
-  // Fuses the given instruction into this fusion instruction.
-  // instruction_to_fuse is cloned and the clone is placed in the fusion
-  // instruction.  The users of instruction_to_fuse will be redirected to this
-  // fusion instruction. instruction_to_fuse is unchanged otherwise. When
-  // add_output is true, a clone of the instruction_to_fuse will be added as
-  // additional output resulting in a multi-output fusion.
-  HloInstruction* FuseInstructionInternal(HloInstruction* instruction_to_fuse,
-                                          bool add_output = false);
-  // Clones the given instruction_to_fuse and insert the clone into this fusion
-  // instruction. If add_output is true, a clone of instruction_to_fuse will
-  // be in the output of the this fusion instruction (part of the tuple of the
-  // fusion root).
-  HloInstruction* CloneAndFuseInternal(HloInstruction* instruction_to_fuse,
-                                       bool add_output = false);
+ protected:
+  std::string default_called_computation_name() const override {
+    return "fused_computation";
+  }
 
+ private:
   bool IsElementwiseImpl(
       const std::optional<int64_t>& operand_idx) const override;
   std::vector<std::string> ExtraAttributesToStringImpl(
@@ -1055,6 +1115,21 @@ class HloFusionInstruction : public HloInstruction {
 
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
+};
+
+class HloCallInstruction : public HloCallableInstruction {
+ public:
+  HloCallInstruction(const Shape& shape,
+                     HloInstruction* called_computation_root);
+
+  HloCallInstruction(const Shape& shape,
+                     absl::Span<HloInstruction* const> operands,
+                     HloComputation* called_computation);
+
+ protected:
+  std::string default_called_computation_name() const override {
+    return "called_computation";
+  }
 };
 
 class HloRngInstruction : public HloInstruction {
@@ -1495,7 +1570,7 @@ class HloCustomCallInstruction : public HloInstruction {
   }
 
   void set_window(const Window& window) override {
-    window_ = absl::make_unique<Window>(window);
+    window_ = std::make_unique<Window>(window);
   }
 
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -1506,7 +1581,7 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_convolution_dimension_numbers(
       const ConvolutionDimensionNumbers& dnums) {
     convolution_dimension_numbers_ =
-        absl::make_unique<ConvolutionDimensionNumbers>(dnums);
+        std::make_unique<ConvolutionDimensionNumbers>(dnums);
   }
   // TODO(jpienaar): Remove this accessor in the follow up.
   const std::string& opaque() const { return raw_backend_config_string(); }

@@ -26,11 +26,11 @@ import numpy as np
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEngineInstance  # pylint: disable=g-importing-member
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.framework import config
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt.test import test_utils
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
@@ -55,7 +55,7 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 _SAVED_MODEL_SIGNATURE_KEY = "mypredict"
@@ -100,7 +100,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _GetModelForV2(self):
 
-    class SimpleModel(tracking.AutoTrackable):
+    class SimpleModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.v = None
@@ -234,7 +234,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   # Remove the graph sequence number prefix from the name only if the name has
   # a prefix TRTEngineOp_n_.
   def _MayRemoveGraphSequenceNumber(self, name):
-    prefix = re.search(r"TRTEngineOp_\d+_", name)
+    prefix = re.search(r"TRTEngineOp_\d{3,}_", name)
     if prefix and name.startswith(prefix.group(0)):
       parts = name.split("_", maxsplit=2)
       assert len(parts) == 3
@@ -486,7 +486,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testTrtGraphConverter_ShapeOp_Int32InputOutput_v2(self):
     """Testing ShapeOp and int32 values as engine input and output."""
 
-    class ShapeOpModel(tracking.AutoTrackable):
+    class ShapeOpModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.v = None
@@ -725,7 +725,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testRetainSignatureInfo_NoInputs(self):
 
-    class _Model(tracking.AutoTrackable):
+    class _Model(autotrackable.AutoTrackable):
 
       @def_function.function(input_signature=[])
       def run(self):
@@ -736,7 +736,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneInput(self):
 
-    class _Model(tracking.AutoTrackable):
+    class _Model(autotrackable.AutoTrackable):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.float32)
@@ -749,7 +749,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoInputs(self):
 
-    class _Model(tracking.AutoTrackable):
+    class _Model(autotrackable.AutoTrackable):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.float32),
@@ -763,7 +763,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testRetainSignatureInfo_OneOutputSignatureKey(self):
 
-    class _Model(tracking.AutoTrackable):
+    class _Model(autotrackable.AutoTrackable):
 
       @def_function.function(input_signature=[])
       def run(self):
@@ -774,7 +774,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testRetainSignatureInfo_TwoOutputSignatureKeys(self):
 
-    class _Model(tracking.AutoTrackable):
+    class _Model(autotrackable.AutoTrackable):
 
       @def_function.function(input_signature=[
           tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.float32)

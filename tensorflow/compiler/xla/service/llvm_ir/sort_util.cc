@@ -147,7 +147,7 @@ Status EmitCompareLoopBody(
         write_element(i, compare_keys_index, value2);
       }
     });
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   });
 }
 
@@ -311,7 +311,7 @@ Status EmitTiledCompareLoop(
   // same location in shared memory because we have exactly tile_size / 2 many
   // threads, and the linear index calculated by ParallelLoopEmitter uses
   // linear_index = blockIdx.x * blockDim.x + threadIdx.x;
-  return ::tensorflow::OkStatus();
+  return OkStatus();
 }
 }  // namespace
 
@@ -415,7 +415,7 @@ Status EmitSortInPlace(
           element_address_pointee_type, write_element, emit_compare_callback,
           b));
     }
-    return ::tensorflow::OkStatus();
+    return OkStatus();
   };
   return gpu::ParallelLoopEmitter(compare_loop_body_emitter, iteration_shape,
                                   launch_dimensions, b)

@@ -65,6 +65,10 @@ struct XlaBuilderFriend {
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
 
+  static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
+                           const OpSharding entry, const OpSharding exit,
+                           const Shape& shape);
+
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);
 
@@ -752,8 +756,6 @@ class XlaBuilder {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
 
-  // TODO(b/219961627): Allow the replica_groups to be inferred (one group
-  // containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,
@@ -1399,6 +1401,7 @@ class XlaBuilder {
   friend XlaOp Floor(XlaOp operand);
   friend XlaOp Ceil(XlaOp operand);
   friend XlaOp Round(XlaOp operand);
+  friend XlaOp RoundNearestEven(XlaOp operand);
   friend XlaOp Log(XlaOp operand);
   friend XlaOp Log1p(XlaOp operand);
   friend XlaOp Logistic(XlaOp operand);
@@ -2415,9 +2418,12 @@ XlaOp Floor(XlaOp operand);
 // Enqueues a ceil instruction onto the computation.
 XlaOp Ceil(XlaOp operand);
 
-// Enqueues a round instruction onto the computation, rounding to nearest even
+// Enqueues a round instruction onto the computation,
 // with half-way cases rounding away from zero.
 XlaOp Round(XlaOp operand);
+
+// Enqueues a round instruction onto the computation, rounding to nearest even
+XlaOp RoundNearestEven(XlaOp operand);
 
 // Enqueues an log instruction (natural logarithm) onto the computation.
 XlaOp Log(XlaOp operand);
