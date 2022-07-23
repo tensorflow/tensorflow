@@ -1561,7 +1561,9 @@ class MklFusedDepthwiseConvOp
   virtual ~MklFusedDepthwiseConvOp() {}
 };
 
-enum class oneDNNFusedOps { kBias = 0, kSum = 1, kRelu = 2, kRequantize = 3 };
+// The enum below contains the list of available fused ops. We are storing
+// shifted values for each fused op in order to save bit-shift times.
+enum class oneDNNFusedOps { kBias = 1, kSum = 2, kRelu = 4, kRequantize = 8 };
 
 template <typename Device, typename Tinput, typename Tbias, typename Toutput,
           typename Ttemp_output, bool is_depthwise, string legacy_fused_ops[],
@@ -1589,6 +1591,11 @@ class MklQuantizedConvOp
                   Ttemp_output, /*Tpadding*/ int32,
                   /*bias_enabled*/ false, /*pad_enabled*/ false, is_depthwise,
                   /*native_format*/ true>(context) {
+    // TODO(intel-tf): Since the current list of supported fusions do not have
+    // any permutations (ex. "BiasAdd", "Relu", "Sum" instead of "BiasAdd",
+    // "Sum", "Relu"), store 'supported_fusions' as a vector<int64_t> instead of
+    // vector<vector<string>> for faster lookup times. This can be implemented
+    // once old API is removed.
     std::vector<std::vector<string>> supported_fusions = {
         {"BiasAdd"},
         {"Relu"},
@@ -1612,7 +1619,7 @@ class MklQuantizedConvOp
     // old API is abandoned.
     OP_REQUIRES(context, !(fused_ops_attr.size() > 0 && num_fused_ops > 0),
                 errors::InvalidArgument(
-                    "QuantizedConv fused ops should be only availabe through "
+                    "QuantizedConv fused ops should be only available through "
                     "either new API or old API, got both."));
 
     if (fused_ops_attr.size() > 0) {
@@ -1634,7 +1641,7 @@ class MklQuantizedConvOp
 
     // Set the flag for every fused op.
     for (const auto& op : fused_ops_) {
-      fused_op_flags_ ^= 1 << static_cast<int64_t>(StrToEnum(op));
+      fused_op_flags_ ^= static_cast<int64_t>(StrToEnum(op));
     }
 
     DataType bias_dt, summand_dt, out_dt;
@@ -1699,16 +1706,16 @@ class MklQuantizedConvOp
       // (1)  filter
       // (2)  {bias}
       // (3)  {summand}
-      // (5)  min_input
-      // (6)  max_input
-      // (7)  min_filter
-      // (8)  max_filter
-      // (9)  {min_bias}
-      // (10) {max_bias}
-      // (11) {min_summand}
-      // (12) {max_summand}
-      // (15) {min_freezed_output}
-      // (16) {max_freezed_output}
+      // (4)  min_input
+      // (5)  max_input
+      // (6)  min_filter
+      // (7)  max_filter
+      // (8)  {min_bias}
+      // (9)  {max_bias}
+      // (10) {min_summand}
+      // (11) {max_summand}
+      // (12) {min_freezed_output}
+      // (13) {max_freezed_output}
       int non_minmax_arg_idx_base = 2;
       int minmax_arg_idx_base = 6;
       int bias_idx_offset = this->get_fuse_biasadd() ? 1 : 0;
@@ -1725,8 +1732,8 @@ class MklQuantizedConvOp
       min_input_idx_ =
           non_minmax_arg_idx_base + bias_idx_offset + summand_idx_offset;
       max_input_idx_ = min_input_idx_ + 1;
-      min_filter_idx_ = max_input_idx_ + 1;
-      max_filter_idx_ = min_filter_idx_ + 1;
+      min_filter_idx_ = min_input_idx_ + 2;
+      max_filter_idx_ = min_input_idx_ + 3;
       if (this->get_fuse_biasadd()) {
         min_bias_idx_ =
             minmax_arg_idx_base + bias_idx_offset + summand_idx_offset;
@@ -2132,7 +2139,7 @@ class MklQuantizedConvOp
 
   // Convenience function to check if op is in fused ops, e.g., IsFused(kBias).
   inline bool IsFused(oneDNNFusedOps op) {
-    return fused_op_flags_ & (1 << static_cast<int64_t>(op));
+    return fused_op_flags_ & (static_cast<int64_t>(op));
   }
 
   inline oneDNNFusedOps StrToEnum(const string op) {
