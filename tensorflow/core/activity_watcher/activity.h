@@ -80,8 +80,9 @@ struct Activity {
 // service and also fetch all workers' activities.
 void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent);
 
-#if !defined(IS_MOBILE_PLATFORM)
 namespace tfw_internal {
+
+#if !defined(IS_MOBILE_PLATFORM)
 
 // Records an activity start without checking whether the watcher is enabled.
 ActivityId RecordActivityStart(std::unique_ptr<Activity> activity);
@@ -95,12 +96,21 @@ inline bool WatcherEnabled(int level = 1) {
   return g_watcher_level.load(std::memory_order_acquire) >= level;
 }
 
-}  // namespace tfw_internal
 #endif
+
+// NOTE: Borrowed from boost C++ libraries because std::is_invocable_r is not
+// available in Android NDK.
+template <typename R, typename F, typename... Args>
+struct is_invocable_r
+    : std::is_constructible<
+          std::function<R(Args...)>,
+          std::reference_wrapper<typename std::remove_reference<F>::type>> {};
+
+}  // namespace tfw_internal
 
 template <typename F>
 constexpr bool is_activity_generator =
-    std::is_invocable_r<std::unique_ptr<Activity>, F>::value;
+    tfw_internal::is_invocable_r<std::unique_ptr<Activity>, F>::value;
 
 // Records an activity explicitly. Useful when the start and end of an activity
 // happen in different threads. Generates the Activity only if activity
