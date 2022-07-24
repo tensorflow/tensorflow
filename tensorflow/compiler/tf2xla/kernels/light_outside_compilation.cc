@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/kernels/gpu_tf_kernel_custom_call.h"
+#include "tensorflow/compiler/tf2xla/kernels/light_outside_compilation.h"
 
 #include <algorithm>
 #include <deque>
@@ -76,7 +76,7 @@ static StatusOr<std::string> SerializeCallbackData(const TfCallbackData& data) {
   return data.SerializeAsString();
 }
 
-Status CallTfKernelOp::CompileToCustomCallCallingTfKernel(
+Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     int graph_def_version, const NodeDef& node_def,
     XlaOpKernelContext* ctx) const {
   const OpRegistrationData* data = OpRegistry::Global()->LookUp(node_def.op());
@@ -522,12 +522,13 @@ XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(kTfCallbackCustomCall,
 
 }  // namespace
 
-CallTfKernelOp::CallTfKernelOp(OpKernelConstruction* context)
+LightOutsideCompilationOp::LightOutsideCompilationOp(
+    OpKernelConstruction* context)
     : XlaOpKernel(context),
       def_(context->def()),
       graph_def_version_(context->graph_def_version()) {}
 
-void CallTfKernelOp::Compile(XlaOpKernelContext* ctx) {
+void LightOutsideCompilationOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, CompileToCustomCallCallingTfKernel(graph_def_version_, def_, ctx));
 }

@@ -244,14 +244,14 @@ tf_kernel_library(
         "//tensorflow/stream_executor/lib",
     ] + if_cuda_or_rocm(
         if_false = [],
-        if_true = [":gpu_tf_kernel_custom_call"],
+        if_true = [":light_outside_compilation"],
     ),
 )
 
 tf_cuda_library(
-    name = "gpu_tf_kernel_custom_call",
-    srcs = ["gpu_tf_kernel_custom_call.cc"],
-    hdrs = ["gpu_tf_kernel_custom_call.h"],
+    name = "light_outside_compilation",
+    srcs = ["light_outside_compilation.cc"],
+    hdrs = ["light_outside_compilation.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":callback_proto_cc",

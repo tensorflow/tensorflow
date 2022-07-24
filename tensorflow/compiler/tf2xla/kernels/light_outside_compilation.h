@@ -31,15 +31,6 @@ using DimensionBoundsMap = std::map<int, int>;
 // Output -> dimension -> bound.
 using OutputDimensionBoundsMap = std::map<int, DimensionBoundsMap>;
 
-// Using XLA builder wrapped in XlaOpKernelContext to emit a custom call which
-// will call a TF kernel associated with `node_def`.
-//
-// Works only on GPU where the control is always on the host.
-// TODO(cheshire): Extend to work on CPU as well.
-Status CompileToCustomCallCallingTfKernel(int graph_def_version,
-                                          const NodeDef& node_def,
-                                          XlaOpKernelContext* ctx);
-
 // Generic kernel for registering TF2XLA kernels which call back into the TF
 // runtime to run a given kernel defined by the wrapped node.
 //
@@ -47,9 +38,9 @@ Status CompileToCustomCallCallingTfKernel(int graph_def_version,
 //
 // Currently does not support dynamic shape or resource variables. Currently
 // works only on GPU.
-class CallTfKernelOp : public XlaOpKernel {
+class LightOutsideCompilationOp : public XlaOpKernel {
  public:
-  explicit CallTfKernelOp(OpKernelConstruction* context);
+  explicit LightOutsideCompilationOp(OpKernelConstruction* context);
   void Compile(XlaOpKernelContext* ctx) override;
 
   // Override to provide statically known bounds on output in case of dynamic

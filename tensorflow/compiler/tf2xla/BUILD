@@ -957,7 +957,7 @@ cc_library(
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
-        "//tensorflow/compiler/tf2xla/kernels:gpu_tf_kernel_custom_call",
+        "//tensorflow/compiler/tf2xla/kernels:light_outside_compilation",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,
