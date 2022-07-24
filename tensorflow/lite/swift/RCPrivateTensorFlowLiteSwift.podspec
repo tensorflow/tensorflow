@@ -1,13 +1,17 @@
+# How to push to Cocoapod
+# pod spec lint --allow-warnings
+# pod trunk push RCPrivateTensorFlowLiteSwift.podspec --allow-warnings
+
 Pod::Spec.new do |s|
   s.name             = 'RCPrivateTensorFlowLiteSwift'
-  s.version          = '0.1.2'
+  s.version          = '0.1.5'
   s.authors          = 'Ryan Cha'
   s.license          = { :type => 'Apache' }
-  s.homepage         = 'https://github.com/ryan-cha'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => 'd8ce9f9c301d021a69953134185ab728c1c248d3' }
+  s.homepage         = 'https://github.com/ryan-cha/tensorflow'
+  s.source           = { :http => 'https://github.com/ryan-cha/tensorflow/archive/refs/tags/v0.1.5.zip' }
   s.summary          = 'Forked version of TensorFlow Lite for Swift'
   s.description      = <<-DESC
-  Forked version of TensorFlow Lite for Swift
+  Forked private version of TensorFlow Lite for Swift
                        DESC
   
   s.swift_version = '5.0'
@@ -49,13 +53,13 @@ Pod::Spec.new do |s|
   s.subspec 'CoreML' do |coreml|
     coreml.source_files = swift_dir + 'Sources/CoreMLDelegate.swift'
     coreml.dependency 'TensorFlowLiteC/CoreML', "2.9.1"
-    coreml.dependency 'RCPrivateTensorFlowLiteSwift/Core', "2.9.1"
+    coreml.dependency 'RCPrivateTensorFlowLiteSwift/Core', "#{s.version}"
   end
 
   s.subspec 'Metal' do |metal|
     metal.source_files = swift_dir + 'Sources/MetalDelegate.swift'
     metal.dependency 'TensorFlowLiteC/Metal', "2.9.1"
-    metal.dependency 'RCPrivateTensorFlowLiteSwift/Core', "2.9.1"
+    metal.dependency 'RCPrivateTensorFlowLiteSwift/Core', "#{s.version}"
 
     metal.test_spec 'Tests' do |ts|
       ts.source_files = swift_dir + 'Tests/{Interpreter,MetalDelegate}Tests.swift'
