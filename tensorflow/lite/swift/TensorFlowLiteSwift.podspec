@@ -12,7 +12,8 @@ Pod::Spec.new do |s|
   enables low-latency inference of on-device machine learning models with a
   small binary size and fast performance supporting hardware acceleration.
                        DESC
-
+  
+  s.swift_version = '5.0'
   s.cocoapods_version = '>= 1.9.0'
   s.ios.deployment_target = '11.0'
 
