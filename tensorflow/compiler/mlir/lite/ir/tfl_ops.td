@@ -3350,6 +3350,8 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
     Returns the top `k` largest element along each last dimensional slice of
     `input` and the indices of values within the last dimension of the input
     tensor.
+
+    Results are always sorted in the descending order.
   }];
 
   let arguments = (ins
