@@ -2215,6 +2215,88 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def _createUnknownInputShapeModel(self):
     """Create a simple SavedModel with unknown input."""
     saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+
+  @test_util.run_v2_only
+  def testKerasFullyConnectedOutputShape3D(self):
+    """Create a simple FullyConnected Model with an output of three dimensions."""
+    input_tensor = tf.keras.layers.Input(
+        batch_size=1, shape=[3, 3], name='input_tensor', dtype=tf.float32)
+
+    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = tf.keras.layers.Dense(3)(x)
+    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    model = tf.keras.Model(input_tensor, x)
+    model.compile(
+        optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'fully_connected_output_3d')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    interpreter = Interpreter(model_content=tflite_model)
+    output_details = interpreter.get_output_details()
+    input_details = interpreter.get_input_details()
+    interpreter.allocate_tensors()
+
+    input_data = np.array([[[1, 2, 3], [4, 5, 6], [7, 8, 9]]], np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    expected_value = model.predict(input_data)
+
+    self.assertLen(output_details[0]['shape_signature'], 3)
+    self.assertAllClose(expected_value, actual_value, atol=1e-1)
+    self.assertEqual(
+        list(output_details[0]['shape_signature']),
+        list(model.layers[-1].output_shape))
+
+  @test_util.run_v2_only
+  def testKerasConv2DTransposedWithMismatchQuantizedAxes(self):
+
+    class QuantConv2DTransposed(tf.keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight('kernel', [3, 3, input_shape[-1], 24])
+
+      def call(self, inputs):
+        filters = tf.quantization.fake_quant_with_min_max_vars_per_channel(
+            self.kernel,
+            -3.0 * tf.ones([24]),
+            3.0 * tf.ones([24]),
+            narrow_range=True)
+        filters = tf.transpose(filters, (0, 1, 3, 2))
+        return tf.nn.conv2d_transpose(inputs, filters, [*inputs.shape[:-1], 24],
+                                      1)
+
+    inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        inp, -3.0, 3.0, narrow_range=True)
+    x = QuantConv2DTransposed()(x)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        x, -3.0, 3.0, narrow_range=True)
+
+    model = tf.keras.Model(inp, x)
+
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'keras_conv2d_transpose')
+    model.save(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    with self.assertRaises(convert.ConverterError) as error:
+      _ = converter.convert()
+    self.assertIn('mismatched quantized axes of input and output',
+                  str(error.exception))
+
+  def _createModelWithInputShape(self, shape):
+    """Create a simple SavedModel with a certain shape."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'input_shape_model')
     with tf.Graph().as_default():
       with tf.compat.v1.Session() as sess:
         unknown_shape = tf.TensorShape(None)
