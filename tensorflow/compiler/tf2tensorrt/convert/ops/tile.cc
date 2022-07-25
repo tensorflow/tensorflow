@@ -43,10 +43,10 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     const auto &inputs = params.inputs;
 
     const auto &repl = inputs.at(1);
-    if (params.use_implicit_batch && repl.is_tensor()) {
+    if (repl.is_tensor()) {
       return errors::InvalidArgument(
           "Conversion for Tile is not implemented for multipliers "
-          "passed as a tensor in implicit batch mode.");
+          "passed as a tensor.");
     }
 
     nvinfer1::DataType dtype;

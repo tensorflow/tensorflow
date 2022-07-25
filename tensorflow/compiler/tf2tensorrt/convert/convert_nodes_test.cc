@@ -2691,11 +2691,11 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
         std::vector<int> num_mults = {static_cast<int>(p.multiplier.size())};
         std::vector<std::vector<int>> partial_input_dims_options = {{}};
         if (multiplier_is_tensor) {
-          if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+          if (true || trt_mode_ == TrtTestMode::kImplicitBatch) {
             p.status =
                 Status(error::INVALID_ARGUMENT,
                        "Conversion for Tile is not implemented for multipliers "
-                       "passed as a tensor in implicit batch mode");
+                       "passed as a tensor.");
             num_mults = {1, static_cast<int>(p.multiplier.size())};
           } else {
             if (p.test_ID == 1) {
@@ -2719,7 +2719,7 @@ TEST_P(OpConverter_FP32_Test, ConvertTile) {
         }
 
         for (auto partial_input_dims : partial_input_dims_options) {
-          if (multiplier_is_tensor &&
+          if (false && multiplier_is_tensor &&
               trt_mode_ != TrtTestMode::kImplicitBatch) {
             if (trt_mode_ == TrtTestMode::kDynamicShape) {
               if (p.test_ID != 1) {
