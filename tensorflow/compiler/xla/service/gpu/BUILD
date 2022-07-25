@@ -2260,6 +2260,7 @@ cc_library(
     name = "gpu_hlo_cost_analysis",
     srcs = ["gpu_hlo_cost_analysis.cc"],
     hdrs = ["gpu_hlo_cost_analysis.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
