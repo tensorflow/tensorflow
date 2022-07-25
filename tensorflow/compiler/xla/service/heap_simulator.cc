@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
@@ -521,41 +522,24 @@ template <typename BufferType>
 typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferIntervalCompare
 GlobalDecreasingSizeBestFitHeap<BufferType>::GetTemporalBufferIntervalCompare()
     const {
-  return [&](const BufferInterval& x, const BufferInterval& y) {
+  return LessThanByKey([this](const BufferInterval& x) {
     int64_t x_end = x.end;
     for (auto colocation : GetTransitiveColocations(x)) {
       x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
     }
-
-    int64_t y_end = y.end;
-    for (auto colocation : GetTransitiveColocations(y)) {
-      y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
-    }
-
-    if (x_end - x.start != y_end - y.start) {
-      return x_end - x.start > y_end - y.start;
-    }
-
-    if (x.size != y.size) {
-      return x.size > y.size;
-    }
-    return *x.buffer < *y.buffer;
-  };
+    // Sort by duration (descending), size (descending), buffer (ascending).
+    return std::make_tuple(x.start - x_end, -x.size, std::cref(*x.buffer));
+  });
 }
 
 template <typename BufferType>
 /*static*/ typename GlobalDecreasingSizeBestFitHeap<
     BufferType>::BufferIntervalCompare
 GlobalDecreasingSizeBestFitHeap<BufferType>::GetSpatialBufferIntervalCompare() {
-  return [&](const BufferInterval& x, const BufferInterval& y) {
-    if (x.size != y.size) {
-      return x.size > y.size;
-    }
-    if (x.end - x.start != y.end - y.start) {
-      return x.end - x.start > y.end - y.start;
-    }
-    return *x.buffer < *y.buffer;
-  };
+  return LessThanByKey([](const BufferInterval& x) {
+    // Sort by size (descending), duration (descending), buffer (ascending).
+    return std::make_tuple(-x.size, x.start - x.end, std::cref(*x.buffer));
+  });
 }
 
 template <typename BufferType>

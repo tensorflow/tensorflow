@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,7 +69,7 @@ MAIN_FUNCTION($0) {
   }
 )";
   if (src_desc.IsLinear()) {
-    c += "  args.src_tensor.GetAddress(src_base, 0, 0, S);\n";
+    c += "  int src_base = args.src_tensor.GetAddress(0, 0, S);\n";
   }
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
@@ -125,36 +126,7 @@ MAIN_FUNCTION($0) {
     c += "  }\n";
   }
 
-  const auto dst_desc = op_def.dst_tensors[0];
-
-  if (dst_desc.IsLinear()) {
-    c += R"(
-  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
-  args.dst_tensor.GetAddress(dst_adress, dst_x, 0, S);
-  for (int y = 0; y < 6; ++y) {
-    FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(7) * I[y][1] + args.Bt.Read(8) * I[y][2] + args.Bt.Read(9) * I[y][3] + args.Bt.Read(10) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(13) * I[y][1] + args.Bt.Read(14) * I[y][2] + args.Bt.Read(15) * I[y][3] + args.Bt.Read(16) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(19) * I[y][1] + args.Bt.Read(20) * I[y][2] + args.Bt.Read(21) * I[y][3] + args.Bt.Read(22) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(25) * I[y][1] + args.Bt.Read(26) * I[y][2] + args.Bt.Read(27) * I[y][3] + args.Bt.Read(28) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(31) * I[y][1] + args.Bt.Read(33) * I[y][3] + I[y][5];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-  }
-}
-)";
-  } else {
-    c += R"(
+  c += R"(
   int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
   for (int y = 0; y < 6; ++y) {
     FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
@@ -172,7 +144,6 @@ MAIN_FUNCTION($0) {
   }
 }
 )";
-  }
   return c;
 }
 
@@ -198,7 +169,7 @@ MAIN_FUNCTION($0) {
 )";
   if (src_desc.IsLinear()) {
     c += R"(
-  args.src_tensor.GetAddress(src_adress, tile_id, 0, Z);
+  int src_adress = args.src_tensor.GetAddress(tile_id, 0, Z);
   for (int y = 0; y < 6; ++y) {
     for (int x = 0; x < 6; ++x, src_adress += args.src_tensor.Width()) {
       FLT4 src = args.src_tensor.Read(src_adress);
@@ -293,7 +264,7 @@ Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
   VectorToKernelBufferDesc(BtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "Bt", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "Bt", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(8, 4, 1);
   return desc;
@@ -373,7 +344,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
            ", 0, args.src_tensor.Width() - 1);\n";
     }
     if (src_desc.IsLinear()) {
-      c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
+      c += "  int src_a_" + xs + " = args.src_tensor.GetAddress(xc" + xs +
            ", 0, DST_Z);\n";
       if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         c += "  src_a_" + xs +
@@ -504,12 +475,12 @@ void Winograd4x4To36TileX6::UploadBt() {
   desc.element_type = definition_.GetDataType();
   desc.UploadLinearData(bt_aligned);
   args_.AddObject("bt_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(bt_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("Bt",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd4x4To36TileX6::SelectBestWorkGroup(
@@ -584,14 +555,14 @@ Winograd36To4x4 CreateWinograd36To4x4(
   bias_desc.storage_type = LinearStorageType::BUFFER;
   bias_desc.element_type = definition.GetDataType();
   bias_desc.UploadLinearData(biases);
-  desc.args_.AddObject("biases", absl::make_unique<TensorLinearDescriptor>(
-                                     std::move(bias_desc)));
+  desc.args_.AddObject(
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(bias_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(AtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "At", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "At", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(32, 1, 1);
   return desc;
@@ -729,12 +700,12 @@ void Winograd36To4x4Tile4x1::UploadAt() {
   desc.element_type = definition_.GetDataType();
   desc.UploadLinearData(at_aligned);
   args_.AddObject("at_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(at_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("At",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd36To4x4Tile4x1::SelectBestWorkGroup(
@@ -788,7 +759,7 @@ Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(biases);
   result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
   result.UploadAt();
   return result;
 }

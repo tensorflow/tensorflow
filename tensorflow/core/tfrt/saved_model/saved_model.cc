@@ -728,8 +728,10 @@ tensorflow::Status SavedModelImpl::RunMultipleSignatures(
     // order as `input_tensors`.
     const auto& signature = signatures_.at(signature_name);
     const auto& input_names = signature.input_names;
-    TF_RETURN_IF_ERROR(
-        IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    if (run_options.validate_input_specs) {
+      TF_RETURN_IF_ERROR(
+          IsInputSpecsCorrect(signature_name, signature, input_tensors));
+    }
     DCHECK(signature.captures.empty());
 
     TF_RET_CHECK(input_tensors.size() == signature_def.inputs().size())

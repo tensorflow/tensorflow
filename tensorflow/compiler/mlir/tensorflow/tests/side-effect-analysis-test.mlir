@@ -315,13 +315,11 @@ func.func @if_then(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
@@ -335,13 +333,11 @@ func.func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
@@ -377,13 +373,11 @@ func.func @stateless_ifregion_op(
           // expected-remark@above {{ID: 4}}
             %island:2 = tf_executor.island {
             // expected-remark@above {{ID: 2}}
-            // expected-remark@above {{Successors: {3}}}
               tf_executor.yield %arg1 : tensor<i1>
               // expected-remark@above {{ID: 1}}
             }
             tf_executor.fetch %island#0 : tensor<i1>
             // expected-remark@above {{ID: 3}}
-            // expected-remark@above {{Predecessors: {2}}}
           }
           "tf.Yield"(%graph) : (tensor<i1>) -> ()
           // expected-remark@above {{ID: 5}}
@@ -392,13 +386,11 @@ func.func @stateless_ifregion_op(
           // expected-remark@above {{ID: 9}}
             %island:2 = tf_executor.island {
             // expected-remark@above {{ID: 7}}
-            // expected-remark@above {{Successors: {8}}}
               tf_executor.yield %arg1 : tensor<i1>
               // expected-remark@above {{ID: 6}}
             }
             tf_executor.fetch %island#0 : tensor<i1>
             // expected-remark@above {{ID: 8}}
-            // expected-remark@above {{Predecessors: {7}}}
           }
           "tf.Yield"(%graph) : (tensor<i1>) -> ()
           // expected-remark@above {{ID: 10}}
@@ -472,13 +464,11 @@ func.func @while_body(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
@@ -492,13 +482,11 @@ func.func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{Successors: {2}}}
       tf_executor.yield %arg0 : tensor<i1>
       // expected-remark@above {{ID: 0}}
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 2}}
-    // expected-remark@above {{Predecessors: {1}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
@@ -534,13 +522,11 @@ func.func @stateless_whileregion_op(
             // expected-remark@above {{ID: 4}}
               %island:2 = tf_executor.island {
               // expected-remark@above {{ID: 2}}
-              // expected-remark@above {{Successors: {3}}}
                 tf_executor.yield %carg : tensor<i1>
                 // expected-remark@above {{ID: 1}}
               }
               tf_executor.fetch %island#0 : tensor<i1>
               // expected-remark@above {{ID: 3}}
-              // expected-remark@above {{Predecessors: {2}}}
             }
             "tf.Yield"(%graph) : (tensor<i1>) -> ()
             // expected-remark@above {{ID: 5}}
@@ -550,13 +536,11 @@ func.func @stateless_whileregion_op(
             // expected-remark@above {{ID: 9}}
               %island:2 = tf_executor.island {
               // expected-remark@above {{ID: 7}}
-              // expected-remark@above {{Successors: {8}}}
                 tf_executor.yield %barg : tensor<i1>
                 // expected-remark@above {{ID: 6}}
               }
               tf_executor.fetch %island#0 : tensor<i1>
               // expected-remark@above {{ID: 8}}
-              // expected-remark@above {{Predecessors: {7}}}
             }
             "tf.Yield"(%graph) : (tensor<i1>) -> ()
             // expected-remark@above {{ID: 10}}
@@ -714,7 +698,6 @@ func.func @if_else(
   // expected-remark@above {{ID: 5}}
     %island:4 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
-    // expected-remark@above {{Successors: {4}}}
       %id0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
       // expected-remark@above {{ID: 0}}
         -> tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -729,7 +712,6 @@ func.func @if_else(
     }
     tf_executor.fetch %island#0, %island#1, %island#2 :
     // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -803,7 +785,6 @@ func.func @output_of_ifregion_op(
           // expected-remark@above {{ID: 13}}
             %island:4 = tf_executor.island {
             // expected-remark@above {{ID: 11}}
-            // expected-remark@above {{Successors: {12}}}
               %iid0 = "tf.Identity"(%id0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>)
               // expected-remark@above {{ID: 8}}
                 -> tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -818,7 +799,6 @@ func.func @output_of_ifregion_op(
             }
             tf_executor.fetch %island#0, %island#1, %island#2 :
             // expected-remark@above {{ID: 12}}
-            // expected-remark@above {{Predecessors: {11}}}
               tensor<*x!tf_type.resource<tensor<32xf32>>>,
               tensor<*x!tf_type.resource<tensor<32xf32>>>,
               tensor<*x!tf_type.resource<tensor<32xf32>>>
@@ -1006,7 +986,6 @@ func.func @while_cond(
   // expected-remark@above {{ID: 5}}
     %island:2 = tf_executor.island {
     // expected-remark@above {{ID: 3}}
-    // expected-remark@above {{Successors: {4}}}
       %const = "tf.Const"() { value = dense<0> : tensor<i1> } : () -> tensor<i1>
       // expected-remark@above {{ID: 0}}
       %eq = "tf.Equal"(%pred, %const) : (tensor<i1>, tensor<i1>) -> tensor<i1>
@@ -1016,7 +995,6 @@ func.func @while_cond(
     }
     tf_executor.fetch %island#0 : tensor<i1>
     // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
   }
   func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 6}}
@@ -1055,7 +1033,6 @@ func.func @output_of_whileregion_op(
             // expected-remark@above {{ID: 6}}
               %island:2 = tf_executor.island {
               // expected-remark@above {{ID: 4}}
-              // expected-remark@above {{Successors: {5}}}
                 %const = "tf.Const"() { value = dense<0> : tensor<i1> } : () -> tensor<i1>
                 // expected-remark@above {{ID: 1}}
                 %eq = "tf.Equal"(%pred, %const) : (tensor<i1>, tensor<i1>) -> tensor<i1>
@@ -1065,7 +1042,6 @@ func.func @output_of_whileregion_op(
               }
               tf_executor.fetch %island#0 : tensor<i1>
               // expected-remark@above {{ID: 5}}
-              // expected-remark@above {{Predecessors: {4}}}
             }
             "tf.Yield"(%graph) : (tensor<i1>) -> ()
             // expected-remark@above {{ID: 7}}
@@ -1905,7 +1881,6 @@ func.func @tpu_compile_ops(
     // expected-remark@above {{ID: 5}}
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
-        // expected-remark@above {{Successors: {4}}}
         %0:2 = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
         // expected-remark@above {{ID: 0}}
         %1:2 = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
@@ -1915,7 +1890,6 @@ func.func @tpu_compile_ops(
     }
     tf_executor.fetch %island : !tf_executor.control
     // expected-remark@above {{ID: 4}}
-    // expected-remark@above {{Predecessors: {3}}}
   }
   func.return
   // expected-remark@above {{ID: 6}}
@@ -2043,4 +2017,187 @@ func.func @fetch_dependencies(
   func.return
   // expected-remark@above {{ID: 5}}
   // expected-remark@above {{Sinks: {4}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between islands with one stateless op
+// each.
+func.func @single_stateless_op_islands() {
+  // expected-remark@above {{ID: 9}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 2}}
+        "tf.A"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 0}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 5}}
+        "tf.B"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 3}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}
+
+// -----
+
+// Tests that we create dependencies between islands with one stateful op each.
+func.func @single_stateful_op_islands() {
+  // expected-remark@above {{ID: 9}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 7}}
+    %island1 = tf_executor.island {
+    // expected-remark@above {{ID: 2}}
+    // expected-remark@above {{Successors: {5}}}
+        "tf.A"() {is_stateless=false} : () -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+    }
+    %island2 = tf_executor.island {
+    // expected-remark@above {{ID: 5}}
+    // expected-remark@above {{Predecessors: {2}}}
+    // expected-remark@above {{Successors: {6}}}
+        "tf.B"() {is_stateless=false} : () -> ()
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Predecessors: {3}}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between islands with multiple
+// stateless ops each.
+func.func @multi_stateless_op_islands() {
+  // expected-remark@above {{ID: 11}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 9}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        "tf.A"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 0}}
+        "tf.B"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 1}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 7}}
+        "tf.C"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 4}}
+        "tf.D"() {is_stateless=true} : () -> ()
+        // expected-remark@above {{ID: 5}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 6}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 8}}
+  }
+  func.return
+  // expected-remark@above {{ID: 10}}
+  // expected-remark@above {{Sinks: {9}}}
+}
+
+// -----
+
+// Tests that we create dependencies between islands that write to the same
+// resource variable and also have different op-based effects.
+func.func @nontrivial_multi_op_islands(
+  // expected-remark@above {{ID: 11}}
+  %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
+  %arg1: tensor<32xf32>,
+  %arg2: tensor<!tf_type.string>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 9}}
+    %island1 = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {7,8}}}
+        "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg2) {table_ids = [1, 2], device_ordinal = 1} : (tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {2}}}
+        "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {0,1}}}
+    }
+    %island2 = tf_executor.island {
+        // expected-remark@above {{ID: 7}}
+        // expected-remark@above {{Successors: {8}}}
+        // expected-remark@above {{Predecessors: {3}}}
+        %0 = "tf.GeneratorDataset"(%arg2, %arg2, %arg2) {device = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0", finalize_func = @__func_a, init_func = @__func_b, next_func = @__func_c, next_func.experimental_ints_on_device = true, operand_segment_sizes = dense<[1, 1, 1]> : vector<3xi32>, output_shapes = [#tf_type.shape<>], output_types = [!tf_type.string], metadata = ""} : (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<!tf_type.variant>
+        // expected-remark@above {{ID: 4}}
+        // expected-remark@above {{Successors: {6}}}
+        "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+        // expected-remark@above {{ID: 5}}
+        // expected-remark@above {{Successors: {6}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 6}}
+        // expected-remark@above {{Predecessors: {4,5}}}
+    }
+    tf_executor.fetch %island1, %island2 : !tf_executor.control, !tf_executor.control
+    // expected-remark@above {{ID: 8}}
+    // expected-remark@above {{Predecessors: {3,7}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 10}}
+  // expected-remark@above {{Sinks: {9}}}
+}
+
+// -----
+
+// Tests that we create dependencies between `CollectiveReduceV2` ops
+// (TF_CollectiveReduceOrderingEffect).
+func.func @collective_reduce_ordering_effect(
+  // expected-remark@above {{ID: 7}}
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
 }

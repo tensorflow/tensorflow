@@ -52,7 +52,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToGpuPass();
 // operation has more dimensions than tile sizes provided, 1 is used as
 // default.
 std::unique_ptr<OperationPass<func::FuncOp>> createLhloFuseLinalgPass(
-    bool use_parallel_loops = false, llvm::ArrayRef<unsigned> tile_sizes = {});
+    bool useParallelLoops = false, llvm::ArrayRef<unsigned> tileSizes = {});
 
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<func::FuncOp>>

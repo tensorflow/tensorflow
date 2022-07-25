@@ -38,11 +38,12 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
 
-// stream.h isn't available in some platforms such as Android and iOS.
-// Only include it for platforms that PluggableDevice is tested on.
+// stream.h isn't available in some platforms such as Android, iOS, and
+// ChromiumOS. Only include it for platforms that PluggableDevice is tested on.
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
     (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
-    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS &&      \
+    !defined(PLATFORM_CHROMIUMOS)
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 
@@ -768,6 +769,11 @@ class TensorListFromTensor : public OpKernel {
     attr.set_on_host(true);
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(1).shape()),
+        errors::InvalidArgument(
+            "TensorListFromTensor: element_shape must be at most rank 1 but ",
+            "has the shape of ", c->input(1).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(1), &element_shape));
     TensorList output_list;
     const Tensor& t = c->input(0);
@@ -894,6 +900,11 @@ class TensorListScatter : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     Tensor indices = c->input(1);
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(2).shape()),
+        errors::InvalidArgument(
+            "TensorListScatter: element_shape must be at most rank 1 but has ",
+            "the shape of ", c->input(2).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
     // TensorListScatterV2 passes the num_elements input, TensorListScatter does
     // not.

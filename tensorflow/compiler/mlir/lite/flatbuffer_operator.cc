@@ -182,7 +182,7 @@ static bool ConvertBoolAttrForOptionWriter(
 // an input. If value is not specified, false is set for the attribute.
 static bool ConvertBoolAttrForOptionWriter(
     mlir::Optional<bool> b, flatbuffers::FlatBufferBuilder* builder) {
-  return b.hasValue() ? b.getValue() : false;
+  return b.has_value() ? b.getValue() : false;
 }
 
 static flatbuffers::Offset<flatbuffers::String> ConvertStrAttrForOptionWriter(

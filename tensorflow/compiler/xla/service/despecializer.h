@@ -34,7 +34,10 @@ class Despecializer : public HloModulePass {
  public:
   Despecializer();
   absl::string_view name() const override { return "despecializer"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   HloPassPipeline pipeline_;
@@ -46,7 +49,10 @@ class ControlDepRemover : public HloModulePass {
   ControlDepRemover() = default;
   absl::string_view name() const override { return "control-dep-remover"; }
 
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     bool changed = false;
     for (HloComputation* computation : module->computations()) {
       for (HloInstruction* instruction : computation->instructions()) {

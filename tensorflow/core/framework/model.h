@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_MODEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_MODEL_H_
 
+#include <algorithm>
 #include <list>
 #include <memory>
 #include <string>
@@ -57,6 +58,10 @@ constexpr char kModelInputTimeKey[] = "model_input_time";
 
 // Default share of available RAM that can be used by model's internal buffers.
 constexpr double kRamBudgetShare = 0.5;
+
+// Weight of the latest processing time used in computing the exponential moving
+// average of processing time per element.
+constexpr double kProcessingTimeEmaWeight = 0.1;
 
 enum class TraversalOrder {
   BFS = 0,
@@ -168,6 +173,8 @@ class Node {
         autotune_(true),
         buffered_bytes_(0),
         buffered_elements_(0),
+        buffered_elements_low_(std::numeric_limits<int64_t>::max()),
+        buffered_elements_high_(std::numeric_limits<int64_t>::min()),
         bytes_consumed_(0),
         bytes_produced_(0),
         num_elements_(0),
@@ -224,6 +231,20 @@ class Node {
   // Returns the number of elements stored in this node's buffer.
   int64_t buffered_elements() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_elements_;
+  }
+
+  // Returns the low watermark of the number of elements stored in this node's
+  // buffer. The watermarks are reset at the beginning of the execution time and
+  // each time the buffer is upsized or downsized.
+  int64_t buffered_elements_low() const TF_LOCKS_EXCLUDED(mu_) {
+    return buffered_elements_low_;
+  }
+
+  // Returns the high watermark of the number of elements stored in this node's
+  // buffer. The watermarks are reset at the beginning of the execution time and
+  // each time the buffer is upsized or downsized.
+  int64_t buffered_elements_high() const TF_LOCKS_EXCLUDED(mu_) {
+    return buffered_elements_high_;
   }
 
   // Returns the number of bytes consumed by the node.
@@ -291,10 +312,22 @@ class Node {
   void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
     buffered_elements_ += elements_delta;
+    int64_t low_watermark =
+        std::min(buffered_elements_low_, buffered_elements_);
+    buffered_elements_low_ = low_watermark;
+    int64_t high_watermark =
+        std::max(buffered_elements_high_, buffered_elements_);
+    buffered_elements_high_ = high_watermark;
   }
 
   // Records that the node produced an element.
-  void record_element() TF_LOCKS_EXCLUDED(mu_) { num_elements_++; }
+  void record_element() TF_LOCKS_EXCLUDED(mu_) {
+    num_elements_++;
+    {
+      mutex_lock l(mu_);
+      UpdateProcessingTimeEma();
+    }
+  }
 
   // Records that a node thread has started executing.
   void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
@@ -326,6 +359,13 @@ class Node {
   // Sets the value that determines whether autotuning is enabled for this node.
   void set_autotune(bool autotune) TF_LOCKS_EXCLUDED(mu_) {
     autotune_.store(autotune);
+  }
+
+  // Resets buffer watermarks to the current buffer size.
+  void ResetBufferWatermarks() {
+    int64_t current_buffer_size = buffered_elements_;
+    buffered_elements_low_ = current_buffer_size;
+    buffered_elements_high_ = current_buffer_size;
   }
 
   // Returns true for asynchronous nodes; false otherwise.
@@ -374,6 +414,9 @@ class Node {
 
   // Collects tunable parameters in the subtree rooted in this node.
   ModelParameters CollectTunableParameters() const TF_LOCKS_EXCLUDED(mu_);
+
+  // Collects tunable parameters in this node.
+  ModelParameters CollectNodeTunableParameters() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns a human-readable representation of this node.
   string DebugString() const TF_LOCKS_EXCLUDED(mu_);
@@ -430,6 +473,13 @@ class Node {
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_LOCKS_EXCLUDED(mu_);
 
+  // Downsizes buffer parameters of this node.
+  void TryDownsizeBuffer();
+
+  // Collects buffer parameters of this node that should be upsized.
+  void CollectBufferParametersToUpsize(
+      absl::flat_hash_map<Node*, Parameter*>& node_parameters);
+
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
@@ -474,6 +524,24 @@ class Node {
     std::atomic<int64_t> recorded_bytes_produced_;
     std::atomic<int64_t> recorded_num_elements_;
   };
+
+  // Computes the exponential moving average of processing time per element.
+  void UpdateProcessingTimeEma() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (previous_processing_time_ == 0) {
+      if (num_elements_ > 0) {
+        processing_time_ema_ = static_cast<double>(processing_time_) /
+                               static_cast<double>(num_elements_);
+      } else {
+        processing_time_ema_ = static_cast<double>(processing_time_);
+      }
+    } else {
+      processing_time_ema_ =
+          (1.0 - kProcessingTimeEmaWeight) * processing_time_ema_ +
+          kProcessingTimeEmaWeight *
+              static_cast<double>(processing_time_ - previous_processing_time_);
+    }
+    previous_processing_time_ = processing_time_;
+  }
 
   // Returns the number of inputs.
   int64_t num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -551,7 +619,8 @@ class Node {
   ModelParameters CollectTunableParametersLocked() const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Collect tunable parameters on the nodes which have recorded elements.
+  // Collect tunable parameters on the nodes which have recorded
+  // elements.
   void CollectTunableParametersHelper(ModelParameters* parameters) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
@@ -604,6 +673,8 @@ class Node {
   std::atomic<bool> autotune_;
   std::atomic<int64_t> buffered_bytes_;
   std::atomic<int64_t> buffered_elements_;
+  std::atomic<int64_t> buffered_elements_low_;
+  std::atomic<int64_t> buffered_elements_high_;
   std::atomic<int64_t> bytes_consumed_;
   std::atomic<int64_t> bytes_produced_;
   std::atomic<int64_t> num_elements_;
@@ -616,6 +687,11 @@ class Node {
   // Statistic of inputs processing time history.
   double input_processing_time_sum_ = 0.0L;
   int64_t input_processing_time_count_ = 0;
+
+  // Holds the previous processing time and the per element processing time
+  // exponential moving average.
+  int64_t previous_processing_time_ TF_GUARDED_BY(mu_) = 0;
+  double processing_time_ema_ TF_GUARDED_BY(mu_) = 0.0;
 
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
@@ -678,6 +754,10 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 // class directly. Boiler plate code for creating the abstract representation of
 // the input pipeline and collecting runtime information has been added to the
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
+//
+// The order of locks acquired is SharedState lock, Model lock, Node lock.
+// SharedState lock is acquired first because it shares the same lock as the
+// dataset iterator that contains it.
 class Model {
  public:
   using OptimizationParams = ModelProto::OptimizationParams;
@@ -689,10 +769,13 @@ class Model {
   ~Model();
 
   // Returns a pointer to the model's output node.
-  const std::shared_ptr<Node> output() {
+  const std::shared_ptr<Node> output() const {
     mutex_lock l(mu_);
     return output_;
   }
+
+  // Set the experiment that this job is part of.
+  void SetExperiment(const string& experiment) { experiment_ = experiment; }
 
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
@@ -718,6 +801,11 @@ class Model {
   void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
                 int64_t ram_budget, double model_input_time,
                 CancellationManager* cancellation_manager);
+
+  // Optimizes buffers in the pipeline rooted at `snapshot`. It downsizes
+  // buffers that are too large and upsizes buffers that are too small while
+  // respecting the ram budget.
+  void OptimizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
@@ -745,9 +833,12 @@ class Model {
   static Status Load(const string& fname, std::unique_ptr<Model>* model,
                      OptimizationParams* optimization_params);
 
-  Node::NodeVector CollectNodes(std::shared_ptr<Node> root,
-                                TraversalOrder order,
-                                bool collect_node(const std::shared_ptr<Node>));
+  // Records gap time between consecutive `GetNext()` calls.
+  void RecordIteratorGapTime(uint64_t duration_usec);
+
+  // Computes the target time in nsecs to use for `STAGE_BASED` autotune
+  // algorithm.
+  double ComputeTargetTimeNsec();
 
  private:
   // Determines whether optimization should stop given total processing time,
@@ -762,6 +853,18 @@ class Model {
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
+
+  // Downsizes buffers that are too large for all nodes rooted at `snapshot.
+  void DownsizeBuffers(std::shared_ptr<Node> snapshot);
+
+  // Upsizes buffers that are too small for all nodes rooted at `snapshot` while
+  // respecting the ram budget.
+  void UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
+
+  // Collects buffer parameters of all nodes in the model that should be
+  // upsized.
+  absl::flat_hash_map<Node*, Parameter*> CollectBufferParametersToUpsize(
+      std::shared_ptr<Node> snapshot);
 
   // Flushes metrics recorded by the model.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
@@ -801,6 +904,23 @@ class Model {
                               const OptimizationParams& optimization_params,
                               CancellationManager* cancellation_manager);
 
+  // This optimization starts by setting all tunable parallelism parameters to
+  // their minimum values. It then repeatedly increases the parallelism
+  // parameter of the longest stage by 1 until either the longest stage is
+  // faster than the target time or the memory or CPU budget is fully utilized.
+  // TODO(b/226910071): The second part of this algorithm optimizes the buffer
+  // sizes of parallel ops.
+  void OptimizeStageBased(std::shared_ptr<Node> snapshot,
+                          const OptimizationParams& optimization_params,
+                          CancellationManager* cancellation_manager);
+
+  // This is the first part of the stage-based optimization that optimizes
+  // tunable parallelism parameters.
+  void OptimizeStageBasedParallelism(
+      std::shared_ptr<Node> snapshot, double target_time_nsec,
+      const OptimizationParams& optimization_params,
+      CancellationManager* cancellation_manager);
+
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and
   // current resource usage.
@@ -826,7 +946,7 @@ class Model {
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
-  mutex mu_;
+  mutable mutex mu_;
   // Used for coordinating the optimization loop and model modifications.
   condition_variable optimize_cond_var_;
   int64_t id_counter_ TF_GUARDED_BY(mu_) = 1;
@@ -845,6 +965,14 @@ class Model {
   // Cached result of the `DebugString()` invocation used to implement rate
   // limitting of the computation.
   std::string cached_debug_string_ = "";
+  // Used to coordinate gap time updates between different threads. Gap time is
+  // the time between the completion of the previous `GetNext()` and the start
+  // of the next `GetNext()`.
+  mutable mutex gap_mu_;
+  // Stores the latest gap times between consecutive `GetNext()`.
+  std::deque<uint64_t> gap_times_usec_ TF_GUARDED_BY(gap_mu_);
+  // The experiment that this job is part of.
+  std::string experiment_ = "";
 };
 
 // Class to compute timing information for a model.
@@ -863,7 +991,7 @@ class ModelTiming {
     double total_time_nsec = 0.0;
   };
 
-  explicit ModelTiming(std::shared_ptr<Model> model);
+  explicit ModelTiming(std::shared_ptr<Node> root);
 
   // Returns the timing data for `node`.
   const NodeTiming* GetTiming(const Node* node) const;
@@ -873,28 +1001,37 @@ class ModelTiming {
 
   // Returns all the nodes of a stage given the stage root.
   std::vector<std::shared_ptr<Node>> GetStageNodes(
-      std::shared_ptr<Node> root) const;
+      std::shared_ptr<Node> stage_root) const;
+
+  // Computes the total time for a node.
+  void ComputeNodeTotalTime(const Node& node);
 
  private:
-  // Computes timing information for the whole model.
-  void ComputeTiming();
-
-  // Computes the pipeline ratio, self time for all nodes. The `bfs_nodes` are
-  // assumed to be a vector of model nodes in BFS manner.
-  void ComputeTimingComponents(const Node::NodeVector& bfs_nodes);
+  // Computes the pipeline ratios of all nodes.
+  void ComputePipelineRatios(const Node::NodeVector& bfs_nodes);
 
   // Computes the total time for all nodes. The `reverse_bfs_nodes` are assumed
   // to be a vector of model nodes in reversed BFS manner.
   void ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes);
 
-  // Computes the total time for a node except when the node is an async
-  // interleave node.
-  void ComputeNodeTotalTime(std::shared_ptr<Node> node);
+  // Computes the total time of a node that is not an async interleave node.
+  void ComputeNonAsyncInterleaveManyTotalTime(const Node& node);
 
   // Computes the total time of an async interleave node.
-  void ComputeAsyncInterleaveManyTotalTime(std::shared_ptr<Node> node);
+  void ComputeAsyncInterleaveManyTotalTime(const Node& node);
 
-  std::shared_ptr<Model> model_;
+  // Returns a vector of all nodes in the model. The nodes are either in
+  // breadth-first search or reverse breadth-first search order depending on the
+  // `order` argument. The nodes are collected based on the results of the
+  // `collect_node` predicate: if the predicate returns `false` for a given
+  // node, then the subtree rooted in this node is excluded. The root node
+  // itself is not collected.
+  Node::NodeVector CollectNodes(
+      std::shared_ptr<Node> root, TraversalOrder order,
+      bool collect_node(const std::shared_ptr<Node>)) const;
+
+  // Stores a pointer to the root of a model.
+  std::shared_ptr<Node> root_;
 
   // Holds a mapping from node to its timing node.
   absl::flat_hash_map<const Node*, NodeTiming> timing_nodes_;

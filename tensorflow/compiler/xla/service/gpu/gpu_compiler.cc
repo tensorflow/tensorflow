@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/bitcast_decomposer.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
+#include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
@@ -151,6 +153,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/result_caster.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
+#include "tensorflow/compiler/xla/service/scatter_simplifier.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
 #include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
@@ -315,11 +318,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-  // Save proto state before optimizations if we want a snapshot.
-  if (DumpingEnabledForHloModule(*hlo_module)) {
-    hlo_proto_ = std::make_unique<HloProto>();
-    *hlo_proto_->mutable_hlo_module() = hlo_module->ToProto();
-  }
 
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
@@ -329,9 +327,7 @@ Status GpuCompiler::OptimizeHloModule(
     if (num_partitions > 1) {
       // Run some IR cleanup passes before running the SPMD partitioning
       // passes.
-      spmd_pipeline.AddInvariantChecker<HloVerifier>(
-          /*layout_sensitive=*/false,
-          /*allow_mixed_precision=*/false);
+      spmd_pipeline.AddInvariantChecker<HloVerifier>(HloVerifierOpts{});
       spmd_pipeline.AddPass<CallInliner>();
       spmd_pipeline.AddPass<ZeroSizedHloElimination>();
       spmd_pipeline.AddPass<ConditionalCanonicalizer>();
@@ -348,6 +344,9 @@ Status GpuCompiler::OptimizeHloModule(
 
       spmd_simplify.AddPass<SortSimplifier>();
       spmd_simplify.AddPass<TupleSimplifier>();
+      if (debug_options.xla_gpu_simplify_scatters()) {
+        spmd_simplify.AddPass<ScatterSimplifier>();
+      }
       spmd_simplify.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
       spmd_simplify.AddPass<GatherExpander>(
@@ -375,8 +374,7 @@ Status GpuCompiler::OptimizeHloModule(
 
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                              /*allow_mixed_precision=*/false);
+    pipeline.AddInvariantChecker<HloVerifier>(HloVerifierOpts{});
     pipeline.AddPass<AllToAllDecomposer>();
 
     HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
@@ -477,15 +475,16 @@ Status GpuCompiler::OptimizeHloModule(
     // point.
     [&, &pipeline =
             pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-      pipeline.AddInvariantCheckerDebug<HloVerifier>(
-          /*layout_sensitive=*/false,
-          /*allow_mixed_precision=*/false);
+      pipeline.AddInvariantCheckerDebug<HloVerifier>(HloVerifierOpts{});
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+      if (debug_options.xla_gpu_simplify_scatters()) {
+        pipeline.AddPass<ScatterSimplifier>();
+      }
       pipeline.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
 
@@ -592,9 +591,8 @@ Status GpuCompiler::OptimizeHloModule(
     // to avoid exceeding the parameter space.
     fusion.AddPass<VariadicOpSplitter>();
     fusion.AddInvariantCheckerDebug<HloVerifier>(
-        /*layout_sensitive=*/true,
-        /*allow_mixed_precision=*/false,
-        LayoutAssignment::InstructionCanChangeLayout);
+        HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+            LayoutAssignment::InstructionCanChangeLayout));
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
@@ -682,9 +680,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
+      HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+          LayoutAssignment::InstructionCanChangeLayout));
 
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -710,23 +707,24 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   {
     HloPassPipeline pipeline("hlo normalization");
     pipeline.AddPass<ReshapeDecomposer>();
-    pipeline.AddPass<ReduceDecomposer>(
-        /*custom_layout_allowed=*/[&](const HloInstruction* r) {
-          return IsReductionFromOrToContiguousDimensions(*r);
-        });
+    pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
+      return IsReductionFromOrToContiguousDimensions(*r);
+    });
     if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>();
     }
+    pipeline.AddPass<BroadcastCanonicalizer>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
-
-  pipeline.AddPass<ReshapeDecomposer>();
+      HloVerifierOpts{}
+          .MakeLayoutSensitive()
+          .WithInstructionCanChangeLayout(
+              LayoutAssignment::InstructionCanChangeLayout)
+          .VerifyBroadcastDimensionsOrder()
+          .VerifyReshapeIsBitcast());
 
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
@@ -1042,6 +1040,14 @@ static Status CompileModuleToLlvmIrImpl(
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
       entry_function, &results->allocations, &results->output_info,
       &results->output_shape, &results->entry_func_attrs));
+
+  if (hlo_module->config().debug_options().xla_gpu_enable_mlir_lowering()) {
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(mlir::createGpuFusionRewritePass());
+    if (failed(pm.run(mlir_module.get()))) {
+      return InternalError("Failed to run gpu-fusion-rewrite pass");
+    }
+  }
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
@@ -1427,11 +1433,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   if (embed_ir_in_executable ||
       DumpingEnabledForHloModule(gpu_executable->module())) {
     auto hlo_proto = std::make_unique<HloProto>();
-    if (hlo_proto_) {
-      *hlo_proto = *hlo_proto_;
-    } else {
-      *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
-    }
+    *hlo_proto->mutable_hlo_module() = gpu_executable->module().ToProto();
     *hlo_proto->mutable_buffer_assignment() = buffer_assignment->ToProto();
     gpu_executable->set_hlo_proto(std::move(hlo_proto));
   }

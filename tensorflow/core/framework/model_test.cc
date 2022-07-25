@@ -1321,22 +1321,38 @@ TEST(RecordTimeTest, RecordTimeTest) {
   EXPECT_FALSE(source->is_recording());
 }
 
+TEST(ModelTest, ModelMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  std::string model_id = strings::StrCat(reinterpret_cast<uint64>(&model));
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true")));
+}
+
 class ModelTimingTest : public ::testing::Test {
  public:
-  // Computes the timing given a Model text proto.
-  void ComputeModelTiming(const std::string& model_pbtxt) {
+  // Builds a Model from its text proto.
+  void BuildModelFromProto(const std::string& model_pbtxt) {
     ModelProto model_proto;
     protobuf::TextFormat::ParseFromString(model_pbtxt, &model_proto);
-    std::unique_ptr<Model> model;
-    TF_CHECK_OK(Model::FromProto(model_proto, &model));
-    auto nodes =
-        model->CollectNodes(model->output(), TraversalOrder::BFS,
-                            [](const std::shared_ptr<Node>) { return true; });
+    TF_CHECK_OK(Model::FromProto(model_proto, &model_));
+    auto nodes = model_->output()->CollectNodes(
+        TraversalOrder::BFS, [](const std::shared_ptr<Node>) { return true; });
     node_map_.clear();
+    node_map_[model_->output()->id()] = model_->output().get();
     for (const auto& node : nodes) {
       node_map_[node->id()] = node.get();
     }
-    model_timing_ = absl::make_unique<ModelTiming>(std::move(model));
+  }
+
+  // Computes the timing given a Model text proto.
+  void ComputeModelTiming(const std::string& model_pbtxt) {
+    BuildModelFromProto(model_pbtxt);
+    model_timing_ = std::make_unique<ModelTiming>(model_->output());
   }
 
   // Gets the timing information of a node given its id.
@@ -1344,9 +1360,14 @@ class ModelTimingTest : public ::testing::Test {
     return model_timing_->GetTiming(node_map_.at(node_id));
   }
 
+  // Gets the node given its id.
+  const Node* GetNode(int64_t node_id) const { return node_map_.at(node_id); }
+  Node* MutableGetNode(int64_t node_id) const { return node_map_.at(node_id); }
+
  protected:
+  std::unique_ptr<Model> model_;
   std::unique_ptr<ModelTiming> model_timing_;
-  absl::flat_hash_map<int64_t, const Node*> node_map_;
+  absl::flat_hash_map<int64_t, Node*> node_map_;
 };
 
 TEST_F(ModelTimingTest, Interleave) {
@@ -1883,16 +1904,694 @@ TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
   EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
 }
 
-TEST(ModelTest, ModelMetrics) {
-  CellReader<std::string> cell_reader("/tensorflow/data/model");
-  model::Model model;
-  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
-  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
-                nullptr, &root);
-  std::string model_id = strings::StrCat(reinterpret_cast<uint64>(&model));
-  EXPECT_THAT(cell_reader.Read(model_id),
-              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
-                    HasSubstr("autotune: true")));
+class BufferSizeTest : public ::testing::Test {
+ public:
+  void ReadModel(const std::string& model_pbtxt) {
+    ModelProto model_proto;
+    protobuf::TextFormat::ParseFromString(model_pbtxt, &model_proto);
+    TF_CHECK_OK(Model::FromProto(model_proto, &model_));
+    auto nodes = model_->output()->CollectNodes(
+        TraversalOrder::BFS, [](const std::shared_ptr<Node>) { return true; });
+    node_map_.clear();
+    node_map_[model_->output()->id()] = model_->output();
+    for (const auto& node : nodes) {
+      node_map_[node->id()] = node;
+    }
+  }
+
+  // Returns a node given its node id. If node id does not exist, it will fail.
+  std::shared_ptr<Node> GetNode(int64_t node_id) const {
+    return node_map_.at(node_id);
+  }
+
+ protected:
+  std::unique_ptr<Model> model_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Node>> node_map_;
+};
+
+TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
+  ReadModel(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 2
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 3
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 4
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
+
+  std::shared_ptr<Node> node_1 = GetNode(1);
+  std::shared_ptr<Node> node_2 = GetNode(2);
+  std::shared_ptr<Node> node_3 = GetNode(3);
+  std::shared_ptr<Node> node_4 = GetNode(4);
+  // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
+  // downsized to 2.
+  node_1->record_buffer_event(100, 1);
+  node_1->record_buffer_event(100, 1);
+  EXPECT_EQ(1, node_1->buffered_elements_low());
+  EXPECT_EQ(2, node_1->buffered_elements_high());
+  // Set node 2 low watermark to 1 and high watermark to 5. Expect that it is
+  // not changed.
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(400, 4);
+  node_2->record_buffer_event(-100, -1);
+  EXPECT_EQ(1, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  // Set node 3 low watermark to 0 and high watermark to 5. Expect that it is
+  // upsized to 10.
+  node_3->record_buffer_event(100, 1);
+  node_3->record_buffer_event(-100, -1);
+  node_3->record_buffer_event(500, 5);
+  node_3->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  // Set node 4 low watermark to 0 and high watermark to 5. Its max buffer size
+  // is set to 8. Expect that it is upsized to 8.
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(500, 5);
+  node_4->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_4->buffered_elements_low());
+  EXPECT_EQ(5, node_4->buffered_elements_high());
+
+  model_->OptimizeBuffers(node_1, 10000);
+
+  EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
+  EXPECT_EQ(5, node_2->parameter_value(kBufferSize));
+  EXPECT_EQ(10, node_3->parameter_value(kBufferSize));
+  EXPECT_EQ(8, node_4->parameter_value(kBufferSize));
+}
+
+TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
+  ReadModel(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 2
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 3
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 4
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
+
+  std::shared_ptr<Node> node_1 = GetNode(1);
+  std::shared_ptr<Node> node_2 = GetNode(2);
+  std::shared_ptr<Node> node_3 = GetNode(3);
+  std::shared_ptr<Node> node_4 = GetNode(4);
+  // Set low watermark to 0 and high watermark to 5 for all nodes.
+  node_1->record_buffer_event(100, 1);
+  node_1->record_buffer_event(-100, -1);
+  node_1->record_buffer_event(500, 5);
+  EXPECT_EQ(0, node_1->buffered_elements_low());
+  EXPECT_EQ(5, node_1->buffered_elements_high());
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(-100, -1);
+  node_2->record_buffer_event(-100, -1);
+  node_2->record_buffer_event(400, 4);
+  node_2->record_buffer_event(100, 1);
+  EXPECT_EQ(0, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  node_3->record_buffer_event(100, 1);
+  node_3->record_buffer_event(-100, -1);
+  node_3->record_buffer_event(500, 5);
+  EXPECT_EQ(0, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(500, 5);
+  node_4->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_4->buffered_elements_low());
+  EXPECT_EQ(5, node_4->buffered_elements_high());
+
+  model_->OptimizeBuffers(node_1, 3000);
+
+  EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_3->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_4->parameter_value(kBufferSize));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_CappedByParameterMax) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: { name: "parallelism" value: 4 min: 1 max: 3 tunable: true }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+                   &cancellation_manager);
+
+  // The max value is set to 3. Otherwise, the expected parallelism value is 5.
+  EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 25000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 5, 1000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(5, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 25000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 5, 800, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(4, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelBatch"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 2
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(10, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime) {
+  model_ = std::make_unique<Model>();
+
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
+  model_ = std::make_unique<Model>();
+
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
+  model_ = std::make_unique<Model>();
+
+  // The window size is 100. Only the last 100 gap times are used to compute the
+  // target time.
+  for (int i = 0; i < 100; ++i) {
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 100; ++i) {
+    model_->RecordIteratorGapTime(10);
+  }
+
+  EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, SelfTime) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  auto node_1 = MutableGetNode(/*node_id=*/1);
+  EXPECT_DOUBLE_EQ(100, node_1->ComputeSelfTime());
+  node_1->add_processing_time(400);
+  node_1->record_element();
+  EXPECT_DOUBLE_EQ(110, node_1->ComputeSelfTime());
+  auto node_2 = MutableGetNode(/*node_id=*/2);
+  EXPECT_DOUBLE_EQ(1000, node_2->ComputeSelfTime());
+  node_2->add_processing_time(100);
+  node_2->record_element();
+  EXPECT_DOUBLE_EQ(910, node_2->ComputeSelfTime());
 }
 
 }  // namespace

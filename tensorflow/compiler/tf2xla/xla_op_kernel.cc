@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -443,6 +444,16 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
+
+  int64_t num_elements = 1;
+  for (auto i = dims.begin(); i != dims.end(); ++i) {
+    num_elements = MultiplyWithoutOverflow(num_elements, *i);
+    if (num_elements < 0)
+      return errors::InvalidArgument(
+          "The total elements specified by orig_input_shape is too large.",
+          "Encountered overflow after multiplying", *i,
+          ", result: ", num_elements);
+  }
   *shape = TensorShape(dims);
   return OkStatus();
 }

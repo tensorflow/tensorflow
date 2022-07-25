@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_port.h"
 
 #include <cstring>
+#include <string>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"

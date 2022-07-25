@@ -23,7 +23,6 @@ limitations under the License.
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 
 namespace xla {
@@ -95,14 +94,13 @@ struct PjRtFutureHelpers {
 // away from AsyncValueRef ---- we don't want clients to call arbitrary
 // AsyncValueRef APIs.
 //
-// Second, we want to export different semantics, for
-// example we block without the client supplying a HostContext, and support
+// Second, we want to export different semantics, for example we support
 // integration between blocking and profiling (e.g., TraceMe).
 //
 // There are two ways to construct a PjRtFuture, one used by clients that
-// natively use TFRT, which already have a HostContext and import APIs for
-// constructing AsyncValueRefs; and another that avoids exposing TFRT APIs and
-// can be used by non-TFRT clients.
+// natively use TFRT, which already have import APIs for constructing
+// AsyncValueRefs; and another that avoids exposing TFRT APIs and can be used by
+// non-TFRT clients.
 template <class T>
 class PjRtFuture {
  public:
@@ -148,8 +146,7 @@ class PjRtFuture {
   explicit PjRtFuture(T t)
       : promise_ref_(tfrt::MakeAvailableAsyncValueRef<T>(t)),
         on_block_start_([]() { return PjRtFutureHelpers::ProfilingKeys(); }),
-        on_block_end_([](PjRtFutureHelpers::ProfilingKeys) {}),
-        host_ctx_(nullptr) {}
+        on_block_end_([](PjRtFutureHelpers::ProfilingKeys) {}) {}
 
   // Constructor used by clients that natively use TFRT and already have a
   // host_ctx that should be used for awaiting promises.
@@ -157,19 +154,17 @@ class PjRtFuture {
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
-      tfrt::HostContext* host_ctx, tfrt::AsyncValueRef<T> async_value,
+      tfrt::AsyncValueRef<T> async_value,
       PjRtFutureHelpers::OnBlockStartFn on_block_start =
           []() { return PjRtFutureHelpers::ProfilingKeys(); },
       PjRtFutureHelpers::OnBlockEndFn on_block_end =
           [](PjRtFutureHelpers::ProfilingKeys) {})
       : promise_ref_(std::move(async_value)),
         on_block_start_(std::move(on_block_start)),
-        on_block_end_(std::move(on_block_end)),
-        host_ctx_(host_ctx) {}
+        on_block_end_(std::move(on_block_end)) {}
 
   // Constructor used by clients that don't natively use TFRT and want to use
-  // the wrapped PjRtFuture<T>::Promise class and block without using
-  // HostContext.
+  // the wrapped PjRtFuture<T>::Promise class.
   //
   // on_block_start is called before Await starts to block.
   // on_block_end is called after Await finishes blocking.
@@ -181,8 +176,7 @@ class PjRtFuture {
           [](PjRtFutureHelpers::ProfilingKeys) {})
       : promise_ref_(std::move(promise.avr)),
         on_block_start_(std::move(on_block_start)),
-        on_block_end_(std::move(on_block_end)),
-        host_ctx_(nullptr) {}
+        on_block_end_(std::move(on_block_end)) {}
 
   // Two functions exist to know whether the future is ready, to accomodate
   // the fact some backends (e.g. disributed ones) could take a non-trivial time
@@ -192,7 +186,7 @@ class PjRtFuture {
   // `IsReady()` was called. `IsReady()` will return immediately if a call to
   // `Await()` has already returned, or any callback passed to `OnReady` has
   // already been triggered. Otherwise IsReady() may block for the duration of a
-  // network message on some backends."
+  // network message on some backends.
   bool IsReady() { return promise_ref_.IsAvailable(); }
   // `IsKnownReady()` is guaranteed to return immediately. `IsKnownReady()` will
   // always return true if a call to `Await()` has already returned, or any
@@ -206,11 +200,7 @@ class PjRtFuture {
   T Await() {
     if (!promise_ref_.IsAvailable()) {
       const auto keys = on_block_start_();
-      if (host_ctx_) {
-        host_ctx_->Await({promise_ref_.CopyRCRef()});
-      } else {
-        tfrt::Await({promise_ref_.GetAsyncValue()});
-      }
+      tfrt::Await({promise_ref_.GetAsyncValue()});
       on_block_end_(keys);
     }
     DCHECK(promise_ref_.IsConcrete());
@@ -249,8 +239,6 @@ class PjRtFuture {
   PjRtFutureHelpers::OnBlockStartFn on_block_start_;
   // Function that is called after a thread finishes blocking on the promise.
   PjRtFutureHelpers::OnBlockEndFn on_block_end_;
-  // Used only to await promise_ref_.
-  tfrt::HostContext* host_ctx_;  // not owned
 };
 
 }  // namespace xla

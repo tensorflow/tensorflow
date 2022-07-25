@@ -16,8 +16,13 @@ limitations under the License.
 // This files implements the logic for converting `scf.parallel` loops into
 // tiled loops.
 
+#include <cstdint>
+#include <tuple>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/iterator_range.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
@@ -26,11 +31,12 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 
-using ::llvm::to_vector;
 using ::mlir::scf::ParallelOp;
 
 namespace {
@@ -65,30 +71,49 @@ static bool isComplexAccessPattern(ParallelOp ploop) {
 }
 
 void TileLoopsPass::runOnOperation() {
-  auto unrolledTile = [&]() -> SmallVector<int64_t, 4> {
-    if (tile_sizes_.size() != unroll_factors_.size()) return {};
-    auto multiply = [](std::tuple<int64_t, int64_t> tuple) {
-      return std::get<0>(tuple) * std::get<1>(tuple);
-    };
-    return to_vector<4>(
-        llvm::map_range(llvm::zip(tile_sizes_, unroll_factors_), multiply));
-  }();
+  SmallVector<int64_t> unrolledTile;
+  if (tile_sizes_.size() == unroll_factors_.size()) {
+    unrolledTile.reserve(tile_sizes_.size());
+    for (int i = 0; i < tile_sizes_.size(); ++i)
+      unrolledTile.push_back(tile_sizes_[i] * unroll_factors_[i]);
+  }
 
-  SmallVector<ParallelOp, 2> innermostPloops;
-  getInnermostParallelLoops(this->getOperation().getOperation(),
-                            innermostPloops);
-
-  for (ParallelOp ploop : innermostPloops) {
-    // Do not unroll if the multiplier has the wrong rank, or if we have complex
-    // memory access patterns.
+  SmallVector<ParallelOp, 2> ploops;
+  getInnermostParallelLoops(this->getOperation().getOperation(), ploops);
+  for (ParallelOp ploop : ploops) {
+    // Do not unroll if the tiling and unrolling have different rank, or if
+    // the access pattern is complex.
     if (unrolledTile.empty() || isComplexAccessPattern(ploop)) {
       tileParallelLoop(ploop, tile_sizes_, /*noMinMaxBounds=*/false);
       continue;
     }
-    auto tiledLoops =
-        tileParallelLoop(ploop, unrolledTile, /*noMinMaxBounds=*/false);
-    tileParallelLoop(tiledLoops.second, unroll_factors_,
-                     /*noMinMaxBounds=*/false);
+
+    // Collect lower/upper bounds and step size, if they are constants.
+    auto getConstDefOps = [](OperandRange operands) {
+      return llvm::to_vector(llvm::map_range(operands, [&](Value value) {
+        return value.getDefiningOp<arith::ConstantIndexOp>();
+      }));
+    };
+    auto lower = getConstDefOps(ploop.getLowerBound());
+    auto upper = getConstDefOps(ploop.getUpperBound());
+    auto step = getConstDefOps(ploop.getStep());
+
+    bool noMinMaxBounds = false;
+    ploop = tileParallelLoop(ploop, unrolledTile, noMinMaxBounds).second;
+    ploop = tileParallelLoop(ploop, unroll_factors_, noMinMaxBounds).second;
+
+    // Use static upper bound on unrolled loop if possible. That is, if the
+    // unroll factor evenly divides the iteration size of the outer ploop.
+    OpBuilder builder(ploop);
+    Location loc = ploop.getLoc();
+    for (int i = 0; i < unrolledTile.size(); ++i) {
+      if (!lower[i] || !upper[i] || !step[i]) continue;
+      int64_t unrollFactor = unroll_factors_[i];
+      int64_t difference = upper[i].value() - lower[i].value();
+      if (difference % (step[i].value() * unrollFactor) != 0) continue;
+      ploop.getUpperBoundMutable().slice(i, 1).assign(
+          builder.create<arith::ConstantIndexOp>(loc, unrollFactor));
+    }
   }
 
   // Apply arithmetic dialect canonicalizations so that

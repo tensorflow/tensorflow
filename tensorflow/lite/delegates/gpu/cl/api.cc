@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
+#include <utility>
+
 #ifndef CL_DELEGATE_NO_GL
 #define CL_DELEGATE_ALLOW_GL
 #endif
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
+#include <variant>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
@@ -191,13 +196,12 @@ class DefaultTensorTie : public TensorTie {
       case ObjectType::OPENCL_BUFFER: {
         auto& dims = d.dimensions;
         const BHWC shape(dims.b, dims.h, dims.w, dims.c);
-        const TensorDescriptor desc{
-            d.object_def.data_type,
-            ToTensorStorageType(d.object_def.object_type,
-                                d.object_def.data_layout),
-            Layout::BHWC};
+        TensorStorageType storage_type = ToTensorStorageType(
+            d.object_def.object_type, d.object_def.data_layout);
+        TensorDescriptor desc = CreateBhwcTensorDescriptor(
+            d.object_def.data_type, storage_type, shape);
         RETURN_IF_ERROR(
-            AllocateTensorMemory(env->context(), shape, desc, &cl_memory_));
+            AllocateTensorMemory(env->context(), desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {
@@ -325,11 +329,11 @@ class GlBufferHolder : public TensorTie {
   }
 
   absl::Status SetExternalObject(TensorObject obj) final {
-    auto ssbo = absl::get_if<OpenGlBuffer>(&obj);
+    auto ssbo = std::get_if<OpenGlBuffer>(&obj);
     if (!ssbo) {
       return absl::InvalidArgumentError("Missing OpenGL SSBO");
     }
-    auto old_ssbo = absl::get_if<OpenGlBuffer>(&external_obj_);
+    auto old_ssbo = std::get_if<OpenGlBuffer>(&external_obj_);
     if (old_ssbo && ssbo->id == old_ssbo->id) {
       return absl::OkStatus();
     }

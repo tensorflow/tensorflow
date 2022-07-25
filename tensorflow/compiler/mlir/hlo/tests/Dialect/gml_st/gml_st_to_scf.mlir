@@ -60,7 +60,7 @@ func.func @parallel(%A: memref<192x192xf32>) {
 
   gml_st.parallel (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16) {
     linalg.fill ins(%cst : f32) outs(%A : memref<192x192xf32>)
-    gml_st.subset_yield
+    gml_st.set_yield
   }
   func.return
 }
@@ -116,7 +116,7 @@ func.func @for(%A: memref<192x192xf32>) {
 
   gml_st.for (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16) {
     linalg.fill ins(%cst : f32) outs(%A : memref<192x192xf32>)
-    gml_st.subset_yield
+    gml_st.set_yield
   }
   func.return
 }

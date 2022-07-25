@@ -573,7 +573,7 @@ class MemoryUsageTracker {
   PickRematerializationCandidates(
       const InstructionList& instruction_list, int64_t memory_limit_bytes,
       absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
-      int min_block_size, int max_block_size);
+      int min_block_size, int max_block_size, int64_t peak_memory_bytes);
 
   // Returns whether the given instruction has been placed (BeginInstruction
   // has been called with 'instruction' as the argument).
@@ -602,6 +602,8 @@ class MemoryUsageTracker {
     }
     return size;
   }
+
+  const HloComputation* computation() const { return computation_; }
 
   // Check invariants of the data structure. This is expensive to call.
   bool Check() const;
@@ -1384,7 +1386,7 @@ std::tuple<std::vector<Item*>, RematStrategy, int>
 MemoryUsageTracker::PickRematerializationCandidates(
     const InstructionList& instruction_list, int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
-    int min_block_size, int max_block_size) {
+    int min_block_size, int max_block_size, int64_t peak_memory_bytes) {
   std::vector<Item*> best_items;
   int64_t best_cost = 0;
   RematStrategy best_strategy;
@@ -1431,8 +1433,15 @@ MemoryUsageTracker::PickRematerializationCandidates(
                   GetCompactShape(item->instruction).ValueOrDie();
               const int64_t memory_reduced =
                   MemoryReducedIfCompressed(item, compact_shape);
+              // Since the compressed and uncompressed buffers need to be alive
+              // while performing the compression/uncompression, only perform
+              // the compression if the sum of the two sizes is less than the
+              // peak memory.
+              const int64_t size = size_function_(item->instruction->shape());
+              const int64_t reduced_size = size_function_(compact_shape);
               effort++;
-              if (memory_reduced > 0) {
+              if (memory_reduced > 0 &&
+                  size + reduced_size < peak_memory_bytes) {
                 const int64_t cost = memory_limit_bytes / memory_reduced;
                 if (best_items.empty() || cost < best_cost) {
                   VLOG(3) << "candidate " << candidate->name() << "("
@@ -1796,7 +1805,9 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
   std::tie(best_items, best_strategy, effort) =
       memory_tracker->PickRematerializationCandidates(
           *instruction_list, memory_limit_bytes, rematerializable_map,
-          min_block_size, max_block_size);
+          min_block_size, max_block_size,
+          rematerialization->ComputationPeakMemory(
+              memory_tracker->computation()));
   InstructionsAdded num_instructions_added;
   num_instructions_added.remat_count = best_items.size();
   num_instructions_added.effort = effort;
@@ -2057,7 +2068,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   return changed;
 }
 
-StatusOr<bool> HloRematerialization::Run(HloModule* module) {
+StatusOr<bool> HloRematerialization::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "HloRematerialization() with memory limit of "
           << HumanReadableNumBytes(memory_limit_bytes_);
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());

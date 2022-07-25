@@ -1119,6 +1119,23 @@ def dropout_v2(x: ragged_tensor.Ragged,
         nn_ops.dropout_v2(x.flat_values, rate=rate, seed=seed))
 
 
+@dispatch.dispatch_for_api(nn_ops.stateless_dropout)
+def stateless_dropout(x: ragged_tensor.Ragged,
+                      rate,
+                      seed,
+                      rng_alg=None,
+                      noise_shape=None,
+                      name=None):
+  """Ragged dispatch target for tf.nn.experimental.stateless_dropout."""
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNStatelessDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(
+        nn_ops.stateless_dropout(
+            x.flat_values, rate=rate, seed=seed, rng_alg=rng_alg))
+
+
 #===============================================================================
 # Ragged version of Tensor.__eq__ and Tensor.__ne__
 #===============================================================================

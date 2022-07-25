@@ -197,6 +197,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "c_api_signature_runner_test",
+    size = "small",
+    srcs = ["c_api_signature_runner_test.cc"],
+    copts = tflite_copts(),
+    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common",
     srcs = ["common.cc"],
@@ -205,10 +218,7 @@ cc_library(
         "common.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    copts = tflite_copts() + select({
-        "//tensorflow/lite:tensorflow_profiler_config": ["-DTF_LITE_TENSORFLOW_PROFILER"],
-        "//conditions:default": [],
-    }),
+    copts = tflite_copts(),
     deps = [
         ":c_api_types",
     ] + select({

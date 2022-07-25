@@ -36,6 +36,7 @@ from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
@@ -60,10 +61,11 @@ def get_tpu_strategy(enable_spmd=False):
   num_replicas = resolver.get_tpu_system_metadata().num_cores // 2
   device_assignment = device_assignment_lib.DeviceAssignment.build(
       topology, num_replicas=num_replicas, computation_shape=[1, 1, 1, 2])
-  return tpu_lib.TPUStrategyV2(
+  strategy = tpu_lib.TPUStrategyV2(
       resolver,
       experimental_device_assignment=device_assignment,
       experimental_spmd_xla_partitioning=enable_spmd)
+  return strategy, num_replicas
 
 
 class TPUStrategyModelParallelismTest(
@@ -71,14 +73,14 @@ class TPUStrategyModelParallelismTest(
     strategy_test_lib.TwoDeviceDistributionTestBase):
 
   def test_logical_device_assignment(self):
-    strategy = get_tpu_strategy()
+    strategy, num_replicas = get_tpu_strategy()
     with strategy.scope():
       v = variables.Variable(2.)
       with strategy.extended.experimental_logical_device(1):
         w = variables.Variable(3.)
 
-    self.assertLen(strategy.experimental_local_results(v), 1)
-    self.assertLen(strategy.experimental_local_results(w), 1)
+    self.assertLen(strategy.experimental_local_results(v), num_replicas)
+    self.assertLen(strategy.experimental_local_results(w), num_replicas)
     self.assertEqual("/job:localhost/replica:0/task:0/device:TPU:0",
                      strategy.experimental_local_results(v)[0].device)
     self.assertEqual("/job:localhost/replica:0/task:0/device:TPU:1",
@@ -104,7 +106,8 @@ class TPUStrategyModelParallelismTest(
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertEqual(30., self.evaluate(result))
+      self.assertEqual(30. * num_replicas,
+                       self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
   def test_paritioned_model_checkpointing(self):
 
@@ -133,7 +136,7 @@ class TPUStrategyModelParallelismTest(
         return control_flow_ops.group(
             [self.v.assign(v_new), self.w.assign(w_new)])
 
-    strategy = get_tpu_strategy()
+    strategy, num_replicas = get_tpu_strategy()
     with strategy.scope():
       model = PartitionedModel(2., 3.)
 
@@ -147,7 +150,8 @@ class TPUStrategyModelParallelismTest(
 
       self.evaluate(model.change_weights_op(1., 4.))
       result = strategy.run(def_function.function(model), args=(5.0,))
-      self.assertEqual(20., self.evaluate(result))
+      self.assertEqual(20. * num_replicas,
+                       self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
       status = checkpoint.restore(
           checkpoint_management.latest_checkpoint(checkpoint_dir))
@@ -155,17 +159,18 @@ class TPUStrategyModelParallelismTest(
       status.assert_consumed()
       status.assert_existing_objects_matched()
       result = strategy.run(def_function.function(model), args=(5.0,))
-      self.assertEqual(30., self.evaluate(result))
+      self.assertEqual(30. * num_replicas,
+                       self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
   def test_spmd_cannot_assign_tensor_to_logical_device(self):
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, _ = get_tpu_strategy(enable_spmd=True)
     x = constant_op.constant([0, 1])
     with self.assertRaises(ValueError):
       strategy.experimental_assign_to_logical_device(x, 0)
 
   def test_spmd_variable_created_from_callable(self):
     initilizer = lambda: random_ops.random_normal(shape=(16, 16))
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, _ = get_tpu_strategy(enable_spmd=True)
     with strategy.scope():
       w = variables.Variable(initilizer)
     value0 = w.values[0]
@@ -182,7 +187,7 @@ class TPUStrategyModelParallelismTest(
     w_init = random_ops.random_uniform((num_feature_in, num_feature_out),
                                        dtype=dtypes.float32)
 
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
     with strategy.scope():
       w = variables.Variable(w_init, dtype=dtypes.float32)
 
@@ -201,7 +206,10 @@ class TPUStrategyModelParallelismTest(
 
     result = train_fn(x)
     self.assertAllClose(
-        result, math_ops.matmul(x, w_init), rtol=5e-03, atol=5e-03)
+        strategy.reduce("SUM", result, axis=None),
+        math_ops.matmul(x, w_init) * num_replicas,
+        rtol=5e-03,
+        atol=5e-03)
 
   def test_spmd_variable_update(self):
     batch_size = 1024
@@ -212,7 +220,7 @@ class TPUStrategyModelParallelismTest(
     w_init = random_ops.random_uniform((batch_size, num_feature_in),
                                        dtype=dtypes.float32)
 
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
     with strategy.scope():
       w = variables.Variable(w_init, dtype=dtypes.float32)
 
@@ -227,19 +235,22 @@ class TPUStrategyModelParallelismTest(
       return def_function.function(run)
 
     result = make_strategy_run(w.assign)(x)
-    self.assertAllClose(result, x)
+    self.assertAllClose(
+        strategy.reduce("SUM", result, axis=None), x * num_replicas)
 
     delta = random_ops.random_uniform((batch_size, num_feature_in),
                                       dtype=dtypes.float32)
     result = make_strategy_run(w.assign_sub)(delta)
     x -= delta
-    self.assertAllClose(result, x)
+    self.assertAllClose(
+        strategy.reduce("SUM", result, axis=None), x * num_replicas)
 
     delta = random_ops.random_uniform((batch_size, num_feature_in),
                                       dtype=dtypes.float32)
     result = make_strategy_run(w.assign_add)(delta)
     x += delta
-    self.assertAllClose(result, x)
+    self.assertAllClose(
+        strategy.reduce("SUM", result, axis=None), x * num_replicas)
 
   def test_spmd_variable_eager_update(self):
     batch_size = 32
@@ -250,7 +261,7 @@ class TPUStrategyModelParallelismTest(
     w_init = random_ops.random_uniform((batch_size, num_feature_in),
                                        dtype=dtypes.float32)
 
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, _ = get_tpu_strategy(enable_spmd=True)
     with strategy.scope():
       w = variables.Variable(w_init, dtype=dtypes.float32)
 
@@ -295,7 +306,7 @@ class TPUStrategyModelParallelismTest(
     x = random_ops.random_uniform((batch_size, num_feature_in),
                                   dtype=dtypes.float32)
 
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
     with strategy.scope():
       model = LinearModel(w1)
 
@@ -315,7 +326,10 @@ class TPUStrategyModelParallelismTest(
       self.evaluate(model.change_weights_op(w2))
       result = strategy.run(step_fn, args=(x,))
       self.assertAllClose(
-          math_ops.matmul(x, w2), self.evaluate(result), rtol=5e-3, atol=5e-3)
+          math_ops.matmul(x, w2) * num_replicas,
+          self.evaluate(strategy.reduce("SUM", result, axis=None)),
+          rtol=5e-3,
+          atol=5e-3)
 
       status = checkpoint.restore(
           checkpoint_management.latest_checkpoint(checkpoint_dir))
@@ -324,13 +338,16 @@ class TPUStrategyModelParallelismTest(
       status.assert_existing_objects_matched()
       result = strategy.run(step_fn, args=(x,))
       self.assertAllClose(
-          math_ops.matmul(x, w1), self.evaluate(result), rtol=5e-3, atol=5e-3)
+          math_ops.matmul(x, w1) * num_replicas,
+          self.evaluate(strategy.reduce("SUM", result, axis=None)),
+          rtol=5e-3,
+          atol=5e-3)
 
   def test_spmd_with_summary(self):
     original_device_placement = config.get_soft_device_placement()
     config.set_soft_device_placement(True)
 
-    strategy = get_tpu_strategy(enable_spmd=True)
+    strategy, _ = get_tpu_strategy(enable_spmd=True)
     summary_dir = self.get_temp_dir()
     writer = summary_ops.create_file_writer_v2(summary_dir)
 
@@ -346,8 +363,29 @@ class TPUStrategyModelParallelismTest(
     for _ in range(10):
       strategy.run(run, args=())
 
+    for val in step.values:
+      for var in val.variables:
+        self.assertAllEqual(10, var)
+
     config.set_soft_device_placement(original_device_placement)
 
+  def test_spmd_with_outside_comp(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    def host_inc(x):
+      return x + 1
+
+    @def_function.function
+    def fn(x):
+      y = x + 1
+      z = tpu.outside_compilation(host_inc, y)
+      a = z + 1
+      return a
+
+    arg = constant_op.constant(0, shape=(), dtype=dtypes.int64)
+    result = strategy.run(fn, args=(arg,))
+    self.assertEqual(3 * num_replicas,
+                     self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
 if __name__ == "__main__":
   test.main()

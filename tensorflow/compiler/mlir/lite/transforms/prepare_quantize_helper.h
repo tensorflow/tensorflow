@@ -193,7 +193,7 @@ class PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
     llvm::SmallVector<llvm::APFloat, 4> min_max_values;
 
     for (auto& stats_op : stats_ops) {
-      auto values = stats_op.layerStats()
+      auto values = stats_op.getLayerStats()
                         .dyn_cast<DenseFPElementsAttr>()
                         .getValues<llvm::APFloat>();
       min_max_values.insert(min_max_values.end(), values.begin(), values.end());
@@ -214,7 +214,7 @@ class PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
     for (auto& stats_op : stats_ops) {
       rewriter.setInsertionPointAfter(stats_op);
       rewriter.replaceOpWithNewOp<quant::StatisticsOp>(
-          stats_op, stats_op.arg(), layer_stats, axis_stats, axis);
+          stats_op, stats_op.getArg(), layer_stats, axis_stats, axis);
     }
     return success();
   }
@@ -342,7 +342,7 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
                      << "] is a state tensor, but has more than one use.";
       return failure();
     }
-    auto stats = stats_op.layerStats().dyn_cast<DenseFPElementsAttr>();
+    auto stats = stats_op.getLayerStats().dyn_cast<DenseFPElementsAttr>();
     if (!stats || stats.getNumElements() != 2) {
       stats_op.emitError("Stats should have 2 values.");
       return failure();
@@ -392,7 +392,8 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
     }
     rewriter.setInsertionPointAfter(stats_op);
     Type result_type = quant_type.castFromExpressedType(stats_op.getType());
-    auto q = rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.arg());
+    auto q =
+        rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.getArg());
     rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
     return success();
   }

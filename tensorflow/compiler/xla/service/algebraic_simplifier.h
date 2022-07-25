@@ -172,16 +172,6 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
-  // TODO(b/228984373): Remove this option once BitcastDecomposer lands and
-  // sticks.
-  void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
-    replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
-  }
-
-  bool replace_transpose_with_bitcast() const {
-    return replace_transpose_with_bitcast_;
-  }
-
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
   // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
@@ -215,7 +205,6 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool enable_sink_broadcast_{true};
-  bool replace_transpose_with_bitcast_{true};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   Metadata metadata_;
@@ -233,7 +222,10 @@ class AlgebraicSimplifier : public HloModulePass {
 
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.

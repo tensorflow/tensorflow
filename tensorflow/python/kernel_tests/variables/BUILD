@@ -102,7 +102,7 @@ cuda_py_test(
 
 tf_py_test(
     name = "variable_scope_test",
-    size = "small",
+    size = "medium",
     srcs = ["variable_scope_test.py"],
     tags = ["no_windows"],
     deps = [

@@ -37,6 +37,9 @@ class MemRefDialect;
 namespace tensor {
 class TensorDialect;
 }  // namespace tensor
+namespace shape {
+class ShapeDialect;
+}  // namespace shape
 
 namespace mhlo {
 class MhloDialect;

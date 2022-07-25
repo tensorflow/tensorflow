@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
@@ -436,6 +437,15 @@ class Conv2DBackpropInputOp : public OpKernel {
       return;
     }
 
+    // If shapes are valid but `out_backprop` is empty, in_backprop should be
+    // set to all zeros.  Otherwise, cudnn/dnnl fail with an empty input.
+    if (out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> set_zero;
+      set_zero(context->eigen_device<Device>(),
+               in_backprop->template flat<T>());
+      return;
+    }
+
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).
     const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
@@ -551,6 +561,15 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
     // If there is nothing to compute, return.
     if (input_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If shapes are valid but `out_backprop` is empty, in_backprop should be
+    // set to all zeros.  Otherwise, cudnn/dnnl fail with an empty input.
+    if (out_backprop.NumElements() == 0) {
+      functor::SetZeroFunctor<Device, T> set_zero;
+      set_zero(context->eigen_device<Device>(),
+               in_backprop->template flat<T>());
       return;
     }
 

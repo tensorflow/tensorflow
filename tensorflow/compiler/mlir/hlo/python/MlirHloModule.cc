@@ -10,7 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-c/Registration.h"
+#include "mlir-c/IR.h"
 #include "mlir-hlo-c/Attributes.h"
 #include "mlir-hlo-c/Dialects.h"
 #include "mlir-hlo-c/Passes.h"
@@ -426,6 +426,24 @@ PYBIND11_MODULE(_mlirHlo, m) {
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
+      m, "RngDistributionAttr", mlirMhloAttributeIsARngDistributionAttr)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const std::string &distribution, MlirContext ctx) {
+            return cls(mlirMhloRngDistributionAttrGet(
+                ctx, mlirStringRefCreate(distribution.c_str(),
+                                         distribution.size())));
+          },
+          py::arg("cls"), py::arg("rng_distribution"),
+          py::arg("context") = py::none(),
+          "Creates a RngDistribution attribute with the given rng "
+          "distribution.")
+      .def_property_readonly("rng_distribution", [](MlirAttribute self) {
+        auto distribution = mlirMhloRngDistributionAttrGetRngDistribution(self);
+        return py::str(distribution.data, distribution.length);
+      });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
       m, "RngAlgorithmAttr", mlirMhloAttributeIsARngAlgorithmAttr)
       .def_classmethod(
           "get",
@@ -439,5 +457,39 @@ PYBIND11_MODULE(_mlirHlo, m) {
       .def_property_readonly("rng_algorithm", [](MlirAttribute self) {
         auto algorithm = mlirMhloRngAlgorithmAttrGetRngAlgorithm(self);
         return py::str(algorithm.data, algorithm.length);
+      });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "ChannelHandle", mlirMhloAttributeIsChannelHandle)
+      .def_classmethod(
+          "get",
+          [](py::object cls, int64_t handle, int64_t type, MlirContext ctx) {
+            return cls(mlirMhloChannelHandleGet(ctx, handle, type));
+          },
+          py::arg("cls"), py::arg("handle"), py::arg("type"),
+          py::arg("context") = py::none(), "Creates a ChannelHandle attribute.")
+      .def_property_readonly("handle",
+                             [](MlirAttribute self) {
+                               return mlirMhloChannelHandleGetHandle(self);
+                             })
+      .def_property_readonly("channel_type", [](MlirAttribute self) {
+        return mlirMhloChannelHandleGetType(self);
+      });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "TypeExtensions", mlirMhloAttributeIsTypeExtensions)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const std::vector<int64_t> &bounds,
+             MlirContext ctx) {
+            return cls(
+                mlirMhloTypeExtensionsGet(ctx, bounds.size(), bounds.data()));
+          },
+          py::arg("cls"), py::arg("bounds"), py::arg("context") = py::none(),
+          "Creates a TypeExtensions with the given bounds.")
+      .def_property_readonly("bounds", [](MlirAttribute self) {
+        return attributePropertyVector(self,
+                                       mlirMhloTypeExtensionsGetBoundsSize,
+                                       mlirMhloTypeExtensionsGetBoundsElem);
       });
 }

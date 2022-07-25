@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -27,15 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 namespace xla {
 namespace {
@@ -1774,6 +1772,29 @@ ENTRY TestComputation {
   ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
+  const bool isCudaPlatform =
+      GetTestPlatform()->id() == stream_executor::cuda::kCudaPlatformId;
+  const bool isROCmPlatform =
+      GetTestPlatform()->id() == stream_executor::rocm::kROCmPlatformId;
+
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  constant.1 = pred[] constant(true)
+  broadcast.2 = pred[3,3,3]{2,1,0} broadcast(constant.1), dimensions={}
+  convolution.3 = pred[3,3,3]{2,1,0} convolution(broadcast.2, broadcast.2), window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
+  ROOT tuple.4 = (pred[3,3,3]{2,1,0}) tuple(convolution.3)
+})";
+  auto result = RunAndCompare(kHlo, ErrorSpec{0.01, 0.01});
+  if (isCudaPlatform || isROCmPlatform) {
+    EXPECT_FALSE(result);
+  } else {
+    EXPECT_TRUE(result);
+  }
 }
 
 }  // namespace

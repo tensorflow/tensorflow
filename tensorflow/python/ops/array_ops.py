@@ -39,6 +39,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.types import core
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
@@ -282,7 +283,9 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor` or CompositeTensor. Has the same type and contents as `input`.
   """
-  if isinstance(input, composite_tensor.CompositeTensor):
+  # Don't expand ResourceVariables, so identity(variable) will return a Tensor.
+  if (isinstance(input, composite_tensor.CompositeTensor) and
+      not _pywrap_utils.IsResourceVariable(input)):
     return nest.map_structure(identity, input, expand_composites=True)
   if context.executing_eagerly() and not hasattr(input, "graph"):
     # Make sure we get an input with handle data attached from resource
@@ -3630,7 +3633,8 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tf_type(constant_values) and constant_values == 0:
+    if not tensor_util.is_tf_type(constant_values) and np.ndim(
+        constant_values) == 0 and constant_values == 0:
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(
@@ -6992,7 +6996,10 @@ def stop_gradient(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same dtype as `input`.
   """
-  if isinstance(input, composite_tensor.CompositeTensor):
+  # Don't expand ResourceVariables, so stop_gradient(variable) will return a
+  # Tensor.
+  if (isinstance(input, composite_tensor.CompositeTensor) and
+      not _pywrap_utils.IsResourceVariable(input)):
     return nest.map_structure(stop_gradient, input, expand_composites=True)
   # The StopGradient op has a gradient function registered which returns None
   # (meaning statically known to be zero). For correctness, that's all we

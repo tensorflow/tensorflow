@@ -70,8 +70,10 @@ struct CustomCallOpInterface
     SmallVector<Value> bufferArgs;
     for (OpOperand &operand : customCallOp->getOpOperands()) {
       if (!operand.get().getType().isa<TensorType>()) return failure();
-      Value operandBuffer = getBuffer(rewriter, operand.get(), options);
-      bufferArgs.push_back(operandBuffer);
+      FailureOr<Value> operandBuffer =
+          getBuffer(rewriter, operand.get(), options);
+      if (failed(operandBuffer)) return failure();
+      bufferArgs.push_back(*operandBuffer);
     }
 
     // Allocate outputs.
@@ -80,13 +82,15 @@ struct CustomCallOpInterface
       if (!tensorType) return failure();
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
-      Value tensorAlloc = bufferization::allocateTensorForShapedValue(
-          rewriter, op->getLoc(), result,
-          analysisState.isTensorYielded(result));
+      FailureOr<Value> tensorAlloc =
+          bufferization::allocateTensorForShapedValue(
+              rewriter, op->getLoc(), result,
+              analysisState.isTensorYielded(result), options);
+      if (failed(tensorAlloc)) return failure();
       auto memrefType =
           MemRefType::get(tensorType.getShape(), tensorType.getElementType());
       Value resultBuffer = rewriter.create<bufferization::ToMemrefOp>(
-          op->getLoc(), memrefType, tensorAlloc);
+          op->getLoc(), memrefType, *tensorAlloc);
       bufferArgs.push_back(resultBuffer);
     }
 
@@ -136,13 +140,15 @@ struct ReshapeOpInterface
     if (unrankedOperandType == nullptr) return success();
 
     // The buffer still has the old (pre-reshape) type.
-    Value operandBuffer = getBuffer(rewriter, reshapeOp.operand(), options);
+    FailureOr<Value> operandBuffer =
+        getBuffer(rewriter, reshapeOp.operand(), options);
+    if (failed(operandBuffer)) return failure();
 
     auto resultType = reshapeOp.getType().cast<RankedTensorType>();
     auto destType =
         MemRefType::get(resultType.getShape(), resultType.getElementType());
     replaceOpWithNewBufferizedOp<memref::CastOp>(rewriter, op, destType,
-                                                 operandBuffer);
+                                                 *operandBuffer);
     return success();
   }
 };
@@ -176,9 +182,11 @@ struct DynamicReshapeOpInterface
     auto reshapeOp = cast<mhlo::DynamicReshapeOp>(op);
 
     // The buffer still has the old (pre-reshape) type.
-    Value operandBuffer = getBuffer(rewriter, reshapeOp.operand(), options);
-    Value outputShapeBuffer =
+    FailureOr<Value> operandBuffer =
+        getBuffer(rewriter, reshapeOp.operand(), options);
+    FailureOr<Value> outputShapeBuffer =
         getBuffer(rewriter, reshapeOp.output_shape(), options);
+    if (failed(operandBuffer) || failed(outputShapeBuffer)) return failure();
 
     ShapedType resultType;
     TensorType opResultType = reshapeOp.getType();
@@ -189,22 +197,24 @@ struct DynamicReshapeOpInterface
                    opResultType.dyn_cast<UnrankedTensorType>()) {
       resultType = UnrankedMemRefType::get(unrankedType.getElementType(), 0);
     }
-    auto operand = operandBuffer;
+    auto operand = *operandBuffer;
     // If the operand has a non-identity affine map, we will have to add a copy.
-    auto bufferType = operandBuffer.getType().dyn_cast<MemRefType>();
+    auto bufferType = operandBuffer->getType().dyn_cast<MemRefType>();
     if (bufferType && !bufferType.getLayout().isIdentity()) {
       // TODO(springerm): Create alloc_tensor ops during TensorCopyInsertion.
       AnalysisState analysisState(options);
-      Value tensorAlloc = bufferization::allocateTensorForShapedValue(
-          rewriter, op->getLoc(), operandBuffer,
-          analysisState.isTensorYielded(reshapeOp.getResult()));
+      FailureOr<Value> tensorAlloc =
+          bufferization::allocateTensorForShapedValue(
+              rewriter, op->getLoc(), *operandBuffer,
+              analysisState.isTensorYielded(reshapeOp.getResult()), options);
+      if (failed(tensorAlloc)) return failure();
       auto memrefType =
           MemRefType::get(bufferType.getShape(), bufferType.getElementType());
       operand = rewriter.create<bufferization::ToMemrefOp>(
-          op->getLoc(), memrefType, tensorAlloc);
+          op->getLoc(), memrefType, *tensorAlloc);
     }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
-        rewriter, op, resultType, operand, outputShapeBuffer);
+        rewriter, op, resultType, operand, *outputShapeBuffer);
     return success();
   }
 };
@@ -212,7 +222,7 @@ struct DynamicReshapeOpInterface
 // Inserts dynamic memref to change the layout of the memref to put 0-stride
 // and size of the target dimension if size-1 dimension expansion is
 // necessary.
-memref::ReinterpretCastOp insertDynamicMemrefCastOp(
+FailureOr<Value> insertDynamicMemrefCastOp(
     mhlo::DynamicBroadcastInDimOp op, Value operand, RewriterBase &rewriter,
     const BufferizationOptions &options) {
   auto loc = op.getLoc();
@@ -257,10 +267,11 @@ memref::ReinterpretCastOp insertDynamicMemrefCastOp(
   }
   for (int i = 0; i < resultRank; ++i) {
     Value iVal = rewriter.create<arith::ConstantIndexOp>(loc, i);
-    Value outputDimsBuffer =
+    FailureOr<Value> outputDimsBuffer =
         getBuffer(rewriter, op.output_dimensions(), options);
+    if (failed(outputDimsBuffer)) return failure();
     Value resultDimSize =
-        rewriter.create<memref::LoadOp>(loc, outputDimsBuffer, iVal);
+        rewriter.create<memref::LoadOp>(loc, *outputDimsBuffer, iVal);
     if (!resultDimSize.getType().isIndex()) {
       resultDimSize = rewriter.create<arith::IndexCastOp>(
           loc, rewriter.getIndexType(), resultDimSize);
@@ -304,7 +315,7 @@ memref::ReinterpretCastOp insertDynamicMemrefCastOp(
   auto transformedOperand = rewriter.create<memref::ReinterpretCastOp>(
       loc, typeErasedMemrefType, operand,
       /*offset=*/rewriter.getI64IntegerAttr(0), sizes, strides);
-  return transformedOperand;
+  return transformedOperand.getResult();
 }
 
 struct DynamicBroadcastInDimOpInterface
@@ -339,12 +350,13 @@ struct DynamicBroadcastInDimOpInterface
     if (!resultType) return success();
 
     // The buffer still has the old (pre-reshape) type.
-    Value operandBuffer =
+    FailureOr<Value> operandBuffer =
         getBuffer(rewriter, broadcastInDimOp.operand(), options);
-    Value result = insertDynamicMemrefCastOp(broadcastInDimOp, operandBuffer,
-                                             rewriter, options);
-
-    bufferization::replaceOpWithBufferizedValues(rewriter, op, result);
+    if (failed(operandBuffer)) return failure();
+    FailureOr<Value> result = insertDynamicMemrefCastOp(
+        broadcastInDimOp, *operandBuffer, rewriter, options);
+    if (failed(result)) return failure();
+    bufferization::replaceOpWithBufferizedValues(rewriter, op, *result);
     return success();
   }
 };

@@ -273,6 +273,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:context_types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -285,7 +286,9 @@ tf_cc_test(
     srcs = ["xplane_utils_test.cc"],
     deps = [
         ":math_utils",
+        ":tf_xplane_visitor",
         ":xplane_builder",
+        ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
         "//tensorflow/core:lib",
@@ -624,6 +627,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_proto_map",
+    srcs = ["hlo_proto_map.cc"],
+    hdrs = ["hlo_proto_map.h"],
+    visibility = [":friends"],
+    deps = [
+        ":tf_xplane_visitor",
+        ":xplane_schema",
+        ":xplane_utils",
+        ":xplane_visitor",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core/profiler/convert:xla_op_utils",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "tpu_xplane_utils_test",
     srcs = ["tpu_xplane_utils_test.cc"],
@@ -634,5 +658,20 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "hlo_proto_to_module",
+    srcs = ["hlo_proto_to_module.cc"],
+    hdrs = ["hlo_proto_to_module.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -55,9 +56,16 @@ int3 GetWorkGroupsCountInternal(int grid_dimension, const int3& grid_size,
 std::string GetElementWiseCode(const OperationDef& op_def,
                                bool check_src_slices) {
   std::string c;
-  c += "MAIN_FUNCTION(\n";
-  c += "$0) {\n";
-  c += "  int X = GLOBAL_ID_0;\n";
+  c += "MAIN_FUNCTION($0) {\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = GLOBAL_ID_0;\n";
+  }
   c += "  int Y = GLOBAL_ID_1;\n";
   c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
@@ -82,7 +90,7 @@ DataType OperationDef::GetDataType() const {
 }
 
 DataType OperationDef::GetPrimaryDataType() const {
-  return src_tensors[0].data_type;
+  return src_tensors[0].GetDataType();
 }
 TensorStorageType OperationDef::GetPrimaryStorageType() const {
   return src_tensors[0].GetStorageType();
@@ -192,48 +200,42 @@ absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
 void GPUOperation::AddSrcTensor(const std::string& tensor_name,
                                 const TensorDescriptor& desc) {
   src_tensors_names_.push_back(tensor_name);
-  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  auto desc_new = std::make_unique<TensorDescriptor>(desc);
   args_.AddObjectRef(tensor_name, AccessType::READ, std::move(desc_new));
 }
 
 void GPUOperation::AddSrcBuffer(const std::string& buffer_name,
                                 const BufferDescriptor& desc) {
   src_tensors_names_.push_back(buffer_name);
-  auto desc_new = absl::make_unique<BufferDescriptor>(desc);
+  auto desc_new = std::make_unique<BufferDescriptor>(desc);
   args_.AddObjectRef(buffer_name, AccessType::READ, std::move(desc_new));
 }
 
 void GPUOperation::AddSrcTexture2D(const std::string& texture_name,
                                    const Texture2DDescriptor& desc) {
   src_tensors_names_.push_back(texture_name);
-  auto desc_new = absl::make_unique<Texture2DDescriptor>(desc);
+  auto desc_new = std::make_unique<Texture2DDescriptor>(desc);
   args_.AddObjectRef(texture_name, AccessType::READ, std::move(desc_new));
 }
 
 void GPUOperation::AddDstTensor(const std::string& tensor_name,
                                 const TensorDescriptor& desc) {
   dst_tensors_names_.push_back(tensor_name);
-  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  auto desc_new = std::make_unique<TensorDescriptor>(desc);
   args_.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
 }
 
 absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
   if (elementwise_) {
-    auto src_desc =
-        absl::make_unique<TensorDescriptor>(definition_.src_tensors[0]);
-    if (definition_.IsBatchSupported()) {
-      src_desc->SetStateVar("BatchedWidth", "true");
-    }
     src_tensors_names_.insert(src_tensors_names_.begin(), "src_tensor");
-    args_.AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+    args_.AddObjectRef(
+        "src_tensor", AccessType::READ,
+        std::make_unique<TensorDescriptor>(definition_.src_tensors[0]));
 
-    auto dst_desc =
-        absl::make_unique<TensorDescriptor>(definition_.dst_tensors[0]);
-    if (definition_.IsBatchSupported()) {
-      dst_desc->SetStateVar("BatchedWidth", "true");
-    }
     dst_tensors_names_.insert(dst_tensors_names_.begin(), "dst_tensor");
-    args_.AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+    args_.AddObjectRef(
+        "dst_tensor", AccessType::WRITE,
+        std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]));
 
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_, check_src_channels_size_);

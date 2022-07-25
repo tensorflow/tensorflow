@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_BUILTIN_OPERATOR_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_BUILTIN_OPERATOR_H_
 
+#include <memory>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 

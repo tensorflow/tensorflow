@@ -98,6 +98,9 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+
 # For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -686,6 +689,7 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
+        "//tensorflow/core/kernels/uniform_quant_ops:kernels",
         "//tensorflow/core/kernels:word2vec_kernels",
         "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels/image:image",
@@ -877,6 +881,7 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "//tensorflow/compiler/jit:mobile_srcs_no_runtime",
+        "//tensorflow/core/activity_watcher:activity_watcher_headers",
         "//tensorflow/core/example:mobile_srcs_no_runtime",
         "//tensorflow/core/framework:attr_value_proto_text_srcs",
         "//tensorflow/core/framework:mobile_srcs_no_runtime",

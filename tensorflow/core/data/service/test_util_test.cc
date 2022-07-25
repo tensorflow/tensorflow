@@ -63,6 +63,23 @@ StatusOr<std::vector<std::vector<Tensor>>> GetIteratorOutput(
   return result;
 }
 
+TEST(TestUtilTest, RangeDataset) {
+  const auto dataset_def = RangeDataset(/*range=*/10);
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<Tensor>> result,
+                          GetIteratorOutput(*iterator));
+
+  ASSERT_EQ(result.size(), 10);
+  for (int i = 0; i < result.size(); ++i) {
+    test::ExpectEqual(result[i][0], Tensor(int64_t{i}));
+  }
+}
+
 TEST(TestUtilTest, RangeSquareDataset) {
   const auto dataset_def = RangeSquareDataset(/*range=*/10);
   standalone::Dataset::Params params;
@@ -77,6 +94,24 @@ TEST(TestUtilTest, RangeSquareDataset) {
   ASSERT_EQ(result.size(), 10);
   for (int i = 0; i < result.size(); ++i) {
     test::ExpectEqual(result[i][0], Tensor(int64_t{i * i}));
+  }
+}
+
+TEST(TestUtilTest, InfiniteDataset) {
+  const auto dataset_def = InfiniteDataset();
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  TF_ASSERT_OK(
+      standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
+  std::unique_ptr<standalone::Iterator> iterator;
+  TF_ASSERT_OK(dataset->MakeIterator(&iterator));
+
+  // Verifies the first 10 elements.
+  for (int64_t i = 0; i < 10; ++i) {
+    std::vector<tensorflow::Tensor> outputs;
+    bool end_of_sequence;
+    TF_ASSERT_OK(iterator->GetNext(&outputs, &end_of_sequence));
+    test::ExpectEqual(outputs[0], Tensor(i));
   }
 }
 

@@ -114,17 +114,36 @@ namespace {
 // `host_group_size` sets host collective group size. It should match the number
 //   of active devices running the host collective and supplying device IDs,
 //   else the host collective will crash or hang.
-mlir::TF::CollectiveReduceV2Op EmitCollectiveReduce(
+mlir::Operation* EmitCollectiveReduce(
     mlir::OpBuilder& builder, const mlir::Location& loc, mlir::Value input,
     const std::string& reduce_op_str,
     const mlir::DenseIntElementsAttr& group_assignment, int32 key_base,
-    mlir::Value device_id, int32 host_group_size) {
+    mlir::Value device_id, int32 host_group_size,
+    const mlir::StringRef device_type) {
   DCHECK_EQ(group_assignment.getType().getRank(), 2);
   auto shape = group_assignment.getType().getShape();
   const int32 num_groups = shape[0];
   const int32 group_size = shape[1];
   const int32 num_devices = num_groups * group_size;
+  const mlir::TensorType input_type =
+      input.getType().dyn_cast<mlir::TensorType>();
 
+  const bool need_int32_to_int64_upcast =
+      (device_type.endswith("GPU") && input_type &&
+       input_type.getElementType().isInteger(32));
+
+  if (need_int32_to_int64_upcast) {
+    LOG(WARNING) << "On GPU, collective reduce of int32 is not supported. "
+                    "Casting to int64 as a workaround: "
+                 << mlir::debugString(loc);
+
+    mlir::TF::CastOp cast_to_int64 = builder.create<mlir::TF::CastOp>(
+        loc,
+        mlir::RankedTensorType::get(input_type.getShape(),
+                                    builder.getIntegerType(64)),
+        input);
+    input = cast_to_int64.getResult();
+  }
   mlir::Value group_key_scalar;
   llvm::SmallVector<int32, 4> device_id_to_group_key(num_devices);
   device_id_to_group_key.resize(num_devices, kUninitializedGroupKey);
@@ -171,6 +190,13 @@ mlir::TF::CollectiveReduceV2Op EmitCollectiveReduce(
       /*timeout_seconds=*/builder.getF32FloatAttr(0.),
       /*max_subdivs_per_device=*/builder.getI64IntegerAttr(16));
   SetSingleLayoutOnOp(collective_reduce, Layout::Empty());
+  if (need_int32_to_int64_upcast) {
+    return builder.create<mlir::TF::CastOp>(
+        loc,
+        mlir::RankedTensorType::get(input_type.getShape(),
+                                    builder.getIntegerType(32)),
+        collective_reduce);
+  }
   return collective_reduce;
 }
 
@@ -193,7 +219,6 @@ mlir::LogicalResult LowerAllReduceOpImpl(
 
   // This will become more general when Topology is properly defined.
   const bool is_tpu = all_reduce.device_type().endswith("TPU");
-  const bool is_gpu = all_reduce.device_type().endswith("GPU");
   // Use an atomic counter to generate bases for group and instance keys.
   int32 key_base = tf_collective_key_base++;
 
@@ -221,18 +246,11 @@ mlir::LogicalResult LowerAllReduceOpImpl(
         {(*output_layout).mesh().min_global_device_id()}, builder, loc);
     mlir::Value relative_device_id =
         builder.create<mlir::TF::SubOp>(loc, device_id, start_device_id);
-    if (is_gpu) {
-      const mlir::TensorType input_type =
-          all_reduce.input().getType().dyn_cast<mlir::TensorType>();
-      if (input_type && input_type.getElementType().isInteger(32)) {
-        return mlir::emitError(
-            loc, "On GPU, collective reduce of int32 is not supported.");
-      }
-    }
+
     final_op = EmitCollectiveReduce(
         builder, loc, all_reduce.input(), all_reduce.reduce_op().str(),
         group_assignment_attr, key_base, relative_device_id,
-        /*host_group_size=*/group_size);
+        /*host_group_size=*/group_size, all_reduce.device_type().str());
   }
   SetSingleLayoutOnOp(final_op, *output_layout);
   *value = final_op->getResult(0);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 
 #include <functional>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <string>
@@ -24,8 +25,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace xla {
@@ -52,10 +55,10 @@ void SlowOperationAlarm::AlarmLoop() {
       // Fire the alarm if applicable.
       if (alarm->deadline() <= now) {
         outstanding_alarms->erase(it);
-        int64_t count =
+        const int64_t count =
             alarm->counter() == nullptr ? 0 : alarm->counter()->fetch_add(1);
         // If the alarm has a counter, only fire if the count is a power of 2.
-        if (count == 0 || (count & (count - 1)) == 0) {
+        if (count == 0 || absl::has_single_bit<uint64_t>(count) == 0) {
           alarm->fired_.store(true);
           // We fire alarms with LOG(ERROR) because otherwise it might not show
           // up without --logtostderr.
@@ -65,17 +68,16 @@ void SlowOperationAlarm::AlarmLoop() {
       it = next;
     }
 
-    if (outstanding_alarms->empty()) {
-      ready->Wait(&mu);
-      continue;
-    }
-
-    SlowOperationAlarm* next_alarm = *absl::c_min_element(
+    auto next_alarm = absl::c_min_element(
         *outstanding_alarms,
         [](const SlowOperationAlarm* a, const SlowOperationAlarm* b) {
           return a->deadline() < b->deadline();
         });
-    ready->WaitWithDeadline(&mu, next_alarm->deadline());
+    const absl::Time deadline = next_alarm != outstanding_alarms->end()
+                                    ? (*next_alarm)->deadline()
+                                    : absl::InfiniteFuture();
+
+    ready->WaitWithDeadline(&mu, deadline);
   }
 }
 

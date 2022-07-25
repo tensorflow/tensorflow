@@ -3844,12 +3844,14 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
 }  // namespace
 
-StatusOr<bool> SpaceToBatchConverter::Run(HloModule* module) {
+StatusOr<bool> SpaceToBatchConverter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "SpaceToBatchConverter::Run(), before:\n" + module->ToString());
   bool changed = false;
 
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     ConvolutionVisitor visitor(ctrl_, comp);
     if (visitor.Run().ValueOrDie()) {
       changed = true;

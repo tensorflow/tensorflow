@@ -14,6 +14,10 @@ tf_class {
     name: "size"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "strides"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'dim_names\', \'global_device_ids\', \'local_device_ids\', \'local_devices\', \'mesh_name\', \'global_devices\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
@@ -25,6 +29,10 @@ tf_class {
   member_method {
     name: "contains_dim"
     argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "coords"
+    argspec: "args=[\'self\', \'device_idx\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "device_type"

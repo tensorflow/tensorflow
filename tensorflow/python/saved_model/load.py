@@ -21,13 +21,16 @@ import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import restore
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -51,7 +54,6 @@ from tensorflow.python.trackable import base
 from tensorflow.python.trackable import data_structures
 from tensorflow.python.trackable import resource
 from tensorflow.python.trackable import trackable_utils
-from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -518,8 +520,8 @@ class Loader(object):
       # initialized properly when using common practices (e.g. the ones used by
       # ManagedSession) without further user action.
       for object_id, obj in dict(ckpt.object_by_proto_id).items():
-        position = base.CheckpointPosition(checkpoint=ckpt,
-                                           proto_id=object_id)
+        position = restore.CheckpointPosition(checkpoint=ckpt,
+                                              proto_id=object_id)
         registered_saver = position.get_registered_saver_name()
         if registered_saver:
           raise NotImplementedError(
@@ -669,13 +671,28 @@ class Loader(object):
     with ops.get_default_graph()._variable_creator_scope(  # pylint: disable=protected-access
         uninitialized_variable_creator,
         priority=50):
-      return variables.Variable(
-          shape=proto.shape,
-          dtype=proto.dtype,
-          name=name,
-          trainable=trainable,
-          synchronization=synchronization,
-          aggregation=aggregation), setattr
+      saved_device = proto.device
+      load_with_device = (
+          self._save_options.experimental_variable_policy
+          ._save_variable_devices() and config.get_soft_device_placement() and
+          saved_device)
+      if load_with_device:
+        with ops.device(saved_device):
+          return variables.Variable(
+              shape=proto.shape,
+              dtype=proto.dtype,
+              name=name,
+              trainable=trainable,
+              synchronization=synchronization,
+              aggregation=aggregation), setattr
+      else:
+        return variables.Variable(
+            shape=proto.shape,
+            dtype=proto.dtype,
+            name=name,
+            trainable=trainable,
+            synchronization=synchronization,
+            aggregation=aggregation), setattr
 
   def _get_tensor_from_fn(self, proto):
     outer_graph = self._concrete_functions[proto.concrete_function].graph

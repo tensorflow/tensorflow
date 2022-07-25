@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -535,7 +536,7 @@ absl::Status Arguments::ResolveSelector(
   RETURN_IF_ERROR(GetDescriptor(object_name, &desc_ptr));
   auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
+  if (tensor_desc && !linkables.empty() && selector == "Write") {
     auto it = linkables.find(object_name);
     if (it != linkables.end()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
@@ -549,15 +550,13 @@ absl::Status Arguments::ResolveSelector(
       // x_coord can have batch size property of link_object
       ResolveObjectNames(object_name, names, &x_coord);
       *result = it->second;
-      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("in_value", value_name, result);
+      ReplaceAllWords("out_value", value_name, result);
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
       RETURN_IF_ERROR(ResolveConstExprPass(gpu_info, result));
       RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, {}, result));
-      if (selector == "Linking") {
-        return absl::OkStatus();
-      }
     }
   }
   std::string patch;

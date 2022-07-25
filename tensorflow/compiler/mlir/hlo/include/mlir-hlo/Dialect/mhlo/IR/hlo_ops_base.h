@@ -67,17 +67,17 @@ class CompatibleOperandsAndResultType
     if (op->getNumOperands() != 0) expected = op->getOperand(0).getType();
     if (!expected) return failure();
 
-    auto type_match = [&](Type actual) {
+    auto typeMatch = [&](Type actual) {
       return isCompatibleForMhloTypeInference(actual, expected);
     };
-    auto all_match = llvm::all_of(op->getOperandTypes(), type_match) &&
-                     llvm::all_of(op->getResultTypes(), type_match);
-    if (!all_match) {
+    auto allMatch = llvm::all_of(op->getOperandTypes(), typeMatch) &&
+                    llvm::all_of(op->getResultTypes(), typeMatch);
+    if (!allMatch) {
       return op->emitOpError(
           "requires compatible types for all operands and results");
     }
 
-    return success(all_match);
+    return success(allMatch);
   }
 
   static LogicalResult inferReturnTypes(
@@ -101,12 +101,12 @@ class CompatibleOperandsAndResultType
       MLIRContext *context, Optional<Location> location,
       ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
       SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-    SmallVector<Type> inferred_return_types;
+    SmallVector<Type> inferredReturnTypes;
     if (failed(inferReturnTypes(context, location, operands.getValues(),
-                                attributes, regions, inferred_return_types)))
+                                attributes, regions, inferredReturnTypes)))
       return failure();
-    auto inferred_return_type = inferred_return_types[0].cast<ShapedType>();
-    inferredReturnShapes.push_back(inferred_return_type);
+    auto inferredReturnType = inferredReturnTypes[0].cast<ShapedType>();
+    inferredReturnShapes.push_back(inferredReturnType);
     return success();
   }
 };

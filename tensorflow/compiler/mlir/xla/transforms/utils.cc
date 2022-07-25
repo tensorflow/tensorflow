@@ -22,11 +22,11 @@ namespace mhlo {
 
 ConstantOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
                                 OpBuilder* builder) {
-  return builder->create<ConstantOp>(loc, hlo::GetScalarOfType(ty, raw_value));
+  return builder->create<ConstantOp>(loc, hlo::getScalarOfType(ty, raw_value));
 }
 
 ConstantOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder) {
-  return builder->create<ConstantOp>(loc, hlo::GetScalarNegZeroOfType(ty));
+  return builder->create<ConstantOp>(loc, hlo::getScalarNegZeroOfType(ty));
 }
 
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {

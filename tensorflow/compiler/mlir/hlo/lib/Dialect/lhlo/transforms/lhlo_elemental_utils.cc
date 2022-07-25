@@ -63,7 +63,7 @@ Value createLoadOrUseCachedValue(Location loc, OpBuilder* b, Value memref,
                   : b->create<LoadOp>(loc, memref);
 }
 
-DenseSet<Operation*> NoLoaderUser(SmallVectorImpl<Operation*>& ops) {
+DenseSet<Operation*> noLoaderUser(SmallVectorImpl<Operation*>& ops) {
   SmallVector<Operation*, 4> worklist;
   DenseSet<Operation*> hasLoaderOps;
   for (Operation* op : ops) {
@@ -105,8 +105,7 @@ void cleanUnusedLhloOps(Block* parent) {
         (!isa<lmhlo::TerminatorOp>(op)))
       lhloOps.push_back(&op);
   }
-  const DenseSet<Operation*>& noLoaderUser = NoLoaderUser(lhloOps);
-  for (auto* lhloOp : noLoaderUser) lhloOp->erase();
+  for (auto* lhloOp : noLoaderUser(lhloOps)) lhloOp->erase();
 }
 
 template <typename LHLO_OpTy>

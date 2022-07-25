@@ -81,7 +81,7 @@ ENTRY %tfcompile.0 {
 // CHECK-LABEL: func private @tfcompile.1
 // CHECK-SAME: (%[[A0:.*]]: tensor<f32>, %[[A1:.*]]: tensor<f32>, %[[A2:.*]]: tensor<f32>)
 //CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
-//CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<"comparison_direction LT">}
+//CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<comparison_direction LT>}
 //CHECK-NEXT:    %[[IF:.*]]:3 = "mhlo.if"(%[[CMP]]) ({
 //CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
 //CHECK-NEXT:      %[[LOG1:.*]] = mhlo.log %[[A1]] : tensor<f32>
@@ -128,7 +128,7 @@ ENTRY %tfcompile.0 {
 // CHECK-LABEL: func private @tfcompile.2
 // CHECK-SAME: (%[[A0:.*]]: tensor<f32>)
 // CHECK-NEXT:    %[[CST:.*]] = mhlo.constant
-// CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<"comparison_direction LT">}
+// CHECK-NEXT:    %[[CMP:.*]] = "mhlo.compare"(%[[A0]], %[[CST]]) {comparison_direction = #mhlo<comparison_direction LT>}
 // CHECK-NEXT:    %[[IF:.*]] = "mhlo.if"(%[[CMP]]) ({
 // CHECK-NEXT:      %[[LOG0:.*]] = mhlo.log %[[A0]] : tensor<f32>
 // CHECK-NEXT:      "mhlo.return"(%[[LOG0]]) : (tensor<f32>) -> ()

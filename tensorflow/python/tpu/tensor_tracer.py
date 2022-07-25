@@ -1677,7 +1677,8 @@ class TensorTracer(object):
         local_tpu_cache_tensor.shape.as_list())
     return tpu_ops.all_to_all(
         x, concat_dimension=0, split_dimension=0,
-        split_count=self._tt_config.num_replicas)
+        split_count=self._tt_config.num_replicas,
+        group_assignment=[list(range(self._tt_config.num_replicas))])
 
   def aggregate_global_cache(self, global_tt_summary_cache):
     """Merges the given caches on tpu.

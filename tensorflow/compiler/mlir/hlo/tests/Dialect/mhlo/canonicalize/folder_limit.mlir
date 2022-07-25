@@ -135,7 +135,7 @@ func.func @compare_small_constants() -> tensor<65536xi1> {
   // CHECK-NOT: mhlo.compare
   %0 = mhlo.constant dense<0> : tensor<65536xi32>
   %1 = mhlo.constant dense<1> : tensor<65536xi32>
-  %2 = "mhlo.compare"(%0, %1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<65536xi32>, tensor<65536xi32>) -> tensor<65536xi1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<65536xi32>, tensor<65536xi32>) -> tensor<65536xi1>
   func.return %2 : tensor<65536xi1>
 }
 
@@ -144,7 +144,7 @@ func.func @compare_large_constants() -> tensor<65537xi1> {
   // CHECK: mhlo.compare
   %0 = mhlo.constant dense<0> : tensor<65537xi32>
   %1 = mhlo.constant dense<1> : tensor<65537xi32>
-  %2 = "mhlo.compare"(%0, %1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<65537xi32>, tensor<65537xi32>) -> tensor<65537xi1>
+  %2 = "mhlo.compare"(%0, %1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<65537xi32>, tensor<65537xi32>) -> tensor<65537xi1>
   func.return %2 : tensor<65537xi1>
 }
 

@@ -14,17 +14,24 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-from typing import Callable, Iterable, Mapping, Tuple, Union
+from typing import Iterable, Mapping, Union
 
 from tensorflow.python.types import core
 
-# A representative sample should be either:
-# 1. (signature_key, {input_name -> input_tensor}) tuple, or
-# 2. {input_name -> input_tensor} mappings.
-# TODO(b/236218728): Support data types other than Tensor (such as np.ndarrays).
-RepresentativeSample = Union[Tuple[str, Mapping[str, core.Tensor]],
-                             Mapping[str, core.Tensor]]
+# A representative sample is a map of: input_key -> input_value.
+# Ex.: {'dense_input': tf.constant([1, 2, 3])}
+# Ex.: {'x1': np.ndarray([4, 5, 6]}
+RepresentativeSample = Mapping[str, core.TensorLike]
 
-# A representative dataset should be a callable that returns an iterable
-# of representative samples.
-RepresentativeDataset = Callable[[], Iterable[RepresentativeSample]]
+# A representative dataset is an iterable of representative samples.
+RepresentativeDataset = Iterable[RepresentativeSample]
+
+# A type representing a map from: signature key -> representative dataset.
+# Ex.: {'serving_default': [tf.constant([1, 2, 3]), tf.constant([4, 5, 6])],
+#       'other_signature_key': [tf.constant([[2, 2], [9, 9]])]}
+RepresentativeDatasetMapping = Mapping[str, RepresentativeDataset]
+
+# A type alias expressing that it can be either a RepresentativeDataset or
+# a mapping of signature key to RepresentativeDataset.
+RepresentativeDatasetOrMapping = Union[RepresentativeDataset,
+                                       RepresentativeDatasetMapping]

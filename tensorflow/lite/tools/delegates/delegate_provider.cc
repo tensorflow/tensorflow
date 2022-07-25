@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 
 namespace tflite {
 namespace tools {

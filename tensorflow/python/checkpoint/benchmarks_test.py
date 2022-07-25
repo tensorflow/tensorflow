@@ -16,7 +16,7 @@
 
 import os
 import time
-
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
@@ -27,7 +27,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.trackable import base
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.tracking import util
 
 
 class _TrivialSaveable(saveable_object.SaveableObject):

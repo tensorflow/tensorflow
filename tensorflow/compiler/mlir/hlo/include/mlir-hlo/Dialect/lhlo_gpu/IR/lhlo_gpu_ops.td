@@ -125,31 +125,34 @@ def LHLOGPU_ConvForwardFusedSideInputOp :
 // LMHLO ops representing other library functions.
 //===----------------------------------------------------------------------===//
 
-// output = alpha * (lhs * rhs)
-// Verify: beta = 0.0
+// c = alpha * (a @ b) + beta * c
 def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$output,
+    Arg<LHLO_Buffer, "", [MemRead]>:$a,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b,
+    Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
     DotDimensionNumbers:$dot_dimension_numbers,
-    F64Attr:$alpha_real,
-    F64Attr:$alpha_imag,
-    OptionalAttr<I64Attr>:$algorithm);
-}
-
-// output = alpha(lhs * rhs) + beta * bias
-def LHLOGPU_GEMM_BiasOp : LHLOGPU_Op<"gemm_bias"> {
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
-    Arg<LHLO_Buffer, "", [MemRead]>:$output,
-    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     OptionalAttr<I64Attr>:$algorithm);
+}
+
+def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul"> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$a,
+    Arg<LHLO_Buffer, "", [MemRead]>:$b,
+    Arg<LHLO_Buffer, "", [MemRead]>:$c,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$d,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
+    DotDimensionNumbers:$dot_dimension_numbers,
+    HLO_PrecisionConfigAttr:$precision_config,
+    F64Attr:$alpha_real,
+    F64Attr:$alpha_imag,
+    F64Attr:$beta,
+    CublasLtMatmulEpilogueAttr:$epilogue,
+    I64Attr:$algorithm);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {

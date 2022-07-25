@@ -91,6 +91,23 @@ cc_library(
 )
 
 cc_library(
+    name = "op_stats_to_op_profile",
+    srcs = ["op_stats_to_op_profile.cc"],
+    hdrs = ["op_stats_to_op_profile.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/profiler/convert:op_profile_builder",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "op_stats_to_overview_page",
     srcs = ["op_stats_to_overview_page.cc"],
     hdrs = ["op_stats_to_overview_page.h"],

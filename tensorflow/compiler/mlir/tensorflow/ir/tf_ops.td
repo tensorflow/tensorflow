@@ -773,7 +773,7 @@ Example:
   DerivedAttr shape = DerivedAttr<
       "ShapedType",
       "return resource_subtype().cast<ShapedType>();",
-      [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
+      [{ mlir::TF::ShapeAttr::get($_ctxt, $_self) }]>;
 
   let extraClassDeclaration = [{
     TensorType resource_subtype() { return resource_type().getSubtypes()[0]; }
@@ -1613,7 +1613,7 @@ topology.
 
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
-    Variadic<TF_I32OrI64Tensor>:$static_shapes,
+    Variadic<TF_Int64Tensor>:$static_shapes,
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata,

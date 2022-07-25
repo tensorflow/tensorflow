@@ -8,6 +8,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
     ],
@@ -34,6 +35,7 @@ cc_library(
     tags = ["no_oss"],
     deps = [
         ":graph_execution_options",
+        "//learning/brain/experimental/tfrt/native_lowering/saved_model:saved_model_translate",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",

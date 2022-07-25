@@ -30,8 +30,9 @@ namespace tensorflow {
 enum class JitRtClusteringTier : uint8_t {
   kCwise = 0x1,
   kTranspose = 0x2,
-  kMetadata = 0x4,    // shape, reshape, ...
-  kReductions = 0x8,  // all, any, min, max, mean, prod, sum
+  kMetadata = 0x4,        // shape, reshape, ...
+  kReductions = 0x8,      // all, any, min, max, mean, prod, sum
+  kGatherScatter = 0x10,  // gather, scatter, gather_v2,...
 
   // Only cwise operations (unary, binary, ternary).
   kTier0 = kCwise,

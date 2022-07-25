@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_REGISTER_GML_ST_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_REGISTER_GML_ST_PASSES_H_
+#ifndef MLIR_HLO_TRANSFORMS_REGISTER_GML_ST_PASSES_H
+#define MLIR_HLO_TRANSFORMS_REGISTER_GML_ST_PASSES_H
 
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
@@ -33,4 +33,4 @@ inline void registerAllGmlStPasses() {
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_REGISTER_GML_ST_PASSES_H_
+#endif  // MLIR_HLO_TRANSFORMS_REGISTER_GML_ST_PASSES_H

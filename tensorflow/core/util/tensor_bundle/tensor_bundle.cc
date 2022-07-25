@@ -693,16 +693,27 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
 }
 
 Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
-                    StringPiece merged_prefix) {
+                    StringPiece merged_prefix, bool allow_missing_files) {
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
   Status status = env->CreateDir(string(io::Dirname(merged_prefix)));
   if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
-  for (int i = 0; i < prefixes.size(); ++i) {
-    TF_RETURN_IF_ERROR(MergeOneBundle(env, prefixes[i], &merge));
+  bool atleast_one_file_exists = false;
+  for (auto& prefix : prefixes) {
+    if (!env->FileExists(MetaFilename(prefix)).ok()) {
+      if (allow_missing_files) continue;
+      return errors::InvalidArgument(
+          "allow_missing_files was set to false and ", prefix,
+          " did not exist.", env->FileExists(prefix).ToString());
+    }
+    atleast_one_file_exists = true;
+    TF_RETURN_IF_ERROR(MergeOneBundle(env, prefix, &merge));
   }
-
+  if (!atleast_one_file_exists) {
+    return errors::InvalidArgument(
+        "At least one prefix checkpoint file must exist, but none existed.");
+  }
   // Renames data files to contain the merged bundle prefix.
   for (const auto& p : merge.shard_ids) {
     VLOG(1) << "Renaming " << p.first << " to "

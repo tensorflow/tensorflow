@@ -152,7 +152,7 @@ def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert", LHLO_Buffer, [SameOperan
     See https://www.tensorflow.org/xla/operation_semantics#convertelementtype.
   }];
 }
-def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
+def LHLO_CosineOp: LHLO_UnaryElementwiseOp<"cosine", LHLO_FpOrComplexBuffer> {
   let summary = "Cos operator";
   let description = [{
     Returns `Cos(operand)` element-wise.
@@ -285,6 +285,17 @@ def LHLO_RoundOp: LHLO_UnaryElementwiseOp<"round_nearest_afz", LHLO_FpBuffer> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
+def LHLO_RoundNearestEvenOp: LHLO_UnaryElementwiseOp<"round_nearest_even", LHLO_FpBuffer> {
+  let summary = "Round nearest even operator";
+  let description = [{
+    Returns `Round(operand)` element-wise, rounding to nearest integer with
+    half-way cases rounding towards even numbers.
+
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt", LHLO_FpOrComplexBuffer> {
   let summary = "Reciprocal Square-root operator";
   let description = [{
@@ -320,7 +331,7 @@ def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign"> {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
-def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
+def LHLO_SineOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer> {
   let summary = "Sin operator";
   let description = [{
     Returns `Sin(operand)` element-wise.
@@ -485,7 +496,7 @@ def LHLO_ShiftRightLogicalOp : LHLO_BinaryElementwiseOp<"shift_right_logical", L
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
-def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract"> {
+def LHLO_SubtractOp : LHLO_BinaryElementwiseOp<"subtract"> {
   let summary = "Subtraction operator";
   let description = [{
     Returns `lhs - rhs` element-wise.
@@ -851,7 +862,7 @@ def LHLO_ConcatenateOp : LHLO_Op<"concatenate", []> {
    );
 }
 
-def LHLO_ConvOp : LHLO_Op<"convolution", []> {
+def LHLO_ConvolutionOp : LHLO_Op<"convolution", []> {
   let summary = "Convolution operator";
   let description = [{
     Computes a convolution of the kind used in neural networks.
@@ -1086,7 +1097,7 @@ class LHLO_CollectiveCommunicationOp<string name, list<Trait> traits = []> :
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     // AllGather is cross replica if channel_id is not set.
-    bool IsCrossReplica() { return !getChannelId().hasValue(); }
+    bool IsCrossReplica() { return !getChannelId().has_value(); }
   }];
 }
 

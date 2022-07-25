@@ -21,6 +21,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 
@@ -38,6 +39,8 @@ limitations under the License.
 #define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
 #endif
 
+namespace py = pybind11;
+
 namespace xla {
 
 void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
@@ -53,44 +56,78 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
   CpuCallback* callback =
       absl::bit_cast<CpuCallback*>(static_cast<uintptr_t>(descriptor));
   size_t arity = callback->num_args();
-  size_t num_results = callback->num_results();
-  std::vector<void*> host_input_buffers;
-  std::vector<void*> host_output_buffers;
+  std::vector<void*> host_input_buffers(arity);
   // Copy input GPU buffers to host
   for (size_t i = 0; i < arity; ++i) {
     CpuCallback::Arg arg = callback->args()[i];
+    if (arg.type == TOKEN) {
+      host_input_buffers[i] = nullptr;
+      continue;
+    }
     void* buf = new char[arg.size_in_bytes];
-    host_input_buffers.push_back(buf);
-    gpuMemcpyAsync(host_input_buffers[i], buffers[i], arg.size_in_bytes,
-                   gpuMemcpyDeviceToHost, stream);
-  }
-  // TODO(sharadmv): we allocate space for host buffers but the callback will
-  // return NumPy arrays which wrap host buffers. We could reuse those instead.
-  // Allocate space for output buffers on host
-  for (size_t i = 0; i < num_results; ++i) {
-    CpuCallback::Result result = callback->results()[i];
-    void* buf = new char[result.size_in_bytes];
-    host_output_buffers.push_back(buf);
+    host_input_buffers[i] = buf;
+    // TODO(b/238441608): Use pinned memory here to speed up the transfer.
+    gpuMemcpyAsync(buf, buffers[i], arg.size_in_bytes, gpuMemcpyDeviceToHost,
+                   stream);
   }
   gpuStreamSynchronize(stream);
-  void* host_output_buffer = host_output_buffers.data();
-  callback->Call(host_output_buffer, host_input_buffers.data(), status);
-  // Copy host output buffers back to device
-  for (size_t i = 0; i < num_results; ++i) {
-    CpuCallback::Result result = callback->results()[i];
-    gpuMemcpyAsync(buffers[arity + i], host_output_buffers[i],
-                   result.size_in_bytes, gpuMemcpyHostToDevice, stream);
-  }
-  // We need to synchronize here to ensure that host buffers are alive while
-  // the async copy is happening.
-  gpuStreamSynchronize(stream);
-  // Free host output buffers
-  for (size_t i = 0; i < num_results; ++i) {
-    delete[] static_cast<char*>(host_output_buffers[i]);
-  }
-  // Free host input buffers
+  py::gil_scoped_acquire gil;
+  py::tuple host_input_arrays(arity);
   for (size_t i = 0; i < arity; ++i) {
-    delete[] static_cast<char*>(host_input_buffers[i]);
+    CpuCallback::Arg arg = callback->args()[i];
+    if (arg.type == TOKEN) {
+      host_input_arrays[i] = py::none();
+      continue;
+    }
+    py::capsule base(host_input_buffers[i],
+                     [](void* ptr) { delete[] static_cast<char*>(ptr); });
+    host_input_arrays[i] =
+        py::array(arg.dtype, arg.dims, arg.strides,
+                  const_cast<void*>(host_input_buffers[i]), /*base=*/base);
+    host_input_arrays[i].attr("flags").attr("writeable") = Py_False;
+  }
+  std::optional<py::tuple> maybe_result_tuple =
+      callback->Call(host_input_arrays, status);
+  if (!maybe_result_tuple) {
+    return;
+  }
+  py::tuple result_tuple = maybe_result_tuple.value();
+  std::vector<void*> temp_buffers;
+  for (size_t i = 0; i < callback->results().size(); ++i) {
+    CpuCallback::Result result = callback->results()[i];
+    if (result.type == TOKEN) {
+      continue;
+    }
+    py::object output = py::reinterpret_borrow<py::object>(
+        PyTuple_GetItem(result_tuple.ptr(), i));
+    py::array array = py::cast<py::array>(std::move(output));
+    absl::Span<int64_t const> dims(
+        reinterpret_cast<const int64_t*>(array.shape()), array.ndim());
+    absl::Span<int64_t const> strides(
+        reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
+    if (strides == result.expected_strides) {
+      gpuMemcpyAsync(buffers[arity + i], array.data(), result.size_in_bytes,
+                     gpuMemcpyHostToDevice, stream);
+    } else {
+      void* temp = new char[result.size_in_bytes];
+      temp_buffers.push_back(temp);
+      xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
+          callback->transpose_cache().GetOrCreate(
+              xla::primitive_util::ByteWidth(result.type), dims,
+              result.reversed_layout,
+              /*input_layout=*/xla::TransposePlan::Striding{strides});
+      if (!plan.ok()) {
+        throw xla::XlaRuntimeError(plan.status().ToString());
+      }
+      plan.ValueOrDie()->Execute(array.data(), temp);
+      gpuMemcpyAsync(buffers[arity + i], temp, result.size_in_bytes,
+                     gpuMemcpyHostToDevice, stream);
+    }
+  }
+  py::gil_scoped_release release;
+  gpuStreamSynchronize(stream);
+  for (int i = 0; i < temp_buffers.size(); ++i) {
+    delete[] static_cast<char*>(temp_buffers[i]);
   }
 }
 

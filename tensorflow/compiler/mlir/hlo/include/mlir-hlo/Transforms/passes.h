@@ -55,7 +55,7 @@ createSymbolicShapeOptimizationPass();
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
 std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
-    unsigned window_size = 5);
+    unsigned windowSize = 5);
 
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
 std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
@@ -94,6 +94,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
 // `pointer_type`, if provided.
 std::unique_ptr<OperationPass<ModuleOp>>
 createPropagateStaticShapesToKernelPass(Type pointerType = {});
+
+// Creates a pass for collapsing multidimensional parallel loops into 1D loops.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createCollapseParallelLoopsTo1DPass();
 
 // Creates a TileLoopsPass with tiles sizes provided through `tile_sizes`
 // and unroll factors provided through `unroll_factors`.

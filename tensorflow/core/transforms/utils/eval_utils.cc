@@ -122,7 +122,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   tensorflow::OpKernelContext::Params params;
   params.device = cpu_device;
   params.frame_iter = tensorflow::FrameAndIter(0, 0);
-  params.inputs = &input_tensor_values;
+  params.inputs = input_tensor_values;
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 

@@ -6,6 +6,10 @@
 
 *   <DOCUMENT BREAKING CHANGES HERE>
 *   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+*   Causal attention in `keras.layers.Attention` and
+    `keras.layers.AdditiveAttention` is now specified in the `call()` method
+    via the `use_causal_mask` argument (rather than in the constructor),
+    for consistency with other layers.
 *   Some files in `tensorflow/python/training` have been moved to
     `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
     update your imports accordingly, the old files will be removed in Release
@@ -30,17 +34,19 @@
 ## Major Features and Improvements
 
 *   `tf.lite`:
+
     *   New operations supported:
           * tflite SelectV2 now supports 5D.
           * tf.einsum is supported with multiple unknown shapes.
           * tf.unsortedsegmentprod op is supported.
+          * tf.unsortedsegmentmax op is supported.
+          * tf.unsortedsegmentsum op is supported.
+    *   Updates to existing operations:
+          * tfl.scatter_nd now supports I1 for update arg.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
+
 *   `tf.keras`:
 
-    *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
-        class implements the sharpness-aware minimization technique, which
-        boosts model performance on various tasks, e.g., ResNet on image
-        classification.
     *   `EinsumDense` layer moved from experimental to core. Its import path
         moved from `tf.keras.layers.experimental.EinsumDense` to
         `tf.keras.layers.EinsumDense`.
@@ -53,10 +59,34 @@
         argument, for returning both dataset splits at once, as a tuple.
     *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object
         or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
-    *   Added step granualarity to `BackupAndRestore` callback for handling
+    *   Added step granularity to `BackupAndRestore` callback for handling
         distributed training failures & restarts. The training state can now be
         restored at the exact epoch and step at which it was previously saved
         before failing.
+    *   Added [`tf.keras.dtensor.experimental.optimizers.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/dtensor/experimental/optimizers/AdamW).
+        This optimizer is similar as the existing
+        [`keras.optimizers.experimental.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental/AdamW), and
+        works in the DTensor training use case.
+    *   Improved masking support for [tf.keras.layers.MultiHeadAttention](https://www.tensorflow.org/api_docs/python/tf/keras/layers/MultiHeadAttention).
+        *   Implicit masks for `query`, `key` and `value` inputs will
+            automatically be used to compute a correct attention mask for the
+            layer. These padding masks will be combined with any
+            `attention_mask` passed in directly when calling the layer. This
+            can be used with
+            [tf.keras.layers.Embedding](https://www.tensorflow.org/api_docs/python/tf/keras/layers/Embedding)
+            with `mask_zero=True` to automatically infer a correct padding mask.
+        *   Added a `use_causal_mask` call time arugment to the layer. Passing
+            `use_causal_mask=True` will compute a causal attention mask, and
+            optionally combine it with any `attention_mask` passed in directly
+            when calling the layer.
+    *   Added `ignore_class` argument in the loss
+        `SparseCategoricalCrossentropy` and metrics `IoU` and `MeanIoU`,
+        to specify a class index to be ignored
+        during loss/metric computation (e.g. a background/void class).
+    *   Added [`tf.keras.models.experimental.SharpnessAwareMinimization`](https://www.tensorflow.org/api_docs/python/tf/keras/models/experimental/SharpnessAwareMinimization).
+        This class implements the sharpness-aware minimization technique, which
+        boosts model performance on various tasks, e.g., ResNet on image
+        classification.
 
 *   `tf.data`:
 
@@ -65,6 +95,12 @@
         same dataset. See
         https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
         for more details.
+    *   Added `dataset_id` to `tf.data.experimental.service.register_dataset`.
+        If provided, tf.data service will use the provided ID for the dataset.
+        If the dataset ID already exists, no new dataset will be registered.
+        This is useful if multiple training jobs need to use the same dataset
+        for training. In this case, users should call `register_dataset` with
+        the same `dataset_id`.
     *   Added a new field, `inject_prefetch`, to
         `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
         tf.data will now automatically add a `prefetch` transformation to
@@ -73,6 +109,12 @@
         small increase in memory usage due to buffering. To enable this
         behavior, set `inject_prefetch=True` in
         `tf.data.experimental.OptimizationOptions`.
+    *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`:
+        STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it
+        runs a new algorithm that can get the same performance with lower
+        CPU/memory usage.
+    *   Added [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list), a new API for creating
+        `Dataset`s from lists of elements.
 
 *   `tf.distribute`:
 

@@ -248,6 +248,11 @@ struct CompileOptions {
 // implementations can customize how the memory is allocated and deallocated.
 class PjRtChunk {
  public:
+  // Allocate a PjRtChunk using malloc.
+  static PjRtChunk AllocateDefault(size_t size) {
+    return PjRtChunk(malloc(size), size, [](void* ptr) { free(ptr); });
+  }
+
   PjRtChunk() = default;
   PjRtChunk(void* data, size_t size, std::function<void(void*)> deleter)
       : data_(static_cast<uint8_t*>(data)),
@@ -346,6 +351,26 @@ class CopyToDeviceStream {
   mutable absl::Mutex mu_;
 };
 
+class PjRtHostMemoryForDeviceManager {
+ public:
+  virtual ~PjRtHostMemoryForDeviceManager();
+
+  // Transforms the host memory representations of a shape with the host layout
+  // to the host memory representation of the same shape with the device layout.
+  // `src_shape` and `dst_shape` may only differ in their layouts.
+  virtual StatusOr<PjRtChunk> ToDeviceLayout(const void* src_data,
+                                             size_t src_size,
+                                             const Shape& host_shape,
+                                             const Shape& device_shape) = 0;
+
+  // Transforms the host memory representations of a shape with the device
+  // layout to the host memory representation of the same shape with the host
+  // layout. `src_shape` and `dst_shape` may only differ in their layouts.
+  virtual Status ToHostLayout(const void* src_data, size_t src_size,
+                              const Shape& src_shape, void* dst_data,
+                              size_t dst_size, const Shape& dst_shape) = 0;
+};
+
 class PjRtExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -397,6 +422,12 @@ class PjRtExecutable;
 // will eventually be able to make progress.
 class PjRtClient {
  public:
+  PjRtClient() = default;
+  explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
+                          host_memory_for_device_manager)
+      : host_memory_for_device_manager_(
+            std::move(host_memory_for_device_manager)) {}
+
   virtual ~PjRtClient() = default;
 
   // Return the process index of this client. Always 0 in single-process
@@ -412,11 +443,11 @@ class PjRtClient {
   // the client can issue commands to.
   virtual int addressable_device_count() const = 0;
 
-  // Return all devices in the entire computation, including addressable and
+  // Return all devices known to the client, including addressable and
   // non-addressable devices.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // Return only addressable devices.
+  // Return only addressable devices. The devices are in no particular order.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
@@ -713,6 +744,16 @@ class PjRtClient {
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
   virtual Status Defragment() = 0;
+
+  // Return the PjRtHostMemoryForDeviceManager for this client. It can be
+  // nullptr if the implementation does not provide one.
+  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager() const {
+    return host_memory_for_device_manager_.get();
+  }
+
+ private:
+  std::unique_ptr<PjRtHostMemoryForDeviceManager>
+      host_memory_for_device_manager_;
 };
 
 // Holds a reference from Python to a tuple of device buffers. A PjRtBuffer
@@ -957,13 +998,19 @@ struct SendCallback {
   // each invocation of the corresponding Send op in the HLO program (So it can
   // be invoked multiple times if it is in a loop). Currently there is no
   // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Send ops.
+  // corresponding HLO Send ops. The callback can also return errors to indicate
+  // the execution should fail.
+  //
+  // IMPORTANT: the implementation might NOT signal the error to the execution,
+  // and the execution will run to completion with UNDEFINED DATA returned by
+  // the callback. If there is any potential control flow that depends on the
+  // value of the returned data, an error return is unsafe.
   //
   // TODO(chky): Currently the callback invocation order may not be consistent
   // with the HLO send op invocation order, due to limitations in some PjRt
   // implementation. Consider making it strictly the same order as HLO program.
-  std::function<void(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                     size_t total_size_in_bytes, bool done)>
+  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
+                       size_t total_size_in_bytes, bool done)>
       callback;
 };
 

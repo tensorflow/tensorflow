@@ -1389,7 +1389,9 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
   return Decision(Decision::Direction::kNoChange, 0);
 }
 
-StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
+StatusOr<bool> ConditionalCodeMotion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Begin a new pass of conditional code motion optimization.\n";
   // Use to support debugging of optimization, by disabling the opt after it has
   // been applied a pre-determined times (to isolate impact of transformations).
@@ -1404,7 +1406,8 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     HloPassPipeline subpipeline("before_conditional_code_motion");
     subpipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/is_layout_sensitive_);
     subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
+    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now,
+                        subpipeline.Run(module, execution_threads));
     cleanup_changed |= cleanup_changed_now;
   }
   // Gather all the conditional ops in the module ahead of time, to avoid
@@ -1412,7 +1415,7 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
   std::vector<HloInstruction*> conditional_ops;
   // Track how many times each branch computation is shared.
   absl::flat_hash_map<HloComputation*, int> conditional_computations;
-  for (auto* comp : module->MakeComputationPostOrder()) {
+  for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
         int branch_count = instr->branch_count();

@@ -295,7 +295,7 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
       definition_.src_tensors.push_back(desc);
       for (int i = 0; i < 4; ++i) {
         Texture2DDescriptor desc;
-        desc.element_type = definition_.src_tensors[1 + i].data_type;
+        desc.element_type = definition_.src_tensors[1 + i].GetDataType();
         const std::string name = "weights" + std::to_string(i);
         AddSrcTexture2D("weights" + std::to_string(i), desc);
       }
@@ -760,8 +760,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
           coords += ", " + zc;
         }
         if (src_def.IsLinear()) {
-          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords + ", " +
-               src_group_start_slice + ");\n";
+          c += "  int addr" + id + " = args.src_tensor.GetAddress(" + coords +
+               ", " + src_group_start_slice + ");\n";
           if (need_multiple_slice_strides) {
             const std::string check = generate_check(xind, yind, zind);
             c += "  addr" + id + " = select(-1, addr" + id + ", (" + check +

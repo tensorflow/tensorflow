@@ -164,9 +164,12 @@ static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
   return gemms;
 }
 
-StatusOr<bool> CublasPadForGemms::Run(HloModule* module) {
+StatusOr<bool> CublasPadForGemms::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloDotInstruction* dot : GetRelevantDots(comp, datatype_)) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));

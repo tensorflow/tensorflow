@@ -146,6 +146,14 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   AddDTensorEmbeddingPassV2(pm);
 
+  // For DTensor Checkpoint V2, the outputs of tf.RestoreV2 ops
+  // do not have shape information. We can infer the shapes of these
+  // outputs from the tf.AssignVariableOps that consume these outputs.
+  // This pass fills in all missing shapes caused by tf.RestoreV2 ops.
+  if (DTensorCheckpointV2Enabled()) {
+    pm->addPass(CreateDTensorInferShapesForRestoreV2Op());
+  }
+
   pm->addPass(CreateDTensorLayoutPropagationPassV2());
 
   // Expand graph to SPMD form given layouts are annotated to all ops.

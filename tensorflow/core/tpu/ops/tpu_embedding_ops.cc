@@ -36,7 +36,7 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 using tensorflow::tpu::TPUEmbeddingConfiguration;
 
-REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
+REGISTER_OP("ExecuteTPUEmbeddingPartitioner")
     .Output("common_config: string")
     .Attr("config: string")
     .SetIsStateful()
@@ -52,20 +52,9 @@ REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
       }
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that executes the TPUEmbedding partitioner on the central configuration
-device and computes the HBM size (in bytes) required for TPUEmbedding operation.
-
-common_config: A string-encoded tpu_embedding::CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and
-the HBM size (in bytes) required for operation.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConfigureTPUEmbeddingMemory")
+REGISTER_OP("ConfigureTPUEmbeddingMemory")
     .Input("common_config: string")
     .Output("memory_config: string")
     .SetIsStateful()
@@ -76,19 +65,9 @@ REGISTER_OP("_ConfigureTPUEmbeddingMemory")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that configures the TPUEmbedding software on a host.
-
-common_config: A string-encoded CommonConfiguration proto containing metadata
-about the TPUEmbedding partitioner output and the HBM size (in bytes) required
-for operation.
-memory_config: A string-encoded HbmBuffersConfig proto containing metadata about
-the memory allocations reserved for TPUEmbedding.
-)doc");
-
-REGISTER_OP("_CollateTPUEmbeddingMemory")
+REGISTER_OP("CollateTPUEmbeddingMemory")
     .Input("memory_configs: N * string")
     .Output("merged_memory_config: string")
     .Attr("N: int >= 1")
@@ -103,16 +82,9 @@ REGISTER_OP("_CollateTPUEmbeddingMemory")
       }
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that merges the string-encoded HbmBufferConfig protos from all hosts.
-
-memory_configs: String-encoded HbmBuffersConfig protos containing metadata about
-the memory allocations reserved for TPUEmbedding across all hosts.
-)doc");
-
-REGISTER_OP("_ConfigureTPUEmbeddingHost")
+REGISTER_OP("ConfigureTPUEmbeddingHost")
     .Input("common_config: string")
     .Input("memory_config: string")
     .Output("network_config: string")
@@ -134,22 +106,9 @@ REGISTER_OP("_ConfigureTPUEmbeddingHost")
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       c->set_output(0, c->Scalar());
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that configures the TPUEmbedding software on a host.
-
-common_config: A string-encoded CommonConfiguration proto containing metadata
-about the TPUEmbedding partitioner output.
-memory_config: A string-encoded HbmBuffersConfig proto containing metadata about
-the memory allocations reserved for TPUEmbedding.
-network_config: A string containing metadata about the hostname and RPC port
-used for communication with this host.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConnectTPUEmbeddingHosts")
+REGISTER_OP("ConnectTPUEmbeddingHosts")
     .Input("network_configs: N * string")
     .Attr("N: int >= 1")
     .SetIsStateful()
@@ -162,17 +121,9 @@ REGISTER_OP("_ConnectTPUEmbeddingHosts")
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
       return OkStatus();
-    })
-    .Doc(R"doc(
+    });
 
-An op that sets up communication between TPUEmbedding host software instances
-after ConfigureTPUEmbeddingHost has been called on each host.
-
-network_configs: Strings containing metadata about the hostname and RPC port
-used for communication with all hosts.
-)doc");
-
-REGISTER_OP("_FinalizeTPUEmbedding")
+REGISTER_OP("FinalizeTPUEmbedding")
     .Input("common_config: string")
     .Input("memory_config: string")
     .SetIsStateful()
@@ -184,49 +135,39 @@ REGISTER_OP("_FinalizeTPUEmbedding")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       return OkStatus();
-    })
-    .Doc(R"doc(
-
-An op that finalizes the TPUEmbedding configuration.
-
-common_config: A string-encoded CommonConfiguration proto containing metadata
-about the TPUEmbedding partitioner output and the HBM size (in bytes) required
-for operation.
-memory_config: A string-encoded HbmBuffersConfig proto containing metadata about
-the memory allocations reserved for TPUEmbedding.
-)doc");
+    });
 
 // After configuring the TPU system (detailed in tpu_configuration_ops.cc),
-// you may, if desired, run _ExecuteTPUEmbeddingPartitioner,
-// _ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
-// _FinalizeTPUEmbedding Ops to configure the TPUEmbeddings.
+// you may, if desired, run ExecuteTPUEmbeddingPartitioner,
+// ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
+// FinalizeTPUEmbedding Ops to configure the TPUEmbeddings.
 //
-// 1) The _ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
+// 1) The ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
 //    runs the embedding layer partitioner and computes the HBM size (in bytes)
 //    needed for TPUEmbedding operation. Note that this Op does not need to wait
 //    until the entire TPU system is configured, rather it only needs to wait
 //    till _ConfigureDistributedTPU completes. Also stores the HBM size and the
 //    embedding partitioner output in the system metadata where it can be used
 //    while compiling embedding Ops for TPU.
-// 2) The _ConfigureTPUEmbeddingMemory Op runs on TPU:0 of all tasks. Using the
-//    output of the _ExecuteTPUEmbeddingPartitioner Op, it allocates HBM memory,
+// 2) The ConfigureTPUEmbeddingMemory Op runs on TPU:0 of all tasks. Using the
+//    output of the ExecuteTPUEmbeddingPartitioner Op, it allocates HBM memory,
 //    initializes the TPUEmbeddingManager and store the HBM buffer
 //    configuration.
-// 3) The _ConfigureTPUEmbeddingHost Op runs on TPU:0 of all tasks. Using the
-//    output of the _ExecuteTPUEmbeddingPartitioner Op, it builds the program
+// 3) The ConfigureTPUEmbeddingHost Op runs on TPU:0 of all tasks. Using the
+//    output of the ExecuteTPUEmbeddingPartitioner Op, it builds the program
 //    that executes on the TPUEmbeddings, configures the TPUEmbedding hardware
 //    and sets up the TPUEmbedding host software. Using the output of the
-//    _ConfigureTPUEmbeddingMemory Op that it receives from all tasks, it
+//    ConfigureTPUEmbeddingMemory Op that it receives from all tasks, it
 //    checks that HBM segment sizes are equal, and combines each task's
 //    allocation info to create a global map of HBM base addresses. It uses that
 //    to initialize the TPUEmbeddingManager, and also provides the hostname:port
 //    for inter-TPUEmbedding agreement of minibatch sizing.
 // 4) The _ConnectInterTPUEmbeddingCommunication Op runs on TPU:0 of all tasks.
-//    It uses the hostname:port output from all _ConfigureTPUEmbeddingHost Ops
+//    It uses the hostname:port output from all ConfigureTPUEmbeddingHost Ops
 //    to form all-to-all connections between all tasks for inter-TPUEmbedding
 //    agreement.
-// 5) The _FinalizeTPUEmbedding Op runs on TPU_SYSTEM of
-//    task 0. It takes as input the outputs from all _ConfigureTPUEmbeddingHost
+// 5) The FinalizeTPUEmbedding Op runs on TPU_SYSTEM of
+//    task 0. It takes as input the outputs from all ConfigureTPUEmbeddingHost
 //    Ops and validates that the HBM base address (in bytes) used for
 //    TPUEmbedding operation is the same. Also stores the common HBM base
 //    address in the system metadata where it can be used while compiling

@@ -49,10 +49,10 @@ GPUOperation CreateQuantizeAndDequantize(
     op.args_.AddHalf("scale", half(adjusted_attr.scale));
   }
   op.code_ = R"(
-FLT4 clamped_value = min(INIT_FLT4(args.max), max(INIT_FLT4(args.min), in_out_value));
+FLT4 clamped_value = min(INIT_FLT4(args.max), max(INIT_FLT4(args.min), in_value));
 FLT4 quantized_value = round((clamped_value - INIT_FLT4(args.min)) / INIT_FLT4(args.scale));
 FLT4 dequantized_value = quantized_value * INIT_FLT4(args.scale) + INIT_FLT4(args.min);
-in_out_value = dequantized_value;)";
+out_value = dequantized_value;)";
 
   return op;
 }

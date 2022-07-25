@@ -495,7 +495,12 @@ class CompiledFunction {
   }
 
   int cache_size() const { return executables_->Size(); }
-  void ClearCache() { executables_->Clear(); }
+  void ClearCache() {
+    // Setting `default_device_` to nullptr forces Call() to retrieve the
+    // device.
+    default_device_ = nullptr;
+    executables_->Clear();
+  }
 
   const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
@@ -569,6 +574,34 @@ class CompiledFunction {
   bool is_committed_;
 };
 
+// This class keeps references to all CompiledFunctions. This class is
+// thread-compatible.
+class CompiledFunctionStore {
+ public:
+  void Insert(CompiledFunction* function) {
+    compiled_functions_.insert(function);
+  }
+
+  void Erase(CompiledFunction* function) {
+    compiled_functions_.erase(function);
+  }
+
+  void ClearFunctionCache() {
+    for (auto* function : compiled_functions_) {
+      function->ClearCache();
+    }
+  }
+
+ private:
+  absl::flat_hash_set<CompiledFunction*> compiled_functions_;
+};
+
+// Protected by GIL.
+CompiledFunctionStore& GetGlobalCompiledFunctionStore() {
+  static auto* const store = new CompiledFunctionStore();
+  return *store;
+}
+
 CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
                                    py::function get_device,
                                    bool has_explicit_device,
@@ -590,9 +623,13 @@ CompiledFunction::CompiledFunction(py::function fun, py::function cache_miss,
   }
   executables_ = cache_->Lookup(fun_, donate_argnums);
   function_name_ = py::str(py::getattr(fun_, "__name__", fun));
+
+  GetGlobalCompiledFunctionStore().Insert(this);
 }
 
-CompiledFunction::~CompiledFunction() = default;
+CompiledFunction::~CompiledFunction() {
+  GetGlobalCompiledFunctionStore().Erase(this);
+}
 
 // Returns nullptr if arg has no sticky device
 static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
@@ -1215,6 +1252,9 @@ void BuildJaxjitSubmodule(py::module& m) {
   cache.def("size", &CompiledFunctionCache::Size);
   cache.def("capacity", &CompiledFunctionCache::Capacity);
   cache.def("clear", &CompiledFunctionCache::Clear);
+  cache.def_static("clear_all", []() {
+    GetGlobalCompiledFunctionStore().ClearFunctionCache();
+  });
   cache.def(py::pickle(
       // __getstate__
       // Pickles as an empty cache; the client can repopulate as needed.

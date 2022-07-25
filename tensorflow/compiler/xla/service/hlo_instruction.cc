@@ -197,7 +197,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         async_group_id = proto.async_group_id();
       }
       instruction = CreateAsyncStart(shape, all_operands(), computations(0),
-                                     async_group_id);
+                                     async_group_id,
+                                     proto.async_execution_thread().empty()
+                                         ? kMainExecutionThread
+                                         : proto.async_execution_thread());
       break;
     }
     case HloOpcode::kAsyncUpdate: {
@@ -209,8 +212,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.async_group_id() >= 0) {
         async_group_id = proto.async_group_id();
       }
-      instruction = CreateAsyncUpdate(shape, operands(0), computations(0),
-                                      async_group_id);
+      instruction =
+          CreateAsyncUpdate(shape, operands(0), computations(0), async_group_id,
+                            proto.async_execution_thread().empty()
+                                ? kMainExecutionThread
+                                : proto.async_execution_thread());
       break;
     }
     case HloOpcode::kAsyncDone: {
@@ -222,7 +228,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         async_group_id = proto.async_group_id();
       }
       instruction =
-          CreateAsyncDone(shape, operands(0), computations(0), async_group_id);
+          CreateAsyncDone(shape, operands(0), computations(0), async_group_id,
+                          proto.async_execution_thread().empty()
+                              ? kMainExecutionThread
+                              : proto.async_execution_thread());
       break;
     }
     case HloOpcode::kCopyStart: {
@@ -1172,25 +1181,29 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id) {
-  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
-                                               operands, async_computation,
-                                               async_group_id);
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    absl::string_view async_execution_thread) {
+  return std::make_unique<HloAsyncInstruction>(
+      HloOpcode::kAsyncStart, shape, operands, async_computation,
+      async_group_id, async_execution_thread);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
     const Shape& shape, HloInstruction* operand,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id) {
-  return std::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
-                                               operand, async_computation,
-                                               async_group_id);
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    absl::string_view async_execution_thread) {
+  return std::make_unique<HloAsyncInstruction>(
+      HloOpcode::kAsyncUpdate, shape, operand, async_computation,
+      async_group_id, async_execution_thread);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
     const Shape& shape, HloInstruction* operand,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id) {
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    absl::string_view async_execution_thread) {
   return std::make_unique<HloAsyncInstruction>(
-      HloOpcode::kAsyncDone, shape, operand, async_computation, async_group_id);
+      HloOpcode::kAsyncDone, shape, operand, async_computation, async_group_id,
+      async_execution_thread);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
@@ -3991,11 +4004,10 @@ bool HloInstruction::ReusesOperandElements(int64_t i) const {
   return OperandElementUse(*this, i) == UseKind::kReuse;
 }
 
-std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
+std::optional<ShapeUtil::ShapeEqualityDescriptor>
 HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
   if (HloOpcode::kReshape != opcode_) {
-    return std::make_tuple(false, std::vector<int64_t>(),
-                           std::vector<int64_t>());
+    return std::nullopt;
   }
   return ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape_,
                                                       shape_);
@@ -4844,6 +4856,23 @@ std::optional<int64_t> HloInstruction::async_group_id() const {
 
 void HloInstruction::set_async_group_id(std::optional<int64_t> async_group_id) {
   Cast<HloAsyncInstruction>(this)->set_async_group_id(async_group_id);
+}
+
+absl::string_view HloInstruction::async_execution_thread() const {
+  return Cast<HloAsyncInstruction>(this)->async_execution_thread();
+}
+
+void HloInstruction::set_async_execution_thread(
+    absl::string_view async_execution_thread) {
+  Cast<HloAsyncInstruction>(this)->set_async_execution_thread(
+      async_execution_thread);
+}
+
+void HloInstruction::set_called_computations_execution_thread(
+    absl::string_view async_execution_thread,
+    bool skip_async_execution_thread_overwrite) {
+  Cast<HloCallableInstruction>(this)->RecursivelySetComputationsThreadName(
+      async_execution_thread, skip_async_execution_thread_overwrite);
 }
 
 bool HloInstruction::is_cross_program_prefetch() const {

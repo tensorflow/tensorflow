@@ -65,6 +65,10 @@ struct XlaBuilderFriend {
 
   static XlaOp BuildPartitionId(XlaBuilder* builder, const Shape& shape);
 
+  static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand,
+                           const OpSharding entry, const OpSharding exit,
+                           const Shape& shape);
+
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);
 
@@ -660,7 +664,8 @@ class XlaBuilder {
   // method above calls this method after error handling.
   virtual StatusOr<XlaOp> CustomCallInternal(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape_with_layout, const std::string& opaque,
+      const XlaComputation* computation, const Shape& shape_with_layout,
+      const std::string& opaque,
       std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -669,6 +674,8 @@ class XlaBuilder {
       std::optional<ConvolutionDimensionNumbers> dnums,
       CustomCallSchedule schedule, CustomCallApiVersion api_version);
 
+  // TODO(b/239474321) Remove this overload as it has simply led to code
+  // duplication.
   XlaOp CustomCall(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
       const XlaComputation& computation, const Shape& shape_with_layout,
@@ -752,8 +759,6 @@ class XlaBuilder {
       const std::optional<Layout>& layout = std::nullopt,
       const std::optional<bool> use_global_device_ids = std::nullopt);
 
-  // TODO(b/219961627): Allow the replica_groups to be inferred (one group
-  // containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,

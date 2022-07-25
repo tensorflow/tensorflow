@@ -134,6 +134,19 @@ XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildDomain(XlaBuilder* builder, XlaOp operand,
+                                    const OpSharding entry,
+                                    const OpSharding exit, const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_domain_entry_sharding() = entry;
+    *instr.mutable_domain_exit_sharding() = exit;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kDomain,
+                                   {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildPartitionId(XlaBuilder* builder,
                                          const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -387,7 +400,7 @@ void XlaBuilder::IsConstantVisitor(const int64_t op_handle, int depth,
         // Set bound is considered constant -- the bound is used as the value.
         break;
       }
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
@@ -476,7 +489,7 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
         AddStatus(build_status.status(), absl::StrCat("error from: ", name_)));
     return {};
   }
-  return build_status.ConsumeValueOrDie();
+  return std::move(build_status).value();
 }
 
 Status XlaBuilder::GetCurrentStatus() const {
@@ -1988,16 +2001,17 @@ XlaOp XlaBuilder::CustomCall(
         ++operand_num;
       }
     }
-    return CustomCallInternal(call_target_name, operands, shape, opaque,
-                              operand_shapes_with_layout, has_side_effect,
-                              output_operand_aliasing, literal, window, dnums,
-                              schedule, api_version);
+    return CustomCallInternal(
+        call_target_name, operands, /*computation=*/nullptr, shape, opaque,
+        operand_shapes_with_layout, has_side_effect, output_operand_aliasing,
+        literal, window, dnums, schedule, api_version);
   });
 }
 
 StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
-    const Shape& shape, const std::string& opaque,
+    const XlaComputation* computation, const Shape& shape,
+    const std::string& opaque,
     std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -2031,6 +2045,9 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     *instr.mutable_literal() = literal->ToProto();
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
+  if (computation != nullptr && !computation->IsNull()) {
+    AddCalledComputation(*computation, &instr);
+  }
   for (const auto& pair : output_operand_aliasing) {
     auto aliasing = instr.add_custom_call_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
@@ -2063,18 +2080,11 @@ XlaOp XlaBuilder::CustomCall(
     const Literal* literal, CustomCallSchedule schedule,
     CustomCallApiVersion api_version) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
       return InvalidArgument(
           "Invalid custom_call_target \"%s\": Call targets that start with '$' "
           "are reserved for internal use.",
           call_target_name);
-    }
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_custom_call_target(call_target_name);
-    instr.set_backend_config(opaque);
-    if (literal != nullptr) {
-      *instr.mutable_literal() = literal->ToProto();
     }
     if (operand_shapes_with_layout.has_value()) {
       if (!LayoutUtil::HasLayout(shape)) {
@@ -2088,7 +2098,6 @@ XlaOp XlaBuilder::CustomCall(
             "with constrained layout; given %d shapes, expected %d",
             operand_shapes_with_layout->size(), operands.size());
       }
-      instr.set_constrain_layout(true);
       int64_t operand_num = 0;
       for (const Shape& operand_shape : *operand_shapes_with_layout) {
         if (!LayoutUtil::HasLayout(operand_shape)) {
@@ -2097,24 +2106,13 @@ XlaOp XlaBuilder::CustomCall(
               "constrained layout.",
               operand_num);
         }
-        *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
         ++operand_num;
       }
     }
-    AddCalledComputation(computation, &instr);
-    for (const auto& pair : output_operand_aliasing) {
-      auto aliasing = instr.add_custom_call_output_operand_aliasing();
-      aliasing->set_operand_index(pair.second.first);
-      for (int64_t index : pair.second.second) {
-        aliasing->add_operand_shape_index(index);
-      }
-      for (int64_t index : pair.first) {
-        aliasing->add_output_shape_index(index);
-      }
-    }
-    instr.set_custom_call_schedule(schedule);
-    instr.set_custom_call_api_version(api_version);
-    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+    return CustomCallInternal(
+        call_target_name, operands, &computation, shape, opaque,
+        operand_shapes_with_layout, has_side_effect, output_operand_aliasing,
+        literal, /*window=*/{}, /*dnums=*/{}, schedule, api_version);
   });
 }
 

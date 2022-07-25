@@ -15,22 +15,31 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_errors.h"
 
+#include <string>
+
+#include "absl/strings/match.h"
+
 namespace tensorflow::tpu {
 
 Status AppendTpuEmbeddingErrorPayload(Status obj) {
   if (obj.ok()) {
     return OkStatus();
   } else {
-    Status status = obj;
-    tensorflow::tpu::TPUEmbeddingError error_payload;
-    status.SetPayload(tensorflow::tpu::kTpuEmbeddingErrorUrl,
-                      error_payload.SerializeAsString());
+    const std::string error_message =
+        absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.error_message());
+    Status status(obj.code(), error_message);
+    TPUEmbeddingError error_payload;
+    status.SetPayload(kTpuEmbeddingErrorUrl, error_payload.SerializeAsString());
     return status;
   }
 }
 
-bool HasTpuEmbeddingErrorPayload(Status status) {
-  return status.GetPayload(tensorflow::tpu::kTpuEmbeddingErrorUrl).has_value();
+bool HasTpuEmbeddingErrorPayload(const Status& status) {
+  return status.GetPayload(kTpuEmbeddingErrorUrl).has_value();
+}
+
+bool HasTpuEmbeddingErrorMessage(const Status& status) {
+  return absl::StrContains(status.error_message(), kTpuEmbeddingErrorMessage);
 }
 
 }  // namespace tensorflow::tpu

@@ -1090,7 +1090,7 @@ bool IsTensorListType(Type type, llvm::Optional<Value> value) {
   }
   // If subtype info is not available, check if the value is used by any of
   // the following TensorList operations.
-  if (!value.hasValue()) {
+  if (!value.has_value()) {
     return false;
   }
   for (const mlir::OpOperand &use : value.getValue().getUses()) {

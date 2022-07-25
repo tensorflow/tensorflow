@@ -48,6 +48,7 @@ from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_regi
 from tensorflow.lite.python.testdata import double_op
 from tensorflow.lite.python.util import get_conversion_metadata
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.lite.tools.flatbuffer_utils import convert_bytearray_to_object as _convert_bytearray_to_object
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -1658,6 +1659,32 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual([1, 5, -1], list(actual_value))
 
   @test_util.run_v2_only
+  def testReduceSumWithInt16Quant(self):
+    """Test a model with quantized int16 reduce sum op."""
+    inp = tf.keras.Input([3, 3], 3, name='x')
+    m = tf.keras.Model(inp, tf.reduce_sum(inp, axis=-1))
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(m)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet
+        .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+    ]
+    converter.inference_input_type = tf.int16
+    converter.inference_output_type = tf.int16
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    inputs = {
+        i.name: np.random.normal(size=i.shape).astype(np.float32)
+        for i in m.inputs
+    }
+    converter.representative_dataset = lambda: [inputs]
+    content = converter.convert()
+
+    interpreter = tf.lite.Interpreter(model_content=content)
+    runner = interpreter.get_signature_runner('serving_default')
+    y = runner(x=np.array([[1, 1, 1], [2, 2, 2], [3, 3, 3]]).astype(np.int16))
+    self.assertEqual([3, 6, 9], list(list(y.values())[0]))
+
+  @test_util.run_v2_only
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
     input_data = tf.constant(1., shape=[1])
@@ -2284,12 +2311,50 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         list(output_details[0]['shape_signature']),
         list(model.layers[-1].output_shape))
 
-  def _createUnknownInputShapeModel(self):
-    """Create a simple SavedModel with unknown input."""
-    saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
+  @test_util.run_v2_only
+  def testKerasConv2DTransposedWithMismatchQuantizedAxes(self):
+
+    class QuantConv2DTransposed(tf.keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight('kernel', [3, 3, input_shape[-1], 24])
+
+      def call(self, inputs):
+        filters = tf.quantization.fake_quant_with_min_max_vars_per_channel(
+            self.kernel,
+            -3.0 * tf.ones([24]),
+            3.0 * tf.ones([24]),
+            narrow_range=True)
+        filters = tf.transpose(filters, (0, 1, 3, 2))
+        return tf.nn.conv2d_transpose(inputs, filters, [*inputs.shape[:-1], 24],
+                                      1)
+
+    inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        inp, -3.0, 3.0, narrow_range=True)
+    x = QuantConv2DTransposed()(x)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        x, -3.0, 3.0, narrow_range=True)
+
+    model = tf.keras.Model(inp, x)
+
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'keras_conv2d_transpose')
+    model.save(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    with self.assertRaises(convert.ConverterError) as error:
+      _ = converter.convert()
+    self.assertIn('mismatched quantized axes of input and output',
+                  str(error.exception))
+
+  def _createModelWithInputShape(self, shape):
+    """Create a simple SavedModel with a certain shape."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'input_shape_model')
     with tf.Graph().as_default():
       with tf.compat.v1.Session() as sess:
-        unknown_shape = tf.TensorShape(None)
+        unknown_shape = tf.TensorShape(shape)
         in_tensor = tf.compat.v1.placeholder(
             shape=unknown_shape, dtype=tf.float32, name='input')
         out_tensor = in_tensor + in_tensor
@@ -2301,11 +2366,17 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testUnknownInputShapeModel(self):
     """Test a SavedModel with an unknown input shape."""
-    saved_model_dir = self._createUnknownInputShapeModel()
+    saved_model_dir = self._createModelWithInputShape(None)
 
     converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+    # Validate that tensors with unknown shape have unknown rank.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(False, tensor.hasRank)
+      self.assertEqual([], tensor.shape.tolist())
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -2321,6 +2392,36 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter.invoke()
     actual_value = interpreter.get_tensor(output_details[0]['index'])
     self.assertEqual([2., 4., 6.], list(actual_value))
+
+  @test_util.run_v2_only
+  def testScalarInputShapeModel(self):
+    """Test a SavedModel with a scalar input."""
+    saved_model_dir = self._createModelWithInputShape([])
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Validate that scalar tensors have a rank = 0.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(True, tensor.hasRank)
+      self.assertEqual([], tensor.shape.tolist())
+
+  @test_util.run_v2_only
+  def testMatrixInputShapeModel(self):
+    """Test a SavedModel with a matrix input."""
+    saved_model_dir = self._createModelWithInputShape([2, 3])
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Validate that matrix tensors have a rank = 2.
+    tflite_model_obj = _convert_bytearray_to_object(tflite_model)
+    for tensor in tflite_model_obj.subgraphs[0].tensors:
+      self.assertEqual(True, tensor.hasRank)
+      self.assertEqual([2, 3], tensor.shape.tolist())
 
   @parameterized.named_parameters(
       ('_PerChannelQuant', False, False),

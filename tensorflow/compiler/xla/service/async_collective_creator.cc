@@ -25,13 +25,16 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
+StatusOr<bool> AsyncCollectiveCreator::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   struct ReplacedAsync {
     HloInstruction* start;
     HloInstruction* done;
   };
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     // Find all supported collective ops first as we can't modify the
     // instructions while iterating through them.
     std::vector<HloInstruction*> supported_collectives;

@@ -43,6 +43,7 @@ PYBIND11_MODULE(flags_pybind, m) {
   // LINT.IfChange
   TF_PY_DECLARE_FLAG(test_only_experiment_1);
   TF_PY_DECLARE_FLAG(test_only_experiment_2);
+  TF_PY_DECLARE_FLAG(enable_nested_function_shape_inference);
   TF_PY_DECLARE_FLAG(graph_building_optimization);
   TF_PY_DECLARE_FLAG(op_building_optimization);
   TF_PY_DECLARE_FLAG(saved_model_fingerprinting);

@@ -304,4 +304,12 @@ def DTensorSparseExpansion
   ];
 }
 
+def DTensorInferShapesForRestoreV2Op
+    : Pass<"dtensor-infer-shapes-for-restorev2-op", "mlir::ModuleOp"> {
+  let summary = "Infer shapes of the outputs of tf.RestoreV2Op from the AssignVariableOps that consume those outputs. This is used for DTensor integration with TF Checkpoint.";
+  let constructor = "CreateDTensorInferShapesForRestoreV2Op()";
+  let dependentDialects = [
+  ];
+}
+
 #endif // TF_DTENSOR_PASSES

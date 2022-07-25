@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/dump_graphviz.h"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/memory/memory.h"

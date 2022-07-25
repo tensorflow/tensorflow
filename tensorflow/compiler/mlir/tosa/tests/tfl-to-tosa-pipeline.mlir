@@ -44,7 +44,7 @@ func.func @test_conv2d_bias(%arg0: tensor<1x32x32x8xf32>, %cst: tensor<16x2x2x8x
 
 // CHECK-LABEL: test_transpose_conv2d
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<16xf32>}
-// CHECK: %[[VAR1:.*]] = "tosa.transpose_conv2d"(%arg0, %arg1, %[[VAR0]]) {dilation = [1, 1], out_pad = [0, 0], out_shape = [1, 32, 32, 16], stride = [1, 1]}
+// CHECK: %[[VAR1:.*]] = "tosa.transpose_conv2d"(%arg0, %arg1, %[[VAR0]]) {out_pad = [0, 0, 0, 0], out_shape = [1, 32, 32, 16], stride = [1, 1]}
 func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %cst_0: tensor<16x1x1x8xf32>) -> tensor<1x32x32x16xf32> {
   %cst = arith.constant dense<[1, 32, 32, 16]> : tensor<4xi32>
   %cst_1 = "tfl.no_value"() {value = unit} : () -> none
@@ -810,6 +810,23 @@ func.func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor
   %0 = "tfl.strided_slice"(%arg0, %cst, %cst_0, %cst_1)  {begin_mask = 2 : i32, ellipsis_mask = 0 : i32, end_mask = 7 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
+// -----
+
+// CHECK-LABEL: test_strided_slice_dynamic_end
+func.func @test_strided_slice_dynamic_end(%arg0: tensor<10x?x?xf32>) -> tensor<*xf32> {
+  %begin = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
+  %end = arith.constant dense<[7, -1, 6]> : tensor<3xi32>
+  %stride = arith.constant dense<[1, 2, -1]> : tensor<3xi32>
+
+  // CHECK: %[[SLICE1:.+]] = "tosa.slice"(%arg0) {size = [7, -1, 1], start = [0, 1, 2]}
+  // CHECK: %[[RESHAPE1:.+]] = "tosa.reshape"(%[[SLICE1]]) {new_shape = [7, 1, -1, 2, 1, 1]}
+  // CHECK: %[[SLICE2:.+]] = "tosa.slice"(%[[RESHAPE1]]) {size = [7, 1, -1, 1, 1, 1], start = [0, 0, 0, 0, 0, 0]}
+  // CHECK: %[[RESHAPE2:.+]] = "tosa.reshape"(%[[SLICE2]]) {new_shape = [7, -1]}
+  // CHECK: %[[CAST:.+]] = tensor.cast %[[RESHAPE2]]
+  %0 = "tfl.strided_slice"(%arg0, %begin, %end, %stride)  {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 4 : i32}  : (tensor<10x?x?xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<*xf32>
+  // CHECK: return %[[CAST]]
+  func.return %0 : tensor<*xf32>
+}
 
 // -----
 
@@ -1194,6 +1211,18 @@ func.func @test_split_axis_0(%arg0: tensor<21x13x3xf32>) -> (tensor<7x13x3xf32>,
   %cst_0 = arith.constant dense<0> : tensor<i32>
   %0:3 = "tfl.split"(%cst_0, %arg0)  {num_splits = 3 : i32}  : (tensor<i32>, tensor<21x13x3xf32>) -> (tensor<7x13x3xf32>, tensor<7x13x3xf32>, tensor<7x13x3xf32>)
   func.return %0#0, %0#1, %0#2 : tensor<7x13x3xf32>, tensor<7x13x3xf32>, tensor<7x13x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_split_v_neg_axis
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) {size = [2, 3, 3, 3], start = [0, 0, 0, 0]}
+// CHECK: %[[VAR1:.*]] = "tosa.slice"(%arg0) {size = [2, 3, 3, 5], start = [0, 0, 0, 3]}
+func.func @test_split_v_neg_axis(%arg0: tensor<2x3x3x8xf32>) -> (tensor<2x3x3x3xf32>, tensor<2x3x3x5xf32>) {
+  %split_size = arith.constant dense<[3, 5]> : tensor<2xi32>
+  %axis = arith.constant dense<-1> : tensor<i32>
+  %0, %1 = "tfl.split_v"(%arg0, %split_size, %axis)  {num_splits = 2 : i32}  : (tensor<2x3x3x8xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<2x3x3x3xf32>, tensor<2x3x3x5xf32>)
+  func.return %0, %1 : tensor<2x3x3x3xf32>, tensor<2x3x3x5xf32>
 }
 
 // -----
@@ -1637,15 +1666,54 @@ func.func @test_fullyconnected_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.
 
 // -----
 // CHECK-LABEL: test_gather
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<1x49xi32>}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR0]])
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
 // CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
 // CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
 // CHECK: return %[[VAR8]]
-func.func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %1 = arith.constant dense<[[9, 8, 11, 10, 11, 0, 12], [7, 0, 1, 5, 2, 9, 6], [7, 9, 10, 8, 0, 3, 0], [8, 9, 10, 4, 9, 12, 6], [0, 2, 4, 3, 6, 11, 8], [5, 8, 7, 2, 4, 10, 5], [4, 12, 8, 3, 12, 9, 1]]>  : tensor<7x7xi32>
-  %2 = "tfl.gather"(%arg0, %1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+func.func @test_gather(%arg0: tensor<13x21x3xf32>, %arg1: tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_dyn
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, -1, 63]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func.func @test_gather_dyn(%arg0: tensor<?x21x3xf32>, %arg1 : tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<?x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+
+// -----
+// CHECK-LABEL: test_gather_channel_dyn
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, -1]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, -1]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func.func @test_gather_channel_dyn(%arg0: tensor<13x21x?xf32>, %arg1: tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x?xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_indices_dyn
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, -1]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [-1, 7, 21, 3]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func.func @test_gather_indices_dyn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<?x7xi32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
@@ -1660,6 +1728,17 @@ func.func @test_gather_batch(%arg0: tensor<1x4x4x4xi32>) -> tensor<1x3x4x4xi32> 
   %0 = "tfl.pseudo_const"() {value = dense<[[0, 3, 1]]> : tensor<1x3xi32>} : () -> tensor<1x3xi32>
   %1 = "tfl.gather"(%arg0, %0) {axis = 1 : i32, batch_dims = 1 : i32} : (tensor<1x4x4x4xi32>, tensor<1x3xi32>) -> tensor<1x3x4x4xi32>
   func.return %1 : tensor<1x3x4x4xi32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_batch_dyn
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = [-1, 4, 16]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.gather"(%[[VAR1]], %arg1)
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [-1, 3, 4, 4]}
+// CHECK: return %[[VAR3]]
+func.func @test_gather_batch_dyn(%arg0: tensor<?x4x4x4xi32>, %arg1: tensor<?x3xi32>) -> tensor<?x3x4x4xi32> {
+  %1 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 1 : i32} : (tensor<?x4x4x4xi32>, tensor<?x3xi32>) -> tensor<?x3x4x4xi32>
+  func.return %1 : tensor<?x3x4x4xi32>
 }
 
 // -----

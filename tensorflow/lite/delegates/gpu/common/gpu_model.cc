@@ -136,7 +136,7 @@ absl::Status CheckExternalTensorDescription(const GpuInfo& gpu_info,
                                             const TensorDescriptor& tensor_desc,
                                             const BHWC& shape,
                                             DataType data_type) {
-  if (tensor_desc.data_type != data_type) {
+  if (tensor_desc.GetDataType() != data_type) {
     return absl::InvalidArgumentError(
         "Global precision and precision of predefined/external tensors must be "
         "synchronized.");
@@ -233,14 +233,12 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           storage_type == TensorStorageType::TEXTURE_2D ||
           storage_type == TensorStorageType::TEXTURE_3D ||
           storage_type == TensorStorageType::TEXTURE_ARRAY;
-      if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
-        if (shape.c < 4 && can_use_single_texture &&
-            TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
-                             layout}
-                .CanCreateTensorWithShape(gpu_info, shape)
-                .ok()) {
-          storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
-        }
+      if (shape.c < 4 && can_use_single_texture &&
+          TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
+                           layout}
+              .CanCreateTensorWithShape(gpu_info, shape)
+              .ok()) {
+        storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
       tensor_desc = TensorDescriptor{data_type, storage_type, layout};
       RETURN_IF_ERROR(
@@ -454,6 +452,12 @@ void RemoveUnusedTensors(GpuModel* gpu_model) {
     for (const auto& id : node.outputs) {
       used_tensors.insert(id);
     }
+  }
+  for (const auto& inputs : gpu_model->input_ids_and_refs) {
+    used_tensors.insert(inputs.first);
+  }
+  for (const auto& outputs : gpu_model->output_ids_and_refs) {
+    used_tensors.insert(outputs.first);
   }
   for (auto it = gpu_model->tensors.begin(); it != gpu_model->tensors.end();) {
     if (used_tensors.find(it->first) == used_tensors.end()) {

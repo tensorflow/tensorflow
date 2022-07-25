@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
+#ifndef MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
+#define MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H
 
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
-#include "mlir/Pass/PassRegistry.h"
 
 namespace mlir {
 struct GmlStPipelineOptions
     : public mlir::PassPipelineOptions<GmlStPipelineOptions> {
   ListOption<int64_t> tileSizes{
-      *this, "tile-sizes",
-      llvm::cl::desc("tile-sizes option for the tiling pass")};
+      *this, "tile-sizes", llvm::cl::desc("Tiling sizes for the tiling pass")};
+  Option<bool> fuse{*this, "fuse",
+                    llvm::cl::desc("Fuse into GmlSt loop nests."),
+                    llvm::cl::init(false)};
+  Option<bool> lowerToLoops{
+      *this, "lower-to-loops",
+      llvm::cl::desc("Enable bufferization and lowering to SCF dialect for "
+                     "GmlSt and Linalg ops."),
+      llvm::cl::init(false)};
 };
 
 void createGmlStPipeline(mlir::OpPassManager& pm,
@@ -33,4 +39,4 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H_
+#endif  // MLIR_HLO_TRANSFORMS_GML_ST_PIPELINE_H

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #ifdef ENABLE_NNAPI_SL_TEST
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
@@ -105,8 +106,9 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     ASSERT_GE(fd, 0);
     struct stat stat_buf = {0};
     ASSERT_EQ(fstat(fd, &stat_buf), 0);
-    auto validator =
-        std::make_unique<Validator>(fd, 0, stat_buf.st_size, settings);
+    auto validator = std::make_unique<Validator>(
+        std::make_unique<MmapModelLoader>(fd, /*offset=*/0, stat_buf.st_size),
+        settings);
     close(fd);
 
     Validator::Results results;
@@ -130,10 +132,10 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
       }
       std::cerr << "\n";
     }
-    std::cerr << "Compilation time us " << results.compilation_time_us
+    std::cerr << "Delegate prep time us " << results.delegate_prep_time_us
               << std::endl;
-    RecordProperty(accelerator_name + " Compilation time us",
-                   results.compilation_time_us);
+    RecordProperty(accelerator_name + " Delegate prep time us",
+                   results.delegate_prep_time_us);
     std::cerr << "Execution time us";
     int test_case = 0;
     int64_t total_execution_time_us = 0;

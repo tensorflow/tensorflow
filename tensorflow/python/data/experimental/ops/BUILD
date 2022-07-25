@@ -62,6 +62,7 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
@@ -104,6 +105,15 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "from_list",
+    srcs = ["from_list.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
     ],
 )
 
@@ -408,6 +418,7 @@ py_library(
         ":distribute",
         ":enumerate_ops",
         ":error_ops",
+        ":from_list",
         ":get_single_element",
         ":grouping",
         ":interleave_ops",

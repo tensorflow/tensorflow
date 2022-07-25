@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tensorflow;
+package tensorflow.quantization;
 
 option cc_enable_arenas = true;
 
@@ -39,7 +39,21 @@ message QuantizationMethod {
   }
 }
 
+// List of supported opsets to deploy the quantized model.
+// The quantized model contains different set of ops depending on the opset.
+enum OpSet {
+  OP_SET_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+  // Uses TF ops that mimic quantization behavior. Used when the corresponding
+  // integer op is not yet present.
+  TF = 1;
+  // Uses TF XLA ops
+  XLA = 2;
+  // Uses TF Uniform Quantized ops
+  UNIFORM_QUANTIZED = 3;
+}
+
 // Defines various options to specify and control the behavior of the quantizer.
 message QuantizationOptions {
   QuantizationMethod quantization_method = 1;
+  OpSet op_set = 2;
 }

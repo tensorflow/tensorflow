@@ -49,16 +49,16 @@ auto getReplicaGroups(OpT op, char)
 // that each group is of the same size. If the operation has
 // `use_global_device_ids` set, then replica group cannot be empty.
 template <typename OpT>
-LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
+LogicalResult verifyReplicaGroups(OpT op, bool isUniformSized) {
   DenseIntElementsAttr attr = accessor_dispatch::getReplicaGroups(op, 0);
-  auto replica_group_type = attr.getType().dyn_cast<RankedTensorType>();
-  if (!replica_group_type || replica_group_type.getRank() != 2 ||
-      !replica_group_type.getElementType().isInteger(/*width=*/64))
+  auto replicaGroupType = attr.getType().dyn_cast<RankedTensorType>();
+  if (!replicaGroupType || replicaGroupType.getRank() != 2 ||
+      !replicaGroupType.getElementType().isInteger(/*width=*/64))
     return op.emitOpError(
         "replica groups should be a rank 2 tensor of 64 bit integers");
 
-  if (replica_group_type.getShape().equals(ArrayRef<int64_t>{0, 0})) {
-    // VerifyReplicaGroups() is used by MHLO and LMHLO, note that MHLO does not
+  if (replicaGroupType.getShape().equals(ArrayRef<int64_t>{0, 0})) {
+    // verifyReplicaGroups() is used by MHLO and LMHLO, note that MHLO does not
     // have attr 'use_global_device_ids' actually.
     if (op->hasAttr("use_global_device_ids") &&
         op->getAttr("use_global_device_ids")
@@ -71,26 +71,26 @@ LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
     return success();
   }
 
-  int64_t max_replica_id_seen = 0;
-  llvm::SmallSet<int64_t, 8> replica_seen;
+  int64_t maxReplicaIdSeen = 0;
+  llvm::SmallSet<int64_t, 8> replicaSeen;
   for (int64_t id : attr.getValues<int64_t>()) {
     // Replica groups are stored in a 2D tensor. If the op supports non-uniform
     // groups, null replica IDs are stored as -1.
     if (id == -1) {
-      if (is_uniform_sized) {
+      if (isUniformSized) {
         return op.emitOpError("Invalid replica id -1");
       }
       continue;
     }
 
-    if (!replica_seen.insert(id).second) {
+    if (!replicaSeen.insert(id).second) {
       return op.emitOpError("replica id #") << id << " seen more than once";
     }
-    max_replica_id_seen = std::max(max_replica_id_seen, id);
+    maxReplicaIdSeen = std::max(maxReplicaIdSeen, id);
   }
 
-  for (int64_t id = 0; id <= max_replica_id_seen; id++) {
-    if (!replica_seen.contains(id)) {
+  for (int64_t id = 0; id <= maxReplicaIdSeen; id++) {
+    if (!replicaSeen.contains(id)) {
       return op.emitOpError("replica id #")
              << id << " not seen in replica groups";
     }
@@ -99,27 +99,27 @@ LogicalResult VerifyReplicaGroups(OpT op, bool is_uniform_sized) {
 }
 
 // Verifies the source target pairs attached to collective permute.
-LogicalResult VerifyCollectivePermuteSourceTargetPairs(
+LogicalResult verifyCollectivePermuteSourceTargetPairs(
     Operation* op, DenseIntElementsAttr attr);
 
-LogicalResult VerifyReduceScatter(Operation* op, TypeRange operand_types,
-                                  TypeRange result_types,
-                                  uint64_t scatter_dimension);
+LogicalResult verifyReduceScatter(Operation* op, TypeRange operandTypes,
+                                  TypeRange resultTypes,
+                                  uint64_t scatterDimension);
 
 // Custom formatting for convolution window attributes.
 void printWindowAttributes(OpAsmPrinter& p, Operation* op,
-                           llvm::Optional<DenseIntElementsAttr> window_strides,
+                           llvm::Optional<DenseIntElementsAttr> windowStrides,
                            llvm::Optional<DenseIntElementsAttr> padding,
-                           llvm::Optional<DenseIntElementsAttr> lhs_dilation,
-                           llvm::Optional<DenseIntElementsAttr> rhs_dilation,
-                           llvm::Optional<DenseElementsAttr> window_reversal);
+                           llvm::Optional<DenseIntElementsAttr> lhsDilation,
+                           llvm::Optional<DenseIntElementsAttr> rhsDilation,
+                           llvm::Optional<DenseElementsAttr> windowReversal);
 
 ParseResult parseWindowAttributes(OpAsmParser& parser,
-                                  DenseIntElementsAttr& window_strides,
+                                  DenseIntElementsAttr& windowStrides,
                                   DenseIntElementsAttr& padding,
-                                  DenseIntElementsAttr& lhs_dilation,
-                                  DenseIntElementsAttr& rhs_dilation,
-                                  DenseElementsAttr& window_reversal);
+                                  DenseIntElementsAttr& lhsDilation,
+                                  DenseIntElementsAttr& rhsDilation,
+                                  DenseElementsAttr& windowReversal);
 
 }  // namespace hlo
 }  // namespace mlir

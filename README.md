@@ -147,6 +147,7 @@ Build Type                    | Status                                          
 *   [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
+*   [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
 
 Learn more about the
 [TensorFlow community](https://www.tensorflow.org/community) and how to

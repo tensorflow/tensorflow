@@ -74,9 +74,11 @@ absl::Span<const int64_t> LayoutPerm(const HloInstruction* instr) {
 //  - So working backwards, first find a tib that gives us the desired layout.
 //    Then choose a set of logical dims for the rib so that when they are
 //    permuted by the tib we chose, we get the desired output logical dims.
-StatusOr<bool> BitcastDecomposer::Run(HloModule* module) {
+StatusOr<bool> BitcastDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->computations(execution_threads)) {
     if (!comp->IsFusionComputation()) {
       continue;
     }

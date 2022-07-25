@@ -1202,12 +1202,12 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$indices,
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$updates,
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$updates,
     TFL_1DTensorOf<[I32]>:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, UI8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, UI8, I1]>:$output
   );
 
   let hasVerifier = 1;
@@ -2324,7 +2324,8 @@ def TFL_SumOp: TFL_Op<"sum", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect]> {
+    NoSideEffect,
+    SameOperandsAndResultsScale]> {
 
   let summary = "Sum operator";
 
@@ -2342,6 +2343,14 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // Eight-bit types don't require same operands and results scales.
+      return bit_width != 8;
+    }
+  }];
 }
 
 def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
@@ -2725,7 +2734,8 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>, AffineQuantizedOpInterface]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<-1, 1>]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
@@ -4829,10 +4839,59 @@ def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
   let arguments = (ins
     TFL_TensorOf<[F32, I32]>:$input,
     TFL_I32Tensor:$segment_ids,
-    I32Attr:$num_segments
+    TFL_I32Tensor:$num_segments
   );
   let results = (outs TFL_TensorOf<[F32, I32]>:$output);
-  let hasOptions = 1;
+}
+
+def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentMax operator";
+
+  let description = [{
+    Computes the maximum value along segments of a tensor such that
+    output[i] = max(data[j....]) where segment_ids[j...] = i
+    if the maximum is empty for a given segment ID i,
+    it outputs the smallest possible value for the specific numeric type,
+    output[i] = numeric_limits::lowest().
+    Note the values of segment_ids are always validated to be less than
+    num_segments and an error is thrown for out-of-bound indices.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+}
+
+def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
+    NoSideEffect, PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+
+  let summary = "UnsortedSegmentSum operator";
+
+  let description = [{
+    From a tensor segmentation, computes the `output` resulting from
+    summing together elements mapped to the same segment_id. I.e. `output[i]` is
+    equal to the tensor sum of all elements from the input tensor mapped to
+    segment_id `i`. If no tensors are mapped to a particular included
+    segment_id, the output at that indice will be a zero tensor with the
+    appropriate shape. Note the values of segment_ids are always validated to be
+    less than num_segments and an error is thrown for out-of-bound indices
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32, I32]>:$input,
+    TFL_I32Tensor:$segment_ids,
+    TFL_I32Tensor:$num_segments
+  );
+
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 }
 
 def TFL_YieldOp : Op<TFL_Dialect, "yield",

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -452,10 +454,10 @@ absl::Status CLArguments::SetObjectRef(const std::string& name,
 
 absl::Status CLArguments::SetGPUResources(
     const std::string& name, const GPUResourcesWithValue& resources) {
-  for (const auto& r : resources.ints) {
+  for (const auto& r : resources.generic.ints) {
     RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
   }
-  for (const auto& r : resources.floats) {
+  for (const auto& r : resources.generic.floats) {
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {

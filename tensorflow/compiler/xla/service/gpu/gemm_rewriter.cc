@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 
+#include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -41,6 +45,11 @@ namespace m = match;
 
 // Give this instruction a more useful name than "custom-call.42".
 Status SetName(HloModule *module, HloInstruction *gemm) {
+  if (IsCublasLtMatmul(*gemm)) {
+    module->SetAndUniquifyInstrName(gemm, "cublas-lt-matmul");
+    return OkStatus();
+  }
+
   GemmBackendConfig config;
   TF_ASSIGN_OR_RETURN(config, gemm->backend_config<GemmBackendConfig>());
   const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
@@ -125,15 +134,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       CHECK(!lhs->IsRank2Transpose());
       CHECK(!rhs->IsRank2Transpose());
       const Shape &output_shape = instr->shape();
+
+      const char *const target =
+          instr->GetModule()->config().debug_options().xla_gpu_enable_cublaslt()
+              ? kCublasLtMatmulCallTarget
+              : kGemmCallTarget;
+
       std::unique_ptr<HloInstruction> gemm_call =
-          HloInstruction::CreateCustomCall(output_shape, {lhs, rhs},
-                                           kGemmCallTarget);
+          HloInstruction::CreateCustomCall(output_shape, {lhs, rhs}, target);
       GemmBackendConfig gemm_config;
       gemm_config.set_alpha_real(1.0);
       gemm_config.set_alpha_imag(0.0);
       gemm_config.set_beta(0.0);
       *gemm_config.mutable_dot_dimension_numbers() =
           instr->dot_dimension_numbers();
+      *gemm_config.mutable_precision_config() = instr->precision_config();
 
       TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gemm_config));
       TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
@@ -174,6 +189,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm;
 
+    // First, try to match vector bias add, so we might elide the broadcast.
+    if (Match(instr, m::AddAnyOrder(
+                         m::Op(&existing_gemm)
+                             .WithCustomCallTarget(kCublasLtMatmulCallTarget),
+                         m::Broadcast(&bias, m::Op())))) {
+      TF_ASSIGN_OR_RETURN(bool was_fused,
+                          FuseVectorBiasAdd(instr, bias, existing_gemm));
+      if (was_fused) return OkStatus();
+    }
+
     // add(bitcast(gemm(a, b)), bias) ->
     //   bitcast(add(gemm(a, b), bitcast(bias))) ->
     //   bitcast(gemm(a, b, bitcast(bias))) (later down in this function).
@@ -202,11 +227,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
-    if (Match(instr,
-              m::AddAnyOrder(
-                  m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
-                  m::Op(&bias)))) {
-      return FuseBiasedGemm(instr, bias, existing_gemm);
+    if (Match(instr, m::AddAnyOrder(
+                         m::Op(&existing_gemm)
+                             .WithCustomCallTarget(
+                                 {kGemmCallTarget, kCublasLtMatmulCallTarget}),
+                         m::Op(&bias)))) {
+      return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
     return Status::OK();
@@ -222,39 +248,110 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                           .WithElementType(BF16)),
                            m::Convert(m::Op(&bias).WithElementType(BF16))))
                 .WithElementType(BF16))) {
-      return FuseBiasedGemm(instr, bias, existing_gemm);
+      return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
     return OkStatus();
   }
 
-  Status FuseBiasedGemm(HloInstruction *instr, HloInstruction *bias,
-                        HloInstruction *existing_gemm) {
+  Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
+                           HloInstruction *gemm) {
+    TF_RET_CHECK(bias->shape() == gemm->shape());
+
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
-    if (existing_gemm->shape().element_type() == S32) {
+    if (gemm->shape().element_type() == S32) {
       return OkStatus();
     }
-    auto config =
-        existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-    if (config.beta() != 0 || bias->user_count() != 1 ||
-        existing_gemm->user_count() != 1 ||
-        bias->shape() != existing_gemm->shape()) {
+
+    // BLAS GeMM overwrites bias matrix, so fusion is only possible if the GeMM
+    // is the only user. cublasLt matmul can operate out-of-place.
+    bool can_fuse_bias = (bias->user_count() == 1) || IsCublasLtMatmul(*gemm);
+
+    auto config = gemm->backend_config<GemmBackendConfig>().ValueOrDie();
+
+    // It is possible to fuse into a cublasLt matmul that already has a vector
+    // bias, but no other epilogue will commute with the matrix bias add.
+    bool supported_epilogue =
+        ((config.epilogue() == GemmBackendConfig::DEFAULT) ||
+         (config.epilogue() == GemmBackendConfig::BIAS));
+
+    if ((config.beta() != 0) || !can_fuse_bias || (gemm->user_count() != 1) ||
+        !supported_epilogue) {
       return OkStatus();
     }
 
     config.set_beta(1.0);
-    CHECK_EQ(existing_gemm->operand_count(), 2);
-    std::unique_ptr<HloInstruction> gemm_call =
-        existing_gemm->CloneWithNewOperands(
-            instr->shape(), {
-                                existing_gemm->mutable_operand(0),
-                                existing_gemm->mutable_operand(1),
-                                MaybeConstantFoldBias(bias),
-                            });
-    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
-    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
-    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(gemm_call)));
+
+    std::vector<HloInstruction *> operands(gemm->operands().begin(),
+                                           gemm->operands().end());
+    operands.insert(operands.begin() + 2, MaybeConstantFoldBias(bias));
+
+    std::unique_ptr<HloInstruction> fused_op =
+        gemm->CloneWithNewOperands(instr->shape(), operands);
+
+    TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
+    if (IsCublasGemm(*fused_op)) {
+      // Force bias input to alias with output, as GEMM operates in-place.
+      xla::Cast<HloCustomCallInstruction>(fused_op.get())
+          ->set_output_to_operand_aliasing({{{}, {2, {}}}});
+    }
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
     return OkStatus();
+  }
+
+  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+                                   HloInstruction *broadcast_bias,
+                                   HloInstruction *matmul) {
+    TF_RET_CHECK(broadcast_bias->shape() == matmul->shape());
+
+    auto config = matmul->backend_config<GemmBackendConfig>().ValueOrDie();
+
+    // # output column dims == # non-contracting rhs operand dims.
+    const DotDimensionNumbers &dot_dims = config.dot_dimension_numbers();
+    size_t num_col_dims = matmul->operand(1)->shape().rank() -
+                          dot_dims.rhs_batch_dimensions_size() -
+                          dot_dims.rhs_contracting_dimensions_size();
+
+    HloInstruction *bias = broadcast_bias->mutable_operand(0);
+    if ((matmul->user_count() != 1) ||
+        (config.epilogue() != GemmBackendConfig::DEFAULT) ||
+        (bias->shape().rank() != num_col_dims)) {
+      return false;
+    }
+
+    // We require the bias vector to have been broadcast in the most major
+    // dimensions; i.e. its most minor physical dimensions align with most minor
+    // physical dimensions of the matmul output.
+    absl::Span<const int64_t> broadcast_dims = broadcast_bias->dimensions();
+    for (size_t i = 0; i < num_col_dims; ++i) {
+      int64_t dim = matmul->shape().layout().minor_to_major(i);
+
+      // Find the corresponding dimension from the bias vector.
+      auto it = absl::c_find(broadcast_dims, dim);
+
+      if (it == broadcast_dims.end()) {
+        return false;
+      }
+
+      int64_t vector_dim = it - broadcast_dims.begin();
+      if (bias->shape().layout().minor_to_major(i) != vector_dim) {
+        return false;
+      }
+    }
+
+    std::vector<HloInstruction *> operands(matmul->operands().begin(),
+                                           matmul->operands().end());
+    operands.push_back(bias);
+
+    std::unique_ptr<HloInstruction> fused_op =
+        matmul->CloneWithNewOperands(instr->shape(), operands);
+
+    config.set_epilogue(GemmBackendConfig::BIAS);
+    TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
+    TF_RETURN_IF_ERROR(SetName(instr->GetModule(), fused_op.get()));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(instr, std::move(fused_op)));
+    return true;
   }
 };
 
@@ -266,9 +363,12 @@ StatusOr<bool> RunOnComputation(HloComputation *computation) {
 
 }  // anonymous namespace
 
-StatusOr<bool> GemmRewriter::Run(HloModule *module) {
+StatusOr<bool> GemmRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;
-  for (HloComputation *computation : module->MakeNonfusionComputations()) {
+  for (HloComputation *computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }

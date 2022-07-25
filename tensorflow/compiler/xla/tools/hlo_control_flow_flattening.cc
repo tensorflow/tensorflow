@@ -357,11 +357,13 @@ Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
   return OkStatus();
 }
 
-StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
+StatusOr<bool> HloControlFlowFlattening::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto call_graph = CallGraph::Build(module);
   bool changed = false;
   absl::flat_hash_set<HloInstruction*> removed;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (removed.contains(instruction)) {
@@ -417,7 +419,7 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
   }
 
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module));
+  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module, execution_threads));
   changed |= dce_changed;
 
   // Fix the schedule if the module was scheduled.

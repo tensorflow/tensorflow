@@ -77,7 +77,7 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
         comparePredicate = llvm::None;
     }
 
-    if (!comparePredicate.hasValue()) return failure();
+    if (!comparePredicate.has_value()) return failure();
 
     rewriter.replaceOpWithNewOp<arith::CmpIOp>(op, comparePredicate.getValue(),
                                                lhs, rhs);
@@ -127,7 +127,7 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
         comparePredicate = llvm::None;
     }
 
-    if (!comparePredicate.hasValue()) return failure();
+    if (!comparePredicate.has_value()) return failure();
 
     rewriter.replaceOpWithNewOp<arith::CmpFOp>(op, comparePredicate.getValue(),
                                                lhs, rhs);

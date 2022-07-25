@@ -223,6 +223,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:framework_lib",

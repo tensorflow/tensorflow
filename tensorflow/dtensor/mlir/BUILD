@@ -137,6 +137,7 @@ cc_library(
     srcs = ["dtensor_location.cc"],
     hdrs = ["dtensor_location.h"],
     deps = [
+        "//tensorflow/compiler/mlir:name_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -201,6 +202,7 @@ cc_library(
         "op_to_device_cluster.cc",
         "propagate_default_layout.cc",
         "propagate_device_id_to_function_args.cc",
+        "restore_shape_inference.cc",
         "set_default_sharding.cc",
         "sparse_expansion.cc",
         "spmd_expansion.cc",
@@ -464,6 +466,7 @@ cc_library(
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -512,6 +515,7 @@ tf_cc_test(
     srcs = ["dtensor_location_test.cc"],
     deps = [
         ":dtensor_location",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:IR",

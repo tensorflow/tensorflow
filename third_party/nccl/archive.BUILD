@@ -76,7 +76,6 @@ cc_library(
         "src/transport/coll_net.cc",
         "src/transport/net.cc",
     ],
-    include_prefix = "third_party/nccl/src",
     linkopts = select({
         "@org_tensorflow//tensorflow:macos": [],
         "//conditions:default": ["-lrt"],
@@ -87,12 +86,7 @@ cc_library(
     ],
 )
 
-# Primary NCCL target.
-#
-# This needs to be cuda_library instead of cc_library so that clang uses the
-# correct name for kernel host stubs (function pointers to initialize ncclKerns
-# in enqueue.cc) after https://reviews.llvm.org/D68578.
-cuda_library(
+cc_library(
     name = "nccl",
     srcs = glob(
         include = [

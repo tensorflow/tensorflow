@@ -462,6 +462,9 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
                                          mlir::Location location,
                                          absl::optional<Layout>* out) {
+  // If there are no layouts to merge, leave the output empty.
+  if (layouts.empty()) return mlir::success();
+
   absl::optional<Layout> layout;
   std::map<std::string, std::set<int>> layout_map;
   for (const Layout& layout : layouts) {
@@ -544,12 +547,6 @@ mlir::LogicalResult MergeProducerLayouts(
     candidate_layouts.emplace_back(it->second);
   }
 
-  if (candidate_layouts.empty()) {
-    return mlir::emitError(
-        location,
-        llvm::formatv(
-            "candidate_layouts is empty while merging producer layouts."));
-  }
   if (mlir::failed(GetMostShardedLayout(candidate_layouts, location, &layout)))
     return mlir::failure();
 

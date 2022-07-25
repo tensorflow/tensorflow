@@ -43,6 +43,10 @@ load(
     "if_mkldnn_openmp",
 )
 load(
+    "//third_party/compute_library:build_defs.bzl",
+    "if_enable_acl",
+)
+load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
@@ -419,6 +423,14 @@ def tf_copts(
             "//conditions:default": ["-pthread"],
         })
     )
+
+def tf_xla_acl_opts_defines():
+    return [
+        "-DXLA_CPU_USE_ACL=1",
+    ]
+
+def tf_xla_acl_copts():
+    return if_enable_acl(tf_xla_acl_opts_defines())
 
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
@@ -2416,10 +2428,6 @@ def pywrap_tensorflow_macro(
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], exec_properties = None, **kwargs):
-    # Python version placeholder
-    if kwargs.get("python_version", None) == "PY3":
-        kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
-
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 

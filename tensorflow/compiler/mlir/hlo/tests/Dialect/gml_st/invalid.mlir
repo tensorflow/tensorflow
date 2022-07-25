@@ -105,7 +105,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
 // -----
 
 func.func @space_op_different_rank() -> !gml_st.tile<32x32> {
-  // expected-error@+1 {{expected 2 size values}} 
+  // expected-error@+1 {{expected 2 size values}}
   %0 = gml_st.space [64] : !gml_st.tile<32x32>
   func.return %0 : !gml_st.tile<32x32>
 }
@@ -140,7 +140,7 @@ func.func @point_op_different_rank() -> !gml_st.point {
 func.func @point_op_of_point_op_expected_empty_static_indices() -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.point %0 [0, 0] : !gml_st.tile<64x32> to !gml_st.point
-  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a subset of type PointType}}
+  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a set of type PointType}}
   %2 = gml_st.point %1 [0, 0] : !gml_st.point to !gml_st.point
   func.return %2 : !gml_st.point
 }
@@ -150,7 +150,7 @@ func.func @point_op_of_point_op_expected_empty_static_indices() -> !gml_st.point
 func.func @point_op_of_point_op_expected_empty_dynamic_indices(%i: index) -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.point %0 [%i, %i] : !gml_st.tile<64x32> to !gml_st.point
-  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a subset of type PointType}}
+  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a set of type PointType}}
   %2 = gml_st.point %1 [%i, %i] : !gml_st.point to !gml_st.point
   func.return %2 : !gml_st.point
 }
@@ -261,4 +261,121 @@ func.func @tile_op_offset_out_of_bounds_considering_size_and_stride(%i: index) {
   // expected-error@+1 {{'gml_st.tile' op size = 9 stride = 4 causes access out of bounds for argument dimension size = 32}}
   %1 = gml_st.tile %0 [%i, %i] [8, 9] [8, 4] : !gml_st.tile<64x32> to !gml_st.tile<8x9>
   func.return %1 : !gml_st.tile<8x9>
+}
+
+// -----
+
+func.func @transpose_tile_op_permutation_out_of_bounds() {
+  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
+  // expected-error@+1 {{'gml_st.transpose_dims' op permutation[1] = 2 is outside of range [0, 1]}}
+  %1 = gml_st.transpose_dims %0, [0, 2] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
+  func.return
+}
+
+// -----
+
+func.func @transpose_tile_op_permutation_wrong_size() {
+  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
+  // expected-error@+1 {{'gml_st.transpose_dims' op expected result rank 2 to match the permutation size of 1}}
+  %1 = gml_st.transpose_dims %0, [0] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
+  func.return
+}
+
+// -----
+
+func.func @transpose_tile_op_permutation_duplicate_value() {
+  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
+  // expected-error@+1 {{'gml_st.transpose_dims' op expected permutation attribute to contain no duplicate values, but got 0 at positions 0 and 1}}
+  %1 = gml_st.transpose_dims %0, [0, 0] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
+  func.return
+}
+
+// -----
+
+func.func @for_loop_wrong_yield_target(
+    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %space = gml_st.space [8] : !gml_st.tile<8>
+  %space_0 = gml_st.space [] : !gml_st.tile<>
+
+  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<f32>) {
+    %tile = gml_st.tile %space [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %arg_sub = gml_st.materialize %arg[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+    %out_sub = gml_st.materialize %out_[%space_0]
+      : tensor<f32>[!gml_st.tile<>]
+
+    %result_sub = linalg.dot
+        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
+        outs(%out_sub : tensor<f32>) -> tensor<f32>
+
+    // expected-error@+1 {{'gml_st.set_yield' op expected output block argument 0 to match set_yield destination}}
+    gml_st.set_yield %result_sub into %output[%space_0]
+      : tensor<f32> into tensor<f32>[!gml_st.tile<>]
+  } : tensor<f32>
+  func.return %sum : tensor<f32>
+}
+
+// -----
+
+func.func @yield_with_accumulator_mismatched_type(
+    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+
+  %space_1d = gml_st.space [8] : !gml_st.tile<8>
+  %space_0d = gml_st.space [] : !gml_st.tile<>
+
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c4) {
+    %tile = gml_st.tile %space_1d [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %arg_sub = gml_st.materialize %arg[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>]
+    %out_sub = gml_st.materialize %output[%space_0d]
+      : tensor<f32>[!gml_st.tile<>]
+
+    %result_sub = linalg.dot
+       ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
+       outs(%out_sub : tensor<f32>) -> tensor<f32>
+
+    // expected-error@+1 {{'gml_st.set_yield' op expected accumulator region to have 2 arguments of type 'tensor<f32>'}}
+    gml_st.set_yield %result_sub into %output[%space_0d]
+      acc (%in, %out: memref<f32>) {
+        gml_st.yield %in : memref<f32>
+      }: tensor<f32> into tensor<f32>[!gml_st.tile<>]
+  } : tensor<f32>
+  func.return %sum : tensor<f32>
+}
+
+// -----
+
+func.func @reduce_points(%arg: tensor<8xf32>,
+    %output: tensor<f32>) -> tensor<f32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+
+  %space_0d = gml_st.space [] : !gml_st.tile<>
+  %space_1d = gml_st.space [8] : !gml_st.tile<8>
+
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
+    %point = gml_st.point %space_1d [%i]
+      : !gml_st.tile<8> to !gml_st.point
+    %arg_sub = gml_st.materialize %arg[%point]
+      : tensor<8xf32>[!gml_st.point]
+
+    %point_out = gml_st.point %space_0d []
+      : !gml_st.tile<> to !gml_st.point
+    gml_st.set_yield %arg_sub into %output[%point_out]
+      acc (%in, %out: f32) {
+    // expected-error@+1 {{'gml_st.yield' op expected a single argument for the terminator of accumulator region}}
+        gml_st.yield %in, %out: f32, f32
+    } : f32 into tensor<f32>[!gml_st.point]
+  } : tensor<f32>
+  func.return %sum : tensor<f32>
 }

@@ -59,21 +59,14 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOp(
     RewriterBase &b, linalg::LinalgOp op,
     const linalg::LinalgTilingOptions &options);
 
-struct TilingResult {
-  // The outermost loop resulted from tiling.
-  Operation *outer_loop;
-  // The operation inside the loop that corresponds to the op before tiling.
-  Operation *tiled_op;
-};
+// Sets the attribute to the `op` that indicates that the op was transformed.
+void setTransformationAttr(OpBuilder &b, Operation *op);
 
-/// Perform tiling that creates gml_st.parallel and gml_st.for operations with
-/// gml_st.tile subsets. If the tiling is successful, returns the outer loop.
-FailureOr<TilingResult> tileToTiles(RewriterBase &b, linalg::LinalgOp op,
-                                    ArrayRef<int64_t> tileSizes);
+// Removes the attribute that indicates that it was transformed.
+void removeTransformationAttr(Operation *op);
 
-/// Perform tiling that creates gml_st.parallel and gml_st.for operations with
-/// gml_st.point subsets. If the tiling is successful, returns the outer loop.
-FailureOr<TilingResult> tileToPoints(RewriterBase &b, linalg::LinalgOp op);
+// Checks if `op` has the attribute that indicates that it was transformed.
+bool hasTransformationAttr(Operation *op);
 
 }  // namespace gml_st
 }  // namespace mlir

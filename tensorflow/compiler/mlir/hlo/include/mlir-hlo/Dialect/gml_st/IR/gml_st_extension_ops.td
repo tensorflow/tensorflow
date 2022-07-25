@@ -20,22 +20,82 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 
-def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim", [
-    NoSideEffect, DeclareOpInterfaceMethods<FusionIterface>]> {
-  let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
-  let arguments = (ins
-    AnyTensor:$init,
-    AnyTensor:$operand,
-    I64ElementsAttr:$broadcast_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_expanding_dimensions,
-    OptionalAttr<I64ElementsAttr>:$known_nonexpanding_dimensions
-  );
-  let results = (outs AnyTensor:$result);
-  let assemblyFormat = [{
-    $init `,` $operand `,` custom<I64ElementsAttr>($broadcast_dimensions)
-    attr-dict `:` type($init) `,` type($operand) `->` type($result)
+def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
+
+class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic,
+    [NoSideEffect] # traits> {
+  let hasCustomAssemblyFormat = 1;
+  code extraBaseClassDeclaration = [{
+    unsigned getNumInputs() {
+      return this->getOperation()->getNumOperands() - getNumOutputs();
+    };
+    unsigned getNumOutputs() { return 1; };
   }];
-  let hasVerifier = 0;
+}
+
+def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim",
+    [DeclareOpInterfaceMethods<FusionInterface>]> {
+  let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
+
+  let arguments = (ins
+    // Input args
+    TensorOrMemref:$operand,
+    // Output arg
+    TensorOrMemref:$init,
+
+    DenseI64ArrayAttr:$broadcast_dimensions,
+    OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
+    OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
+  );
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
+}
+
+def GMLST_GatherOp : GMLST_DstStyleOp<"gather", []> {
+  let summary = "Destination-style twin for `mhlo.gather`";
+  let description = [{
+    Does not currently support the full interface of mhlo.gather. In particular:
+    - index_vector_dim is start_indices.shape.rank - 1
+    - slice_sizes is [1,1,...]
+    - offset_dims is []
+    - collapsed_slice_dims is range(operand.shape.rank)
+    - start_index_map is range(slice_sizes.shape[index_vector_dim])
+  }];
+  let arguments = (ins
+    // Input args
+    TensorOrMemref:$operand,
+    I64Tensor:$start_indices,
+    // Output arg
+    TensorOrMemref:$init
+  );
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
+}
+
+def GMLST_ScatterOp : GMLST_DstStyleOp<"scatter", []> {
+  let summary = "Destination-style twin for `mhlo.scatter`";
+  let description = [{
+    Caveats:
+    - the variadic case is not supported.
+    - update_computation is sum.
+    - Only point updates are supported
+      - update_window_dims is []
+      - inserted_window_dims is range(operand.shape.rank)
+      - scatter_dims_to_operand_dims is range(indices.shape.rank)
+      - index_vector_dim is indices.shape.rank-1
+  }];
+  let arguments = (ins
+    // Input args
+    TensorOf<[I32, I64]>:$indices,
+    TensorOrMemref:$updates,
+    // Output arg
+    TensorOrMemref:$init
+  );
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 #endif // GML_ST_EXTENSION_OPS

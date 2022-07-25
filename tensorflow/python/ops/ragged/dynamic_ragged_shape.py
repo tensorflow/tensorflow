@@ -191,6 +191,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
   _inner_shape: ops.Tensor
   _static_inner_shape: tensor_shape.TensorShape
   __batch_encoder__ = _DynamicRaggedShapeBatchEncoder()
+  __name__ = "tf.DynamicRaggedShape"
 
   def __init__(self,
                row_partitions: Sequence[RowPartition],

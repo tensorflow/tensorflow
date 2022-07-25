@@ -35,6 +35,11 @@ void RootProfiler::AddProfiler(std::unique_ptr<Profiler>&& profiler) {
 uint32_t RootProfiler::BeginEvent(const char* tag, EventType event_type,
                                   int64_t event_metadata1,
                                   int64_t event_metadata2) {
+  // TODO(b/238913100): Remove the workaround.
+  if (profilers_.size() == 1) {
+    return profilers_[0]->BeginEvent(tag, event_type, event_metadata1,
+                                     event_metadata2);
+  }
   auto id = next_event_id_++;
   std::vector<uint32_t> event_ids;
   event_ids.reserve(profilers_.size());
@@ -48,6 +53,11 @@ uint32_t RootProfiler::BeginEvent(const char* tag, EventType event_type,
 
 void RootProfiler::EndEvent(uint32_t event_handle, int64_t event_metadata1,
                             int64_t event_metadata2) {
+  // TODO(b/238913100): Remove the workaround.
+  if (profilers_.size() == 1) {
+    return profilers_[0]->EndEvent(event_handle, event_metadata1,
+                                   event_metadata2);
+  }
   if (const auto it = events_.find(event_handle); it != events_.end()) {
     const auto& event_ids = it->second;
     for (auto idx = 0; idx < event_ids.size(); idx++) {
@@ -59,6 +69,10 @@ void RootProfiler::EndEvent(uint32_t event_handle, int64_t event_metadata1,
 }
 
 void RootProfiler::EndEvent(uint32_t event_handle) {
+  // TODO(b/238913100): Remove the workaround.
+  if (profilers_.size() == 1) {
+    return profilers_[0]->EndEvent(event_handle);
+  }
   if (const auto it = events_.find(event_handle); it != events_.end()) {
     const auto& event_ids = it->second;
     for (auto idx = 0; idx < event_ids.size(); idx++) {

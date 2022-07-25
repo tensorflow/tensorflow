@@ -42,6 +42,16 @@ add_mlir_library(GmlStFusionInterfaceImpl
   MLIRSupport
 )
 
+add_mlir_library(GmlStComposeSetInterface
+  compose_set_interface.cc
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+
+  DEPENDS
+  MLIRGmlStComposeSetInterfaceIncGen
+)
+
 add_mlir_library(GmlStBufferizableOpInterface
   bufferizable_op_interface_impl.cc
 
@@ -54,10 +64,12 @@ add_mlir_library(GmlStBufferizableOpInterface
 
 add_mlir_library(GmlStPasses
   bufferize_tiled_loop.cc
+  compose_set_ops.cc
   fusion.cc
   gml_st_to_scf.cc
   legalize_mhlo_to_gml.cc
   tiling.cc
+  vectorization.cc
 
   DEPENDS
   MLIRGmlStPassIncGen
@@ -66,11 +78,16 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
+  GmlStComposeSetInterface
   GmlStFusionInterface
   GmlStFusionInterfaceImpl
+  MLIRFuncDialect
   MLIRIR
+  MLIRLinalgDialect
+  MLIRLinalgTransforms
   MLIRPass
   MLIRSupport
+  MLIRVectorDialect
 )
 
 add_mlir_library(GmlStTransforms

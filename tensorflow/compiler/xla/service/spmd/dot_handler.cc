@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <deque>
 #include <optional>
 
 #include "absl/algorithm/container.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -3878,6 +3881,24 @@ Status SinkInputNodesIntoWindowedDotGeneralLoopOnContractingDimensions(
   return OkStatus();
 }
 
+// Checks a condition holds true for all recursive operands of an hlo.
+bool CheckOperandsRecursive(const HloInstruction* hlo,
+                            std::function<bool(const HloInstruction*)> check) {
+  std::deque<const HloInstruction*> worklist;
+  worklist.push_front(hlo);
+  while (!worklist.empty()) {
+    auto inst = worklist.back();
+    worklist.pop_back();
+    for (HloInstruction* operand : inst->operands()) {
+      if (!check(operand)) {
+        return false;
+      }
+      worklist.push_front(operand);
+    }
+  }
+  return true;
+}
+
 // Moves a cluster of memory-reducing nodes (with reduce nodes at the end)
 // into the windowed dot-general loop on non-contracting dimensions. Such a
 // loop has a dynamic-update-slice at the output. If we move the user nodes
@@ -3996,6 +4017,32 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   // cleared by the above code.
   if (to_move.size() <= 1) {
     return OkStatus();
+  }
+
+  // If there is a reduce that's dependent of another reduce, then we can't do
+  // code motion, as it will create a circular dependencies.
+  if (reduce_outputs.size() > 10) {
+    // When there are many reduces, it might be faster to build a reachibility
+    // map, and then check pair-wise reachability.
+    auto reachability = HloReachabilityMap::Build(computation);
+    for (const HloInstruction* reduce : reduce_outputs) {
+      for (const HloInstruction* other_reduce : reduce_outputs) {
+        if (reduce != other_reduce &&
+            reachability->IsReachable(reduce, other_reduce)) {
+          return OkStatus();
+        }
+      }
+    }
+  } else if (reduce_outputs.size() > 1) {
+    // When there are only few reduces, we can do traversal to check dependency.
+    for (const HloInstruction* reduce : reduce_outputs) {
+      auto reduce_outputs_do_not_contain = [&](const HloInstruction* inst) {
+        return !absl::c_linear_search(reduce_outputs, inst);
+      };
+      if (!CheckOperandsRecursive(reduce, reduce_outputs_do_not_contain)) {
+        return OkStatus();
+      }
+    }
   }
 
   // We will replace the original loop output with reduce-shape outputs.

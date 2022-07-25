@@ -37,10 +37,12 @@ namespace xla {
 
 namespace {
 
-StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
+StatusOr<bool> RunWhileDCE(
+    HloModule* module, HloLivenessAnalysis* liveness,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   std::vector<HloComputation*> while_body_comps_to_dce;
-  for (auto* computation : module->computations()) {
+  for (auto* computation : module->computations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kWhile) {
         continue;
@@ -103,7 +105,9 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
 
 }  // namespace
 
-StatusOr<bool> HloModuleDCE::Run(HloModule* module) {
+StatusOr<bool> HloModuleDCE::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Before HloModuleDCE:";
   XLA_VLOG_LINES(3, module->ToString());
 
@@ -114,20 +118,21 @@ StatusOr<bool> HloModuleDCE::Run(HloModule* module) {
   // computations to pass through tuple values (creating dead roots in while
   // body computation in the process).
   TF_ASSIGN_OR_RETURN(bool hlo_module_dce_changed,
-                      RunWhileDCE(module, liveness.get()));
+                      RunWhileDCE(module, liveness.get(), execution_threads));
 
   // Run the while loop simplifier to remove dead tuple elements.
   WhileLoopSimplifier while_loop_simplifier;
   TF_ASSIGN_OR_RETURN(bool while_loop_simplifier_changed,
-                      while_loop_simplifier.Run(module));
+                      while_loop_simplifier.Run(module, execution_threads));
 
   TupleSimplifier tuple_simplifier;
   TF_ASSIGN_OR_RETURN(bool tuple_simplifier_changed,
-                      tuple_simplifier.Run(module));
+                      tuple_simplifier.Run(module, execution_threads));
 
   // Run HloDCE to clean up any dead code created during HloModuleDCE.
   HloDCE hlo_dce;
-  TF_ASSIGN_OR_RETURN(bool hlo_dce_changed, hlo_dce.Run(module));
+  TF_ASSIGN_OR_RETURN(bool hlo_dce_changed,
+                      hlo_dce.Run(module, execution_threads));
 
   VLOG(2) << "After HloModuleDCE:";
   XLA_VLOG_LINES(3, module->ToString());

@@ -77,12 +77,9 @@ LmhloDialect::LmhloDialect(MLIRContext* context)
 Attribute LmhloDialect::parseAttribute(DialectAsmParser& parser,
                                        Type type) const {
   StringRef attrTag;
-  if (failed(parser.parseKeyword(&attrTag))) return Attribute();
-  {
-    Attribute attr;
-    auto parseResult = generatedAttributeParser(parser, attrTag, type, attr);
-    if (parseResult.hasValue()) return attr;
-  }
+  Attribute attr;
+  auto parseResult = generatedAttributeParser(parser, &attrTag, type, attr);
+  if (parseResult.hasValue()) return attr;
   parser.emitError(parser.getNameLoc(), "unknown mhlo attribute");
   return Attribute();
 }
@@ -123,13 +120,13 @@ LogicalResult AbsOp::verify() {
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllGatherOp::verify() {
   AllGatherOp op = *this;
-  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
 }
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {
   AllToAllOp op = *this;
-  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -138,7 +135,7 @@ LogicalResult AllToAllOp::verify() {
 
 LogicalResult AllReduceOp::verify() {
   AllReduceOp op = *this;
-  return VerifyAllReduce(op);
+  return verifyAllReduce(op);
 }
 
 //===----------------------------------------------------------------------===//
@@ -147,12 +144,12 @@ LogicalResult AllReduceOp::verify() {
 
 LogicalResult ReduceScatterOp::verify() {
   ReduceScatterOp op = *this;
-  if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+  if (failed(mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true)))
     return failure();
-  if (failed(mlir::hlo::VerifyReduceScatter(
-          op, /*operand_types=*/op.getInputs().getTypes(),
-          /*result_types=*/op.getOutputs().getTypes(),
-          /*scatter_dimension=*/op.getScatterDimension())))
+  if (failed(mlir::hlo::verifyReduceScatter(
+          op, /*operandTypes=*/op.getInputs().getTypes(),
+          /*resultTypes=*/op.getOutputs().getTypes(),
+          /*scatterDimension=*/op.getScatterDimension())))
     return failure();
   return success();
 }
@@ -165,7 +162,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
                                  ArrayRef<Attribute> /*operands*/,
                                  SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the CaseOp, branch to all other branches.
-  if (!index.hasValue()) {
+  if (!index.has_value()) {
     for (auto& branch : getBranches())
       regions.push_back(RegionSuccessor(&branch, branch.getArguments()));
   }
@@ -180,7 +177,7 @@ void CaseOp::getSuccessorRegions(Optional<unsigned> index,
 
 LogicalResult CollectivePermuteOp::verify() {
   CollectivePermuteOp op = *this;
-  return mlir::hlo::VerifyCollectivePermuteSourceTargetPairs(
+  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
       op, op.getSourceTargetPairs());
 }
 
@@ -404,7 +401,7 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
                                   SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the WhileOp or the body region, branch into the
   // cond region.
-  if (!index.hasValue() || index.getValue() == 1) {
+  if (!index.has_value() || index.getValue() == 1) {
     regions.push_back(RegionSuccessor(&getCond(), getCond().getArguments()));
     return;
   }
@@ -443,7 +440,7 @@ void FusionOp::getSuccessorRegions(Optional<unsigned> index,
                                    ArrayRef<Attribute> /*operands*/,
                                    SmallVectorImpl<RegionSuccessor>& regions) {
   // If the predecessor is the fusion region, jump back to the parent op.
-  if (index.hasValue()) {
+  if (index.has_value()) {
     assert(index.getValue() == 0 && "expected fusion region");
     regions.push_back(RegionSuccessor());
   } else {

@@ -298,7 +298,7 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   auto begin = get_const_int(slice_op.begin(), /*expected_rank=*/1);
   auto end = get_const_int(slice_op.end(), /*expected_rank=*/1);
   auto strides = get_const_int(slice_op.strides(), /*expected_rank=*/1);
-  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
+  if (!begin.has_value() || !end.has_value() || !strides.has_value() ||
       *begin != 0 || *end != 1 || *strides != 1)
     return {};
 
@@ -3362,6 +3362,67 @@ LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     inferredReturnShapes.emplace_back(lhs_ty.cast<ShapedType>());
     inferredReturnShapes.emplace_back(broadcast_shape, rhs_ty.getElementType());
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// XlaConvOp
+//===----------------------------------------------------------------------===//
+
+class XlaConvToV2 : public OpRewritePattern<TF::XlaConvOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaConvOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<Type> result_types{op.getResult().getType()};
+    rewriter.replaceOpWithNewOp<TF::XlaConvV2Op>(
+        op, op.getResult().getType(), op.lhs(), op.rhs(), op.window_strides(),
+        op.padding(), op.lhs_dilation(), op.rhs_dilation(),
+        op.feature_group_count(), op.dimension_numbers(), op.precision_config(),
+        1);
+    return ::mlir::success();
+  };
+};
+
+void XlaConvOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.insert<XlaConvToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaConvV2Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaConvV2Op::verify() {
+  XlaConvV2Op op = *this;
+  DenseElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
+      rhs_dilation_attr, feature_group_count_attr;
+  if (!(matchPattern(op.window_strides(), m_Constant(&window_strides_attr)) &&
+        matchPattern(op.padding(), m_Constant(&padding_attr)) &&
+        matchPattern(op.lhs_dilation(), m_Constant(&lhs_dilation_attr)) &&
+        matchPattern(op.rhs_dilation(), m_Constant(&rhs_dilation_attr)) &&
+        matchPattern(op.feature_group_count(),
+                     m_Constant(&feature_group_count_attr))))
+    return success();
+
+  if (window_strides_attr.getType().getRank() != 1)
+    return op.emitOpError() << "expects window_stride to be a vector";
+
+  const ShapedType &padding_ty = padding_attr.getType();
+  if (padding_ty.getRank() != 2 || padding_ty.getDimSize(1) != 2)
+    return op.emitOpError()
+           << "expects padding to be a matrix with minor dimension 2";
+
+  if (lhs_dilation_attr.getType().getRank() != 1)
+    return op.emitOpError() << "expects lhs_dilation to be a vecotr";
+
+  if (rhs_dilation_attr.getType().getRank() != 1)
+    return op.emitOpError() << "expects rhs_dilation to be a vecotr";
+
+  if (feature_group_count_attr.getType().getRank())
+    return op.emitOpError() << "expects feature_group_count to be a scalar";
+
   return success();
 }
 

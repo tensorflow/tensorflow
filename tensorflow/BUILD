@@ -897,6 +897,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//devtools/python/indexer/...",
         "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
         "//learning/brain/tfrt/...",
@@ -942,6 +943,7 @@ bzl_library(
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
+        "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -1060,6 +1062,7 @@ tf_cc_shared_library(
         "//tensorflow/c:kernels_experimental",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
@@ -1192,6 +1195,7 @@ tf_cc_shared_library(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/cc/saved_model:metrics_impl",
         "//tensorflow/core:framework_internal_impl",

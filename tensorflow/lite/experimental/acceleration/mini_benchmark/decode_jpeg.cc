@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -33,14 +35,27 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   if (!buffer) {
     return nullptr;
   }
+#define RET_ENSURE(context, condition)                                  \
+  do {                                                                  \
+    if (!(condition)) {                                                 \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s was not true.", __FILE__, \
+                         __LINE__, #condition);                         \
+      return nullptr;                                                   \
+    }                                                                   \
+  } while (0)
   const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
   const flexbuffers::Map m = flexbuffers::GetRoot(buffer_t, length).AsMap();
-  // TODO(b/172544567): Add error handling for incorrect/missing attributes.
+  RET_ENSURE(context, m["height"].IsInt());
+  RET_ENSURE(context, m["width"].IsInt());
+  RET_ENSURE(context, m["num_images"].IsInt());
+  RET_ENSURE(context, m["channels"].IsInt());
   OpData* op_data = new OpData();
   op_data->height = m["height"].AsInt32();
   op_data->width = m["width"].AsInt32();
   op_data->num_images = m["num_images"].AsInt32();
+  op_data->channels = m["channels"].AsInt32();
   return op_data;
+#undef RET_ENSURE
 }
 
 void Free(TfLiteContext* context, void* buffer) {
@@ -53,6 +68,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, op_data->height > 0);
   TF_LITE_ENSURE(context, op_data->width > 0);
   TF_LITE_ENSURE(context, op_data->num_images > 0);
+  // TODO(b/172544567): Support grayscale images.
+  TF_LITE_ENSURE(context, op_data->channels == 3 || op_data->channels == 4);
 
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
@@ -77,8 +94,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   new_dims->data[0] = op_data->num_images;
   new_dims->data[1] = op_data->height;
   new_dims->data[2] = op_data->width;
-  // TODO(b/172544567): Support grayscale images.
-  new_dims->data[3] = 3;  // Channels.
+  new_dims->data[3] = op_data->channels;
   output_tensor->type = kTfLiteUInt8;
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output_tensor, new_dims));
@@ -95,6 +111,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetInputSafe(context, node, /*index=*/0, &input_buffer));
   TF_LITE_ENSURE(context, input_buffer);
   TF_LITE_ENSURE(context, input_buffer->data.raw);
+  const int channels = op_data->channels;
+  // TODO(b/172544567): Support grayscale images.
+  const int decode_channels = 3;
   TfLiteTensor* output_tensor;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, /*index=*/0, &output_tensor));
@@ -109,17 +128,42 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  const int kImageSize = op_data->width * op_data->height * 3;
+  const int kDecodedImageSize =
+      op_data->width * op_data->height * decode_channels;
+  const int kOutputImageSize = op_data->width * op_data->height * channels;
+
   int output_array_offset = 0;
   for (int img = 0; img < op_data->num_images; ++img) {
     tflite::StringRef inputref =
         tflite::GetString(input_buffer, /*string_index=*/img);
+    unsigned char* decoded = output_arr + output_array_offset;
 
     Status decode_status = decoder->DecodeImage(
-        inputref, {op_data->height, op_data->width, /*channels=*/3},
-        output_arr + output_array_offset, kImageSize);
+        inputref, {op_data->height, op_data->width, decode_channels}, decoded,
+        kDecodedImageSize);
 
-    output_array_offset += kImageSize;
+    if (channels == 4) {
+      // Reorganize the decoded buffer from 3 channels to 4 channels.
+      size_t height = op_data->height;
+      size_t src_offset = kDecodedImageSize;
+      size_t dst_offset = kOutputImageSize;
+      while (height--) {
+        size_t width = op_data->width;
+        while (width--) {
+          src_offset -= decode_channels;
+          dst_offset -= channels;
+          std::copy_n(decoded + src_offset, decode_channels,
+                      decoded + dst_offset);
+          // Add an alpha channel value of 255 (fully opaque) to the
+          // current pixel if the target output channels is provided as 4. This
+          // is a workaround to allow jpeg decoder to work with 4 channel input
+          // models.
+          decoded[dst_offset + 3] = 255;
+        }
+      }
+    }
+
+    output_array_offset += kOutputImageSize;
 
     if (decode_status.code != kTfLiteOk) {
       TF_LITE_KERNEL_LOG(context, decode_status.error_message.c_str());

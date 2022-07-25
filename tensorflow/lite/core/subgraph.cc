@@ -49,6 +49,9 @@ limitations under the License.
 #else
 #include "tensorflow/lite/arena_planner.h"
 #endif
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+#include "tensorflow/lite/tensorflow_profiler_logger.h"
+#endif  // TF_LITE_TENSORFLOW_PROFILER
 
 namespace tflite {
 
@@ -230,12 +233,14 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
                    std::vector<std::unique_ptr<Subgraph>>* subgraphs,
                    resource::ResourceMap* resources,
                    resource::ResourceIDMap* resource_ids,
-                   resource::InitializationStatusMap* initialization_status_map)
+                   resource::InitializationStatusMap* initialization_status_map,
+                   int subgraph_index)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
       subgraphs_(subgraphs),
+      subgraph_index_(subgraph_index),
       resources_(resources),
       resource_ids_(resource_ids),
       initialization_status_map_(initialization_status_map),
@@ -412,26 +417,15 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
                                            &node_subsets);
 
-#ifdef __ANDROID__
   // On Android the log message below is used for diagnosing delegation success
-  // also in production builds. Delegation happens sufficiently rarely that the
-  // message isn't spammy.
+  // also in production builds. Use VERBOSE here so that the logging is turned
+  // off in production builds on other platforms.
   TFLITE_LOG_PROD(
-      tflite::TFLITE_LOG_INFO,
+      tflite::TFLITE_LOG_VERBOSE,
       "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
       nodes_to_replace->size,
       registration.custom_name ? registration.custom_name : "unknown",
       node_subsets.size());
-#else   // !__ANDROID__
-  // Server-side, delegation may happen so often as to make logging spammy + we
-  // don't have a clear need for the diagnostic in production builds.
-  TFLITE_LOG(
-      tflite::TFLITE_LOG_INFO,
-      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions.",
-      nodes_to_replace->size,
-      registration.custom_name ? registration.custom_name : "unknown",
-      node_subsets.size());
-#endif  // __ANDROID__
 
   execution_plan_.clear();
 
@@ -1064,6 +1058,9 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::OnTfLiteOpPrepare(GetTFLiteOpName(registration), node_index);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
     const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
     if (op_prepare_status != kTfLiteOk) {
       ReportOpError(&context_, node, registration, node_index,
@@ -1089,9 +1086,9 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 #ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
     memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
 #else
-    memory_planner_.reset(new ArenaPlanner(&context_, CreateGraphInfo(),
-                                           ShouldPreserveAllTensors(),
-                                           kDefaultTensorAlignment));
+    memory_planner_ = std::make_unique<ArenaPlanner>(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        kDefaultTensorAlignment);
 #endif
     memory_planner_->PlanAllocations();
   }
@@ -1229,6 +1226,12 @@ TfLiteStatus Subgraph::Invoke() {
 
     const char* op_name = nullptr;
     if (profiler_) op_name = GetTFLiteOpName(registration);
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    if (!op_name) {
+      op_name = GetTFLiteOpName(registration);
+    }
+    tflite::OnTfLiteOpInvoke(op_name, node_index);
+#endif  // TF_LITE_TENSORFLOW_PROFILER
     TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     for (int i = 0; i < node.inputs->size; ++i) {

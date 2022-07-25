@@ -183,6 +183,9 @@ tf_py_test(
     name = "watchdog_test",
     srcs = ["watchdog_test.py"],
     python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(b/239433962)
+    ],
     deps = [
         ":watchdog",
         "//tensorflow/python/eager:test",

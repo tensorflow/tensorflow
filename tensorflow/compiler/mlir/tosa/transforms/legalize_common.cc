@@ -29,6 +29,7 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -48,6 +49,31 @@ static int64_t multiply_dims(int64_t a, int64_t b) {
   }
   return a * b;
 }
+
+static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
+  for (auto dim : dims) {
+    if (ShapedType::isDynamic(dim)) {
+      return ShapedType::kDynamicSize;
+    }
+    res = res * dim;
+  }
+  return res;
+}
+
+static int64_t count_dynamic_dims(llvm::ArrayRef<int64_t> dims) {
+  int64_t count = 0;
+  for (auto dim : dims)
+    if (ShapedType::isDynamic(dim)) ++count;
+  return count;
+}
+
+namespace {
+// Given an axis that can be a positive or negative value and the tensor size,
+// return the adjusted axis value wrapped around the tensor size.
+int32_t adjust_axis(int32_t axis, int32_t tensor_size) {
+  return axis >= 0 ? axis % tensor_size : (axis + tensor_size) % tensor_size;
+}
+};  // namespace
 
 // Copied Nudge implementation from
 // tensorflow/core/kernels/fake_quant_ops_functor.h.
@@ -2064,7 +2090,12 @@ llvm::Optional<SmallVector<Value>> convertSplitVOp(
 
   SmallVector<Value> results_vec;
 
-  assert(axis >= 0 && axis < input_shape.size());
+  if ((axis >= 0 && axis >= input_shape.size()) ||
+      (axis < 0 && axis < -input_shape.size())) {
+    op->emitOpError("SplitV: invalid axis value.");
+    return llvm::None;
+  }
+  axis = adjust_axis(axis, input_shape.size());
   int32_t size_split_sum = 0;
   for (int i = 0; i < size_split.size(); i++) {
     size_split_sum += size_split[i];
@@ -2193,29 +2224,32 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   // If all of the masks are set we can just bypass the entire thing.
   const int32_t all_masks_one = (1 << strides_size) - 1;
-  if (all_strides_one && begin_mask == all_masks_one &&
-      end_mask == all_masks_one) {
-    return reverseNegativeStride(rewriter, op, input_value, strides);
-  }
 
-  if (failed(getVectorFromValue32(begin_value, begin))) {
+  if (failed(getVectorFromValue32(begin_value, begin)) &&
+      begin_mask != all_masks_one) {
     (void)rewriter.notifyMatchFailure(op, "begin isn't a constant");
     return llvm::None;
   }
 
-  // If begin value is a constant we might be able to still bypass.
+  if (failed(getVectorFromValue32(end_value, end)) &&
+      end_mask != all_masks_one) {
+    (void)rewriter.notifyMatchFailure(op, "end isn't a constant");
+    return llvm::None;
+  }
+
+  // If begin value is 0 we can set the begin_mask instead..
   for (auto val : llvm::enumerate(begin)) {
     if (val.value() == 0) begin_mask |= (0x1 << val.index());
+  }
+
+  // If end value is -1 we can set the end_mask instead.
+  for (const auto& val : llvm::enumerate(end)) {
+    if (val.value() == -1) end_mask |= (0x1 << val.index());
   }
 
   if (all_strides_one && begin_mask == all_masks_one &&
       end_mask == all_masks_one) {
     return reverseNegativeStride(rewriter, op, input_value, strides);
-  }
-
-  if (failed(getVectorFromValue32(end_value, end))) {
-    return (void)rewriter.notifyMatchFailure(op, "end isn't a constant"),
-           llvm::None;
   }
 
   if (!input_type.hasRank()) {
@@ -2243,56 +2277,44 @@ llvm::Optional<Value> convertStridedSliceOp(
 
   auto input_shape = input_type.getShape();
 
-  SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
-  SmallVector<int64_t> a2_shape(input_rank * 2);
-  SmallVector<int64_t> a3_begin(input_rank * 2), a3_size(input_rank * 2);
-  SmallVector<int64_t> a4_shape;
-
   // Step 0: Process the begin/end masks and build the begin/sizes for the
   // first slice
-  int residual = 1;
-  (void)residual;
-  for (int i = 0; i < input_rank; i++) {
+  SmallVector<int64_t> a1_begin(input_rank), a1_size(input_rank);
+  for (int i = 0; i < input_rank; ++i) {
+    // Mask-bit overrides begin/end values.
     if (begin_mask & (1 << i)) begin[i] = 0;
-
     if (end_mask & (1 << i)) end[i] = input_shape[i];
 
+    if (a1_begin[i] < 0 && ShapedType::isDynamic(input_shape[i])) {
+      (void)rewriter.notifyMatchFailure(
+          op, "begin offset is negative on dynamic size.");
+      return llvm::None;
+    }
+
     // Wrap around index if begin and end is negative
-    if (begin[i] < 0) begin[i] += input_shape[i];
-
-    if (end[i] < 0) end[i] += input_shape[i];
-
     a1_begin[i] = begin[i];
-    a1_size[i] = end[i] - begin[i];
+    if (a1_begin[i] < 0) a1_begin[i] += input_shape[i];
 
-    // Shrink axis mask means we know the size is 1.
-    // Stride is ignored if shrink axis mask is set.
+    if (ShapedType::isDynamic(end[i]) &&
+        ShapedType::isDynamic(input_shape[i])) {
+      // Slice using -1 as TOSA's sentinal value.
+      a1_size[i] = -1;
+    } else if (end[i] < 0 && ShapedType::isDynamic(input_shape[i])) {
+      // Other dynamic cases cannot be handled.
+      (void)rewriter.notifyMatchFailure(
+          op, "input dim is dynamic and slice end depends on the length.");
+      return llvm::None;
+    } else {
+      a1_size[i] = end[i] - a1_begin[i];
+      if (end[i] < 0) a1_size[i] += input_shape[i];
+    }
+
+    // Shrink axis mask means we know the size and stride are 1.
     if (shrink_axis_mask & (1 << i)) {
       a1_size[i] = 1;
       strides[i] = 1;
     }
-
-    a2_shape[i * 2 + 0] = a1_size[i] / abs(strides[i]);
-    a2_shape[i * 2 + 1] = abs(strides[i]);
-
-    a3_begin[i * 2 + 0] = 0;
-    a3_begin[i * 2 + 1] = 0;
-
-    if (shrink_axis_mask & (1 << i)) {
-      a3_size[i * 2 + 0] = 1;
-    } else {
-      a3_size[i * 2 + 0] = a1_size[i] / abs(strides[i]);
-    }
-    a3_size[i * 2 + 1] = 1;
-
-    if (!(shrink_axis_mask & (1 << i))) {
-      if (new_axis_mask & (1 << i)) a4_shape.push_back(1);
-      a4_shape.push_back((a1_size[i] / abs(strides[i])));
-    }
   }
-
-  // Make sure we didn't lose any dimensions from the shrink_axis_mask
-  assert(residual == 1);
 
   // Step 1: Slice the input array
   auto a1_slice_op = CreateOpAndInfer<tosa::SliceOp>(
@@ -2303,19 +2325,49 @@ llvm::Optional<Value> convertStridedSliceOp(
   if (all_strides_one) {
     auto reversed =
         reverseNegativeStride(rewriter, op, a1_slice_op.getResult(), strides);
-    return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(),
-                                             result_type, reversed,
-                                             rewriter.getI64ArrayAttr(a4_shape))
+    auto shape = reversed.getType().cast<RankedTensorType>().getShape();
+
+    SmallVector<int64_t> new_shape;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!(shrink_axis_mask & (1 << i))) {
+        if (new_axis_mask & (1 << i)) new_shape.push_back(1);
+        new_shape.push_back((shape[i]));
+      }
+    }
+
+    return CreateOpAndInfer<tosa::ReshapeOp>(
+               rewriter, op->getLoc(), result_type, reversed,
+               rewriter.getI64ArrayAttr(new_shape))
         .getResult();
   }
 
   // Step 2: reshape the sliced array
+  SmallVector<int64_t> a2_shape(input_rank * 2);
+  for (int i = 0; i < input_rank; ++i) {
+    a2_shape[i * 2 + 0] = a1_size[i] == -1 ? -1 : a1_size[i] / abs(strides[i]);
+    a2_shape[i * 2 + 1] = abs(strides[i]);
+  }
+
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(a2_shape, input_type.getElementType()),
       a1_slice_op.getResult(), rewriter.getI64ArrayAttr(a2_shape));
 
   // Step 3: take a slice along the strides
+  SmallVector<int64_t> a3_begin(input_rank * 2), a3_size(input_rank * 2);
+  for (int i = 0; i < input_rank; ++i) {
+    a3_begin[i * 2 + 0] = 0;
+    a3_begin[i * 2 + 1] = 0;
+
+    if (shrink_axis_mask & (1 << i)) {
+      a3_size[i * 2 + 0] = 1;
+    } else {
+      a3_size[i * 2 + 0] =
+          (a1_size[i] == -1) ? -1 : (a1_size[i] / abs(strides[i]));
+    }
+    a3_size[i * 2 + 1] = 1;
+  }
+
   auto a3_slice_op = CreateOpAndInfer<tosa::SliceOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(a3_size, input_type.getElementType()),
@@ -2323,6 +2375,15 @@ llvm::Optional<Value> convertStridedSliceOp(
       rewriter.getI64ArrayAttr(a3_size));
 
   // Step 4: reshape the now-strided tensor
+  SmallVector<int64_t> a4_shape;
+  for (int i = 0; i < input_rank; ++i) {
+    if (!(shrink_axis_mask & (1 << i))) {
+      if (new_axis_mask & (1 << i)) a4_shape.push_back(1);
+      a4_shape.push_back(
+          ((a1_size[i] == -1) ? -1 : (a1_size[i] / abs(strides[i]))));
+    }
+  }
+
   auto a4_reshape_op =
       CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
                                         a3_slice_op.getResult(),
@@ -2840,7 +2901,7 @@ llvm::Optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
       input_is_qtype, input_scale, input_zp, output_scale, output_zp);
 
-  if (!val.hasValue()) return llvm::None;
+  if (!val.has_value()) return llvm::None;
 
   if (!input_is_qtype) {
     Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale);
@@ -3371,8 +3432,6 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   //
   //  [Batch, LeftChannels, Non-Batch-Indices, RightChannels]
 
-  int N = 1, W = 1, K = 1, C = 1;
-
   int params_rank = params_type.getShape().size();
   int indices_rank = indices_type.getShape().size();
 
@@ -3414,23 +3473,15 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // Calculate N, K, W, C
-  for (int i = 0; i < batch_dims; i++) N *= params_type.getShape()[i];
+  int64_t N = multiply_dims(params_type.getShape().take_front(batch_dims));
+  int64_t W = multiply_dims(
+      indices_type.getShape().slice(batch_dims, indices_rank - batch_dims));
+  int64_t K = params_type.getShape()[axis];
 
-  for (int i = batch_dims; i < indices_rank; i++)
-    W *= indices_type.getShape()[i];
-
-  K = params_type.getShape()[axis];
-
-  for (int i = batch_dims; i < axis; i++) C *= params_type.getShape()[i];
-  for (int i = (axis + 1); i < params_rank; i++) C *= params_type.getShape()[i];
-
-  // Check for obviously invalid values before doing a divide.
-  if (N <= 0 || K <= 0 || W <= 0 || C <= 0) {
-    op->emitOpError(
-        "N, K, W, or C was calculated as <= zero.  Invalid dimensions for "
-        "Gather");
-    return llvm::None;
-  }
+  int64_t C = multiply_dims(
+      params_type.getShape().slice(batch_dims, axis - batch_dims));
+  C = multiply_dims(
+      params_type.getShape().slice(axis + 1, params_rank - axis - 1), C);
 
   /////////////////////////////////////////////
   // Build up the params transpose operator
@@ -3527,11 +3578,27 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                             params_type.getElementType()),
       params_value, params_transpose_perm_val.getValue());
 
+  if (count_dynamic_dims(tosa_values_shape) > 1) {
+    return (void)rewriter.notifyMatchFailure(
+               op,
+               "multiply dynamic shapes when reshaping values down to "
+               "tosa.gather"),
+           llvm::None;
+  }
+
   auto tosa_values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       RankedTensorType::get(tosa_values_shape, params_type.getElementType()),
       params_transpose_op.getResult(),
       rewriter.getI64ArrayAttr(tosa_values_shape));
+
+  if (count_dynamic_dims(tosa_indices_shape) > 1) {
+    return (void)rewriter.notifyMatchFailure(
+               op,
+               "multiply dynamic shapes when reshaping indices down to "
+               "tosa.gather"),
+           llvm::None;
+  }
 
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
@@ -3543,6 +3610,13 @@ llvm::Optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
       RankedTensorType::get(tosa_gather_result_shape,
                             result_type.getElementType()),
       tosa_values_reshape_op.getResult(), tosa_indices_reshape_op.getResult());
+
+  if (count_dynamic_dims(result_reshape_shape) > 1) {
+    return (void)rewriter.notifyMatchFailure(
+               op,
+               "multiply dynamic shapes when reshaping tosa.gather result up"),
+           llvm::None;
+  }
 
   auto tosa_result_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),

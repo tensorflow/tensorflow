@@ -56,7 +56,7 @@ class LazyOpRunner {
     if (!runner) {
       return port::InternalError("Null runner argument to FromOpRunner");
     }
-    SE_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
+    TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     // Private constructor cannot be called by make_unique :(
     return {std::unique_ptr<LazyOpRunner>(
         new LazyOpRunner(desc, std::move(runner)))};
@@ -80,7 +80,7 @@ class LazyOpRunner {
       typename Op::Config config, Stream* stream) {
     absl::MutexLock lock(&mu_);
     if (!runner_) {
-      SE_ASSIGN_OR_RETURN(runner_, Op::RunnerFromAlgorithmDesc(
+      TF_ASSIGN_OR_RETURN(runner_, Op::RunnerFromAlgorithmDesc(
                                        desc_, std::move(config), stream));
     }
     return runner_.get();

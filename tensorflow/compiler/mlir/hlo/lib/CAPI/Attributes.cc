@@ -394,6 +394,27 @@ MlirStringRef mlirMhloComparisonTypeAttrGetType(MlirAttribute attr) {
 }
 
 //
+// DomainKindAttr.
+//
+
+MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx, MlirStringRef kind) {
+  llvm::Optional<mlir::mhlo::DomainKind> domainKind =
+      mlir::mhlo::symbolizeDomainKind(unwrap(kind));
+  if (!domainKind) llvm_unreachable("Invalid domain kind specified.");
+  return wrap(
+      mlir::mhlo::DomainKindAttr::get(unwrap(ctx), domainKind.getValue()));
+}
+
+bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::DomainKindAttr>();
+}
+
+MlirStringRef mlirMhloDomainKindAttrGetType(MlirAttribute attr) {
+  return wrap(mlir::mhlo::stringifyDomainKind(
+      unwrap(attr).cast<mlir::mhlo::DomainKindAttr>().getValue()));
+}
+
+//
 // PrecisionAttr.
 //
 
@@ -499,6 +520,29 @@ MlirStringRef mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr) {
 }
 
 //
+// RngDistributionAttr.
+//
+
+MlirAttribute mlirMhloRngDistributionAttrGet(MlirContext ctx,
+                                             MlirStringRef distribution) {
+  llvm::Optional<mlir::mhlo::RngDistribution> rngDistribution =
+      mlir::mhlo::symbolizeRngDistribution(unwrap(distribution));
+  if (!rngDistribution) llvm_unreachable("Invalid rng-distribution specified.");
+  return wrap(mlir::mhlo::RngDistributionAttr::get(unwrap(ctx),
+                                                   rngDistribution.getValue()));
+}
+
+bool mlirMhloAttributeIsARngDistributionAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::RngDistributionAttr>();
+}
+
+MlirStringRef mlirMhloRngDistributionAttrGetRngDistribution(
+    MlirAttribute attr) {
+  return wrap(mlir::mhlo::stringifyRngDistribution(
+      unwrap(attr).cast<mlir::mhlo::RngDistributionAttr>().getValue()));
+}
+
+//
 // RngAlgorithmAttr.
 //
 
@@ -518,4 +562,47 @@ bool mlirMhloAttributeIsARngAlgorithmAttr(MlirAttribute attr) {
 MlirStringRef mlirMhloRngAlgorithmAttrGetRngAlgorithm(MlirAttribute attr) {
   return wrap(mlir::mhlo::stringifyRngAlgorithm(
       unwrap(attr).cast<mlir::mhlo::RngAlgorithmAttr>().getValue()));
+}
+
+//
+// ChannelHandle
+//
+
+MlirAttribute mlirMhloChannelHandleGet(MlirContext ctx, int64_t handle,
+                                       int64_t type) {
+  return wrap(mlir::mhlo::ChannelHandleAttr::get(unwrap(ctx), handle, type));
+}
+
+bool mlirMhloAttributeIsChannelHandle(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::ChannelHandleAttr>();
+}
+
+int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getHandle();
+}
+
+int64_t mlirMhloChannelHandleGetType(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getType();
+}
+
+//
+// TypeExtensions
+//
+
+MlirAttribute mlirMhloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
+                                        const int64_t *bounds) {
+  return wrap(mlir::mhlo::TypeExtensionsAttr::get(
+      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
+}
+
+bool mlirMhloAttributeIsTypeExtensions(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::TypeExtensionsAttr>();
+}
+
+intptr_t mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds().size();
+}
+
+int64_t mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos) {
+  return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds()[pos];
 }

@@ -105,7 +105,7 @@ Optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
 }
 
 bool ValuesConstraintSet::HasConstraint(Value value) const {
-  return GetConstraint(value).hasValue();
+  return GetConstraint(value).has_value();
 }
 
 void ValuesConstraintSet::MergeAll(const ValuesConstraintSet &other) {

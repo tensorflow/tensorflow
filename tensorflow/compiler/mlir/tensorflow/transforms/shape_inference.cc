@@ -225,7 +225,7 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
 
 TensorType CreateTensorType(llvm::Optional<llvm::ArrayRef<int64_t>> shape,
                             Type element_type) {
-  if (shape.hasValue())
+  if (shape.has_value())
     return RankedTensorType::get(shape.getValue(), element_type);
   return UnrankedTensorType::get(element_type);
 }
@@ -783,8 +783,8 @@ class ShapeInference {
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
 
-  // Infers the output shape of XlaConvOp based on the input shapes
-  bool InferShapeForXlaConvOp(XlaConvOp op);
+  // Infers the output shape of XlaConvV2Op based on the input shapes
+  bool InferShapeForXlaConvV2Op(XlaConvV2Op op);
 
   // Infers the output shape of XlaReduceWindowOp based on the input shapes.
   bool InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op);
@@ -1178,9 +1178,6 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
         input_types.size() - num_states - num_captured_arguments;
   }
 
-  VLOG(0) << "Inferring shape for ReduceDataset with #states = " << num_states
-          << " , #input_elements = " << num_input_elements
-          << " , and #captured_arguments = " << num_captured_arguments;
   DCOMMENT_OP(op,
               "Inferring shape for ReduceDataset with #states = "
                   << num_states << " , #input_elements = " << num_input_elements
@@ -1594,7 +1591,7 @@ llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
 // "third_party/tensorflow/compiler/xla/xla_data.pb.h" into
 // "third_party/tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc" is
 // resolved
-LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
+LogicalResult PrecheckForXlaConvV2Op(XlaConvV2Op op) {
   auto input_tensor = op.lhs();
   auto kernel_tensor = op.rhs();
   auto window_strides = op.window_strides();
@@ -1602,10 +1599,7 @@ LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
   auto lhs_dilation = op.lhs_dilation();
   auto rhs_dilation = op.rhs_dilation();
   auto feature_group_count = op.feature_group_count();
-  // This batch_group_count is a placeholder. We do not have batch_group_count
-  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
-  // Eventually we migrate to V2, we con reuse this variable with minor change
-  int64_t batch_group_count = 1;
+  int64_t batch_group_count = op.batch_group_count();
 
   auto input_args_have_static_shape = [&]() -> bool {
     return input_tensor.getType().cast<TensorType>().hasStaticShape() &&
@@ -1722,12 +1716,12 @@ LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
   return success();
 }
 
-bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
-  DCOMMENT_OP(op, "Inferring shape for XlaConvOp");
+bool ShapeInference::InferShapeForXlaConvV2Op(XlaConvV2Op op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaConvV2Op");
 
   bool changed = false;
 
-  if (PrecheckForXlaConvOp(op).failed()) {
+  if (PrecheckForXlaConvV2Op(op).failed()) {
     return changed;
   }
 
@@ -1737,10 +1731,7 @@ bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
   auto padding = op.padding();
   auto lhs_dilation = op.lhs_dilation();
   auto rhs_dilation = op.rhs_dilation();
-  // This batch_group_count is a placeholder. We do not have batch_group_count
-  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
-  // Eventually we migrate to V2, we con reuse this variable with minor change
-  int64_t batch_group_count = 1;
+  int64_t batch_group_count = op.batch_group_count();
 
   DenseIntElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
       rhs_dilation_attr;
@@ -1787,10 +1778,17 @@ bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
       rhs_dilations_vec.push_back(i.getSExtValue());
     }
 
+    Type input_tensor_element_type = input_tensor_shape.getElementType();
+    Type result_element_type = op.getType().getElementType();
+    Type element_type = input_tensor_element_type.getIntOrFloatBitWidth() >=
+                                result_element_type.getIntOrFloatBitWidth()
+                            ? input_tensor_element_type
+                            : result_element_type;
     auto output_shape = InferXlaConvOutputShape(
         input_tensor_dims_vec, kernel_tensor_dims_vec, window_strides_vec,
         padding_pairs, lhs_dilations_vec, rhs_dilations_vec, batch_group_count,
-        dnums, input_tensor_shape.getElementType());
+        dnums, element_type);
+
     if (output_shape.getValue()) {
       changed = RefineResultType(op.getOperation(), op.getResult(),
                                  output_shape.getValue());
@@ -2121,8 +2119,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForXlaSelectAndScatterOp(xla_select_and_scatter_op);
   }
 
-  if (auto xla_conv_op = dyn_cast<XlaConvOp>(op)) {
-    return InferShapeForXlaConvOp(xla_conv_op);
+  if (auto xla_conv_v2_op = dyn_cast<XlaConvV2Op>(op)) {
+    return InferShapeForXlaConvV2Op(xla_conv_v2_op);
   }
 
   // Return operand as a constant attribute.

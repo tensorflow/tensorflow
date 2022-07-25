@@ -69,7 +69,7 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   int Batch() const override { return shape_.b; }
 
   TensorDescriptor GetDescriptor() const override { return descriptor_; }
-  DataType GetDataType() const { return descriptor_.data_type; }
+  DataType GetDataType() const { return descriptor_.GetDataType(); }
   TensorStorageType GetStorageType() const {
     return descriptor_.GetStorageType();
   }
@@ -107,8 +107,8 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
                             CLCommandQueue* queue) const;
 
  private:
-  friend absl::Status CreateSharedImage2DBufferTensor(
-      const CLContext& context, cl_mem memory, const BHWDC& shape,
+  friend absl::Status CreateTensorSharedImage2DBuffer(
+      const CLContext& context, cl_mem memory,
       const TensorDescriptor& descriptor, int width_pixel_alignment,
       Tensor* result);
   absl::Status IsValid(const BHWC& shape) const;
@@ -139,38 +139,24 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
 
 using TensorPtr = std::shared_ptr<Tensor>;
 
-absl::Status AllocateTensorMemory(const CLContext& context, const BHWC& shape,
+absl::Status AllocateTensorMemory(const CLContext& context,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result);
 
-absl::Status AllocateTensorMemory(const CLContext& context, const BHWDC& shape,
-                                  const TensorDescriptor& descriptor,
-                                  CLMemory* result);
-
-absl::Status CreateTensor(const CLContext& context, const BHWC& shape,
+absl::Status CreateTensor(const CLContext& context,
                           const TensorDescriptor& descriptor, Tensor* result);
 
-absl::Status CreateTensor(const CLContext& context, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result);
+absl::Status CreateTensorShared(const CLContext& context, cl_mem memory,
+                                const TensorDescriptor& descriptor,
+                                Tensor* result);
 
 absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
-                                const BHWDC& shape,
-                                const TensorDescriptor& descriptor,
-                                Tensor* result);
-
-absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
-                                             cl_mem memory, const BHWC& shape,
-                                             const TensorDescriptor& descriptor,
-                                             int width_pixel_alignment,
-                                             Tensor* result);
-
-absl::Status CreateSharedImage2DBufferTensor(const CLContext& context,
-                                             cl_mem memory, const BHWDC& shape,
+absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
+                                             cl_mem memory,
                                              const TensorDescriptor& descriptor,
                                              int width_pixel_alignment,
                                              Tensor* result);
@@ -207,7 +193,7 @@ template <typename T>
 absl::Status Tensor::WriteDataBHWDC(const T* in, CLCommandQueue* queue) {
   std::unique_ptr<uint8_t[]> data_copy;
   data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
-  if (descriptor_.data_type == DataType::FLOAT16) {
+  if (descriptor_.GetDataType() == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16
     DataFromBHWDC(reinterpret_cast<const float*>(in), shape_, descriptor_,
                   reinterpret_cast<half*>(data_copy.get()));
@@ -227,7 +213,7 @@ absl::Status Tensor::ReadDataBHWDC(T* out, CLCommandQueue* queue) const {
 
   RETURN_IF_ERROR(ReadData(data_copy.get(), queue));
 
-  if (descriptor_.data_type == DataType::FLOAT16) {
+  if (descriptor_.GetDataType() == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16
     DataToBHWDC(reinterpret_cast<half*>(data_copy.get()), shape_, descriptor_,
                 reinterpret_cast<float*>(out));

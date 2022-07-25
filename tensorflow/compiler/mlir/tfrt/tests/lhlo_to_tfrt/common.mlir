@@ -27,6 +27,7 @@ func.func @view(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<100
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 20,
     rhs_stride = 20
@@ -61,6 +62,7 @@ func.func @reinterpret_cast(%lhs: memref<5x4xf32, affine_map<(d0, d1) -> (d0 + d
     >,
     alpha_real = 0.5,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 20,
     rhs_stride = 20
@@ -91,6 +93,7 @@ func.func @two_ops(%memref: memref<4x4xf32>) {
     >,
     alpha_real = 3.14159274,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16
@@ -107,6 +110,7 @@ func.func @two_ops(%memref: memref<4x4xf32>) {
     >,
     alpha_real = 2.71828175,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16
@@ -136,6 +140,7 @@ func.func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
     >,
     alpha_real = 1.0,
     alpha_imag = 0.0,
+    beta = 0.0,
     batch_size = 1,
     lhs_stride = 16,
     rhs_stride = 16

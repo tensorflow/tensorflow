@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_MLIR_HLO_BUILDER_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -50,13 +51,18 @@ class MlirHloBuilder : public XlaBuilder {
   explicit MlirHloBuilder(mlir::func::FuncOp func)
       : XlaBuilder(func.getName().str()),
         builder_(&func.getBody()),
-        loc_(builder_.getUnknownLoc()) {}
+        loc_(builder_.getUnknownLoc()),
+        build_functions_(false) {}
 
   // TODO(hinsu): Add a constructor to build a new MLIR function from scratch
   // and override Build methods.
 
-  MlirHloBuilder(std::string name, mlir::OpBuilder builder, mlir::Location loc)
-      : XlaBuilder(name), builder_(builder), loc_(loc) {}
+  MlirHloBuilder(std::string name, mlir::OpBuilder builder, mlir::Location loc,
+                 bool build_functions)
+      : XlaBuilder(name),
+        builder_(builder),
+        loc_(loc),
+        build_functions_(build_functions) {}
 
   MlirHloBuilder(const MlirHloBuilder&) = delete;
   MlirHloBuilder& operator=(const MlirHloBuilder&) = delete;
@@ -134,7 +140,8 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> CustomCallInternal(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
-      const Shape& shape, const std::string& opaque,
+      const XlaComputation* computation, const Shape& shape,
+      const std::string& opaque,
       std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
       bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -272,8 +279,12 @@ class MlirHloBuilder : public XlaBuilder {
                            mlir::Region* region,
                            bool flatten_region_arg_tuple = false);
 
+  Status ImportComputation(const HloModuleProto& computation,
+                           mlir::ModuleOp module);
+
   mlir::OpBuilder builder_;
   mlir::Location loc_;
+  bool build_functions_;
 
   absl::flat_hash_map<int64_t, std::unique_ptr<Shape>> handle_to_shape_;
 };
