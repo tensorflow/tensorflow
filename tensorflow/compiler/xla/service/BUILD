@@ -2220,6 +2220,7 @@ tf_cc_test(
     srcs = ["real_imag_expander_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_matchers",
         ":hlo_parser",
         ":hlo_pass",
@@ -2235,6 +2236,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
     ],
 )
