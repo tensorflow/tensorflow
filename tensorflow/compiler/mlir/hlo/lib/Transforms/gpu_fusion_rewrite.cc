@@ -308,11 +308,15 @@ void FusionRewritePattern::annotateLaunchFunc(func::FuncOp funcOp,
 }
 
 // Returns whether 'type' is can be lowered by the FusionRewritePattern.
-static bool isRewritableType(TensorType type) {
+static bool isRewritableType(Type type) {
+  auto shapedType = type.cast<ShapedType>();
   // Complex types are not yet supported.
-  if (type.getElementType().isa<ComplexType>()) return false;
+  if (shapedType.getElementType().isa<ComplexType>()) return false;
   // Zero ranked shapes are not yet supported.
-  if (type.getRank() == 0) return false;
+  if (shapedType.getRank() == 0) return false;
+  // MemRef types need to have identity layout.
+  if (auto memrefType = shapedType.dyn_cast<MemRefType>())
+    return memrefType.getLayout().isIdentity();
   return true;
 }
 
@@ -322,11 +326,13 @@ ConversionTarget FusionRewritePattern::getRewritableTarget(MLIRContext* ctx) {
   target.addLegalOp<lmhlo::TerminatorOp>();
   target.addDynamicallyLegalOp<bufferization::ToTensorOp>(
       [&](bufferization::ToTensorOp op) {
-        return isRewritableType(op.getType());
+        return isRewritableType(op.getMemref().getType()) &&
+               isRewritableType(op.getType());
       });
   target.addDynamicallyLegalOp<memref::TensorStoreOp>(
       [&](memref::TensorStoreOp op) {
-        return isRewritableType(op.getTensor().getType().cast<TensorType>());
+        return isRewritableType(op.getTensor().getType()) &&
+               isRewritableType(op.getMemref().getType());
       });
   // For now, use an explicit allow-list of hlo ops inside the fusion. If any
   // other op is present, the fusion will not be rewritten.
