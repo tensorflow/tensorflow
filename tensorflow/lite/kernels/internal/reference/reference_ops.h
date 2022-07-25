@@ -624,27 +624,34 @@ inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
+// Implements GatherNd on strings.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
 template <typename IndicesT = int32>
-inline void GatherNdString(const RuntimeShape& params_shape,
-                           const TfLiteTensor* params_data,
-                           const RuntimeShape& indices_shape,
-                           const IndicesT* indices_data,
-                           const RuntimeShape& output_shape,
-                           TfLiteTensor* output_data) {
+inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
+                                   const TfLiteTensor* params_data,
+                                   const RuntimeShape& indices_shape,
+                                   const IndicesT* indices_data,
+                                   const RuntimeShape& output_shape,
+                                   TfLiteTensor* output_data) {
   ruy::profiler::ScopeLabel label("GatherNdString");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   DynamicBuffer buffer;
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     for (int j = 0; j < res.slice_size; ++j) {
       buffer.AddString(GetString(params_data, from_pos + j));
     }
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
+  return kTfLiteOk;
 }
 #endif
 
