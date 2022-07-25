@@ -70,22 +70,10 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     }
   }
 
-  if (attr.clip != 0) {
-    if (definition.precision == CalculationsPrecision::F32) {
-      result.args_.AddFloat("clip", attr.clip);
-    } else {
-      result.args_.AddHalf("clip", half(attr.clip));
-    }
-    result.code_ = alpha_read +
-                   "out_value = clamp(in_value, INIT_FLT4(0.0f), "
-                   "INIT_FLT4(args.clip)) + "
-                   "min(INIT_FLT4(0.0f), in_value) * alpha_val;";
-  } else {
-    result.code_ = alpha_read +
-                   "out_value = max(INIT_FLT4(0.0f), in_value) + "
-                   "min(INIT_FLT4(0.0f), "
-                   "in_value) * alpha_val;";
-  }
+  result.code_ = alpha_read +
+                 "out_value = max(INIT_FLT4(0.0f), in_value) + "
+                 "min(INIT_FLT4(0.0f), "
+                 "in_value) * alpha_val;";
 
   return result;
 }

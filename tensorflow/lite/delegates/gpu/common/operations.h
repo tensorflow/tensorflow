@@ -403,9 +403,6 @@ struct ReLUAttributes {
 };
 
 struct PReLUAttributes {
-  // clip <= 0 mean it is not set.
-  float clip = 0;
-
   // If alpha is linear, then it is sharded across CHANNELS axis, otherwise
   // full shape alpha is required.
   absl::variant<Tensor<Linear, DataType::FLOAT32>,
