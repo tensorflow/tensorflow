@@ -6581,6 +6581,7 @@ cc_library(
     srcs = ["scatter_simplifier.cc"],
     hdrs = ["scatter_simplifier.h"],
     deps = [
+        ":gather_scatter_utils",
         ":hlo",
         ":hlo_creation_utils",
         ":op_expander_pass",
@@ -6663,6 +6664,19 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+    ],
+)
+
+cc_library(
+    name = "gather_scatter_utils",
+    srcs = ["gather_scatter_utils.cc"],
+    hdrs = ["gather_scatter_utils.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        "//tensorflow/compiler/xla:permutation_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

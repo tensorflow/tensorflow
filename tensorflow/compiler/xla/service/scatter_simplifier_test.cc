@@ -57,12 +57,12 @@ TEST_F(ScatterSimplifierTest, InsertsIndexVectorAndWindowDims) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-      CHECK: %scatter_indices_with_vector_dim = s32[2,1]{0,1} reshape(%indices)
-      CHECK: %reshaped_updates = f32[2,1,3]{2,1,0} reshape(%update0)
-      CHECK: %reshaped_updates.1 = f32[2,1,3]{2,1,0} reshape(%update1)
+      CHECK: %[[SCATTER_DIMS_WITH_VECTOR:.*]] = s32[2,1]{1,0} reshape(%indices)
+      CHECK: %[[RESHAPED_UPDATES0:.*]] = f32[2,1,3]{2,1,0} reshape(%update0)
+      CHECK: %[[RESHAPED_UPDATES1:.*]] = f32[2,1,3]{2,1,0} reshape(%update1)
       CHECK: ROOT %scatter = (f32[3,3]{1,0}, f32[3,3]{1,0}) scatter(
-      CHECK-SAME:   %operand0, %operand1, %scatter_indices_with_vector_dim,
-      CHECK-SAME:   %reshaped_updates, %reshaped_updates.1),
+      CHECK-SAME:   %operand0, %operand1, %[[SCATTER_DIMS_WITH_VECTOR]],
+      CHECK-SAME:   %[[RESHAPED_UPDATES0]], %[[RESHAPED_UPDATES1]]),
       CHECK-SAME: update_window_dims={1,2},
       CHECK-SAME: inserted_window_dims={},
       CHECK-SAME: scatter_dims_to_operand_dims={0},
@@ -95,8 +95,11 @@ TEST_F(ScatterSimplifierTest, CollapsesScatterDims) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-      CHECK: %indices_collapsed_scatter_dims = s32[2,2]{1,0} reshape(%indices)
-      CHECK: %reshaped_updates = f32[2,1,3]{2,1,0} reshape(%update)
+           CHECK: %[[RESHAPED_INDICES:.*]] = s32[2,2]{1,0} reshape(%indices)
+           CHECK: %[[RESHAPED_UPDATES:.*]] = f32[2,1,3]{2,1,0} reshape(%update)
+           CHECK: scatter(
+      CHECK-SAME: %[[RESHAPED_INDICES]]
+      CHECK-SAME: %[[RESHAPED_UPDATES]]
   )");
 }
 
@@ -149,9 +152,9 @@ TEST_F(ScatterSimplifierTest, MovesIndexVectorDim) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %transposed_scatter_indices = s32[1,2]{0,1}
+           CHECK: %[[TRANSPOSED_INDICES:.*]] = s32[1,2]{0,1}
       CHECK-SAME:     transpose(%indices), dimensions={1,0}
-           CHECK: scatter(%operand, %transposed_scatter_indices, %update),
+           CHECK: scatter(%operand, %[[TRANSPOSED_INDICES]], %update),
       CHECK-SAME:     index_vector_dim=1
   )");
 }
@@ -180,14 +183,15 @@ TEST_F(ScatterSimplifierTest, TransformsUpdatesAndOperandUsingScatterDims) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %permuted_operand = f32[3,3,3]{0,2,1} transpose(%operand),
+           CHECK: %[[T_OPERAND:.*]] = f32[3,3,3]{0,2,1} transpose(%operand),
       CHECK-SAME:     dimensions={2,0,1}
-           CHECK: %permuted_updates = f32[2,3,1,1]{1,3,2,0} transpose(%update),
+           CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{1,3,2,0} transpose(%update),
       CHECK-SAME:     dimensions={0,3,1,2}
-           CHECK: scatter(%permuted_operand, %indices, %permuted_updates)
+           CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
+      CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
       CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
-           CHECK: ROOT %permuted_result = f32[3,3,3]{1,0,2}
-      CHECK-SAME:     transpose(%scatter.1), dimensions={1,2,0}
+           CHECK: ROOT %{{.*}} = f32[3,3,3]{1,0,2}
+      CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
   )");
 }
 
@@ -214,9 +218,11 @@ TEST_F(ScatterSimplifierTest, MakesScatterDimensionsLeadingInUpdates) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %transposed_updates = f32[1,2]{0,1}
+           CHECK: %[[TRANSPOSED_UPDATES:.*]] = f32[1,2]{0,1}
       CHECK-SAME:     transpose(%update), dimensions={1,0}
-           CHECK:     update_window_dims={1}, 
+           CHECK: scatter(
+      CHECK-SAME:     %[[TRANSPOSED_UPDATES]]
+      CHECK-SAME:     update_window_dims={1},
   )");
 }
 
