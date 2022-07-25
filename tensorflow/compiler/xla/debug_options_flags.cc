@@ -98,7 +98,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
-  opts.set_xla_gpu_enable_mlir_lowering(false);
+  opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(false);
   return opts;
 }
