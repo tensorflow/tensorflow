@@ -139,7 +139,7 @@ def TypeExtensions : AttrDef<HLO_Dialect, "TypeExtensions"> {
     Bounds parameter specifies the maximum runtime dimension size for
     dimensions with unknown size. If the bound are not known for any of the
     dimensions, it is set to ShapedType::kDynamicSize. Bound is undefined for
-    static dimensions. Bounds array have the same size as rank of the tensor.
+    static dimensions. Bounds array has the same size as rank of the tensor.
   }];
   let assemblyFormat = "`<` `bounds` `=` `[` $bounds `]` `>`";
 

@@ -35,7 +35,10 @@ class BFloat16Normalization : public HloModulePass {
 
   // Run BF16 normalization on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const BFloat16Support* bfloat16_support_;
@@ -61,9 +64,12 @@ class BFloat16MixedPrecisionRemoval : public HloModulePass {
 
   // Run mixed precision removal on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override {
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     BFloat16Normalization normalization(&no_mixed_precision_support_);
-    return normalization.Run(module);
+    return normalization.Run(module, execution_threads);
   }
 
  private:

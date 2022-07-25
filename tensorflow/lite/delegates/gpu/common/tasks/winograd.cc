@@ -69,7 +69,7 @@ MAIN_FUNCTION($0) {
   }
 )";
   if (src_desc.IsLinear()) {
-    c += "  args.src_tensor.GetAddress(src_base, 0, 0, S);\n";
+    c += "  int src_base = args.src_tensor.GetAddress(0, 0, S);\n";
   }
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
@@ -169,7 +169,7 @@ MAIN_FUNCTION($0) {
 )";
   if (src_desc.IsLinear()) {
     c += R"(
-  args.src_tensor.GetAddress(src_adress, tile_id, 0, Z);
+  int src_adress = args.src_tensor.GetAddress(tile_id, 0, Z);
   for (int y = 0; y < 6; ++y) {
     for (int x = 0; x < 6; ++x, src_adress += args.src_tensor.Width()) {
       FLT4 src = args.src_tensor.Read(src_adress);
@@ -344,7 +344,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
            ", 0, args.src_tensor.Width() - 1);\n";
     }
     if (src_desc.IsLinear()) {
-      c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
+      c += "  int src_a_" + xs + " = args.src_tensor.GetAddress(xc" + xs +
            ", 0, DST_Z);\n";
       if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         c += "  src_a_" + xs +

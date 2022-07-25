@@ -105,6 +105,7 @@ const int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
 constexpr char kDataServiceDatasetV3[] = "DataServiceDatasetV3";
+constexpr char kDataServiceDatasetV4[] = "DataServiceDatasetV4";
 
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
@@ -295,14 +296,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                             Node** output) const override {
     // Inputs
     std::vector<Node*> inputs;
-    Node* dataset_id;
-    int64_t dataset_id_int;
-    if (!absl::SimpleAtoi(dataset_id_, &dataset_id_int)) {
-      return errors::Internal("Failed to parse dataset ID: ", dataset_id_,
-                              ". Expect integers.");
+
+    if (op_version_ >= 4) {
+      Node* dataset_id;
+      TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_, &dataset_id));
+      inputs.push_back(dataset_id);
+    } else {
+      int64_t dataset_id_int;
+      if (!absl::SimpleAtoi(dataset_id_, &dataset_id_int)) {
+        return errors::Internal("Failed to parse dataset ID: ", dataset_id_,
+                                ". Expect integers.");
+      }
+      Node* dataset_id;
+      TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_int, &dataset_id));
+      inputs.push_back(dataset_id);
     }
-    TF_RETURN_IF_ERROR(b->AddScalar(dataset_id_int, &dataset_id));
-    inputs.push_back(dataset_id);
 
     Node* processing_mode;
     tstring processing_mode_str = processing_mode_.SerializeAsString();
@@ -1270,6 +1278,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
 DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
+  const auto& op_name = ctx->def().op();
+  if (op_name == kDataServiceDatasetV1) {
+    op_version_ = 1;
+  } else if (op_name == kDataServiceDatasetV2) {
+    op_version_ = 2;
+  } else if (op_name == kDataServiceDatasetV3) {
+    op_version_ = 3;
+  } else if (op_name == kDataServiceDatasetV4) {
+    op_version_ = 4;
+  } else {
+    ctx->CtxFailure(errors::FailedPrecondition(
+        "Unrecognized data service dataset op name: ", op_name));
+    return;
+  }
+
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kTaskRefreshIntervalHintMs,
                                    &task_refresh_interval_hint_ms_));
   if (task_refresh_interval_hint_ms_ == model::kAutotune) {
@@ -1294,19 +1317,6 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, status_or_target_workers.status());
   target_workers_ = *status_or_target_workers;
 
-  auto& op_name = ctx->def().op();
-  if (op_name == kDataServiceDatasetV1) {
-    op_version_ = 1;
-  } else if (op_name == kDataServiceDatasetV2) {
-    op_version_ = 2;
-  } else if (op_name == kDataServiceDatasetV3) {
-    op_version_ = 3;
-  } else {
-    ctx->CtxFailure(errors::FailedPrecondition(
-        "Unrecognized data service dataset op name: ", op_name));
-    return;
-  }
-
   if (op_version_ >= 3) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kUncompress, &uncompress_));
     FunctionMetadata::Params params;
@@ -1323,9 +1333,14 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                                        DatasetBase** output) {
-  int64_t dataset_id_int;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id_int));
-  std::string dataset_id = absl::StrCat(dataset_id_int);
+  tstring dataset_id;
+  if (op_version_ >= 4) {
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id));
+  } else {
+    int64_t dataset_id_int = 0;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kDatasetId, &dataset_id_int));
+    dataset_id = absl::StrCat(dataset_id_int);
+  }
 
   tstring processing_mode_str;
   OP_REQUIRES_OK(
@@ -1493,6 +1508,8 @@ REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV1).Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV2).Device(DEVICE_CPU),
                         DataServiceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV3).Device(DEVICE_CPU),
+                        DataServiceDatasetOp);
+REGISTER_KERNEL_BUILDER(Name(kDataServiceDatasetV4).Device(DEVICE_CPU),
                         DataServiceDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("DummyIterationCounter").Device(DEVICE_CPU),
                         DummyResourceOp<IterationCounter>);

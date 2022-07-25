@@ -338,27 +338,14 @@ kernel void ComputeFunction(
         const std::string s_yx = s_y + s_x;
         if (definition.src_tensors[0].GetStorageType() ==
             TensorStorageType::BUFFER) {
-          if (params.groups_support) {
-            c += "  args.src_tensor.GetAddress(base_addr_" + s_yx + ", c_x" +
-                 s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
-            c += "  device FLT4* src_loc_" + s_yx +
-                 " = args.src_tensor.GetHandle() + base_addr_" + s_yx + ";\n";
-          } else {
-            c += "  device FLT4* src_loc_" + s_yx +
-                 " = args.src_tensor.GetHandle() + "
-                 "args.src_tensor.GetWHOffset(c_x" +
-                 s_x + ", c_y" + s_y + ");\n";
-          }
+          c += "  device FLT4* src_loc_" + s_yx +
+               " = args.src_tensor.GetHandle() + "
+               "args.src_tensor.GetAddress(c_x" +
+               s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
         } else if (definition.src_tensors[0].GetStorageType() ==
                    TensorStorageType::IMAGE_BUFFER) {
-          if (params.groups_support) {
-            c += "  args.src_tensor.GetAddress(src_loc_" + s_yx + ", c_x" +
-                 s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
-          } else {
-            c += "  int src_loc_" + s_yx +
-                 " = args.src_tensor.GetWHOffset(c_x" + s_x + ", c_y" + s_y +
-                 ");\n";
-          }
+          c += "  int src_loc_" + s_yx + " = args.src_tensor.GetAddress(c_x" +
+               s_x + ", c_y" + s_y + ", " + src_group_start_slice + ");\n";
         }
       }
     }
@@ -488,8 +475,8 @@ kernel void ComputeFunction(
   if (definition.dst_tensors[0].IsLinear()) {
     for_every_yx([](const std::string& s_yx, const std::string& s_x,
                     const std::string& s_y, int x, int y) {
-      return "  args.dst_tensor.GetAddress(offset_" + s_yx + ", X + " + s_x +
-             ", Y + " + s_y + ", Z);";
+      return "  int offset_" + s_yx + " = args.dst_tensor.GetAddress(X + " +
+             s_x + ", Y + " + s_y + ", Z);";
     });
   }
 

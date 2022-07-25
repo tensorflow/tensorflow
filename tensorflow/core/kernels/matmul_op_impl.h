@@ -291,9 +291,9 @@ struct BlasLtMatmulAutoTuneGroup {
   static string name() { return "MatmulLt"; }
 };
 
-typedef AutotuneSingleton<
-    BlasLtMatmulAutoTuneGroup, se::cuda::BlasLt::MatmulPlanParams,
-    se::blas::AlgorithmConfig, absl::Hash<se::cuda::BlasLt::MatmulPlanParams>>
+typedef AutotuneSingleton<BlasLtMatmulAutoTuneGroup, BlasLtMatmulPlanParams,
+                          se::blas::AlgorithmConfig,
+                          absl::Hash<BlasLtMatmulPlanParams>>
     AutoTuneBatchMatmul;
 
 }  // namespace
@@ -407,11 +407,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           bcast.IsBroadcastingRequired() && !is_full_broadcast;
 
       if (!requires_mixed_broadcasting) {
-        bool broadcast_a = bcast.x_batch_size() == 1;
-        bool broadcast_b = bcast.y_batch_size() == 1;
-        a_stride = broadcast_a ? 0 : m * k;
-        b_stride = broadcast_b ? 0 : k * n;
-        c_stride = m * n;
         a_device_memory.push_back(AsDeviceMemory(a_base_ptr));
         b_device_memory.push_back(AsDeviceMemory(b_base_ptr));
         c_device_memory.push_back(AsDeviceMemory(c_base_ptr));
@@ -419,33 +414,16 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         b_ptrs.push_back(&b_device_memory.back());
         c_ptrs.push_back(&c_device_memory.back());
 
-        se::blas::DataType blas_dtype = se::blas::ToDataType<Scalar>::value;
-
-        DataType dtype = DataTypeToEnum<Scalar>::value;
-        auto status_or_computation_type = GetBlasComputationType(dtype);
-        OP_REQUIRES(context, status_or_computation_type.ok(),
-                    errors::Internal("Unsupported dtype for batched matmul."));
-        se::blas::ComputationType computation_type =
-            std::move(status_or_computation_type).value();
-
-        se::cuda::BlasLt::MatmulPlanParams matmul_params{
-            /*ab_type=*/blas_dtype,
-            /*c_type=*/blas_dtype,
-            computation_type,
-            se::cuda::BlasLt::PointerMode::kHost,
-            se::cuda::BlasLt::Epilogue::kDefault,
-            blas_transpose_b,
+        BlasLtMatmulPlanParams matmul_params{
+            se::blas::ToDataType<Scalar>::value,
+            static_cast<size_t>(m),
+            static_cast<size_t>(n),
+            static_cast<size_t>(k),
             blas_transpose_a,
-            static_cast<uint64_t>(n),
-            static_cast<uint64_t>(m),
-            static_cast<uint64_t>(k),
-            in_y.dim_size(2),
-            in_x.dim_size(2),
-            static_cast<int64_t>(n),
-            static_cast<int>(batch_size),
-            static_cast<int64_t>(b_stride),
-            static_cast<int64_t>(a_stride),
-            static_cast<int64_t>(c_stride)};
+            blas_transpose_b,
+            static_cast<size_t>(batch_size),
+            /*broadcast_a=*/bcast.x_batch_size() == 1,
+            /*broadcast_b=*/bcast.y_batch_size() == 1};
 
         std::optional<int> max_algorithm_count;
         if (!use_autotune) max_algorithm_count = 1;
@@ -457,11 +435,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             std::move(plan_and_algorithms_or).value();
         const auto& plan = plan_and_algorithms->plan;
         const auto& algorithms = plan_and_algorithms->algorithms;
-
-        // The BlasLtMatmul routines (unlike BlasGemm, BlasGemmBatched etc.)
-        // take alpha and beta with the same type as the matrices.
-        se::HostOrDeviceScalar<Scalar> alpha(static_cast<Scalar>(1.0));
-        se::HostOrDeviceScalar<Scalar> beta(static_cast<Scalar>(0.0));
 
         se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
         OP_REQUIRES(context, blas_lt != nullptr,
@@ -482,21 +455,22 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             // Create a new scratch allocator with every autotuning run so that
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
-            bool cublas_launch_status = blas_lt->DoMatmul(
-                stream, plan, alpha, *b_ptrs[0], *a_ptrs[0], beta, c_ptrs[0],
-                &scratch_allocator, profile_algorithm,
-                /*bias = */ {}, &profile_result);
+            Status cublas_launch_status =
+                DoBlasLtMatmul(stream, plan, *a_ptrs[0], *b_ptrs[0], *c_ptrs[0],
+                               profile_algorithm, scratch_allocator,
+                               /*bias = */ {}, &profile_result);
 
             VLOG(4) << "  Autotune algorithm " << i
                     << " result: " << profile_result.elapsed_time_in_ms()
                     << " ms, valid=" << profile_result.is_valid()
-                    << ", workspace_size="
-                    << profile_algorithm.workspace_size();
+                    << ", workspace_size=" << profile_algorithm.workspace_size;
 
-            if (cublas_launch_status && profile_result.is_valid() &&
+            if (cublas_launch_status.ok() && profile_result.is_valid() &&
                 profile_result.elapsed_time_in_ms() <
                     best_result.elapsed_time_in_ms()) {
               best_result = profile_result;
+              // Use index into algorithms array, instead of cublas internal ID.
+              best_result.set_algorithm(i);
             }
           }
 
@@ -523,17 +497,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                 << "trans_x = " << trans_x << "trans_y = " << trans_y
                 << "adj_x = " << adj_x << "adj_y = " << adj_y;
 
-        bool cublas_launch_status =
-            blas_lt->DoMatmul(stream, plan, alpha, *b_ptrs[0], *a_ptrs[0], beta,
-                              c_ptrs[0], &scratch_allocator, algorithm);
-        if (!cublas_launch_status) {
-          context->SetStatus(errors::Internal(
-              "Blas batched matmul launch failed: a.shape=(",
-              bcast.x_batch_size(), ", ", in_x.dim_size(0), ", ",
-              in_x.dim_size(1), "), b.shape=(", bcast.y_batch_size(), ", ",
-              in_y.dim_size(0), ", ", in_y.dim_size(1), "), m=", m, ", n=", n,
-              ", k=", k, ", batch_size=", batch_size));
-        }
+        OP_REQUIRES_OK(
+            context, DoBlasLtMatmul(stream, plan, *a_ptrs[0], *b_ptrs[0],
+                                    *c_ptrs[0], algorithm, scratch_allocator));
       } else {  // requires mixed broadcasting
         const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
         const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();

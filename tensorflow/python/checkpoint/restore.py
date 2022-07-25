@@ -208,8 +208,10 @@ class CheckpointPosition(object):
     """Creates a saveable using the _serialize_to_tensor method."""
     # Extract the saveable name from the checkpoint key. This will be used as
     # the cache key or the name to pass to the saveable factory.
+    suffix = saveable_compat.get_saveable_name(self.trackable) or ""
     saveable_name = _extract_saveable_name(
-        self.trackable, self.object_proto.attributes[0].checkpoint_key)
+        self.object_proto.attributes[0].checkpoint_key) + suffix
+
     # Try to find the cached saveable (only in graph mode).
     if not context.executing_eagerly():
       existing_op = self._checkpoint.restore_ops_by_name.get(
@@ -248,6 +250,11 @@ class CheckpointPosition(object):
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
     existing_restore_ops = []
+
+    # Forward compatibility code: when loading a future checkpoint, there may
+    # be multiple SerializedTensors mapped to a single saveable.
+    created_compat_names = set()
+
     for serialized_tensor in self.object_proto.attributes:
       if context.executing_eagerly():
         existing_op = None
@@ -257,6 +264,10 @@ class CheckpointPosition(object):
       if existing_op is not None:
         existing_restore_ops.append(existing_op)
         continue
+
+      if any(name.startswith(serialized_tensor.name)
+             for name in created_compat_names):
+        continue  # Saveable has already been created for this tensor.
 
       # Only if we don't have cached ops for this SaveableObject, we'll see if
       # the SaveableObject itself has been cached. If not, we'll make it, and
@@ -290,8 +301,10 @@ class CheckpointPosition(object):
       if saveable is None:
         # If there was no cached SaveableObject, create one.
         # Use the name to check if the Python object has the same attribute.
-        saveable_factory = saveable_factories.get(serialized_tensor.name, None)
-        if saveable_factory is None:
+        saveable = _get_saveable_from_factory(saveable_factories,
+                                              serialized_tensor,
+                                              created_compat_names)
+        if saveable is None:
           # Purposefully does not throw an exception if attributes have been
           # added or deleted. Stores unused attributes so an exception can be
           # raised if the user decides to check that everything in the
@@ -299,10 +312,6 @@ class CheckpointPosition(object):
           self._checkpoint.unused_attributes.setdefault(
               self._proto_id, []).append(serialized_tensor.name)
           continue
-        if callable(saveable_factory):
-          saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
-        else:
-          saveable = saveable_factory
         if saveables_cache is not None:
           saveables_cache.setdefault(self.trackable,
                                      {})[serialized_tensor.name] = [saveable]
@@ -550,11 +559,48 @@ def _queue_slot_variables(checkpoint_position, visit_queue):
         visit_queue.append((slot_variable_position, slot_variable))
 
 
-def _extract_saveable_name(trackable, checkpoint_key):
-  if saveable_compat.get_saveable_name(trackable) is not None:
-    # If there is a legacy saveable name, the saveable name is the checkpoint
-    # key.
-    return checkpoint_key
-  # Substring the checkpoint key to the end of the ".ATTRIBUTES/" (len=12)
-  return checkpoint_key[:checkpoint_key.index(trackable_utils
-                                              .OBJECT_ATTRIBUTES_NAME) + 12]
+def _extract_saveable_name(checkpoint_key):
+  # Substring the checkpoint key to the end of the "{...}.ATTRIBUTES/"
+  search_key = trackable_utils.OBJECT_ATTRIBUTES_NAME + "/"
+  return checkpoint_key[:checkpoint_key.index(search_key) + len(search_key)]
+
+
+def _get_saveable_from_factory(saveable_factories, serialized_tensor,
+                               created_compat_names):
+  """Returns the saveable generated from the factory method."""
+  matched_factory = None
+
+  # The `expected_factory_name` is used to find the right saveable factory,
+  # while the `factory_input_name` is the value that is passed to the factory
+  # method to instantiate the SaveableObject.
+  expected_factory_name = serialized_tensor.name
+  factory_input_name = serialized_tensor.checkpoint_key
+
+  # Case 1: the name already exactly matches a key in saveable_factories.
+  if expected_factory_name in saveable_factories:
+    matched_factory = saveable_factories[expected_factory_name]
+
+  # Case 2: (Forward compat) The serialized name is composed of
+  # "factory_name" + "SUFFIX". Get the matching factory name.
+  if matched_factory is None:
+
+    for factory_name, factory in saveable_factories.items():
+      if expected_factory_name.startswith(factory_name):
+        if matched_factory is not None:
+          # This condition is met in the extreme edge case where the object
+          # returns two saveable factories with similar names. This is very
+          # unlikely because there zero objects inside TensorFlow that use
+          # more than one saveable factory.
+          raise ValueError("Forward compatibility load error: Unable to load "
+                           "checkpoint saved in future version of TensorFlow. "
+                           "Please update your version of TensorFlow to the "
+                           "version in which the checkpoint was saved.")
+
+        matched_factory = factory
+        factory_input_name = _extract_saveable_name(
+            serialized_tensor.checkpoint_key) + factory_name
+        created_compat_names.add(factory_name)
+
+  if callable(matched_factory):
+    return matched_factory(name=factory_input_name)
+  return matched_factory

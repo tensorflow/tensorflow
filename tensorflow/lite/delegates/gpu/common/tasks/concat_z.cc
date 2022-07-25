@@ -44,7 +44,17 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
 
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int X = GLOBAL_ID_0;\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+    for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+      c += "  args." + tensor_names[i] + ".SetBatchRef(B);\n";
+    }
+  } else {
+    c += "  int X = GLOBAL_ID_0;\n";
+  }
   c += "  int Y = GLOBAL_ID_1;\n";
   std::string coords = "X, Y";
   if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
@@ -129,17 +139,9 @@ GPUOperation CreateConcatZ(const OperationDef& definition,
   GPUOperation op(definition);
   for (int i = 0; i < definition.src_tensors.size(); ++i) {
     const std::string name = "src_tensor_" + std::to_string(i);
-    auto src_desc = definition.src_tensors[i];
-    if (definition.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
-    op.AddSrcTensor(name, src_desc);
+    op.AddSrcTensor(name, definition.src_tensors[i]);
   }
-  auto dst_desc = definition.dst_tensors[0];
-  if (definition.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  op.AddDstTensor("dst_tensor", dst_desc);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
   op.code_ = GetConcatKernelCode(definition, channels);
   if (gpu_info.IsPowerVR() &&
       definition.precision == CalculationsPrecision::F32 &&

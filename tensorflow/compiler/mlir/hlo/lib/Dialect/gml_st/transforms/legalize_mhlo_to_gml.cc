@@ -177,12 +177,9 @@ struct ScatterPattern : public OpRewritePattern<mhlo::ScatterOp> {
     if (!opType)
       return failure();  // Type is a tensor in the non-variadic case.
 
-    auto initTensor = rewriter.create<linalg::InitTensorOp>(
-        op.getLoc(), mlir::ValueRange{}, opType.getShape(),
-        opType.getElementType());
     rewriter.replaceOpWithNewOp<gml_st::ScatterOp>(
-        op, opType, op.operands().front(), op.scatter_indices(),
-        op.updates().front(), initTensor);
+        op, opType, op.scatter_indices(), op.updates().front(),
+        op.operands().front());
     return success();
   }
 

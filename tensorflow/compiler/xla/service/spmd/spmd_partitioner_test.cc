@@ -10707,6 +10707,25 @@ ENTRY entry {
                   op::Reshape(op::Reshape(op::Transpose(op::AllToAll(_)))))));
 }
 
+TEST_F(SpmdPartitioningTest, PaddedConvReshard) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = bf16[16,256,256,384]{3,2,1,0} parameter(0)
+  %p2 = bf16[3,3,384,384]{3,2,1,0} parameter(1)
+  %p.copy = bf16[16,256,256,384]{3,2,1,0} copy(%p), sharding={devices=[2,1,4,1]0,1,2,3,4,5,6,7}
+  %p2.copy = bf16[3,3,384,384]{3,2,1,0} copy(%p2), sharding={replicated}
+  ROOT %convolution.10115 = bf16[16,256,256,384]{3,2,1,0} convolution(%p.copy, %p2.copy), window={size=3x3 pad=128_128x128_128 rhs_dilate=128x128}, dim_labels=b01f_01io->b01f, sharding={devices=[2,1,4,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Convolution(
+                  op::DynamicSlice(op::Pad(_, op::Constant()), _, _, _, _), _));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

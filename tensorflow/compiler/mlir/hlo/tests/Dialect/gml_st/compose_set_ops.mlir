@@ -199,7 +199,7 @@ func.func @point_of_transpose_tile_of_tile_all_constant(%arg : tensor<2048x4096x
   %s = gml_st.space [4096, 2048] : !gml_st.tile<4096x2048>
   %t = gml_st.tile %s [0, 32] [128, 256] [1, 2]
       : !gml_st.tile<4096x2048> to !gml_st.tile<128x256>
-  %tt = gml_st.transpose_tile %t, [1, 0]
+  %tt = gml_st.transpose_dims %t, [1, 0]
       : !gml_st.tile<128x256> to !gml_st.tile<256x128>
   %ptt = gml_st.point %tt [4, 8] : !gml_st.tile<256x128> to !gml_st.point
   %res = gml_st.materialize %arg[%ptt]
@@ -220,9 +220,9 @@ func.func @transpose_tile_of_transpose_tile_of_tile(
   %s = gml_st.space [%size, 5, 10] : !gml_st.tile<?x5x10>
   %t = gml_st.tile %s [0, 0, 3] [%size, 5, 4] [%size, 1, 2]
       : !gml_st.tile<?x5x10> to !gml_st.tile<?x5x4>
-  %tt = gml_st.transpose_tile %t, [1, 0, 2]
+  %tt = gml_st.transpose_dims %t, [1, 0, 2]
       : !gml_st.tile<?x5x4> to !gml_st.tile<5x?x4>
-  %tt2 = gml_st.transpose_tile %tt, [2, 1, 0]
+  %tt2 = gml_st.transpose_dims %tt, [2, 1, 0]
       : !gml_st.tile<5x?x4> to !gml_st.tile<4x?x5>
   %res = gml_st.materialize %arg[%tt2]
       : tensor<10x?x5xf32>[!gml_st.tile<4x?x5>]
@@ -239,7 +239,7 @@ func.func @transpose_tile_of_space(
 // CHECK: %[[RES:.*]] = gml_st.materialize %arg0[%[[SPACE]]] : tensor<5x10x?xf32>[!gml_st.tile<5x10x?>]
 // CHECK: return %[[RES]] : tensor<5x10x?xf32>
   %s = gml_st.space [%size, 5, 10] : !gml_st.tile<?x5x10>
-  %tt = gml_st.transpose_tile %s, [1, 2, 0]
+  %tt = gml_st.transpose_dims %s, [1, 2, 0]
       : !gml_st.tile<?x5x10> to !gml_st.tile<5x10x?>
   %res = gml_st.materialize %arg[%tt]
       : tensor<5x10x?xf32>[!gml_st.tile<5x10x?>]

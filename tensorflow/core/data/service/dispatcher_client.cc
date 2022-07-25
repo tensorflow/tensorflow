@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -116,11 +117,15 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
 
 Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const DataServiceMetadata& metadata,
+    const std::optional<std::string>& requested_dataset_id,
     std::string& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
   *req.mutable_metadata() = metadata;
+  if (requested_dataset_id.has_value()) {
+    req.set_dataset_id(*requested_dataset_id);
+  }
 
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;

@@ -550,7 +550,8 @@ absl::Status Arguments::ResolveSelector(
       // x_coord can have batch size property of link_object
       ResolveObjectNames(object_name, names, &x_coord);
       *result = it->second;
-      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("in_value", value_name, result);
+      ReplaceAllWords("out_value", value_name, result);
       ReplaceAllWords("X_COORD", x_coord, result);
       ReplaceAllWords("Y_COORD", y_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);

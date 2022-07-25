@@ -33,7 +33,7 @@ genrule(
     srcs = [
         "passes/quantized_function_library.mlir",
         "passes/quantized_function_library_uniform_quantized_drq.mlir",
-        "passes/quantized_function_library_xla_drq.mlir",
+        "passes/quantized_function_library_tf_drq.mlir",
     ],
     outs = [
         "passes/quantized_function_library.h",
@@ -54,11 +54,10 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -268,6 +267,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":pass_utils",
+        ":quantization_options_proto_cc",
         ":tf_quant_ops",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
@@ -313,7 +313,6 @@ tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
     cc_api_version = 2,
-    make_default_target_header_only = True,
 )
 
 # copybara:uncomment_begin(google-only)

@@ -58,9 +58,13 @@ message GemmBackendConfig {
 
   xla.PrecisionConfig precision_config = 12;
 
-  // Deleted fields.
-  reserved 8, 10, 11;
-  reserved "batch_size", "lhs_stride", "rhs_stride";
+  // cublasLt matmul epilogue.
+  enum Epilogue {
+    DEFAULT = 0;
+    BIAS = 1;
+  }
+
+  Epilogue epilogue = 13;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.

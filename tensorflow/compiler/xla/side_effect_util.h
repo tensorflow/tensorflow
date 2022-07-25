@@ -45,6 +45,21 @@ extern const char kXlaComputeTypeAttr[];
 extern const char kXlaComputeTypeSparse[];
 extern const char kXlaComputeTypeDense[];
 
+// XLA frontend attribute name for the maximum number of ids expected per
+// partition *before* an input batch is partitioned.
+extern const char kXlaMaxIdsPerPartitionAttr[];
+
+// XLA frontend attribute name for the maximum number of unique ids expected per
+// partition *after* an input batch is partitioned.
+extern const char kXlaMaxUniqueIdsPerPartitionAttr[];
+
+// XLA frontend attribute for how to assign ids to partitions.
+extern const char kXlaShardingStrategyAttr[];
+
+// XLA frontend attribute values for kXlaShardingStrategyAttr.
+extern const char kXlaShardingStrategyMod[];
+extern const char kXlaShardingStrategyDiv[];
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SIDE_EFFECT_UTIL_H_

@@ -1204,7 +1204,7 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<func::FuncOp>();
-  target.addIllegalOp<TF::XlaConvOp>();
+  target.addIllegalOp<TF::XlaConvV2Op>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
   RewritePatternSet patterns(context);

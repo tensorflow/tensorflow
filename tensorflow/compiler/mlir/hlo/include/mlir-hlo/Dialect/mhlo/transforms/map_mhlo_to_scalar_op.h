@@ -200,8 +200,8 @@ using ScalarCOp = typename MhloToScalarOp<MhloOp>::COp;
 
 template <typename... Args>
 struct MapMhloOpToScalarOpImpl {
-  Value operator()(Location /*loc*/, ArrayRef<Type> /*result_types*/,
-                   ArrayRef<Type> /*arg_types*/, ValueRange /*args*/,
+  Value operator()(Location /*loc*/, ArrayRef<Type> /*ResultTypes*/,
+                   ArrayRef<Type> /*argTypes*/, ValueRange /*args*/,
                    OpBuilder* /*b*/) {
     return nullptr;
   }
@@ -210,8 +210,7 @@ struct MapMhloOpToScalarOpImpl {
 template <typename StdScalarOp>
 struct MapMhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> resultTypes,
-                   ArrayRef<Type> /*arg_types*/, ValueRange args,
-                   OpBuilder* b) {
+                   ArrayRef<Type> /*argTypes*/, ValueRange args, OpBuilder* b) {
     return b->template create<StdScalarOp>(loc, resultTypes, args, mlir::None);
   }
 };
@@ -392,7 +391,7 @@ inline Optional<arith::CmpIPredicate> getCmpPredicate<arith::CmpIPredicate>(
 
 inline Value mapCompareOpToStdScalarOp(Location loc,
                                        ComparisonDirection comparisonDirection,
-                                       ArrayRef<Type> /*result_types*/,
+                                       ArrayRef<Type> /*ResultTypes*/,
                                        ArrayRef<Type> argTypes, ValueRange args,
                                        OpBuilder* b) {
   const auto& lhs = args[0];
@@ -546,8 +545,8 @@ inline Value mapReducePrecisionOpToStdScalarOp(
 
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::CopyOp>(
-    Location /*loc*/, ArrayRef<Type> /*result_types*/,
-    ArrayRef<Type> /*arg_types*/, ValueRange args, OpBuilder* /*b*/) {
+    Location /*loc*/, ArrayRef<Type> /*ResultTypes*/,
+    ArrayRef<Type> /*argTypes*/, ValueRange args, OpBuilder* /*b*/) {
   return args.front();
 }
 
@@ -585,7 +584,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ImagOp>(Location loc,
 }
 
 // 'target_types' is the unconverted type (signed or unsigned if integer),
-// 'result_types' is the converted type (signless if integer).
+// 'ResultTypes' is the converted type (signless if integer).
 inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
                                        ArrayRef<Type> resultTypes,
                                        ArrayRef<Type> argTypes, ValueRange args,
@@ -755,7 +754,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::DotOp>(Location loc,
 
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::IsFiniteOp>(
-    Location loc, ArrayRef<Type> /*result_types*/, ArrayRef<Type> /*arg_types*/,
+    Location loc, ArrayRef<Type> /*ResultTypes*/, ArrayRef<Type> /*argTypes*/,
     ValueRange args, OpBuilder* b) {
   if (args[0].getType().isa<FloatType>()) {
     auto posInf = APFloat::getInf(
@@ -775,9 +774,8 @@ template <typename... Args>
 struct CompareSelectOpToStdScalarOp {
   static Value map(Location /*loc*/,
                    ComparisonDirection /*comparison_direction*/,
-                   ArrayRef<Type> /*result_types*/,
-                   ArrayRef<Type> /*arg_types*/, ValueRange /*args*/,
-                   OpBuilder* /*b*/) {
+                   ArrayRef<Type> /*ResultTypes*/, ArrayRef<Type> /*argTypes*/,
+                   ValueRange /*args*/, OpBuilder* /*b*/) {
     return nullptr;
   }
 };
@@ -822,7 +820,7 @@ inline Value mhloAlwaysPropagateNaN(Value v, ValueRange args, Location loc,
 
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::LogisticOp>(
-    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*arg_types*/,
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
     ValueRange args, OpBuilder* b) {
   auto ty = resultTypes.front().cast<FloatType>();
   Value one = b->create<arith::ConstantOp>(loc, b->getFloatAttr(ty, 1.0));
@@ -963,9 +961,11 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NegOp>(Location loc,
 }
 
 template <>
-inline Value mapMhloOpToStdScalarOp<mhlo::NotOp>(
-    Location loc, ArrayRef<Type> /*result_types*/, ArrayRef<Type> /*arg_types*/,
-    ValueRange args, OpBuilder* b) {
+inline Value mapMhloOpToStdScalarOp<mhlo::NotOp>(Location loc,
+                                                 ArrayRef<Type> /*ResultTypes*/,
+                                                 ArrayRef<Type> /*argTypes*/,
+                                                 ValueRange args,
+                                                 OpBuilder* b) {
   Type elementType = getElementTypeOrSelf(args.front().getType());
   if (auto integerType = elementType.dyn_cast<IntegerType>()) {
     // lmhlo.not(x) -> x ^ -1
@@ -1073,7 +1073,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::SelectOp>(Location loc,
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
                                                   ArrayRef<Type> resultTypes,
-                                                  ArrayRef<Type> /*arg_types*/,
+                                                  ArrayRef<Type> /*argTypes*/,
                                                   ValueRange args,
                                                   OpBuilder* b) {
   Type elementType = getElementTypeOrSelf(args.front().getType());
@@ -1124,7 +1124,7 @@ struct MhloOpToStdScalarOp {
   }
 
   // Converts mhlo 'op' to linalg and arith ops. The types of 'args' may already
-  // be converted, 'arg_types' are their original types.
+  // be converted, 'argTypes' are their original types.
   template <typename MhloOpTy>
   static Value mapOpWithArgTypes(MhloOpTy op, ArrayRef<Type> resultTypes,
                                  ArrayRef<Type> argTypes, ValueRange args,
@@ -1134,7 +1134,7 @@ struct MhloOpToStdScalarOp {
   }
   // Overload for mhlo::ReducePrecisionOp.
   static Value mapOpWithArgTypes(mhlo::ReducePrecisionOp op,
-                                 ArrayRef<Type> result_types,
+                                 ArrayRef<Type> /*ResultTypes*/,
                                  ArrayRef<Type> argTypes, ValueRange args,
                                  OpBuilder* b) {
     return impl::mapReducePrecisionOpToStdScalarOp(

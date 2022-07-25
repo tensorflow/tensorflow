@@ -374,7 +374,7 @@ TEST_F(OpKernelTest, InputDtype) {
   Tensor c(DT_UINT8, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
                                             TensorValue(&c)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   DataType dtype;
@@ -625,8 +625,6 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
       TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok()) << status.ToString();
   params.op_kernel = op.get();
-  gtl::InlinedVector<TensorValue, 4> inputs{};
-  params.inputs = &inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
@@ -993,7 +991,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   Tensor a(DT_FLOAT, TensorShape({99000, 256}));
   Tensor b(DT_FLOAT, TensorShape({256, 256}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
   auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   for (auto s : state) {

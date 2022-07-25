@@ -46,12 +46,15 @@ Status HloModuleImporter::Import(const xla::HloModule& module) {
   if (!import_all_computation_)
     // Only import the entry computation, any reachable one will be imported
     // unless turned into a region operation.
-    return HloFunctionImporter::ImportAsFunc(
-        *module.entry_computation(), module_, &function_map_, &builder_);
+    return HloFunctionImporter::ImportAsFunc(*module.entry_computation(),
+                                             module_, &function_map_, &builder_,
+                                             /*is_main*/ true);
 
+  auto* module_entry_computation = module.entry_computation();
   for (const auto* computation : module.computations())
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
-        *computation, module_, &function_map_, &builder_));
+        *computation, module_, &function_map_, &builder_,
+        /*is_main*/ computation == module_entry_computation));
 
   return ::tensorflow::OkStatus();
 }

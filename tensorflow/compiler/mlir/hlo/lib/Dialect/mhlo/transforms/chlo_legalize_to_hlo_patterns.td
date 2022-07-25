@@ -145,7 +145,7 @@ def : Pat<(CHLO_AcoshOp ComplexElementType:$input),
 
 // Expand asin to MHLO dialect as follows:
 //   asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
-def : Pat<(CHLO_AsinOp NonComplexElementType:$input),
+def : Pat<(CHLO_AsinOp $input),
   (HLO_MulOp
     (HLO_ConstantLike<"2"> $input),
     (HLO_Atan2Op

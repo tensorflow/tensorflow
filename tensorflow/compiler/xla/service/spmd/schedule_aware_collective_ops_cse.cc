@@ -156,9 +156,11 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
 
 }  // namespace
 
-StatusOr<bool> ScheduleAwareCollectiveOpsCSE::Run(HloModule* module) {
+StatusOr<bool> ScheduleAwareCollectiveOpsCSE::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto comp : module->computations()) {
+  for (auto comp : module->computations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(
         auto comp_changed,
         RunOnComputation(comp, for_replicas_, distance_threshold_));

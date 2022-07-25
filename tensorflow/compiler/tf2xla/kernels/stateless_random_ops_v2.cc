@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -214,7 +215,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
 
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
 
     const int key_input_idx = 1;
     const int counter_input_idx = 2;
@@ -243,7 +245,19 @@ class StatelessRandomUniformOp : public XlaOpKernel {
         xla::ConstantR0WithType(builder, rng_primitive_type, 0.0),
         xla::ConstantR0WithType(builder, rng_primitive_type, 1.0));
     auto uniform = MaybeConvertF32ToBF16(result.value, dtype_);
-    ctx->SetOutput(0, uniform);
+
+    // If the input shape is constant, no need to set dimension sizes.
+    // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
+    Status status = ctx->ConstantInputAsShape(0, &shape);
+    if (status.ok()) {
+      ctx->SetOutput(0, uniform);
+      return;
+    }
+
+    auto result_or = xla::SetAllDimensionSizes(&ctx->value_inference(), uniform,
+                                               ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_or.status());
+    ctx->SetOutput(0, result_or.ValueOrDie());
   }
 
  private:

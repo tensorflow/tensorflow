@@ -120,20 +120,21 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let hasVerifier = 1;
 }
 
-def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
+def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
+    NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = [{
-    Collapses a tile.
+    Drops dimensions of a subset.
   }];
   let description = [{
-    Collapses the argument tile by selecting a subset of its dimensions. The
-    result is a tile in a space of smaller rank, which is implicitly defined by
-    the root space.
+    Selects specific dimensions of a subset and drops the remaining ones. The
+    result is a tile or point in a space of smaller rank, which is implicitly
+    defined by the root space.
   }];
   let arguments = (ins
-    GMLST_TileType:$superset,
+    AnySet:$superset,
     DenseI64ArrayAttr:$remaining_dims);
-  let results = (outs GMLST_TileType:$result);
+  let results = (outs AnySet:$result);
   let assemblyFormat = [{
     $superset `,` $remaining_dims attr-dict `:`
     qualified(type($superset)) `to` qualified(type($result))
@@ -141,19 +142,19 @@ def GMLST_CollapseTileOp : GMLST_Op<"collapse_tile", [NoSideEffect,
   let hasVerifier = 0;
 }
 
-def GMLST_TransposeTileOp : GMLST_Op<"transpose_tile", [
+def GMLST_TransposeDimsOp : GMLST_Op<"transpose_dims", [
     NoSideEffect,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let summary = "Transposes a tile.";
+  let summary = "Transposes the dimensions of a subset.";
   let description = [{
-    Transposes the argument tile by applying the permutation to the dimensions,
-    offsets and strides of the operand tile.
+    Transposes the dimensions of a subset by applying the permutation to the
+    offsets, sizes, and strides.
   }];
   let arguments = (ins
-    GMLST_TileType:$superset,
+    AnySet:$superset,
     DenseI64ArrayAttr:$permutation);
-  let results = (outs GMLST_TileType:$result);
+  let results = (outs AnySet:$result);
   let assemblyFormat = [{
     $superset `,` $permutation attr-dict `:`
     qualified(type($superset)) `to` qualified(type($result))

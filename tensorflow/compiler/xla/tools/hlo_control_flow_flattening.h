@@ -59,7 +59,10 @@ class HloControlFlowFlattening : public HloModulePass {
         remove_comm_(options.remove_comm) {}
   ~HloControlFlowFlattening() override = default;
   absl::string_view name() const override { return "control-flow-flattening"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Replaces an infeed with a custom call.

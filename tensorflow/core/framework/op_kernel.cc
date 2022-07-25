@@ -410,14 +410,14 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
     return errors::InvalidArgument("OpKernel used ref input name '", name,
                                    "' when non-ref input was expected");
   }
-  *tensor = (*params_->inputs)[index].tensor;
+  *tensor = params_->inputs[index].tensor;
   return OkStatus();
 }
 
 Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
-  const TensorValue& value((*params_->inputs)[index]);
+  const TensorValue& value(params_->inputs[index]);
   *dtype = value.dtype();
   return OkStatus();
 }
@@ -433,7 +433,7 @@ const Tensor& OpKernelContext::input(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   CHECK(!input_is_ref(index));
-  const Tensor& tensor = *((*params_->inputs)[index].tensor);
+  const Tensor& tensor = *params_->inputs[index].tensor;
   return tensor;
 }
 
@@ -443,11 +443,11 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   CHECK(input_is_ref(index));
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    Tensor& tensor = *params_->inputs[index].tensor;
     return tensor;
   } else {
     tf_shared_lock l(*input_ref_mutex(index));
-    Tensor& tensor = *((*params_->inputs)[index].tensor);
+    Tensor& tensor = *params_->inputs[index].tensor;
     return tensor;
   }
 }
@@ -459,10 +459,10 @@ void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
   CHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
-    *(*params_->inputs)[index].tensor = tensor;
+    *params_->inputs[index].tensor = tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    *(*params_->inputs)[index].tensor = tensor;
+    *params_->inputs[index].tensor = tensor;
   }
 }
 
@@ -471,8 +471,8 @@ void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
   CHECK_GE(input_index, 0);
   CHECK_LT(input_index, num_inputs());
   CHECK(input_is_ref(input_index));
-  set_output_ref(output_index, (*params_->inputs)[input_index].mutex_if_ref,
-                 (*params_->inputs)[input_index].tensor);
+  set_output_ref(output_index, params_->inputs[input_index].mutex_if_ref,
+                 params_->inputs[input_index].tensor);
 }
 
 bool OpKernelContext::forward_input_to_output_with_shape(
@@ -514,7 +514,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     const AllocatorAttributes& output_attr) {
   CHECK_GE(input_index, 0);
   CHECK_LT(input_index, num_inputs());
-  const TensorValue& input = (*params_->inputs)[input_index];
+  const TensorValue& input = params_->inputs[input_index];
   // Check whether at graph construction time this output was marked
   // either for no forwarding or with a reservation for this input.
   // If it's reserved for this input we'll skip the refcount and
@@ -563,7 +563,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     }
     // Check that output allocator attributes are not more restrictive than
     // input allocator attributes.
-    const auto input_attr = params_->input_alloc_attrs == nullptr
+    const auto input_attr = params_->input_alloc_attrs.empty()
                                 ? AllocatorAttributes()
                                 : input_alloc_attr(input_index);
     if (!output_attr.IsEqualOrLessRestrictiveThan(input_attr)) {
@@ -598,10 +598,10 @@ void OpKernelContext::delete_ref_input(int index, bool lock_held) {
   CHECK(input_is_ref(index));
   // should only modify the tensor while holding the mutex
   if (lock_held) {
-    delete (*params_->inputs)[index].tensor;
+    delete params_->inputs[index].tensor;
   } else {
     mutex_lock l(*input_ref_mutex(index));
-    delete (*params_->inputs)[index].tensor;
+    delete params_->inputs[index].tensor;
   }
 }
 
@@ -615,10 +615,10 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   }
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    *tensor = *(*params_->inputs)[index].tensor;
+    *tensor = *params_->inputs[index].tensor;
   } else {
     tf_shared_lock l(*input_ref_mutex(index));
-    *tensor = *(*params_->inputs)[index].tensor;
+    *tensor = *params_->inputs[index].tensor;
   }
   return OkStatus();
 }
@@ -982,7 +982,7 @@ Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
 }
 
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
-  const auto& inputs = *params_->inputs;
+  const auto& inputs = params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
     if (!inputs[0]->IsSameSize(*(inputs[i].tensor))) {
       SetStatus(errors::InvalidArgument(
@@ -999,7 +999,7 @@ bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
 Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                                        const DataTypeSlice expected_outputs) {
   DataTypeVector inputs;
-  for (const TensorValue& t : *params_->inputs) {
+  for (const TensorValue& t : params_->inputs) {
     inputs.push_back(t.dtype());
   }
   DataTypeVector outputs = params_->op_kernel->output_types();

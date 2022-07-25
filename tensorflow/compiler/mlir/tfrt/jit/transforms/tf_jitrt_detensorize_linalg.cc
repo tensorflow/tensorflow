@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
@@ -60,7 +59,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
       GenericOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const override {
     mlir::Location loc = op.getLoc();
-    mlir::SmallVector<AffineMap, 3> indexing_maps = op.getIndexingMaps();
+    mlir::SmallVector<AffineMap, 3> indexing_maps = op.getIndexingMapsArray();
 
     mlir::SmallVector<Value, 3> inputs;
     bool found_zero_dim_tensor = false;

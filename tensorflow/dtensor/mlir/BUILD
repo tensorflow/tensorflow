@@ -181,7 +181,6 @@ cc_library(
     name = "dtensor_mlir_passes",
     srcs = [
         "annotate_global_shape.cc",
-        "checkpoint_shape_inference.cc",
         "cluster_function_conversion.cc",
         "constant_folding.cc",
         "dce.cc",
@@ -203,6 +202,7 @@ cc_library(
         "op_to_device_cluster.cc",
         "propagate_default_layout.cc",
         "propagate_device_id_to_function_args.cc",
+        "restore_shape_inference.cc",
         "set_default_sharding.cc",
         "sparse_expansion.cc",
         "spmd_expansion.cc",

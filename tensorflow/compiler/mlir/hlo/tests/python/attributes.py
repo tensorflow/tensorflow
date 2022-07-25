@@ -212,3 +212,12 @@ def test_channel_handle():
   assert attr is not None
   assert attr.handle == 1
   assert attr.channel_type == 2
+
+
+@run
+def test_type_extensions():
+  """Check that TypeExtensions attribute is available and usable."""
+
+  attr = TypeExtensions.get(bounds=[128, -1])
+  assert attr is not None
+  assert attr.bounds == [128, -1]

@@ -188,6 +188,10 @@ class RaggedTensorToVariantOp : public OpKernel {
     batched_ragged_input.mutable_nested_splits()->reserve(
         ragged_nested_splits_len);
     for (int i = 0; i < ragged_nested_splits_len; i++) {
+      OP_REQUIRES(context, ragged_nested_splits_in[i].dims() == 1,
+                  errors::InvalidArgument("Requires nested_row_splits[", i, "]",
+                                          " to be rank 1 but is rank ",
+                                          ragged_nested_splits_in[i].dims()));
       batched_ragged_input.append_splits(ragged_nested_splits_in[i]);
     }
 

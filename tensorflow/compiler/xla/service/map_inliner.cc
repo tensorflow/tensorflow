@@ -110,10 +110,12 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   return OkStatus();
 }
 
-StatusOr<bool> MapInliner::Run(HloModule* module) {
+StatusOr<bool> MapInliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   MapInlinerVisitor visitor(/*computation=*/nullptr);
   bool changed = false;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
     changed |= computation_changed;
   }

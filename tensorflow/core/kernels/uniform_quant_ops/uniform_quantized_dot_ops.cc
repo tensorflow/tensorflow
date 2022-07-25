@@ -13,26 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <cmath>
-#include <vector>
-
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/uniform_quant_ops/math_utils.h"
+#include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
 
 namespace tensorflow {
 namespace {
 
 using tensorflow::errors::InvalidArgument;
-
-inline bool IsFinite(float x) { return !std::isinf(x) && !std::isnan(x); }
-
-// Returns if all elements in given tensors are positive.
-template <typename T>
-bool AllElementsPositive(const Tensor& tensor) {
-  auto* tensor_data = tensor.flat<T>().data();
-  return std::all_of(tensor_data, tensor_data + tensor.NumElements(),
-                     [](T v) { return v > 0; });
-}
 
 // Given lhs and rhs shapes, returns if the shapes are valid for 2D X 2D dot.
 Status DotInputShapeValid(const TensorShape& lhs_shape,
@@ -52,138 +40,6 @@ Status DotInputShapeValid(const TensorShape& lhs_shape,
         lhs_shape.DebugString(), " and rhs shape ", rhs_shape.DebugString());
   }
   return OkStatus();
-}
-
-// Given data tensor's shape and quantization params, returns if the shapes are
-// valid.
-Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
-                                     const TensorShape& scales_shape,
-                                     const TensorShape& zero_points_shape,
-                                     int quantization_axis) {
-  if (!scales_shape.IsSameSize(zero_points_shape)) {
-    return InvalidArgument(
-        "scales and zero_points shape must be same, but given scales shape ",
-        scales_shape.DebugString(), " and zero_points shape ",
-        zero_points_shape.DebugString());
-  }
-  if (quantization_axis < -1 || quantization_axis >= data_shape.dims()) {
-    return InvalidArgument(
-        "quantization_axis must be -1 or in range [0, input.rank), but given ",
-        quantization_axis);
-  }
-
-  if (quantization_axis == -1) {
-    if (scales_shape.dims() != 0) {
-      return InvalidArgument(
-          "If quantization_axis is -1, scales and zero_points must be scalar "
-          "tensors, but given scales shape ",
-          scales_shape.DebugString(), " and zero_points shape ",
-          zero_points_shape.DebugString());
-    }
-  } else {
-    if (!(scales_shape.dims() == 1 &&
-          scales_shape.dim_size(0) == data_shape.dim_size(quantization_axis))) {
-      return InvalidArgument(
-          "If quantization_axis is not -1, scales and zero_points must be a "
-          "tensor of rank 1 and the size must be equal to the "
-          "input.dim_size(quantization_axis), but given quantization_axis ",
-          quantization_axis, ", scales shape ", scales_shape.DebugString(),
-          " and zero_points shape ", zero_points_shape.DebugString());
-    }
-  }
-  return OkStatus();
-}
-
-// Quantize input_val using given inv_scale and zero_point, using the formula:
-// quantized_val = input_val * inv_scale + zero_point
-//
-// The caller is reponsible for the validity of the inv_scale (Avoid precision
-// loss from taking inverse, and ensure that inv_scale is a finite number.)
-template <typename Tin, typename Tout>
-void AffineQuantize(const Tin& input_tensor, float inv_scale, int32 zero_point,
-                    int32_t quantization_min_val, int32_t quantization_max_val,
-                    Tout& quantized_tensor) {
-  quantized_tensor = ((input_tensor.template cast<float>() * inv_scale + 0.5f)
-                          .floor()
-                          .template cast<int32_t>() +
-                      zero_point)
-                         .cwiseMin(quantization_max_val)
-                         .cwiseMax(quantization_min_val)
-                         .template cast<typename Tout::Scalar>();
-}
-
-// Given a portion of input float tensor, quantizes the data and writes output
-// to the corresponding portion in quantized_tensor. The quantization scale and
-// zero_point is calculated using the input data min and max.
-// This function is used for dynamic range quantization in hybrid (float x qint)
-// kernels.
-//
-// This function behavior aligns with TFLite AsymmetricQuantize() to achieve
-// feature parity with TFLite which is required since supporting mobile
-// executions is the one of the major use cases. The behavior is same except for
-// following difference:
-// TFLite AsymmetricQuantize() uses
-// round(input / scale + zero_point),
-// while AffineQuantize() uses
-// floor(input_val * (1./scale) + 0.5) + zero_point
-void AsymmetricQuantize(const Tensor& tensor, int apply_offset, int apply_size,
-                        int32_t quantization_min_val,
-                        int32_t quantization_max_val, float& scale,
-                        int32& zero_point, Tensor& quantized_tensor) {
-  Eigen::DSizes<Eigen::Index, 1> apply_offset_array{apply_offset};
-  Eigen::DSizes<Eigen::Index, 1> apply_offset_size{apply_size};
-
-  auto tensor_slice =
-      tensor.flat<float>().slice(apply_offset_array, apply_offset_size);
-  auto quantized_tensor_slice = quantized_tensor.flat<qint8>().slice(
-      apply_offset_array, apply_offset_size);
-
-  Eigen::Tensor<float, 0, Eigen::RowMajor> tensor_slice_min =
-      tensor_slice.minimum();
-  Eigen::Tensor<float, 0, Eigen::RowMajor> tensor_slice_max =
-      tensor_slice.maximum();
-  const double rmin = static_cast<double>(std::min(0.0f, tensor_slice_min()));
-  const double rmax = static_cast<double>(std::max(0.0f, tensor_slice_max()));
-  const double qmin_double = quantization_min_val;
-  const double qmax_double = quantization_max_val;
-
-  float inv_scale = 0;
-  scale = (rmax - rmin) / (qmax_double - qmin_double);
-  if (rmax - rmin != 0) {
-    // Re-calculate the inverse instead of using (1./scale), to avoid loss of
-    // precision.
-    inv_scale = (qmax_double - qmin_double) / (rmax - rmin);
-  }
-  if (scale == 0 || !IsFinite(inv_scale)) {
-    quantized_tensor_slice.setZero();
-    scale = 1.0;
-    zero_point = 0;
-    return;
-  }
-
-  const double zero_point_from_min = qmin_double - rmin / scale;
-  const double zero_point_from_max = qmax_double - rmax / scale;
-  const double zero_point_from_min_error =
-      std::abs(qmin_double) + std::abs(rmin / scale);
-  const double zero_point_from_max_error =
-      std::abs(qmax_double) + std::abs(rmax / scale);
-  const double zero_point_double =
-      zero_point_from_min_error < zero_point_from_max_error
-          ? zero_point_from_min
-          : zero_point_from_max;
-
-  int8_t nudged_zero_point = 0;
-  if (zero_point_double <= qmin_double) {
-    nudged_zero_point = quantization_min_val;
-  } else if (zero_point_double >= qmax_double) {
-    nudged_zero_point = quantization_max_val;
-  } else {
-    nudged_zero_point = static_cast<int8_t>(round(zero_point_double));
-  }
-  zero_point = nudged_zero_point;
-
-  AffineQuantize(tensor_slice, inv_scale, zero_point, quantization_min_val,
-                 quantization_max_val, quantized_tensor_slice);
 }
 
 // Performs dot(lhs, rhs) and writes output to output. Assumes that output is

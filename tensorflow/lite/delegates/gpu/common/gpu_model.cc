@@ -453,6 +453,12 @@ void RemoveUnusedTensors(GpuModel* gpu_model) {
       used_tensors.insert(id);
     }
   }
+  for (const auto& inputs : gpu_model->input_ids_and_refs) {
+    used_tensors.insert(inputs.first);
+  }
+  for (const auto& outputs : gpu_model->output_ids_and_refs) {
+    used_tensors.insert(outputs.first);
+  }
   for (auto it = gpu_model->tensors.begin(); it != gpu_model->tensors.end();) {
     if (used_tensors.find(it->first) == used_tensors.end()) {
       gpu_model->tensors.erase(it++);

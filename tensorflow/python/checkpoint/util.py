@@ -276,7 +276,8 @@ def _add_attributes_to_object_graph_for_saveable_objects(
       # For Trackables that have SaveableObjects or a legacy saveable name,
       # add a single attribute to the proto.
       if (isinstance(saveables[0], saveable_object_util.TrackableSaveable) and
-          saveable_compat.get_saveable_name(object_to_save) is None):
+          (saveable_compat.force_checkpoint_conversion_enabled() or
+           saveable_compat.get_saveable_name(object_to_save) is None)):
         for local_name, local_key in (
             saveables[0].get_proto_names_and_checkpoint_keys()):
           object_proto.attributes.add(

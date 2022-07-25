@@ -126,6 +126,9 @@ struct TfrtCompileOptions {
 
   // Whether to enable the DecomposeResourceOpsPass.
   bool decompose_resource_ops = true;
+
+  // Whether to compile to sync TFRT dialect.
+  bool compile_to_sync_tfrt_dialect = false;
 };
 
 }  // namespace tensorflow

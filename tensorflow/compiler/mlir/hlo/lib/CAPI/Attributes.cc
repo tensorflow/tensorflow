@@ -584,3 +584,25 @@ int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr) {
 int64_t mlirMhloChannelHandleGetType(MlirAttribute attr) {
   return unwrap(attr).cast<mlir::mhlo::ChannelHandleAttr>().getType();
 }
+
+//
+// TypeExtensions
+//
+
+MlirAttribute mlirMhloTypeExtensionsGet(MlirContext ctx, intptr_t nBounds,
+                                        const int64_t *bounds) {
+  return wrap(mlir::mhlo::TypeExtensionsAttr::get(
+      unwrap(ctx), llvm::makeArrayRef(bounds, nBounds)));
+}
+
+bool mlirMhloAttributeIsTypeExtensions(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::TypeExtensionsAttr>();
+}
+
+intptr_t mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr) {
+  return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds().size();
+}
+
+int64_t mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos) {
+  return unwrap(attr).cast<mlir::mhlo::TypeExtensionsAttr>().getBounds()[pos];
+}

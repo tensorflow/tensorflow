@@ -124,10 +124,10 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
       c += "  FLT4 src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
     } else if (op_def.src_tensors[0].IsLinear() &&
                op_def.src_tensors[0].ReturnsZeroForNegOneRead(gpu_info)) {
-      c += "  args.src_tensor.GetAddress(c0, X, Y, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c1, X + 1, Y, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c2, X, Y + 1, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c3, X + 1, Y + 1, " + z + ");\n";
+      c += "  int c0 = args.src_tensor.GetAddress(X, Y, " + z + ");\n";
+      c += "  int c1 = args.src_tensor.GetAddress(X + 1, Y, " + z + ");\n";
+      c += "  int c2 = args.src_tensor.GetAddress(X, Y + 1, " + z + ");\n";
+      c += "  int c3 = args.src_tensor.GetAddress(X + 1, Y + 1, " + z + ");\n";
       c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
       c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
       c += "  c1 = select(-1, c1, x_in);\n";

@@ -27,7 +27,15 @@ namespace {
 std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int X = GLOBAL_ID_0;\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = GLOBAL_ID_0;\n";
+  }
   c += "  int Y = GLOBAL_ID_1;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
        "return; \n";
@@ -65,16 +73,8 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
 
 GPUOperation CreateSoftmax(const OperationDef& definition) {
   GPUOperation op(definition);
-  auto src_desc = definition.src_tensors[0];
-  if (definition.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  op.AddSrcTensor("src_tensor", src_desc);
-  auto dst_desc = definition.dst_tensors[0];
-  if (definition.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  op.AddDstTensor("dst_tensor", dst_desc);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
   op.code_ = GetSoftmaxKernelCode(definition);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
   return op;

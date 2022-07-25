@@ -388,9 +388,11 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
 }  // namespace
 
-StatusOr<bool> ReshapeMover::Run(HloModule* module) {
+StatusOr<bool> ReshapeMover::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     HloInstructionSet reshape_candidates;
     for (HloInstruction* instruction : comp->instructions()) {
       if (IsReshapeMoveCandidate(instruction)) {

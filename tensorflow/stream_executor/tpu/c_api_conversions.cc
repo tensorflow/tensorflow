@@ -170,13 +170,13 @@ static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
   }
 }
 
-static void CreateVector(const absl::Span<const int64_t> src, Int64List* dst) {
+void CreateVector(const absl::Span<const int64_t> src, Int64List* dst) {
   return CreateVectorBase<const int64_t, int64_t, Int64List>(src, dst);
 }
 void CreateVector(const absl::Span<const float> src, FloatList* dst) {
   return CreateVectorBase<const float, float, FloatList>(src, dst);
 }
-static void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
+void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
   return CreateVectorBase<const bool, bool, BoolList>(src, dst);
 }
 
@@ -208,14 +208,14 @@ static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
                                src_list.size);
 }
 
-static absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
+absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
   return MakeSpanBase<int64_t, int64_t, Int64List>(src_list);
 }
 
 absl::Span<const float> MakeSpan(const FloatList& src_list) {
   return MakeSpanBase<float, float, FloatList>(src_list);
 }
-static absl::Span<const bool> MakeSpan(const BoolList& src_list) {
+absl::Span<const bool> MakeSpan(const BoolList& src_list) {
   return MakeSpanBase<bool, bool, BoolList>(src_list);
 }
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -102,13 +103,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <typename ParamsT, typename IndicesT>
-TfLiteStatus GatherNd(const TfLiteTensor* params, const TfLiteTensor* indices,
-                      TfLiteTensor* output) {
-  reference_ops::GatherNd(
+TfLiteStatus GatherNd(TfLiteContext* context, const TfLiteTensor* params,
+                      const TfLiteTensor* indices, TfLiteTensor* output) {
+  const TfLiteStatus status = reference_ops::GatherNd(
       GetTensorShape(params), GetTensorData<ParamsT>(params),
       GetTensorShape(indices), GetTensorData<IndicesT>(indices),
       GetTensorShape(output), GetTensorData<ParamsT>(output));
-  return kTfLiteOk;
+  if (status != kTfLiteOk) {
+    TF_LITE_KERNEL_LOG(context, "gather_nd index out of bounds");
+  }
+  return status;
 }
 
 template <typename IndicesT>
@@ -136,17 +140,17 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
 
   switch (params->type) {
     case kTfLiteFloat32:
-      return GatherNd<float, IndicesT>(params, indices, output);
+      return GatherNd<float, IndicesT>(context, params, indices, output);
     case kTfLiteUInt8:
-      return GatherNd<uint8_t, IndicesT>(params, indices, output);
+      return GatherNd<uint8_t, IndicesT>(context, params, indices, output);
     case kTfLiteInt8:
-      return GatherNd<int8_t, IndicesT>(params, indices, output);
+      return GatherNd<int8_t, IndicesT>(context, params, indices, output);
     case kTfLiteInt16:
-      return GatherNd<int16_t, IndicesT>(params, indices, output);
+      return GatherNd<int16_t, IndicesT>(context, params, indices, output);
     case kTfLiteInt32:
-      return GatherNd<int32_t, IndicesT>(params, indices, output);
+      return GatherNd<int32_t, IndicesT>(context, params, indices, output);
     case kTfLiteInt64:
-      return GatherNd<int64_t, IndicesT>(params, indices, output);
+      return GatherNd<int64_t, IndicesT>(context, params, indices, output);
     case kTfLiteString:
       return GatherNdString<IndicesT>(params, indices, output);
     default:

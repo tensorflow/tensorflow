@@ -278,7 +278,6 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
-        ":host_callback",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -294,6 +293,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
+        "//tensorflow/compiler/xla/pjrt:host_callback",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -761,13 +761,4 @@ pybind_extension(
                ],
                "//conditions:default": [],
            }),
-)
-
-cc_library(
-    name = "host_callback",
-    srcs = ["host_callback.cc"],
-    hdrs = ["host_callback.h"],
-    deps = [
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-    ],
 )

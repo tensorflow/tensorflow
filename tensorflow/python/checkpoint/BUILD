@@ -269,7 +269,6 @@ tf_py_test(
     deps = [
         ":restore",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/trackable:base",
     ],
 )
 
@@ -382,8 +381,12 @@ tf_py_test(
     tags = ["no_pip"],
     deps = [
         ":checkpoint",
+        ":saveable_compat",
         ":testdata/generate_checkpoint",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:base",
+        "//tensorflow/python/training/saving:saveable_object",
     ],
 )
 

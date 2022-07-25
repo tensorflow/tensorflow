@@ -312,8 +312,7 @@ class EMBenchmarkHelper {
       add_inputs_[0] = TensorValue(&gpu_inputs_[0]);
       add_inputs_[1] = TensorValue(&gpu_inputs_[1]);
     }
-    params->inputs = &add_inputs_;
-    params->input_alloc_attrs = nullptr;
+    params->inputs = add_inputs_;
     SetOutputAttrs(params, &allocator_attrs_);
   }
 

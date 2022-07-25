@@ -708,10 +708,10 @@ int64_t HloModule::instruction_count() const {
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
-    const absl::flat_hash_set<absl::string_view>& threads,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
     const absl::flat_hash_set<HloComputation*>& allow_list) const {
   std::vector<HloComputation*> filtered_post_order(allow_list.size());
-  auto post_order = this->MakeComputationPostOrder(threads);
+  auto post_order = this->MakeComputationPostOrder(execution_threads);
 
   int filtered_idx = 0;
   for (auto& computation : post_order) {
@@ -725,7 +725,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
-    const absl::flat_hash_set<absl::string_view>& threads) const {
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
   if (computations_.empty()) {
     return {};
   }
@@ -778,16 +778,17 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
     LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
                << " computation_count=" << computations_.size();
   }
-  if (threads.empty()) {
+  if (execution_threads.empty()) {
     return post_order;
   }
-  std::vector<HloComputation*> post_order_with_threads;
-  absl::c_copy_if(post_order, std::back_inserter(post_order_with_threads),
-                  [&threads](HloComputation* computation) {
-                    return threads.find(computation->thread_name()) !=
-                           threads.end();
-                  });
-  return post_order_with_threads;
+  std::vector<HloComputation*> post_order_with_execution_threads;
+  absl::c_copy_if(
+      post_order, std::back_inserter(post_order_with_execution_threads),
+      [&execution_threads](HloComputation* computation) {
+        return execution_threads.find(computation->execution_thread()) !=
+               execution_threads.end();
+      });
+  return post_order_with_execution_threads;
 }
 
 namespace {
@@ -827,8 +828,9 @@ void SortComputationsByContent(std::vector<HloComputation*>* computations) {
 }  // anonymous namespace
 
 std::vector<HloComputation*> HloModule::MakeComputationSorted(
-    const absl::flat_hash_set<absl::string_view>& threads) const {
-  std::vector<HloComputation*> result = MakeComputationPostOrder(threads);
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+  std::vector<HloComputation*> result =
+      MakeComputationPostOrder(execution_threads);
   if (config().content_aware_computation_sorting()) {
     SortComputationsByContent(&result);
   }
@@ -836,8 +838,9 @@ std::vector<HloComputation*> HloModule::MakeComputationSorted(
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations(
-    const absl::flat_hash_set<absl::string_view>& threads) const {
-  std::vector<HloComputation*> result = MakeComputationPostOrder(threads);
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+  std::vector<HloComputation*> result =
+      MakeComputationPostOrder(execution_threads);
   result.erase(std::remove_if(
                    result.begin(), result.end(),
                    [](HloComputation* c) { return c->IsFusionComputation(); }),
@@ -846,8 +849,8 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations(
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted(
-    const absl::flat_hash_set<absl::string_view>& threads) const {
-  auto result = MakeNonfusionComputations(threads);
+    const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+  auto result = MakeNonfusionComputations(execution_threads);
   if (config().content_aware_computation_sorting()) {
     SortComputationsByContent(&result);
   }

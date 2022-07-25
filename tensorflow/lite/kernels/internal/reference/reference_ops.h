@@ -29,6 +29,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -595,23 +596,31 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   return ret;
 }
 
+// Implements GatherNd.
+// Returns an error if any of the indices_data would cause an out of bounds
+// memory read.
 template <typename ParamsT, typename IndicesT = int32>
-inline void GatherNd(const RuntimeShape& params_shape,
-                     const ParamsT* params_data,
-                     const RuntimeShape& indices_shape,
-                     const IndicesT* indices_data,
-                     const RuntimeShape& output_shape, ParamsT* output_data) {
+inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
+                             const ParamsT* params_data,
+                             const RuntimeShape& indices_shape,
+                             const IndicesT* indices_data,
+                             const RuntimeShape& output_shape,
+                             ParamsT* output_data) {
   ruy::profiler::ScopeLabel label("GatherNd");
 
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   for (int i = 0; i < res.n_slices; ++i) {
-    int from_pos = 0;
+    int64_t from_pos = 0;
     for (int j = 0; j < res.indices_nd; ++j) {
       from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    if (from_pos < 0 || from_pos + res.slice_size > params_shape.FlatSize()) {
+      return kTfLiteError;
     }
     std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
                 sizeof(ParamsT) * res.slice_size);
   }
+  return kTfLiteOk;
 }
 
 #ifndef TF_LITE_STATIC_MEMORY

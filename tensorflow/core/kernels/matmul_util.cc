@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/matmul_util.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -41,6 +42,30 @@ int64_t GetWorkspaceLimit(int64_t default_value_in_bytes) {
   return default_value_in_bytes;
 }
 
+std::string BlasLtMatmulPlanParams::ToString() const {
+  return "";  // TODO
+}
+
+bool BlasLtMatmulPlanParams::operator==(
+    const BlasLtMatmulPlanParams& other) const {
+  return internal::AsTuple(*this) == internal::AsTuple(other);
+}
+
+const PlanAndAlgorithms* BlasLtMatmulPlanMap::Find(
+    const BlasLtMatmulPlanParams& params) const {
+  absl::MutexLock lock(&mu_);
+  auto it = params_plan_map_.find(params);
+  return (it != params_plan_map_.end()) ? &it->second : nullptr;
+}
+
+const PlanAndAlgorithms* BlasLtMatmulPlanMap::Insert(
+    const BlasLtMatmulPlanParams& params, PlanAndAlgorithms value) {
+  absl::MutexLock lock(&mu_);
+  return &params_plan_map_.emplace(params, std::move(value)).first->second;
+}
+
+namespace {
+
 int MatmulMaxAutotuneAlgorithmCount() {
   int64_t value;
   Status status =
@@ -57,29 +82,31 @@ int MatmulMaxAutotuneAlgorithmCount() {
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    const DataType& dtype) {
+    const se::blas::DataType& dtype) {
   using se::blas::ComputationType;
   static bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   switch (dtype) {
-    case DT_HALF:
+    case se::blas::DataType::kHalf:
       return use_f32_for_f16_computation ? ComputationType::kF32
                                          : ComputationType::kF16;
-    case DT_BFLOAT16:
+    case se::blas::DataType::kBF16:
       return ComputationType::kF32;
-    case DT_FLOAT:  // fall-through
-    case DT_COMPLEX64:
+    case se::blas::DataType::kFloat:  // fall-through
+    case se::blas::DataType::kComplexFloat:
       return tensor_float_32_execution_enabled() ? ComputationType::kTF32AsF32
                                                  : ComputationType::kF32;
-    case DT_DOUBLE:  // fall-through
-    case DT_COMPLEX128:
+    case se::blas::DataType::kDouble:  // fall-through
+    case se::blas::DataType::kComplexDouble:
       return ComputationType::kF64;
     default:
       return errors::Internal("Unsupported dtype for Blas Plans.");
   }
 }
 
+}  // namespace
+
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
-    se::Stream* stream, const se::cuda::BlasLt::MatmulPlanParams& params,
+    se::Stream* stream, const BlasLtMatmulPlanParams& params,
     std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
@@ -95,13 +122,70 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
     se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
     TF_RET_CHECK(blas_lt != nullptr);
 
-    se::cuda::BlasLt::MatmulPlan plan;
-    TF_RETURN_IF_ERROR(plan.init(params));
+    TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
+                        GetBlasComputationType(params.dtype));
+
+    se::blas::DataType scale_type =
+        se::cuda::BlasLt::GetScaleType(params.dtype, computation_type);
+
+    // cublas_lt's output is column-major. We want row-major so use identity:
+    // C^T = (A @ B)^T = B^T @ A^T.
+    constexpr auto kColMajor =
+        se::cuda::BlasLt::MatrixLayout::Order::kColumnMajor;
+
+    size_t rows_a = params.k;
+    size_t cols_a = params.m;
+    size_t rows_b = params.n;
+    size_t cols_b = params.k;
+
+    if (params.trans_a != se::blas::Transpose::kNoTranspose) {
+      std::swap(rows_a, cols_a);
+    }
+
+    if (params.trans_b != se::blas::Transpose::kNoTranspose) {
+      std::swap(rows_b, cols_b);
+    }
+
+    int64_t batch_stride_a =
+        params.broadcast_a ? 0 : static_cast<int64_t>(rows_a * cols_a);
+    int64_t batch_stride_b =
+        params.broadcast_b ? 0 : static_cast<int64_t>(rows_b * cols_b);
+
+    TF_ASSIGN_OR_RETURN(
+        auto a_desc,
+        se::cuda::BlasLt::MatrixLayout::Create(
+            params.dtype, rows_a, cols_a, kColMajor, params.batch_count,
+            /*leading_dim_stride=*/std::nullopt, batch_stride_a));
+    TF_ASSIGN_OR_RETURN(
+        auto b_desc,
+        se::cuda::BlasLt::MatrixLayout::Create(
+            params.dtype, rows_b, cols_b, kColMajor, params.batch_count,
+            /*leading_dim_stride=*/std::nullopt, batch_stride_b));
+    TF_ASSIGN_OR_RETURN(auto c_desc, se::cuda::BlasLt::MatrixLayout::Create(
+                                         params.dtype, params.n, params.m,
+                                         kColMajor, params.batch_count));
+    TF_ASSIGN_OR_RETURN(auto d_desc, se::cuda::BlasLt::MatrixLayout::Create(
+                                         params.dtype, params.n, params.m,
+                                         kColMajor, params.batch_count));
+
+    // `A` and `B` swapped (see above re. column-major output).
+    TF_ASSIGN_OR_RETURN(auto op_desc,
+                        se::cuda::BlasLt::MatmulDesc::Create(
+                            computation_type, scale_type,
+                            /*trans_a=*/params.trans_b,
+                            /*trans_b=*/params.trans_a, params.epilogue));
+
+    // `A` and `B` swapped (see above re. column-major output).
+    se::cuda::BlasLt::MatmulPlan plan{std::move(op_desc), std::move(b_desc),
+                                      std::move(a_desc), std::move(c_desc),
+                                      std::move(d_desc)};
+    TF_ASSIGN_OR_RETURN(
+        auto preference,
+        se::cuda::BlasLt::MatmulPreference::Create(max_scratch_size));
 
     TF_ASSIGN_OR_RETURN(
         std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
-        blas_lt->GetMatmulAlgorithms(plan, max_scratch_size,
-                                     *max_algorithm_count));
+        blas_lt->GetMatmulAlgorithms(plan, preference, *max_algorithm_count));
 
     plan_and_algorithms =
         plan_map.Insert(params, {std::move(plan), std::move(algorithms)});

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -29,20 +30,21 @@ namespace {
 std::string GetOneInputCode(const GpuInfo& gpu_info,
                             const OperationType& op_type,
                             CalculationsPrecision precision,
-                            const std::string& input0) {
+                            const std::string& input_value,
+                            const std::string& output_value) {
   const bool use_native_opencl_functions =
       gpu_info.IsApiOpenCl() && precision != CalculationsPrecision::F32 &&
       gpu_info.IsAdreno();
   std::string result;
   switch (op_type) {
     case OperationType::ABS:
-      result = "$0 = fabs($0);\n";
+      result = "$0 = fabs($1);\n";
       break;
     case OperationType::COS:
       if (use_native_opencl_functions) {
-        result = "$0 = native_cos($0);\n";
+        result = "$0 = native_cos($1);\n";
       } else {
-        result = "$0 = cos($0);\n";
+        result = "$0 = cos($1);\n";
       }
       break;
     case OperationType::COPY:
@@ -52,91 +54,91 @@ std::string GetOneInputCode(const GpuInfo& gpu_info,
     case OperationType::ELU:
       if (gpu_info.IsApiOpenCl()) {
         result = R"(
-$0.x = $0.x < INIT_FLT(0.0f) ? expm1($0.x) : $0.x;
-$0.y = $0.y < INIT_FLT(0.0f) ? expm1($0.y) : $0.y;
-$0.z = $0.z < INIT_FLT(0.0f) ? expm1($0.z) : $0.z;
-$0.w = $0.w < INIT_FLT(0.0f) ? expm1($0.w) : $0.w;)";
+$0.x = $1.x < INIT_FLT(0.0f) ? expm1($1.x) : $1.x;
+$0.y = $1.y < INIT_FLT(0.0f) ? expm1($1.y) : $1.y;
+$0.z = $1.z < INIT_FLT(0.0f) ? expm1($1.z) : $1.z;
+$0.w = $1.w < INIT_FLT(0.0f) ? expm1($1.w) : $1.w;)";
       } else {
         result = R"(
-$0.x = $0.x < INIT_FLT(0.0f) ? exp($0.x) - INIT_FLT(1.0f) : $0.x;
-$0.y = $0.y < INIT_FLT(0.0f) ? exp($0.y) - INIT_FLT(1.0f) : $0.y;
-$0.z = $0.z < INIT_FLT(0.0f) ? exp($0.z) - INIT_FLT(1.0f) : $0.z;
-$0.w = $0.w < INIT_FLT(0.0f) ? exp($0.w) - INIT_FLT(1.0f) : $0.w;)";
+$0.x = $1.x < INIT_FLT(0.0f) ? exp($1.x) - INIT_FLT(1.0f) : $1.x;
+$0.y = $1.y < INIT_FLT(0.0f) ? exp($1.y) - INIT_FLT(1.0f) : $1.y;
+$0.z = $1.z < INIT_FLT(0.0f) ? exp($1.z) - INIT_FLT(1.0f) : $1.z;
+$0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
       }
       break;
     case OperationType::EXP:
       if (use_native_opencl_functions) {
-        result = "$0 = native_exp($0);\n";
+        result = "$0 = native_exp($1);\n";
       } else {
-        result = "$0 = exp($0);\n";
+        result = "$0 = exp($1);\n";
       }
       break;
     case OperationType::FLOOR:
-      result = "$0 = floor($0);\n";
+      result = "$0 = floor($1);\n";
       break;
     case OperationType::HARD_SWISH:
       result =
-          "$0 *= clamp($0 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
+          "$0 *= clamp($1 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
           "INIT_FLT4(0.0f), "
           "INIT_FLT4(1.0f));\n";
       break;
     case OperationType::LOG:
       if (use_native_opencl_functions) {
-        result = "$0 = native_log($0);\n";
+        result = "$0 = native_log($1);\n";
       } else {
-        result = "$0 = log($0);\n";
+        result = "$0 = log($1);\n";
       }
       break;
     case OperationType::NEG:
-      result = "$0 = -($0);\n";
+      result = "$0 = -($1);\n";
       break;
     case OperationType::RSQRT:
       if (use_native_opencl_functions) {
-        result = "$0 = native_rsqrt($0);\n";
+        result = "$0 = native_rsqrt($1);\n";
       } else {
-        result = "$0 = rsqrt($0);\n";
+        result = "$0 = rsqrt($1);\n";
       }
       break;
     case OperationType::SIGMOID:
       if (use_native_opencl_functions) {
         result =
             "$0 = convert_half4(native_recip(1.0f + "
-            "native_exp(convert_float4(-$0))));\n";
+            "native_exp(convert_float4(-$1))));\n";
       } else {
-        result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($0)));\n";
+        result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($1)));\n";
       }
       break;
     case OperationType::SIN:
       if (use_native_opencl_functions) {
-        result = "$0 = native_sin($0);\n";
+        result = "$0 = native_sin($1);\n";
       } else {
-        result = "$0 = sin($0);\n";
+        result = "$0 = sin($1);\n";
       }
       break;
     case OperationType::SQRT:
       if (use_native_opencl_functions) {
-        result = "$0 = native_sqrt($0);\n";
+        result = "$0 = native_sqrt($1);\n";
       } else {
-        result = "$0 = sqrt($0);\n";
+        result = "$0 = sqrt($1);\n";
       }
       break;
     case OperationType::SQUARE:
-      result = "$0 *= $0;\n";
+      result = "$0 = $1 * $1;\n";
       break;
     case OperationType::TANH:
       if (use_native_opencl_functions) {
-        result = "  FLT4 exp_val = native_exp(INIT_FLT4(2.0f) * $0);\n";
+        result = "  FLT4 exp_val = native_exp(INIT_FLT4(2.0f) * $1);\n";
         result +=
             "$0 = ((exp_val - INIT_FLT4(1.0f)) / (exp_val + "
             "INIT_FLT4(1.0f)));\n";
       } else {
-        result = "$0 = tanh($0);\n";
+        result = "$0 = tanh($1);\n";
       }
       break;
     default:
       return "Unknown operation type;\n";
   }
-  return absl::Substitute(result, input0);
+  return absl::Substitute(result, output_value, input_value);
 }
 
 std::string GetTwoInputCode(const OperationType& op_type,
@@ -236,8 +238,8 @@ GPUOperation CreateElementwiseOneRuntimeOneScalar(
     op.args_.AddHalf("scalar", half(scalar_parameter));
   }
   op.code_ = "FLT4 second_val = INIT_FLT4(args.scalar);\n";
-  op.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
-                              "second_val", swap_inputs);
+  op.code_ += GetTwoInputCode(op_type, "out_value", "in_value", "second_val",
+                              swap_inputs);
   return op;
 }
 
@@ -266,7 +268,7 @@ GPUOperation CreateElementwiseTwoInput(
     result.code_ += "  second_val.z = second_val.x;\n";
     result.code_ += "  second_val.w = second_val.x;\n";
   }
-  result.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
+  result.code_ += GetTwoInputCode(op_type, "out_value", "in_value",
                                   "second_val", swap_inputs);
   return result;
 }
@@ -299,7 +301,7 @@ GPUOperation CreateElementwiseTwoInput(
     result.code_ += "  second_val.z = second_val.x;\n";
     result.code_ += "  second_val.w = second_val.x;\n";
   }
-  result.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
+  result.code_ += GetTwoInputCode(op_type, "out_value", "in_value",
                                   "second_val", swap_inputs);
 
   return result;
@@ -312,8 +314,8 @@ GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
                                        const OperationType& op_type) {
   GPUOperation op(definition);
   op.elementwise_ = true;
-  op.code_ =
-      GetOneInputCode(gpu_info, op_type, definition.precision, "in_out_value");
+  op.code_ = GetOneInputCode(gpu_info, op_type, definition.precision,
+                             "in_value", "out_value");
   return op;
 }
 
@@ -363,8 +365,8 @@ GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
     op.code_ += "  second_val.z = second_val.x;\n";
     op.code_ += "  second_val.w = second_val.x;\n";
   }
-  op.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
-                              "second_val", false);
+  op.code_ +=
+      GetTwoInputCode(op_type, "out_value", "in_value", "second_val", false);
   return op;
 }
 
