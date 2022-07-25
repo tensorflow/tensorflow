@@ -1370,6 +1370,8 @@ void PrepareTFPass::runOnOperation() {
 
   patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
+  // Remove redundant reshape ops.
+  TF::ReshapeOp::getCanonicalizationPatterns(patterns, ctx);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1399,6 +1401,8 @@ void PrepareTFPass::runOnOperation() {
            ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
+  // Remove redundant reshape ops.
+  TF::ReshapeOp::getCanonicalizationPatterns(phase_2_patterns, ctx);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }

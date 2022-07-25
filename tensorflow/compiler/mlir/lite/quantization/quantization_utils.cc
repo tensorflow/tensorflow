@@ -168,12 +168,10 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
         BroadcastVector<int64_t>(shaped.getDimSize(quant_dim), zero_points)) {
       return {};
     }
-  } else if ((new_shape.size() == shape.size() + 1) && new_shape.back() == 1) {
-    // This is a trivial shift left, then we shift the quant_dim as well.
-    if (std::equal(shape.begin(), shape.end(), new_shape.begin()) &&
-        quant_dim == -1) {
-      quant_dim = shape.size() + quant_dim;
-    } else {
+  } else if ((new_shape.size() == shape.size() + 1) && new_shape.front() == 1) {
+    // Handle the [A, B, C] -> [1, A, B, C] reshape case.
+    if (!(std::equal(shape.begin(), shape.end(), new_shape.begin() + 1) &&
+          quant_dim == new_shape.size() - 1)) {
       return {};
     }
   } else {
@@ -343,6 +341,10 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   // Reset the quantization dimensions if it is per-axis.
   if (auto per_axis =
           qtype.dyn_cast_or_null<quant::UniformQuantizedPerAxisType>()) {
+    // For the pass-through ops, we don't know which the dimension will be the
+    // new quantization dimension. Only if the new quantization dimension can
+    // be inferred, it is safe to reset the per-axis quantized type.
+    if (axis == -1) return {};
     qtype =
         ResetAxisAndBroadcast(source_type.getShape(), per_axis, target, axis);
   }
