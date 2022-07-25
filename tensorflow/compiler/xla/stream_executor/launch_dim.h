@@ -32,9 +32,47 @@ limitations under the License.
 // count has much less modest limits -- typically they're similar to the maximum
 // amount of addressable memory.
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LAUNCH_DIM_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LAUNCH_DIM_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAUNCH_DIM_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAUNCH_DIM_H_
 
-#include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
+#include <string>
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LAUNCH_DIM_H_
+#include "absl/strings/str_cat.h"
+#include "tensorflow/stream_executor/platform/port.h"
+
+namespace stream_executor {
+
+// Basic type that represents a 3-dimensional index space.
+struct Dim3D {
+  uint64_t x, y, z;
+
+  Dim3D(uint64_t x, uint64 y, uint64 z) : x(x), y(y), z(z) {}
+};
+
+// Thread dimensionality for use in a kernel launch. See file comment for
+// details.
+struct ThreadDim : public Dim3D {
+  explicit ThreadDim(uint64_t x = 1, uint64 y = 1, uint64 z = 1)
+      : Dim3D(x, y, z) {}
+
+  // Returns a string representation of the thread dimensionality.
+  std::string ToString() const {
+    return absl::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
+  }
+};
+
+// Block dimensionality for use in a kernel launch. See file comment for
+// details.
+struct BlockDim : public Dim3D {
+  explicit BlockDim(uint64_t x = 1, uint64 y = 1, uint64 z = 1)
+      : Dim3D(x, y, z) {}
+
+  // Returns a string representation of the block dimensionality.
+  std::string ToString() const {
+    return absl::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
+  }
+};
+
+}  // namespace stream_executor
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAUNCH_DIM_H_
