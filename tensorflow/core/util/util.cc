@@ -128,7 +128,7 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
 }
 
 bool IsOneDNNEnabled() {
-  // For platforms which oneDNN does support, always return false.
+  // For platforms which oneDNN doesn't support, always return false.
 #ifndef INTEL_MKL
   return false;
 #endif  // !INTEL_MKL
@@ -142,8 +142,7 @@ bool IsOneDNNEnabled() {
   // Linux: Turn oneDNN on by default for CPUs with neural network features.
   // Windows: oneDNN is off by default.
   // No need to guard for other platforms because INTEL_MKL is only defined
-   // for non-mobile Linux or Windows.
-  static absl::once_flag once;
+  // for non-mobile Linux or Windows.
   static bool oneDNN_enabled =
 #ifdef __linux__
       port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
@@ -155,6 +154,7 @@ bool IsOneDNNEnabled() {
 #else
       false;
 #endif  // __linux__
+  static absl::once_flag once;
   absl::call_once(once, [&] {
     auto status = ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", oneDNN_enabled,
                                      &oneDNN_enabled);

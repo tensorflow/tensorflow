@@ -426,7 +426,7 @@ Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
     return Status::OK();
   }
   if (!IsOneDNNEnabled()) {
-    VLOG(2) << "TF-MKL: oneDNN is not enabled";
+    VLOG(2) << "TF-oneDNN: oneDNN is not enabled";
     return Status::OK();
   }
   if (NativeFormatEnabled()) {

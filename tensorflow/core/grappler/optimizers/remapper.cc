@@ -286,7 +286,7 @@ bool HasDataType(const NodeDef* node, const DataType& expected,
 bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-  // Stock TensorFlow is built with oneDNN enabled as default.
+  // Stock TensorFlow is built with oneDNN, enabled by default on some CPUs.
   bool is_one_dnn_enabled = IsOneDNNEnabled();
 
   if (is_one_dnn_enabled) {
