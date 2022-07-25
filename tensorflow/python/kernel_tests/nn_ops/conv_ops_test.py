@@ -759,6 +759,15 @@ class Conv2DTest(test.TestCase):
         padding=[[2, 1], [1, 2]],
         dilations=[2, 3])
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testConv2dOnlyPaddingReturnsZeros(self):
+    self._VerifyValues(
+        tensor_in_sizes=[1, 0, 2, 1],
+        filter_in_sizes=[1, 1, 1, 1],
+        strides=[1, 1],
+        padding=[[1, 1], [1, 1]],
+        expected=[0, 0, 0, 0, 0, 0, 0, 0])
+
   def testConv2DExplicitPaddingWithLayoutOptimizer(self):
     # Test with Grappler's layout optimizer, to ensure the layout optimizer
     # handles explicit padding correctly.
