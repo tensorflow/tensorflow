@@ -30,9 +30,9 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   // CHECK-DAG:  %[[INIT_SUB:.*]] = gml_st.materialize %[[INIT]][%[[TILE]]]
   // CHECK-DAG:  %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE]]]
   // CHECK:      %[[BCAST_SUB:.*]] = gml_st.dynamic_broadcast_in_dim
-  // CHECK-SAME:     ins(%[[ARG_SUB]] : tensor<?x?xf32>)
-  // CHECK-SAME:     outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
-  // CHECK-SAME:     {broadcast_dimensions = [:i64 0, 2]}
+  // CHECK-SAME:   ins(%[[ARG_SUB]] : tensor<?x?xf32>)
+  // CHECK-SAME:   outs(%[[INIT_SUB]] : tensor<3x4x?xf32>)
+  // CHECK-SAME:   {broadcast_dimensions = [:i64 0, 2]}
   // CHECK:      return %[[BCAST_SUB]]
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index

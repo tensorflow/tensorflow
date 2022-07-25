@@ -43,7 +43,7 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
 //       CHECK: return %[[GATHER]]
 
-func.func @unsupported_gather(%operand : tensor<3x3xf32>,
+func.func @unsupported_gather(%operand: tensor<3x3xf32>,
                               %indices: tensor<3x2xi64>) -> tensor<3xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {
     dimension_numbers = #mhlo.gather<

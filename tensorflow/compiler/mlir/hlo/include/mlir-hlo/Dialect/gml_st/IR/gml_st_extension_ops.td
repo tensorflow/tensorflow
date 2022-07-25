@@ -22,11 +22,20 @@ include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.td"
 
 def TensorOrMemref : AnyTypeOf<[AnyMemRef, AnyRankedTensor]>;
 
-def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim",
-    [NoSideEffect,
-     TypesMatchWith<"result and init types match", "init", "result", "$_self">,
-     DeclareOpInterfaceMethods<FusionInterface>]> {
-  let summary = [{Destination-style twin for `mhlo.dynamic_broadcast_in_dim`}];
+class GMLST_DstStyleOp<string mnemonic, list<Trait> traits> : GMLST_Op<mnemonic,
+    [NoSideEffect] # traits> {
+  let hasCustomAssemblyFormat = 1;
+  code extraBaseClassDeclaration = [{
+    unsigned getNumInputs() {
+      return this->getOperation()->getNumOperands() - getNumOutputs();
+    };
+    unsigned getNumOutputs() { return 1; };
+  }];
+}
+
+def GMLST_DynamicBroadcastInDimOp : GMLST_DstStyleOp<"dynamic_broadcast_in_dim",
+    [DeclareOpInterfaceMethods<FusionInterface>]> {
+  let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
 
   let arguments = (ins
     // Input args
@@ -38,18 +47,12 @@ def GMLST_DynamicBroadcastInDimOp : GMLST_Op<"dynamic_broadcast_in_dim",
     OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
     OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
   );
-  let results = (outs AnyTensor:$result);
-  let assemblyFormat = [{
-    `ins` `(` $operand `:` type($operand) `)`
-    `outs` `(` $init `:` type($init) `)`
-    attr-dict
-  }];
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def GMLST_GatherOp : GMLST_Op<"gather", [
-  NoSideEffect,
-  TypesMatchWith<"result and init types match", "init", "result", "$_self">
-]> {
+def GMLST_GatherOp : GMLST_DstStyleOp<"gather", []> {
   let summary = "Destination-style twin for `mhlo.gather`";
   let description = [{
     Does not currently support the full interface of mhlo.gather. In particular:
@@ -66,18 +69,12 @@ def GMLST_GatherOp : GMLST_Op<"gather", [
     // Output arg
     TensorOrMemref:$init
   );
-  let results = (outs AnyTensor:$result);
-  let assemblyFormat = [{
-    `ins` `(` $operand `:` type($operand) `,`
-              $start_indices `:` type($start_indices) `)`
-    `outs` `(` $init `:` type($init) `)`
-    attr-dict
-  }];
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def GMLST_ScatterOp : GMLST_Op<"scatter", [
-    TypesMatchWith<"result and init types match", "init", "result", "$_self">,
-    NoSideEffect]> {
+def GMLST_ScatterOp : GMLST_DstStyleOp<"scatter", []> {
   let summary = "Destination-style twin for `mhlo.scatter`";
   let description = [{
     Caveats:
@@ -96,13 +93,9 @@ def GMLST_ScatterOp : GMLST_Op<"scatter", [
     // Output arg
     TensorOrMemref:$init
   );
-  let results = (outs AnyTensor:$result);
-  let assemblyFormat = [{
-    `ins` `(` $indices `:` type($indices) `,`
-              $updates `:` type($updates) `)`
-    `outs` `(` $init `:` type($init) `)`
-    attr-dict
-  }];
+  let results = (outs Variadic<AnyTensor>:$result);
+
+  let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
 #endif // GML_ST_EXTENSION_OPS

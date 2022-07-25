@@ -105,6 +105,82 @@ LogicalResult verifyDestinationStyleOp(Operation *op,
   return success();
 }
 
+ParseResult parseAssignmentListWithTypes(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &lhs,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &rhs,
+    SmallVectorImpl<Type> &types) {
+  auto parseElt = [&]() -> ParseResult {
+    if (parser.parseOperand(lhs.emplace_back(), /*allowResultNumber=*/false) ||
+        parser.parseEqual() || parser.parseOperand(rhs.emplace_back()) ||
+        parser.parseColon() || parser.parseType(types.emplace_back())) {
+      return failure();
+    }
+    return success();
+  };
+  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt);
+}
+
+template <typename DstOpTy>
+void printDstStyleOp(DstOpTy op, OpAsmPrinter &p) {
+  if (op.getNumInputs() != 0) {
+    p << " ins(";
+    llvm::interleaveComma(
+        op.getOperands().take_front(op.getNumInputs()), p,
+        [&](Value input) { p << input << " : " << input.getType(); });
+    p << ")";
+  }
+  p << " outs(";
+  llvm::interleaveComma(
+      op.getOperands().take_back(op.getNumOutputs()), p,
+      [&](Value output) { p << output << " : " << output.getType(); });
+  p << ")";
+
+  p.printOptionalAttrDict(op->getAttrs());
+}
+
+ParseResult parseKeywordOperandListWithTypes(
+    OpAsmParser &parser, OperationState &result, StringRef keyword,
+    SmallVectorImpl<Type> *operandTypes) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+  if (succeeded(parser.parseOptionalKeyword(keyword))) {
+    SMLoc operandsOperandsLoc = parser.getCurrentLocation();
+
+    if (parser.parseCommaSeparatedList(
+            AsmParser::Delimiter::Paren, [&]() -> ParseResult {
+              if (parser.parseOperand(operands.emplace_back(),
+                                      /*allowResultNumber=*/false) ||
+                  parser.parseColon() ||
+                  parser.parseType(operandTypes->emplace_back())) {
+                return failure();
+              }
+              return success();
+            }))
+      return failure();
+
+    if (parser.resolveOperands(operands, *operandTypes, operandsOperandsLoc,
+                               result.operands))
+      return failure();
+  }
+  return success();
+}
+
+ParseResult parseDstStyleOp(OpAsmParser &parser, OperationState &result) {
+  // Parse `ins` and `outs`.
+  SmallVector<Type, 4> inputTypes, outputTypes;
+  if (parseKeywordOperandListWithTypes(parser, result, "ins", &inputTypes) ||
+      parseKeywordOperandListWithTypes(parser, result, "outs", &outputTypes))
+    return failure();
+
+  // Add result types.
+  for (Type outputType : outputTypes) {
+    if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
+  }
+
+  // Parse optional attributes.
+  if (parser.parseOptionalAttrDict(result.attributes)) return failure();
+  return success();
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -272,23 +348,6 @@ void LoopOp::print(OpAsmPrinter &p) {
                        LoopOp::getIteratorTypesAttrName(),
                        LoopOp::getDistributionTypesAttrName()});
 }
-
-namespace {
-ParseResult parseAssignmentListWithTypes(
-    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &lhs,
-    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &rhs,
-    SmallVectorImpl<Type> &types) {
-  auto parseElt = [&]() -> ParseResult {
-    if (parser.parseOperand(lhs.emplace_back(), /*allowResultNumber=*/false) ||
-        parser.parseEqual() || parser.parseOperand(rhs.emplace_back()) ||
-        parser.parseColon() || parser.parseType(types.emplace_back())) {
-      return failure();
-    }
-    return success();
-  };
-  return parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt);
-}
-}  // namespace
 
 ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
@@ -1953,15 +2012,24 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
+ParseResult DynamicBroadcastInDimOp::parse(OpAsmParser &parser,
+                                           OperationState &result) {
+  return parseDstStyleOp(parser, result);
+}
+
+void DynamicBroadcastInDimOp::print(OpAsmPrinter &p) {
+  printDstStyleOp(cast<DynamicBroadcastInDimOp>(getOperation()), p);
+}
+
 LogicalResult DynamicBroadcastInDimOp::verify() {
-  return verifyDestinationStyleOp(this->getOperation());
+  return verifyDestinationStyleOp(this->getOperation(), getNumOutputs());
 }
 
 Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
                                     OpBuilder &builder) {
   Type subsetTy = subset.getType();
   auto operandTy = operand().getType().cast<RankedTensorType>();
-  auto resultTy = getType().cast<RankedTensorType>();
+  auto resultTy = getType(0).cast<RankedTensorType>();
   int64_t operandRank = operandTy.getRank();
 
   // Create the needed constants only once.
@@ -2063,9 +2131,12 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
     // Finally, materialize tiled broadcast.
     auto tiledResultTy =
         RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
-    return builder.create<DynamicBroadcastInDimOp>(
-        loc, tiledResultTy, tiledOperand, tiledInit, broadcast_dimensionsAttr(),
-        known_expanding_dimensionsAttr(), known_nonexpanding_dimensionsAttr());
+    return builder
+        .create<DynamicBroadcastInDimOp>(
+            loc, TypeRange{tiledResultTy}, tiledOperand, tiledInit,
+            broadcast_dimensionsAttr(), known_expanding_dimensionsAttr(),
+            known_nonexpanding_dimensionsAttr())
+        .getResult(0);
   }
 
   return {};
@@ -2075,16 +2146,32 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
 // ScatterOp
 //===----------------------------------------------------------------------===//
 
+ParseResult ScatterOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(parser, result);
+}
+
+void ScatterOp::print(OpAsmPrinter &p) {
+  printDstStyleOp(cast<ScatterOp>(getOperation()), p);
+}
+
 LogicalResult ScatterOp::verify() {
-  return verifyDestinationStyleOp(this->getOperation());
+  return verifyDestinationStyleOp(getOperation(), getNumOutputs());
 }
 
 //===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 
+ParseResult GatherOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseDstStyleOp(parser, result);
+}
+
+void GatherOp::print(OpAsmPrinter &p) {
+  printDstStyleOp(cast<GatherOp>(getOperation()), p);
+}
+
 LogicalResult GatherOp::verify() {
-  return verifyDestinationStyleOp(this->getOperation());
+  return verifyDestinationStyleOp(this->getOperation(), getNumOutputs());
 }
 
 //===----------------------------------------------------------------------===//
