@@ -435,10 +435,8 @@ cc_library(
     hdrs = ["pjrt_future.h"],
     visibility = [":friends"],
     deps = [
-        ":utils",
-        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],

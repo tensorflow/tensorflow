@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -214,12 +215,12 @@ class PjRtFuture {
   // The client should avoid any potentially re-entrant API calls within the
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
-  void OnReady(std::function<void(T)> callback) {
-    promise_ref_.AndThen(
-        [promise = promise_ref_.CopyRef(), callback = std::move(callback)]() {
-          DCHECK(promise.IsConcrete());
-          callback(*promise);
-        });
+  void OnReady(absl::AnyInvocable<void(T) &&> callback) {
+    promise_ref_.AndThen([promise = promise_ref_.AsPtr(),
+                          callback = std::move(callback)]() mutable {
+      DCHECK(promise.IsConcrete());
+      std::move(callback)(*promise);
+    });
   }
 
   // Indicates that event will not complete until after this becomes ready.
