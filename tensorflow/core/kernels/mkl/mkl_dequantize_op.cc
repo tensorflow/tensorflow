@@ -94,7 +94,7 @@ class MklDequantizeOp : public OpKernel {
           break;
         default:
           OP_REQUIRES_OK(ctx,
-                         errors::Aborted("Input dims must be <= 5 and >= 1"));
+                         errors::InvalidArgument("Input dims must be <= 5 and >= 1"));
           return;
       }
 
