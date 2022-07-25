@@ -14,16 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 
 namespace tensorflow {
@@ -73,12 +70,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
         return errors::InvalidArgument("Malformed tpu_embedding_config.");
       }
       std::vector<TensorShapeProto> output_shapes;
-      if (config.feature_descriptor_size() == 0) {
-        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
-      } else {
-        TF_RETURN_IF_ERROR(
-            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
-      }
+      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument("num outputs != size of output shapes");
       }
