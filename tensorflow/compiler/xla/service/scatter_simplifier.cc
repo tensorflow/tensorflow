@@ -205,8 +205,19 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
 
   auto dim_numbers = MakeScatterDimensionNumbers(
       operand_rank, attrs.scatter_dims_to_operand_dims().size());
+  Shape output_shape;
+  if (scatter_operands.size() == 1) {
+    output_shape = scatter_operands.front()->shape();
+  } else {
+    std::vector<Shape> shapes;
+    shapes.reserve(scatter_operands.size());
+    for (auto* operand : scatter_operands) {
+      shapes.push_back(operand->shape());
+    }
+    output_shape = ShapeUtil::MakeTupleShape(shapes);
+  }
   auto* result = scatter->AddInstruction(HloInstruction::CreateScatter(
-      scatter->shape(), scatter_operands, scatter_indices, scatter_updates,
+      output_shape, scatter_operands, scatter_indices, scatter_updates,
       scatter->called_computations().front(), dim_numbers,
       // TODO(unknown): Is this still correct?
       scatter->indices_are_sorted(), scatter->unique_indices()));

@@ -171,10 +171,10 @@ TEST_F(ScatterSimplifierTest, TransformsUpdatesAndOperandUsingScatterDims) {
     }
 
     ENTRY kernel_entry {
-      operand = f32[3,3,3] parameter(0)
+      operand = f32[3,4,5] parameter(0)
       indices = s32[2,2] parameter(1)
       update = f32[2,1,1,3] parameter(2)
-      ROOT scatter = f32[3,3,3] scatter(operand, indices, update),
+      ROOT scatter = f32[3,4,5] scatter(operand, indices, update),
           to_apply=scatter_computation,
           update_window_dims={1, 2, 3},
           inserted_window_dims={},
@@ -183,14 +183,14 @@ TEST_F(ScatterSimplifierTest, TransformsUpdatesAndOperandUsingScatterDims) {
     })";
 
   RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
-           CHECK: %[[T_OPERAND:.*]] = f32[3,3,3]{0,2,1} transpose(%operand),
+           CHECK: %[[T_OPERAND:.*]] = f32[5,3,4]{0,2,1} transpose(%operand),
       CHECK-SAME:     dimensions={2,0,1}
            CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{1,3,2,0} transpose(%update),
       CHECK-SAME:     dimensions={0,3,1,2}
            CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
       CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
       CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
-           CHECK: ROOT %{{.*}} = f32[3,3,3]{1,0,2}
+           CHECK: ROOT %{{.*}} = f32[3,4,5]
       CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
   )");
 }
