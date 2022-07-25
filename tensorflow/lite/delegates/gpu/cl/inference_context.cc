@@ -588,9 +588,8 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
             *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
             width_pixel_alignment, &shared_buffer_tensors_[tensor_index]));
       } else {
-        RETURN_IF_ERROR(CreateSharedTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
-            tensor_desc.GetBHWCShape(), tensor_desc,
+        RETURN_IF_ERROR(CreateTensorShared(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
             &shared_buffer_tensors_[tensor_index]));
       }
       created_tensors[tensor_index] = true;
