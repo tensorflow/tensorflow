@@ -835,6 +835,17 @@ func.func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
   func.return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: @dynamic_iota_is_static_constant_arg
+func.func @dynamic_iota_is_static_constant_arg(%arg0: tensor<5xi32>) -> tensor<?xi32> {
+  // CHECK-NOTE: mhlo.dynamic_iota
+  // CHECK: [[RESULT:%.*]] = "mhlo.iota"
+  // CHECK: [[CAST:%.*]] = tensor.cast [[RESULT]]
+  // CHECK: return [[CAST]]
+  %0 = mhlo.constant dense<5> : tensor<1xi32>
+  %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
+  func.return %1 : tensor<?xi32>
+}
+
 // CHECK-LABEL: @dynamic_iota_broadcast
 func.func @dynamic_iota_broadcast(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
   // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
@@ -2193,10 +2204,10 @@ func.func @dynamic_pad_identity_fold(%arg0: tensor<5x7xf32>) -> tensor<11x15xf32
   %2 = arith.constant dense<1> : tensor<2xi32>
   %3 = arith.constant dense<1> : tensor<2xi32>
   // CHECK: %[[CST:.+]] = arith.constant dense<0.000000e+00> : tensor<f32>
-  // CHECK: %[[PAD:.+]] = "mhlo.pad"(%arg0, %[[CST]]) 
+  // CHECK: %[[PAD:.+]] = "mhlo.pad"(%arg0, %[[CST]])
   // CHECK-SAME: edge_padding_high = dense<1> : tensor<2xi64>
   // CHECK-SAME: edge_padding_low = dense<1> : tensor<2xi64>
-  // CHECK-SAME: interior_padding = dense<1> : tensor<2xi64>} 
+  // CHECK-SAME: interior_padding = dense<1> : tensor<2xi64>}
   // CHECK-SAME: (tensor<5x7xf32>, tensor<f32>) -> tensor<11x15xf32>
   %4 = "mhlo.dynamic_pad"(%arg0, %0, %1, %2, %3) {
   } : (tensor<5x7xf32>, tensor<f32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<11x15xf32>
