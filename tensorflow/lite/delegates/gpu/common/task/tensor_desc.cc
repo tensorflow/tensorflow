@@ -86,7 +86,7 @@ std::string GetConversionForImage(const GpuInfo& gpu_info, DataType src_type,
   DataType interm_type = src_type;
   if (gpu_info.IsApiOpenCl()) {
     if (src_type == DataType::FLOAT16 && dst_type == DataType::FLOAT32) {
-      return "";
+      return "$0";
     }
     interm_type = ToClTextureType(src_type);
   } else if (gpu_info.IsApiMetal()) {
@@ -106,9 +106,7 @@ std::string GetConversion(const GpuInfo& gpu_info,
 }
 
 void MayBeAddConversion(const std::string& conversion, std::string* result) {
-  if (!conversion.empty()) {
-    *result = conversion + "(" + *result + ")";
-  }
+  *result = absl::Substitute(conversion, *result);
 }
 
 absl::optional<std::string> GetLinearIndexFromTemplateArgs(
@@ -760,9 +758,7 @@ std::string TensorDescriptor::Write(
   if (write_type != write_required_type) {
     const std::string conversion =
         GetTypeConversion(gpu_info, write_type, write_required_type, 4);
-    if (!conversion.empty()) {
-      write_expr = conversion + "(" + write_expr + ")";
-    }
+    write_expr = absl::Substitute(conversion, write_expr);
   }
   switch (storage_type_) {
     case TensorStorageType::BUFFER:
