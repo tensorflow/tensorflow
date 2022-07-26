@@ -59,11 +59,11 @@ limitations under the License.
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
-#include "tensorflow/core/platform/logging.h"
 
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
 #ifndef __Fuchsia__
@@ -231,7 +231,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   if (IsMKLEnabled()) {
     MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
            new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
-    MK_OPT("auto_mixed_precision_bfloat16", "auto_mixed_precision_bfloat16",
+    MK_OPT("auto_mixed_precision_onednn_bfloat16",
+           "auto_mixed_precision_onednn_bfloat16",
            new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
   }
 #endif
@@ -372,9 +373,10 @@ Status MetaOptimizer::InitializeOptimizers(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
 #ifdef INTEL_MKL
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_bfloat16()) &&
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16()) &&
       AutoMixedPrecisionEnabled(
-          plugin_configs.toggle_config["auto_mixed_precision_bfloat16"]) &&
+          plugin_configs
+              .toggle_config["auto_mixed_precision_onednn_bfloat16"]) &&
       IsMKLEnabled()) {
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
@@ -383,8 +385,9 @@ Status MetaOptimizer::InitializeOptimizers(
       AutoMixedPrecisionEnabled(
           plugin_configs.toggle_config["auto_mixed_precision_mkl"]) &&
       IsMKLEnabled()) {
-    LOG_FIRST_N(INFO, 1) << "NOTE: auto_mixed_precision_mkl is deprecated. "\
-      "Please use auto_mixed_precision_bfloat16 instead\n";
+    LOG_FIRST_N(WARNING, 1)
+        << "NOTE: auto_mixed_precision_mkl is deprecated."
+           " Please use auto_mixed_precision_onednn_bfloat16 instead";
     optimizers->push_back(
         MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
   }
@@ -632,8 +635,8 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())
             ? RewriterConfig::ON
             : RewriterConfig::OFF;
-    user_cfg.toggle_config["auto_mixed_precision_bfloat16"] =
-        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_bfloat16())
+    user_cfg.toggle_config["auto_mixed_precision_onednn_bfloat16"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16())
             ? RewriterConfig::ON
             : RewriterConfig::OFF;
     user_cfg.toggle_config["auto_mixed_precision_mkl"] =
@@ -670,7 +673,8 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       PRINT_CFG("constfold", "constant_folding")
       PRINT_CFG("shape", "shape_optimization")
       PRINT_CFG("auto_mixed_precision", "auto_mixed_precision")
-      PRINT_CFG("auto_mixed_precision_bfloat16", "auto_mixed_precision_bfloat16")
+      PRINT_CFG("auto_mixed_precision_onednn_bfloat16",
+                "auto_mixed_precision_onednn_bfloat16")
       PRINT_CFG("auto_mixed_precision_mkl", "auto_mixed_precision_mkl")
       PRINT_CFG("auto_mixed_precision_cpu", "auto_mixed_precision_cpu")
       PRINT_CFG("pin_to_host", "pin_to_host_optimization")
@@ -711,7 +715,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
   for (auto& pair : user_cfg.toggle_config) {
     if (pair.first == "debug_stripper" ||
         pair.first == "auto_mixed_precision" ||
-        pair.first == "auto_mixed_precision_bfloat16" ||
+        pair.first == "auto_mixed_precision_onednn_bfloat16" ||
         pair.first == "auto_mixed_precision_mkl" ||
         pair.first == "auto_mixed_precision_cpu" ||
         pair.first == "pin_to_host_optimization" ||
@@ -1338,7 +1342,8 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
 #endif
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
-         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_bfloat16()) ||
+         AutoMixedPrecisionEnabled(
+             rewrite_cfg.auto_mixed_precision_onednn_bfloat16()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_cpu()) ||
          !rewrite_cfg.optimizers().empty() ||

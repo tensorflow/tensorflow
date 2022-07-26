@@ -2271,9 +2271,9 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
 #if !defined(INTEL_MKL)
   if (mode_ == AutoMixedPrecisionMode::BF16) {
     return errors::Unimplemented(
-        "The auto_mixed_precision_bfloat16 optimizer cannot be used since "
-        "this build of TensorFlow is not compiled with oneDNN support for "
-        "bfloat16. "
+        "The auto_mixed_precision_onednn_bfloat16 optimizer cannot be used "
+        "since this build of TensorFlow is not compiled with oneDNN support "
+        "for bfloat16. "
         "For information on oneDNN builds, see: "
         "https://software.intel.com/en-us/articles/intel-optimization-for-"
         "tensorflow-installation-guide");
@@ -2292,10 +2292,8 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   if (num_gpus >= 1 && mode_ == AutoMixedPrecisionMode::BF16) {
-    // AutoMixedPrecision is currently only available for CPUs.
-    LOG(WARNING) << "GPUs detected, skipping " << name()
-                 << " graph optimizer";
-    return OkStatus();
+    LOG(WARNING) << "Note: GPUs detected. Using " << name()
+                 << " graph optimizer configured for BFloat16 on CPUs";
   }
 
   // Optimize the output graph in-place.

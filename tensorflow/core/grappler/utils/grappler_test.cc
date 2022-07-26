@@ -72,7 +72,7 @@ void CompareGraphNodes(protobuf::RepeatedPtrField<NodeDef>* want,
 void SetAllOptimizers(RewriterConfig* cfg, RewriterConfig::Toggle value) {
   cfg->set_arithmetic_optimization(value);
   cfg->set_auto_mixed_precision(value);
-  cfg->set_auto_mixed_precision_bfloat16(value);
+  cfg->set_auto_mixed_precision_onednn_bfloat16(value);
   cfg->set_common_subgraph_elimination(value);
   cfg->set_constant_folding(value);
   cfg->set_debug_stripper(value);

@@ -46,7 +46,7 @@ class AutoMixedPrecision : public GraphOptimizer {
       case AutoMixedPrecisionMode::CUDA:
         return "auto_mixed_precision";
       case AutoMixedPrecisionMode::BF16:
-        return "auto_mixed_precision_bfloat16";
+        return "auto_mixed_precision_onednn_bfloat16";
       case AutoMixedPrecisionMode::CPU:
         return "auto_mixed_precision_cpu";
       default:

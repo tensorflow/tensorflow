@@ -110,13 +110,14 @@ message RewriterConfig {
   // Optimize data types for oneDNN (default is OFF).
   // This will try to use bfloat16 on CPUs, which is faster.
   // Note that this can change the numerical stability of the graph.
-  // Note: this config is deprecated
+  // Note: this is deprecated.
+  // It is replaced by auto_mixed_precision_onednn_bfloat16
   Toggle auto_mixed_precision_mkl = 31;
   // Optimize data types for oneDNN (default is OFF).
   // This will try to use bfloat16 on CPUs, which is faster.
   // Note that this can change the numerical stability of the graph.
-  // Note: this replaces auto_mixed_precision_mkl
-  Toggle auto_mixed_precision_bfloat16 = 25;
+  // Note: this is equivalent to the deprecated option auto_mixed_precision_mkl
+  Toggle auto_mixed_precision_onednn_bfloat16 = 25;
   // Emulate a model using data type float16 on CPU (default is OFF).
   // This will try to emulate the float16 inputs and outputs of an operator
   // on CPU to have better correlation with float16 on GPU; however the

@@ -245,7 +245,7 @@ def _get_config(auto_mixed_precision_mode):
   if auto_mixed_precision_mode == 'cuda':
     rewrite_config.auto_mixed_precision = rewriter_config_pb2.RewriterConfig.ON
   elif auto_mixed_precision_mode == 'mkl':
-    rewrite_config.auto_mixed_precision_bfloat16 = (
+    rewrite_config.auto_mixed_precision_onednn_bfloat16 = (
         rewriter_config_pb2.RewriterConfig.ON)
   else:
     assert auto_mixed_precision_mode is None
