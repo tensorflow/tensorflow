@@ -5194,11 +5194,4 @@ void CUBLASWINAPI cublasZtrmm(char side, char uplo, char transa, char diag,
   return func_ptr(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb);
 }
 
-CUBLASAPI const char* CUBLASWINAPI cublasGetStatusString(cublasStatus_t status) {
-  using FuncPtr = const char*(CUBLASWINAPI *)(cublasStatus_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cublasGetStatusString");
-  if (!func_ptr) LogFatalSymbolNotFound("cublasGetStatusString");
-  return func_ptr(status);
-}
-
 }  // extern "C"
