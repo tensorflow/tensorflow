@@ -89,7 +89,7 @@ internal communication only. It is not built for use in an untrusted network.**
 
 For performance reasons, the default TensorFlow server does not include any
 authorization protocol and sends messages unencrypted. It accepts connections
-from anywhere and executes the graphs it is sent without performing any checks.
+from anywhere, and executes the graphs it is sent without performing any checks.
 Therefore, if you run a `tf.train.Server` in your network, anybody with
 access to the network can execute what you should consider arbitrary code with
 the privileges of the process running the `tf.train.Server`.
@@ -129,7 +129,7 @@ with specially crafted inputs.
 ### What is a vulnerability?
 
 Given TensorFlow's flexibility, it is possible to specify computation graphs
-that exhibit unexpected or unwanted behavior. The fact that TensorFlow models
+which exhibit unexpected or unwanted behavior. The fact that TensorFlow models
 can perform arbitrary computations means that they may read and write files,
 communicate via the network, produce deadlocks and infinite loops, or run out
 of memory. It is only when these behaviors are outside the specifications of the
