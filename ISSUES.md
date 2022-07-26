@@ -8,4 +8,4 @@ If you open a GitHub Issue, here is our policy:
 **Here's why we have this policy:** We want to focus on the work that benefits
 the whole community, e.g., fixing bugs and adding features. Individual support
 should be sought on Stack Overflow or other non-GitHub channels. It helps us to
-address bugs and feature requests promptly.
+address bugs and feature requests in a timely manner.
