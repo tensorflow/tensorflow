@@ -67,7 +67,7 @@ process untrusted inputs assuming there are no bugs. There are two main reasons
 to not rely on this: First, it is easy to write models which must not be exposed
 to untrusted inputs, and second, there are bugs in any software system of
 sufficient complexity. Letting users control inputs could allow them to trigger
-bugs either in TensorFlow or in depending libraries.
+bugs either in TensorFlow or its dependencies.
 
 In general, it is good practice to isolate parts of any system which is exposed
 to untrusted (e.g., user-provided) inputs in a sandbox.
