@@ -45,6 +45,8 @@ class MklDequantizeOp : public OpKernel {
                 errors::InvalidArgument(
                     "MklDequantizeOp only supports 'SCALED' mode, but got '" +
                     mode_string + "'"));
+
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -53,21 +55,16 @@ class MklDequantizeOp : public OpKernel {
       auto cpu_engine = engine(engine::kind::cpu, 0);
 
       // Get the inputs
-      const Tensor& src_tensor = MklGetInput(ctx, kSrcIndex);
-      const float min_range =
-          MklGetInput(ctx, kMinIndex).template flat<float>()(0);
-      const float max_range =
-          MklGetInput(ctx, kMaxIndex).template flat<float>()(0);
+      const Tensor& src_tensor = ctx->input(kSrcIndex);
+      const float min_range = ctx->input(kMinIndex).flat<float>()(0);
+      const float max_range = ctx->input(kMaxIndex).flat<float>()(0);
 
       // Get MklShape
-      MklDnnShape src_mkl_shape;
-      GetMklShape(ctx, kSrcIndex, &src_mkl_shape, native_format);
+      auto src_tf_shape = src_tensor.shape();
 
       // src_dims is the dimension of src_tensor
       // output_dims are same as src_dims
-      auto src_dims = src_mkl_shape.IsMklTensor()
-                          ? src_mkl_shape.GetSizesAsMklDnnDims()
-                          : TFShapeToMklDnnDims(src_tensor.shape());
+      auto src_dims = TFShapeToMklDnnDims(src_tensor.shape());
       auto output_dims = src_dims;
 
       // Create reorder memory for src and dst
@@ -78,16 +75,34 @@ class MklDequantizeOp : public OpKernel {
       MklDnnThreadPool eigen_tp(ctx);
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
+      memory::format_tag dst_layout_type;
+      switch (src_tf_shape.dims()) {
+        case 1:
+          dst_layout_type = memory::format_tag::x;
+          break;
+        case 2:
+          dst_layout_type = memory::format_tag::nc;
+          break;
+        case 3:
+          dst_layout_type = memory::format_tag::tnc;
+          break;
+        case 4:
+          dst_layout_type = memory::format_tag::nhwc;
+          break;
+        case 5:
+          dst_layout_type = memory::format_tag::ndhwc;
+          break;
+        default:
+          OP_REQUIRES_OK(
+              ctx, errors::InvalidArgument("Input dims must be <= 5 and >= 1"));
+          return;
+      }
+
       // If input is in MKL layout, then simply grab input layout; otherwise,
       // construct input TF layout. For TF layout, although input shape
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout
-      auto src_md =
-          src_mkl_shape.IsMklTensor()
-              ? src_mkl_shape.GetMklLayout()
-              : memory::desc(src_dims, MklDnnType<T>(),
-                             src_dims.size() == 4 ? memory::format_tag::nhwc
-                                                  : memory::format_tag::nc);
+      auto src_md = memory::desc(src_dims, MklDnnType<T>(), dst_layout_type);
 
       src.SetUsrMem(src_md, &src_tensor);
       src.SetUsrMemDataHandle(&src_tensor, reorder_stream);
@@ -95,32 +110,13 @@ class MklDequantizeOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;
-      memory::desc dst_md = memory::desc();
-      if (src_mkl_shape.IsMklTensor()) {
-        dst_md = memory::desc(src_mkl_shape.GetMklLayout().data);
-        // There is no API in MKL-DNN v1.x to construct memory descriptor with
-        // same .data field but different type.
-        dst_md.data.data_type = memory::convert_to_c(MklDnnType<float>());
-      } else {
-        dst_md = memory::desc(src_dims, MklDnnType<float>(),
-                              src_dims.size() == 4 ? memory::format_tag::nhwc
-                                                   : memory::format_tag::nc);
-      }
+      memory::desc dst_md =
+          memory::desc(src_dims, MklDnnType<float>(), dst_layout_type);
 
       // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
-      if (src_mkl_shape.IsMklTensor()) {
-        output_mkl_shape.SetMklTensor(true);
-        output_mkl_shape.SetMklLayout(&dst_md);
-        output_mkl_shape.SetElemType(MklDnnType<float>());
-        output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
-                                     src_mkl_shape.GetSizesAsMklDnnDims(),
-                                     src_mkl_shape.GetTfDataFormat());
-        output_tf_shape.AddDim(dst_md.get_size() / sizeof(float));
-      } else {
-        output_mkl_shape.SetMklTensor(false);
-        output_tf_shape = MklDnnDimsToTFShape(output_dims);
-      }
+      output_mkl_shape.SetMklTensor(false);
+      output_tf_shape = MklDnnDimsToTFShape(output_dims);
 
       // Allocate MKL or TF output shape based on the above
       AllocateOutputSetMklShape(ctx, 0, &output_tensor, output_tf_shape,
@@ -133,17 +129,22 @@ class MklDequantizeOp : public OpKernel {
       static constexpr int num_bits = sizeof(T) * 8;
       const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
       bool is_signed = std::is_signed<T>::value;
-      // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
-      // example, if it is 8 bits, we have the range [-127, 127]. So for input
-      // range of [-x, x], the scale should be (2*x)/254.
-      //
-      // If it is unsigned and num_bits == 8, the range with 8 bits is [0, 255].
-      // If the input range is [0, x], then the scale is x/255 instead of 254 as
-      // in the case above.
+
       const int target_bits = is_signed ? (num_bits - 1) : num_bits;
-      const float target_range =
-          static_cast<float>((uint64_t{1} << target_bits) - 1);
-      const float scale_factor = max_abs / target_range;
+      const float v_max = static_cast<float>(uint64_t{1} << target_bits) - 1;
+      float v_min = 0;
+      if (is_signed) {
+        v_min = -(static_cast<float>(uint64_t{1} << target_bits));
+      }
+      if (narrow_range_) {
+        v_min += 1;
+      }
+      float scale_factor;
+      if (v_min != 0) {
+        scale_factor = std::max(min_range / v_min, max_range / v_max);
+      } else {
+        scale_factor = max_range / v_max;
+      }
       std::vector<float> scales;
       scales.push_back(scale_factor);
       primitive_attr attr;
@@ -172,6 +173,7 @@ class MklDequantizeOp : public OpKernel {
   const size_t kSrcIndex = 0;
   const size_t kMinIndex = 1;
   const size_t kMaxIndex = 2;
+  bool narrow_range_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
