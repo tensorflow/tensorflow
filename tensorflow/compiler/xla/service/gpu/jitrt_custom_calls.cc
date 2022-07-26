@@ -68,6 +68,7 @@ namespace xla {
 namespace gpu {
 
 using llvm::ArrayRef;
+using llvm::Error;
 using llvm::Optional;
 
 using mlir::failure;
@@ -77,6 +78,7 @@ using mlir::StringRef;
 using mlir::succeeded;
 using mlir::success;
 
+using tfrt::MakeStringError;
 using tfrt::jitrt::CustomCall;
 using tfrt::jitrt::DirectCustomCallLibrary;
 using tfrt::jitrt::Executable;
@@ -683,7 +685,7 @@ static GpuConvDescriptor GetConvDescriptor(
 namespace {
 struct Conv {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(
+  Error operator()(
       const ServiceExecutableRunOptions* run_options,
       const DebugOptions* debug_options, jitrt::StridedMemrefView operand0,
       jitrt::StridedMemrefView operand1, Optional<jitrt::FlatMemrefView> bias,
@@ -717,7 +719,7 @@ struct Conv {
 
     // Convert descriptor to the Conv config.
     StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
-    if (!config.ok()) return failure();
+    if (!config.ok()) return MakeStringError(config.status().error_message());
 
     // Prepare buffer arguments.
     std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
@@ -738,9 +740,11 @@ struct Conv {
     // Run the convolution.
     auto st = RunGpuConv(*config, buffers, result_buffer, scratch_buffer,
                          run_options->stream(), opts);
-    if (!st.ok() || !run_options->stream()->ok()) return failure();
+    if (!st.ok() || !run_options->stream()->ok()) {
+      return MakeStringError(st.error_message());
+    }
 
-    return success();
+    return Error::success();
   }
 
   static Conv Handler(CudnnConvKind kind) { return Conv{kind}; }
