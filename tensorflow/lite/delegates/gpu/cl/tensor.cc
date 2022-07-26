@@ -416,56 +416,6 @@ int3 Tensor::GetFullTensorRegion() const {
   }
 }
 
-absl::Status Tensor::IsValid(const BHWC& shape) const {
-  if (shape.b != shape_.b) {
-    return absl::InvalidArgumentError(
-        "Shape batch does not match tensor batch");
-  }
-  if (shape.w != shape_.w) {
-    return absl::InvalidArgumentError(
-        "Shape width does not match tensor width");
-  }
-  if (shape.h != shape_.h) {
-    return absl::InvalidArgumentError(
-        "Shape height does not match tensor height");
-  }
-  if (shape.c != shape_.c) {
-    return absl::InvalidArgumentError(
-        "Shape channels does not match tensor channels");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status Tensor::IsValid(const BHWDC& shape) const {
-  if (shape.b != shape_.b) {
-    return absl::InvalidArgumentError(
-        "Shape batch does not match tensor batch");
-  }
-  if (shape.w != shape_.w) {
-    return absl::InvalidArgumentError(
-        "Shape width does not match tensor width");
-  }
-  if (shape.h != shape_.h) {
-    return absl::InvalidArgumentError(
-        "Shape height does not match tensor height");
-  }
-  if (shape.d != shape_.d) {
-    return absl::InvalidArgumentError(
-        "Shape depth does not match tensor depth");
-  }
-  if (shape.c != shape_.c) {
-    return absl::InvalidArgumentError(
-        "Shape channels does not match tensor channels");
-  }
-  return absl::OkStatus();
-}
-
-int Tensor::GetAlignedChannels() const {
-  return descriptor_.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
-             ? shape_.c
-             : AlignByN(shape_.c, 4);
-}
-
 uint64_t Tensor::GetMemorySizeInBytes() const {
   const int flt_size = SizeOf(descriptor_.GetDataType());
   const int flt4_size = 4 * flt_size;
@@ -501,18 +451,6 @@ cl_mem Tensor::GetMemoryPtrForWriting() const {
   }
 }
 
-absl::Status Tensor::WriteData(
-    CLCommandQueue* queue,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(src.data.data(), queue);
-}
-
-absl::Status Tensor::WriteData(
-    CLCommandQueue* queue,
-    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(src.data.data(), queue);
-}
-
 absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
                                           CLContext* context) {
   shape_ = desc.GetBHWDCShape();
@@ -531,6 +469,11 @@ absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
         &image_buffer_memory_));
   }
   return absl::OkStatus();
+}
+
+absl::Status Tensor::UploadDescriptorData(const TensorDescriptor& desc,
+                                          CLCommandQueue* queue) {
+  return WriteData(desc.GetData().data(), queue);
 }
 
 absl::Status Tensor::ToDescriptor(TensorDescriptor* desc,
