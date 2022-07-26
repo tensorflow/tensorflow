@@ -568,15 +568,6 @@ absl::Status CreateTensorShared(const CLContext& context, cl_mem memory,
   return absl::OkStatus();
 }
 
-absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
-                                const BHWC& shape,
-                                const TensorDescriptor& descriptor,
-                                Tensor* result) {
-  TensorDescriptor descriptor_with_shape = descriptor;
-  descriptor_with_shape.SetBHWCShape(shape);
-  return CreateTensorShared(context, memory, descriptor, result);
-}
-
 absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
                                              cl_mem memory,
                                              const TensorDescriptor& descriptor,
