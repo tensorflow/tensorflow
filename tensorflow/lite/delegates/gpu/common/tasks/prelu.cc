@@ -30,9 +30,7 @@ namespace gpu {
 GPUOperation CreatePReLU(const GpuInfo& gpu_info,
                          const OperationDef& definition,
                          const PReLUAttributes& attr) {
-  GPUOperation result(definition);
-  result.elementwise_ = true;
-
+  ElementwiseDescriptor op_desc;
   std::string alpha_read;
   auto alpha_linear =
       absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
@@ -42,7 +40,7 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
         DeduceLinearStorageType(definition.GetPrimaryStorageType());
     desc.element_type = definition.GetPrimaryDataType();
     desc.UploadLinearData(*alpha_linear);
-    result.args_.AddObject(
+    op_desc.args.AddObject(
         "alpha", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
     alpha_read = "FLT4 alpha_val = args.alpha.Read(S_COORD);\n";
   }
@@ -56,7 +54,7 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     auto status =
         const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
     const_tensor_desc.UploadData(*alpha_hwc);
-    result.args_.AddObject("alpha", std::make_unique<TensorDescriptor>(
+    op_desc.args.AddObject("alpha", std::make_unique<TensorDescriptor>(
                                         std::move(const_tensor_desc)));
     const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
     const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
@@ -70,12 +68,12 @@ GPUOperation CreatePReLU(const GpuInfo& gpu_info,
     }
   }
 
-  result.code_ = alpha_read +
+  op_desc.code = alpha_read +
                  "out_value = max(INIT_FLT4(0.0f), in_value) + "
                  "min(INIT_FLT4(0.0f), "
                  "in_value) * alpha_val;";
 
-  return result;
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

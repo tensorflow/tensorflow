@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 
@@ -50,10 +51,9 @@ void CreateReLU(const ReLUAttributes& attr, CalculationsPrecision precision,
 
 GPUOperation CreateReLU(const OperationDef& definition,
                         const ReLUAttributes& attr) {
-  GPUOperation op(definition);
-  op.elementwise_ = true;
-  CreateReLU(attr, definition.precision, &op.args_, &op.code_);
-  return op;
+  ElementwiseDescriptor op_desc;
+  CreateReLU(attr, definition.precision, &op_desc.args, &op_desc.code);
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

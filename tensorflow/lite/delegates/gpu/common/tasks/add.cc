@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
@@ -69,22 +70,16 @@ GPUOperation CreateAdd(const OperationDef& definition,
   if (dst_channels != channels[0]) {
     return CreateUnequalAdd(definition);
   }
-  GPUOperation add(definition);
-  add.elementwise_ = true;
-  add.code_ = "  out_value = in_value;\n";
+  ElementwiseDescriptor op_desc;
+  op_desc.code = "  out_value = in_value;\n";
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
-    const std::string tensor_name = absl::StrCat("src_data_", i);
-    auto src_desc = definition.src_tensors[i];
-    if (definition.IsBatchSupported()) {
-      src_desc.SetStateVar("BatchedWidth", "true");
-    }
-    add.AddSrcTensor(tensor_name, src_desc);
-    add.code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
-    add.code_ += "  out_value += args." + tensor_name +
-                 ".Read(X_COORD, Y_COORD, S_COORD);\n";
-    add.code_ += "}\n";
+    const std::string tensor_name = absl::StrCat("src_tensor_", i);
+    op_desc.code += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
+    op_desc.code += "  out_value += args." + tensor_name +
+                    ".Read(X_COORD, Y_COORD, S_COORD);\n";
+    op_desc.code += "}\n";
   }
-  return add;
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

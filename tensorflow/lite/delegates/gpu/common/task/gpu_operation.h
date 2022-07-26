@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_OPERATION_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -76,16 +77,11 @@ struct OperationDef {
   bool IsBatchSupported() const;
 };
 
-// GPUOperation represents some implementation of neural network operation on
-// GPU. GPUOperation can contain another GPU operations with flag elementwise_.
-// When GPUOperation contains another GPU ops, this GPUoperation replaces
-// some sequence of operations Op + op0 + op1 + ...
-// Because of this abilities of GPUOperation, usage scenario is next:
-// Create instance of GPUOperation.
-// Create all instances of GPUOperations that we will(probably) attach
-// to GPUOperation. Attach all GPUOperations to GPUOperation. Call
-// GPUOperation.Compile(). Don't call GPUOperations.Compile() if it
-// attached, it useless(and may be error)
+struct ElementwiseDescriptor {
+  Arguments args;
+  std::string code;
+};
+
 class GPUOperation {
  public:
   GPUOperation() = default;
@@ -140,9 +136,6 @@ class GPUOperation {
 
   bool IsLinkable() const { return elementwise_; }
 
-  // for linking
-  void AddUniquePostfix(const std::string& unique_postfix);
-
   virtual absl::Status BindArguments(ArgumentsBinder* args) {
     return absl::OkStatus();
   }
@@ -155,8 +148,6 @@ class GPUOperation {
   std::vector<CompilerOptions> compiler_options_;
   // not applicable to elementwise
   TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
-
-  bool elementwise_ = false;
 
   // for profiling
   uint64_t flops_ = 0;
@@ -171,6 +162,8 @@ class GPUOperation {
       const GPUOperation& op, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::GPUOperation* fb_op,
                              GPUOperation* op);
+  friend GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                         ElementwiseDescriptor&& descriptor);
 
   virtual int3 GetGridSize() const;
   virtual void GetPossibleKernelWorkGroups(
@@ -188,10 +181,14 @@ class GPUOperation {
   std::vector<std::string> dst_tensors_names_;
 
  private:
+  bool elementwise_ = false;
   int3 work_groups_count_ = int3(0, 0, 0);
   int linkable_count_ = 0;
   std::string elementwise_code_;  // temporary, used during op construction
 };
+
+GPUOperation CreateGpuOperation(const OperationDef& definition,
+                                ElementwiseDescriptor&& descriptor);
 
 }  // namespace gpu
 }  // namespace tflite
