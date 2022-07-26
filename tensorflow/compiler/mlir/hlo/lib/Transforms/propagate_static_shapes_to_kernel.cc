@@ -198,7 +198,8 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   }
   rewriter.updateRootInPlace(funcOp, [&] {
     funcOp.eraseArguments(argsToDrop);
-    auto argTypes = llvm::to_vector(TypeRange(funcOp.getArguments()));
+    auto argTypes =
+        llvm::to_vector(TypeRange{ValueRange{funcOp.getArguments()}});
     funcOp.setType(LLVM::LLVMFunctionType::get(
         funcOp.getFunctionType().getReturnType(), argTypes));
   });

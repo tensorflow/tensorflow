@@ -1309,7 +1309,7 @@ LogicalResult YieldOp::verify() {
            << tensorOuts.size()
            << " to match the number of yield operands = " << values().size();
 
-  TypeRange tensorTypes(llvm::makeArrayRef(tensorOuts));
+  TypeRange tensorTypes{ValueRange{tensorOuts}};
   for (auto &item :
        llvm::enumerate(llvm::zip(tensorTypes, getOperandTypes()))) {
     Type outType, resultType;

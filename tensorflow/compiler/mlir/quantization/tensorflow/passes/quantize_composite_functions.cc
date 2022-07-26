@@ -549,7 +549,7 @@ class QuantizeFunctionPattern
       return failure();
     }
     new_quantized_func.setType(
-        FunctionType::get(getContext(), TypeRange(ArrayRef<Value>(args)),
+        FunctionType::get(getContext(), TypeRange{ValueRange{args}},
                           new_quantized_func.getResultTypes()));
     for (auto pair : llvm::zip_first(args, new_quantized_func.getArguments())) {
       auto new_quantized_func_arg = std::get<1>(pair);

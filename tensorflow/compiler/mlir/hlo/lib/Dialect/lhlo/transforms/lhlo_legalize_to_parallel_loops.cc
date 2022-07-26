@@ -648,7 +648,7 @@ class SelectAndScatterOpConverter
     Value trueI1 = b->create<mlir::arith::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
 
-    TypeRange iterArgTypes{ivsValFlag->toVector()};
+    const TypeRange iterArgTypes{ValueRange{ivsValFlag->toVector()}};
     Value operandElem =
         b->create<memref::LoadOp>(loc, sAndSOp.getOperand(), operandIvs);
     auto ifInit = b->create<scf::IfOp>(loc, iterArgTypes, ivsValFlag->isInit(),
