@@ -262,7 +262,10 @@ alias(
 
 cc_library(
     name = "cublas_lt_header",
-    hdrs = ["cuda_blas_lt.h"],
+    hdrs = [
+        "cuda_blas_lt.h",
+        "cuda_blas_utils.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/stream_executor/platform",
