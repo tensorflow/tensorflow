@@ -189,7 +189,7 @@ we will delay ingress during the period before a branch cut and the final
 release. For these cases, vulnerabilities will always be batched to be fixed at
 the same time as a quarterly release.
 
-If a vulnerability is a high impact, we will acknowledge reception and issue
+If a vulnerability is high impact, we will acknowledge reception and issue
 patches within an accelerated timeline and not wait for the patch release.
 
 Once an issue is reported, TensorFlow uses the following disclosure process:
