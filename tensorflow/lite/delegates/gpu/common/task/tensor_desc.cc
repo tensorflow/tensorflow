@@ -98,6 +98,10 @@ std::string GetConversionForImage(const GpuInfo& gpu_info, DataType src_type,
 std::string GetConversion(const GpuInfo& gpu_info,
                           TensorStorageType storage_type, DataType src_type,
                           DataType dst_type) {
+  if (src_type == DataType::BOOL) {
+    // DataType::BOOL stored as DataType::UINT8
+    src_type = DataType::UINT8;
+  }
   if (storage_type == TensorStorageType::BUFFER) {
     return GetTypeConversion(gpu_info, src_type, dst_type, 4);
   } else {
@@ -746,15 +750,22 @@ std::string TensorDescriptor::Write(
       use_buffer_for_write_only_2d_texture_) {
     is_texture_write = false;
   }
+  std::string write_expr = var_name;
   DataType write_required_type = data_type_;
+  if (data_type_ == DataType::BOOL) {
+    // DataType::BOOL stored as DataType::UINT8
+    const std::string conversion =
+        GetTypeConversion(gpu_info, DataType::BOOL, DataType::UINT8, 4);
+    write_expr = absl::Substitute(conversion, write_expr);
+    write_required_type = DataType::UINT8;
+  }
   if (is_texture_write) {
     if (gpu_info.IsApiOpenCl()) {
-      write_required_type = ToClTextureType(data_type_);
+      write_required_type = ToClTextureType(write_required_type);
     } else if (gpu_info.IsApiMetal()) {
-      write_required_type = ToMetalTextureType(data_type_);
+      write_required_type = ToMetalTextureType(write_required_type);
     }
   }
-  std::string write_expr = var_name;
   if (write_type != write_required_type) {
     const std::string conversion =
         GetTypeConversion(gpu_info, write_type, write_required_type, 4);

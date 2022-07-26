@@ -118,15 +118,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define bool2 uchar2\n";
   result += "#define bool3 uchar3\n";
   result += "#define bool4 uchar4\n";
-  result +=
-      "#define convert_bool2(value) (convert_uchar2((value) != 0) & (uchar2) "
-      "1)\n";
-  result +=
-      "#define convert_bool3(value) (convert_uchar3((value) != 0) & (uchar3) "
-      "1)\n";
-  result +=
-      "#define convert_bool4(value) (convert_uchar4((value) != 0) & (uchar4) "
-      "1)\n";
   return result;
 }
 }  // namespace

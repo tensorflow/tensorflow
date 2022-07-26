@@ -47,7 +47,6 @@ cc_library(
     hdrs = ["cast_test_util.h"],
     deps = [
         ":cast",
-        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
     ],
