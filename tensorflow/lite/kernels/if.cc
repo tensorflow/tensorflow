@@ -33,7 +33,6 @@ namespace if_kernel {
 struct OpData {
   int then_subgraph_index;
   int else_subgraph_index;
-  bool subgraphs_allocated;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -41,7 +40,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   const auto* params = reinterpret_cast<const TfLiteIfParams*>(buffer);
   op_data->then_subgraph_index = params->then_subgraph_index;
   op_data->else_subgraph_index = params->else_subgraph_index;
-  op_data->subgraphs_allocated = false;
   return op_data;
 }
 
@@ -50,7 +48,7 @@ void Free(TfLiteContext* context, void* buffer) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  const OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   TF_LITE_ENSURE(context, node->inputs->size > 0);
 
@@ -104,7 +102,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, subgraph->AllocateTensors());
     has_dynamic_output_tensors |= subgraph->HasDynamicTensors();
   }
-  op_data->subgraphs_allocated = true;
 
   if (!has_dynamic_output_tensors) {
     for (int i = 0; i < num_outputs; ++i) {
@@ -141,7 +138,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  const OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* cond;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &cond));
@@ -155,13 +152,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // TODO(b/120234921): Optimize and avoid copying tensors between subgraphs.
   int active_branch_subgraph_index =
       cond_value ? op_data->then_subgraph_index : op_data->else_subgraph_index;
-
   Subgraph& active_branch_subgraph =
       *(*subgraphs)[active_branch_subgraph_index];
-  if (op_data->subgraphs_allocated == false) {
-    TF_LITE_ENSURE_OK(context, active_branch_subgraph.AllocateTensors());
-  }
-
   for (int i = 0; i < active_branch_subgraph.inputs().size(); ++i) {
     const TfLiteTensor* input;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i + 1, &input));
@@ -219,12 +211,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->bytes, subgraph_output->bytes);
     TfLiteTensorCopy(subgraph_output, output);
   }
-
-  Subgraph* then_subgraph = (*subgraphs)[op_data->then_subgraph_index].get();
-  Subgraph* else_subgraph = (*subgraphs)[op_data->else_subgraph_index].get();
-  TF_LITE_ENSURE_OK(context, then_subgraph->ReleaseNonPersistentMemory());
-  TF_LITE_ENSURE_OK(context, else_subgraph->ReleaseNonPersistentMemory());
-  op_data->subgraphs_allocated = false;
   return kTfLiteOk;
 }
 

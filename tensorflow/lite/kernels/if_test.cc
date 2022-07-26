@@ -65,42 +65,6 @@ TEST_F(SimpleIfTest, TestIfFalse) {
   CheckIntTensor(output, {1, 2}, {5, 14});
 }
 
-TEST_F(SimpleIfTest, TestIfTrueWithLargeInputs) {
-  const size_t kNumLargeTensors = 100000;
-  interpreter_->ResizeInputTensor(interpreter_->inputs()[1],
-                                  {kNumLargeTensors});
-  interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {1});
-  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
-
-  const std::vector<int> input_vector(kNumLargeTensors, 1);
-  interpreter_->typed_input_tensor<bool>(0)[0] = true;
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), input_vector);
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {9});
-  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
-
-  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
-  const std::vector<int> expected(kNumLargeTensors, 10);
-  CheckIntTensor(output, {kNumLargeTensors}, expected);
-}
-
-TEST_F(SimpleIfTest, TestIfFalseWithLargeInputs) {
-  const size_t kNumLargeTensors = 100000;
-  interpreter_->ResizeInputTensor(interpreter_->inputs()[1],
-                                  {kNumLargeTensors});
-  interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {1});
-  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
-
-  const std::vector<int> input_vector(kNumLargeTensors, 1);
-  interpreter_->typed_input_tensor<bool>(0)[0] = false;
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), input_vector);
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {0});
-
-  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
-  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
-  const std::vector<int> expected(kNumLargeTensors, 0);
-  CheckIntTensor(output, {kNumLargeTensors}, expected);
-}
-
 // Test IF op using subgraphs with dynamically sized outputs.
 // The computation is: `cond ? a + b : pad(a, b)`.
 class DynamicSubgraphIfTest : public ControlFlowOpTest {
