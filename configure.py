@@ -1188,6 +1188,10 @@ def main():
     gcc_env = get_gcc_compiler(environ_cp)
     if gcc_env is not None:
 
+      # Use gold linker if 'gcc' and if 'ppc64le'
+      write_to_bazelrc(
+          'build --linkopt="-fuse-ld=gold"')
+
       # Get the linker version
       ld_version = run_shell([gcc_env, '-Wl,-version']).split()
 
