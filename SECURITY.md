@@ -74,9 +74,9 @@ to untrusted (e.g., user-provided) inputs in a sandbox.
 
 A useful analogy to how any TensorFlow graph is executed is any interpreted
 programming language, such as Python. While it is possible to write secure
-Python code which can be exposed to user-supplied inputs (by, e.g., carefully
+Python code which can be exposed to user supplied inputs (by, e.g., carefully
 quoting and sanitizing input strings, size-checking input blobs, etc.), it is
-very easy to write Python programs that are insecure. Even secure Python code
+very easy to write Python programs which are insecure. Even secure Python code
 could be rendered insecure by a bug in the Python interpreter, or in a bug in a
 Python library used (e.g.,
 [this one](https://www.cvedetails.com/cve/CVE-2017-12852/)).
