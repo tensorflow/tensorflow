@@ -20,6 +20,9 @@ cc_library(
         "device_description.h",
         "gpu_launch_dim.h",
         "launch_dim.h",
+        "kernel_spec.h",
+        "module_spec.h",
+        "kernel_cache_config.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -58,5 +61,30 @@ cc_library(
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "kernel_spec",
+    srcs = ["kernel_spec.cc"],
+    hdrs = ["kernel_spec.h"],
+    deps = [
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "kernel_cache_config",
+    hdrs = ["kernel_cache_config.h"],
+)
+
+cc_library(
+    name = "module_spec",
+    hdrs = ["module_spec.h"],
+    deps = [
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
     ],
 )
