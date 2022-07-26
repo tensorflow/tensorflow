@@ -74,7 +74,9 @@ absl::Status TensorBHWCTest(const BHWC& shape, const TensorDescriptor& descripto
   }
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
-  RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
+  tflite::gpu::TensorDescriptor descriptor_with_shape = descriptor;
+  descriptor_with_shape.SetBHWCShape(shape);
+  RETURN_IF_ERROR(CreateTensor(device, descriptor_with_shape, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
 
@@ -152,7 +154,9 @@ absl::Status TensorBHWDCTest(const BHWDC& shape, const TensorDescriptor& descrip
   }
 
   tflite::gpu::metal::MetalSpatialTensor tensor;
-  RETURN_IF_ERROR(CreateTensor(device, shape, descriptor, &tensor));
+  tflite::gpu::TensorDescriptor descriptor_with_shape = descriptor;
+  descriptor_with_shape.SetBHWDCShape(shape);
+  RETURN_IF_ERROR(CreateTensor(device, descriptor_with_shape, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(device, tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(device, &tensor_gpu));
 

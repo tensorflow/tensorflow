@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
+#include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
@@ -479,32 +481,18 @@ absl::Status MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
 
 id<MTLBuffer> MetalSpatialTensor::GetBufferHandle() const { return memory_; }
 
-absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
+absl::Status CreateTensor(id<MTLDevice> device,
                           const TensorDescriptor& descriptor,
                           MetalSpatialTensor* result) {
-  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateTensor(device, shape5D, descriptor, nullptr, nullptr, result);
-}
-
-absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
-                          const TensorDescriptor& descriptor,
-                          MetalSpatialTensor* result) {
+  const BHWDC shape = descriptor.GetBHWDCShape();
   return CreateTensor(device, shape, descriptor, nullptr, nullptr, result);
 }
 
-absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+absl::Status CreateTensorSharedBuffer(id<MTLBuffer> buffer,
                                       const TensorDescriptor& descriptor,
                                       MetalSpatialTensor* result,
                                       uint64_t buffer_offset) {
-  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateSharedBufferTensor(buffer, shape5D, descriptor, result,
-                                  buffer_offset);
-}
-
-absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
-                                      const TensorDescriptor& descriptor,
-                                      MetalSpatialTensor* result,
-                                      uint64_t buffer_offset) {
+  const BHWDC shape = descriptor.GetBHWDCShape();
   id<MTLTexture> texture_buffer = nullptr;
   if (buffer &&
       descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
@@ -517,23 +505,12 @@ absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
   return absl::OkStatus();
 }
 
-absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
-                                             const BHWC& shape,
+absl::Status CreateTensorSharedImage2DBuffer(id<MTLBuffer> buffer,
                                              const TensorDescriptor& descriptor,
                                              int row_bytes_alignment,
                                              MetalSpatialTensor* result,
                                              uint64_t buffer_offset) {
-  const BHWDC shape5D = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateSharedImage2DBufferTensor(
-      buffer, shape5D, descriptor, row_bytes_alignment, result, buffer_offset);
-}
-
-absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer,
-                                             const BHWDC& shape,
-                                             const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment,
-                                             MetalSpatialTensor* result,
-                                             uint64_t buffer_offset) {
+  const BHWDC shape = descriptor.GetBHWDCShape();
   const int width = shape.b * shape.w * shape.d;
   const int height = shape.h * DivideRoundUp(shape.c, 4);
   const int channels =

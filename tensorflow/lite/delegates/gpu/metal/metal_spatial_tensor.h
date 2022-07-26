@@ -92,15 +92,14 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   id<MTLBuffer> GetBufferHandle() const;
 
  private:
-  friend absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
-                                               const TensorDescriptor& descriptor,
-                                               MetalSpatialTensor* result, uint64_t buffer_offset);
+  friend absl::Status CreateTensorSharedBuffer(
+      id<MTLBuffer> buffer, const TensorDescriptor& descriptor,
+      MetalSpatialTensor* result, uint64_t buffer_offset);
 
-  friend absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
-                                                      const TensorDescriptor& descriptor,
-                                                      int row_bytes_alignment,
-                                                      MetalSpatialTensor* result,
-                                                      uint64_t buffer_offset);
+  friend absl::Status CreateTensorSharedImage2DBuffer(
+      id<MTLBuffer> buffer, const TensorDescriptor& descriptor,
+      int row_bytes_alignment, MetalSpatialTensor* result,
+      uint64_t buffer_offset);
 
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
@@ -128,30 +127,19 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   uint64_t buffer_offset_ = 0;
 };
 
-absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
+absl::Status CreateTensor(id<MTLDevice> device,
                           const TensorDescriptor& descriptor,
                           MetalSpatialTensor* result);
 
-absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
-                          const TensorDescriptor& descriptor,
-                          MetalSpatialTensor* result);
-
-absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+absl::Status CreateTensorSharedBuffer(id<MTLBuffer> buffer,
                                       const TensorDescriptor& descriptor,
-                                      MetalSpatialTensor* result, uint64_t buffer_offset = 0);
+                                      MetalSpatialTensor* result,
+                                      uint64_t buffer_offset = 0);
 
-absl::Status CreateSharedBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
-                                      const TensorDescriptor& descriptor,
-                                      MetalSpatialTensor* result, uint64_t buffer_offset = 0);
-
-absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWC& shape,
+absl::Status CreateTensorSharedImage2DBuffer(id<MTLBuffer> buffer,
                                              const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment, MetalSpatialTensor* result,
-                                             uint64_t buffer_offset = 0);
-
-absl::Status CreateSharedImage2DBufferTensor(id<MTLBuffer> buffer, const BHWDC& shape,
-                                             const TensorDescriptor& descriptor,
-                                             int row_bytes_alignment, MetalSpatialTensor* result,
+                                             int row_bytes_alignment,
+                                             MetalSpatialTensor* result,
                                              uint64_t buffer_offset = 0);
 
 TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);

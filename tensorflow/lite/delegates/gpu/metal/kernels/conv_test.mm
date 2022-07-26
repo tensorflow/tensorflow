@@ -502,8 +502,12 @@ absl::Status ConvolutionSimdMatrixMultiplyPerfTest() {
   auto op_ptr = std::make_unique<ConvolutionMetalSimd>(std::move(operation_simd));
 
   MetalSpatialTensor src_gpu, dst_gpu;
-  RETURN_IF_ERROR(CreateTensor(device.device(), src_shape, op_def.src_tensors[0], &src_gpu));
-  RETURN_IF_ERROR(CreateTensor(device.device(), dst_shape, op_def.dst_tensors[0], &dst_gpu));
+  TensorDescriptor descriptor_with_shape = op_def.src_tensors[0];
+  descriptor_with_shape.SetBHWCShape(src_shape);
+  RETURN_IF_ERROR(CreateTensor(device.device(), descriptor_with_shape, &src_gpu));
+  descriptor_with_shape = op_def.dst_tensors[0];
+  descriptor_with_shape.SetBHWCShape(dst_shape);
+  RETURN_IF_ERROR(CreateTensor(device.device(), descriptor_with_shape, &dst_gpu));
 
   RETURN_IF_ERROR(op_ptr->AssembleCode(device.GetInfo()));
 
