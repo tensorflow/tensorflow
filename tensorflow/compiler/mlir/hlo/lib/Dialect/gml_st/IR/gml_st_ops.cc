@@ -2077,6 +2077,7 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
   }
 
   // Collapse the subset to operate only on corresponding dimensions.
+  // TODO(frgossen): Only generate this when needed.
   auto collapsedSubset =
       builder.create<DropDimsOp>(loc, subset, broadcast_dimensionsAttr());
 
