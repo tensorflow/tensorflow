@@ -96,7 +96,7 @@ func.func @log_log_bcast(%arg0: tensor<?x?xf32>, %arg1: tensor<2xindex>)
   // CHECK-NOT:  linalg.generic
   // CHECK-NOT:  dynamic_broadcast_in_dim
   // CHECK:      %[[RESULT:.*]] = gml_st.parallel
-  // CHECK-DAG:    %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE:29]]]
+  // CHECK-DAG:    %[[ARG_SUB:.*]] = gml_st.materialize %[[ARG]][%[[ARG_TILE:24]]]
   // CHECK-DAG:    %[[INIT_GENERIC0_SUB:.*]] = gml_st.materialize %[[INIT_GENERIC0:.*]][%[[ARG_TILE]]]
   // CHECK-DAG:    %[[INIT_BCAST_SUB:.*]] = gml_st.materialize %[[INIT_BCAST:.*]][%[[BCAST_TILE:16]]]
   // CHECK:        %[[GENERIC0:.*]] = linalg.generic

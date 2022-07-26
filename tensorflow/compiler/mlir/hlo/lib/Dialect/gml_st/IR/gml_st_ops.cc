@@ -1682,43 +1682,13 @@ LogicalResult DropDimsOp::inferReturnTypes(
   return failure();
 }
 
-//===----------------------------------------------------------------------===//
-// TransposeDimsOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TransposeDimsOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
-  Type argTy = adaptor.superset().getType();
-
-  // If the argument is of point type, so is the result.
-  if (auto pointTy = argTy.dyn_cast<PointType>()) {
-    inferredReturnTypes.push_back(argTy);
-    return success();
-  }
-
-  // If the argument is of tile type, we can transpose the type's dimensions.
-  if (auto tileTy = argTy.dyn_cast<TileType>()) {
-    auto argShape = tileTy.getShape();
-    SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
-        adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
-    auto resultTy = TileType::get(ctx, resultShape);
-    inferredReturnTypes.push_back(resultTy);
-    return success();
-  }
-
-  return failure();
-}
-
-Value TransposeDimsOp::compose(OpBuilder &builder) {
-  // We can compose with a TileOp operand which has a SpaceOp operand, or
-  // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
-  // strides)) is replaced by tile(transpose(space), transpose(offsets),
-  // transpose(sizes), transpose(strides)). transpose_tile(space) is replaced by
-  // transpose(space).
-  Operation *definingOp = superset().getDefiningOp();
+namespace {
+// Composition with a superset by selecting a subset of dimensions from the
+// superset. Both the dimensions to select, and the order in which they should
+// be selected, are specified by 'dims'.
+Value selectDimsFromSuperset(OpBuilder &builder, Location loc, Type type,
+                             Value superset, ArrayRef<int64_t> dims) {
+  Operation *definingOp = superset.getDefiningOp();
   auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(definingOp);
   auto tileOp = llvm::dyn_cast_or_null<TileOp>(definingOp);
   if (tileOp) {
@@ -1727,19 +1697,16 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
   }
   if (!spaceOp) return {};
 
-  auto loc = getLoc();
-  ArrayRef<int64_t> perm = permutation();
-  int64_t rank = perm.size();
-
-  // Create a new space op that has the permutation applied.
+  // Create a new space op consisting of the subset of dimensions defined by
+  // 'dims'.
   SmallVector<Value> dynamicDims;
   SmallVector<Attribute> staticDims;
   SmallVector<int64_t> shape;
   auto originalShape = spaceOp.getType().getShape();
-  dynamicDims.reserve(spaceOp.dynamic_sizes().size());
+  const size_t rank = dims.size();
   staticDims.reserve(rank);
   shape.reserve(rank);
-  for (int64_t dim : perm) {
+  for (const int64_t dim : dims) {
     shape.push_back(originalShape[dim]);
     staticDims.push_back(spaceOp.static_sizes()[dim]);
     if (ShapedType::isDynamic(staticDims.back().cast<IntegerAttr>().getInt())) {
@@ -1751,7 +1718,7 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
                                            builder.getArrayAttr(staticDims));
   if (!tileOp) return newSpace;
 
-  // Otherwise we need to apply the permutation to the 'tileOp' operand.
+  // Otherwise we need to extract 'dims' dimensions from the 'tileOp' operand.
   SmallVector<Value> inputTileOffsets, inputTileSizes, inputTileStrides;
   SmallVector<int64_t> inputStaticOffsets, inputStaticSizes, inputStaticStrides;
   inputStaticOffsets.reserve(rank);
@@ -1760,7 +1727,7 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
   inputTileOffsets.reserve(tileOp.offsets().size());
   inputTileSizes.reserve(tileOp.sizes().size());
   inputTileStrides.reserve(tileOp.strides().size());
-  for (int64_t dim : perm) {
+  for (const int64_t dim : dims) {
     if (tileOp.isDynamicOffset(dim)) {
       inputTileOffsets.push_back(tileOp.getDynamicOffset(dim));
       inputStaticOffsets.push_back(ShapedType::kDynamicStrideOrOffset);
@@ -1781,11 +1748,60 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
     }
   }
 
-  return builder.create<TileOp>(loc, getType(), newSpace, inputTileOffsets,
+  return builder.create<TileOp>(loc, type, newSpace, inputTileOffsets,
                                 inputTileSizes, inputTileStrides,
                                 builder.getI64ArrayAttr(inputStaticOffsets),
                                 builder.getI64ArrayAttr(inputStaticSizes),
                                 builder.getI64ArrayAttr(inputStaticStrides));
+}
+}  // namespace
+
+Value DropDimsOp::compose(OpBuilder &builder) {
+  // We can compose with a TileOp operand which has a SpaceOp operand, or
+  // compose with a SpaceOp operand.
+  return selectDimsFromSuperset(builder, getLoc(), getType(), superset(),
+                                remaining_dims());
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeDimsOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TransposeDimsOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
+  const Type argTy = adaptor.superset().getType();
+
+  // If the argument is of point type, so is the result.
+  if (auto pointTy = argTy.dyn_cast<PointType>()) {
+    inferredReturnTypes.push_back(argTy);
+    return success();
+  }
+
+  // If the argument is of tile type, we can transpose the type's dimensions.
+  if (auto tileTy = argTy.dyn_cast<TileType>()) {
+    auto argShape = tileTy.getShape();
+    const SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
+        adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
+    auto resultTy = TileType::get(ctx, resultShape);
+    inferredReturnTypes.push_back(resultTy);
+    return success();
+  }
+
+  return failure();
+}
+
+Value TransposeDimsOp::compose(OpBuilder &builder) {
+  // We can compose with a TileOp operand which has a SpaceOp operand, or
+  // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
+  // strides)) is replaced by tile(transpose(space), transpose(offsets),
+  // transpose(sizes), transpose(strides)). transpose_tile(space) is replaced by
+  // transpose(space).
+
+  return selectDimsFromSuperset(builder, getLoc(), getType(), superset(),
+                                permutation());
 }
 
 LogicalResult TransposeDimsOp::verify() {

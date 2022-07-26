@@ -122,7 +122,8 @@ def GMLST_TileOp : GMLST_Op<"tile", [
 
 def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
     NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
   let summary = [{
     Drops dimensions of a subset.
   }];
