@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape.h"
@@ -172,6 +173,18 @@ PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args) {
       "PJRT_Device_IsAddressable_Args",
       PJRT_Device_IsAddressable_Args_STRUCT_SIZE, args->struct_size));
   args->is_addressable = args->device->device->IsAddressable();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_Attributes_Args", PJRT_Device_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  // Returns the attributes that were initialized during PJRT_Device creation.
+  args->num_attributes = args->device->attributes.size();
+  args->attributes = args->device->attributes.data();
+
   return nullptr;
 }
 

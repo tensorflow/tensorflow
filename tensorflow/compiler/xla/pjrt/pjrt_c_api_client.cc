@@ -76,9 +76,8 @@ void PjRtCApiClient::InitDevices() {
 
   for (size_t i = 0; i < n; ++i) {
     PJRT_Device* device = devices_args.devices[i];
-    std::unique_ptr<PjRtCApiDevice>& cpp_device =
-        owned_devices_.emplace_back(std::make_unique<PjRtCApiDevice>(device));
-    cpp_device->SetClient(this);
+    std::unique_ptr<PjRtCApiDevice>& cpp_device = owned_devices_.emplace_back(
+        std::make_unique<PjRtCApiDevice>(device, this));
     devices_.push_back(cpp_device.get());
     c_to_cpp_device_map_[device] = cpp_device.get();
     // Map the wrapped PjRtDevice* to the PjRtCApiDevice* that wraps it.
@@ -203,8 +202,10 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------
 
-PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device) : device_(device) {
+PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
+    : client_(client), device_(device) {
   wrapped_ = device_->device;
+  InitAttributes();
 }
 
 PjRtClient* PjRtCApiDevice::client() const { return client_; }
@@ -237,6 +238,45 @@ bool PjRtCApiDevice::IsAddressable() const {
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_IsAddressable(&args), api);
   return args.is_addressable;
+}
+
+void PjRtCApiDevice::InitAttributes() {
+  attributes_ = {};
+  PJRT_Device_Attributes_Args args;
+  args.struct_size = PJRT_Device_Attributes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_Attributes(&args), api);
+
+  for (int i = 0; i < args.num_attributes; ++i) {
+    const auto& attribute = args.attributes[i];
+    std::string attribute_name(attribute.name, attribute.name_size);
+    switch (attribute.type) {
+      case PJRT_Device_Attribute::PJRT_Device_Attribute_kString: {
+        std::string string_value(attribute.string_value, attribute.value_size);
+        attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
+        break;
+      }
+      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64: {
+        attributes_[attribute_name] =
+            PjRtDeviceAttribute(attribute.int64_value);
+        break;
+      }
+      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64List: {
+        const int64_t* array_ptr(attribute.int64_array_value);
+        std::vector<int64_t> int64_array(array_ptr,
+                                         array_ptr + attribute.value_size);
+        attributes_[attribute_name] = PjRtDeviceAttribute(int64_array);
+        break;
+      }
+    }
+  }
+}
+
+const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+PjRtCApiDevice::Attributes() const {
+  return attributes_;
 }
 
 absl::string_view PjRtCApiDevice::device_kind() const {

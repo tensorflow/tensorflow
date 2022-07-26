@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 // TODO(b/238999986): Remove this.
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
@@ -247,6 +248,42 @@ typedef PJRT_Error* PJRT_Device_IsAddressable(
 typedef struct {
   size_t struct_size;
   void* priv;
+  const char* name;
+  size_t name_size;
+  enum {
+    PJRT_Device_Attribute_kString = 0,
+    PJRT_Device_Attribute_kInt64,
+    PJRT_Device_Attribute_kInt64List
+  } type;
+  union {
+    int64_t int64_value;
+    const int64_t* int64_array_value;
+    const char* string_value;
+  };
+  // `value_size` is the number of elements for array/string and 1 for scalar
+  // values.
+  size_t value_size;
+} PJRT_Device_Attribute;
+const size_t PJRT_Device_Attribute_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Attribute, value_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  size_t num_attributes;              // out
+  PJRT_Device_Attribute* attributes;  // out
+} PJRT_Device_Attributes_Args;
+const size_t PJRT_Device_Attributes_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Attributes_Args, attributes);
+
+// Returns an array of device specific attributes with attribute name, value
+// and value type.
+typedef PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
   PJRT_Device* device;
   // `device_kind` string is owned by `device` and has same lifetime as
   // `device`.
@@ -471,6 +508,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_Attributes);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
 

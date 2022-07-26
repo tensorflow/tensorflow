@@ -33,13 +33,7 @@ class PjRtCApiClient;
 
 class PjRtCApiDevice : public PjRtDevice {
  public:
-  explicit PjRtCApiDevice(PJRT_Device* device);
-
-  // Must set client exactly once.
-  void SetClient(PjRtCApiClient* client) {
-    CHECK(client_ == nullptr) << ToString();
-    client_ = client;
-  }
+  explicit PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client);
 
   PjRtClient* client() const override;
 
@@ -73,9 +67,7 @@ class PjRtCApiDevice : public PjRtDevice {
   }
 
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return wrapped_->Attributes();
-  }
+      const override;
 
   PJRT_Device* c_device() const { return device_; }
 
@@ -93,6 +85,11 @@ class PjRtCApiDevice : public PjRtDevice {
   // the C API calls until all the C API's got implemented. Remove it when it's
   // usage is reduced to zero.
   PjRtDevice* wrapped_;
+  // Device specific attributes with corresponding values.
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  // Initializes device specific attributes.
+  void InitAttributes();
 };
 
 class PjRtCApiClient : public PjRtClient {
