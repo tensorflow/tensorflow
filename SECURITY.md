@@ -27,7 +27,7 @@ The computation graph may also accept **inputs**. Those inputs are the
 data you supply to TensorFlow to train a model, or to use a model to run
 inference on the data.
 
-**TensorFlow models are programs and need to be treated as such from a security
+**TensorFlow models are programs, and need to be treated as such from a security
 perspective.**
 
 ## Running untrusted models
@@ -159,7 +159,7 @@ a vulnerability.
 
 ### Reporting vulnerabilities
 
-Please email reports about any security-related issues you find to
+Please email reports about any security related issues you find to
 `security@tensorflow.org`. This mail is delivered to a small security team. For
 critical problems, you may encrypt your report (see below).
 
@@ -198,11 +198,11 @@ Once an issue is reported, TensorFlow uses the following disclosure process:
   according to the timeline listed above.
 * If we know of specific third-party services or software based on TensorFlow
   that require mitigation before publication, those projects will be notified.
-* An advisory is prepared (but not published) that details the problem and
+* An advisory is prepared (but not published) which details the problem and
   steps for mitigation.
 * The vulnerability is fixed and potential workarounds are identified.
 * Wherever possible, the fix is also prepared for the branches corresponding to
-  all releases of TensorFlow at most one-year-old. We will attempt to commit
+  all releases of TensorFlow at most one year old. We will attempt to commit
   these fixes as soon as possible, and as close together as possible.
 * Patch releases are published for all fixed released versions, a
   notification is sent to discuss@tensorflow.org, and the advisory is published.
