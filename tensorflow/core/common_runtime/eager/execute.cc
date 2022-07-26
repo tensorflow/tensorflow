@@ -1299,7 +1299,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
-#else   // !IS_MOBILE_PLATFORM
+#else  // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     eager_func_params = EagerFunctionParams{
         op_id, /* is_component_function= */ false, /* step_id= */ std::nullopt};
@@ -1721,7 +1721,7 @@ Status GetKernelOutputs(
 #if defined(IS_MOBILE_PLATFORM)
         return errors::Unimplemented(
             "Remote outputs are not available on mobile devices.");
-#else   // !IS_MOBILE_PLATFORM
+#else  // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
             absl::get<TensorShape>(ret), retvals[i]->device(),
             ctx->GetContextViewId()));
