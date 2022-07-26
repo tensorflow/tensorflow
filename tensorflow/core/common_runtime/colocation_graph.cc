@@ -845,11 +845,23 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
         node->IsFunctionCall()) {
       for (const auto& edge : node->in_edges()) {
         if (HasHostMemoryOutType(*edge->src())) {
-          VLOG(4) << "Special node has host-only data type input:\n"
-                  << node->def().DebugString() << "\nedge:\n"
-                  << edge->DebugString();
-          constrain_to_host = true;
-          break;
+          // Skip nodes in colocation groups that already have a device
+          // assignment
+          if (root.has_assigned_device_name()) {
+            VLOG(4) << "Special node has host-only data type input "
+                    << "but is in a colocation group that already has a device "
+                    << "assignment, so NOT adding constraint:\n"
+                    << node->def().DebugString() << "\nedge:\n"
+                    << edge->DebugString();
+            break;
+          } else {
+            VLOG(4) << "Special node has host-only data type input, "
+                    << "adding constraint:\n"
+                    << node->def().DebugString() << "\nedge:\n"
+                    << edge->DebugString();
+            constrain_to_host = true;
+            break;
+          }
         }
       }
     }
@@ -919,9 +931,9 @@ Status ColocationGraph::Initialize() {
 
   std::unordered_set<Node*> inspection_required;
   TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges(&inspection_required));
-  TF_RETURN_IF_ERROR(AddHostOnlyDataTypesConstraints());
   TF_RETURN_IF_ERROR(AddInspectionConstraints(inspection_required));
   TF_RETURN_IF_ERROR(ColocateAllNodes());
+  TF_RETURN_IF_ERROR(AddHostOnlyDataTypesConstraints());
 
   for (Node* node : graph_.op_nodes()) {
     int root_id = FindAndUpdateRoot(node->id());
