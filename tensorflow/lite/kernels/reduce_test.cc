@@ -575,7 +575,7 @@ TEST(ConstUint8SumOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
   SumOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
-                    {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
+                    {TensorType_UINT8, {2}, -2.0, 2.0}, {1}, {1}, false);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
@@ -601,7 +601,7 @@ TEST(ConstUint8SumOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
   SumOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
-                    {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
+                    {TensorType_UINT8, {3}, -2.0, 2.0}, {1}, {1}, true);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
