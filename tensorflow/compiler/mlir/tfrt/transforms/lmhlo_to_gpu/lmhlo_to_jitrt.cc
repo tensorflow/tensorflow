@@ -369,8 +369,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
     auto gpu_binary = gpu_module->getAttrOfType<mlir::StringAttr>("binary");
 
     // Create a function launch call operation.
-    auto call =
-        rewriter.create<CallOp>(op.getLoc(), inserted, TypeRange(), args);
+    auto call = b.create<CallOp>(inserted, TypeRange(), args);
     call->setAttr(b.getStringAttr("ptx"), gpu_binary);
     call->setAttr(b.getStringAttr("kernel"), op.getKernelName());
 
