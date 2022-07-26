@@ -234,8 +234,6 @@ table GPUOperation {
   compiler_options:[CompilerOption];
   tensor_to_grid:TensorToGrid;
   elementwise:bool;
-  linkable:bool;
-  check_src_channels_size:bool;
   flops:uint64;
   definition:OperationDef;
   grid_dimension:int32;

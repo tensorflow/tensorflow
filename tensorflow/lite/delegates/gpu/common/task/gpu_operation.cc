@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -53,8 +54,7 @@ int3 GetWorkGroupsCountInternal(int grid_dimension, const int3& grid_size,
   return work_groups_count;
 }
 
-std::string GetElementWiseCode(const OperationDef& op_def,
-                               bool check_src_slices) {
+std::string GetElementWiseCode(const OperationDef& op_def) {
   std::string c;
   c += "MAIN_FUNCTION($0) {\n";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
@@ -70,14 +70,7 @@ std::string GetElementWiseCode(const OperationDef& op_def,
   c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) return; \n";
-  if (check_src_slices) {
-    c += "  args.src_tensor::type src = args.src_tensor::zero_value;\n";
-    c += "  if (Z < args.src_tensor.Slices()) {\n";
-    c += "    src = args.src_tensor.Read(X, Y, Z);\n";
-    c += "  }\n";
-  } else {
-    c += "  args.src_tensor::type src = args.src_tensor.Read(X, Y, Z);\n";
-  }
+  c += "  args.src_tensor::type src = args.src_tensor.Read(X, Y, Z);\n";
   c += "  args.dst_tensor.Write(src, X, Y, Z);\n";
   c += "} \n";
   return c;
@@ -134,8 +127,6 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       compiler_options_(std::move(operation.compiler_options_)),
       tensor_to_grid_(operation.tensor_to_grid_),
       elementwise_(operation.elementwise_),
-      linkable_(operation.linkable_),
-      check_src_channels_size_(operation.check_src_channels_size_),
       flops_(operation.flops_),
       const_args_size_(operation.const_args_size_),
       definition_(std::move(operation.definition_)),
@@ -158,8 +149,6 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     compiler_options_ = std::move(operation.compiler_options_);
     tensor_to_grid_ = operation.tensor_to_grid_;
     elementwise_ = operation.elementwise_;
-    linkable_ = operation.linkable_;
-    check_src_channels_size_ = operation.check_src_channels_size_;
     flops_ = operation.flops_;
     const_args_size_ = operation.const_args_size_;
     definition_ = std::move(operation.definition_);
@@ -238,7 +227,7 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
         std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]));
 
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
-    code_ = GetElementWiseCode(definition_, check_src_channels_size_);
+    code_ = GetElementWiseCode(definition_);
   }
   RETURN_IF_ERROR(args_.Compile(
       gpu_info, {{dst_tensors_names_[0], elementwise_code_}}, &code_));

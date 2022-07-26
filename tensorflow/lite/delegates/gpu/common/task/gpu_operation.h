@@ -138,7 +138,7 @@ class GPUOperation {
   void AddDstTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
 
-  bool IsLinkable() const { return elementwise_ && linkable_; }
+  bool IsLinkable() const { return elementwise_; }
 
   // for linking
   void AddUniquePostfix(const std::string& unique_postfix);
@@ -157,10 +157,6 @@ class GPUOperation {
   TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
 
   bool elementwise_ = false;
-  // applicable only with elementwise_ = true;
-  bool linkable_ = true;  // by default every elementwise is linkable
-  // applicable only with elementwise_ = true;
-  bool check_src_channels_size_ = false;
 
   // for profiling
   uint64_t flops_ = 0;
