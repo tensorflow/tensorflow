@@ -94,6 +94,12 @@ void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
   }
 }
 
+const auto hasDuplicates = [](SmallVector<int64_t>& nums) {
+  if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
+  auto* last = std::unique(nums.begin(), nums.end());
+  return last != nums.end();
+};
+
 //===----------------------------------------------------------------------===//
 // Utilities for the canonicalize patterns
 //===----------------------------------------------------------------------===//
@@ -1276,20 +1282,44 @@ void getSliceSizeValues(DynamicGatherOp* /*dGather*/, OpBuilder& builder,
   }
 }
 
+// Verify the following properties:
+//  P1. Verify no repeat in start_index_map.
+//  P2. Verify 0 <= start_index_map[i] < rank(operand), for every i.
+//  P3. Verify 0 <= index_vector_dim <= rank(start_indices).
+//  P4. Verify size(start_index_map) == shape(start_indices)[index_vector_dim].
+//  P5. Verify offset_dims is_sorted and no repeated.
+//  P6. Verify collapsed_slice_dims is_sorted and no repeated.
+//  P7. Verify rank(operand) == size(offset_dims) + size(collapsed_slice_dims).
+//  P8. Verify slice_sizes has rank of 1.
+//  P9. Verify size(slice_sizes) == rank(operand).
+//  P10. Verify 0 <= collapsed_slice_dims[i] < size(slice_sizes) for all items.
 static LogicalResult verifyGather(
     ShapeAdaptor operandShape, ShapeAdaptor startIndicesShape,
     ShapeAdaptor sliceSizesShape, GatherDimensionNumbersAttr dimensionNumbers,
     llvm::function_ref<InFlightDiagnostic()> errorEmitter) {
-  // This should be fully expressible with type constraints, but it isn't
-  // obvious how to do that with the current infrastructure.
-  if (sliceSizesShape.hasRank() && sliceSizesShape.getRank() != 1)
-    return errorEmitter() << "slice_sizes.rank != 1";
-
   int64_t indexVectorDim = dimensionNumbers.getIndexVectorDim();
+
+  // Check startIndexMap
+  auto startIndexMap = to_vector(dimensionNumbers.getStartIndexMap());
+  // P1.
+  if (hasDuplicates(startIndexMap))
+    return errorEmitter() << "expects start_index_map to not repeat, got: ["
+                          << startIndexMap << "]";
+
+  // P2.
+  for (int i = 0; i < startIndexMap.size(); ++i)
+    if (startIndexMap[i] < 0 ||
+        (operandShape.hasRank() && startIndexMap[i] >= operandShape.getRank()))
+      return errorEmitter()
+             << "start_index_map[" << i << "]: " << startIndexMap[i]
+             << " is out of bounds for "
+             << "operand rank " << operandShape.getRank();
+
   if (startIndicesShape.hasRank()) {
+    // P3.
     // index_vector_dim == start_indices.rank implies a trailing 1 on the shape
     // of start_indices.
-    if (indexVectorDim > startIndicesShape.getRank())
+    if (indexVectorDim > startIndicesShape.getRank() || indexVectorDim < 0)
       return errorEmitter() << "index_vector_dim " << indexVectorDim
                             << " is out of bounds for start indices with rank "
                             << startIndicesShape.getRank();
@@ -1301,15 +1331,37 @@ static LogicalResult verifyGather(
         effectiveDimSize = 1;
       else
         effectiveDimSize = startIndicesShape.getDimSize(indexVectorDim);
-      if (effectiveDimSize != dimensionNumbers.getStartIndexMap().size())
-        return errorEmitter() << "start_index_map size ("
-                              << dimensionNumbers.getStartIndexMap().size()
-                              << ") is not equal to size of index dimension ("
-                              << indexVectorDim << ") of start_indices ("
-                              << effectiveDimSize << ")";
+
+      // P4.
+      if (effectiveDimSize != startIndexMap.size())
+        return errorEmitter()
+               << "start_index_map size (" << startIndexMap.size()
+               << ") is not equal to size of index dimension ("
+               << indexVectorDim << ") of start_indices (" << effectiveDimSize
+               << ")";
     }
   }
 
+  // P5.
+  auto offsetDims = to_vector(dimensionNumbers.getOffsetDims());
+  if (!llvm::is_sorted(offsetDims))
+    return errorEmitter() << "expects offset_dims to be sorted, got: ["
+                          << offsetDims << "]";
+  if (hasDuplicates(offsetDims))
+    return errorEmitter() << "expects offset_dims to not repeat, got: ["
+                          << offsetDims << "]";
+
+  // P6.
+  auto collapsedSliceDims = to_vector(dimensionNumbers.getCollapsedSliceDims());
+  if (!llvm::is_sorted(collapsedSliceDims))
+    return errorEmitter() << "expects collapsed_slice_dims to be sorted, got: ["
+                          << collapsedSliceDims << "]";
+  if (hasDuplicates(collapsedSliceDims))
+    return errorEmitter()
+           << "expects collapsed_slice_dims to not repeat, got: ["
+           << collapsedSliceDims << "]";
+
+  // P7.
   int64_t impliedOperandRank = dimensionNumbers.getOffsetDims().size() +
                                dimensionNumbers.getCollapsedSliceDims().size();
   if (operandShape.hasRank() && operandShape.getRank() != impliedOperandRank)
@@ -1320,29 +1372,41 @@ static LogicalResult verifyGather(
                           << ") is not equal to operand rank ("
                           << operandShape.getRank() << ")";
 
+  // P8.
+  // This should be fully expressible with type constraints, but it isn't
+  // obvious how to do that with the current infrastructure.
+  if (sliceSizesShape.hasRank() && sliceSizesShape.getRank() != 1)
+    return errorEmitter() << "slice_sizes.rank != 1";
   if (sliceSizesShape.hasStaticShape()) {
-    int64_t sliceRank = sliceSizesShape.getNumElements();
+    int64_t sliceSize = sliceSizesShape.getNumElements();
 
-    if (sliceRank != impliedOperandRank)
-      return errorEmitter() << "slice_sizes size (" << sliceRank
+    // P9.
+    if (sliceSize != impliedOperandRank)
+      return errorEmitter() << "slice_sizes size (" << sliceSize
                             << ") not equal to (implied) operand rank ("
                             << impliedOperandRank << ")";
 
+    // P10.
     for (auto dim : dimensionNumbers.getCollapsedSliceDims())
-      if (dim >= sliceRank)
-        return errorEmitter()
-               << "collapsed dimension " << dim
-               << " is greater than slice_sizes.size (" << sliceRank << ")";
+      if (dim < 0 || dim >= sliceSize)
+        return errorEmitter() << "collapsed dimension " << dim
+                              << " is out of bounds for slice_sizes.size ("
+                              << sliceSize << ")";
   }
 
   return success();
 }
 
+// Verify the following properties:
+//  P1. Verifications by verifyGather().
+//  P2. Verify slice_sizes[i] <= 1 for i in collapsed_slice_dims.
+//  P3. Verify 0 <= slice_sizes[i] < shape(operand)[i], for every i.
 static LogicalResult verifyStaticGather(
     ShapeAdaptor operandShape, ShapeAdaptor startIndicesShape,
     DenseIntElementsAttr sliceSizes,
     GatherDimensionNumbersAttr dimensionNumbers,
     llvm::function_ref<InFlightDiagnostic()> errorEmitter) {
+  // P1.
   // For some reason the getType call is necessary here
   if (failed(verifyGather(
           /*operandShape=*/operandShape,
@@ -1351,22 +1415,24 @@ static LogicalResult verifyStaticGather(
           errorEmitter)))
     return failure();
 
+  // P2.
   for (auto dim : dimensionNumbers.getCollapsedSliceDims()) {
     int64_t sliceDimSize = sliceSizes.getValues<int64_t>()[dim];
-    if (sliceDimSize != 1) {
+    if (sliceDimSize > 1) {
       return errorEmitter() << "slice_sizes collapsed dimension " << dim
-                            << " != 1 (" << sliceDimSize << ")";
+                            << " should <= 1 but got " << sliceDimSize;
     }
   }
 
+  // P3.
   if (operandShape.hasRank()) {
     for (const auto& it : llvm::enumerate(sliceSizes.getValues<int64_t>())) {
       if (operandShape.isDynamicDim(it.index())) continue;
       auto operandDimSize = operandShape.getDimSize(it.index());
       auto sliceDimSize = it.value();
-      if (sliceDimSize > operandDimSize)
+      if (sliceDimSize < 0 || sliceDimSize > operandDimSize)
         return errorEmitter() << "slice size (" << sliceDimSize
-                              << ") is larger than operand dimension ("
+                              << ") is out of bounds for operand dimension ("
                               << operandDimSize << ") at index " << it.index();
     }
   }
@@ -1433,11 +1499,15 @@ static void inferGatherShape(
   }
 }
 
+// Verify the following properties:
+//  P1. Verify 0 <= offset_dims[i] < output_shape_rank, for every i.
+//      (output_shape_rank = size(offset_dims) + rank(start_indices) -1)
 static LogicalResult inferGatherReturnTypeComponents(
     ShapeAdaptor operandShape, ShapeAdaptor startIndicesShape,
     llvm::function_ref<int64_t(int64_t)> getSliceDim,
     GatherDimensionNumbersAttr dimensionNumbers,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes,
+    llvm::function_ref<InFlightDiagnostic()> errorEmitter) {
   Type elementType = operandShape.getElementType();
 
   // We need this to determine the result rank. We could still place bounds on
@@ -1454,6 +1524,12 @@ static LogicalResult inferGatherReturnTypeComponents(
   if (dimensionNumbers.getIndexVectorDim() == startIndicesRank)
     ++startIndicesRank;
   int64_t resultRank = offsetDims.size() + startIndicesRank - 1;
+  // P1.
+  for (int i = 0; i < offsetDims.size(); ++i)
+    if (offsetDims[i] < 0 || offsetDims[i] >= resultRank)
+      return errorEmitter() << "offset_dims[" << i << "]: " << offsetDims[i]
+                            << " is out of bounds for "
+                            << "implied result rank " << resultRank;
 
   auto getStartIndicesDim = [&](int64_t index) {
     return startIndicesShape.getDimSize(index);
@@ -1516,10 +1592,16 @@ LogicalResult GatherOp::reifyReturnTypeShapes(
   return reifyGatherShape(this, builder, operands, reifiedReturnShapes);
 }
 
+// The following properties are already enforced by the ODS:
+//  P0. Verify the start_indices has element type of integer.
+// Verify the following properties:
+//  Verifications by verifyStaticGather() and verifyGather() inside it.
+//  Verifications by inferGatherReturnTypeComponents.
 LogicalResult GatherOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  // TODO(zhouxin) remove this comment after the ordering issue is clear.
   // This can get called before other op verify methods, so we have to do a
   // bunch of verification up front. With a better story for ordering and/or
   // multi-phase op verification, this should hopefully all go away.
@@ -1549,7 +1631,7 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
                                          getSliceDim, dimensionNumbers,
-                                         inferredReturnShapes);
+                                         inferredReturnShapes, errorEmitter);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1592,7 +1674,7 @@ LogicalResult DynamicGatherOp::inferReturnTypeComponents(
   auto getSliceDim = [](int64_t index) { return ShapedType::kDynamicSize; };
   return inferGatherReturnTypeComponents(operandShape, startIndicesShape,
                                          getSliceDim, dimensionNumbers,
-                                         inferredReturnShapes);
+                                         inferredReturnShapes, errorEmitter);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1970,12 +2052,6 @@ LogicalResult isSpatialDimensionsValid(ConvolutionOp op) {
     return op.emitOpError() << "expects input, kernel, and output "
                                "dimension-numbers to be in-range [0, "
                             << numDims << ").";
-
-  const auto hasDuplicates = [](SmallVector<int64_t>& dnums) {
-    std::sort(dnums.begin(), dnums.end());
-    auto* last = std::unique(dnums.begin(), dnums.end());
-    return last != dnums.end();
-  };
 
   if (hasDuplicates(inputDnums))
     return op.emitOpError()
@@ -7373,12 +7449,6 @@ LogicalResult validateScatterDimensionNumbers(
     ShapedType updateType, bool operandTypeRanked,
     bool scatterIndicesTypeRanked, bool updatesTypeRanked,
     ScatterDimensionNumbersAttr dimNumbers, Location loc) {
-  const auto hasDuplicates = [](SmallVector<int64_t>& nums) {
-    if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
-    auto* last = std::unique(nums.begin(), nums.end());
-    return last != nums.end();
-  };
-
   // P1.
   auto updateWindowDims = to_vector(dimNumbers.getUpdateWindowDims());
   if (!llvm::is_sorted(updateWindowDims))
