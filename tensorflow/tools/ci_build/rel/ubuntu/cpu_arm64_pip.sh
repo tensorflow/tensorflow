@@ -92,7 +92,7 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv3d_backprop_filter_v2_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/kernel_tests/nn_ops:pooling_ops_3d_test_cpu \
+    -//tensorflow/python/kernel_tests/quantization_ops:quantization_ops_test \
     -//tensorflow/python/ops/parallel_for:math_test \
     -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
