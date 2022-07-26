@@ -47,12 +47,12 @@ you should assume that the TensorFlow process effectively executes arbitrary
 code. One common solution is to allow only a few safe Ops. While this is
 possible in theory, we still recommend you sandbox the execution.
 
-It depends on the computation graph whether a user-provided checkpoint is safe.
+It depends on the computation graph whether a user provided checkpoint is safe.
 It is easily possible to create computation graphs in which malicious
 checkpoints can trigger unsafe behavior. For example, consider a graph that
 contains a `tf.cond` depending on the value of a `tf.Variable`. One branch of
 the `tf.cond` is harmless, but the other is unsafe. Since the `tf.Variable` is
-stored in the checkpoint, whoever provides the checkpoint now can
+stored in the checkpoint, whoever provides the checkpoint now has the ability to
 trigger unsafe behavior, even though the graph is not under their control.
 
 In other words, graphs can contain vulnerabilities of their own. To allow users
