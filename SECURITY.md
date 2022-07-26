@@ -67,7 +67,7 @@ process untrusted inputs assuming there are no bugs. There are two main reasons
 to not rely on this: First, it is easy to write models which must not be exposed
 to untrusted inputs, and second, there are bugs in any software system of
 sufficient complexity. Letting users control inputs could allow them to trigger
-bugs either in TensorFlow or its dependencies.
+bugs either in TensorFlow or in dependencies.
 
 In general, it is good practice to isolate parts of any system which is exposed
 to untrusted (e.g., user-provided) inputs in a sandbox.
@@ -83,7 +83,7 @@ Python library used (e.g.,
 
 ## Running a TensorFlow server
 
-TensorFlow is a platform for distributed computing, and as such, there is a
+TensorFlow is a platform for distributed computing, and as such there is a
 TensorFlow server (`tf.train.Server`). **The TensorFlow server is meant for
 internal communication only. It is not built for use in an untrusted network.**
 
@@ -121,8 +121,8 @@ any breach.
 ## Vulnerabilities in TensorFlow
 
 TensorFlow is a large and complex system. It also depends on a large set of
-third-party libraries (e.g., `numpy`, `libjpeg-turbo`, PNG parsers, `protobuf`).
-TensorFlow or its dependent libraries may contain
+third party libraries (e.g., `numpy`, `libjpeg-turbo`, PNG parsers, `protobuf`).
+It is possible that TensorFlow or its dependencies may contain
 vulnerabilities that would allow triggering unexpected or dangerous behavior
 with specially crafted inputs.
 
