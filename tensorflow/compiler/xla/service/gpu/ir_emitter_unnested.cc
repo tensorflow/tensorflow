@@ -1672,12 +1672,6 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
                          launch_func.getKernelName().str());
   }
 
-  mlir::DialectRegistry registry;
-  mlir::registerLLVMDialectTranslation(registry);
-  mlir::registerNVVMDialectTranslation(registry);
-  mlir::registerROCDLDialectTranslation(registry);
-  op->getContext()->appendDialectRegistry(registry);
-
   // Lower kernel module to NVVM.
   auto gpu_module = kernel_func->getParentOfType<mlir::gpu::GPUModuleOp>();
   std::unique_ptr<llvm::Module> llvm_module = mlir::translateModuleToLLVMIR(
@@ -5556,6 +5550,15 @@ Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
     TF_RETURN_IF_ERROR(EmitOp(&op));
   }
   return OkStatus();
+}
+
+void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+                  mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
+                  mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect>();
+  mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerNVVMDialectTranslation(registry);
+  mlir::registerROCDLDialectTranslation(registry);
 }
 
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {
