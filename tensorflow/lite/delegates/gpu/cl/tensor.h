@@ -41,14 +41,9 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
  public:
   Tensor()
       : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
-  Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
-         const TensorDescriptor& descriptor);
-  Tensor(cl_mem memory, bool memory_owner, const BHWDC& shape,
-         const TensorDescriptor& descriptor);
+  Tensor(cl_mem memory, bool memory_owner, const TensorDescriptor& descriptor);
   Tensor(cl_mem memory, bool memory_owner, cl_mem image_buffer_memory,
-         const BHWC& shape, const TensorDescriptor& descriptor);
-  Tensor(cl_mem memory, bool memory_owner, cl_mem image_buffer_memory,
-         const BHWDC& shape, const TensorDescriptor& descriptor);
+         const TensorDescriptor& descriptor);
 
   // Move only
   Tensor(Tensor&& tensor);
@@ -61,12 +56,14 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
 
-  int Width() const override { return shape_.w; }
-  int Height() const override { return shape_.h; }
-  int Depth() const override { return shape_.d; }
-  int Channels() const override { return shape_.c; }
-  int Slices() const override { return DivideRoundUp(shape_.c, 4); }
-  int Batch() const override { return shape_.b; }
+  int Width() const override { return descriptor_.GetBHWDCShape().w; }
+  int Height() const override { return descriptor_.GetBHWDCShape().h; }
+  int Depth() const override { return descriptor_.GetBHWDCShape().d; }
+  int Channels() const override { return descriptor_.GetBHWDCShape().c; }
+  int Slices() const override {
+    return DivideRoundUp(descriptor_.GetBHWDCShape().c, 4);
+  }
+  int Batch() const override { return descriptor_.GetBHWDCShape().b; }
 
   TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.GetDataType(); }
@@ -105,7 +102,6 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   cl_mem image_buffer_memory_;  // for IMAGE_BUFFER/TEXTURE_2D/SINGLE_TEXTURE_2D
   bool memory_owner_;
   bool buffer_based_ = false;
-  BHWDC shape_;
   TensorDescriptor descriptor_;
   // for use with TEXTURE_2D and when texture created from buffer.
   int aligned_texture_width_;
