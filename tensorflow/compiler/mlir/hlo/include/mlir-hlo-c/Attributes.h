@@ -339,6 +339,24 @@ MLIR_CAPI_EXPORTED int64_t mlirMhloChannelHandleGetHandle(MlirAttribute attr);
 // Returns the type integer associated with the ChannelHandle attribute.
 MLIR_CAPI_EXPORTED int64_t mlirMhloChannelHandleGetType(MlirAttribute attr);
 
+//
+// TypeExtensions
+//
+// Creates a new TypeExtensions attribute with the given 'bounds' which
+// is interpreted as an array.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloTypeExtensionsGet(
+    MlirContext ctx, intptr_t nBounds, const int64_t *bounds);
+
+// Returns true if the given attribute is a TypeExtensions attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsTypeExtensions(MlirAttribute attr);
+
+// Returns the size and the elements of the bounds associated with the
+// TypeExtensions attributes.
+MLIR_CAPI_EXPORTED intptr_t
+mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos);
+
 #ifdef __cplusplus
 }
 #endif

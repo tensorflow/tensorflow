@@ -1679,6 +1679,40 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
 
+// Does the same as PatternRewriter::replaceOpWithNewOp, but with a twist.
+//
+// Sometimes, we want to replace an op with a new op and simultaneously refine
+// the result type from a dynamically-shaped type to a statically-shaped type.
+// (Search for usages of this function for examples).
+//
+// Oftentimes, this works just fine because MHLO is designed to accommodate
+// this kind of type refinements. But sometimes, this doesn't work - when
+// the op is used outside of the MHLO dialect (e.g. in func.return). In these
+// cases, we insert a tensor.cast to smooth things out.
+template <typename OpTy, typename... Args>
+OpTy refineOpWithNewOp(PatternRewriter& rewriter, Operation* op,
+                       Args&&... args) {
+  auto newOp = rewriter.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+
+  llvm::SmallVector<Value> replacementResults;
+  assert(op->getNumResults() == newOp->getNumResults() &&
+         "replacement op doesn't match results of original op");
+  for (auto [opResult, newOpResult] :
+       llvm::zip(op->getResults(), newOp->getResults())) {
+    Value replacementResult = newOpResult;
+    if (llvm::any_of(opResult.getUsers(), [&](Operation* user) {
+          return user->getDialect() != op->getDialect();
+        })) {
+      replacementResult = rewriter.create<tensor::CastOp>(
+          op->getLoc(), opResult.getType(), newOpResult);
+    }
+    replacementResults.push_back(replacementResult);
+  }
+
+  rewriter.replaceOp(op, replacementResults);
+  return newOp;
+}
+
 namespace {
 
 struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
@@ -1686,13 +1720,30 @@ struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
 
   LogicalResult matchAndRewrite(DynamicIotaOp iota,
                                 PatternRewriter& rewriter) const override {
+    // Result type has static shape, replace with iota.
     auto resultTy = iota.getType().cast<ShapedType>();
-    if (!resultTy.hasStaticShape()) {
-      return failure();
+    if (resultTy.hasStaticShape()) {
+      rewriter.replaceOpWithNewOp<IotaOp>(iota, resultTy,
+                                          iota.iota_dimension());
+      return success();
     }
 
-    rewriter.replaceOpWithNewOp<IotaOp>(iota, resultTy, iota.iota_dimension());
-    return success();
+    // Output shape is constant, compute result type with static shape, then
+    // replace with iota.
+    DenseIntElementsAttr outputShapeAttr;
+    if (matchPattern(iota.output_shape(), m_Constant(&outputShapeAttr))) {
+      SmallVector<int64_t> outputShape;
+      for (APInt dim : outputShapeAttr.getValues<APInt>()) {
+        outputShape.push_back(dim.getSExtValue());
+      }
+      resultTy = RankedTensorType::get(outputShape, resultTy.getElementType());
+      refineOpWithNewOp<IotaOp>(rewriter, iota, resultTy,
+                                iota.iota_dimension());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(
+        iota, "requires static shape or constant output shape");
   }
 };
 
@@ -3037,20 +3088,10 @@ class DynamicBroadcastInDimOpNotActuallyDynamic
         for (APInt shape : shapeAttr.getValues<APInt>()) {
           outputShape.push_back(shape.getZExtValue());
         }
-        Value result = rewriter.create<BroadcastInDimOp>(
-            op.getLoc(),
+        refineOpWithNewOp<BroadcastInDimOp>(
+            rewriter, op,
             RankedTensorType::get(outputShape, type.getElementType()),
             op.operand(), op.broadcast_dimensions());
-        // We are refining the type here. Not all operations can tolerate their
-        // operands changing type. Operations from mhlo dialect can. So insert
-        // a cast otherwise.
-        if (llvm::any_of(op->getUsers(), [&](Operation* user) {
-              return user->getDialect() != op->getDialect();
-            })) {
-          result = rewriter.create<tensor::CastOp>(
-              op.getLoc(), op.getResult().getType(), result);
-        }
-        rewriter.replaceOp(op, result);
         return success();
       }
     }
@@ -5355,13 +5396,156 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
+LogicalResult PadOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  PadOp::Adaptor adaptor(operands, this->getOperation()->getAttrDictionary());
+  auto loc = this->getLoc();
+  Value operand = adaptor.operand();
+  auto operandTy = operand.getType().cast<RankedTensorType>();
+
+  llvm::SmallVector<int32_t> padHigh;
+  llvm::SmallVector<int32_t> padLow;
+  llvm::SmallVector<int32_t> padInterior;
+
+  auto padHighAttr = adaptor.edge_padding_high();
+  auto padLowAttr = adaptor.edge_padding_low();
+  auto padInteriorAttr = adaptor.interior_padding();
+
+  padHigh.reserve(padHighAttr.getNumElements());
+  padLow.reserve(padLowAttr.getNumElements());
+  padInterior.reserve(padInteriorAttr.getNumElements());
+
+  for (const APInt& val : padHighAttr.getValues<APInt>())
+    padHigh.push_back(val.getSExtValue());
+
+  for (const APInt& val : padLowAttr.getValues<APInt>())
+    padLow.push_back(val.getSExtValue());
+
+  for (const APInt& val : padInteriorAttr.getValues<APInt>())
+    padInterior.push_back(val.getSExtValue());
+
+  Value one = builder.create<arith::ConstantIndexOp>(loc, 1).getResult();
+  Value zero = builder.create<arith::ConstantIndexOp>(loc, 0).getResult();
+
+  llvm::SmallVector<Value> dimensions;
+  dimensions.reserve(operandTy.getRank());
+  for (int i = 0, s = operandTy.getRank(); i < s; ++i) {
+    Value padEdge =
+        builder.create<arith::ConstantIndexOp>(loc, padHigh[i] + padLow[i]);
+
+    // First we grab the initial interior size.
+    Value dim = builder.create<tensor::DimOp>(loc, operand, i).getResult();
+
+    // Compute the interior of the tensor and determine padding size.
+    if (padInterior[i] > 0) {
+      Value padInter =
+          builder.create<arith::ConstantIndexOp>(loc, padInterior[i])
+              .getResult();
+      Value interior = builder.create<arith::SubIOp>(loc, dim, one).getResult();
+      interior = builder.create<arith::MaxSIOp>(loc, interior, zero);
+      interior = builder.create<arith::MulIOp>(loc, interior, padInter);
+      dim = builder.create<arith::AddIOp>(loc, dim, interior).getResult();
+    }
+
+    // Then we add the padding on the edge of the tensor.
+    dim = builder.create<arith::AddIOp>(loc, dim, padEdge).getResult();
+    dimensions.push_back(dim);
+  }
+
+  Value dimensionTensor =
+      builder.create<tensor::FromElementsOp>(loc, dimensions).getResult();
+  reifiedReturnShapes.push_back(dimensionTensor);
+  return success();
+}
+
+// If the input tensor has a dimension of length-0, the input tensor is
+// irrelevant. Instead we can broadcast the pad value to the output size rather
+// than pad the input tensor.
+struct PadEmptyTensor : public OpRewritePattern<PadOp> {
+  using OpRewritePattern<PadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PadOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operand = op.operand();
+    auto padVal = op.padding_value();
+
+    auto operandTy = operand.getType().cast<RankedTensorType>();
+    auto resultTy = op.getType().cast<RankedTensorType>();
+
+    if (llvm::all_of(operandTy.getShape(), [](int64_t d) { return d != 0; })) {
+      return failure();
+    }
+
+    if (resultTy.hasStaticShape()) {
+      auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
+      auto dims =
+          DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
+      rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(op, resultTy, padVal,
+                                                          dims);
+      return success();
+    }
+
+    llvm::SmallVector<Value> reifiedShapes;
+    if (failed(op.reifyReturnTypeShapes(rewriter, op.getOperands(),
+                                        reifiedShapes)))
+      return failure();
+
+    auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
+    auto broadcastDims =
+        DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
+    rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
+        op, op.getType(), padVal, reifiedShapes.front(), broadcastDims);
+
+    return failure();
+  }
+};
+
+void PadOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                        MLIRContext* context) {
+  results.add<PadEmptyTensor>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicPadOp
 //===----------------------------------------------------------------------===//
 
+// If the input tensor has a dimension of length-0, the input tensor is
+// irrelevant. Instead we can broadcast the pad value to the output size rather
+// than pad the input tensor.
+struct DynamicPadEmptyTensor : public OpRewritePattern<DynamicPadOp> {
+  using OpRewritePattern<DynamicPadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicPadOp op,
+                                PatternRewriter& rewriter) const override {
+    // auto loc = op.getLoc();
+    auto operand = op.operand();
+    auto padVal = op.padding_value();
+
+    auto operandTy = operand.getType().cast<RankedTensorType>();
+
+    if (llvm::all_of(operandTy.getShape(), [](int64_t d) { return d != 0; })) {
+      return failure();
+    }
+
+    llvm::SmallVector<Value> reifiedShapes;
+    if (failed(op.reifyReturnTypeShapes(rewriter, op->getOperands(),
+                                        reifiedShapes)))
+      return failure();
+
+    auto dimsType = RankedTensorType::get({0}, rewriter.getIntegerType(64));
+    auto broadcastDims =
+        DenseIntElementsAttr::get(dimsType, SmallVector<int64_t, 1>{});
+    rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
+        op, op.getType(), padVal, reifiedShapes.front(), broadcastDims);
+
+    return failure();
+  }
+};
+
 void DynamicPadOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                MLIRContext* context) {
-  results.add<DPadToPad>(context);
+  results.add<DPadToPad, DynamicPadEmptyTensor>(context);
 }
 
 LogicalResult DynamicPadOp::verify() {
@@ -6017,9 +6201,8 @@ bool isSplatZero(SplatElementsAttr attr) {
   }
   if (attr.getElementType().isa<IntegerType>()) {
     return attr.getSplatValue<APInt>().isZero();
-  } else {
-    return false;
   }
+  return false;
 }
 
 OpFoldResult AddOp::fold(ArrayRef<Attribute> attrs) {
@@ -6043,9 +6226,8 @@ bool isSplatOne(SplatElementsAttr attr) {
   }
   if (attr.getElementType().isa<IntegerType>()) {
     return attr.getSplatValue<APInt>().getSExtValue() == 1;
-  } else {
-    return false;
   }
+  return false;
 }
 
 OpFoldResult MulOp::fold(ArrayRef<Attribute> attrs) {
@@ -6616,7 +6798,7 @@ void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
   if (auto elements = operands.front().dyn_cast_or_null<SplatElementsAttr>()) {
-    return elements.reshape(getResult().getType().cast<ShapedType>());
+    return reshape(elements, getResult().getType().cast<ShapedType>());
   }
   for (const auto& it : llvm::enumerate(permutation().getValues<APInt>())) {
     if (it.index() != it.value()) {

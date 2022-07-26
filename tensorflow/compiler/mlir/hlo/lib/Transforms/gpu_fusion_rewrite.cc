@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
@@ -193,12 +194,29 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   SetVector<Value> captures;
   getUsedValuesDefinedAbove(fusionOp->getRegions(), captures);
 
+  // Converts statically shaped types to their 1D equivalent. This only works
+  // for element wise fusions and will have to become a more sophisticated
+  // pass when e.g. broadcasts are involved.
+  TypeConverter converter;
+  converter.addConversion([](Type type) { return type; });
+  converter.addConversion([](ShapedType type) {
+    if (!type.hasStaticShape()) return type;
+    return type.clone(type.getNumElements());
+  });
+  converter.addConversion([&](MemRefType type) {
+    if (!type.hasStaticShape() || !type.getLayout().isIdentity()) return type;
+    return MemRefType::get(type.getNumElements(), type.getElementType(),
+                           MemRefLayoutAttrInterface(), type.getMemorySpace());
+  });
+
   // Create a new module with a function, clone fusion region into it.
   Location loc = fusionOp.getLoc();
   auto moduleOp = rewriter.create<ModuleOp>(loc);
   rewriter.setInsertionPointToEnd(moduleOp.getBody());
-  auto funcType =
-      rewriter.getFunctionType(TypeRange(captures.getArrayRef()), llvm::None);
+  auto argTypes = llvm::to_vector(llvm::map_range(captures, [&](Value value) {
+    return converter.convertType(value.getType());
+  }));
+  auto funcType = rewriter.getFunctionType(argTypes, llvm::None);
   auto funcOp = rewriter.create<func::FuncOp>(loc, "fusion", funcType);
   rewriter.setInsertionPointToEnd(funcOp.addEntryBlock());
   BlockAndValueMapping mapping;
@@ -209,6 +227,10 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   rewriter.cloneRegionBefore(fusionOp.getRegion(), funcOp.getRegion(),
                              funcOp.end(), mapping);
   rewriter.mergeBlocks(&funcOp.back(), &funcOp.front());
+  funcOp->walk([&](Operation* op) {
+    for (auto result : op->getResults())
+      result.setType(converter.convertType(result.getType()));
+  });
 
   // Create and run the HLO to GPU pass pipeline.
   auto resultType = (*storeOps.begin()).tensor().getType().cast<TensorType>();

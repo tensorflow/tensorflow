@@ -1978,8 +1978,21 @@ func.func @testComplexDivNoNanOpWithNonConstantY(%arg0: tensor<2xcomplex<f32>>, 
   func.return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
 }
 
-// CHECK-LABEL: testXlaReduceToXlaVariadicReduceToV2
-func.func @testXlaReduceToXlaVariadicReduceToV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+// CHECK-LABEL: testXlaConvToV2
+func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32>) {
+  %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+  %padding = "tf.Const"() {value = dense<0> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %strides = "tf.Const"() {value = dense<[3, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK: "tf.XlaConvV2"(%arg0, %arg1, %cst_3, %cst_2, %cst_0, %cst_1, %cst) {batch_group_count = 1 : i64, dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
+  %0 = "tf.XlaConv"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
+  func.return %0 : tensor<8x4x14x14x16xf32>
+}
+
+
+// CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
+func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
   // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = dense<1> : vector<2xi32>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
@@ -2017,6 +2030,34 @@ func.func @testMaximumOfZeroToReluInt(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   %cst_0 = arith.constant dense<0> : tensor<i32>
   %0 = "tf.Maximum"(%arg0, %cst_0) : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
   func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt32OnGpu
+func.func @testMaximumOfZeroToReluInt32OnGpu(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<i32>
+  // CHECK: %[[RESULT:.*]] = "tf.Maximum"(%arg0, %[[CST]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt32OnCpu
+func.func @testMaximumOfZeroToReluInt32OnCpu(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK: %[[RESULT:.*]] = "tf.Relu"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i32>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = i32} : (tensor<4xi32>, tensor<i32>) -> tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: testMaximumOfZeroToReluInt64OnGpu
+func.func @testMaximumOfZeroToReluInt64OnGpu(%arg0: tensor<4xi64>) -> tensor<4xi64> {
+  // CHECK: %[[RESULT:.*]] = "tf.Relu"(%arg0) : (tensor<4xi64>) -> tensor<4xi64>
+  // CHECK: return %[[RESULT]]
+  %cst_0 = arith.constant dense<0> : tensor<i64>
+  %0 = "tf.Maximum"(%arg0, %cst_0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<4xi64>, tensor<i64>) -> tensor<4xi64>
+  func.return %0 : tensor<4xi64>
 }
 
 // CHECK-LABEL: testReluOfMinimum6ToRelu6Float

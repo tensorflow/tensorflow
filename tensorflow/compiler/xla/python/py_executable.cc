@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/python/host_callback.h"
+#include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
 namespace xla {

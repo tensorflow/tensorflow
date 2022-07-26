@@ -17,7 +17,6 @@ load(
 )
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
-    "if_mlir_generated_cpu_kernels_enabled",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
 )
@@ -3662,17 +3661,13 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
-    copts = if_mlir_generated_cpu_kernels_enabled(
-        ["-DMLIR_GENERATED_CPU_KERNELS_ENABLED"],
-    ) + if_mlir_generated_experimental_kernels_enabled([
+    copts = if_mlir_generated_experimental_kernels_enabled([
         "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
     ]) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
     ),
     # *.cu.cc sources are compiled with gpu_copts instead of copts.
-    gpu_copts = if_mlir_generated_cpu_kernels_enabled(
-        ["-DMLIR_GENERATED_CPU_KERNELS_ENABLED"],
-    ) + if_mlir_generated_experimental_kernels_enabled([
+    gpu_copts = if_mlir_generated_experimental_kernels_enabled([
         "-DMLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED",
     ]) + if_mlir_generated_gpu_kernels_enabled(
         ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED"],
@@ -6528,6 +6523,7 @@ filegroup(
         "//tensorflow/core/kernels/linalg:matrix_set_diag_op.h",
         "//tensorflow/core/kernels/linalg:matrix_triangular_solve_op_impl.h",
         "//tensorflow/core/kernels/linalg:qr_op_impl.h",
+        "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels_headers",
         "//tensorflow/core/util:image_resizer_state.h",
     ],
 )
@@ -6666,7 +6662,7 @@ filegroup(
         "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
         "//tensorflow/core/kernels/image:encode_png_op.cc",
         "//tensorflow/core/kernels/image:colorspace_op.cc",
-        "//tensorflow/core/kernels/uniform_quant_ops:uniform_quantized_dot_ops.cc",
+        "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",

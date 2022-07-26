@@ -17,6 +17,7 @@ limitations under the License.
 #include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -95,11 +96,11 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   for (int i = 0; i < graph_cl.outputs().size(); ++i) {
     // Assumed that graph outputs have batch size = 1.
     auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
-    RETURN_IF_ERROR(CreateTensor(
-        env.context(), graph_cl.outputs()[i]->tensor.shape,
-        TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
-                         Layout::HWC},
-        &outputs[i]));
+    TensorDescriptor required_tensor_desc = TensorDescriptor{
+        data_type, TensorStorageType::TEXTURE_ARRAY, Layout::HWC};
+    required_tensor_desc.SetBHWCShape(graph_cl.outputs()[i]->tensor.shape);
+    RETURN_IF_ERROR(
+        CreateTensor(env.context(), required_tensor_desc, &outputs[i]));
     create_info.external_immutable_tensors[graph_cl.outputs()[i]->id] =
         &outputs[i];
   }

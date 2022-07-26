@@ -760,8 +760,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
           coords += ", " + zc;
         }
         if (src_def.IsLinear()) {
-          c += "  args.src_tensor.GetAddress(addr" + id + ", " + coords + ", " +
-               src_group_start_slice + ");\n";
+          c += "  int addr" + id + " = args.src_tensor.GetAddress(" + coords +
+               ", " + src_group_start_slice + ");\n";
           if (need_multiple_slice_strides) {
             const std::string check = generate_check(xind, yind, zind);
             c += "  addr" + id + " = select(-1, addr" + id + ", (" + check +

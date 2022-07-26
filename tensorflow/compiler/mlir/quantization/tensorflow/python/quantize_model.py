@@ -512,6 +512,7 @@ def _static_range_quantize(
     signature_keys: Sequence[str],
     tags: Collection[str],
     output_directory: str,
+    quantization_options: quant_opts_pb2.QuantizationOptions,
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping] = None
 ) ->...:
@@ -526,6 +527,8 @@ def _static_range_quantize(
       to analyze.
     output_directory: The path to save the output SavedModel. The directory will
       be overwritten if not empty.
+    quantization_options: QuantizationOptions proto describing quantization
+      related config.
     representative_dataset: a generator that returns a dictionary in {input_key:
       input_value} format or a tuple with signature key and a dictionary in
       {input_key: input_value} format that feeds calibration data for quantizing
@@ -552,9 +555,9 @@ def _static_range_quantize(
   if is_qat_saved_model:
     # Handle QAT models are supported.
     graph_def_serialized = (
-        quantize_model_wrapper.quantize_qat_model(saved_model_path,
-                                                  ','.join(signature_keys),
-                                                  ','.join(tags)))
+        quantize_model_wrapper.quantize_qat_model(
+            saved_model_path, ','.join(signature_keys), ','.join(tags),
+            quantization_options.SerializeToString()))
   else:
     # Handle PTQ models are supported with mocking calibration.
     graph_def_serialized = (
@@ -627,10 +630,8 @@ def _static_range_quantize(
 
     graph_def_serialized = (
         quantize_model_wrapper.quantize_ptq_model_post_calibration(
-            calibrated_model_dir,
-            ','.join(signature_keys),
-            ','.join(tags),
-        ))
+            calibrated_model_dir, ','.join(signature_keys), ','.join(tags),
+            quantization_options.SerializeToString()))
 
   graph_def = graph_pb2.GraphDef()
   graph_def.ParseFromString(graph_def_serialized)
@@ -654,9 +655,10 @@ def _static_range_quantize(
   return saved_model_load(output_directory)
 
 
-def _dynamic_range_quantize(saved_model_path: str,
-                            signature_keys: Sequence[str],
-                            tags: Collection[str], output_directory: str) ->...:
+def _dynamic_range_quantize(
+    saved_model_path: str, signature_keys: Sequence[str], tags: Collection[str],
+    output_directory: str,
+    quantization_options: quant_opts_pb2.QuantizationOptions) ->...:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
   Args:
@@ -667,6 +669,8 @@ def _dynamic_range_quantize(saved_model_path: str,
       to analyze.
     output_directory: The path to save the output SavedModel. The directory will
       be overwritten if not empty.
+    quantization_options: QuantizationOptions proto describing quantization
+      related config.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -687,7 +691,8 @@ def _dynamic_range_quantize(saved_model_path: str,
   # Apply post-training dynamic range quantization to the model.
   graph_def_serialized = (
       quantize_model_wrapper.quantize_ptq_dynamic_range(
-          saved_model_path, ','.join(signature_keys), ','.join(tags)))
+          saved_model_path, ','.join(signature_keys), ','.join(tags),
+          quantization_options.SerializeToString()))
 
   graph_def = graph_pb2.GraphDef()
   graph_def.ParseFromString(graph_def_serialized)
@@ -759,7 +764,8 @@ def quantize(
     output_directory: The path to save the output SavedModel. Set
       `overwrite_output_directory` to `True` to overwrite any existing contents
       in the directory if not empty.
-    quantization_options: A set of options for quantization.
+    quantization_options: A set of options for quantization. If None, it uses
+      post-training static range quantization with TF opset by default.
     representative_dataset: an iterator that returns a dictionary of {input_key:
       input_value} or a tuple with signature key and a dictionary of {input_key:
       input_value} that feeds calibration data for quantizing model. This should
@@ -785,6 +791,9 @@ def quantize(
   # Set default values for None arguments.
   if quantization_options is None:
     quantization_options = quant_opts_pb2.QuantizationOptions()
+  if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
+    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+
   if tags is None:
     tags = {tag_constants.SERVING}
   if signature_keys is None:
@@ -796,10 +805,11 @@ def quantize(
   elif method.HasField('experimental_method'):
     if method.experimental_method == _ExperimentalMethod.STATIC_RANGE:
       return _static_range_quantize(saved_model_path, signature_keys, tags,
-                                    output_directory, representative_dataset)
+                                    output_directory, quantization_options,
+                                    representative_dataset)
     elif method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE:
       return _dynamic_range_quantize(saved_model_path, signature_keys, tags,
-                                     output_directory)
+                                     output_directory, quantization_options)
     else:
       raise NotImplementedError(
           'Experimental quantization method {method.experimental_method}'
@@ -809,4 +819,5 @@ def quantize(
         'Neither "method" nor "experimental_method" for QuantizationMethod '
         'is specified. Static range quantization is used by default.')
     return _static_range_quantize(saved_model_path, signature_keys, tags,
-                                  output_directory, representative_dataset)
+                                  output_directory, quantization_options,
+                                  representative_dataset)

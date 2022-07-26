@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt --split-input-file %s \
-// RUN:  --gml-st-pipeline="tile-sizes=64,4 fuse" \
-// RUN: | FileCheck %s
+// RUN:     --gml-st-pipeline="tile-sizes=64,4 fuse" | \
+// RUN: FileCheck %s
 
 // TODO(akuegel): Also run with the option lower-to-loops. This fails currently
 // due to not having a bufferization for gml_st.dynamic_broadcast_in_dim.

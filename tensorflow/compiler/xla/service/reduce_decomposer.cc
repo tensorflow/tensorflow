@@ -147,12 +147,16 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> ReduceDecomposer::Run(HloModule* module) {
+StatusOr<bool> ReduceDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed1,
-                      VariadicReductionLayoutEqualizer{}.RunOnModule(module));
+                      VariadicReductionLayoutEqualizer{}.RunOnModule(
+                          module, execution_threads));
   TF_ASSIGN_OR_RETURN(
       bool changed2,
-      ReduceDecomposerVisitor{custom_layout_allowed_}.RunOnModule(module));
+      ReduceDecomposerVisitor{custom_layout_allowed_}.RunOnModule(
+          module, execution_threads));
   return changed1 || changed2;
 }
 

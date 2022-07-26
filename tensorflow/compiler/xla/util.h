@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_UTIL_H_
 
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <limits>
 #include <string>
@@ -667,6 +668,8 @@ class HloInstruction;
 
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
+
+using Vector3 = std::array<int64_t, 3>;
 
 }  // namespace xla
 

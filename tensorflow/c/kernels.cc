@@ -521,6 +521,23 @@ int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
 }
 
+TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
+  auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_StringView opkernel_name_sv;
+  opkernel_name_sv.data = cc_ctx->op_kernel().name().data();
+  opkernel_name_sv.len = cc_ctx->op_kernel().name().length();
+  return opkernel_name_sv;
+}
+
+TF_StringView TF_GetOpKernelRequestedInput(TF_OpKernelContext* ctx,
+                                           size_t index) {
+  auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  TF_StringView requested_input_sv;
+  requested_input_sv.data = cc_ctx->op_kernel().requested_input(index).data();
+  requested_input_sv.len = cc_ctx->op_kernel().requested_input(index).length();
+  return requested_input_sv;
+}
+
 TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len, TF_Status* status) {

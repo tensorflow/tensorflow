@@ -6989,6 +6989,77 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
   }
 };
 
+// Converts tf.XlaConvV2 to mhlo.Conv
+class ConvertXlaConvV2Op : public OpRewritePattern<TF::XlaConvV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaConvV2Op op,
+                                PatternRewriter &rewriter) const override {
+    DenseElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
+        rhs_dilation_attr, feature_group_count_attr;
+    if (!(matchPattern(op.window_strides(), m_Constant(&window_strides_attr)) &&
+          matchPattern(op.padding(), m_Constant(&padding_attr)) &&
+          matchPattern(op.lhs_dilation(), m_Constant(&lhs_dilation_attr)) &&
+          matchPattern(op.rhs_dilation(), m_Constant(&rhs_dilation_attr)) &&
+          matchPattern(op.feature_group_count(),
+                       m_Constant(&feature_group_count_attr))))
+      return failure();
+
+    auto window_strides_named_attr = rewriter.getNamedAttr(
+        "window_strides", hlo::convertElementsAttr(window_strides_attr,
+                                                   rewriter.getIntegerType(64))
+                              .cast<DenseIntElementsAttr>());
+
+    auto padding_named_attr = rewriter.getNamedAttr(
+        "padding",
+        hlo::convertElementsAttr(padding_attr, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+
+    auto lhs_dilation_named_attr = rewriter.getNamedAttr(
+        "lhs_dilation",
+        hlo::convertElementsAttr(lhs_dilation_attr, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+
+    auto rhs_dilation_named_attr = rewriter.getNamedAttr(
+        "rhs_dilation",
+        hlo::convertElementsAttr(rhs_dilation_attr, rewriter.getIntegerType(64))
+            .cast<DenseIntElementsAttr>());
+
+    int64_t feature_group_count_val =
+        feature_group_count_attr.getValues<IntegerAttr>()[0].getInt();
+    auto feature_group_count_named_attr = rewriter.getNamedAttr(
+        "feature_group_count",
+        rewriter.getI64IntegerAttr(feature_group_count_val));
+
+    auto batch_group_count_named_attr =
+        rewriter.getNamedAttr("batch_group_count", op.batch_group_countAttr());
+
+    xla::ConvolutionDimensionNumbers dnums;
+    dnums.ParseFromString(op.dimension_numbersAttr().getValue().str());
+    auto dimension_numbers_named_attr = rewriter.getNamedAttr(
+        "dimension_numbers",
+        xla::ConvertConvDimensionNumbers(dnums, &rewriter));
+
+    xla::PrecisionConfig precision_config;
+    precision_config.ParseFromString(
+        op.precision_configAttr().getValue().str());
+    auto precision_config_named_attr = rewriter.getNamedAttr(
+        "precision_config",
+        xla::ConvertPrecisionConfig(&precision_config, &rewriter));
+
+    SmallVector<Value, 2> operands{op.lhs(), op.rhs()};
+    NamedAttribute attrs[] = {
+        window_strides_named_attr,      padding_named_attr,
+        lhs_dilation_named_attr,        rhs_dilation_named_attr,
+        feature_group_count_named_attr, batch_group_count_named_attr,
+        dimension_numbers_named_attr,   precision_config_named_attr};
+    rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
+                                                     llvm::makeArrayRef(attrs));
+    return success();
+  }
+};
+
 // Converts tf.XlaSelectAndScatter to mhlo.SelectAndScatter
 class ConvertXlaSelectAndScatterOp
     : public OpRewritePattern<TF::XlaSelectAndScatterOp> {
@@ -7236,6 +7307,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertRandomShuffleOp,
     ConvertXlaShardingOp,
     ConvertXlaDynamicUpdateSliceOp,
+    ConvertXlaConvV2Op,
     ConvertXlaReduceScatterOp,
     ConvertXlaReduceWindowOp,
     ConvertXlaRngBitGeneratorOp,

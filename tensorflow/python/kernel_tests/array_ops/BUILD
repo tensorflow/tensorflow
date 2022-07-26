@@ -6,10 +6,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 cuda_py_test(
     name = "array_ops_test",

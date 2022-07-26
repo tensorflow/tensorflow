@@ -98,7 +98,7 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
 };
 
 // Initializes the HBM memory addresses and segments on each host.
-// The Op takes as input the output of the _ExecuteTPUEmbeddingPartitioner Op.
+// The Op takes as input the output of the ExecuteTPUEmbeddingPartitioner Op.
 // It should be run on the CPU device of each host.
 class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
  public:
@@ -151,7 +151,7 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
 // tpu_embedding::HbmBuffersConfig object. The memory configuration consists of
 // the HBM addresses and sizes for the segments used by TPUEmbedding. The Op
 // takes as input the memory configurations, i.e., the outputs of the
-// _ConfigureTPUEmbeddingMemory Ops on all hosts and produces an output after
+// ConfigureTPUEmbeddingMemory Ops on all hosts and produces an output after
 // merging them. This Op should be run on the CPU device of host:0.
 class CollateTPUEmbeddingMemoryOp : public OpKernel {
  public:
@@ -210,7 +210,7 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
 // The ConfigureTpuEmbeddingHost op is used to set up the TPUEmbedding host
 // software on a given host. It takes as input a TPUEmbeddingConfiguration
 // proto which describes all the embedding tables as well as the outputs of
-// the _ExecuteTPUEmbeddingPartitioner and _CollateTPUEmbeddingMemory ops. It
+// the ExecuteTPUEmbeddingPartitioner and CollateTPUEmbeddingMemory ops. It
 // should be run on the CPU device of each task.
 class ConfigureTPUEmbeddingHostOp : public OpKernel {
  public:
@@ -416,31 +416,31 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
 };
 
 // These ops execute on the CPU devices of TPU worker tasks.
-REGISTER_KERNEL_BUILDER(Name("_ExecuteTPUEmbeddingPartitioner")
+REGISTER_KERNEL_BUILDER(Name("ExecuteTPUEmbeddingPartitioner")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config"),
                         ExecuteTPUEmbeddingPartitionerOp);
-REGISTER_KERNEL_BUILDER(Name("_ConfigureTPUEmbeddingMemory")
+REGISTER_KERNEL_BUILDER(Name("ConfigureTPUEmbeddingMemory")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
                             .HostMemory("memory_config"),
                         ConfigureTPUEmbeddingMemoryOp);
-REGISTER_KERNEL_BUILDER(Name("_CollateTPUEmbeddingMemory")
+REGISTER_KERNEL_BUILDER(Name("CollateTPUEmbeddingMemory")
                             .Device(DEVICE_CPU)
                             .HostMemory("memory_configs")
                             .HostMemory("merged_memory_config"),
                         CollateTPUEmbeddingMemoryOp);
-REGISTER_KERNEL_BUILDER(Name("_ConfigureTPUEmbeddingHost")
+REGISTER_KERNEL_BUILDER(Name("ConfigureTPUEmbeddingHost")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
                             .HostMemory("memory_config")
                             .HostMemory("network_config"),
                         ConfigureTPUEmbeddingHostOp);
-REGISTER_KERNEL_BUILDER(Name("_ConnectTPUEmbeddingHosts")
+REGISTER_KERNEL_BUILDER(Name("ConnectTPUEmbeddingHosts")
                             .Device(DEVICE_CPU)
                             .HostMemory("network_configs"),
                         ConnectTPUEmbeddingHostsOp);
-REGISTER_KERNEL_BUILDER(Name("_FinalizeTPUEmbedding")
+REGISTER_KERNEL_BUILDER(Name("FinalizeTPUEmbedding")
                             .Device(DEVICE_CPU)
                             .HostMemory("common_config")
                             .HostMemory("memory_config"),

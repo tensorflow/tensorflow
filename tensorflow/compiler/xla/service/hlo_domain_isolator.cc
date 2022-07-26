@@ -58,10 +58,12 @@ StatusOr<int64_t> AddExitDomains(HloInstruction* instruction,
   return added_domains;
 }
 
-StatusOr<bool> RunInternal(HloModule* module,
-                           HloDomainIsolator::DomainCreator* creator) {
+StatusOr<bool> RunInternal(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    HloDomainIsolator::DomainCreator* creator) {
   int64_t added_domains = 0;
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     // Walk in post order and place all the required kDomain instructions.
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
@@ -123,9 +125,11 @@ StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
   return changed;
 }
 
-StatusOr<bool> HloDomainIsolator::Run(HloModule* module) {
+StatusOr<bool> HloDomainIsolator::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   DomainCreator creator = creator_factory_();
-  return RunInternal(module, &creator);
+  return RunInternal(module, execution_threads, &creator);
 }
 
 }  // namespace xla

@@ -14,10 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
-#include <fcntl.h>
-
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
-
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <sys/file.h>
@@ -36,6 +32,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -81,7 +78,7 @@ ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
 
 MinibenchmarkStatus ValidatorRunner::Init() {
   std::unique_ptr<ModelLoader> model_loader =
-      ModelLoader::CreateFromFdOrPath(fd_or_model_path_);
+      CreateModelLoaderFromPath(fd_or_model_path_);
   if (!model_loader) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Failed to parse model path %s",
                          fd_or_model_path_.c_str());

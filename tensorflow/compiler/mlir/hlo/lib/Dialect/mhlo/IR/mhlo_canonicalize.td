@@ -22,6 +22,9 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 def UnaryToBinaryEinsumEq : NativeCodeCall<
   "$_builder.getStringAttr(\",\" + $0.getValue().str())">;
 
+def GetI64DenseElementsAttr : NativeCodeCall<
+  "$0.mapValues($_builder.getI64Type(), [](llvm::APInt x) { return x.sext(64); })">;
+
 // Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
 // operand.
 def UnaryEinsumToEinsum : Pat<
@@ -47,17 +50,17 @@ def RemoveRedundantDynamicBroadcast : Pat<
 
 
 // Convert DPad to Pad if edge_padding_low, edge_padding_high and
-// interior_paddin are HLO_ConstantOp
+// interior_padding are HLO_ConstantOp
 def DPadToPad: Pat<
           (HLO_DynamicPadOp HLO_Tensor:$input,
             HLO_Tensor:$padding_value,
-            (HLO_ConstantOp I64ElementsAttr:$edge_padding_low),
-            (HLO_ConstantOp I64ElementsAttr:$edge_padding_high),
-            (HLO_ConstantOp I64ElementsAttr:$interior_paddin)),
+            (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_low),
+            (ConstantLikeMatcher AnyIntElementsAttr:$edge_padding_high),
+            (ConstantLikeMatcher AnyIntElementsAttr:$interior_padding)),
           (HLO_PadOp $input, $padding_value,
-            (CastIntElementsAttr $edge_padding_low),
-            (CastIntElementsAttr $edge_padding_high),
-            (CastIntElementsAttr $interior_paddin))>;
+            (GetI64DenseElementsAttr (CastIntElementsAttr $edge_padding_low)),
+            (GetI64DenseElementsAttr (CastIntElementsAttr $edge_padding_high)),
+            (GetI64DenseElementsAttr (CastIntElementsAttr $interior_padding)))>;
 
 // Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
 // strides are HLO_ConstantOp

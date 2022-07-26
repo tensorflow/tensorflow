@@ -29,4 +29,6 @@ class GetScalarOfType<int value> : NativeCodeCall<
 class IsConstantValueOf<int value> : Constraint<CPred<
   "IsConstantValueOf($0," # value # ")">>;
 
+def IsOnGpuDevicePred : CPred<"IsOnGpuDevice($0.getOwner())">;
+
 #endif // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL

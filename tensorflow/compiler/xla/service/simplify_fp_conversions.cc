@@ -54,9 +54,12 @@ StatusOr<bool> RunOnComputation(HloComputation& computation) {
 
 }  // namespace
 
-StatusOr<bool> SimplifyFPConversions::Run(HloModule* module) {
+StatusOr<bool> SimplifyFPConversions::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(*computation));
     changed |= comp_changed;
   }

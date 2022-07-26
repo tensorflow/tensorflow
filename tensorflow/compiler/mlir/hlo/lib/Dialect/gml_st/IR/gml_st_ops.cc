@@ -60,6 +60,51 @@ ParseResult parseShapeTypeDimensionsList(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Destination-style ops tools
+//===----------------------------------------------------------------------===//
+
+bool hasTensorSemantics(OperandRange operands, unsigned numOutputArgs) {
+  for (auto operand : operands.drop_back(numOutputArgs)) {
+    if (!operand.getType().isa<ShapedType>()) continue;
+    if (!operand.getType().isa<RankedTensorType>()) return false;
+  }
+  return llvm::all_of(operands.take_back(numOutputArgs), [](Value operand) {
+    return operand.getType().isa<RankedTensorType>();
+  });
+}
+
+bool hasBufferSemantics(OperandRange operands) {
+  return llvm::all_of(operands, [](Value operand) {
+    return operand.getType().isa<MemRefType>();
+  });
+}
+
+LogicalResult verifyDestinationStyleOp(Operation *op,
+                                       unsigned numOutputArgs = 1) {
+  if (hasBufferSemantics(op->getOperands()))
+    return success(op->getNumResults() == 0);
+
+  if (!hasTensorSemantics(op->getOperands(), numOutputArgs))
+    return op->emitOpError("expected either buffer or tensor semantics");
+
+  if (op->getNumResults() != numOutputArgs) {
+    return op->emitOpError(
+        "expected the number of output args to match the number of results");
+  }
+  for (auto &en : llvm::enumerate(llvm::zip(
+           op->getResultTypes(), op->getOperands().take_back(numOutputArgs)))) {
+    size_t index = en.index();
+    Type resultType = std::get<0>(en.value());
+    Type outputOperandType = std::get<1>(en.value()).getType();
+    if (resultType != outputOperandType)
+      op->emitOpError() << "type " << resultType << " of result " << index
+                        << " does not match output operand type "
+                        << outputOperandType;
+  }
+  return success();
+}
+
 }  // namespace
 }  // namespace mlir
 
@@ -1548,53 +1593,67 @@ Value PointOp::compose(OpBuilder &builder) {
 }
 
 //===----------------------------------------------------------------------===//
-// CollapseTileOp
+// DropDimsOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult CollapseTileOp::inferReturnTypes(
+LogicalResult DropDimsOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  // Get argument tile type.
-  Value argTile = operands.front();
-  auto argTy = argTile.getType().dyn_cast<TileType>();
-  if (!argTy) return failure();
-  auto argShape = argTy.getShape();
+  DropDimsOp::Adaptor adaptor(operands, attributes, regions);
+  Type argTy = adaptor.superset().getType();
 
-  // Derive result shape.
-  CollapseTileOp::Adaptor adaptor(operands, attributes, regions);
-  SmallVector<int64_t> shape = llvm::to_vector(llvm::map_range(
-      adaptor.remaining_dims(), [&](const auto &d) { return argShape[d]; }));
+  // If the argument is of point type, so is the result.
+  if (auto pointTy = argTy.dyn_cast<PointType>()) {
+    inferredReturnTypes.push_back(argTy);
+    return success();
+  }
 
-  auto resultTy = TileType::get(ctx, shape);
-  inferredReturnTypes.push_back(resultTy);
-  return success();
+  // If the argument is of tile type, we can skip the dropped dimensions to
+  // derive the result type.
+  if (auto tileTy = argTy.dyn_cast<TileType>()) {
+    auto argShape = tileTy.getShape();
+    SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
+        adaptor.remaining_dims(), [&](const auto &d) { return argShape[d]; }));
+    auto resultTy = TileType::get(ctx, resultShape);
+    inferredReturnTypes.push_back(resultTy);
+    return success();
+  }
+
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
-// TransposeTileOp
+// TransposeDimsOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult TransposeTileOp::inferReturnTypes(
+LogicalResult TransposeDimsOp::inferReturnTypes(
     MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
-  // Get argument tile type.
-  TransposeTileOp::Adaptor adaptor(operands, attributes, regions);
-  auto argTy = adaptor.superset().getType().dyn_cast<TileType>();
-  if (!argTy) return failure();
-  auto argShape = argTy.getShape();
+  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
+  Type argTy = adaptor.superset().getType();
 
-  // Derive result shape.
-  SmallVector<int64_t> shape = llvm::to_vector(llvm::map_range(
-      adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
+  // If the argument is of point type, so is the result.
+  if (auto pointTy = argTy.dyn_cast<PointType>()) {
+    inferredReturnTypes.push_back(argTy);
+    return success();
+  }
 
-  auto resultTy = TileType::get(ctx, shape);
-  inferredReturnTypes.push_back(resultTy);
-  return success();
+  // If the argument is of tile type, we can transpose the type's dimensions.
+  if (auto tileTy = argTy.dyn_cast<TileType>()) {
+    auto argShape = tileTy.getShape();
+    SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
+        adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
+    auto resultTy = TileType::get(ctx, resultShape);
+    inferredReturnTypes.push_back(resultTy);
+    return success();
+  }
+
+  return failure();
 }
 
-Value TransposeTileOp::compose(OpBuilder &builder) {
+Value TransposeDimsOp::compose(OpBuilder &builder) {
   // We can compose with a TileOp operand which has a SpaceOp operand, or
   // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
   // strides)) is replaced by tile(transpose(space), transpose(offsets),
@@ -1670,16 +1729,9 @@ Value TransposeTileOp::compose(OpBuilder &builder) {
                                 builder.getI64ArrayAttr(inputStaticStrides));
 }
 
-LogicalResult TransposeTileOp::verify() {
-  TileType type = getType();
-  int64_t rank = type.getShape().size();
-  // 'permutation' should have 'rank' elements.
-  if (permutation().size() != rank) {
-    return emitOpError("expected permutation attribute size = ")
-           << permutation().size() << " to match rank = " << rank;
-  }
-  // Verify that 'permutation' is in fact a permutation.
-  // Store where a certain number occurred.
+LogicalResult TransposeDimsOp::verify() {
+  // Verify that `permutation` is in fact a permutation.
+  size_t rank = permutation().size();
   SmallVector<int64_t> position(rank, -1);
   for (const auto &it : llvm::enumerate(permutation())) {
     int64_t dim = it.value();
@@ -1697,6 +1749,18 @@ LogicalResult TransposeTileOp::verify() {
     }
     position[dim] = it.index();
   }
+
+  // Verify tile-specific relationship between types and permutation. The
+  // constraints between argument and result type are verified through the
+  // implementation of `inferReturnTypes`.
+  if (auto tileTy = getType().dyn_cast<TileType>()) {
+    size_t tileRank = tileTy.getShape().size();
+    if (tileRank != rank) {
+      return emitOpError("expected result rank ")
+             << tileRank << " to match the permutation size of " << rank << ".";
+    }
+  }
+
   return success();
 }
 
@@ -1889,12 +1953,16 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
-Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
+LogicalResult DynamicBroadcastInDimOp::verify() {
+  return verifyDestinationStyleOp(this->getOperation());
+}
+
+Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
                                     OpBuilder &builder) {
-  // Supports tile sets.
-  Type setTy = set.getType();
-  if (!setTy.isa<TileType>()) return {};
-  Value tile = set;
+  Type subsetTy = subset.getType();
+  auto operandTy = operand().getType().cast<RankedTensorType>();
+  auto resultTy = getType().cast<RankedTensorType>();
+  int64_t operandRank = operandTy.getRank();
 
   // Create the needed constants only once.
   DenseMap<uint64_t, Value> localIndexConstants;
@@ -1906,16 +1974,12 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
     return cst;
   };
 
-  auto operandTy = operand().getType().cast<RankedTensorType>();
-  auto tileTy = tile.getType().cast<TileType>();
-  auto resultTy = getType().cast<RankedTensorType>();
-
-  // Materialize operand and result root space.
-  auto spaceTy = builder.getType<TileType>(operandTy.getShape());
+  // Materialize operand space.
+  auto operandSpaceTy = builder.getType<TileType>(operandTy.getShape());
   auto dynamicDims = tensor::createDynamicDimValues(builder, loc, operand());
   auto staticDims = builder.getI64ArrayAttr(operandTy.getShape());
   Value operandSpace =
-      builder.create<SpaceOp>(loc, spaceTy, dynamicDims, staticDims);
+      builder.create<SpaceOp>(loc, operandSpaceTy, dynamicDims, staticDims);
 
   // Materialize operand dimensions.
   SmallVector<Value> operandDims;
@@ -1928,54 +1992,99 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value set,
     operandDims.push_back(dim);
   }
 
-  // Materialize offsets and sizes for operand tile.
-  auto collapsedTile =
-      builder.create<CollapseTileOp>(loc, tile, broadcast_dimensionsAttr());
-  SmallVector<Value> argTileOffsets;
-  SmallVector<Value> argTileSizes;
+  // Collapse the subset to operate only on corresponding dimensions.
+  auto collapsedSubset =
+      builder.create<DropDimsOp>(loc, subset, broadcast_dimensionsAttr());
+
+  // Find the expanding dimensions. If corresponding operand and result
+  // dimensions are different then the dimension is expanding.
+  SmallVector<Value> operandExpandingDims;
   for (const auto &it : llvm::enumerate(broadcast_dimensions())) {
-    Value argIdx = getIndexConstant(it.index());
-    Value resultIdx = getIndexConstant(it.value());
-
-    // If corresponding operand and result dimensions are different, the
-    // dimension is expanding.
-    auto argDim = operandDims[it.index()];
-    auto resultDim = builder.create<tensor::DimOp>(loc, init(), resultIdx);
-    auto isExpanding = builder.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::ne, argDim, resultDim);
-
-    // Copy offset for non-expanding dimensions and index at 0, otherwise.
-    auto tileOffset = builder.create<OffsetOp>(loc, collapsedTile, argIdx);
-    auto tileSize = builder.create<SizeOp>(loc, collapsedTile, argIdx);
-    argTileOffsets.push_back(builder.create<arith::SelectOp>(
-        loc, isExpanding, getIndexConstant(0), tileOffset));
-    argTileSizes.push_back(builder.create<arith::SelectOp>(
-        loc, isExpanding, getIndexConstant(1), tileSize));
+    auto operandDim = operandDims[it.index()];
+    auto resultDim = builder.create<tensor::DimOp>(
+        loc, init(), getIndexConstant(it.value()));
+    operandExpandingDims.push_back(builder.create<arith::CmpIOp>(
+        loc, arith::CmpIPredicate::ne, operandDim, resultDim));
   }
 
-  // Materialize operand tile.
-  int64_t rank = operandTy.getRank();
+  // Compute operand offsets, which are needed for tile and point subsets.
   auto staticOffsets = builder.getI64ArrayAttr(
-      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
-  SmallVector<int64_t> allDynamicSizes(rank, ShapedType::kDynamicSize);
-  auto staticSizes = builder.getI64ArrayAttr(allDynamicSizes);
-  auto staticStrides = builder.getI64ArrayAttr(SmallVector<int64_t>(rank, 1));
-  auto operandTileTy = builder.getType<TileType>(allDynamicSizes);
-  auto operandTile = builder.create<TileOp>(
-      loc, operandTileTy, operandSpace, argTileOffsets, argTileSizes,
-      ValueRange{}, staticOffsets, staticSizes, staticStrides);
+      SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
+  SmallVector<Value> offsets;
+  Value zero = getIndexConstant(0);
+  for (int i = 0; i < operandRank; ++i) {
+    Value isExpanding = operandExpandingDims[i];
+    Value collapsedSubsetOffset =
+        builder.create<OffsetOp>(loc, collapsedSubset, getIndexConstant(i));
+    offsets.push_back(builder.create<arith::SelectOp>(loc, isExpanding, zero,
+                                                      collapsedSubsetOffset));
+  }
 
-  // Materialize operands' sets.
-  Value tiledInit = builder.create<MaterializeOp>(loc, init(), tile);
-  Value tiledOperand =
-      builder.create<MaterializeOp>(loc, operand(), operandTile);
+  // If the regarded subset is of point type, we can already construct the
+  // operand point and materialize it.
+  if (auto pointTy = subsetTy.dyn_cast<PointType>()) {
+    auto operandPoint = builder.create<PointOp>(loc, pointTy, operandSpace,
+                                                offsets, staticOffsets);
+    return builder.create<MaterializeOp>(loc, operandTy.getElementType(),
+                                         operand(), operandPoint);
+  }
 
-  // Finally, materialize tiled broadcast.
-  auto tiledResultTy =
-      RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
-  return builder.create<DynamicBroadcastInDimOp>(
-      loc, tiledResultTy, tiledOperand, tiledInit, broadcast_dimensionsAttr(),
-      known_expanding_dimensionsAttr(), known_nonexpanding_dimensionsAttr());
+  // If the regarded subset is of tile type, we still need the operand tile
+  // sizes to materialize a fused broadcast.
+  if (auto tileTy = subsetTy.dyn_cast<TileType>()) {
+    // Compute operand tile sizes.
+    auto staticTileSizes = builder.getI64ArrayAttr(
+        SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+    SmallVector<Value> tileSizes;
+    Value one = getIndexConstant(1);
+    for (int i = 0; i < operandRank; ++i) {
+      Value isExpanding = operandExpandingDims[i];
+      Value tileSize =
+          builder.create<SizeOp>(loc, collapsedSubset, getIndexConstant(i));
+      tileSizes.push_back(
+          builder.create<arith::SelectOp>(loc, isExpanding, one, tileSize));
+    }
+
+    // Create operand tile.
+    auto staticTileStrides =
+        builder.getI64ArrayAttr(SmallVector<int64_t>(operandRank, 1));
+    SmallVector<Value> tileStrides = {};
+    auto operandTileTy = builder.getType<TileType>(
+        SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
+    auto operandTile = builder.create<TileOp>(
+        loc, operandTileTy, operandSpace, offsets, tileSizes, tileStrides,
+        staticOffsets, staticTileSizes, staticTileStrides);
+
+    // Materialize operand subsets.
+    Value tiledInit = builder.create<MaterializeOp>(loc, init(), subset);
+    Value tiledOperand =
+        builder.create<MaterializeOp>(loc, operand(), operandTile);
+
+    // Finally, materialize tiled broadcast.
+    auto tiledResultTy =
+        RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
+    return builder.create<DynamicBroadcastInDimOp>(
+        loc, tiledResultTy, tiledOperand, tiledInit, broadcast_dimensionsAttr(),
+        known_expanding_dimensionsAttr(), known_nonexpanding_dimensionsAttr());
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// ScatterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScatterOp::verify() {
+  return verifyDestinationStyleOp(this->getOperation());
+}
+
+//===----------------------------------------------------------------------===//
+// GatherOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult GatherOp::verify() {
+  return verifyDestinationStyleOp(this->getOperation());
 }
 
 //===----------------------------------------------------------------------===//

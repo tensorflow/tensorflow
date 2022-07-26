@@ -100,6 +100,8 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       },
       py::return_value_policy::reference);
 
+  // TODO(b/236725000): Remove this after the forward compatibility window
+  // has passed.
   m.def(
       "TF_DATA_GetDataServiceMetadata",
       [](int64_t dataset_id, const std::string& address,
@@ -113,6 +115,30 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
             [&]() {
               return client.GetDataServiceMetadata(absl::StrCat(dataset_id),
                                                    metadata);
+            },
+            /*description=*/
+            tensorflow::strings::StrCat(
+                "Get data service metadata for dataset ", dataset_id,
+                " from dispatcher at ", address),
+            deadline_micros);
+        Py_END_ALLOW_THREADS;
+        tensorflow::MaybeRaiseFromStatus(status);
+        return metadata;
+      },
+      py::return_value_policy::reference);
+
+  m.def(
+      "TF_DATA_GetDataServiceMetadataByID",
+      [](std::string dataset_id, const std::string& address,
+         const std::string& protocol) -> tensorflow::data::DataServiceMetadata {
+        tensorflow::data::DataServiceMetadata metadata;
+        tensorflow::data::DataServiceDispatcherClient client(address, protocol);
+        int64_t deadline_micros = tensorflow::kint64max;
+        tensorflow::Status status;
+        Py_BEGIN_ALLOW_THREADS;
+        status = tensorflow::data::grpc_util::Retry(
+            [&]() {
+              return client.GetDataServiceMetadata(dataset_id, metadata);
             },
             /*description=*/
             tensorflow::strings::StrCat(

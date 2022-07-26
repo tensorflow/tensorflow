@@ -98,8 +98,14 @@ void DispatcherState::RegisterDataset(
                                            register_dataset.metadata());
   DCHECK(!datasets_by_id_.contains(dataset_id));
   datasets_by_id_[dataset_id] = dataset;
-  DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
-  datasets_by_fingerprint_[fingerprint] = dataset;
+  if (!register_dataset.dedupe_by_dataset_id()) {
+    // Only stores the fingerprint if the user has not requested a dataset ID.
+    // If the user has requested a dataset ID, we will look up datasets by their
+    // IDs, not by fingerprints. Otherwise, an anonymous dataset can refer to
+    // a dataset with an explicit dataset ID.
+    DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
+    datasets_by_fingerprint_[fingerprint] = dataset;
+  }
   UpdateNextAvailableDatasetId();
 }
 

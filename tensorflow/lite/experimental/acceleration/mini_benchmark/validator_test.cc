@@ -45,14 +45,14 @@ class ValidatorTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
     ASSERT_TRUE(!validation_model_path.empty());
     validation_model_loader_ =
-        std::make_unique<ModelLoader>(validation_model_path);
+        std::make_unique<PathModelLoader>(validation_model_path);
 
     std::string plain_model_path = MiniBenchmarkTestHelper::DumpToTempFile(
         "mobilenet_quant.tflite",
         g_tflite_acceleration_embedded_mobilenet_model,
         g_tflite_acceleration_embedded_mobilenet_model_len);
     ASSERT_TRUE(!plain_model_path.empty());
-    plain_model_loader_ = std::make_unique<ModelLoader>(plain_model_path);
+    plain_model_loader_ = std::make_unique<PathModelLoader>(plain_model_path);
   }
 
   std::unique_ptr<ModelLoader> validation_model_loader_;
@@ -107,7 +107,7 @@ TEST_F(ValidatorTest, InvalidModel) {
   const ComputeSettings* settings =
       flatbuffers::GetRoot<ComputeSettings>(fbb.GetBufferPointer());
 
-  Validator validator(std::make_unique<ModelLoader>(dump_path), settings);
+  Validator validator(std::make_unique<PathModelLoader>(dump_path), settings);
   Validator::Results results;
   EXPECT_EQ(validator.RunValidation(&results), kMinibenchmarkModelBuildFailed);
 }

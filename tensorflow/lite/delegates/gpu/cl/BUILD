@@ -556,7 +556,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "@com_google_googletest//:gtest_main",
     ],
 )

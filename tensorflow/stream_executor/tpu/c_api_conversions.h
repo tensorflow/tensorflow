@@ -39,6 +39,12 @@ absl::Span<const float> MakeSpan(const FloatList& src_list);
 void CreateVector(const absl::Span<const float> src, FloatList* dst);
 void Destroy(FloatList* float_list);
 
+absl::Span<const int64_t> MakeSpan(const Int64List& src_list);
+void CreateVector(const absl::Span<const int64_t> src, Int64List* dst);
+
+absl::Span<const bool> MakeSpan(const BoolList& src_list);
+void CreateVector(const absl::Span<const bool> src, BoolList* dst);
+
 // se::DeviceMemoryBase
 SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
 void ToC(const stream_executor::DeviceMemoryBase& base,

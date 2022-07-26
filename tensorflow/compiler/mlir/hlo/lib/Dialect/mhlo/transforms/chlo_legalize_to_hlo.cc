@@ -1427,7 +1427,7 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     Type elementType = operandType.getElementType();
     auto sortOp = createSortOp(&rewriter, op.getLoc(), {op.operand(), iotaOp},
                                {elementType, i32Type}, lastDimIndex,
-                               /*is_stable=*/true,
+                               /*isStable=*/true,
                                /*direction=*/mhlo::ComparisonDirection::GT);
 
     // Get the sorted input and index tuple element.

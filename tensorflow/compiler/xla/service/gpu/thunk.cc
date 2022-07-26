@@ -39,6 +39,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kConvolution";
     case Thunk::kCopy:
       return "kCopy";
+    case Thunk::kCublasLtMatmul:
+      return "kCublasLtMatmul";
     case Thunk::kCustomCall:
       return "kCustomCall";
     case Thunk::kNcclAllGather:

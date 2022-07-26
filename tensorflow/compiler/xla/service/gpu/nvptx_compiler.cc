@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -166,9 +168,11 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
              (user_index.size() == 1 &&
               user->operand(user_index[0]) == operand);
     case HloOpcode::kCustomCall:
-      // Share the bias buffer with the parent instruction.
-      if (user->custom_call_target() == kGemmCallTarget) {
-        return user->operand_count() == 3 && user->operand(2) == operand;
+      // The matrix bias operand can be overwritten in-place.
+      if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
+        GemmBackendConfig config =
+            std::move(user->backend_config<GemmBackendConfig>()).ValueOrDie();
+        return (config.beta() != 0.) && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.
       if (user->custom_call_target() == kCusolverCholeskyCallTarget) {

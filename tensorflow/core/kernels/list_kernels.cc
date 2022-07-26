@@ -21,7 +21,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/list_kernels.h"
 
+#include <algorithm>
+#include <iterator>
 #include <limits>
+#include <memory>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
@@ -30,10 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/concat_lib.h"
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -49,6 +49,9 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
     return errors::InvalidArgument(
         "The only valid scalar shape tensor is the fully unknown shape "
         "specified as -1.");
+  } else if (t.shape().dims() != 1) {
+    return errors::InvalidArgument("Shape must be at most rank 1 but is rank ",
+                                   t.shape().dims());
   }
   if (t.dtype() == DT_INT32) {
     return PartialTensorShape::MakePartialShape(t.vec<int32>().data(),

@@ -359,6 +359,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/runtime_fallback/runtime:op_logger",
         "//tensorflow/core/runtime_fallback/util:attr_util",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",

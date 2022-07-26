@@ -120,13 +120,13 @@ LogicalResult AbsOp::verify() {
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllGatherOp::verify() {
   AllGatherOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
 }
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {
   AllToAllOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -144,12 +144,12 @@ LogicalResult AllReduceOp::verify() {
 
 LogicalResult ReduceScatterOp::verify() {
   ReduceScatterOp op = *this;
-  if (failed(mlir::hlo::verifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+  if (failed(mlir::hlo::verifyReplicaGroups(op, /*isUniformSized=*/true)))
     return failure();
   if (failed(mlir::hlo::verifyReduceScatter(
-          op, /*operand_types=*/op.getInputs().getTypes(),
-          /*result_types=*/op.getOutputs().getTypes(),
-          /*scatter_dimension=*/op.getScatterDimension())))
+          op, /*operandTypes=*/op.getInputs().getTypes(),
+          /*resultTypes=*/op.getOutputs().getTypes(),
+          /*scatterDimension=*/op.getScatterDimension())))
     return failure();
   return success();
 }

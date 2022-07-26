@@ -173,9 +173,6 @@ cuda_py_test(
 cuda_py_test(
     name = "gamma_test",
     srcs = ["gamma_test.py"],
-    tags = [
-        "noasan",  # b/237093318
-    ],
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",

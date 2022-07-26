@@ -779,14 +779,40 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_to_linalg_utils",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_to_linalg_utils.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"],
+    deps = [
+        ":hlo",
+        ":map_mhlo_to_scalar_op",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorUtils",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "legalize_to_linalg",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_to_linalg.cc"],
     hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
     ],
     deps = [
         ":hlo",
+        ":legalize_to_linalg_utils",
         ":map_mhlo_to_scalar_op",
         ":mhlo_pass_details",
         ":type_conversion",

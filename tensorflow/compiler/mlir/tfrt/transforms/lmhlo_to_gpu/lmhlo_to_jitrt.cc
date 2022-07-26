@@ -441,19 +441,7 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
     call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
     call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
-
-    // TODO(ezhulenev): Once cutom calls support passing structured attributes
-    // we should be able to pass `mhlo.dot` attribute directly.
-    auto dot = op.getDotDimensionNumbers();
-    auto lhs_batch = b.getI64TensorAttr(dot.getLhsBatchingDimensions());
-    auto lhs_contract = b.getI64TensorAttr(dot.getLhsContractingDimensions());
-    auto rhs_batch = b.getI64TensorAttr(dot.getRhsBatchingDimensions());
-    auto rhs_contract = b.getI64TensorAttr(dot.getRhsContractingDimensions());
-
-    call->setAttr(b.getStringAttr("lhs_batching_dimensions"), lhs_batch);
-    call->setAttr(b.getStringAttr("lhs_contracting_dimensions"), lhs_contract);
-    call->setAttr(b.getStringAttr("rhs_batching_dimensions"), rhs_batch);
-    call->setAttr(b.getStringAttr("rhs_contracting_dimensions"), rhs_contract);
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
 
     // Erase the original gemm operation.
     rewriter.eraseOp(op);
@@ -524,14 +512,6 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_i64 = [&](StringRef name, int64_t value) {
-      set_attr(name, b.getI64IntegerAttr(value));
-    };
-
-    auto set_i64s = [&](StringRef name, ArrayRef<int64_t> values) {
-      set_attr(name, b.getI64TensorAttr(values));
-    };
-
     auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
@@ -550,19 +530,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     };
 
     // Copy dimension number attributes.
-    ConvDimensionNumbersAttr dims = op.getDimensionNumbers();
-
-    set_i64("input_batch_dim", dims.getInputBatchDimension());
-    set_i64("input_feature_dim", dims.getInputFeatureDimension());
-    set_i64s("input_spatial_dims", dims.getInputSpatialDimensions());
-
-    set_i64("kernel_in_feature_dim", dims.getKernelInputFeatureDimension());
-    set_i64("kernel_out_feature_dim", dims.getKernelOutputFeatureDimension());
-    set_i64s("kernel_spatial_dims", dims.getKernelSpatialDimensions());
-
-    set_i64("output_batch_dim", dims.getOutputBatchDimension());
-    set_i64("output_feature_dim", dims.getOutputFeatureDimension());
-    set_i64s("output_spatial_dims", dims.getOutputSpatialDimensions());
+    call->setAttr(b.getStringAttr("conv_dims"), op.getDimensionNumbers());
 
     // Copy convolution window attributes.
     set_xi1("window_reversal", op.getWindowReversal());
@@ -572,19 +540,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     set_xi64("padding", op.getPadding());
 
     // Copy backend config.
-    ConvolutionBackendConfigAttr backend = op.getBackendConfig();
-
-    set_i64("algorithm", backend.getAlgorithm());
-    set_attr("tensor_ops_enabled",
-             b.getBoolAttr(backend.getTensorOpsEnabled()));
-    set_attr("is_cudnn_frontend", b.getBoolAttr(backend.getIsCudnnFrontend()));
-    set_i64("workspace_size", backend.getWorkspaceSize());
-
-    set_i64s("knob_ids", backend.getKnobIds());
-    set_i64s("knob_values", backend.getKnobValues());
-    set_i64s("operand_0_layout", backend.getOperand_0Layout());
-    set_i64s("operand_1_layout", backend.getOperand_1Layout());
-    set_i64s("result_layout", backend.getResultLayout());
+    call->setAttr(b.getStringAttr("backend_config"), op.getBackendConfig());
 
     // Copy remaining attributes.
     set_attr("feature_group_count", op.getFeatureGroupCountAttr());
@@ -592,20 +548,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Copy attributes specific for fused convolutions.
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
     }
 
     // Copy attributes specific for fused convolutions with side input.
     if (auto fused = dyn_cast<ConvForwardFusedSideInputOp>(op.getOperation())) {
-      auto activation_mode =
-          ConvertConvActivationMode(fused.getActivationMode());
-      if (!activation_mode.ok())
-        return op.emitOpError("failed to convert activation mode");
-      set_i64("activation_mode", static_cast<int64_t>(*activation_mode));
+      call->setAttr(b.getStringAttr("activation_mode"),
+                    fused.getActivationModeAttr());
       set_attr("side_input_scale", fused.getSideInputScaleAttr());
     }
 
@@ -967,8 +917,7 @@ class FftOpLowering : public OpRewritePattern<FftOp> {
 
     // Copy backend specific attributes.
     call->setAttr(b.getStringAttr("fft_length"), op.getFftLengthAttr());
-    call->setAttr(b.getStringAttr("fft_type"),
-                  b.getI32IntegerAttr(static_cast<int32_t>(op.getFftType())));
+    call->setAttr(b.getStringAttr("fft_type"), op.getFftTypeAttr());
 
     // Erase the original Fft operation.
     rewriter.eraseOp(op);
@@ -1025,8 +974,7 @@ class CholeskyOpLowering : public OpRewritePattern<CholeskyOp> {
     call->setAttr(b.getStringAttr("batch_size"),
                   b.getI64IntegerAttr(batch_size));
     call->setAttr(b.getStringAttr("n"), b.getI64IntegerAttr(n));
-    call->setAttr(b.getStringAttr("uplo"),
-                  b.getI64IntegerAttr(op.getIsLower()));
+    call->setAttr(b.getStringAttr("is_lower"), op.getIsLowerAttr());
 
     // Erase the original Cholesky operation.
     rewriter.eraseOp(op);

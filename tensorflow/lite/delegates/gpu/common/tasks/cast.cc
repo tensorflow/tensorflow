@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
@@ -56,11 +57,8 @@ std::string GetCastKernelCode(const OperationDef& op_def,
   const std::string conversion =
       GetTypeConversion(gpu_info, op_def.src_tensors[0].GetDataType(),
                         op_def.dst_tensors[0].GetDataType(), 4);
-  if (conversion.empty()) {
-    c += "  args.dst_tensor::type result = src_value;\n";
-  } else {
-    c += "  args.dst_tensor::type result = " + conversion + "(src_value);\n";
-  }
+  c += "  args.dst_tensor::type result = " +
+       absl::Substitute(conversion, "src_value") + ";\n";
   c += "  args.dst_tensor.Write(result, " + coords + ");\n";
   c += "}\n";
   return c;

@@ -195,6 +195,19 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 
+// Returns the name of the OpKernel.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx);
+
+// Returns the name of the requested input at `index` from the OpKernel.
+//
+// The returned TF_StringView's underlying string is owned by the OpKernel and
+// has the same lifetime as the OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_GetOpKernelRequestedInput(
+    TF_OpKernelContext* ctx, size_t index);
+
 // Get the list_size and total_size of the attribute `attr_name` of `oper`.
 // list_size - the length of the list.
 // total_size - total size of the list.

@@ -324,10 +324,10 @@ def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
   let summary = "Not operator";
   let description = [{
-    Returns `!operand` element-wise.
+    Returns biwise-NOT of `operand` element-wise. The input tensor must be
+    of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+    Note: For boolean tensor, the bitwise-NOT is equivalent to logical-NOT.
   }];
     let hasFolder = 1;
 }
@@ -662,7 +662,7 @@ def HLO_SubtractOp : HLO_BinaryElementwiseOp<"subtract",
 //===----------------------------------------------------------------------===//
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
-class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
+class HLO_BinaryBiwiseOrLogicalElementwiseOp<string mnemonic> :
         HLO_BinaryElementwiseOp<mnemonic,
           [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
   let arguments = (ins
@@ -673,33 +673,33 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
   let hasFolder = 1;
 }
 
-def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and"> {
-  let summary = "Logical and";
+def HLO_AndOp: HLO_BinaryBiwiseOrLogicalElementwiseOp<"and"> {
+  let summary = "And operator";
   let description = [{
-    Returns `logical_and(lhs, rhs)` element-wise.
+    Returns biwise-AND of `lhs` and `rhs` element-wise. The input tensors must
+    be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+    Note: For boolean tensor, the bitwise-AND is equivalent to logical-AND.
   }];
 }
 
-def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or"> {
-  let summary = "Logical or";
+def HLO_OrOp: HLO_BinaryBiwiseOrLogicalElementwiseOp<"or"> {
+  let summary = "Or operator";
   let description = [{
-    Returns `logical_or(lhs, rhs)` element-wise.
+    Returns biwise-OR of `lhs` and `rhs` element-wise. The input tensors must
+    be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+    Note: For boolean tensor, the bitwise-OR is equivalent to logical-OR.
   }];
 }
 
-def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor"> {
-  let summary = "Logical xor";
+def HLO_XorOp : HLO_BinaryBiwiseOrLogicalElementwiseOp<"xor"> {
+  let summary = "Xor operator";
   let description = [{
-    Returns `logical_xor(lhs, rhs)` element-wise.
+    Returns biwise-XOR of `lhs` and `rhs` element-wise. The input tensors must
+    be of type integer `HLO_Int` or boolean `HLO_Pred`.
 
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+    Note: For boolean tensor, the bitwise-XOR is equivalent to logical-XOR.
   }];
 }
 
@@ -877,10 +877,15 @@ def HLO_IfOp: HLO_Op<"if", [
   let summary = "If operator";
 
   let description = [{
-    Returns the result of executing either a true or false function depending on
-    the result of a condition function.
+    Executes the function `true_branch` if `pred` is true or `false_branch` if
+    pred is false, and returns the result.
 
-    See https://www.tensorflow.org/xla/operation_semantics#conditional.
+    The type of the returned values of `true_branch` and `false_branch`
+    functions must be the same and equal to the types of the values returned by
+    the operation.
+
+    Note that only one of two functions will be executed depending on the value
+    of `pred`.
   }];
 
   let arguments = (ins
@@ -908,17 +913,14 @@ def HLO_CaseOp: HLO_Op<"case", [
     ]> {
   let summary = "Switch-Case operator";
   let description = [{
-    Returns the result of executing `branches[index]`. If
-    `index` is < 0 or >= N, then `branches[N-1] is executed as
-    the default branch.
+    Returns the result of executing `branches[index]`. If `index` is < 0 or >=
+    N, then `branches[N-1]` is executed as the default branch.
 
-    Each branch `branches[b]` must take in a single argument of same type as
-    `branch_operands[b]` and will be invoked with `branch_operands[b]`. The type
-    of the returned value of each branch must be the same.
+    The type of the returned values of each branch must be the same and equal
+    to the types of the values returned by the operation.
 
     Note that only one of the branches will be executed depending on the value
     of index.
-    See https://www.tensorflow.org/xla/operation_semantics#conditional.
   }];
 
   let arguments = (ins
@@ -2098,7 +2100,7 @@ def HLO_PartitionIdOp : HLO_Op<"partition_id", []> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_PadOp: HLO_Op<"pad",
+def HLO_PadOp: HLO_ShapedInterfaceOp<"pad",
       [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "Pad operator";
   let description = [{
@@ -2137,6 +2139,7 @@ def HLO_PadOp: HLO_Op<"pad",
   // TODO(b/129422361): PadOp has a custom constructor for HLO.
   let hasCustomHLOConverter = 1;
 
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 

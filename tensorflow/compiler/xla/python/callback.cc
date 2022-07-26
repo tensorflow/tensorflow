@@ -30,8 +30,8 @@ namespace py = pybind11;
 
 namespace xla {
 
-void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
-                                 XlaCustomCallStatus* status) {
+Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs,
+                                           XlaCustomCallStatus* status) {
   absl::Span<void* const> inputs(arg_ptrs, args_.size());
   absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
                                   results_.size());
@@ -47,12 +47,9 @@ void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
       args[i].attr("flags").attr("writeable") = Py_False;
     }
   }
-  std::optional<py::tuple> maybe_result_tuple = Call(args, status);
-  if (!maybe_result_tuple) {
-    // Python function errored so we return early.
-    return;
-  }
-  py::tuple result_tuple = maybe_result_tuple.value();
+
+  TF_ASSIGN_OR_RETURN(auto result_tuple, CallInternal(std::move(args), status));
+
   for (size_t i = 0; i < results_.size(); ++i) {
     py::object output = py::reinterpret_borrow<py::object>(
         PyTuple_GetItem(result_tuple.ptr(), i));
@@ -75,19 +72,33 @@ void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
       plan.ValueOrDie()->Execute(array.data(), outputs[i]);
     }
   }
+
+  return Status::OK();
 }
 
-std::optional<py::tuple> CpuCallback::Call(py::tuple args,
-                                           XlaCustomCallStatus* status) {
+void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
+                                 XlaCustomCallStatus* status) {
+  auto s = PrepareAndCallInternal(result, arg_ptrs, status);
+  (void)s;
+}
+
+Status CpuCallback::PrepareAndCall(void* result, void** arg_ptrs) {
+  return PrepareAndCallInternal(result, arg_ptrs, /*status=*/nullptr);
+}
+
+StatusOr<py::tuple> CpuCallback::CallInternal(py::tuple args,
+                                              XlaCustomCallStatus* status) {
   py::object result_object;
   try {
     result_object = callable_(*py::reinterpret_borrow<py::args>(args));
   } catch (py::error_already_set& e) {
     PyErr_Clear();
     std::string error_message = e.what();
-    XlaCustomCallStatusSetFailure(status, error_message.c_str(),
-                                  error_message.length());
-    return std::nullopt;
+    if (status) {
+      XlaCustomCallStatusSetFailure(status, error_message.c_str(),
+                                    error_message.length());
+    }
+    return InternalError("CpuCallback error: %s", error_message);
   }
   if (!PyTuple_Check(result_object.ptr())) {
     throw xla::XlaRuntimeError(
@@ -125,6 +136,17 @@ std::optional<py::tuple> CpuCallback::Call(py::tuple args,
     }
   }
   return result_tuple;
+}
+
+StatusOr<py::tuple> CpuCallback::Call(py::tuple args) {
+  return CallInternal(std::move(args), /*status=*/nullptr);
+}
+
+std::optional<py::tuple> CpuCallback::Call(py::tuple args,
+                                           XlaCustomCallStatus* status) {
+  auto statusor = CallInternal(std::move(args), status);
+  if (statusor.ok()) return std::move(statusor).value();
+  return std::nullopt;
 }
 
 void XlaPythonCpuCallback(void* output, void** inputs,

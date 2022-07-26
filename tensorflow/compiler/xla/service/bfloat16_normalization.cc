@@ -521,11 +521,13 @@ Status BFloat16NormalizationVisitor::Preprocess(HloInstruction* hlo) {
 
 }  // namespace
 
-StatusOr<bool> BFloat16Normalization::Run(HloModule* module) {
+StatusOr<bool> BFloat16Normalization::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "BFloat16Normalization::Run(), before:\n" + module->ToString());
   BFloat16NormalizationVisitor visitor(bfloat16_support_, this);
-  for (auto* comp : module->MakeComputationPostOrder()) {
+  for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
   XLA_VLOG_LINES(2,

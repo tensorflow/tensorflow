@@ -271,7 +271,6 @@ absl::Status InferenceContext::InitFromGpuModel(
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
     RETURN_IF_ERROR(
         CreateTensor(env->context(),
-                     gpu_model->tensors[external_tensor.first].GetBHWDCShape(),
                      gpu_model->tensors[external_tensor.first],
                      &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
@@ -369,7 +368,6 @@ absl::Status InferenceContext::RestoreDeserialized(
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
       RETURN_IF_ERROR(
           CreateTensor(env->context(),
-                       gpu_model.tensors[external_tensor.first].GetBHWDCShape(),
                        gpu_model.tensors[external_tensor.first],
                        &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
@@ -470,12 +468,8 @@ absl::Status InferenceContext::AllocateVariableTensors(
       if (it == gpu_model.tensors.end()) {
         return absl::InternalError("No variable tensor with this id.");
       }
-      const auto& t = it->second;
-      const auto& shape = t.GetBHWDCShape();
-      const auto& descriptor = t;
-
       RETURN_IF_ERROR(
-          CreateTensor(*context, shape, descriptor,
+          CreateTensor(*context, it->second,
                        &variable_tensors_[value_and_ref_value.second]));
     }
   }
@@ -590,14 +584,12 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
             width_pixel_alignment % bytes_per_pixel == 0) {
           width_pixel_alignment /= bytes_per_pixel;
         }
-        RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
-            tensor_desc.GetBHWCShape(), tensor_desc, width_pixel_alignment,
-            &shared_buffer_tensors_[tensor_index]));
+        RETURN_IF_ERROR(CreateTensorSharedImage2DBuffer(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
+            width_pixel_alignment, &shared_buffer_tensors_[tensor_index]));
       } else {
-        RETURN_IF_ERROR(CreateSharedTensor(
-            *context, shared_buffers_[buffer_index].GetMemoryPtr(),
-            tensor_desc.GetBHWCShape(), tensor_desc,
+        RETURN_IF_ERROR(CreateTensorShared(
+            *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
             &shared_buffer_tensors_[tensor_index]));
       }
       created_tensors[tensor_index] = true;
@@ -659,8 +651,8 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
       graph_ids_to_strong_shape_tensors_[tensor_id] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, tensor_desc.GetBHWCShape(),
-                                     tensor_desc, &strong_shape_tensors_[id]));
+        RETURN_IF_ERROR(
+            CreateTensor(*context, tensor_desc, &strong_shape_tensors_[id]));
       }
     }
   }

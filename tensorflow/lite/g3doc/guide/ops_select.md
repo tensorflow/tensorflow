@@ -138,7 +138,7 @@ dependencies {
 
 #### Using CocoaPods
 
-We provide nightly prebuilt select TF ops CocoaPods for `armv7` and `arm64`,
+TensorFlow Lite provides nightly prebuilt select TF ops CocoaPods for `arm64`,
 which you can depend on alongside the `TensorFlowLiteSwift` or
 `TensorFlowLiteObjC` CocoaPods.
 
@@ -183,7 +183,7 @@ framework cannot be built for `i386` architecture, so you need to explicitly
 provide the list of target architectures excluding `i386`.
 
 ```sh
-bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
+bazel build -c opt --config=ios --ios_multi_cpus=arm64,x86_64 \
   //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ```
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
+#include <unistd.h>
+
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -30,6 +32,23 @@ namespace benchmark {
 using tensorflow::Stat;
 
 constexpr int kMemoryCheckIntervalMs = 50;
+
+#ifdef __linux__
+void GetRssStats(size_t* vsize, size_t* rss, size_t* shared, size_t* code) {
+  FILE* fp = fopen("/proc/self/statm", "rt");
+  *vsize = 0;
+  *rss = 0;
+  *shared = 0;
+  *code = 0;
+  if (fp == nullptr) return;
+  fscanf(fp, "%zu %zu %zu %zu", vsize, rss, shared, code);
+  fclose(fp);
+  *vsize = *vsize * getpagesize() >> 20;
+  *rss = *rss * getpagesize() >> 20;
+  *shared = *shared * getpagesize() >> 20;
+  *code = *code * getpagesize() >> 20;
+}
+#endif  // __linux__
 
 BenchmarkParams BenchmarkModel::DefaultParams() {
   BenchmarkParams params;
@@ -81,6 +100,14 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
     TFLITE_LOG(INFO)
         << "Overall peak memory footprint (MB) via periodic monitoring: "
         << peak_mem_mb;
+#ifdef __linux__
+    size_t vsize, rss, shared, code;
+    GetRssStats(&vsize, &rss, &shared, &code);
+    TFLITE_LOG(INFO) << "Memory status at the end of exeution:";
+    TFLITE_LOG(INFO) << "- VmRSS              : " << rss << " MB";
+    TFLITE_LOG(INFO) << "+ RssAnnon           : " << rss - shared << " MB";
+    TFLITE_LOG(INFO) << "+ RssFile + RssShmem : " << shared << " MB";
+#endif  // __linux_
   }
 }
 

@@ -112,6 +112,9 @@ message DebugOptions {
   // Generate calls to MKL-DNN in the CPU backend.
   bool xla_cpu_use_mkl_dnn = 97;
 
+  // Enable JitRt in the CPU backend.
+  bool xla_cpu_use_jitrt = 177;
+
   // Maximum kernel unroll factor for the GPU backend.
   int32 xla_gpu_max_kernel_unroll_factor = 98;
 
@@ -351,6 +354,9 @@ message DebugOptions {
   // Compilation errors out if these ops are encountered.
   bool xla_gpu_deterministic_ops = 148;
 
+  // Simplify all Scatter ops to the form described in scatter_simplifier.h.
+  bool xla_gpu_simplify_scatters = 176;
+
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
 
@@ -425,7 +431,11 @@ message DebugOptions {
   // Generate calls to Arm Compute Library in the CPU backend.
   bool xla_cpu_use_acl = 174;
 
-  // Next id: 175
+  // By default, XLA:CPU will run fp16 dot/conv as fp32, as this is generally
+  // (much) faster on our hardware.  Set this flag to disable this behavior.
+  bool xla_cpu_strict_dot_conv_math = 175;
+
+  // Next id: 178
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

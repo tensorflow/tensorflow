@@ -89,9 +89,12 @@ std::vector<HloInstruction*> GetRelevantVariadicOps(HloComputation* comp) {
 
 }  // namespace
 
-StatusOr<bool> VariadicOpSplitter::Run(HloModule* module) {
+StatusOr<bool> VariadicOpSplitter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* op : GetRelevantVariadicOps(comp)) {
       // TODO(b/112613927): Handle also other ops than concatenate.
       TF_ASSIGN_OR_RETURN(bool result, SplitConcatenate(op, comp));

@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,9 +43,11 @@ namespace data {
 namespace {
 
 using ::tensorflow::testing::IsOkAndHolds;
+using ::tensorflow::testing::StatusIs;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Gt;
+using ::testing::HasSubstr;
 using ::testing::IsSubsetOf;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAreArray;
@@ -76,6 +79,21 @@ class RangeIterator : public TaskIterator {
  private:
   const int64_t range_;
   const bool repeat_;
+  int64_t next_ = 0;
+};
+
+class InfiniteRangeIterator : public TaskIterator {
+ public:
+  InfiniteRangeIterator() = default;
+
+  Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
+    element = {Tensor{next_++}};
+    return OkStatus();
+  }
+
+  int64_t Cardinality() const override { return kInfiniteCardinality; }
+
+ private:
   int64_t next_ = 0;
 };
 
@@ -134,6 +152,18 @@ StatusOr<T> GetNextFromTaskRunner(TaskRunner& runner,
     return errors::Internal("GetElementResult Tensor size should be 1.");
   }
   return result.components[0].unaligned_flat<T>().data()[0];
+}
+
+template <class T>
+StatusOr<std::vector<T>> GetElementsFromTaskRunner(
+    TaskRunner& runner, const GetElementRequest& request,
+    const size_t num_elements) {
+  std::vector<T> output;
+  for (size_t i = 0; i < num_elements; ++i) {
+    TF_ASSIGN_OR_RETURN(T next, GetNextFromTaskRunner<T>(runner, request));
+    output.push_back(next);
+  }
+  return output;
 }
 
 std::vector<int64_t> GetRange(const size_t range) {
@@ -274,21 +304,21 @@ TEST(FirstComeFirstServedTaskRunnerTest, Error) {
 
 TEST(CachingTaskRunnerTest, GetNext) {
   size_t range = 10;
-  CachingTaskRunner runner(
-      std::make_unique<RangeIterator>(range, /*repeat=*/false),
-      /*max_cache_size_bytes=*/kLargeCache);
+  CachingTaskRunner runner(std::make_unique<InfiniteRangeIterator>(),
+                           /*max_cache_size_bytes=*/kLargeCache);
 
   size_t num_trainers = 10;
   for (size_t i = 0; i < num_trainers; ++i) {
     GetElementRequest request;
     request.set_trainer_id(absl::StrCat("Trainer ", i));
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<int64_t> output,
-                            GetTaskRunnerOutput<int64_t>(runner, request));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<int64_t> output,
+        GetElementsFromTaskRunner<int64_t>(runner, request, range));
     EXPECT_THAT(output, ElementsAreArray(GetRange(range)));
 
     GetElementResult result;
     TF_ASSERT_OK(runner.GetNext(request, result));
-    EXPECT_TRUE(result.end_of_sequence);
+    EXPECT_FALSE(result.end_of_sequence);
   }
 }
 
@@ -299,38 +329,38 @@ TEST(CachingTaskRunnerTest, EmptyDataset) {
   GetElementRequest request;
   request.set_trainer_id("Trainer ID");
 
-  for (int i = 0; i < 5; ++i) {
-    GetElementResult result;
-    TF_ASSERT_OK(runner.GetNext(request, result));
-    EXPECT_TRUE(result.end_of_sequence);
-  }
+  GetElementResult result;
+  EXPECT_THAT(runner.GetNext(request, result),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Cross-trainer caching requires the input "
+                                 "dataset to be infinite.")));
 }
 
 TEST(CachingTaskRunnerTest, SlowClientSkipsData) {
   size_t range = 1000;
-  CachingTaskRunner runner(
-      std::make_unique<RangeIterator>(range, /*repeat=*/false),
-      /*max_cache_size_bytes=*/kSmallCache);
+  CachingTaskRunner runner(std::make_unique<InfiniteRangeIterator>(),
+                           /*max_cache_size_bytes=*/kSmallCache);
 
   GetElementRequest request;
   request.set_trainer_id("Fast trainer");
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<int64_t> fast_trainer_output,
-                          GetTaskRunnerOutput<int64_t>(runner, request));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<int64_t> fast_trainer_output,
+      GetElementsFromTaskRunner<int64_t>(runner, request, range));
   EXPECT_THAT(fast_trainer_output, ElementsAreArray(GetRange(range)));
 
   request.set_trainer_id("Slow trainer");
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<int64_t> slow_trainer_output,
-                          GetTaskRunnerOutput<int64_t>(runner, request));
-  EXPECT_THAT(slow_trainer_output, SizeIs(Gt(0)));
-  EXPECT_THAT(slow_trainer_output, IsSubsetOf(fast_trainer_output));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<int64_t> slow_trainer_output,
+      GetElementsFromTaskRunner<int64_t>(runner, request, range));
+  EXPECT_THAT(slow_trainer_output, SizeIs(range));
+  EXPECT_THAT(slow_trainer_output[0], Gt(0));
 }
 
 TEST(CachingTaskRunnerTest, ConcurrentTrainers) {
   size_t range = 100;
   size_t num_readers = 10;
-  CachingTaskRunner runner(
-      std::make_unique<RangeIterator>(range, /*repeat=*/false),
-      /*max_cache_size_bytes=*/kLargeCache);
+  CachingTaskRunner runner(std::make_unique<InfiniteRangeIterator>(),
+                           /*max_cache_size_bytes=*/kLargeCache);
 
   // When the cache is large enough, every trainer can read all the elements.
   std::vector<std::unique_ptr<Thread>> reader_threads;
@@ -342,62 +372,30 @@ TEST(CachingTaskRunnerTest, ConcurrentTrainers) {
           request.set_trainer_id(absl::StrCat("Trainer_", i));
           TF_ASSERT_OK_AND_ASSIGN(
               std::vector<int64_t> output,
-              GetTaskRunnerOutput<int64_t>(runner, request));
+              GetElementsFromTaskRunner<int64_t>(runner, request, range));
           EXPECT_THAT(output, ElementsAreArray(GetRange(range)));
 
           GetElementResult result;
           TF_ASSERT_OK(runner.GetNext(request, result));
-          EXPECT_TRUE(result.end_of_sequence);
-        })));
-  }
-}
-
-TEST(CachingTaskRunnerTest, RepeatDataset) {
-  size_t range = 10;
-  size_t num_readers = 10, num_elements_to_read = 200;
-  CachingTaskRunner runner(
-      std::make_unique<RangeIterator>(range, /*repeat=*/true),
-      /*max_cache_size_bytes=*/kSmallCache);
-
-  // Verifies each client can read `num_elements_to_read` elements from the
-  // infinite dataset.
-  std::vector<std::unique_ptr<Thread>> reader_threads;
-  for (size_t i = 0; i < num_readers; ++i) {
-    reader_threads.push_back(absl::WrapUnique(Env::Default()->StartThread(
-        /*thread_options=*/{}, /*name=*/absl::StrCat("Trainer_", i),
-        [&runner, num_elements_to_read, i]() {
-          GetElementRequest request;
-          request.set_trainer_id(absl::StrCat("Trainer_", i));
-          for (size_t j = 0; j < num_elements_to_read; ++j) {
-            if (i < 2) {
-              // Makes some clients slow.
-              Env::Default()->SleepForMicroseconds(5000);
-            }
-            GetElementResult result;
-            TF_ASSERT_OK(runner.GetNext(request, result));
-            ASSERT_FALSE(result.end_of_sequence);
-            ASSERT_EQ(result.components.size(), 1);
-          }
+          EXPECT_FALSE(result.end_of_sequence);
         })));
   }
 }
 
 TEST(CachingTaskRunnerTest, Cancel) {
-  size_t range = 10;
-  CachingTaskRunner runner(
-      std::make_unique<RangeIterator>(range, /*repeat=*/false),
-      /*max_cache_size_bytes=*/kLargeCache);
+  CachingTaskRunner runner(std::make_unique<InfiniteRangeIterator>(),
+                           /*max_cache_size_bytes=*/kLargeCache);
 
   GetElementRequest request;
   request.set_trainer_id("Trainer ID");
   int i;
-  for (i = 0; i < range / 2; ++i) {
+  for (i = 0; i < 10; ++i) {
     EXPECT_THAT(GetNextFromTaskRunner<int64_t>(runner, request),
                 IsOkAndHolds(i));
   }
   runner.Cancel();
 
-  for (; i < range; ++i) {
+  for (; i < 10; ++i) {
     GetElementResult result;
     EXPECT_THAT(runner.GetNext(request, result),
                 testing::StatusIs(error::CANCELLED));
@@ -405,11 +403,9 @@ TEST(CachingTaskRunnerTest, Cancel) {
 }
 
 TEST(CachingTaskRunnerTest, CancelConcurrentReaders) {
-  size_t range = 10;
   size_t num_readers = 10;
-  CachingTaskRunner runner(
-      std::make_unique<RangeIterator>(range, /*repeat=*/true),
-      /*max_cache_size_bytes=*/kSmallCache);
+  CachingTaskRunner runner(std::make_unique<InfiniteRangeIterator>(),
+                           /*max_cache_size_bytes=*/kSmallCache);
 
   // The readers keep getting elements until cancelled.
   std::vector<std::unique_ptr<Thread>> reader_threads;
@@ -446,16 +442,17 @@ TEST(CachingTaskRunnerTest, CancelConcurrentReaders) {
 
 TEST(CachingTaskRunnerTest, Errors) {
   size_t num_readers = 10;
-  CachingTaskRunner runner(std::make_unique<ElementOrErrorIterator<tstring>>(
-                               std::vector<StatusOr<tstring>>{
-                                   tstring("First element"),
-                                   errors::Cancelled("Cancelled"),
-                                   tstring("Second element"),
-                                   errors::InvalidArgument("InvalidArgument"),
-                                   tstring("Third element"),
-                                   errors::Unavailable("Unavailable"),
-                               }),
-                           /*max_cache_size_bytes=*/kLargeCache);
+  CachingTaskRunner runner(
+      std::make_unique<ElementOrErrorIterator<tstring>>(
+          std::vector<StatusOr<tstring>>{
+              tstring("First element"),
+              errors::Cancelled("Cancelled"),
+              tstring("Second element"),
+              errors::FailedPrecondition("FailedPrecondition"),
+              tstring("Third element"),
+              errors::Unavailable("Unavailable"),
+          }),
+      /*max_cache_size_bytes=*/kLargeCache);
 
   std::vector<std::unique_ptr<Thread>> reader_threads;
   std::vector<std::vector<tstring>> results;
@@ -474,7 +471,12 @@ TEST(CachingTaskRunnerTest, Errors) {
             if (element.ok()) {
               result.push_back(*element);
             }
-            if (errors::IsOutOfRange(element.status())) {
+            if (errors::IsInvalidArgument(element.status())) {
+              EXPECT_THAT(
+                  element.status(),
+                  StatusIs(error::INVALID_ARGUMENT,
+                           HasSubstr("Cross-trainer caching requires the input "
+                                     "dataset to be infinite.")));
               return;
             }
           }

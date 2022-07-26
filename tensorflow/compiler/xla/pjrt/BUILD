@@ -580,10 +580,21 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
         ":pjrt_client",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",  # TODO(skyewm): remove
-        "//tensorflow/core/platform:casts",
         "//tensorflow/core/tpu:pjrt_api",
+        "//tensorflow/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
     ],
+)
+
+cc_library(
+    name = "host_callback",
+    srcs = ["host_callback.cc"],
+    hdrs = ["host_callback.h"],
+    visibility = [":friends"],
+    deps = [":pjrt_client"],
 )

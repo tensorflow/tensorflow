@@ -291,6 +291,10 @@ android_library(
     # dependencies. The API target however can be an export, because it is shipped in a different
     # AAR file.
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate_impl"],
+    # Note that this uses the standard manifest and doesn't export it: the declaration is required
+    # because android_library targets require a non-empty Android package in Bazel. The API target
+    # exports the GPU manifest.
+    manifest = "AndroidManifest.xml",
     exports = [
         ":tensorflowlite_gpu_api",
         ":tensorflowlite_gpu_native",
@@ -342,7 +346,7 @@ android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifestGpu.xml",
+    manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )

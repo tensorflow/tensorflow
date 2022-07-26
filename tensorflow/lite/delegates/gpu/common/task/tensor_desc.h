@@ -92,6 +92,10 @@ class TensorDescriptor : public GPUObjectDescriptor {
   void UploadData(const tflite::gpu::Tensor<BHWC, T>& src);
   template <DataType T>
   void DownloadData(tflite::gpu::Tensor<BHWC, T>* dst);
+  template <DataType T>
+  void UploadData(const tflite::gpu::Tensor<BHWDC, T>& src);
+  template <DataType T>
+  void DownloadData(tflite::gpu::Tensor<BHWDC, T>* dst);
 
   void UploadData(const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   void UploadData(const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
@@ -173,17 +177,8 @@ class TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
 
-  absl::Status PerformGetPtrWithSliceOffsetSelector(
-      const std::vector<std::string>& args, std::string* result) const;
-
-  absl::Status PerformGetWHOffsetSelector(const std::vector<std::string>& args,
-                                          std::string* result) const;
-
   absl::Status PerformGetHandleSelector(const std::vector<std::string>& args,
                                         std::string* result) const;
-
-  std::string DeclareAddress(const std::string& var_name,
-                             const std::string& address) const;
 
   std::string StorageTypeToAddressType() const;
 
@@ -276,6 +271,13 @@ class TensorDescriptor : public GPUObjectDescriptor {
   std::vector<uint8_t> data_;
 };
 
+TensorDescriptor CreateBhwcTensorDescriptor(DataType data_type,
+                                            TensorStorageType storage_type,
+                                            const BHWC& shape);
+TensorDescriptor CreateHwcTensorDescriptor(DataType data_type,
+                                           TensorStorageType storage_type,
+                                           const HWC& shape);
+
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
   shape_ = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
@@ -285,6 +287,19 @@ void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {
 template <DataType T>
 void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWC, T>* dst) {
   dst->shape = BHWC(shape_.b, shape_.h, shape_.w, shape_.c);
+  dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
+  DownloadData(dst->data.data());
+}
+
+template <DataType T>
+void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWDC, T>& src) {
+  shape_ = src.shape;
+  UploadData(src.data.data());
+}
+
+template <DataType T>
+void TensorDescriptor::DownloadData(tflite::gpu::Tensor<BHWDC, T>* dst) {
+  dst->shape = shape_;
   dst->data.resize(dst->shape.DimensionsProduct(), 0.0f);
   DownloadData(dst->data.data());
 }

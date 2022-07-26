@@ -122,6 +122,15 @@ bool IsContiguousMemref(mlir::Value value);
 mlir::FailureOr<mlir::Operation *> DetectCombiner(
     mlir::linalg::LinalgOp linalg_op);
 
+// Sets the attribute to the `op` that indicates that the op was transformed.
+void setTransformationAttr(mlir::OpBuilder &b, mlir::Operation *op);
+
+// Removes the attribute that indicates that it was transformed.
+void removeTransformationAttr(mlir::Operation *op);
+
+// Checks if `op` has the attribute that indicates that it was transformed.
+bool hasTransformationAttr(mlir::Operation *op);
+
 }  // namespace tensorflow
 
 #define GEN_PASS_REGISTRATION

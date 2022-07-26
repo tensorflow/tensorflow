@@ -83,6 +83,8 @@ using tfrt::jitrt::Executable;
 
 namespace se = ::stream_executor;
 namespace jitrt = ::tfrt::jitrt;
+namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
+namespace mhlo = ::mlir::mhlo;
 namespace runtime = ::tfrt::jitrt::runtime;
 
 // Disable all CustomCall checks in optimized build.
@@ -92,6 +94,76 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 #else
   return CustomCall::RuntimeChecks::kDefault;
 #endif
+}
+
+// -------------------------------------------------------------------------- //
+
+void PopulateLmhloToXlaAttrEncoding(
+    jitrt::CustomCallAttrEncodingSet& encoding) {
+  encoding.Add<
+      jitrt::EnumAttrEncoding<lmhlo_gpu::ActivationAttr, lmhlo_gpu::Activation,
+                              se::dnn::ActivationMode>>(
+      [](lmhlo_gpu::Activation value) -> se::dnn::ActivationMode {
+        return ConvertConvActivationMode(value).value();
+      });
+
+  encoding.Add<
+      jitrt::EnumAttrEncoding<mhlo::FftTypeAttr, mhlo::FftType, se::fft::Type>>(
+      [](mhlo::FftType value) -> se::fft::Type {
+        switch (value) {
+          case mhlo::FftType::FFT:
+            return se::fft::Type::kC2CForward;
+          case mhlo::FftType::IFFT:
+            return se::fft::Type::kC2CInverse;
+          case mhlo::FftType::RFFT:
+            return se::fft::Type::kR2C;
+          case mhlo::FftType::IRFFT:
+            return se::fft::Type::kC2R;
+          default:
+            return se::fft::Type::kInvalid;
+        }
+      });
+
+  using DotDimsAttr = mhlo::DotDimensionNumbersAttr;
+  encoding.Add<jitrt::AggregateAttrEncoding<DotDimsAttr, DotDimensionNumbers>>(
+      encoding,
+      jitrt::AggregateAttrDef<DotDimsAttr>()
+          .Add("lhs_batch", &DotDimsAttr::getLhsBatchingDimensions)
+          .Add("lhs_contract", &DotDimsAttr::getLhsContractingDimensions)
+          .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
+          .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
+
+  using ConvDimsAttr = mhlo::ConvDimensionNumbersAttr;
+  encoding.Add<
+      jitrt::AggregateAttrEncoding<ConvDimsAttr, ConvDimensionNumbers>>(
+      encoding,
+      jitrt::AggregateAttrDef<ConvDimsAttr>()
+          .Add("input_batch_dim", &ConvDimsAttr::getInputBatchDimension)
+          .Add("input_feature_dim", &ConvDimsAttr::getInputFeatureDimension)
+          .Add("input_spatial_dims", &ConvDimsAttr::getInputSpatialDimensions)
+          .Add("kernel_in_feature_dim",
+               &ConvDimsAttr::getKernelInputFeatureDimension)
+          .Add("kernel_out_feature_dim",
+               &ConvDimsAttr::getKernelOutputFeatureDimension)
+          .Add("kernel_spatial_dims", &ConvDimsAttr::getKernelSpatialDimensions)
+          .Add("output_batch_dim", &ConvDimsAttr::getOutputBatchDimension)
+          .Add("output_feature_dim", &ConvDimsAttr::getOutputFeatureDimension)
+          .Add("output_spatial_dims",
+               &ConvDimsAttr::getOutputSpatialDimensions));
+
+  using ConvConfigAttr = lmhlo_gpu::ConvolutionBackendConfigAttr;
+  encoding.Add<jitrt::AggregateAttrEncoding<ConvConfigAttr, ConvBackendConfig>>(
+      encoding,
+      jitrt::AggregateAttrDef<ConvConfigAttr>()
+          .Add("algorithm", &ConvConfigAttr::getAlgorithm)
+          .Add("tensor_ops_enabled", &ConvConfigAttr::getTensorOpsEnabled)
+          .Add("is_cudnn_frontend", &ConvConfigAttr::getIsCudnnFrontend)
+          .Add("knob_ids", &ConvConfigAttr::getKnobIds)
+          .Add("knob_values", &ConvConfigAttr::getKnobValues)
+          .Add("operand_0_layout", &ConvConfigAttr::getOperand_0Layout)
+          .Add("operand_1_layout", &ConvConfigAttr::getOperand_1Layout)
+          .Add("result_layout", &ConvConfigAttr::getResultLayout)
+          .Add("workspace_size", &ConvConfigAttr::getWorkspaceSize));
 }
 
 // -------------------------------------------------------------------------- //
@@ -257,16 +329,15 @@ static Shape ToShape(const jitrt::StridedMemrefView& memref) {
 }
 
 static StatusOr<GemmConfig> GetGemmConfig(
-    const DebugOptions* debug_options, const jitrt::StridedMemrefView& lhs,
-    const jitrt::StridedMemrefView& rhs, const jitrt::StridedMemrefView& out,
-    int64_t algorithm, double alpha_real, double alpha_imag, double beta,
-    ArrayRef<int64_t> lhs_batch, ArrayRef<int64_t> lhs_contract,
-    ArrayRef<int64_t> rhs_batch, ArrayRef<int64_t> rhs_contract) {
+    const jitrt::StridedMemrefView& lhs, const jitrt::StridedMemrefView& rhs,
+    const jitrt::StridedMemrefView& out, int64_t algorithm, double alpha_real,
+    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
+    ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
+    ArrayRef<int64_t> rhs_contract) {
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
                          rhs_batch, rhs_contract, ToShape(out), alpha_real,
                          alpha_imag, beta, algorithm,
-                         se::blas::kDefaultComputePrecision,
-                         debug_options->xla_gpu_enable_cublaslt());
+                         se::blas::kDefaultComputePrecision);
 }
 
 // -------------------------------------------------------------------------- //
@@ -420,27 +491,28 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-      jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-      jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-      double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
-      ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
-      ArrayRef<int64_t> rhs_contract, int64_t uid) const;
+  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           JitRtGemmConfigCache* configs,
+                           jitrt::StridedMemrefView lhs,
+                           jitrt::StridedMemrefView rhs,
+                           jitrt::StridedMemrefView out, int64_t algorithm,
+                           double alpha_real, double alpha_imag, double beta,
+                           DotDimensionNumbers dot_dims, int64_t uid) const;
 
   static Gemm Handler() { return Gemm(); }
 };
 }  // namespace
 
-LogicalResult Gemm::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, JitRtGemmConfigCache* configs,
-    jitrt::StridedMemrefView lhs, jitrt::StridedMemrefView rhs,
-    jitrt::StridedMemrefView out, int64_t algorithm, double alpha_real,
-    double alpha_imag, double beta, ArrayRef<int64_t> lhs_batch,
-    ArrayRef<int64_t> lhs_contract, ArrayRef<int64_t> rhs_batch,
-    ArrayRef<int64_t> rhs_contract, int64_t uid) const {
+LogicalResult Gemm::operator()(const ServiceExecutableRunOptions* run_options,
+                               const DebugOptions* debug_options,
+                               JitRtGemmConfigCache* configs,
+                               jitrt::StridedMemrefView lhs,
+                               jitrt::StridedMemrefView rhs,
+                               jitrt::StridedMemrefView out, int64_t algorithm,
+                               double alpha_real, double alpha_imag,
+                               double beta, DotDimensionNumbers dot_dims,
+                               int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -451,33 +523,14 @@ LogicalResult Gemm::operator()(
   // Find the gemm config for this instance of operation based on uid.
   const GemmConfig* config = configs->Get(uid);
   if (config == nullptr) {
-    auto cfg = GetGemmConfig(debug_options, lhs, rhs, out, algorithm,
-                             alpha_real, alpha_imag, beta, lhs_batch,
-                             lhs_contract, rhs_batch, rhs_contract);
+    auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
+                             beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
+                             dot_dims.rhs_batch, dot_dims.rhs_contract);
     if (!cfg.ok()) return failure();
     config = configs->Set(uid, std::move(*cfg));
   }
 
-  Status executed = [&] {
-    if (config->use_cublaslt) {
-      TF_ASSIGN_OR_RETURN(MatmulPlanParams matmul_plan_params,
-                          GetBlasLtMatmulPlanParams(*config));
-
-      // TODO(cjfj): Cache the plan.
-      se::cuda::BlasLt::MatmulPlan matmul_plan;
-      TF_RETURN_IF_ERROR(matmul_plan.init(matmul_plan_params.params));
-
-      if (matmul_plan_params.must_swap_operands) {
-        std::swap(lhs_data, rhs_data);
-      }
-
-      se::OwningScratchAllocator<> scratch_allocator(
-          run_options->device_ordinal(), run_options->allocator());
-
-      return RunBlasLtMatmul(matmul_plan, {alpha_real, alpha_imag}, lhs_data,
-                             rhs_data, beta, output_data, stream,
-                             scratch_allocator);
-    }
+  Status executed = [&]() -> Status {
     return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
   }();
 
@@ -487,25 +540,21 @@ LogicalResult Gemm::operator()(
 }
 
 static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
-  static auto* handler =
-      CustomCall::Bind("xla.gpu.gemm")
-          .UserData<const ServiceExecutableRunOptions*>()
-          .UserData<const DebugOptions*>()
-          .UserData<JitRtGemmConfigCache*>()
-          .Arg<jitrt::StridedMemrefView>()  // lhs
-          .Arg<jitrt::StridedMemrefView>()  // rhs
-          .Arg<jitrt::StridedMemrefView>()  // out
-          .Attr<int64_t>("algorithm")
-          .Attr<double>("alpha_real")
-          .Attr<double>("alpha_imag")
-          .Attr<double>("beta")
-          .Attr<ArrayRef<int64_t>>("lhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("lhs_contracting_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_batching_dimensions")
-          .Attr<ArrayRef<int64_t>>("rhs_contracting_dimensions")
-          .Attr<int64_t>("uid")
-          .To<RuntimeChecks()>(Gemm::Handler())
-          .release();
+  static auto* handler = CustomCall::Bind("xla.gpu.gemm")
+                             .UserData<const ServiceExecutableRunOptions*>()
+                             .UserData<const DebugOptions*>()
+                             .UserData<JitRtGemmConfigCache*>()
+                             .Arg<jitrt::StridedMemrefView>()  // lhs
+                             .Arg<jitrt::StridedMemrefView>()  // rhs
+                             .Arg<jitrt::StridedMemrefView>()  // out
+                             .Attr<int64_t>("algorithm")
+                             .Attr<double>("alpha_real")
+                             .Attr<double>("alpha_imag")
+                             .Attr<double>("beta")
+                             .Attr<DotDimensionNumbers>("dot_dims")
+                             .Attr<int64_t>("uid")
+                             .To<RuntimeChecks()>(Gemm::Handler())
+                             .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs));
 }
@@ -519,24 +568,6 @@ static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 namespace {
 
-struct InputDimensions {
-  int64_t input_batch_dim;
-  int64_t input_feature_dim;
-  ArrayRef<int64_t> input_spatial_dims;
-};
-
-struct KernelDimensions {
-  int64_t kernel_in_feature_dim;
-  int64_t kernel_out_feature_dim;
-  ArrayRef<int64_t> kernel_spatial_dims;
-};
-
-struct OutputDimensions {
-  int64_t output_batch_dim;
-  int64_t output_feature_dim;
-  ArrayRef<int64_t> output_spatial_dims;
-};
-
 struct Window {
   ArrayRef<int64_t> window_strides;
   ArrayRef<int64_t> padding;
@@ -545,25 +576,13 @@ struct Window {
   ArrayRef<int64_t> window_reversal;
 };
 
-struct BackendConfig {
-  int64_t algorithm;
-  bool tensor_ops_enabled;
-  bool is_cudnn_frontend;
-  ArrayRef<int64_t> knob_ids;
-  ArrayRef<int64_t> knob_values;
-  ArrayRef<int64_t> operand_0_layout;
-  ArrayRef<int64_t> operand_1_layout;
-  ArrayRef<int64_t> result_layout;
-  int64_t workspace_size;
-};
-
 struct ConvAttrs {
   int64_t feature_group_count;
   double result_scale;
 };
 
 struct FusedConvAttrs {
-  int64_t activation_mode;
+  se::dnn::ActivationMode activation_mode;
 };
 
 struct SideInputAttrs {
@@ -578,8 +597,7 @@ static GpuConvDescriptor GetConvDescriptor(
     jitrt::StridedMemrefView operand0, jitrt::StridedMemrefView operand1,
     jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
     // Attributes
-    InputDimensions i, KernelDimensions k, OutputDimensions o, Window w,
-    BackendConfig b, ConvAttrs attrs,
+    ConvDimensionNumbers dims, Window w, ConvBackendConfig b, ConvAttrs attrs,
     // Conv-specific arguments and attributes
     Optional<FusedConvAttrs> fused = llvm::None,
     Optional<SideInputAttrs> side_input = llvm::None) {
@@ -601,15 +619,17 @@ static GpuConvDescriptor GetConvDescriptor(
 
   // Set up convolution dimensions numbers.
   ConvolutionDimensionNumbers dns;
-  dns.set_input_batch_dimension(i.input_batch_dim);
-  dns.set_input_feature_dimension(i.input_feature_dim);
-  dns.set_kernel_input_feature_dimension(k.kernel_in_feature_dim);
-  dns.set_kernel_output_feature_dimension(k.kernel_out_feature_dim);
-  dns.set_output_batch_dimension(o.output_batch_dim);
-  dns.set_output_feature_dimension(o.output_feature_dim);
-  for (int64_t d : i.input_spatial_dims) dns.add_input_spatial_dimensions(d);
-  for (int64_t d : k.kernel_spatial_dims) dns.add_kernel_spatial_dimensions(d);
-  for (int64_t d : o.output_spatial_dims) dns.add_output_spatial_dimensions(d);
+  dns.set_input_batch_dimension(dims.input_batch_dim);
+  dns.set_input_feature_dimension(dims.input_feature_dim);
+  dns.set_kernel_input_feature_dimension(dims.kernel_in_feature_dim);
+  dns.set_kernel_output_feature_dimension(dims.kernel_out_feature_dim);
+  dns.set_output_batch_dimension(dims.output_batch_dim);
+  dns.set_output_feature_dimension(dims.output_feature_dim);
+  for (int64_t d : dims.input_spatial_dims) dns.add_input_spatial_dimensions(d);
+  for (int64_t d : dims.kernel_spatial_dims)
+    dns.add_kernel_spatial_dimensions(d);
+  for (int64_t d : dims.output_spatial_dims)
+    dns.add_output_spatial_dimensions(d);
   descriptor.dnums = std::move(dns);
 
   // Put together convolution window config.
@@ -669,28 +689,17 @@ struct Conv {
       jitrt::StridedMemrefView operand1, Optional<jitrt::FlatMemrefView> bias,
       Optional<jitrt::StridedMemrefView> side_input,
       jitrt::StridedMemrefView output, jitrt::FlatMemrefView scratch,
-      // Convolution input dimensions numbers
-      int64_t input_batch_dim, int64_t input_feature_dim,
-      ArrayRef<int64_t> input_spatial_dims,
-      // Convolution kernel dimensions numbers
-      int64_t kernel_in_feature_dim, int64_t kernel_out_feature_dim,
-      ArrayRef<int64_t> kernel_spatial_dims,
-      // Output dimensions numbers
-      int64_t output_batch_dim, int64_t output_feature_dim,
-      ArrayRef<int64_t> output_spatial_dims,
+      ConvDimensionNumbers conv_dims,
       // Window config
       ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
       ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
       ArrayRef<int64_t> window_reversal,
       // Backend config attributes
-      int64_t algorithm, bool tensor_ops_enabled, bool is_cudnn_frontend,
-      ArrayRef<int64_t> knob_ids, ArrayRef<int64_t> knob_values,
-      ArrayRef<int64_t> operand_0_layout, ArrayRef<int64_t> operand_1_layout,
-      ArrayRef<int64_t> result_layout, int64_t workspace_size,
+      ConvBackendConfig backend_config,
       // Remaining attributes
       int64_t feature_group_count, double result_scale,
       // Optional attributes for fused convolutions.
-      Optional<int64_t> activation_mode = llvm::None,
+      Optional<se::dnn::ActivationMode> activation_mode = llvm::None,
       Optional<double> side_input_scale = llvm::None) const {
     // Build config for optional attributes.
     Optional<FusedConvAttrs> fused_attrs = llvm::None;
@@ -701,15 +710,10 @@ struct Conv {
 
     // Prepare a descriptor for the XLA convolution.
     GpuConvDescriptor descriptor = GetConvDescriptor(
-        kind, operand0, operand1, output, scratch,
-        {input_batch_dim, input_feature_dim, input_spatial_dims},
-        {kernel_in_feature_dim, kernel_out_feature_dim, kernel_spatial_dims},
-        {output_batch_dim, output_feature_dim, output_spatial_dims},
+        kind, operand0, operand1, output, scratch, conv_dims,
         {window_strides, padding, lhs_dilation, rhs_dilation, window_reversal},
-        {algorithm, tensor_ops_enabled, is_cudnn_frontend, knob_ids,
-         knob_values, operand_0_layout, operand_1_layout, result_layout,
-         workspace_size},
-        {feature_group_count, result_scale}, fused_attrs, side_input_attrs);
+        backend_config, {feature_group_count, result_scale}, fused_attrs,
+        side_input_attrs);
 
     // Convert descriptor to the Conv config.
     StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
@@ -751,17 +755,7 @@ template <typename... Ts>
 static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       // Convolution dimensions numbers
-      .template Attr<int64_t>("input_batch_dim")
-      .template Attr<int64_t>("input_feature_dim")
-      .template Attr<ArrayRef<int64_t>>("input_spatial_dims")
-      // Convolution kernel dimensions
-      .template Attr<int64_t>("kernel_in_feature_dim")
-      .template Attr<int64_t>("kernel_out_feature_dim")
-      .template Attr<ArrayRef<int64_t>>("kernel_spatial_dims")
-      // Output dimensions
-      .template Attr<int64_t>("output_batch_dim")
-      .template Attr<int64_t>("output_feature_dim")
-      .template Attr<ArrayRef<int64_t>>("output_spatial_dims")
+      .template Attr<ConvDimensionNumbers>("conv_dims")
       // Window config
       .template Attr<ArrayRef<int64_t>>("window_strides")
       .template Attr<ArrayRef<int64_t>>("padding")
@@ -769,15 +763,7 @@ static auto BindConvAttributes(jitrt::CustomCallBinding<Ts...> binding) {
       .template Attr<ArrayRef<int64_t>>("rhs_dilation")
       .template Attr<ArrayRef<int64_t>>("window_reversal")
       // Backend config attributes
-      .template Attr<int64_t>("algorithm")
-      .template Attr<bool>("tensor_ops_enabled")
-      .template Attr<bool>("is_cudnn_frontend")
-      .template Attr<ArrayRef<int64_t>>("knob_ids")
-      .template Attr<ArrayRef<int64_t>>("knob_values")
-      .template Attr<ArrayRef<int64_t>>("operand_0_layout")
-      .template Attr<ArrayRef<int64_t>>("operand_1_layout")
-      .template Attr<ArrayRef<int64_t>>("result_layout")
-      .template Attr<int64_t>("workspace_size")
+      .template Attr<ConvBackendConfig>("backend_config")
       // Remaining attributes.
       .template Attr<int64_t>("feature_group_count")
       .template Attr<double>("result_scale");
@@ -816,7 +802,7 @@ static bool ConvFusedFn(runtime::KernelContext* ctx, void** args,
                              .Arg<jitrt::StridedMemrefView>()  // output
                              .Arg<jitrt::FlatMemrefView>()     // scratch
                          )
-          .Attr<int64_t>("activation_mode")
+          .Attr<se::dnn::ActivationMode>("activation_mode")
           .To(Conv::Handler(kind))
           .release();
 
@@ -837,7 +823,7 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
                              .Arg<jitrt::StridedMemrefView>()  // output
                              .Arg<jitrt::FlatMemrefView>()     // scratch
                          )
-          .Attr<int64_t>("activation_mode")
+          .Attr<se::dnn::ActivationMode>("activation_mode")
           .Attr<double>("side_input_scale")
           .To(Conv::Handler(kind))
           .release();
@@ -1096,7 +1082,7 @@ struct Fft {
                            jitrt::StridedMemrefView input,
                            jitrt::StridedMemrefView output,
                            ArrayRef<int64_t> fft_length,
-                           int32_t fft_type) const;
+                           se::fft::Type fft_type) const;
   static Fft Handler() { return Fft(); }
 };
 }  // namespace
@@ -1105,42 +1091,37 @@ LogicalResult Fft::operator()(const ServiceExecutableRunOptions* run_options,
                               jitrt::StridedMemrefView input,
                               jitrt::StridedMemrefView output,
                               ArrayRef<int64_t> fft_length,
-                              int32_t fft_type) const {
+                              se::fft::Type fft_type) const {
   // TODO(ezhulenev): Cache FFT plans in the GpuExecutable.
   FftPlanCache fft_plan_cache;
 
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
-  // TODO(ezhulenev): Compiler pass should pass fft type to the custom call.
-  bool double_precision =
-      input.dtype == tfrt::DType::F64 || input.dtype == tfrt::DType::Complex128;
-
-  // TODO(b/234085769): Lmhlo to JitRt lowering pass should pass Xla Fft type to
-  // the custom call.
-  se::fft::Type fft = [&] {
-    // See mlir::mhlo::FftType enum.
+  if (input.dtype == tfrt::DType::F64 ||
+      input.dtype == tfrt::DType::Complex128) {
+    // Adjust FFT type to reflect double precision.
     switch (fft_type) {
-      case 0:  // FFT
-        return double_precision ? se::fft::Type::kZ2ZForward
-                                : se::fft::Type::kC2CForward;
-      case 1:  // IFFT
-        return double_precision ? se::fft::Type::kZ2ZInverse
-                                : se::fft::Type::kC2CInverse;
-      case 2:  // RFFT
-        return double_precision ? se::fft::Type::kD2Z : se::fft::Type::kR2C;
-      case 3:  // IRFFT
-        return double_precision ? se::fft::Type::kZ2D : se::fft::Type::kC2R;
+      case se::fft::Type::kC2CForward:
+        fft_type = se::fft::Type::kZ2ZForward;
+        break;
+      case se::fft::Type::kC2CInverse:
+        fft_type = se::fft::Type::kZ2ZInverse;
+        break;
+      case se::fft::Type::kR2C:
+        fft_type = se::fft::Type::kD2Z;
+        break;
+      case se::fft::Type::kC2R:
+        fft_type = se::fft::Type::kZ2D;
+        break;
       default:
-        return se::fft::Type::kInvalid;
+        return failure();
     }
-  }();
-
-  if (fft == se::fft::Type::kInvalid) return failure();
+  }
 
   auto st =
       RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
-             ToShape(output), fft, fft_length, executor->device_ordinal(),
+             ToShape(output), fft_type, fft_length, executor->device_ordinal(),
              &fft_plan_cache, stream, run_options->allocator());
   if (!st.ok()) return failure();
 
@@ -1153,7 +1134,7 @@ static bool Fft(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<jitrt::StridedMemrefView>()  // input
                              .Arg<jitrt::StridedMemrefView>()  // output
                              .Attr<ArrayRef<int64_t>>("fft_length")
-                             .Attr<int32_t>("fft_type")
+                             .Attr<se::fft::Type>("fft_type")
                              .To<RuntimeChecks()>(Fft::Handler())
                              .release();
 
@@ -1169,7 +1150,7 @@ struct Cholesky {
                            const DebugOptions* debug_options,
                            jitrt::MemrefView operand, jitrt::MemrefView a,
                            jitrt::MemrefView workspace, jitrt::MemrefView info,
-                           int64_t batch_size, int64_t n, int64_t uplo) const;
+                           int64_t batch_size, bool is_lower, int64_t n) const;
   static Cholesky Handler() { return Cholesky(); }
 };
 }  // namespace
@@ -1178,7 +1159,7 @@ LogicalResult Cholesky::operator()(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, jitrt::MemrefView operand,
     jitrt::MemrefView a, jitrt::MemrefView workspace, jitrt::MemrefView info,
-    int64_t batch_size, int64_t n, int64_t uplo) const {
+    int64_t batch_size, bool is_lower, int64_t n) const {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   se::DeviceMemoryBase operand_buffer = GetDeviceAddress(operand);
   se::DeviceMemoryBase a_buffer = GetDeviceAddress(a);
@@ -1192,9 +1173,11 @@ LogicalResult Cholesky::operator()(
   if (a.data != operand.data)
     stream->ThenMemcpy(&a_buffer, operand_buffer, operand_buffer.size());
 
-  CholeskyParams params{
-      n,        batch_size,       static_cast<se::blas::UpperLower>(uplo),
-      a_buffer, workspace_buffer, info_buffer};
+  using UpperLower = se::blas::UpperLower;
+  UpperLower uplo = is_lower ? UpperLower::kLower : UpperLower::kUpper;
+
+  CholeskyParams params{n,        batch_size,       uplo,
+                        a_buffer, workspace_buffer, info_buffer};
   auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
                               ToPrimitiveType(operand.dtype), &params, stream);
   if (!executed.ok()) return failure();
@@ -1214,8 +1197,8 @@ static bool Cholesky(runtime::KernelContext* ctx, void** args, void** attrs) {
                              .Arg<jitrt::MemrefView>()  // workspace
                              .Arg<jitrt::MemrefView>()  // info
                              .Attr<int64_t>("batch_size")
+                             .Attr<bool>("is_lower")
                              .Attr<int64_t>("n")
-                             .Attr<int64_t>("uplo")  // se::blas::UpperLower
                              .To<RuntimeChecks()>(Cholesky::Handler())
                              .release();
 

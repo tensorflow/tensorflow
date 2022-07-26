@@ -1666,15 +1666,54 @@ func.func @test_fullyconnected_qi8(%arg0: tensor<14x19x!quant.uniform<i8:f32, 0.
 
 // -----
 // CHECK-LABEL: test_gather
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<{{.*}}> : tensor<1x49xi32>}
 // CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
-// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR0]])
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
 // CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
 // CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
 // CHECK: return %[[VAR8]]
-func.func @test_gather(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %1 = arith.constant dense<[[9, 8, 11, 10, 11, 0, 12], [7, 0, 1, 5, 2, 9, 6], [7, 9, 10, 8, 0, 3, 0], [8, 9, 10, 4, 9, 12, 6], [0, 2, 4, 3, 6, 11, 8], [5, 8, 7, 2, 4, 10, 5], [4, 12, 8, 3, 12, 9, 1]]>  : tensor<7x7xi32>
-  %2 = "tfl.gather"(%arg0, %1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+func.func @test_gather(%arg0: tensor<13x21x3xf32>, %arg1: tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_dyn
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, -1, 63]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, 3]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func.func @test_gather_dyn(%arg0: tensor<?x21x3xf32>, %arg1 : tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<?x21x3xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+
+// -----
+// CHECK-LABEL: test_gather_channel_dyn
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, -1]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, 49]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [7, 7, 21, -1]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func.func @test_gather_channel_dyn(%arg0: tensor<13x21x?xf32>, %arg1: tensor<7x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x?xf32>, tensor<7x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_indices_dyn
+// CHECK-DAG: %[[VAR4:.*]] = "tosa.reshape"(%arg0) {new_shape = [1, 13, 63]}
+// CHECK-DAG: %[[VAR5:.*]] = "tosa.reshape"(%arg1) {new_shape = [1, -1]}
+// CHECK-DAG: %[[VAR6:.*]] = "tosa.gather"(%[[VAR4]], %[[VAR5]])
+// CHECK-DAG: %[[VAR7:.*]] = "tosa.reshape"(%[[VAR6]]) {new_shape = [-1, 7, 21, 3]}
+// CHECK-DAG: %[[VAR8:.*]] = tensor.cast %[[VAR7]]
+// CHECK: return %[[VAR8]]
+func.func @test_gather_indices_dyn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<?x7xi32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
@@ -1689,6 +1728,17 @@ func.func @test_gather_batch(%arg0: tensor<1x4x4x4xi32>) -> tensor<1x3x4x4xi32> 
   %0 = "tfl.pseudo_const"() {value = dense<[[0, 3, 1]]> : tensor<1x3xi32>} : () -> tensor<1x3xi32>
   %1 = "tfl.gather"(%arg0, %0) {axis = 1 : i32, batch_dims = 1 : i32} : (tensor<1x4x4x4xi32>, tensor<1x3xi32>) -> tensor<1x3x4x4xi32>
   func.return %1 : tensor<1x3x4x4xi32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_batch_dyn
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg0) {new_shape = [-1, 4, 16]}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.gather"(%[[VAR1]], %arg1)
+// CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) {new_shape = [-1, 3, 4, 4]}
+// CHECK: return %[[VAR3]]
+func.func @test_gather_batch_dyn(%arg0: tensor<?x4x4x4xi32>, %arg1: tensor<?x3xi32>) -> tensor<?x3x4x4xi32> {
+  %1 = "tfl.gather"(%arg0, %arg1) {axis = 1 : i32, batch_dims = 1 : i32} : (tensor<?x4x4x4xi32>, tensor<?x3xi32>) -> tensor<?x3x4x4xi32>
+  func.return %1 : tensor<?x3x4x4xi32>
 }
 
 // -----

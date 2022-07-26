@@ -769,6 +769,11 @@ class TensorListFromTensor : public OpKernel {
     attr.set_on_host(true);
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(1).shape()),
+        errors::InvalidArgument(
+            "TensorListFromTensor: element_shape must be at most rank 1 but ",
+            "has the shape of ", c->input(1).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(1), &element_shape));
     TensorList output_list;
     const Tensor& t = c->input(0);
@@ -895,6 +900,11 @@ class TensorListScatter : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     Tensor indices = c->input(1);
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(2).shape()),
+        errors::InvalidArgument(
+            "TensorListScatter: element_shape must be at most rank 1 but has ",
+            "the shape of ", c->input(2).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
     // TensorListScatterV2 passes the num_elements input, TensorListScatter does
     // not.

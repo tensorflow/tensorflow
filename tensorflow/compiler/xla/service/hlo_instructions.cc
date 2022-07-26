@@ -83,22 +83,22 @@ std::string PrecisionConfigToString(const PrecisionConfig& precision_config) {
 }
 
 void SetThreadName(HloComputation* called_computation,
-                   absl::string_view thread_name,
-                   bool skip_async_thread_name_overwrite) {
-  called_computation->SetThreadName(thread_name);
+                   absl::string_view execution_thread,
+                   bool skip_async_execution_thread_overwrite) {
+  called_computation->SetExecutionThread(execution_thread);
   for (HloInstruction* instr : called_computation->instructions()) {
     if (instr->IsAsynchronous()) {
-      if (!skip_async_thread_name_overwrite) {
+      if (!skip_async_execution_thread_overwrite) {
         // Set async instruction thread name and also recursively set async
         // computations.
-        instr->set_async_thread_name(thread_name);
+        instr->set_async_execution_thread(execution_thread);
       }
       continue;
     }
     for (HloComputation* nested_called_computation :
          instr->called_computations()) {
-      SetThreadName(nested_called_computation, thread_name,
-                    skip_async_thread_name_overwrite);
+      SetThreadName(nested_called_computation, execution_thread,
+                    skip_async_execution_thread_overwrite);
     }
   }
 }
@@ -241,10 +241,10 @@ HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    absl::string_view async_thread_name)
+    absl::string_view async_execution_thread)
     : HloInstruction(opcode, shape),
       async_group_id_(async_group_id),
-      async_thread_name_(async_thread_name) {
+      async_execution_thread_(async_execution_thread) {
   CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -253,23 +253,22 @@ HloAsyncInstruction::HloAsyncInstruction(
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(this);
-  set_async_thread_name(async_thread_name);
+  set_async_execution_thread(async_execution_thread);
 }
 
-HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
-                                         HloInstruction* operand,
-                                         HloComputation* async_computation,
-                                         std::optional<int64_t> async_group_id,
-                                         absl::string_view async_thread_name)
+HloAsyncInstruction::HloAsyncInstruction(
+    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation, std::optional<int64_t> async_group_id,
+    absl::string_view async_execution_thread)
     : HloInstruction(opcode, shape),
       async_group_id_(async_group_id),
-      async_thread_name_(async_thread_name) {
+      async_execution_thread_(async_execution_thread) {
   AppendOperand(operand);
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
   async_computation->AddAsyncInstruction(this);
-  set_async_thread_name(async_thread_name);
+  set_async_execution_thread(async_execution_thread);
 }
 
 HloAsyncInstruction::~HloAsyncInstruction() {
@@ -306,8 +305,9 @@ std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
   if (async_group_id_.has_value()) {
     result.push_back(StrCat("async_group_id=", *async_group_id_));
   }
-  if (async_thread_name_ != kMainThreadName) {
-    result.push_back(StrCat("async_thread_name=\"", async_thread_name_, "\""));
+  if (async_execution_thread_ != kMainExecutionThread) {
+    result.push_back(
+        StrCat("async_execution_thread=\"", async_execution_thread_, "\""));
   }
   if (options.syntax_sugar_async_ops()) {
     std::vector<std::string> wrapped_extra_attributes =
@@ -341,7 +341,7 @@ std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
   }
   return std::make_unique<HloAsyncInstruction>(
       opcode(), shape, new_operands, new_wrapped_computation, async_group_id_,
-      async_thread_name_);
+      async_execution_thread_);
 }
 
 void HloAsyncInstruction::set_async_group_id(
@@ -349,20 +349,20 @@ void HloAsyncInstruction::set_async_group_id(
   async_group_id_ = async_group_id;
 }
 
-void HloAsyncInstruction::set_async_thread_name(
-    absl::string_view async_thread_name) {
-  async_thread_name_ = std::string(async_thread_name);
-  SetThreadName(async_wrapped_computation(), async_thread_name,
-                /*skip_async_thread_name_overwrite=*/false);
+void HloAsyncInstruction::set_async_execution_thread(
+    absl::string_view async_execution_thread) {
+  async_execution_thread_ = std::string(async_execution_thread);
+  SetThreadName(async_wrapped_computation(), async_execution_thread,
+                /*skip_async_execution_thread_overwrite=*/false);
 }
 
 HloInstructionProto HloAsyncInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_async_group_id(async_group_id_.has_value() ? *async_group_id_ : -1);
-  proto.set_async_thread_name(async_thread_name_ ==
-                                      HloInstruction::kMainThreadName
-                                  ? ""
-                                  : async_thread_name_);
+  proto.set_async_execution_thread(async_execution_thread_ ==
+                                           HloInstruction::kMainExecutionThread
+                                       ? ""
+                                       : async_execution_thread_);
   return proto;
 }
 
@@ -1754,9 +1754,11 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 }
 
 void HloCallableInstruction::RecursivelySetComputationsThreadName(
-    absl::string_view thread_name, bool skip_async_thread_name_overwrite) {
+    absl::string_view execution_thread,
+    bool skip_async_execution_thread_overwrite) {
   for (HloComputation* comp : called_computations()) {
-    SetThreadName(comp, thread_name, skip_async_thread_name_overwrite);
+    SetThreadName(comp, execution_thread,
+                  skip_async_execution_thread_overwrite);
   }
 }
 

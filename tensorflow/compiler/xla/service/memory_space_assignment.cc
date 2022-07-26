@@ -359,7 +359,8 @@ int MemorySpaceAssignmentCostAnalysis::CalculateComputationNestLevel(
   while (!computation->IsEntryComputation()) {
     auto& node = call_graph_->GetNode(computation);
     auto callsites = node.caller_callsites();
-    CHECK_EQ(callsites.size(), 1) << "The module is not flattened!";
+    CHECK(node.computation()->IsAsyncComputation() || callsites.size() == 1)
+        << "The module is not flattened!";
     auto& callsite = callsites[0];
     if (!while_only || callsite.instruction()->opcode() == HloOpcode::kWhile) {
       ++nest_level;

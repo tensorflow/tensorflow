@@ -92,9 +92,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -2210,6 +2208,31 @@ xla_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "multithreaded_compilation_test",
+    srcs = ["multithreaded_compilation_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_test_base",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

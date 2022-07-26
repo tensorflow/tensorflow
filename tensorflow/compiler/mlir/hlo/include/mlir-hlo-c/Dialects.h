@@ -13,7 +13,7 @@ limitations under the License.
 #ifndef MLIR_HLO_C_DIALECTS_H
 #define MLIR_HLO_C_DIALECTS_H
 
-#include "mlir-c/Registration.h"
+#include "mlir-c/RegisterEverything.h"
 
 #ifdef __cplusplus
 extern "C" {

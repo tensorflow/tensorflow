@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <stddef.h>
 
+// TODO(b/238999986): Remove this.
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
 
@@ -201,6 +204,20 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Device* device;
+  int local_hardware_id;  // out
+} PJRT_Device_LocalHardwareId_Args;
+const size_t PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
+
+// Opaque hardware ID, e.g., the CUDA device number. In general, not guaranteed
+// to be dense, and -1 if undefined.
+typedef PJRT_Error* PJRT_Device_LocalHardwareId(
+    PJRT_Device_LocalHardwareId_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
   int process_index;  // out
 } PJRT_Device_ProcessIndex_Args;
 const size_t PJRT_Device_ProcessIndex_Args_STRUCT_SIZE =
@@ -246,6 +263,7 @@ typedef PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 // ------------------------------- Executables ---------------------------------
 
 typedef struct PJRT_Executable PJRT_Executable;
+typedef struct PJRT_Buffer PJRT_Buffer;
 
 typedef struct {
   size_t struct_size;
@@ -319,9 +337,62 @@ const size_t PJRT_Executable_IsDeleted_Args_STRUCT_SIZE =
 typedef PJRT_Error* PJRT_Executable_IsDeleted(
     PJRT_Executable_IsDeleted_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  // If non-zero, identifies this execution as part of a potentially
+  // multi-device launch. This can be used to detect scheduling errors, e.g. if
+  // multi-host programs are launched in different orders on different hosts,
+  // the launch IDs may be used by the runtime to detect the mismatch.
+  int launch_id;
+} PJRT_ExecuteOptions;
+const size_t PJRT_ExecuteOptions_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, launch_id);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  // Only needs to stay alive for the duration of the Execute call.
+  PJRT_ExecuteOptions* options;
+  // Execution input of size [`num_devices`, `num_args`].
+  PJRT_Buffer*** argument_lists;
+  size_t num_devices;
+  size_t num_args;
+  // Execution output of size [`num_devices`, num_outputs`], where `num_outputs`
+  // is the number of outputs returned by this executable per device. Both the
+  // outer (`PJRT_Buffer***`) and inner lists (`PJRT_Buffer**`) must be
+  // allocated and deallocated by the caller. PJRT_Buffer_Destroy must be called
+  // on the output PJRT_Buffer*.
+  PJRT_Buffer*** output_lists;  // in/out
+} PJRT_Executable_Execute_Args;
+const size_t PJRT_Executable_Execute_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Executable_Execute_Args, output_lists);
+
+// Executes on devices addressable by the client.
+typedef PJRT_Error* PJRT_Executable_Execute(PJRT_Executable_Execute_Args* args);
+
 // ---------------------------------- Buffers ----------------------------------
 
-typedef struct PJRT_Buffer PJRT_Buffer;
+// This trimmed shape doesn't have any Tuple information. In case of Tuple,
+// assert is triggered from the C API  Client.
+// TODO(b/238999986): This is a temporary solution. Remove this later.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  int element_type;             // out
+  Int64List dimensions;         // out
+  BoolList dynamic_dimensions;  // out
+  XLA_Layout layout;            // out
+} PJRT_Buffer_OnDeviceTrimmedShape_Args;
+const size_t PJRT_Buffer_OnDeviceTrimmedShape_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_OnDeviceTrimmedShape_Args, layout);
+
+// Return the trimmed shape from PjRtBuffer.
+// TODO(b/238999986): Replace this with decomposed shape methods.
+typedef PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
+    PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
 
 typedef struct {
   size_t struct_size;
@@ -401,13 +472,16 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_IsDeleted);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Execute);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);

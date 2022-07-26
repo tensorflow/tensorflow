@@ -309,6 +309,18 @@ TEST(ConstFloatMeanOpTest, ScalarAxis) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.})));
 }
 
+TEST(ConstFloatMeanOpTest, UseOptimzedFloatMean) {
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.1, 0.2,
+                             0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_FLOAT32, {2, 3, 2}}, {TensorType_FLOAT32, {2}},
+                     {2}, {1, 2}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({0.216667, 0.283333})));
+}
+
 TEST(DynamicFloatMeanOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,

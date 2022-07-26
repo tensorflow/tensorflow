@@ -134,6 +134,8 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "LSTMBlockCell",
         "LSTMBlockCellGrad",
         "MatMul",
+        "Mha",
+        "Tmlp",
     };
 #if TENSORFLOW_USE_ROCM
     if (true) {

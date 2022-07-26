@@ -541,6 +541,27 @@ class FractionalAvgPoolGradTest(test.TestCase):
           delta=1e-2)
       self.assertLess(gradient_error, error_margin)
 
+  def testInvalidSeqRaiseErrorForFractionalAvgPoolGrad(self):
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      with self.cached_session() as _:
+        overlapping = True
+        orig_input_tensor_shape = constant_op.constant(
+            -1879048192, shape=[4], dtype=dtypes.int64)
+        out_backprop = constant_op.constant([],
+                                            shape=[0, 0, 0, 0],
+                                            dtype=dtypes.float64)
+        row_pooling_sequence = constant_op.constant(
+            1, shape=[4], dtype=dtypes.int64)
+        col_pooling_sequence = constant_op.constant(
+            1, shape=[4], dtype=dtypes.int64)
+        t = gen_nn_ops.fractional_avg_pool_grad(
+            orig_input_tensor_shape=orig_input_tensor_shape,
+            out_backprop=out_backprop,
+            row_pooling_sequence=row_pooling_sequence,
+            col_pooling_sequence=col_pooling_sequence,
+            overlapping=overlapping)
+        self.evaluate(t)
+
 
 if __name__ == "__main__":
   test.main()

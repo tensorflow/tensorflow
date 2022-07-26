@@ -307,6 +307,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/stream_executor:device_memory",

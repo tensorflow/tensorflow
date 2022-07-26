@@ -56,13 +56,13 @@ void PrepareXlaConvParams(OpBuilder &builder, Location loc, ArrayAttr strides,
                           ArrayAttr dilations, int feature_group_cnt,
                           Value &window_strides, Value &lhs_dilation,
                           Value &rhs_dilation, Value &feature_group_count) {
-  const int stride_h = strides[1].cast<mlir::IntegerAttr>().getInt();
-  const int stride_w = strides[2].cast<mlir::IntegerAttr>().getInt();
+  const int stride_h = strides[1].cast<IntegerAttr>().getInt();
+  const int stride_w = strides[2].cast<IntegerAttr>().getInt();
   window_strides =
       Create1DConstValue<int32_t>(builder, loc, {stride_h, stride_w});
 
-  const int dilation_h = dilations[1].cast<mlir::IntegerAttr>().getInt();
-  const int dilation_w = dilations[2].cast<mlir::IntegerAttr>().getInt();
+  const int dilation_h = dilations[1].cast<IntegerAttr>().getInt();
+  const int dilation_w = dilations[2].cast<IntegerAttr>().getInt();
   lhs_dilation = Create1DConstValue<int32_t>(builder, loc, {1, 1});
   rhs_dilation =
       Create1DConstValue<int32_t>(builder, loc, {dilation_h, dilation_w});
@@ -82,23 +82,22 @@ Value CalculatePaddingAndPadIfNeeded(
   int padding_h_before, padding_h_after, padding_w_before, padding_w_after;
   if (conv_padding.strref().equals("EXPLICIT")) {
     if (explicit_paddings.size() != 8) {
-      mlir::emitError(loc,
-                      "explicit_paddings are expected to be 8-element arrays");
+      emitError(loc, "explicit_paddings are expected to be 8-element arrays");
       return {};
     }
-    padding_h_before = explicit_paddings[2].cast<mlir::IntegerAttr>().getInt();
-    padding_h_after = explicit_paddings[3].cast<mlir::IntegerAttr>().getInt();
-    padding_w_before = explicit_paddings[4].cast<mlir::IntegerAttr>().getInt();
-    padding_w_after = explicit_paddings[5].cast<mlir::IntegerAttr>().getInt();
+    padding_h_before = explicit_paddings[2].cast<IntegerAttr>().getInt();
+    padding_h_after = explicit_paddings[3].cast<IntegerAttr>().getInt();
+    padding_w_before = explicit_paddings[4].cast<IntegerAttr>().getInt();
+    padding_w_after = explicit_paddings[5].cast<IntegerAttr>().getInt();
   } else {
     TfLitePadding tflite_padding = conv_padding.strref().equals("VALID")
                                        ? kTfLitePaddingValid
                                        : kTfLitePaddingSame;
     int output_height, output_width;
-    const int stride_h = strides[1].cast<mlir::IntegerAttr>().getInt();
-    const int stride_w = strides[2].cast<mlir::IntegerAttr>().getInt();
-    const int dilation_h = dilations[1].cast<mlir::IntegerAttr>().getInt();
-    const int dilation_w = dilations[2].cast<mlir::IntegerAttr>().getInt();
+    const int stride_h = strides[1].cast<IntegerAttr>().getInt();
+    const int stride_w = strides[2].cast<IntegerAttr>().getInt();
+    const int dilation_h = dilations[1].cast<IntegerAttr>().getInt();
+    const int dilation_w = dilations[2].cast<IntegerAttr>().getInt();
     TfLitePaddingValues padding_values = tflite::ComputePaddingHeightWidth(
         stride_h, stride_w, dilation_h, dilation_w,
         /*in_height=*/input_shape.getDimSize(1),
@@ -153,30 +152,39 @@ Value CalculateZeroPointOffset(
 }
 
 // Helper function to create a XlaConvV2Op for Conv2DOp and DepthwiseConv2DOp.
-Value CreateXLAConvOp(
-    OpBuilder &builder, Location loc, Value input, Value filter, Value input_zp,
-    Value conv_output, ArrayAttr strides, ArrayAttr dilations,
-    StringAttr conv_padding, ArrayAttr explicit_paddings, int feature_group_cnt,
-    const SmallVector<int64_t> &filter_non_output_indices,
-    const xla::ConvolutionDimensionNumbers &dimension_numbers) {
+Value CreateXLAConvOp(OpBuilder &builder, Location loc, Value input,
+                      Value filter, Value input_zp, Value conv_output,
+                      ArrayAttr strides, ArrayAttr dilations,
+                      StringAttr conv_padding, ArrayAttr explicit_paddings,
+                      int feature_group_cnt) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
-    mlir::emitError(
-        loc, "zero point is expected to be a constant with a single value");
+    emitError(loc,
+              "zero point is expected to be a constant with a single value");
     return {};
   }
   if (strides.size() != 4 || dilations.size() != 4) {
-    mlir::emitError(
-        loc, "strides and dilations are expected to be 4-element arrays");
+    emitError(loc, "strides and dilations are expected to be 4-element arrays");
     return {};
   }
-  ShapedType input_shape = input.getType().template cast<ShapedType>();
   ShapedType filter_shape = filter.getType().template cast<ShapedType>();
-  if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
-      !filter_shape.hasRank() || filter_shape.getRank() != 4) {
-    mlir::emitError(loc, "input and filter are expected to be 4D tensors");
-    return {};
-  }
+  SmallVector<int64_t> filter_non_output_indices = {0, 1, 2};
+  xla::ConvolutionDimensionNumbers dnums;
+  // Input: [N, H, W, C].
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(3);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  // Kernel: [K, K, I, O].
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  // Output: [N, H, W, C].
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(2);
 
   Value padding, window_strides, lhs_dilation, rhs_dilation,
       feature_group_count;
@@ -189,17 +197,17 @@ Value CreateXLAConvOp(
   input = CalculatePaddingAndPadIfNeeded(
       builder, loc, input, filter, input_zp_value, strides, dilations,
       conv_padding, explicit_paddings, padding);
-  auto filter_type = filter.getType().dyn_cast<TensorType>();
+  TensorType filter_type = filter.getType().dyn_cast<TensorType>();
   Value filter_i8 = builder.create<TF::CastOp>(
       loc, filter_type.clone(builder.getIntegerType(8)), filter);
   Value xla_conv_output =
       builder
           .create<TF::XlaConvV2Op>(
-              loc, /*output=*/conv_output.getType(),
+              loc, /*output_type=*/conv_output.getType(),
               /*lhs=*/input,
               /*rhs=*/filter_i8, window_strides, padding, lhs_dilation,
               rhs_dilation, feature_group_count,
-              builder.getStringAttr(dimension_numbers.SerializeAsString()),
+              builder.getStringAttr(dnums.SerializeAsString()),
               /*precision_config=*/builder.getStringAttr(""))
           .output();
   if (input_zp_value == 0) return xla_conv_output;
@@ -218,27 +226,46 @@ Value CreateXLAConvOpFromTFConv2DOp(OpBuilder &builder, Location loc,
                                     ArrayAttr dilations,
                                     StringAttr conv_padding,
                                     ArrayAttr explicit_paddings) {
-  const int feature_group_cnt = 1;
-  SmallVector<int64_t> filter_non_output_indices = {0, 1, 2};
-  xla::ConvolutionDimensionNumbers dnums;
-  // Input: [N, H, W, C].
-  dnums.set_input_batch_dimension(0);
-  dnums.set_input_feature_dimension(3);
-  dnums.add_input_spatial_dimensions(1);
-  dnums.add_input_spatial_dimensions(2);
-  // Kernel: [K, K, I, O].
-  dnums.set_kernel_input_feature_dimension(2);
-  dnums.set_kernel_output_feature_dimension(3);
-  dnums.add_kernel_spatial_dimensions(0);
-  dnums.add_kernel_spatial_dimensions(1);
-  // Output: [N, H, W, C].
-  dnums.set_output_batch_dimension(0);
-  dnums.set_output_feature_dimension(3);
-  dnums.add_output_spatial_dimensions(1);
-  dnums.add_output_spatial_dimensions(2);
+  ShapedType input_shape = input.getType().template cast<ShapedType>();
+  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
+      !filter_shape.hasRank() || filter_shape.getRank() != 4) {
+    emitError(loc, "input and filter are expected to be 4D tensors");
+    return {};
+  }
+
+  const int feature_group_cnt =
+      input_shape.getDimSize(3) / filter_shape.getDimSize(2);
   return CreateXLAConvOp(builder, loc, input, filter, input_zp, conv_output,
                          strides, dilations, conv_padding, explicit_paddings,
-                         feature_group_cnt, filter_non_output_indices, dnums);
+                         feature_group_cnt);
+}
+
+// Creates a XlaConvV2Op from TF DepthConv2DOp and returns its output.
+Value CreateXLAConvOpFromTFDepthwiseConv2DOp(
+    OpBuilder &builder, Location loc, Value input, Value filter, Value input_zp,
+    Value conv_output, ArrayAttr strides, ArrayAttr dilations,
+    StringAttr conv_padding, ArrayAttr explicit_paddings) {
+  ShapedType input_shape = input.getType().template cast<ShapedType>();
+  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
+      !filter_shape.hasRank() || filter_shape.getRank() != 4) {
+    emitError(loc, "input and filter are expected to be 4D tensors");
+    return {};
+  }
+  const int feature_group_cnt = input_shape.getDimSize(3);
+
+  // Reshape the filter to [K, K, 1, I * O].
+  llvm::SmallVector<int64_t> new_filter_shape{
+      filter_shape.getDimSize(0), filter_shape.getDimSize(1), 1,
+      filter_shape.getDimSize(2) * filter_shape.getDimSize(3)};
+  Value new_filter = builder.create<TF::ReshapeOp>(
+      loc,
+      RankedTensorType::get(new_filter_shape, filter_shape.getElementType()),
+      filter, Create1DConstValue(builder, loc, new_filter_shape));
+  return CreateXLAConvOp(builder, loc, input, new_filter, input_zp, conv_output,
+                         strides, dilations, conv_padding, explicit_paddings,
+                         feature_group_cnt);
 }
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/replace_cast_hacks_with_tf_xla_ops.inc"

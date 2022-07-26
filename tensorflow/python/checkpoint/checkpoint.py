@@ -347,15 +347,10 @@ class _CheckpointRestoreCoordinator(object):
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables or registered_savers:
-      validated_saveables = saveable_object_util.validate_and_slice_inputs(
+      flat_saveables = saveable_object_util.validate_and_slice_inputs(
           tensor_saveables)
-      validated_names = set(saveable.name for saveable in validated_saveables)
-      if set(tensor_saveables.keys()) != validated_names:
-        raise AssertionError(
-            "Saveable keys changed when validating. Got back "
-            f"{tensor_saveables.keys()}, was expecting {validated_names}")
       new_restore_ops = functional_saver.MultiDeviceSaver(
-          validated_saveables,
+          flat_saveables,
           registered_savers).restore(self.save_path_tensor, self.options)
       if not context.executing_eagerly():
         for name, restore_op in sorted(new_restore_ops.items()):

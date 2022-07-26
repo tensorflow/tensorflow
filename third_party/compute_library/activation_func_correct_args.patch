@@ -1,0 +1,14 @@
+diff --git a/src/cpu/operators/CpuGemmDirectConv2d.cpp b/src/cpu/operators/CpuGemmDirectConv2d.cpp
+index 75c057e45..4d4d0e272 100644
+--- a/src/cpu/operators/CpuGemmDirectConv2d.cpp
++++ b/src/cpu/operators/CpuGemmDirectConv2d.cpp
+@@ -193,6 +193,8 @@ void CpuGemmDirectConv2d::run(ITensorPack &tensors)
+     _gemm_asm_func->run(tensors);
+     if(_run_activation)
+     {
+-        _activation_func->run(tensors);
++        auto io = tensors.get_tensor(ACL_DST);
++        ITensorPack pack{ { ACL_SRC, io }, { ACL_DST, io } };
++        _activation_func->run(pack);
+     }
+ }

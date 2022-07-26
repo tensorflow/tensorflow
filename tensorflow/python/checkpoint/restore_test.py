@@ -15,16 +15,7 @@
 """Tests for restore.py."""
 
 from tensorflow.python.checkpoint import restore
-from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import test
-from tensorflow.python.trackable import base
-
-
-class TrackableWithLegacyName(base.Trackable):
-
-  @saveable_compat.legacy_saveable_name("legacy")
-  def _serialize_to_tensors(self):
-    return {}
 
 
 class ExtractSaveablenameTest(test.TestCase):
@@ -32,22 +23,10 @@ class ExtractSaveablenameTest(test.TestCase):
   def test_standard_saveable_name(self):
     self.assertEqual(
         "object_path/.ATTRIBUTES/",
-        restore._extract_saveable_name(base.Trackable(),
-                                       "object_path/.ATTRIBUTES/123"))
+        restore._extract_saveable_name("object_path/.ATTRIBUTES/123"))
     self.assertEqual(
         "object/path/ATTRIBUTES/.ATTRIBUTES/",
-        restore._extract_saveable_name(base.Trackable(),
-                                       "object/path/ATTRIBUTES/.ATTRIBUTES/"))
-
-  def test_legacy_saveable_name(self):
-    self.assertEqual(
-        "object_path/.ATTRIBUTES/123",
-        restore._extract_saveable_name(TrackableWithLegacyName(),
-                                       "object_path/.ATTRIBUTES/123"))
-    self.assertEqual(
-        "object/path/ATTRIBUTES/.ATTRIBUTES/",
-        restore._extract_saveable_name(TrackableWithLegacyName(),
-                                       "object/path/ATTRIBUTES/.ATTRIBUTES/"))
+        restore._extract_saveable_name("object/path/ATTRIBUTES/.ATTRIBUTES/"))
 
 
 if __name__ == "__main__":

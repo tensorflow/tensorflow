@@ -33,7 +33,9 @@ namespace xla {
 // partially_specified will be populated with the converted copies if the custom
 // call is partially specified.
 StatusOr<bool> ProcessShardingInstruction(
-    HloModule* module, bool replace_sharding_with_copy,
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool replace_sharding_with_copy,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
         unspecified_dims);
 
@@ -61,7 +63,10 @@ class ShardingPropagation : public HloModulePass {
     }
   }
   absl::string_view name() const override { return "sharding-propagation"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Function which can be used to apply a spatially partitioned sharding onto a
   // given domain. It will apply the sharding into the exit edges of the domain

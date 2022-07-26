@@ -261,16 +261,22 @@ std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
                               DataType dst_type, int vec_size) {
   if (src_type != dst_type) {
     if (gpu_info.IsApiOpenCl()) {
-      return "convert_" + ToCLDataType(dst_type, vec_size);
+      return "convert_" + ToCLDataType(dst_type, vec_size) + "($0)";
     } else if (gpu_info.IsApiMetal()) {
       return dst_type == DataType::BOOL
-                 ? "convert_" + ToMetalDataType(dst_type, vec_size)
-                 : ToMetalDataType(dst_type, vec_size);
+                 ? "convert_" + ToMetalDataType(dst_type, vec_size) + "($0)"
+                 : ToMetalDataType(dst_type, vec_size) + "($0)";
     } else if (gpu_info.IsGlsl()) {
-      return GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      const std::string conversion =
+          GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      if (!conversion.empty()) {
+        return conversion + "($0)";
+      } else {
+        return "$0";
+      }
     }
   }
-  return "";
+  return "$0";
 }
 
 }  // namespace gpu

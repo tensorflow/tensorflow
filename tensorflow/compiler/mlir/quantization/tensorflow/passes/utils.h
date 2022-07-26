@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
@@ -28,8 +29,16 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-// Returns true if the op has any quantized tensors as input or output.
-bool HasQuantizedTensors(Operation *op);
+// TODO(b/238829558): Populate quantization config based on the
+// QuantizationOptions proto. We might want to clean QuantizationMethod as well
+// as this can be inferred from the proto.
+using OpSet = tensorflow::quantization::OpSet;
+
+enum class QuantizationMethod {
+  kQuantizationAwareTraining,
+  kPostTrainingQuantization,
+  kDynamicRangeQuantization
+};
 
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);
@@ -37,11 +46,8 @@ bool HasStaticShape(Value value);
 // Returns true if the value has static shape at given dims.
 bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims);
 
-enum class QuantizationMethod {
-  kQuantizationAwareTraining,
-  kPostTrainingQuantization,
-  kDynamicRangeQuantization
-};
+// Returns true if the op has any quantized tensors as input or output.
+bool HasQuantizedTensors(Operation *op);
 
 // Creates a new type that has the shape from the `old_type` and the element
 // type from the `element_type`.

@@ -179,9 +179,12 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionLayoutNormalizer::Run(HloModule *module) {
+StatusOr<bool> ReductionLayoutNormalizer::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed,
-                      EnforceMinorToMajorReduceOpVisitor().RunOnModule(module));
+                      EnforceMinorToMajorReduceOpVisitor().RunOnModule(
+                          module, execution_threads));
   return changed;
 }
 

@@ -61,9 +61,9 @@ func.func @unsupported_gather(%operand : tensor<3x3xf32>,
 // CHECK-LABEL: @unsupported_gather
 //       CHECK: mhlo.gather
 
-func.func @simple_scatter(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
-                          %arg2: tensor<1xi32>) -> tensor<3xi32> {
-  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
+func.func @simple_scatter(%dst: tensor<3xi32>, %indices: tensor<1x1xi32>,
+                          %update: tensor<1xi32>) -> tensor<3xi32> {
+  %0 = "mhlo.scatter"(%dst, %indices, %update) ({
   ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
     %sum = mhlo.add %arg3, %arg4 : tensor<i32>
     "mhlo.return"(%sum) : (tensor<i32>) -> ()
@@ -81,11 +81,11 @@ func.func @simple_scatter(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 }
 
 // CHECK-LABEL: @simple_scatter
-//       CHECK: %[[INIT:.*]] = linalg.init_tensor [3] : tensor<3xi32>
-//       CHECK: gml_st.scatter ins(%{{.*}} : tensor<3xi32>,
-//  CHECK-SAME:                    %{{.*}} : tensor<1x1xi32>,
-//  CHECK-SAME:                    %{{.*}} : tensor<1xi32>)
-//  CHECK-SAME:                outs(%0 : tensor<3xi32>)
+// CHECK-SAME: (%[[DST:.*]]: tensor<3xi32>, %[[INDICES:.*]]: tensor<1x1xi32>,
+// CHECK-SAME:  %[[UPDATE:.*]]: tensor<1xi32>)
+//       CHECK: gml_st.scatter ins(%[[INDICES]] : tensor<1x1xi32>,
+//  CHECK-SAME:                    %[[UPDATE]] : tensor<1xi32>)
+//  CHECK-SAME:                outs(%[[DST]] : tensor<3xi32>)
 
 func.func @scatter_wrong_update(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
                           %arg2: tensor<1xi32>) -> tensor<3xi32> {
