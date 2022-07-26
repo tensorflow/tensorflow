@@ -332,14 +332,17 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   col_impl->Ref();
   profiler::TraceMeProducer producer("BaseCollectiveExecutor::ExecuteAsync");
   RunClosure([col_impl, col_ctx, done_safe, ctx,
-              context_id = producer.GetContextId()]() {
+              context_id = producer.GetContextId(), &col_params]() {
     core::ScopedUnref unref(col_impl);
     profiler::TraceMeConsumer consumer(
-        [ctx] {
+        [ctx, &col_params] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
-          return profiler::TraceMeEncode(std::move(op),
-                                         {{"id", ctx->step_id()}});
+          return profiler::TraceMeEncode(
+              std::move(op),
+              {{"id", ctx->step_id()},
+               {"instance_key", col_params->instance.instance_key},
+               {"collective", col_params->instance.type}});
         },
         context_id);
     col_impl->Ref();
@@ -362,6 +365,11 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
   auto trace_id =
       profiler::TraceMe::ActivityStart("CollectiveExecutor::CompleteParams");
+  profiler::TraceMe trace_me([cp]() {
+    return profiler::TraceMeEncode("CollectiveExecutor::CompleteParams",
+                                   {{"group_key", cp->group.group_key},
+                                    {"group_size", cp->group.group_size}});
+  });
   auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,
                     done](const Status& s) {
     profiler::TraceMe::ActivityEnd(trace_id);
