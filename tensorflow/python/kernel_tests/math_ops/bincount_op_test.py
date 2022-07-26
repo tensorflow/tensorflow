@@ -106,7 +106,7 @@ class BincountTest(test_util.TensorFlowTestCase):
             np.bincount(arr, weights))
 
   @test_util.run_gpu_only
-  @test_util.disable_xla("XLA uses scatter and could be non-deterministic")
+  @test_util.disable_xla("XLA uses scatter and could be deterministic")
   def test_bincount_determinism_error(self):
     arr = np.random.randint(0, 1000, size=1000)
     with test_util.deterministic_ops(), self.assertRaisesRegex(
