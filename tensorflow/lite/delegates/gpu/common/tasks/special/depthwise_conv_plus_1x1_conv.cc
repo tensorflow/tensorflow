@@ -16,14 +16,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_replace.h"
+#include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
-#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -268,8 +270,6 @@ std::string GenerateCode(const OperationDef& op_def, const GpuInfo& gpu_info,
   return c;
 }
 
-}  // namespace
-
 bool IsDepthwiseConvPlus1x1ConvSupported(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
@@ -341,6 +341,8 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
   }
 }
 
+}  // namespace
+
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
@@ -355,6 +357,108 @@ GPUOperation CreateDepthwiseConvPlus1x1Conv(
   }
   UploadWeights(dw_attr, conv_attr, gpu_info, definition.precision, &result);
   return result;
+}
+
+absl::Status TryDepthwiseConvPlus1x1Conv(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
+  if (!(gpu_info.IsAdreno() || gpu_info.IsNvidia() || gpu_info.IsMali() ||
+        gpu_info.IsApple() || gpu_info.IsAMD())) {
+    return absl::NotFoundError("FCFCAdd not suitable.");
+  }
+  auto* dw_node = graph.GetNode(first_node_id);
+  if (dw_node == nullptr) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  if (OperationTypeFromString(dw_node->operation.type) !=
+      OperationType::DEPTHWISE_CONVOLUTION) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  auto dw_inputs = graph.FindInputs(dw_node->id);
+  if (dw_inputs.size() != 1) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  auto dw_outputs = graph.FindOutputs(dw_node->id);
+  auto consumers = graph.FindConsumers(dw_outputs[0]->id);
+  if (consumers.size() != 1) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+
+  Node* next_node;
+  next_node = consumers[0];
+  if (next_node == nullptr) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  if (consumed_nodes->find(next_node->id) != consumed_nodes->end()) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  Node* relu_node = nullptr;
+  ReLUAttributes relu_attributes;
+  if (OperationTypeFromString(next_node->operation.type) ==
+      OperationType::RELU) {
+    relu_node = next_node;
+    auto relu_outputs = graph.FindOutputs(relu_node->id);
+    consumers = graph.FindConsumers(relu_outputs[0]->id);
+    if (consumers.size() != 1) {
+      return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+    }
+    relu_attributes =
+        absl::any_cast<ReLUAttributes>(relu_node->operation.attributes);
+    next_node = consumers[0];
+  }
+
+  auto* conv_node = next_node;
+  if (OperationTypeFromString(conv_node->operation.type) !=
+      OperationType::CONVOLUTION_2D) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  if (graph.FindInputs(conv_node->id).size() != 1) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  auto dw_attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
+      dw_node->operation.attributes);
+  auto conv_attr =
+      absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
+  auto conv_outputs = graph.FindOutputs(conv_node->id);
+  OperationDef op_def;
+  op_def.precision = precision;
+  auto it = tensor_descriptors.find(dw_inputs[0]->id);
+  if (it != tensor_descriptors.end()) {
+    op_def.src_tensors.push_back(it->second);
+  }
+  it = tensor_descriptors.find(conv_outputs[0]->id);
+  if (it != tensor_descriptors.end()) {
+    op_def.dst_tensors.push_back(it->second);
+  }
+  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, gpu_info, dw_attr, conv_attr,
+                                           &conv_outputs[0]->tensor.shape)) {
+    return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
+  }
+  std::unique_ptr<GPUOperation>* gpu_op =
+      InitSingleOpSubgraph(dw_inputs, conv_outputs, gpu_subgraph);
+  ReLUAttributes* relu_attr_ptr = relu_node ? &relu_attributes : nullptr;
+  auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
+                                                  conv_attr, relu_attr_ptr);
+  *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
+  (*gpu_op)->flops_ = GetDepthwiseConvolutionFlops(dw_outputs[0]->tensor.shape,
+                                                   dw_attr.weights.shape) +
+                      GetConvolutionFlops(conv_outputs[0]->tensor.shape,
+                                          conv_attr.weights.shape);
+  std::string fused_nodes = std::to_string(dw_node->id);
+  if (relu_node) {
+    fused_nodes += " " + std::to_string(relu_node->id);
+  }
+  fused_nodes += " " + std::to_string(conv_node->id);
+  gpu_subgraph->operations[0].name =
+      "depthwise_conv_plus_1x1_conv " + fused_nodes;
+  consumed_nodes->insert(dw_node->id);
+  if (relu_node) {
+    consumed_nodes->insert(relu_node->id);
+  }
+  consumed_nodes->insert(conv_node->id);
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

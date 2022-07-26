@@ -16,31 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_DEPTHWISE_CONV_PLUS_1X1_CONV_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_DEPTHWISE_CONV_PLUS_1X1_CONV_H_
 
-#include <vector>
+#include <map>
+#include <set>
 
-#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 
 namespace tflite {
 namespace gpu {
-
-bool IsDepthwiseConvPlus1x1ConvSupported(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, const BHWC* dst_shape = nullptr);
 
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr,
     ReLUAttributes* relu_attr_ptr = nullptr);
+
+absl::Status TryDepthwiseConvPlus1x1Conv(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace gpu
 }  // namespace tflite
