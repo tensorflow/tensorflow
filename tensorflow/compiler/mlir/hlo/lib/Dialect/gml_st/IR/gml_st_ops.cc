@@ -2072,6 +2072,8 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
 
   // Find the expanding dimensions. If corresponding operand and result
   // dimensions are different then the dimension is expanding.
+  // TODO(frgossen): Use info from known expanding and known non-expanding
+  // dimensions here.
   SmallVector<Value> operandExpandingDims;
   for (const auto &it : llvm::enumerate(broadcast_dimensions())) {
     auto operandDim = operandDims[it.index()];

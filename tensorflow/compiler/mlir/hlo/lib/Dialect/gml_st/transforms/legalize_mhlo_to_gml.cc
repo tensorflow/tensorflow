@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -50,15 +49,27 @@ struct DynamicBroadcastInDimOpPattern
                                 PatternRewriter& rewriter) const override {
     auto loc = op.getLoc();
     Value outputDimensions = op.output_dimensions();
+    auto operandTy = op.operand().getType().cast<RankedTensorType>();
     auto resultTy = op.getType().cast<RankedTensorType>();
+
+    // Only  apply to broadcasts that cannot be lowered to linalg, i.e. those
+    // for which we do not know their expansion behavior at compile time.
+    int64_t countKnownExpansionBehavior = 0;
+    if (auto expandingDims = op.known_expanding_dimensions()) {
+      countKnownExpansionBehavior += expandingDims->size();
+    }
+    if (auto nonexpandingDims = op.known_nonexpanding_dimensions()) {
+      countKnownExpansionBehavior += nonexpandingDims->size();
+    }
+    if (operandTy.getRank() == countKnownExpansionBehavior) return failure();
 
     // Create init tensor as none of the operands are reusable/updatable.
     SmallVector<Value> dynamicDims;
     SmallVector<int64_t> staticShapeInfo;
     for (int i = 0; i < resultTy.getRank(); i++) {
-      auto iCst = rewriter.create<arith::ConstantIndexOp>(loc, i);
       dynamicDims.push_back(rewriter.create<tensor::ExtractOp>(
-          loc, outputDimensions, ValueRange{iCst}));
+          loc, outputDimensions,
+          ValueRange{rewriter.create<arith::ConstantIndexOp>(loc, i)}));
       staticShapeInfo.push_back(ShapedType::kDynamicSize);
     }
     auto initTensor = rewriter.create<linalg::InitTensorOp>(
