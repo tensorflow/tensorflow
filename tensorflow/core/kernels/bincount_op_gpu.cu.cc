@@ -50,8 +50,10 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
       return Status::OK();
     }
     if (tensorflow::OpDeterminismRequired()) {
-      // TODO(reedwm): Is this really nondeterministic?
-      // https://github.com/NVIDIA/cub/issues/471#issuecomment-1194682443
+      // TODO(reedwm): Is there really nondeterministic? 
+      // DeviceHistogram::HistogramEven is called, and it is unclear 
+      // if it is deterministic on floating-point inputs. 
+      // See https://github.com/NVIDIA/cub/issues/471#issuecomment-1194682443.
       return errors::Unimplemented(
           "Determinism is not yet supported in GPU implementation of "
           "Bincount.");
