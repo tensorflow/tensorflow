@@ -596,3 +596,14 @@ cc_library(
     visibility = [":friends"],
     deps = [":pjrt_client"],
 )
+
+tf_cc_test(
+    name = "host_callback_test",
+    srcs = ["host_callback_test.cc"],
+    deps = [
+        ":host_callback",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

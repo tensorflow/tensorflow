@@ -84,13 +84,20 @@ struct HostCallback {
 class HostCallbackContext {
  public:
   HostCallbackContext(const HostCallback* host_callback, PjRtClient* client)
+      : HostCallbackContext(host_callback,
+                            client->GetPjRtHostMemoryForDeviceManager()) {}
+
+  HostCallbackContext(
+      const HostCallback* host_callback,
+      PjRtHostMemoryForDeviceManager* host_memory_for_device_manager)
       : host_callback_(host_callback),
-        client_(client),
+        host_memory_for_device_manager_(host_memory_for_device_manager),
         args_(host_callback->operands.size()),
         result_channels_(host_callback->results.size()),
         ready_count_(args_.size()) {
     CHECK(host_callback_);
-    CHECK(client_);
+    CHECK(host_memory_for_device_manager_);
+
     for (auto& channel : result_channels_) {
       channel = std::make_unique<ThreadSafePjRtChunkQueue>();
     }
@@ -104,7 +111,7 @@ class HostCallbackContext {
 
  private:
   const HostCallback* host_callback_ = nullptr;
-  PjRtClient* client_ = nullptr;
+  PjRtHostMemoryForDeviceManager* host_memory_for_device_manager_ = nullptr;
   std::vector<PjRtChunk> args_;
   std::vector<std::unique_ptr<ThreadSafePjRtChunkQueue>> result_channels_;
   std::atomic<int> ready_count_;
@@ -121,9 +128,17 @@ struct HostCallbackStates {
 };
 
 // Creates the execution context for the `host_callback` for one replica.
+ABSL_DEPRECATED(
+    "Use the overload that takes PjRtHostMemoryForDeviceManager* instead")
 std::unique_ptr<HostCallbackContext>
 CreateHostCallbackStateAndAppendSendRecvCallbacks(
     const HostCallback* host_callback, PjRtClient* client,
+    std::vector<SendCallback>& send_callbacks,
+    std::vector<RecvCallback>& recv_callbacks);
+std::unique_ptr<HostCallbackContext>
+CreateHostCallbackStateAndAppendSendRecvCallbacks(
+    const HostCallback* host_callback,
+    PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
     std::vector<SendCallback>& send_callbacks,
     std::vector<RecvCallback>& recv_callbacks);
 
