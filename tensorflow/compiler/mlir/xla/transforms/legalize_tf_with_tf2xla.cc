@@ -264,6 +264,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::TruncateModOp>(),
+    TypeID::get<TF::UniqueOp>(),
     TypeID::get<TF::UnpackOp>(),
     TypeID::get<TF::UpperBoundOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
