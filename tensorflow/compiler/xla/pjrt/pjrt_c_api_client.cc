@@ -152,7 +152,7 @@ absl::string_view PjRtCApiClient::platform_version() const {
 }
 
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   return wrapped_->ExecutableFingerprint(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
@@ -168,13 +168,14 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   return wrapped_->SerializeExecutable(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::DeserializeExecutable(
-    absl::string_view serialized, CompileOptions options) {
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
+                                      CompileOptions options) {
   return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
 }
 
@@ -183,11 +184,11 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::WrapExecutable(
-    StatusOr<std::unique_ptr<PjRtExecutable>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::WrapExecutable(
+    StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       std::move(to_wrap));
-  return std::unique_ptr<PjRtExecutable>(
+  return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<PjRtCApiExecutable>(this, std::move(executable)));
 }
 
@@ -304,8 +305,8 @@ int PjRtCApiDevice::local_hardware_id() const {
 
 // ------------------------------- Executables ---------------------------------
 
-PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
-                                       std::unique_ptr<PjRtExecutable> wrapped)
+PjRtCApiExecutable::PjRtCApiExecutable(
+    PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
     : client_(client),
       executable_(
           new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
@@ -483,7 +484,7 @@ PjRtCApiExecutable::ExecutePortable(
   return out;
 }
 
-PjRtExecutable* PjRtCApiExecutable::wrapped() const {
+PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
   return executable_->executable.get();
 }
 

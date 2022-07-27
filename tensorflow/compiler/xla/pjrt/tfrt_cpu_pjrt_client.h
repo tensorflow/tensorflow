@@ -149,21 +149,21 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override {
+      const PjRtLoadedExecutable& executable) const override {
     return Unimplemented("SerializeExecutable not implemented on %s",
                          platform_name());
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) override {
     return Unimplemented("DeserializeExecutable not implemented on %s",
                          platform_name());
@@ -540,7 +540,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   tfrt::AsyncValueRef<Status> definition_event_ ABSL_GUARDED_BY(mu_);
 };
 
-class TfrtCpuExecutable final : public PjRtExecutable {
+class TfrtCpuExecutable final : public PjRtLoadedExecutable {
  public:
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
@@ -587,21 +587,21 @@ class TfrtCpuExecutable final : public PjRtExecutable {
         cpu_executable_->shared_module()};
   }
 
-  using PjRtExecutable::Execute;
+  using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
-  using PjRtExecutable::ExecuteSharded;
+  using PjRtLoadedExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  using PjRtExecutable::ExecutePortable;
+  using PjRtLoadedExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,

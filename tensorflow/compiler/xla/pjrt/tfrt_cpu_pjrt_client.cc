@@ -213,7 +213,7 @@ StatusOr<std::unique_ptr<HloCostAnalysis>> TfrtCpuClient::GetHloCostAnalysis() {
 }
 
 StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   return std::optional<std::string>();
 }
 
@@ -303,7 +303,7 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
   return {std::move(buffer_indices)};
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuClient::Compile");
   ExecutableBuildOptions& build_options = options.executable_build_options;
@@ -323,7 +323,8 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
       computation, &LayoutUtil::GetWithDefaultLayout, options.argument_layouts,
       &options.executable_build_options, &argument_layout_pointers));
 
-  std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;
+  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
@@ -336,7 +337,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
           VLOG(3) << "Non-local device: " << device_id;
           continue;
         }
-        PjRtExecutable::LogicalDeviceIds logica_device_ids;
+        PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
         logica_device_ids.replica = replica;
         logica_device_ids.partition = partition;
         addressable_device_logical_ids.push_back(std::move(logica_device_ids));
@@ -388,10 +389,10 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
 
-  return std::unique_ptr<PjRtExecutable>(std::move(executable));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
   XlaComputation xla_computation;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
@@ -1453,7 +1454,7 @@ Status TfrtCpuExecutable::CheckBufferCompatibilities(
   return OkStatus();
 }
 
-StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
+StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,

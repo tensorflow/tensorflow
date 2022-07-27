@@ -371,7 +371,7 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
-class PjRtExecutable;
+class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
 //
@@ -493,27 +493,27 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() = 0;
 
   // Compile `computation` with given `options`.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) = 0;
 
   // Variant of `Compile` that accepts an MLIR module.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) = 0;
 
   // Generates a unique fingerprint for `executable`, may be std::nullopt.
   virtual StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const = 0;
+      const PjRtLoadedExecutable& executable) const = 0;
 
   // Returns a platform-specific serialization of `executable`. The
   // serialization is not guaranteed to be stable over time. `executable` must
   // have been produced by this client.
   virtual StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const = 0;
+      const PjRtLoadedExecutable& executable) const = 0;
 
   // Deserializes a serialized executable as produced by
   // SerializeExecutable(). `serialized` must have been produced by a client of
   // the same platform and version as this one.
-  virtual StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) = 0;
 
   // Creates a buffer on the device without initializing or copying any data.
@@ -1081,9 +1081,9 @@ struct CompiledMemoryStats {
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
 // when passed to the execution.
-class PjRtExecutable {
+class PjRtLoadedExecutable {
  public:
-  virtual ~PjRtExecutable() = default;
+  virtual ~PjRtLoadedExecutable() = default;
 
   virtual PjRtClient* client() const = 0;
 
@@ -1139,8 +1139,8 @@ class PjRtExecutable {
   //   else:
   //     *returned_futures is undefined.
   //
-  // The caller is *NOT* required to ensure that PjRtExecutable stays alive
-  // until futures are ready.
+  // The caller is *NOT* required to ensure that PjRtLoadedExecutable stays
+  // alive until futures are ready.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options,

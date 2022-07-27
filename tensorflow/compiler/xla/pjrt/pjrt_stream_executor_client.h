@@ -184,23 +184,23 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, CompileOptions options) override;
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override {
+      const PjRtLoadedExecutable& executable) const override {
     return std::optional<std::string>();
   }
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override {
+      const PjRtLoadedExecutable& executable) const override {
     return Unimplemented("SerializeExecutable not implemented on %s",
                          platform_name());
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) override {
     return Unimplemented("DeserializeExecutable not implemented on %s",
                          platform_name());
@@ -324,7 +324,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // `options` in-place.
   struct ExecutableExtras {
     std::shared_ptr<DeviceAssignment> device_assignment;
-    std::vector<PjRtExecutable::LogicalDeviceIds>
+    std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
         addressable_device_logical_ids;
     std::vector<PjRtDevice*> addressable_devices;
   };
@@ -701,7 +701,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
-class PjRtStreamExecutorExecutable : public PjRtExecutable {
+class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
  public:
   PjRtStreamExecutorExecutable(
       std::vector<std::unique_ptr<LocalExecutable>> executables,
@@ -750,21 +750,21 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
-  using PjRtExecutable::Execute;
+  using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
-  using PjRtExecutable::ExecuteSharded;
+  using PjRtLoadedExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  using PjRtExecutable::ExecutePortable;
+  using PjRtLoadedExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,

@@ -49,7 +49,7 @@ struct PJRT_Device {
 };
 
 struct PJRT_Executable {
-  std::unique_ptr<xla::PjRtExecutable> executable;
+  std::unique_ptr<xla::PjRtLoadedExecutable> executable;
   PJRT_Client* client;
   // These pointers are a subset of `client`'s `addressable_devices`, i.e. those
   // addressed by the compiled executable program. `client` owns the objects

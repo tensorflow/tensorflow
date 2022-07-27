@@ -84,12 +84,12 @@ class PjRtTpuClient : public PjRtStreamExecutorClient {
   bool EnqueueD2DTransfersOnSrcStream() const override { return false; }
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) override;
 
  private:

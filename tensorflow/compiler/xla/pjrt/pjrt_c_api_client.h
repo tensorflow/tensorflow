@@ -134,23 +134,23 @@ class PjRtCApiClient : public PjRtClient {
     return wrapped_->GetHloCostAnalysis();
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override {
     return WrapExecutable(wrapped_->Compile(computation, options));
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override {
     return WrapExecutable(wrapped_->Compile(module, options));
   }
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
@@ -231,8 +231,8 @@ class PjRtCApiClient : public PjRtClient {
     return it->second;
   }
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> WrapExecutable(
-      StatusOr<std::unique_ptr<PjRtExecutable>> to_wrap);
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> WrapExecutable(
+      StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap);
 
   StatusOr<std::unique_ptr<PjRtBuffer>> WrapBuffer(
       StatusOr<std::unique_ptr<PjRtBuffer>> to_wrap);
@@ -371,10 +371,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   void set_shape();
 };
 
-class PjRtCApiExecutable : public PjRtExecutable {
+class PjRtCApiExecutable : public PjRtLoadedExecutable {
  public:
   PjRtCApiExecutable(PjRtCApiClient* client,
-                     std::unique_ptr<PjRtExecutable> wrapped);
+                     std::unique_ptr<PjRtLoadedExecutable> wrapped);
 
   ~PjRtCApiExecutable() override;
 
@@ -426,9 +426,10 @@ class PjRtCApiExecutable : public PjRtExecutable {
   void Delete() override;
   bool IsDeleted() override;
 
-  PjRtExecutable* wrapped() const;
+  PjRtLoadedExecutable* wrapped() const;
 
-  static PjRtExecutable* GetWrapped(const PjRtExecutable* c_api_executable) {
+  static PjRtLoadedExecutable* GetWrapped(
+      const PjRtLoadedExecutable* c_api_executable) {
     return tensorflow::down_cast<const PjRtCApiExecutable*>(c_api_executable)
         ->wrapped();
   }
