@@ -192,7 +192,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        patch_file = ["//third_party/mkl_dnn:onednn_acl.patch"],
+        patch_file = ["//third_party/mkl_dnn:onednn_acl.patch", "//third_party/mkl_dnn:onednn_acl_threadpool_support.patch"],
         sha256 = "9695640f55acd833ddcef4776af15e03446c4655f9296e5074b1b178dd7a4fb2",
         strip_prefix = "oneDNN-2.6",
         urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6.tar.gz"),
@@ -200,11 +200,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "11244b05259fb1c4af7384d0c3391aeaddec8aac144774207582db4842726540",
-        strip_prefix = "ComputeLibrary-22.02",
+        sha256 = "94e2e9ff87c261a9c9987bc9024c449c48014f7fe707311bdfa76b87f3dda5c5",
+        strip_prefix = "ComputeLibrary-22.05",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:activation_func_correct_args.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.02.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.05.tar.gz"),
     )
 
     tf_http_archive(

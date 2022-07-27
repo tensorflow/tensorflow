@@ -40,6 +40,7 @@ load(
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
     "if_mkldnn_aarch64_acl",
+    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
 )
 load(
@@ -404,7 +405,8 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_mkldnn_aarch64_acl(["-DENABLE_ONEDNN_OPENMP", "-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
+        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_android_arm(["-mfpu=neon"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
