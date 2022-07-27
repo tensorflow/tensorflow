@@ -140,6 +140,10 @@ class PjRtFuture {
     return Promise(tfrt::MakeUnconstructedAsyncValueRef<T>());
   }
 
+  PjRtFuture() = default;
+
+  bool IsValid() const { return promise_ref_ != nullptr; }
+
   // Constructor for an already-available PjRtFuture.
   //
   // Typically used to eagerly return error values when async work will not
@@ -188,17 +192,24 @@ class PjRtFuture {
   // `Await()` has already returned, or any callback passed to `OnReady` has
   // already been triggered. Otherwise IsReady() may block for the duration of a
   // network message on some backends.
-  bool IsReady() { return promise_ref_.IsAvailable(); }
+  bool IsReady() {
+    CHECK(IsValid());
+    return promise_ref_.IsAvailable();
+  }
   // `IsKnownReady()` is guaranteed to return immediately. `IsKnownReady()` will
   // always return true if a call to `Await()` has already returned, or any
   // callback passed to `OnReady` has already been triggered. Otherwise,
   // `IsKnownReady()` may return false in some cases in which the future was
   // ready before `IsKnownReady()` was called.
-  bool IsKnownReady() { return promise_ref_.IsAvailable(); }
+  bool IsKnownReady() {
+    CHECK(IsValid());
+    return promise_ref_.IsAvailable();
+  }
 
   // Blocks the calling thread until the promise is ready, then returns the
   // final value.
   T Await() {
+    CHECK(IsValid());
     if (!promise_ref_.IsAvailable()) {
       const auto keys = on_block_start_();
       tfrt::Await({promise_ref_.GetAsyncValue()});
@@ -216,6 +227,7 @@ class PjRtFuture {
   // callback, for example by using the callback to enqueue work on a
   // client-owned threadpool.
   void OnReady(absl::AnyInvocable<void(T) &&> callback) {
+    CHECK(IsValid());
     promise_ref_.AndThen([promise = promise_ref_.AsPtr(),
                           callback = std::move(callback)]() mutable {
       DCHECK(promise.IsConcrete());
@@ -228,6 +240,7 @@ class PjRtFuture {
   // May safely be called with event==nullptr in which case AssertHappensBefore
   // has no effect.
   void AssertHappensBefore(ScopedAsyncTrackingEvent* event) {
+    CHECK(IsValid());
     if (event) {
       event->AddDependency(promise_ref_.CopyRCRef());
     }
