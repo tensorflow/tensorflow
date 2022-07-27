@@ -168,7 +168,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
 
 absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
   linkable_count_ += 1;
-  std::string code = operation->code_;
+  std::string code = operation->elementwise_code_;
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
   operation->args_.RenameArgs(unique_postfix, &code);
   elementwise_code_ += "{\n" + code + "\n}\n";
@@ -226,7 +226,6 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
         "dst_tensor", AccessType::WRITE,
         std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]));
 
-    elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     code_ = GetElementWiseCode(definition_);
   }
   RETURN_IF_ERROR(args_.Compile(
@@ -302,7 +301,7 @@ int3 GPUOperation::GetGridSize() const {
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor) {
   GPUOperation op(definition);
-  op.code_ = std::move(descriptor.code);
+  op.elementwise_code_ = std::move(descriptor.code);
   op.elementwise_ = true;
   op.args_ = std::move(descriptor.args);
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
