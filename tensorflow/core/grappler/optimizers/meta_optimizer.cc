@@ -721,15 +721,19 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
         pair.first == "pin_to_host_optimization" ||
         pair.first == "scoped_allocator_optimization") {
       // These optimizers are turned off by default.
+      // TODO: remove the hard coding to 40; change it to max string length of
+      // all possible option strings.
       strings::StrAppend(
-          &logs, pair.first, string(32 - pair.first.size(), ' '),
+          &logs, pair.first, string(40 - pair.first.size(), ' '),
           (pair.second == RewriterConfig::ON), "\t\t",
           (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
           (final_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\n");
     } else {
       // These optimizers are turned on by default.
+      // TODO: remove the hard coding to 40; change it to max string length of
+      // all possible option strings
       strings::StrAppend(
-          &logs, pair.first, string(32 - pair.first.size(), ' '),
+          &logs, pair.first, string(40 - pair.first.size(), ' '),
           (pair.second != RewriterConfig::OFF), "\t\t",
           (plugin_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\t\t",
           (final_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\n");
