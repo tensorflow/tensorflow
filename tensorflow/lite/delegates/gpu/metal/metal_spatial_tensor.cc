@@ -305,50 +305,6 @@ int3 MetalSpatialTensor::GetFullTensorRegion() const {
   }
 }
 
-absl::Status MetalSpatialTensor::IsValid(const BHWC& shape) const {
-  if (shape.b != shape_.b) {
-    return absl::InvalidArgumentError(
-        "Shape batch does not match tensor batch");
-  }
-  if (shape.w != shape_.w) {
-    return absl::InvalidArgumentError(
-        "Shape width does not match tensor width");
-  }
-  if (shape.h != shape_.h) {
-    return absl::InvalidArgumentError(
-        "Shape height does not match tensor height");
-  }
-  if (shape.c != shape_.c) {
-    return absl::InvalidArgumentError(
-        "Shape channels does not match tensor channels");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status MetalSpatialTensor::IsValid(const BHWDC& shape) const {
-  if (shape.b != shape_.b) {
-    return absl::InvalidArgumentError(
-        "Shape batch does not match tensor batch");
-  }
-  if (shape.w != shape_.w) {
-    return absl::InvalidArgumentError(
-        "Shape width does not match tensor width");
-  }
-  if (shape.h != shape_.h) {
-    return absl::InvalidArgumentError(
-        "Shape height does not match tensor height");
-  }
-  if (shape.d != shape_.d) {
-    return absl::InvalidArgumentError(
-        "Shape depth does not match tensor depth");
-  }
-  if (shape.c != shape_.c) {
-    return absl::InvalidArgumentError(
-        "Shape channels does not match tensor channels");
-  }
-  return absl::OkStatus();
-}
-
 uint64_t MetalSpatialTensor::GetMemorySizeInBytes() const {
   const int flt_size = SizeOf(descriptor_.GetDataType());
   const int flt4_size = 4 * flt_size;
@@ -366,24 +322,6 @@ uint64_t MetalSpatialTensor::GetMemorySizeInBytes() const {
   }
 }
 
-int MetalSpatialTensor::GetAlignedChannels() const {
-  return descriptor_.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
-             ? shape_.c
-             : AlignByN(shape_.c, 4);
-}
-
-absl::Status MetalSpatialTensor::WriteData(
-    id<MTLDevice> device,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(device, src.data.data());
-}
-
-absl::Status MetalSpatialTensor::WriteData(
-    id<MTLDevice> device,
-    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(device, src.data.data());
-}
-
 absl::Status MetalSpatialTensor::CreateFromDescriptor(
     const TensorDescriptor& desc, id<MTLDevice> device) {
   shape_ = desc.GetBHWDCShape();
@@ -398,6 +336,11 @@ absl::Status MetalSpatialTensor::CreateFromDescriptor(
   memory_ = buffer;
   texture_mem_ = texture;
   return absl::OkStatus();
+}
+
+absl::Status MetalSpatialTensor::UploadDescriptorData(
+    const TensorDescriptor& desc, id<MTLDevice> device) {
+  return WriteData(device, desc.GetData().data());
 }
 
 absl::Status MetalSpatialTensor::ToDescriptor(TensorDescriptor* desc,

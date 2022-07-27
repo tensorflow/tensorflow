@@ -345,18 +345,25 @@ MetalSpatialTensor* InferenceContext::GetTensor(ValueId tensor_id) {
 
 absl::Status InferenceContext::SetInputTensor(ValueId id,
                                               const TensorFloat32& tensor) {
-  return GetTensor(id)->WriteData(device_, tensor);
+  MetalSpatialTensor* gpu_tensor = GetTensor(id);
+  TensorDescriptor descriptor_with_data = gpu_tensor->GetDescriptor();
+  descriptor_with_data.UploadData(tensor);
+  return gpu_tensor->UploadDescriptorData(descriptor_with_data, device_);
 }
 
 absl::Status InferenceContext::GetOutputTensor(ValueId id,
                                                TensorFloat32* result) {
-  const auto& gpu_tensor = *GetTensor(id);
-  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
-                              gpu_tensor.Width(), gpu_tensor.Channels());
+  const MetalSpatialTensor* gpu_tensor = GetTensor(id);
+  const auto dst_shape = BHWC(gpu_tensor->Batch(), gpu_tensor->Height(),
+                              gpu_tensor->Width(), gpu_tensor->Channels());
   result->id = id;
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());
-  return gpu_tensor.ReadData(device_, result);
+
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(gpu_tensor->ToDescriptor(&desc, device_));
+  desc.DownloadData(result);
+  return absl::OkStatus();
 }
 
 void InferenceContext::BindTensorsToOperations() {
