@@ -37,32 +37,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<HloInstruction*> TransformScatterIndices(
-    HloInstruction* scatter_indices, int index_vector_dim) {
-  int scatter_rank = scatter_indices->shape().rank();
-  if (index_vector_dim == scatter_rank) {
-    // Add a size 1 dimension to scatter_indices if index_vector_dim is
-    // scatter_indices.shape.rank.
-    TF_ASSIGN_OR_RETURN(
-        scatter_indices,
-        InsertDegenerateDims(scatter_indices, {index_vector_dim}));
-    ++scatter_rank;
-  } else if (index_vector_dim < scatter_rank - 1) {
-    // Ensure index_vector_dim is the last dimension in scatter_indices.
-    TF_ASSIGN_OR_RETURN(
-        scatter_indices,
-        MoveDimensionToEnd(scatter_indices, index_vector_dim, scatter_rank));
-  }
-
-  // Flatten scatter_indices, making it two-dimensional.
-  if (scatter_rank > 2) {
-    TF_ASSIGN_OR_RETURN(scatter_indices,
-                        CollapseFirstNDims(scatter_indices, scatter_rank - 1));
-  }
-
-  return scatter_indices;
-}
-
 StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
     HloInstruction* updates, absl::Span<const int64_t> update_window_dims,
     absl::Span<const int64_t> inserted_window_dims,
@@ -99,24 +73,6 @@ StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
   }
 
   return updates;
-}
-
-// Computes a permutation that makes 'operands' conform to
-// 'scatter_dims_to_operand_dims' (i.e., after applying this permutation,
-// scatter_dims_to_operand_dims can be replaced with the identity function).
-// Also returns its inverse.
-std::pair<std::vector<int64_t>, std::vector<int64_t>>
-MakeOperandsScatterIndexPermutations(
-    absl::Span<const int64_t> scatter_dims_to_operand_dims, int operand_rank) {
-  std::vector<int64_t> perm;
-  perm.reserve(operand_rank);
-  absl::c_copy(scatter_dims_to_operand_dims, std::back_inserter(perm));
-  for (int i = 0; i < operand_rank; ++i) {
-    if (!absl::c_linear_search(scatter_dims_to_operand_dims, i)) {
-      perm.push_back(i);
-    }
-  }
-  return {perm, InversePermutation(perm)};
 }
 
 std::vector<int64_t> MakeUpdatePermutation(
@@ -188,13 +144,13 @@ StatusOr<HloInstruction*> ScatterSimplifier::ExpandInstruction(
 
   // We permute updates and operands according to scatter_dims_to_operand_dims.
   auto [operand_permutation, operand_permutation_inverse] =
-      MakeOperandsScatterIndexPermutations(attrs.scatter_dims_to_operand_dims(),
-                                           operand_rank);
+      MakeOperandStartIndexPermutations(attrs.scatter_dims_to_operand_dims(),
+                                        operand_rank);
   auto update_permutation = MakeUpdatePermutation(operand_permutation);
 
   TF_ASSIGN_OR_RETURN(auto* scatter_indices,
-                      TransformScatterIndices(scatter->scatter_indices(),
-                                              attrs.index_vector_dim()));
+                      TransformStartIndices(scatter->scatter_indices(),
+                                            attrs.index_vector_dim()));
   TF_ASSIGN_OR_RETURN(
       auto scatter_updates,
       TransformScatterUpdates(scatter, update_permutation,

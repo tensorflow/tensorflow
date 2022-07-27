@@ -16,12 +16,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_SCATTER_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_SCATTER_UTILS_H_
 
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
+
+// Transforms the given index tensor to make it two-dimensional, with the index
+// vector dimension being dimension 1.
+// Example:
+//   input: indices = tensor<4x2x3xi32>, index_vector_dim = 1
+//   output: tensor<12x2xi32>
+StatusOr<HloInstruction*> TransformStartIndices(HloInstruction* indices,
+                                                int64_t index_vector_dim);
+
+// Given a map from index vector positions to dimension numbers, returns a pair
+// of permutations that when applied to the operand, let you replace the map
+// with the identity permutation.
+// In gather, the map is called `start_index_map`. In scatter, it's
+// `scatter_dims_to_operand_dims`.
+std::pair<std::vector<int64_t>, std::vector<int64_t>>
+MakeOperandStartIndexPermutations(absl::Span<const int64_t>, int operand_rank);
 
 StatusOr<HloInstruction*> MaybeTranspose(HloInstruction* operand,
                                          absl::Span<const int64_t> permutation);

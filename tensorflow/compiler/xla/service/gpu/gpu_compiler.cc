@@ -83,6 +83,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/eigh_expander.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gather_expander.h"
+#include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
 #include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
@@ -318,7 +319,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
-
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   if (hlo_module->config().use_spmd_partitioning()) {
@@ -349,6 +349,9 @@ Status GpuCompiler::OptimizeHloModule(
       }
       spmd_simplify.AddPass<ScatterExpander>(
           ScatterExpander::kEliminateSimpleScatters);
+      if (debug_options.xla_gpu_simplify_gathers()) {
+        spmd_simplify.AddPass<GatherSimplifier>();
+      }
       spmd_simplify.AddPass<GatherExpander>(
           GatherExpander::kEliminateSimpleGathers);
       spmd_simplify.AddPass<WhileLoopConstantSinking>();
@@ -481,6 +484,9 @@ Status GpuCompiler::OptimizeHloModule(
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
+      if (debug_options.xla_gpu_simplify_gathers()) {
+        pipeline.AddPass<GatherSimplifier>();
+      }
       pipeline.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
       if (debug_options.xla_gpu_simplify_scatters()) {
         pipeline.AddPass<ScatterSimplifier>();

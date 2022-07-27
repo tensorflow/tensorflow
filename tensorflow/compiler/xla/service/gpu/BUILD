@@ -1744,6 +1744,7 @@ cc_library(
         ":target_constants",
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
+        "//tensorflow/compiler/xla/service:gather_simplifier",
         "//tensorflow/compiler/xla/service:layout_normalization",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

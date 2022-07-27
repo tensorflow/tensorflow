@@ -356,6 +356,8 @@ message DebugOptions {
 
   // Simplify all Scatter ops to the form described in scatter_simplifier.h.
   bool xla_gpu_simplify_scatters = 176;
+  // Simplify all Gather ops to the form described in gather_simplifier.h.
+  bool xla_gpu_simplify_gathers = 178;
 
   // Paths to files with LLVM code.
   repeated string xla_gpu_llvm_ir_file = 150;
@@ -435,7 +437,7 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   bool xla_cpu_strict_dot_conv_math = 175;
 
-  // Next id: 178
+  // Next id: 179
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
