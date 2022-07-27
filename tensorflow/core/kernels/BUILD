@@ -6789,6 +6789,7 @@ filegroup(
         "substr_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
+        "tensor_list.cc",
         "tensor_map.cc",
         "tile_functor_cpu.h",
         "tile_functor_cpu_bfloat16.cc",
