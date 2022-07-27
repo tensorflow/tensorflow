@@ -101,6 +101,7 @@ PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
+PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 
 // Helper macros and functions

@@ -75,7 +75,7 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
     LOG(ERROR) << struct_size_check.error_message();
   }
   if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
-    xla::Status* status = &args->error->status;
+    const xla::Status* status = &args->error->status;
     args->message = status->error_message().data();
     args->message_size = status->error_message().size();
   }
@@ -393,6 +393,17 @@ PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args) {
       "PJRT_Buffer_IsDeleted_Args", PJRT_Buffer_IsDeleted_Args_STRUCT_SIZE,
       args->struct_size));
   args->is_deleted = args->buffer->buffer->IsDeleted();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_CopyToDevice_Args",
+      PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> dst_buffer,
+      args->buffer->buffer->CopyToDevice(args->dst_device->device));
+  args->dst_buffer = new PJRT_Buffer{std::move(dst_buffer)};
   return nullptr;
 }
 

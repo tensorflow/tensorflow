@@ -614,6 +614,26 @@ bool PjRtCApiBuffer::IsDeleted() {
   return args.is_deleted;
 }
 
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
+    PjRtDevice* dst_device) {
+  if (dst_device->client() == client_) {
+    PJRT_Buffer_CopyToDevice_Args args;
+    args.struct_size = PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.buffer = buffer_;
+    args.dst_device =
+        tensorflow::down_cast<PjRtCApiDevice*>(dst_device)->c_device();
+    const PJRT_Api* api = pjrt_c_api();
+    RETURN_STATUS_IF_ERROR(api->PJRT_Buffer_CopyToDevice(&args), api);
+    return std::unique_ptr<PjRtBuffer>(
+        std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
+  } else {
+    // TODO(b/239735405) Copying across different clients where `dst_device` is
+    // not a PjRtCApiDevice raises an error.
+    return wrapped_->CopyToDevice(dst_device);
+  }
+}
+
 bool PjRtCApiBuffer::IsOnCpu() const {
   PJRT_Buffer_IsOnCpu_Args args;
   args.struct_size = PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE;

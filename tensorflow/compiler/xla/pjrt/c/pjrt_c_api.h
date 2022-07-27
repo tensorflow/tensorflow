@@ -52,7 +52,7 @@ typedef void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 typedef struct {
   size_t struct_size;
   void* priv;
-  PJRT_Error* error;
+  const PJRT_Error* error;
   // Has the lifetime of `error`.
   const char* message;  // out
   size_t message_size;  // out
@@ -476,6 +476,22 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Buffer* buffer;
+  PJRT_Device* dst_device;
+  PJRT_Buffer* dst_buffer;  // out
+} PJRT_Buffer_CopyToDevice_Args;
+const size_t PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_CopyToDevice_Args, dst_buffer);
+
+// Copies the buffer to device `dst_device`. Caller is responsible for freeing
+// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
+// buffer is already on `dst_device`.
+typedef PJRT_Error* PJRT_Buffer_CopyToDevice(
+    PJRT_Buffer_CopyToDevice_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
   bool is_on_cpu;  // out
 } PJRT_Buffer_IsOnCpu_Args;
 const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
@@ -523,6 +539,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
 } PJRT_Api;
 

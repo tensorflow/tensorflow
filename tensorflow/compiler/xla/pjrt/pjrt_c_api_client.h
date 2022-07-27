@@ -310,14 +310,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   bool IsDeleted() override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
-      PjRtDevice* dst_device) override {
-    if (dst_device->client() == client_) {
-      return client_->WrapBuffer(
-          wrapped_->CopyToDevice(PjRtCApiDevice::GetWrapped(dst_device)));
-    } else {
-      return wrapped_->CopyToDevice(dst_device);
-    }
-  }
+      PjRtDevice* dst_device) override;
 
   void CopyToRemoteDevice(absl::string_view serialized_descriptor,
                           RemoteSendCallback on_done) override {
