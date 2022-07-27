@@ -26,11 +26,15 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/variant.h"
+
+#ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/kernels/data/optional_ops_util.h"
 #include "tensorflow/core/kernels/tensor_list.h"
 #include "tensorflow/core/kernels/tensor_list_util.h"
 #include "tensorflow/core/kernels/variant_ops_util.h"
 #include "tensorflow/core/platform/abi.h"
+#endif
+
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -178,7 +182,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                *ptr = new tensorflow::Var(value.dtype());
                                *(*ptr)->tensor() = value;
                                (*ptr)->is_initialized = true;
-                               return ::tensorflow::OkStatus();
+                               return tensorflow:: ::tensorflow::OkStatus();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
 
@@ -441,6 +445,7 @@ bool TF_IsRefInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
   return cc_ctx->input_is_ref(i);
 }
 
+#ifndef IS_MOBILE_PLATFORM
 template <typename T>
 static Status ValidateVariantType(const Variant& variant) {
   if (variant.get<T>() == nullptr) {
@@ -452,7 +457,7 @@ static Status ValidateVariantType(const Variant& variant) {
         type_index_name);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void TF_AddNVariant(TF_OpKernelContext* ctx,
@@ -468,11 +473,11 @@ void TF_AddNVariant(TF_OpKernelContext* ctx,
                                 Tensor* cc_out) {
     if (cc_a.dtype() == ::tensorflow::DT_INVALID) {
       *cc_out = cc_b;
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (cc_b.dtype() == ::tensorflow::DT_INVALID) {
       *cc_out = cc_a;
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
 
     Status status;
@@ -661,3 +666,4 @@ void TF_ZerosLikeVariant(TF_OpKernelContext* ctx,
   OP_REQUIRES_OK(cc_ctx, cc_status);
   cc_ctx->set_output(0, out);
 }
+#endif  // IS_MOBILE_PLATFORM

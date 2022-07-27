@@ -147,6 +147,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorShape(
 TF_CAPI_EXPORT extern bool TF_IsRefInput(TF_OpKernelContext* ctx, int i,
                                          TF_Status* status);
 
+#ifndef IS_MOBILE_PLATFORM
 // Expose higher level AddN operation for Pluggable vendors to implement
 // in the plugin for Variant data types. The API takes in the context and a
 // callback provided by pluggable vendor to do a Binary Add operation on the
@@ -170,6 +171,7 @@ TF_CAPI_EXPORT extern void TF_ZerosLikeVariant(
     void (*zeros_like_func)(TF_OpKernelContext* ctx, TF_Tensor* input,
                             TF_Tensor* out),
     TF_Status* status);
+#endif  // IS_MOBILE_PLATFORM
 
 #ifdef __cplusplus
 } /* end extern "C" */
