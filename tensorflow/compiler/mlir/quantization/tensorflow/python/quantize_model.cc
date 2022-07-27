@@ -173,6 +173,17 @@ absl::StatusOr<GraphDef> QuantizeQATModel(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+
+  // For XLA opset, the graph is inlined to take benefit of constant folding
+  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
+  if (quantization_options.op_set() == OpSet::XLA) {
+    pm.addPass(mlir::createInlinerPass());
+    pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
@@ -305,6 +316,17 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
       mlir::quant::QuantizationMethod::kPostTrainingQuantization));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+
+  // For XLA opset, the graph is inlined to take benefit of constant folding
+  // and the TF Conv/Matmul ops with cast-hack are converted to XLA ops.
+  if (quantization_options.op_set() == OpSet::XLA) {
+    pm.addPass(mlir::createInlinerPass());
+    pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
