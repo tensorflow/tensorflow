@@ -720,6 +720,11 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
   pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+  // To fuse the copy.
+  pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
+  // To remove temporary fused_computation created by GpuHorizontalLoopFusion
+  pipeline.AddPass<HloDCE>();
+
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }

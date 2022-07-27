@@ -598,6 +598,46 @@ TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
   EXPECT_EQ(total_fusion_instrs, 2);
 }
 
+TEST_F(HorizontalLoopFusionTest, CopyInsertionFusion) {
+  const char* hlo_text = R"(
+HloModule cluster
+
+ENTRY main {
+  cst = f32[1]{0} constant({0})
+  ROOT tuple_out = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}) tuple(cst, cst, cst, cst)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0,0}));
+
+  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  std::unique_ptr<HloModule> compiled_module =
+      backend()
+          .compiler()
+          ->RunHloPasses(module->Clone(), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .value();
+  VLOG(2) << compiled_module->ToString();
+
+  // Verify that the total number of fusion instructions is 1.
+  size_t total_fusion_instrs = 0;
+  for (const HloInstruction* instr :
+       compiled_module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kFusion) {
+      ++total_fusion_instrs;
+    }
+  }
+  EXPECT_EQ(total_fusion_instrs, 1);
+
+  const HloInstruction* entry_root =
+    compiled_module->entry_computation()->root_instruction();
+  // Check that we add bitcast when needed.
+  EXPECT_THAT(entry_root,
+              op::Tuple(op::GetTupleElement(op::Fusion()),
+                        op::GetTupleElement(op::Fusion()),
+                        op::GetTupleElement(op::Fusion()),
+                        op::GetTupleElement(op::Fusion())));
+
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
