@@ -1366,35 +1366,24 @@ mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult PointOp::verify() {
-  auto supersetTy = superset().getType();
-  if (supersetTy.isa<PointType>()) {
-    if (!static_indices().empty() || !dynamic_indices().empty()) {
-      return emitOpError(
-          "expected empty indices and static_indices for a set of type "
-          "PointType");
+  auto tileShape = superset().getType().cast<TileType>().getShape();
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "index", tileShape.size(), static_indices(),
+          dynamic_indices(), ShapedType::isDynamicStrideOrOffset))) {
+    return failure();
+  }
+  // Check whether the known indices are in-bounds of known dimension sizes.
+  for (auto dimAndIndex : llvm::zip(tileShape, static_indices())) {
+    auto dimSize = std::get<0>(dimAndIndex);
+    auto index =
+        std::get<1>(dimAndIndex).dyn_cast<mlir::IntegerAttr>().getInt();
+    if (index == ShapedType::kDynamicStrideOrOffset) continue;
+    if (index < 0) {
+      return emitOpError("expected index = ") << index << " to be non-negative";
     }
-  } else {
-    auto tileTy = supersetTy.cast<TileType>();
-    auto tileShape = tileTy.getShape();
-    if (failed(mlir::verifyListOfOperandsOrIntegers(
-            getOperation(), "index", tileShape.size(), static_indices(),
-            dynamic_indices(), ShapedType::isDynamicStrideOrOffset))) {
-      return failure();
-    }
-    // Check whether the known indices are in-bounds of known dimension sizes.
-    for (auto dimAndIndex : llvm::zip(tileShape, static_indices())) {
-      auto dimSize = std::get<0>(dimAndIndex);
-      auto index =
-          std::get<1>(dimAndIndex).dyn_cast<mlir::IntegerAttr>().getInt();
-      if (index == ShapedType::kDynamicStrideOrOffset) continue;
-      if (index < 0) {
-        return emitOpError("expected index = ")
-               << index << " to be non-negative";
-      }
-      if (dimSize != ShapedType::kDynamicSize && index >= dimSize) {
-        return emitOpError("expected index = ")
-               << index << " to be between 0 and " << (dimSize - 1);
-      }
+    if (dimSize != ShapedType::kDynamicSize && index >= dimSize) {
+      return emitOpError("expected index = ")
+             << index << " to be between 0 and " << (dimSize - 1);
     }
   }
   return success();

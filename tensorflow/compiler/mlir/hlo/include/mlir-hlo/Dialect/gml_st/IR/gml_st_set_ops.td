@@ -69,7 +69,7 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 def GMLST_PointOp : GMLST_Op<"point", [
     NoSideEffect,
     DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let arguments = (ins AnySet:$superset,
+  let arguments = (ins GMLST_TileType:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
   let results = (outs GMLST_PointType:$result);
