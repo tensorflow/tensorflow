@@ -33,23 +33,25 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-absl::Status AllocateTensorMemory(const CLContext& context,
-                                  const TensorDescriptor& descriptor,
-                                  const void* data_ptr, CLMemory* result) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
-  const int slices = DivideRoundUp(shape.c, 4);
+absl::Status AllocateTensorMemoryInternal(const CLContext& context,
+                                          const TensorDescriptor& descriptor,
+                                          CLMemory* result) {
   cl_mem_flags mem_flags = CL_MEM_READ_WRITE;
-  if (data_ptr) {
+  const uint8_t* data_ptr = nullptr;
+  if (!descriptor.GetData().empty()) {
+    data_ptr = descriptor.GetData().data();
     mem_flags |= CL_MEM_COPY_HOST_PTR;
   }
+  std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
   switch (descriptor.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
-      const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
-                               4 * SizeOf(descriptor.GetDataType());
+      const size_t data_size = storage_dims[0] * descriptor.GetElementSize() *
+                               SizeOf(descriptor.GetDataType());
       cl_int error_code;
-      cl_mem memory = clCreateBuffer(context.context(), mem_flags, data_size,
-                                     const_cast<void*>(data_ptr), &error_code);
+      cl_mem memory =
+          clCreateBuffer(context.context(), mem_flags, data_size,
+                         const_cast<uint8_t*>(data_ptr), &error_code);
       if (!memory) {
         return absl::UnknownError(
             absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
@@ -61,8 +63,8 @@ absl::Status AllocateTensorMemory(const CLContext& context,
     case TensorStorageType::TEXTURE_2D: {
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-      desc.image_width = shape.w * shape.b * shape.d;
-      desc.image_height = shape.h * slices;
+      desc.image_width = storage_dims[0];
+      desc.image_height = storage_dims[1];
       desc.image_depth = 0;
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
@@ -78,7 +80,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
       cl_int error_code;
       cl_mem memory =
           CreateImage2DLegacy(context.context(), mem_flags, &format, &desc,
-                              const_cast<void*>(data_ptr), &error_code);
+                              const_cast<uint8_t*>(data_ptr), &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
             absl::StrCat("Failed to create 2D texture (clCreateImage): ",
@@ -91,9 +93,9 @@ absl::Status AllocateTensorMemory(const CLContext& context,
     case TensorStorageType::TEXTURE_3D: {
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE3D;
-      desc.image_width = shape.w * shape.b;
-      desc.image_height = shape.h;
-      desc.image_depth = slices * shape.d;
+      desc.image_width = storage_dims[0];
+      desc.image_height = storage_dims[1];
+      desc.image_depth = storage_dims[2];
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
       desc.num_mip_levels = 0;
@@ -108,7 +110,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
       cl_int error_code;
       cl_mem memory =
           CreateImage3DLegacy(context.context(), mem_flags, &format, &desc,
-                              const_cast<void*>(data_ptr), &error_code);
+                              const_cast<uint8_t*>(data_ptr), &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
             absl::StrCat("Failed to create 3D texture (clCreateImage): ",
@@ -121,10 +123,10 @@ absl::Status AllocateTensorMemory(const CLContext& context,
     case TensorStorageType::TEXTURE_ARRAY: {
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D_ARRAY;
-      desc.image_width = shape.w * shape.b;
-      desc.image_height = shape.h;
+      desc.image_width = storage_dims[0];
+      desc.image_height = storage_dims[1];
       desc.image_depth = 0;
-      desc.image_array_size = slices * shape.d;
+      desc.image_array_size = storage_dims[2];
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
       desc.num_mip_levels = 0;
@@ -139,7 +141,7 @@ absl::Status AllocateTensorMemory(const CLContext& context,
       cl_int error_code;
       cl_mem memory =
           clCreateImage(context.context(), mem_flags, &format, &desc,
-                        const_cast<void*>(data_ptr), &error_code);
+                        const_cast<uint8_t*>(data_ptr), &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
             absl::StrCat("Failed to create 2D texture array (clCreateImage): ",
@@ -151,15 +153,16 @@ absl::Status AllocateTensorMemory(const CLContext& context,
     }
 
     case TensorStorageType::SINGLE_TEXTURE_2D: {
-      if (slices != 1) {
+      const int element_size = descriptor.GetElementSize();
+      if (element_size > 4) {
         return absl::InvalidArgumentError(absl::StrCat(
             "SINGLE_TEXTURE_2D support only channels in range [1-4], but ",
-            shape.c, "was provided"));
+            element_size, "was provided"));
       }
       cl_image_desc desc;
       desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-      desc.image_width = shape.w * shape.b * shape.d;
-      desc.image_height = shape.h;
+      desc.image_width = storage_dims[0];
+      desc.image_height = storage_dims[1];
       desc.image_depth = 0;
       desc.image_row_pitch = 0;
       desc.image_slice_pitch = 0;
@@ -168,20 +171,21 @@ absl::Status AllocateTensorMemory(const CLContext& context,
       desc.buffer = nullptr;
 
       cl_image_format format;
-      if (context.IsFloatTexture2DSupported(shape.c,
+      if (context.IsFloatTexture2DSupported(element_size,
                                             descriptor.GetDataType())) {
-        format.image_channel_order = ToChannelOrder(shape.c);
+        format.image_channel_order = ToChannelOrder(element_size);
         format.image_channel_data_type =
             DataTypeToChannelType(descriptor.GetDataType());
       } else {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "This device doesn't support ", shape.c, "-channel textures."));
+        return absl::InvalidArgumentError(
+            absl::StrCat("This device doesn't support ", element_size,
+                         "-channel textures."));
       }
 
       cl_int error_code;
       cl_mem memory =
           CreateImage2DLegacy(context.context(), mem_flags, &format, &desc,
-                              const_cast<void*>(data_ptr), &error_code);
+                              const_cast<uint8_t*>(data_ptr), &error_code);
       if (error_code != CL_SUCCESS) {
         return absl::UnknownError(
             absl::StrCat("Failed to create single 2D texture (clCreateImage): ",
@@ -377,38 +381,37 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
 }
 
 int3 Tensor::GetFullTensorRegion() const {
-  const BHWDC& shape = descriptor_.GetBHWDCShape();
+  std::vector<uint64_t> storage_dims = descriptor_.GetStorageDims();
   switch (descriptor_.GetStorageType()) {
     case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      // 1D resources
+      return int3(static_cast<int>(storage_dims[0]), 1, 1);
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      // 2D resources
+      return int3(static_cast<int>(storage_dims[0]),
+                  static_cast<int>(storage_dims[1]), 1);
     case TensorStorageType::TEXTURE_ARRAY:
     case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::IMAGE_BUFFER:
-      return {shape.w * shape.b, shape.h, shape.d * Slices()};
-    case TensorStorageType::TEXTURE_2D:
-      return {shape.w * shape.b * shape.d, shape.h * Slices(), 1};
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return {shape.w * shape.b * shape.d, shape.h, 1};
+      // 3D resources
+      return int3(static_cast<int>(storage_dims[0]),
+                  static_cast<int>(storage_dims[1]),
+                  static_cast<int>(storage_dims[2]));
     case TensorStorageType::UNKNOWN:
       return {-1, -1, -1};
   }
 }
 
 uint64_t Tensor::GetMemorySizeInBytes() const {
-  const int flt_size = SizeOf(descriptor_.GetDataType());
-  const int flt4_size = 4 * flt_size;
-  const BHWDC& shape = descriptor_.GetBHWDCShape();
-  switch (descriptor_.GetStorageType()) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-      return flt4_size * shape.b * shape.w * shape.h * shape.d * Slices();
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return flt_size * shape.w * shape.h * shape.c * shape.b * shape.d;
-    default:
-      return 0;
+  std::vector<uint64_t> storage_dims = descriptor_.GetStorageDims();
+  uint64_t total_size = 1;
+  for (int i = 0; i < storage_dims.size(); ++i) {
+    total_size *= storage_dims[i];
   }
+  const int element_size =
+      descriptor_.GetElementSize() * SizeOf(descriptor_.GetDataType());
+  return total_size * element_size;
 }
 
 cl_mem Tensor::GetMemoryPtr() const {
@@ -434,17 +437,13 @@ absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
   desc.CopyWithoutData(&descriptor_);
   memory_owner_ = true;
   CLMemory memory;
-  const uint8_t* data_ptr =
-      desc.GetData().empty() ? nullptr : desc.GetData().data();
-  RETURN_IF_ERROR(
-      AllocateTensorMemory(*context, descriptor_, data_ptr, &memory));
+  RETURN_IF_ERROR(AllocateTensorMemoryInternal(*context, desc, &memory));
   memory_ = memory.Release();
   if (desc.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
-    const BHWDC& shape = descriptor_.GetBHWDCShape();
-    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        *context, memory_, desc.GetDataType(),
-        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
-        &image_buffer_memory_));
+    std::vector<uint64_t> storage_dims = descriptor_.GetStorageDims();
+    RETURN_IF_ERROR(
+        CreateImageBufferFromBuffer(*context, memory_, desc.GetDataType(),
+                                    storage_dims[0], &image_buffer_memory_));
   }
   return absl::OkStatus();
 }
@@ -509,15 +508,14 @@ absl::Status Tensor::ReadData(void* ptr, CLCommandQueue* queue) const {
 absl::Status CreateTensor(const CLContext& context,
                           const TensorDescriptor& descriptor, Tensor* result) {
   CLMemory mem;
-  RETURN_IF_ERROR(AllocateTensorMemory(context, descriptor, nullptr, &mem));
+  RETURN_IF_ERROR(AllocateTensorMemoryInternal(context, descriptor, &mem));
   cl_mem memory = mem.Release();
   if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
-    const BHWDC& shape = descriptor.GetBHWDCShape();
+    std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
     cl_mem image_memory;
-    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.GetDataType(),
-        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
-        &image_memory));
+    RETURN_IF_ERROR(
+        CreateImageBufferFromBuffer(context, memory, descriptor.GetDataType(),
+                                    storage_dims[0], &image_memory));
     *result = Tensor(memory, /*memory_owner*/ true, image_memory, descriptor);
   } else {
     *result = Tensor(memory, /*memory_owner*/ true, descriptor);
@@ -530,12 +528,11 @@ absl::Status CreateTensorShared(const CLContext& context, cl_mem memory,
                                 Tensor* result) {
   const bool memory_owner = false;
   if (descriptor.GetStorageType() == TensorStorageType::IMAGE_BUFFER) {
-    const BHWDC& shape = descriptor.GetBHWDCShape();
+    std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
     cl_mem image_memory;
-    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
-        context, memory, descriptor.GetDataType(),
-        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
-        &image_memory));
+    RETURN_IF_ERROR(
+        CreateImageBufferFromBuffer(context, memory, descriptor.GetDataType(),
+                                    storage_dims[0], &image_memory));
     *result = Tensor(memory, memory_owner, image_memory, descriptor);
   } else {
     *result = Tensor(memory, memory_owner, descriptor);
@@ -548,16 +545,10 @@ absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
                                              const TensorDescriptor& descriptor,
                                              int width_pixel_alignment,
                                              Tensor* result) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
-  const int width = shape.b * shape.w * shape.d;
-  const int height =
-      descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
-          ? shape.h
-          : shape.h * DivideRoundUp(shape.c, 4);
-  const int channels =
-      descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
-          ? shape.c
-          : 4;
+  std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
+  const int width = storage_dims[0];
+  const int height = storage_dims[1];
+  const int channels = descriptor.GetElementSize();
   cl_mem image_memory;
   RETURN_IF_ERROR(CreateImage2DFromBuffer(
       context, memory, descriptor.GetDataType(), width, height, channels,
@@ -570,7 +561,7 @@ absl::Status CreateTensorSharedImage2DBuffer(const CLContext& context,
 absl::Status AllocateTensorMemory(const CLContext& context,
                                   const TensorDescriptor& descriptor,
                                   CLMemory* result) {
-  return AllocateTensorMemory(context, descriptor, nullptr, result);
+  return AllocateTensorMemoryInternal(context, descriptor, result);
 }
 
 }  // namespace cl

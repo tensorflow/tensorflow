@@ -185,6 +185,37 @@ void TensorDescriptor::CopyWithoutData(TensorDescriptor* desc) const {
   desc->shape_ = shape_;
 }
 
+std::vector<uint64_t> TensorDescriptor::GetStorageDims() const {
+  const int slices = DivideRoundUp(shape_.c, 4);
+  switch (storage_type_) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return {static_cast<uint64_t>(shape_.w * shape_.b * shape_.h * shape_.d *
+                                    slices)};
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return {static_cast<uint64_t>(shape_.w * shape_.b),
+              static_cast<uint64_t>(shape_.h),
+              static_cast<uint64_t>(shape_.d * slices)};
+    case TensorStorageType::TEXTURE_2D:
+      return {static_cast<uint64_t>(shape_.w * shape_.b * shape_.d),
+              static_cast<uint64_t>(shape_.h * slices)};
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return {static_cast<uint64_t>(shape_.w * shape_.b * shape_.d),
+              static_cast<uint64_t>(shape_.h)};
+    case TensorStorageType::UNKNOWN:
+      return {};
+  }
+}
+
+int TensorDescriptor::GetElementSize() const {
+  if (storage_type_ == TensorStorageType::SINGLE_TEXTURE_2D) {
+    return shape_.c;
+  } else {
+    return 4;
+  }
+}
+
 GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
   GPUResources resources;
   resources.ints.push_back("slice_stride");

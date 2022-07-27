@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TENSOR_DESC_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -129,6 +130,9 @@ class TensorDescriptor : public GPUObjectDescriptor {
   // with old storage type
   absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
                                             const BHWC& shape);
+
+  std::vector<uint64_t> GetStorageDims() const;
+  int GetElementSize() const;
 
   void SetUseBufferForWriteOnlyTexture2d(bool value) {
     use_buffer_for_write_only_2d_texture_ = value;
