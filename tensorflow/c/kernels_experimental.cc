@@ -182,7 +182,7 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
                                *ptr = new tensorflow::Var(value.dtype());
                                *(*ptr)->tensor() = value;
                                (*ptr)->is_initialized = true;
-                               return tensorflow:: ::tensorflow::OkStatus();
+                               return ::tensorflow::OkStatus();
                              }));
   tensorflow::mutex_lock ml(*variable->mu());
 
