@@ -29,6 +29,37 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+TEST(XNNPACK_WEIGHTS_CACHE, WithSize) {
+  std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
+  const Model* model = GetModel(buffer.data());
+  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
+  ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
+
+  size_t four_mb = 4194304;
+  std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
+                  decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
+      weights_cache(TfLiteXNNPackDelegateWeightsCacheCreateWithSize(four_mb),
+                    TfLiteXNNPackDelegateWeightsCacheDelete);
+
+  TfLiteXNNPackDelegateOptions delegate_options =
+      TfLiteXNNPackDelegateOptionsDefault();
+  delegate_options.weights_cache = weights_cache.get();
+
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+               TfLiteXNNPackDelegateDelete);
+
+  ASSERT_EQ(kTfLiteOk, interpreter->ModifyGraphWithDelegate(delegate.get()));
+
+  ASSERT_TRUE(
+      TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache.get()));
+
+  ASSERT_EQ(kTfLiteOk, interpreter->Invoke());
+}
+
 TEST(XNNPACK_WEIGHTS_CACHE, InvokeBeforeFinalization) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
