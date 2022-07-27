@@ -8893,6 +8893,8 @@ bool isCompatibleForMhloTypeInference(Type tp1, Type tp2) {
   //       2.2) Or both dimensions are equal.
   // These relaxed rules simplify the implementation of type inference, allowing
   // ops with partially inferred types to pass verification.
+  // No additional code is needed to check bounded cases.
+  // Individual ops may introduce additional constraints.
   auto stp1 = tp1.dyn_cast<ShapedType>();
   auto stp2 = tp2.dyn_cast<ShapedType>();
   if (stp1 && stp2) {

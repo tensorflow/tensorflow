@@ -2025,10 +2025,12 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [NoSideEffect,
 
   let extraClassDeclaration = [{
     // Method from InferTypeOpInterface interface.
-    // TODO(hinsu): Use MHLO dialect level compatibility that also verifies
-    // that bounds in the encoding attribute are also compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
-      return succeeded(mlir::verifyCompatibleShapes(l, r));
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+          return false;
+      return true;
     }
   }];
 
