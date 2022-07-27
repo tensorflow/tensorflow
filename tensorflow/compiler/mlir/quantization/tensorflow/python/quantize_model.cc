@@ -50,15 +50,14 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 
-using tensorflow::GraphDef;
-
 namespace tensorflow {
 namespace quantization {
 namespace internal {
+namespace {
 
-tensorflow::Status PreprocessAndFreezeGraph(
-    mlir::ModuleOp module, mlir::MLIRContext* context,
-    llvm::Optional<tensorflow::Session*> session) {
+Status PreprocessAndFreezeGraph(mlir::ModuleOp module,
+                                mlir::MLIRContext* context,
+                                llvm::Optional<Session*> session) {
   mlir::PassManager pm_before_freezing_variables(context);
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
@@ -93,6 +92,22 @@ tensorflow::Status PreprocessAndFreezeGraph(
   return OkStatus();
 }
 
+// Converts MLIR ModuleOp to TensorFlow GraphDef. Returns InternalError status
+// when the GraphDef conversion fails.
+absl::StatusOr<GraphDef> ConvertMlirModuleToGraphDef(
+    const mlir::ModuleOp module_op) {
+  GraphExportConfig config{};
+  StatusOr<std::unique_ptr<GraphDef>> graph =
+      ConvertMlirToGraphdef(module_op, config);
+  if (!graph.ok()) {
+    return absl::InternalError("Failed to convert MLIR to GraphDef: " +
+                               graph.status().error_message());
+  }
+  return *std::move(*graph);
+}
+
+}  // namespace
+
 absl::StatusOr<GraphDef> QuantizeQATModel(
     const absl::string_view saved_model_path,
     const absl::string_view exported_names_str, const absl::string_view tags,
@@ -115,28 +130,28 @@ absl::StatusOr<GraphDef> QuantizeQATModel(
                   mlir::quant::QuantizationDialect>();
   mlir::MLIRContext context(registry);
 
-  tensorflow::MLIRImportOptions import_options;
+  MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      tensorflow::SavedModelSignatureDefsToMlirImport(
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      SavedModelSignatureDefsToMlirImport(
           saved_model_path, tag_set,
           absl::Span<std::string>(exported_names_vec), &context, import_options,
           /*lift_variables=*/false, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("failed to import SavedModel: " +
+    return absl::InternalError("Failed to import SavedModel: " +
                                module.status().error_message());
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  tensorflow::Status status = PreprocessAndFreezeGraph(
+  const Status status = PreprocessAndFreezeGraph(
       module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
   if (!status.ok()) {
-    return absl::InternalError("failed to preprocess graph: " +
+    return absl::InternalError("Failed to preprocess graph: " +
                                status.error_message());
   }
 
@@ -172,16 +187,7 @@ absl::StatusOr<GraphDef> QuantizeQATModel(
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  // Export as GraphDef.
-  tensorflow::GraphExportConfig confs;
-  stream_executor::port::StatusOr<std::unique_ptr<GraphDef>> graph =
-      tensorflow::ConvertMlirToGraphdef(*module_ref, confs);
-  if (!graph.ok()) {
-    return absl::InternalError("failed to convert MLIR to graphdef: " +
-                               graph.status().error_message());
-  }
-
-  return *std::move(graph).value();
+  return ConvertMlirModuleToGraphDef(*module_ref);
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
@@ -200,27 +206,27 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
                   mlir::quant::QuantizationDialect>();
   mlir::MLIRContext context(registry);
 
-  tensorflow::MLIRImportOptions import_options;
+  MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      tensorflow::SavedModelSignatureDefsToMlirImport(
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      SavedModelSignatureDefsToMlirImport(
           saved_model_path, tag_set,
           absl::Span<std::string>(exported_names_vec), &context, import_options,
           /*lift_variables=*/false, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("failed to import SavedModel: " +
+    return absl::InternalError("Failed to import SavedModel: " +
                                module.status().error_message());
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  tensorflow::Status status = PreprocessAndFreezeGraph(
+  const Status status = PreprocessAndFreezeGraph(
       module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
   if (!status.ok()) {
-    return absl::InternalError("failed to preprocess graph: " +
+    return absl::InternalError("Failed to preprocess graph: " +
                                status.error_message());
   }
 
@@ -240,20 +246,11 @@ absl::StatusOr<GraphDef> QuantizePTQModelPreCalibration(
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
     return absl::InternalError(
-        "failed to apply the quantization at the pre-calibration stage: " +
+        "Failed to apply the quantization at the pre-calibration stage: " +
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  // Export as GraphDef.
-  tensorflow::GraphExportConfig confs;
-  stream_executor::port::StatusOr<std::unique_ptr<GraphDef>> graph =
-      tensorflow::ConvertMlirToGraphdef(*module_ref, confs);
-  if (!graph.ok()) {
-    return absl::InternalError("failed to convert MLIR to graphdef: " +
-                               graph.status().error_message());
-  }
-
-  return *std::move(graph).value();
+  return ConvertMlirModuleToGraphDef(*module_ref);
 }
 
 absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
@@ -278,19 +275,19 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
                   mlir::quant::QuantizationDialect>();
   mlir::MLIRContext context(registry);
 
-  tensorflow::MLIRImportOptions import_options;
+  MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      tensorflow::SavedModelSignatureDefsToMlirImport(
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      SavedModelSignatureDefsToMlirImport(
           saved_model_path, tag_set,
           absl::Span<std::string>(exported_names_vec), &context, import_options,
-          true, &bundle);
+          /*lift_variables=*/true, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("failed to import SavedModel: " +
+    return absl::InternalError("Failed to import SavedModel: " +
                                module.status().error_message());
   }
 
@@ -318,20 +315,11 @@ absl::StatusOr<GraphDef> QuantizePTQModelPostCalibration(
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
     return absl::InternalError(
-        "failed to apply the quantization at the post-calibation stage: " +
+        "Failed to apply the quantization at the post-calibation stage: " +
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  // Export as GraphDef.
-  tensorflow::GraphExportConfig confs;
-  stream_executor::port::StatusOr<std::unique_ptr<GraphDef>> graph =
-      tensorflow::ConvertMlirToGraphdef(*module_ref, confs);
-  if (!graph.ok()) {
-    return absl::InternalError("failed to convert MLIR to graphdef: " +
-                               graph.status().error_message());
-  }
-
-  return *std::move(graph).value();
+  return ConvertMlirModuleToGraphDef(*module_ref);
 }
 
 absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
@@ -356,28 +344,28 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
                   mlir::quant::QuantizationDialect>();
   mlir::MLIRContext context(registry);
 
-  tensorflow::MLIRImportOptions import_options;
+  MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
+  auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      tensorflow::SavedModelSignatureDefsToMlirImport(
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      SavedModelSignatureDefsToMlirImport(
           saved_model_path, tag_set,
           absl::Span<std::string>(exported_names_vec), &context, import_options,
           /*lift_variables=*/false, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("failed to import SavedModel: " +
+    return absl::InternalError("Failed to import SavedModel: " +
                                module.status().error_message());
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  tensorflow::Status status = PreprocessAndFreezeGraph(
+  const Status status = PreprocessAndFreezeGraph(
       module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
   if (!status.ok()) {
-    return absl::InternalError("failed to preprocess graph: " +
+    return absl::InternalError("Failed to preprocess graph: " +
                                status.error_message());
   }
 
@@ -402,20 +390,11 @@ absl::StatusOr<GraphDef> QuantizePTQDynamicRange(
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   if (failed(pm.run(*module_ref))) {
     return absl::InternalError(
-        "failed to apply the quantization: " +
+        "Failed to apply the quantization: " +
         diagnostic_handler.ConsumeStatus().error_message());
   }
 
-  // Export as GraphDef.
-  tensorflow::GraphExportConfig confs;
-  stream_executor::port::StatusOr<std::unique_ptr<GraphDef>> graph =
-      tensorflow::ConvertMlirToGraphdef(*module_ref, confs);
-  if (!graph.ok()) {
-    return absl::InternalError("failed to convert MLIR to graphdef: " +
-                               graph.status().error_message());
-  }
-
-  return *std::move(graph).value();
+  return ConvertMlirModuleToGraphDef(*module_ref);
 }
 
 }  // namespace internal
