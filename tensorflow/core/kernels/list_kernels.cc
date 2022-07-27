@@ -673,6 +673,32 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
                                          TensorListZerosLike<CPUDevice>);
 
+static Status TensorListDeviceCopy(
+    const TensorList& from, TensorList* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  to->element_shape = from.element_shape;
+  to->element_dtype = from.element_dtype;
+  to->max_num_elements = from.max_num_elements;
+  to->tensors().reserve(from.tensors().size());
+  for (const Tensor& t : from.tensors()) {
+    to->tensors().emplace_back(t.dtype());
+    if (t.dtype() != DT_INVALID) {
+      TF_RETURN_IF_ERROR(copy(t, &to->tensors().back()));
+    }
+  }
+  return OkStatus();
+}
+
+#define REGISTER_LIST_COPY(DIRECTION)                                         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
+                                                       TensorListDeviceCopy)
+
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(TensorList, TensorList::kTypeName);
+
 #define REGISTER_TENSOR_LIST_OPS_DEFAULT(T)                                \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \
                               .TypeConstraint<T>("element_dtype")          \
