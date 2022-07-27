@@ -168,12 +168,12 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
           // 'same_size' should track what the size of the dimension is to which
           // the 1-sized dimensions are broadcasted. If all of the dimensions
           // are 1, it will stay 1.
-          Value same_size = one;
+          Value sameSize = one;
           // 'result_dimensions' stores the current dimension with an offset of
           // 'leading_ones' to make it easier to check whether we are in-bounds
           // with respect to the "real" shape with leading 1's removed.
-          SmallVector<Value> result_dimensions;
-          result_dimensions.reserve(k);
+          SmallVector<Value> resultDimensions;
+          resultDimensions.reserve(k);
           // 'no_broadcasting' stores boolean flags that encode whether the
           // corresponding shape does not need broadcasting at the current
           // position.
@@ -193,7 +193,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             Value isOutOfBounds = b.create<arith::CmpIOp>(
                 l, arith::CmpIPredicate::ult, ranks[i], v);
             Value dimension = b.create<arith::SubIOp>(l, ranks[i], v);
-            result_dimensions.push_back(dimension);
+            resultDimensions.push_back(dimension);
             Value currentSize =
                 b.create<scf::IfOp>(
                      l, TypeRange{b.getIndexType()}, isOutOfBounds,
@@ -213,11 +213,11 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                 l, arith::CmpIPredicate::ne, currentSize, one);
             noBroadcasting.push_back(currentSizeIsNotOne);
             Value newSameSize = b.create<arith::SelectOp>(
-                l, currentSizeIsNotOne, currentSize, same_size);
+                l, currentSizeIsNotOne, currentSize, sameSize);
             Value sameSizeWasNotOne = b.create<arith::CmpIOp>(
-                l, arith::CmpIPredicate::ne, same_size, one);
+                l, arith::CmpIPredicate::ne, sameSize, one);
             Value isDifferentSize = b.create<arith::CmpIOp>(
-                l, arith::CmpIPredicate::ne, same_size, newSameSize);
+                l, arith::CmpIPredicate::ne, sameSize, newSameSize);
             // The broadcast is invalid if the size of the current dimension
             // is not equal to the expected size, unless the expected size was
             // still the initial value 1.
@@ -225,7 +225,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                 b.create<arith::AndIOp>(l, sameSizeWasNotOne, isDifferentSize);
             currentDimensionHasInvalidBroadcast = b.create<arith::OrIOp>(
                 l, currentDimensionHasInvalidBroadcast, isInvalid);
-            same_size = newSameSize;
+            sameSize = newSameSize;
           }
 
           // Check whether we have at least one shape that has a different
@@ -233,7 +233,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
           // dimension versus whether it needs broadcasting at the previous
           // dimension.
           Value sameSizeIsOne = b.create<arith::CmpIOp>(
-              l, arith::CmpIPredicate::eq, same_size, one);
+              l, arith::CmpIPredicate::eq, sameSize, one);
           Value differentBroadcastingSet = constantFalse;
           for (size_t i = 0; i < k; ++i) {
             // If all dimensions are 1, we preserve the status whether a shape
@@ -249,7 +249,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             differentBroadcastingSet = b.create<arith::OrIOp>(
                 l, differentBroadcastingSet, broadcastingIsDifferent);
           }
-          Value running_product = vr[k];
+          Value runningProduct = vr[k];
           Value currentDimensionOffset = vr[k + 1];
 
           // We need to stop combining dimensions if the set of shapes which
@@ -268,19 +268,19 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                 // broadcasting, otherwise add a 1 dimension if it was
                 // previously indexed in-bounds.
                 Value runningProductNotOne = b.create<arith::CmpIOp>(
-                    l, arith::CmpIPredicate::ne, running_product, one);
+                    l, arith::CmpIPredicate::ne, runningProduct, one);
                 Value newDimensionOffset =
                     b.create<scf::IfOp>(
                          l, TypeRange{b.getIndexType()}, runningProductNotOne,
                          [&](OpBuilder &b, Location l) {
-                           Value new_dimension_offset = b.create<arith::AddIOp>(
+                           Value newDimensionOffset = b.create<arith::AddIOp>(
                                l, currentDimensionOffset, one);
                            Value minusOne =
                                lb.create<arith::ConstantIndexOp>(-1);
                            for (size_t i = 0; i < k; ++i) {
                              Value wasInBounds = b.create<arith::CmpIOp>(
                                  l, arith::CmpIPredicate::sge,
-                                 result_dimensions[i], minusOne);
+                                 resultDimensions[i], minusOne);
                              Value shouldStoreDimension =
                                  b.create<arith::OrIOp>(l, wasInBounds,
                                                         prevNoBroadcasting[i]);
@@ -289,31 +289,31 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                                  [&](OpBuilder &b, Location l) {
                                    Value outputDimension =
                                        b.create<arith::SubIOp>(
-                                           l, ranks[i], new_dimension_offset);
+                                           l, ranks[i], newDimensionOffset);
                                    // If the shape needed broadcasting at the
                                    // previous dimension, we set the output size
                                    // to 1, otherwise to 'running_product'.
                                    Value outputSize = b.create<arith::SelectOp>(
-                                       l, prevNoBroadcasting[i],
-                                       running_product, one);
+                                       l, prevNoBroadcasting[i], runningProduct,
+                                       one);
                                    b.create<memref::StoreOp>(l, outputSize,
                                                              resultShapes[i],
                                                              outputDimension);
                                    b.create<scf::YieldOp>(l, llvm::None);
                                  });
                            }
-                           b.create<scf::YieldOp>(l, new_dimension_offset);
+                           b.create<scf::YieldOp>(l, newDimensionOffset);
                          },
                          [&](OpBuilder &b, Location l) {
                            b.create<scf::YieldOp>(l, currentDimensionOffset);
                          })
                         .getResult(0);
                 b.create<scf::YieldOp>(
-                    l, ValueRange{same_size, newDimensionOffset});
+                    l, ValueRange{sameSize, newDimensionOffset});
               },
               [&](OpBuilder &b, Location l) {
                 Value newRunningProduct =
-                    b.create<arith::MulIOp>(l, running_product, same_size);
+                    b.create<arith::MulIOp>(l, runningProduct, sameSize);
                 b.create<scf::YieldOp>(
                     l, ValueRange{newRunningProduct, currentDimensionOffset});
               });
