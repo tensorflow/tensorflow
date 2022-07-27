@@ -467,7 +467,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
       auto* device_label = sample->add_label();
       device_label->set_key(device_string_id);
       device_label->set_str(
-          builder.StringId(entry.first.device->DebugString()));
+          builder.StringId(std::string(entry.first.device->DebugString())));
     } else {
       kind_label->set_str(executable_string_id);
     }

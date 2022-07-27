@@ -143,8 +143,8 @@ StatusOr<LocalDeviceState*> PjRtStreamExecutorDevice::GetLocalDeviceState()
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-std::string PjRtStreamExecutorDevice::DebugString() const {
-  return absl::StrCat(platform_name(), ":", id());
+absl::string_view PjRtStreamExecutorDevice::DebugString() const {
+  return debug_string_;
 }
 
 std::string PjRtStreamExecutorDevice::ToString() const {

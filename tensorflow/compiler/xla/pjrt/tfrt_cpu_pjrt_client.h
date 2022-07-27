@@ -72,7 +72,7 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   absl::string_view device_kind() const override;
 
-  std::string DebugString() const override;
+  absl::string_view DebugString() const override;
 
   std::string ToString() const override;
 
@@ -98,6 +98,7 @@ class TfrtCpuDevice final : public PjRtDevice {
  private:
   int id_;
   PjRtClient* client_ = nullptr;
+  std::string debug_string_;
 
   // TODO(zhangqiaorjc): Optimize semaphore related overhead.
   // Semaphore used to limit how many programs can be enqueued by the host

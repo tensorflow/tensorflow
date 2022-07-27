@@ -79,15 +79,14 @@ static tfrt::AsyncValueRef<CpuEvent> GetOrCreateReadyEvent(
 TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
     : id_(id),
       max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
+  debug_string_ = absl::StrCat("TFRT_CPU_", id);
 }
 
 absl::string_view TfrtCpuDevice::device_kind() const {
   return kCpuPlatformName;
 }
 
-std::string TfrtCpuDevice::DebugString() const {
-  return absl::StrCat("TFRT_CPU_", id());
-}
+absl::string_view TfrtCpuDevice::DebugString() const { return debug_string_; }
 
 std::string TfrtCpuDevice::ToString() const {
   return absl::StrCat("CpuDevice(id=", id(), ")");

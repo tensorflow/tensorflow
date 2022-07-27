@@ -129,7 +129,7 @@ class PjRtDevice {
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current device unambiguously.
-  virtual std::string DebugString() const = 0;
+  virtual absl::string_view DebugString() const = 0;
 
   // Debug string suitable for reading by end users, should be reasonably terse,
   // for example: "CpuDevice(id=0)".

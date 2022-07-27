@@ -44,6 +44,9 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
         {"coords", xla::PjRtDeviceAttribute(v_coords)},
         {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
     };
+    debug_string_ = absl::StrFormat("TPU_%i(process=%i,(%i,%i,%i,%i))",
+                                    core_.Id(), process_index, coords_[0],
+                                    coords_[1], coords_[2], core_.index());
   }
 
   const std::array<int, 3>& coords() const { return coords_; }
@@ -56,15 +59,12 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
         id(), process_index(), absl::StrJoin(coords(), ","), core_on_chip());
   }
 
-  std::string DebugString() const override {
-    return absl::StrFormat("TPU_%i(process=%i,(%i,%i,%i,%i))", id(),
-                           process_index(), coords_[0], coords_[1], coords_[2],
-                           core_.index());
-  }
+  absl::string_view DebugString() const override { return debug_string_; }
 
  private:
   const tensorflow::tpu::TpuCoreLocationExternal core_;
   const std::array<int, 3> coords_;
+  std::string debug_string_;
 };
 
 class PjRtTpuClient : public PjRtStreamExecutorClient {

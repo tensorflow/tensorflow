@@ -43,12 +43,13 @@ TpuDevice::TpuDevice(int id, int process_index,
     : id_(id),
       process_index_(process_index),
       coords_(coords),
-      core_on_chip_(core_on_chip) {}
-
-std::string TpuDevice::DebugString() const {
-  return absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id(), process_index(),
-                         coords_[0], coords_[1], coords_[2], core_on_chip_);
+      core_on_chip_(core_on_chip) {
+  debug_string_ =
+      absl::StrFormat("TPU_%i(host=%i,(%i,%i,%i,%i))", id_, process_index_,
+                      coords_[0], coords_[1], coords_[2], core_on_chip_);
 }
+
+absl::string_view TpuDevice::DebugString() const { return debug_string_; }
 
 std::string TpuDevice::ToString() const {
   return absl::StrFormat(
