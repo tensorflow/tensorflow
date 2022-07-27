@@ -14,6 +14,16 @@
     `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
     update your imports accordingly, the old files will be removed in Release
     2.11.
+*   `tf.keras.optimizers.experimental.Optimizer` will graduate in Release 2.11,
+    which means `tf.keras.optimizers.Optimizer` will be an alias of
+    `tf.keras.optimizers.experimental.Optimizer`. The current
+    `tf.keras.optimizers.Optimizer` will continue to be supported as
+    `tf.keras.optimizers.legacy.Optimizer`, e.g.,
+    `tf.keras.optimizers.legacy.Adam`. Most users won't be affected by this
+    change, but please check the [API doc](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental)
+    if any API used in your workflow is changed or deprecated, and
+    make adaptions. If you decide to keep using the old optimizer, please
+    explicitly change your optimizer to `tf.keras.optimizers.legacy.Optimizer`.
 *   RNG behavior change for `tf.keras.initializers`. Keras initializers will now
     use stateless random ops to generate random numbers.
     *   Both seeded and unseeded initializers will always generate the same
