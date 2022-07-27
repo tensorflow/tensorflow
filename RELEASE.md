@@ -132,6 +132,11 @@
         difference range from 8 to 100 times depending on the size of k. When
         running on CPU and GPU, a non-optimized XLA kernel is used.
 
+*   `tf.train`:
+
+    *  Added `tf.train.TrackableView` which allows users to inspect the
+       TensorFlow Trackable object (e.g. `tf.Module`, Keras Layers and models).
+
 *   `tf.vectorized_map`:
 
     *   Added an optional parameter: `warn`. This parameter controls whether or
