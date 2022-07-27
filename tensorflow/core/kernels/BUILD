@@ -6409,6 +6409,8 @@ filegroup(
         "unpack_op.cc",
         "variable_ops.cc",
         "variable_ops.h",
+        "variant_ops_util.cc",
+        "variant_ops_util.h",
     ] + [
         "//tensorflow/c/kernels:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:non_max_suppression_op.cc",
@@ -6826,6 +6828,8 @@ filegroup(
         "tensor_array.cc",
         "tensor_array_ops.cc",
         "tensor_list.cc",
+        "tensor_list_util.cc",
+        "tensor_list_util.h",
         "tensor_map.cc",
         "tile_functor_cpu.h",
         "tile_functor_cpu_bfloat16.cc",

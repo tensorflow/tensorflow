@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {

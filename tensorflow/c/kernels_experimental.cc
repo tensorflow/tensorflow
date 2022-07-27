@@ -640,7 +640,7 @@ static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
       "No unary variant unary_op function found for op ZEROS_LIKE Variant "
       "type_name: ",
       type_index_name, " for device type: ", cc_ctx->device()->name());
-};
+}
 
 void TF_ZerosLikeVariant(TF_OpKernelContext* ctx,
                          void (*zeros_like_func)(TF_OpKernelContext* ctx,

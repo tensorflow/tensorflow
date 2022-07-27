@@ -18,16 +18,19 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/core/platform/status.h"
+
 namespace tensorflow {
+
 class OpKernelContext;
 class Tensor;
 class Variant;
-class Status;
 
 void AddNVariant(OpKernelContext* ctx,
                  std::function<Status(OpKernelContext*, const Variant&,
                                       const Variant&, Variant*)>
                      binary_add_variant);
-}  //  end namespace tensorflow
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_VARIANT_OPS_UTIL_H_
