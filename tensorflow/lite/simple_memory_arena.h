@@ -102,7 +102,7 @@ class SimpleMemoryArena {
   // again until Commit() is called & tensor allocations are resolved.
   TfLiteStatus ReleaseBuffer();
 
-  size_t GetBufferSize() { return underlying_buffer_size_; }
+  size_t GetBufferSize() const { return underlying_buffer_size_; }
 
   std::intptr_t BasePointer() const {
     return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
