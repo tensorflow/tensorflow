@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
@@ -24,6 +28,25 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow::fingerprinting {
+
+namespace {
+
+// This function mutates the GraphDef, changing the names of the Function nodes.
+void CanonicalizeNodes(GraphDef* orig_graph_def) {
+  for (NodeDef& node : *orig_graph_def->mutable_node()) {
+    // Check if this is a function call.
+    if (grappler::IsPartitionedCall(node) ||
+        grappler::IsStatefulPartitionedCall(node)) {
+      // TODO(b/240174577): Strip UID from the end of function names.
+      // Regularize "f" attribute, the function name for PartitionedCall and
+      // and StatefulPartitionedCall ops.
+      node.mutable_attr()->find("f")->second.mutable_func()->set_name(
+          "FINGERPRINT_PASS");
+    }
+  }
+}
+
+}  // namespace
 
 uint64 ComputeHash(const GraphDef& graph_def) {
   std::string graph_def_string;
@@ -35,6 +58,15 @@ FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph) {
   FingerprintDef fingerprint_def;
   fingerprint_def.set_graph_def_hash(ComputeHash(metagraph.graph_def()));
   return fingerprint_def;
+}
+
+// The GraphDef contains two main sections: a list of nodes and the
+// FunctionDefLibrary. Canonicalization treats these two sections separately.
+void CanonicalizeGraphDef(GraphDef& graph_def) {
+  CanonicalizeNodes(&graph_def);
+  // TODO(b/240173815): Complete canonicalization of the FunctionDefLibrary.
+  // For now, we just clear the FunctionDefLibrary.
+  graph_def.mutable_library()->Clear();
 }
 
 }  // namespace tensorflow::fingerprinting
