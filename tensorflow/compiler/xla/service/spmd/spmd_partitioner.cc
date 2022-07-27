@@ -3037,12 +3037,7 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
       partitioned_non_slice_dims.push_back(i);
     }
   }
-  if (any_non_constant_sliced_dim) {
-    if (partitioned_non_slice_dims.empty() ||
-        hlo->operand(0)->sharding() != hlo->operand(1)->sharding()) {
-      return DefaultAction(hlo);
-    }
-
+  auto handle_with_replicate_slice_dims = [&]() {
     HloSharding replicated_sharding =
         hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
             hlo->operand(0)->sharding(), partitioned_non_slice_dims);
@@ -3061,6 +3056,12 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
     dus->set_sharding(replicated_sharding);
     SetPartitionedHlo(hlo, PartitionedHlo(dus, base.base_shape(), base.state())
                                .Reshard(hlo->sharding()));
+  };
+  if (any_non_constant_sliced_dim) {
+    if (partitioned_non_slice_dims.empty()) {
+      return DefaultAction(hlo);
+    }
+    handle_with_replicate_slice_dims();
     return OkStatus();
   }
 
@@ -3120,7 +3121,8 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
               ((partitioned_slice_offsets[i] + update_shape.dimensions(dim) -
                 1) /
                per_partition_size)) {
-        return DefaultAction(hlo);
+        handle_with_replicate_slice_dims();
+        return Status::OK();
       }
 
       // within_partition = (offset >= partition_id * per_partition_size) &&
