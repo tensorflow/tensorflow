@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/optional_ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/kernels/data/optional_ops_util.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
 namespace tensorflow {

@@ -2976,6 +2976,30 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tensor_list",
+    srcs = ["tensor_list.cc"],
+    hdrs = ["tensor_list.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:refcount",
+    ],
+)
+
+cc_library(
+    name = "tensor_list_util",
+    srcs = ["tensor_list_util.cc"],
+    hdrs = ["tensor_list_util.h"],
+    deps = [
+        ":tensor_list",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "list_kernels",
     srcs = ["list_kernels.cc"],
@@ -2987,10 +3011,10 @@ tf_kernel_library(
     deps = [
         ":concat_lib",
         ":fill_functor",
+        ":tensor_list",
+        ":tensor_list_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/framework:tensor_list",
-        "//tensorflow/core/framework:tensor_list_util",
         "//tensorflow/stream_executor",
         "//third_party/eigen3",
     ],
@@ -3555,7 +3579,18 @@ cc_library(
 tf_kernel_library(
     name = "aggregate_ops",
     prefix = "aggregate_ops",
-    deps = MATH_DEPS + ["//tensorflow/core/framework:variant_ops_util"],
+    deps = MATH_DEPS + [":variant_ops_util"],
+)
+
+tf_kernel_library(
+    name = "variant_ops_util",
+    srcs = ["variant_ops_util.cc"],
+    hdrs = ["variant_ops_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_kernel_library(
@@ -6475,6 +6510,7 @@ filegroup(
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
         "tensor_array.h",
+        "tensor_list.h",
         "tensor_map.h",
         "tile_functor.h",
         "tile_ops_impl.h",

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_LIST_H_
-#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_LIST_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TENSOR_LIST_H_
+#define TENSORFLOW_CORE_KERNELS_TENSOR_LIST_H_
 
 #include <utility>
 
@@ -157,4 +157,4 @@ static_assert(Variant::CanInlineType<TensorList>() || sizeof(void*) < 8,
 #endif
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_LIST_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TENSOR_LIST_H_

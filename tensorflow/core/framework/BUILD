@@ -315,7 +315,6 @@ filegroup(
         "op_requires.h",
         "ops_util.cc",
         "ops_util.h",
-        "optional_ops_util.h",
         "register_types.h",
         "resource_base.h",
         "resource_handle.cc",
@@ -323,8 +322,6 @@ filegroup(
         "tensor.cc",
         "tensor.h",
         "tensor_key.h",
-        "tensor_list.h",
-        "tensor_list_util.h",
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
@@ -341,7 +338,6 @@ filegroup(
         "variant_encode_decode.h",
         "variant_op_registry.cc",
         "variant_op_registry.h",
-        "variant_ops_util.h",
         "variant_tensor_data.cc",
         "variant_tensor_data.h",
     ],
@@ -1399,54 +1395,6 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/client:__pkg__",
         "//tensorflow/python/util:__pkg__",
-    ],
-)
-
-cc_library(
-    name = "optional_ops_util",
-    srcs = ["optional_ops_util.cc"],
-    hdrs = ["optional_ops_util.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "tensor_list",
-    srcs = ["tensor_list.cc"],
-    hdrs = ["tensor_list.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/framework:tensor_shape_proto_cc",
-        "//tensorflow/core/lib/core:refcount",
-    ],
-)
-
-cc_library(
-    name = "tensor_list_util",
-    srcs = ["tensor_list_util.cc"],
-    hdrs = ["tensor_list_util.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tensor_list",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "variant_ops_util",
-    srcs = ["variant_ops_util.cc"],
-    hdrs = ["variant_ops_util.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
 )
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_VARIANT_OPS_UTIL_H_
-#define TENSORFLOW_CORE_FRAMEWORK_VARIANT_OPS_UTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_VARIANT_OPS_UTIL_H_
+#define TENSORFLOW_CORE_KERNELS_VARIANT_OPS_UTIL_H_
 
 #include <functional>
 
@@ -30,4 +30,4 @@ void AddNVariant(OpKernelContext* ctx,
                      binary_add_variant);
 }  //  end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_VARIANT_OPS_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_VARIANT_OPS_UTIL_H_

@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/optional_ops_util.h"
+#include "tensorflow/core/kernels/data/optional_ops_util.h"
 
 #include <functional>
 #include <utility>

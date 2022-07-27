@@ -70,8 +70,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_list.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/tensor_list.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
