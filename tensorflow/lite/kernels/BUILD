@@ -644,7 +644,6 @@ BUILTIN_KERNEL_SRCS = [
     "segment_sum.cc",
     "select.cc",
     "shape.cc",
-    "sign.cc",
     "skip_gram.cc",
     "slice.cc",
     "space_to_batch_nd.cc",
@@ -813,7 +812,7 @@ cc_library(
         "random_standard_normal_custom.cc",
         "random_uniform_custom.cc",
         "roll.cc",
-        "sign_custom.cc",
+        "sign.cc",
         "table.cc",
         "unidirectional_sequence_gru.cc",
     ],
@@ -1684,9 +1683,9 @@ cc_test(
 )
 
 cc_test(
-    name = "sign_custom_test",
+    name = "sign_test",
     size = "small",
-    srcs = ["sign_custom_test.cc"],
+    srcs = ["sign_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",
@@ -1694,20 +1693,6 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "sign_test",
-    size = "small",
-    srcs = ["sign_test.cc"],
-    deps = [
-        ":test_main",
-        ":test_util",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 

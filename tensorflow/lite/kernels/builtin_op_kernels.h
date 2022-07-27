@@ -151,7 +151,6 @@ TfLiteRegistration* Register_SEGMENT_SUM();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SHAPE();
-TfLiteRegistration* Register_SIGN();
 TfLiteRegistration* Register_SIN();
 TfLiteRegistration* Register_SKIP_GRAM();
 TfLiteRegistration* Register_SLICE();
