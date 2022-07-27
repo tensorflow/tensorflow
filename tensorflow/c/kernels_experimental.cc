@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/tensor_list_util.h"
 #include "tensorflow/core/kernels/variant_ops_util.h"
 #include "tensorflow/core/platform/abi.h"
-#endif
+#endif  // IS_MOBILE_PLATFORM
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
