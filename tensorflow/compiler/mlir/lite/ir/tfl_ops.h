@@ -44,6 +44,12 @@ namespace TFL {
 
 typedef TFLDialect TensorFlowLiteDialect;
 
+// The Control type is a token-like value that models control dependencies
+class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
+ public:
+  using Base::Base;
+};
+
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 
 }  // end namespace TFL
