@@ -18,13 +18,41 @@ limitations under the License.
 
 #include <map>
 #include <set>
+#include <string>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
+
+class ThinPointwiseFuser {
+ public:
+  void Init(CalculationsPrecision precision);
+  void AddConvNode(const GpuInfo& gpu_info,
+                   const Convolution2DAttributes& attr);
+  void AddReluNode(const ReLUAttributes& attr);
+  void AddDepthwiseConvNode(const GpuInfo& gpu_info,
+                            const TensorDescriptor& src_desc,
+                            const DepthwiseConvolution2DAttributes& attr);
+  GPUOperation Finalize(const GpuInfo& gpu_info,
+                        const TensorDescriptor& dst_desc);
+
+ private:
+  void AddConvData(const Convolution2DAttributes& conv_attr);
+  void AddDepthwiseConvData(const DepthwiseConvolution2DAttributes& dw_attr);
+  void CreateConstantsGpuBuffer(const GpuInfo& gpu_info);
+  OperationDef op_def_;
+  Arguments args_;
+  std::string code_;
+  std::vector<std::string> outputs_;
+  std::vector<float> gpu_data_;
+  int weights_counter_ = 0;
+};
 
 GPUOperation CreateDepthwiseConvPlus1x1Conv(
     const OperationDef& definition, const GpuInfo& gpu_info,
