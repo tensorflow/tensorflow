@@ -1621,7 +1621,17 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(last_collective_launch_event));
   }
 
-  if (input_deps.empty() && cheap_computation_) {
+  bool execute_inline = cheap_computation_;
+
+  // Overwrite `execute_inline` if it is specified in the ExecuteOptions.
+  if (options.execution_mode == ExecuteOptions::ExecutionMode::kAsynchronous) {
+    execute_inline = false;
+  } else if (options.execution_mode ==
+             ExecuteOptions::ExecutionMode::kSynchronous) {
+    execute_inline = true;
+  }
+
+  if (input_deps.empty() && execute_inline) {
     // Synchronously call generated function.
     execute_event = GetOrCreateReadyEvent(host_context);
 

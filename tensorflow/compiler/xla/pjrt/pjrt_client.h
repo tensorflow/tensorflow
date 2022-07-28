@@ -1059,6 +1059,13 @@ struct ExecuteOptions {
   // These callbacks must outlive the execution.
   absl::Span<const std::vector<SendCallback>> send_callbacks;
   absl::Span<const std::vector<RecvCallback>> recv_callbacks;
+
+  // The `execution_mode` decides whether the execution will be invoked in the
+  // caller thread or launched to a separate thread. By default, the
+  // implementation may choose either strategy or use a heuristic to decide.
+  // Currently it is only applied to CPU implementations
+  enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
+  ExecutionMode execution_mode = ExecutionMode::kDefault;
 };
 
 // Static device memory usage for a compiled program.

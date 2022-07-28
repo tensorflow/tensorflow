@@ -62,7 +62,10 @@ std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(PjRtClient* client,
   return client->Compile(computation, options).value();
 }
 
-TEST(PjRtClientTest, Execute) {
+class PjRtClientTest
+    : public ::testing::TestWithParam<ExecuteOptions::ExecutionMode> {};
+
+TEST_P(PjRtClientTest, Execute) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
@@ -77,8 +80,11 @@ TEST(PjRtClientTest, Execute) {
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->addressable_devices()[0]));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, executable->Execute({{buffer.get()}}, /*options=*/{}));
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute({{buffer.get()}}, options));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
@@ -88,7 +94,7 @@ TEST(PjRtClientTest, Execute) {
                                      *literal));
 }
 
-TEST(PjRtClientTest, ExecuteWithDonation) {
+TEST_P(PjRtClientTest, ExecuteWithDonation) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
@@ -102,8 +108,11 @@ TEST(PjRtClientTest, ExecuteWithDonation) {
                        PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
                        client->addressable_devices()[0]));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, executable->Execute({{buffer.get()}}, /*options=*/{}));
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute({{buffer.get()}}, options));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
@@ -113,7 +122,7 @@ TEST(PjRtClientTest, ExecuteWithDonation) {
                                      *literal));
 }
 
-TEST(PjRtClientTest, ExecuteWithConcurrentUsage) {
+TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
@@ -128,6 +137,9 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsage) {
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->addressable_devices()[0]));
 
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
   constexpr int kNumThreads = 4;
   tensorflow::thread::ThreadPool thread_pool(
       tensorflow::Env::Default(), "ExecuteWithConcurrentUsage", kNumThreads);
@@ -137,8 +149,7 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsage) {
   std::vector<std::unique_ptr<PjRtBuffer>> results(kConcurrency);
   for (int i = 0; i < kConcurrency; ++i) {
     thread_pool.Schedule([&, &result = results[i]]() {
-      auto results =
-          executable->Execute({{buffer.get()}}, /*options=*/{}).value();
+      auto results = executable->Execute({{buffer.get()}}, options).value();
       CHECK_EQ(results.size(), 1);
       CHECK_EQ(results[0].size(), 1);
       result = std::move(results[0][0]);
@@ -156,7 +167,7 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsage) {
   }
 }
 
-TEST(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
+TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   auto executable =
       MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
@@ -173,6 +184,9 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
                        PjRtClient::HostBufferSemantics::kZeroCopy, nullptr,
                        client->addressable_devices()[0]));
 
+  ExecuteOptions options;
+  options.execution_mode = GetParam();
+
   constexpr int kNumThreads = 4;
   tensorflow::thread::ThreadPool thread_pool(
       tensorflow::Env::Default(), "ExecuteWithConcurrentUsageAndDonation",
@@ -183,7 +197,7 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
 
   for (int i = 0; i < kConcurrentUsage; ++i) {
     thread_pool.Schedule([&]() {
-      auto results_or = executable->Execute({{buffer.get()}}, /*options=*/{});
+      auto results_or = executable->Execute({{buffer.get()}}, options);
       // For this test, we don't care whether this execution will fail or not,
       // as this test is to test donation logic. But if the execution succeeds,
       // the result should be correct.
@@ -203,8 +217,7 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   // The donation must succeed with concurrent usages.
   thread_pool.Schedule([&]() {
     auto results =
-        executable_with_donation->Execute({{buffer.get()}}, /*options=*/{})
-            .value();
+        executable_with_donation->Execute({{buffer.get()}}, options).value();
     CHECK_EQ(results.size(), 1);
     CHECK_EQ(results[0].size(), 1);
     result = std::move(results[0][0]);
@@ -217,6 +230,11 @@ TEST(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    PjRtClientTestSuite, PjRtClientTest,
+    ::testing::Values(ExecuteOptions::ExecutionMode::kSynchronous,
+                      ExecuteOptions::ExecutionMode::kAsynchronous));
 
 TEST(PjRtClientTest, CopyToDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
