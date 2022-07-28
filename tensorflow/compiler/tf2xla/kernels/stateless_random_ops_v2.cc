@@ -248,7 +248,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
-    Status status = ctx->ConstantInputAsShape(0, &shape);
+    TensorShape static_shape;
+    Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, uniform);
       return;
@@ -397,7 +398,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
+                            0, &shape, xla::ValueInferenceMode::kUpperBound));
 
     const int key_input_idx = 1;
     const int counter_input_idx = 2;
@@ -427,7 +429,20 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     auto result = xla::NormalFloatingPointDistribution(key, counter, generator,
                                                        xla_shape);
     auto normal = MaybeConvertF32ToBF16(result.value, dtype_);
-    ctx->SetOutput(0, normal);
+
+    // If the input shape is constant, no need to set dimension sizes.
+    // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
+    TensorShape static_shape;
+    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    if (status.ok()) {
+      ctx->SetOutput(0, normal);
+      return;
+    }
+
+    auto result_or = xla::SetAllDimensionSizes(&ctx->value_inference(), normal,
+                                               ctx->Input(0));
+    OP_REQUIRES_OK(ctx, result_or.status());
+    ctx->SetOutput(0, result_or.ValueOrDie());
   }
 
  private:

@@ -336,23 +336,26 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
                        tf_device::ReplicateOp replicate) {
   int64_t num_replicas = replicate.n();
   if (num_replicas == 1) return;
+
+  // Set execute_launch when there is exactly one LaunchOp with a
+  // TPUExecuteAndUpdateVariablesOp. More than one means there is model
+  // parallelism, which is not supported with TPUReshardVariables. None
+  // means there is no TPU computation.
   tf_device::LaunchOp execute_launch;
-  for (auto execute_launch_op :
-       replicate.GetBody().getOps<tf_device::LaunchOp>()) {
+  replicate.walk([&](tf_device::LaunchOp execute_launch_op) {
     if (!execute_launch_op.WrapsSingleOp() ||
         !llvm::isa<TF::TPUExecuteAndUpdateVariablesOp>(
             execute_launch_op.GetBody().front()))
-      continue;
-
+      return WalkResult::advance();
     if (execute_launch == nullptr) {
       execute_launch = execute_launch_op;
-    } else {
-      // We only support one execute op inside replicate.
-      execute_launch = nullptr;
-      break;
+      return WalkResult::advance();
     }
-  }
+    execute_launch = nullptr;
+    return WalkResult::interrupt();
+  });
   if (!execute_launch) return;
+
   auto execute = llvm::cast<TF::TPUExecuteAndUpdateVariablesOp>(
       execute_launch.GetBody().front());
   auto compile =
@@ -485,11 +488,7 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    // Model parallelism is not supported, and can be detected when a
-    // `tf_device.parallel_execute` op in the `tf_device.replicate` is present.
-    if (replicate &&
-        replicate.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
-      HandleReplicateOp(while_op, replicate);
+    if (replicate) HandleReplicateOp(while_op, replicate);
   });
 }
 

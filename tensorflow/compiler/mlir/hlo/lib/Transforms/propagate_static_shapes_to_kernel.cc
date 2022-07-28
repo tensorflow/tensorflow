@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
 #include "mlir-hlo/Transforms/passes.h"
+#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Support/LLVM.h"
@@ -198,7 +198,8 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   }
   rewriter.updateRootInPlace(funcOp, [&] {
     funcOp.eraseArguments(argsToDrop);
-    auto argTypes = llvm::to_vector(TypeRange(funcOp.getArguments()));
+    auto argTypes =
+        llvm::to_vector(TypeRange{ValueRange{funcOp.getArguments()}});
     funcOp.setType(LLVM::LLVMFunctionType::get(
         funcOp.getFunctionType().getReturnType(), argTypes));
   });

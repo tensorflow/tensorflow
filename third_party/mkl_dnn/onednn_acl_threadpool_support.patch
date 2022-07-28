@@ -1,0 +1,682 @@
+diff --git a/src/cpu/aarch64/CMakeLists.txt b/src/cpu/aarch64/CMakeLists.txt
+index 0553d4ae6..612d198b2 100644
+--- a/src/cpu/aarch64/CMakeLists.txt
++++ b/src/cpu/aarch64/CMakeLists.txt
+@@ -1,5 +1,5 @@
+ #*******************************************************************************
+-# Copyright 2020 Arm Ltd. and affiliates
++# Copyright 2020-2022 Arm Ltd. and affiliates
+ # Copyright 2020-2021 FUJITSU LIMITED
+ #
+ # Licensed under the Apache License, Version 2.0 (the "License");
+@@ -34,6 +34,15 @@ if(NOT DNNL_AARCH64_USE_ACL)
+     list(REMOVE_ITEM SOURCES ${ACL_FILES})
+ endif()
+ 
++# If the runtime is not THREADPOOL remove threadpool_scheduler sources.
++if(NOT DNNL_CPU_RUNTIME STREQUAL "THREADPOOL")
++    list(APPEND ACL_THREADPOOL_FILES
++        ${CMAKE_CURRENT_SOURCE_DIR}/acl_threadpool_scheduler.cpp
++        ${CMAKE_CURRENT_SOURCE_DIR}/acl_threadpool_scheduler.hpp
++    )
++    list(REMOVE_ITEM SOURCES ${ACL_THREADPOOL_FILES})
++endif()
++
+ set(OBJ_LIB ${DNNL_LIBRARY_NAME}_cpu_aarch64)
+ add_library(${OBJ_LIB} OBJECT ${SOURCES})
+ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
+diff --git a/src/cpu/aarch64/acl_binary.hpp b/src/cpu/aarch64/acl_binary.hpp
+index 77adb45be..551a075d8 100644
+--- a/src/cpu/aarch64/acl_binary.hpp
++++ b/src/cpu/aarch64/acl_binary.hpp
+@@ -185,9 +185,6 @@ struct acl_binary_t : public primitive_t {
+                 return status::unimplemented;
+             }
+ 
+-            // Initialize the ACL threads
+-            acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/acl_eltwise.hpp b/src/cpu/aarch64/acl_eltwise.hpp
+index a55b89272..35361762c 100644
+--- a/src/cpu/aarch64/acl_eltwise.hpp
++++ b/src/cpu/aarch64/acl_eltwise.hpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2021 Arm Ltd. and affiliates
++* Copyright 2021-2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -78,8 +78,6 @@ struct acl_eltwise_fwd_t : public primitive_t {
+                     aep_, data_md_, *desc(), *attr());
+             if (conf_status != status::success) return status::unimplemented;
+ 
+-            acl_common_utils::acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/acl_gemm_convolution.hpp b/src/cpu/aarch64/acl_gemm_convolution.hpp
+index 3e7542b6b..2c26fa182 100644
+--- a/src/cpu/aarch64/acl_gemm_convolution.hpp
++++ b/src/cpu/aarch64/acl_gemm_convolution.hpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2020-2021 Arm Ltd. and affiliates
++* Copyright 2020-2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -108,8 +108,6 @@ struct acl_gemm_convolution_fwd_t : public primitive_t {
+                     src_md_, weights_md_, dst_md_, bias_md_, *desc(), *attr());
+             if (conf_status != status::success) return status::unimplemented;
+ 
+-            acl_common_utils::acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp b/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp
+index 0a0021aee..d71f3d116 100644
+--- a/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp
++++ b/src/cpu/aarch64/acl_indirect_gemm_convolution.hpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2021 Arm Ltd. and affiliates
++* Copyright 2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -109,8 +109,6 @@ struct acl_indirect_gemm_convolution_fwd_t : public primitive_t {
+                     *attr());
+             if (conf_status != status::success) return status::unimplemented;
+ 
+-            acl_common_utils::acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/acl_inner_product.hpp b/src/cpu/aarch64/acl_inner_product.hpp
+index dd742ea0b..94e379d5f 100644
+--- a/src/cpu/aarch64/acl_inner_product.hpp
++++ b/src/cpu/aarch64/acl_inner_product.hpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2021 Arm Ltd. and affiliates
++* Copyright 2021-2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -74,7 +74,6 @@ struct acl_inner_product_fwd_t : public primitive_t {
+         DECLARE_COMMON_PD_T("inner_product:acl", acl_inner_product_fwd_t);
+ 
+         status_t init(engine_t *engine) {
+-            using namespace utils;
+ 
+             const bool ok = is_fwd() && !has_zero_dim_memory()
+                     && expect_data_types(data_type::f32, data_type::f32,
+@@ -92,8 +91,6 @@ struct acl_inner_product_fwd_t : public primitive_t {
+             // conf_status here can be either status::success or status::unimplemented
+             if (conf_status != status::success) return conf_status;
+ 
+-            acl_common_utils::acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/acl_softmax.hpp b/src/cpu/aarch64/acl_softmax.hpp
+index a4bfd0c3b..4ff7e0f3a 100644
+--- a/src/cpu/aarch64/acl_softmax.hpp
++++ b/src/cpu/aarch64/acl_softmax.hpp
+@@ -202,8 +202,6 @@ struct acl_softmax_fwd_t : public primitive_t {
+                 return status::unimplemented;
+             }
+ 
+-            acl_common_utils::acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/acl_thread.cpp b/src/cpu/aarch64/acl_thread.cpp
+new file mode 100644
+index 000000000..54b53f7c4
+--- /dev/null
++++ b/src/cpu/aarch64/acl_thread.cpp
+@@ -0,0 +1,80 @@
++/*******************************************************************************
++* Copyright 2022 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++#include "cpu/aarch64/acl_thread.hpp"
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++#include "cpu/aarch64/acl_threadpool_scheduler.hpp"
++#endif
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
++#include <thread>
++#endif
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++namespace acl_thread_utils {
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
++void acl_thread_bind() {
++    static std::once_flag flag_once;
++    // Cap the number of threads to 90% of the total core count
++    // to ensure Compute Library doesn't use too much resource
++    int capped_threads = (int)std::floor(0.9*std::thread::hardware_concurrency());
++    const int max_threads = std::min(capped_threads, dnnl_get_max_threads());
++
++    // arm_compute::Scheduler does not support concurrent access thus a
++    // workaround here restricts it to only one call
++    std::call_once(flag_once, [&]() {
++        arm_compute::Scheduler::get().set_num_threads(max_threads);
++    });
++}
++#endif
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++void acl_set_custom_scheduler() {
++    static std::once_flag flag_once;
++    // Create threadpool scheduler
++    std::shared_ptr<arm_compute::IScheduler> threadpool_scheduler
++            = std::make_unique<ThreadpoolScheduler>();
++    // set CUSTOM scheduler in ACL
++    std::call_once(flag_once,
++            [&]() { arm_compute::Scheduler::set(threadpool_scheduler); });
++}
++
++void acl_set_threadpool_num_threads() {
++    using namespace dnnl::impl::threadpool_utils;
++    static std::once_flag flag_once;
++    threadpool_interop::threadpool_iface *tp = get_active_threadpool();
++    // Check active threadpool
++    bool is_main = get_active_threadpool() == tp;
++    if (is_main) {
++        // Set num threads based on threadpool size
++        const int num_threads = (tp) ? dnnl_get_max_threads() : 1;
++        std::call_once(flag_once, [&]() {
++            arm_compute::Scheduler::get().set_num_threads(num_threads);
++        });
++    }
++}
++#endif
++
++} // namespace acl_thread_utils
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
+diff --git a/src/cpu/aarch64/acl_thread.hpp b/src/cpu/aarch64/acl_thread.hpp
+new file mode 100644
+index 000000000..46dde5eb0
+--- /dev/null
++++ b/src/cpu/aarch64/acl_thread.hpp
+@@ -0,0 +1,48 @@
++/*******************************************************************************
++* Copyright 2022 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#ifndef CPU_AARCH64_ACL_THREAD_HPP
++#define CPU_AARCH64_ACL_THREAD_HPP
++
++#include "common/dnnl_thread.hpp"
++
++#include "arm_compute/runtime/Scheduler.h"
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++namespace acl_thread_utils {
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
++void acl_thread_bind();
++#endif
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++// Retrieve threadpool size during primitive execution and set ThreadpoolScheduler num_threads
++void acl_set_custom_scheduler();
++void acl_set_threadpool_num_threads();
++#endif
++
++} // namespace acl_thread_utils
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
++
++#endif // CPU_AARCH64_ACL_THREAD_HPP
+\ No newline at end of file
+diff --git a/src/cpu/aarch64/acl_threadpool_scheduler.cpp b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+new file mode 100644
+index 000000000..34795432c
+--- /dev/null
++++ b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+@@ -0,0 +1,137 @@
++/*******************************************************************************
++* Copyright 2022 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++#include "cpu/aarch64/acl_threadpool_scheduler.hpp"
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++
++#include "cpu/aarch64/acl_thread.hpp"
++
++#include "common/counting_barrier.hpp"
++#include "common/dnnl_thread.hpp"
++
++#include "arm_compute/core/CPP/ICPPKernel.h"
++#include "arm_compute/core/Error.h"
++#include "arm_compute/core/Helpers.h"
++#include "arm_compute/core/Utils.h"
++#include "arm_compute/runtime/IScheduler.h"
++
++// BARRIER
++#include <atomic>
++#include <cassert>
++#include <chrono>
++#include <mutex>
++#include <thread>
++#include <condition_variable>
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++using namespace arm_compute;
++
++class ThreadFeeder {
++public:
++    explicit ThreadFeeder(unsigned int start = 0, unsigned int end = 0)
++        : _atomic_counter(start), _end(end) {}
++
++    /// Function to check the next element in the range if there is one.
++    bool get_next(unsigned int &next) {
++        next = atomic_fetch_add_explicit(
++                &_atomic_counter, 1u, std::memory_order_relaxed);
++        return next < _end;
++    }
++
++private:
++    std::atomic_uint _atomic_counter;
++    const unsigned int _end;
++};
++
++void process_workloads(std::vector<IScheduler::Workload> &workloads,
++        ThreadFeeder &feeder, const ThreadInfo &info) {
++    unsigned int workload_index = info.thread_id;
++    do {
++        ARM_COMPUTE_ERROR_ON(workload_index >= workloads.size());
++        workloads[workload_index](info);
++    } while (feeder.get_next(workload_index));
++}
++
++ThreadpoolScheduler::ThreadpoolScheduler() {
++    _num_threads = num_threads_hint();
++}
++
++ThreadpoolScheduler::~ThreadpoolScheduler() = default;
++
++unsigned int ThreadpoolScheduler::num_threads() const {
++    return _num_threads;
++}
++
++void ThreadpoolScheduler::set_num_threads(unsigned int num_threads) {
++    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
++    _num_threads = num_threads == 0 ? num_threads_hint() : num_threads;
++}
++
++void ThreadpoolScheduler::schedule(ICPPKernel *kernel, const Hints &hints) {
++    ITensorPack tensors;
++    // Retrieve threadpool size during primitive execution and set ThreadpoolScheduler num_threads
++    acl_thread_utils::acl_set_threadpool_num_threads();
++    schedule_common(kernel, hints, kernel->window(), tensors);
++}
++
++void ThreadpoolScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints,
++        const Window &window, ITensorPack &tensors) {
++    // Retrieve threadpool size during primitive execution and set ThreadpoolScheduler num_threads
++    acl_thread_utils::acl_set_threadpool_num_threads();
++    schedule_common(kernel, hints, window, tensors);
++}
++
++void ThreadpoolScheduler::run_workloads(
++        std::vector<arm_compute::IScheduler::Workload> &workloads) {
++
++    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
++
++    const unsigned int num_threads
++            = std::min(static_cast<unsigned int>(_num_threads),
++                    static_cast<unsigned int>(workloads.size()));
++    if (num_threads < 1) { return; }
++    ThreadFeeder feeder(num_threads, workloads.size());
++    using namespace dnnl::impl::threadpool_utils;
++    dnnl::threadpool_interop::threadpool_iface *tp = get_active_threadpool();
++    bool is_async = tp->get_flags()
++            & dnnl::threadpool_interop::threadpool_iface::ASYNCHRONOUS;
++    counting_barrier_t b;
++    if (is_async) b.init(num_threads);
++    tp->parallel_for(num_threads, [&](int ithr, int nthr) {
++        bool is_main = get_active_threadpool() == tp;
++        if (is_main) activate_threadpool(tp);
++        // Make ThreadInfo local to avoid race conditions
++        ThreadInfo info;
++        info.cpu_info = &cpu_info();
++        info.num_threads = nthr;
++        info.thread_id = ithr;
++        process_workloads(workloads, feeder, info);
++        if (is_main) deactivate_threadpool();
++        if (is_async) b.notify();
++    });
++    if (is_async) b.wait();
++}
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
++
++#endif
+diff --git a/src/cpu/aarch64/acl_threadpool_scheduler.hpp b/src/cpu/aarch64/acl_threadpool_scheduler.hpp
+new file mode 100644
+index 000000000..aa450af2b
+--- /dev/null
++++ b/src/cpu/aarch64/acl_threadpool_scheduler.hpp
+@@ -0,0 +1,67 @@
++/*******************************************************************************
++* Copyright 2022 Arm Ltd. and affiliates
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++#ifndef CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP
++#define CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP
++
++#include "oneapi/dnnl/dnnl_config.h"
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++
++#include "arm_compute/runtime/IScheduler.h"
++#include "support/Mutex.h"
++
++namespace dnnl {
++namespace impl {
++namespace cpu {
++namespace aarch64 {
++
++class ThreadpoolScheduler final : public arm_compute::IScheduler {
++public:
++    ThreadpoolScheduler();
++    ~ThreadpoolScheduler();
++
++    /// Sets the number of threads the scheduler will use to run the kernels.
++    void set_num_threads(unsigned int num_threads) override;
++    /// Returns the number of threads that the ThreadpoolScheduler has in its pool.
++    unsigned int num_threads() const override;
++
++    /// Multithread the execution of the passed kernel if possible.
++    void schedule(arm_compute::ICPPKernel *kernel,
++            const arm_compute::IScheduler::Hints &hints) override;
++
++    /// Multithread the execution of the passed kernel if possible.
++    void schedule_op(arm_compute::ICPPKernel *kernel,
++            const arm_compute::IScheduler::Hints &hints,
++            const arm_compute::Window &window,
++            arm_compute::ITensorPack &tensors) override;
++
++protected:
++    /// Execute workloads in parallel using num_threads
++    void run_workloads(std::vector<Workload> &workloads) override;
++
++private:
++    uint _num_threads {};
++    arm_compute::Mutex _run_workloads_mutex {};
++};
++
++} // namespace aarch64
++} // namespace cpu
++} // namespace impl
++} // namespace dnnl
++
++#endif // DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++
++#endif // CPU_AARCH64_ACL_THREADPOOL_SCHEDULER_HPP
+diff --git a/src/cpu/aarch64/acl_utils.cpp b/src/cpu/aarch64/acl_utils.cpp
+index a69f14b6f..f65ce2991 100644
+--- a/src/cpu/aarch64/acl_utils.cpp
++++ b/src/cpu/aarch64/acl_utils.cpp
+@@ -101,18 +101,6 @@ bool acl_act_ok(alg_kind_t eltwise_activation) {
+             eltwise_logistic);
+ }
+ 
+-void acl_thread_bind() {
+-    static std::once_flag flag_once;
+-    // The threads in Compute Library are bound for the cores 0..max_threads-1
+-    // dnnl_get_max_threads() returns OMP_NUM_THREADS
+-    const int max_threads = dnnl_get_max_threads();
+-    // arm_compute::Scheduler does not support concurrent access thus a
+-    // workaround here restricts it to only one call
+-    std::call_once(flag_once, [&]() {
+-        arm_compute::Scheduler::get().set_num_threads(max_threads);
+-    });
+-}
+-
+ status_t tensor_info(arm_compute::TensorInfo &info, const memory_desc_t &md) {
+     const memory_desc_wrapper md_wrap(&md);
+     return tensor_info(info, md_wrap);
+diff --git a/src/cpu/aarch64/acl_utils.hpp b/src/cpu/aarch64/acl_utils.hpp
+index 565cde66a..6480c8de6 100644
+--- a/src/cpu/aarch64/acl_utils.hpp
++++ b/src/cpu/aarch64/acl_utils.hpp
+@@ -28,8 +28,6 @@
+ #include "common/primitive.hpp"
+ #include "common/utils.hpp"
+ 
+-#include "cpu/cpu_engine.hpp"
+-
+ #include "arm_compute/runtime/NEON/NEFunctions.h"
+ #include "arm_compute/runtime/Scheduler.h"
+ 
+@@ -44,7 +42,6 @@ arm_compute::DataType get_acl_data_t(const dnnl_data_type_t dt);
+ arm_compute::ActivationLayerInfo get_acl_act(const primitive_attr_t &attr);
+ arm_compute::ActivationLayerInfo get_acl_act(const eltwise_desc_t &ed);
+ bool acl_act_ok(alg_kind_t eltwise_activation);
+-void acl_thread_bind();
+ 
+ // Convert a memory desc to an arm_compute::TensorInfo. Note that memory desc
+ // must be blocking format, plain, dense and have no zero dimensions.
+diff --git a/src/cpu/aarch64/acl_winograd_convolution.hpp b/src/cpu/aarch64/acl_winograd_convolution.hpp
+index 29e44eb18..28797efb2 100644
+--- a/src/cpu/aarch64/acl_winograd_convolution.hpp
++++ b/src/cpu/aarch64/acl_winograd_convolution.hpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2020-2021 Arm Ltd. and affiliates
++* Copyright 2020-2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -107,8 +107,6 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
+ 
+             set_default_alg_kind(alg_kind::convolution_winograd);
+ 
+-            acl_common_utils::acl_thread_bind();
+-
+             return status::success;
+         }
+ 
+diff --git a/src/cpu/aarch64/matmul/acl_matmul.hpp b/src/cpu/aarch64/matmul/acl_matmul.hpp
+index 6ba17e86d..3b779f0ee 100644
+--- a/src/cpu/aarch64/matmul/acl_matmul.hpp
++++ b/src/cpu/aarch64/matmul/acl_matmul.hpp
+@@ -69,6 +69,7 @@ struct acl_matmul_t : public primitive_t {
+         DECLARE_COMMON_PD_T("gemm:acl", acl_matmul_t, USE_GLOBAL_SCRATCHPAD);
+ 
+         status_t init(engine_t *engine) {
++            using namespace acl_common_utils;
+             using smask_t = primitive_attr_t::skip_mask_t;
+             bool ok = src_md()->data_type == data_type::f32
+                     && weights_md()->data_type == data_type::f32
+@@ -85,9 +86,6 @@ struct acl_matmul_t : public primitive_t {
+                     weights_md_, dst_md_, bias_md_, *desc(), *attr());
+ 
+             if (conf_status != status::success) return status::unimplemented;
+-            // Number of threads in Compute Library is set by OMP_NUM_THREADS
+-            // dnnl_get_max_threads() == OMP_NUM_THREADS
+-            acl_common_utils::acl_thread_bind();
+ 
+             return status::success;
+         }
+diff --git a/src/cpu/cpu_engine.hpp b/src/cpu/cpu_engine.hpp
+index d8a1a02f2..508aef097 100644
+--- a/src/cpu/cpu_engine.hpp
++++ b/src/cpu/cpu_engine.hpp
+@@ -1,6 +1,6 @@
+ /*******************************************************************************
+ * Copyright 2016-2022 Intel Corporation
+-* Copyright 2020 Arm Ltd. and affiliates
++* Copyright 2020-2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -29,6 +29,10 @@
+ 
+ #include "cpu/platform.hpp"
+ 
++#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
++#include "cpu/aarch64/acl_thread.hpp"
++#endif
++
+ #define CPU_INSTANCE(...) \
+     impl_list_item_t( \
+             impl_list_item_t::type_deduction_helper_t<__VA_ARGS__::pd_t>()),
+@@ -163,6 +167,19 @@ public:
+     status_t engine_create(engine_t **engine, size_t index) const override {
+         assert(index == 0);
+         *engine = new cpu_engine_t();
++
++#if DNNL_AARCH64 && DNNL_AARCH64_USE_ACL
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
++        // Number of threads in Compute Library is set by OMP_NUM_THREADS
++        // dnnl_get_max_threads() == OMP_NUM_THREADS
++        dnnl::impl::cpu::aarch64::acl_thread_utils::acl_thread_bind();
++#endif
++
++#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
++        // Set ACL scheduler for threadpool runtime
++        dnnl::impl::cpu::aarch64::acl_thread_utils::acl_set_custom_scheduler();
++#endif
++#endif
+         return status::success;
+     };
+ };
+diff --git a/src/cpu/gemm/gemm.hpp b/src/cpu/gemm/gemm.hpp
+index 6da88af8a..9f14bd64b 100644
+--- a/src/cpu/gemm/gemm.hpp
++++ b/src/cpu/gemm/gemm.hpp
+@@ -1,5 +1,6 @@
+ /*******************************************************************************
+ * Copyright 2018-2021 Intel Corporation
++* Copyright 2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -29,6 +30,10 @@
+ #include "cpu/x64/cpu_isa_traits.hpp"
+ #endif
+ 
++#if DNNL_AARCH64
++#include "cpu/aarch64/cpu_isa_traits.hpp"
++#endif
++
+ namespace dnnl {
+ namespace impl {
+ namespace cpu {
+diff --git a/src/cpu/platform.cpp b/src/cpu/platform.cpp
+index 4f14a4286..5458043ee 100644
+--- a/src/cpu/platform.cpp
++++ b/src/cpu/platform.cpp
+@@ -1,6 +1,7 @@
+ /*******************************************************************************
+ * Copyright 2020-2022 Intel Corporation
+ * Copyright 2020 FUJITSU LIMITED
++* Copyright 2022 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -31,6 +32,10 @@
+ #include "cpu/x64/cpu_isa_traits.hpp"
+ #elif DNNL_AARCH64
+ #include "cpu/aarch64/cpu_isa_traits.hpp"
++#if DNNL_AARCH64_USE_ACL
++// For setting the number of threads for ACL
++#include "src/common/cpuinfo/CpuInfo.h"
++#endif
+ #endif
+ 
+ // For DNNL_X64 build we compute the timestamp using rdtsc. Use std::chrono for
+@@ -145,6 +150,8 @@ unsigned get_per_core_cache_size(int level) {
+ unsigned get_num_cores() {
+ #if DNNL_X64
+     return x64::cpu().getNumCores(Xbyak::util::CoreLevel);
++#elif DNNL_AARCH64_USE_ACL
++    return arm_compute::cpuinfo::num_threads_hint();
+ #else
+     return 1;
+ #endif

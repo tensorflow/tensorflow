@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/tensor_list.h"
+#include "tensorflow/core/kernels/tensor_list_util.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -964,52 +965,13 @@ class TensorListScatter : public OpKernel {
 template <typename Device>
 Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
                            const TensorList& b, TensorList* out) {
-  if (a.element_dtype != b.element_dtype) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors of different dtypes. One is ",
-        DataTypeString(a.element_dtype), " and the other is ",
-        DataTypeString(b.element_dtype));
-  }
-  out->element_dtype = a.element_dtype;
-  if (!a.element_shape.IsCompatibleWith(b.element_shape)) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors with incompatible element shapes. "
-        "One is ",
-        a.element_shape.DebugString(), " and the other is ",
-        b.element_shape.DebugString());
-  }
-
-  TF_RETURN_IF_ERROR(
-      a.element_shape.MergeWith(b.element_shape, &out->element_shape));
-  if (a.tensors().size() != b.tensors().size()) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors with different lengths. One is ",
-        a.tensors().size(), " and the other is ", b.tensors().size());
-  }
-  out->tensors().reserve(a.tensors().size());
-  for (int i = 0; i < a.tensors().size(); ++i) {
-    const Tensor& a_tensor = a.tensors()[i];
-    const Tensor& b_tensor = b.tensors()[i];
-    Tensor out_tensor;
-    TF_RETURN_IF_ERROR(
-        BinaryAddTensors<Device>(c, a_tensor, b_tensor, &out_tensor));
-    out->tensors().push_back(out_tensor);
-  }
-  return OkStatus();
+  return TensorListBinaryAdd(c, a, b, out, BinaryAddTensors<Device>);
 }
 
 template <typename Device>
 Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
                            TensorList* y) {
-  y->element_dtype = x.element_dtype;
-  y->element_shape = x.element_shape;
-  y->tensors().reserve(x.tensors().size());
-  for (const Tensor& t : x.tensors()) {
-    Tensor out_tensor;
-    TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, t, &out_tensor));
-    y->tensors().emplace_back(out_tensor);
-  }
-  return OkStatus();
+  return TensorListZerosLike(c, x, y, ZerosLikeTensor<Device>);
 }
 
 template <typename Device, typename T>

@@ -28,6 +28,9 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+ElementwiseDescriptor CreatePReLU(const PReLUAttributes& attr,
+                                  TensorDescriptor tensor_desc);
+
 GPUOperation CreatePReLU(const GpuInfo& gpu_info,
                          const OperationDef& definition,
                          const PReLUAttributes& attr);

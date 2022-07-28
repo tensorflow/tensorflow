@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 // TODO(b/238999986): Remove this.
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
@@ -51,7 +52,7 @@ typedef void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 typedef struct {
   size_t struct_size;
   void* priv;
-  PJRT_Error* error;
+  const PJRT_Error* error;
   // Has the lifetime of `error`.
   const char* message;  // out
   size_t message_size;  // out
@@ -243,6 +244,42 @@ const size_t PJRT_Device_IsAddressable_Args_STRUCT_SIZE =
 // Whether client can issue command to this device.
 typedef PJRT_Error* PJRT_Device_IsAddressable(
     PJRT_Device_IsAddressable_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  const char* name;
+  size_t name_size;
+  enum {
+    PJRT_Device_Attribute_kString = 0,
+    PJRT_Device_Attribute_kInt64,
+    PJRT_Device_Attribute_kInt64List
+  } type;
+  union {
+    int64_t int64_value;
+    const int64_t* int64_array_value;
+    const char* string_value;
+  };
+  // `value_size` is the number of elements for array/string and 1 for scalar
+  // values.
+  size_t value_size;
+} PJRT_Device_Attribute;
+const size_t PJRT_Device_Attribute_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Attribute, value_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  size_t num_attributes;              // out
+  PJRT_Device_Attribute* attributes;  // out
+} PJRT_Device_Attributes_Args;
+const size_t PJRT_Device_Attributes_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_Attributes_Args, attributes);
+
+// Returns an array of device specific attributes with attribute name, value
+// and value type.
+typedef PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
 
 typedef struct {
   size_t struct_size;
@@ -439,6 +476,22 @@ typedef struct {
   size_t struct_size;
   void* priv;
   PJRT_Buffer* buffer;
+  PJRT_Device* dst_device;
+  PJRT_Buffer* dst_buffer;  // out
+} PJRT_Buffer_CopyToDevice_Args;
+const size_t PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Buffer_CopyToDevice_Args, dst_buffer);
+
+// Copies the buffer to device `dst_device`. Caller is responsible for freeing
+// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
+// buffer is already on `dst_device`.
+typedef PJRT_Error* PJRT_Buffer_CopyToDevice(
+    PJRT_Buffer_CopyToDevice_Args* args);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
   bool is_on_cpu;  // out
 } PJRT_Buffer_IsOnCpu_Args;
 const size_t PJRT_Buffer_IsOnCpu_Args_STRUCT_SIZE =
@@ -471,6 +524,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_Attributes);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
 
@@ -485,6 +539,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Delete);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsDeleted);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
 } PJRT_Api;
 

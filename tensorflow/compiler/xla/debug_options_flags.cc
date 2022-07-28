@@ -98,7 +98,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
   opts.set_xla_cpu_enable_mlir_lowering(false);
-  opts.set_xla_gpu_enable_mlir_lowering(false);
+  opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(false);
   return opts;
 }
@@ -681,6 +681,11 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_simplify_scatters),
       flag_values->xla_gpu_simplify_scatters(),
       "Simplifies all Scatters to a canonical form."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_simplify_gathers",
+      bool_setter_for(&DebugOptions::set_xla_gpu_simplify_gathers),
+      flag_values->xla_gpu_simplify_gathers(),
+      "Simplifies all Gathers to a canonical form."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),

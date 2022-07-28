@@ -30,27 +30,6 @@ mlir_tablegen(generated_chlo_legalize_to_hlo.inc -gen-rewriters)
 add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 
 
-add_mlir_library(ChloPasses
-  chlo_legalize_to_hlo.cc
-  chlo_legalize_to_hlo_pass.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRChloLegalizeToHloIncGen
-  MLIRMhloPassIncGen
-  MLIRLmhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  ChloDialect
-  MLIRIR
-  MLIRPass
-  MLIRRewrite
-  MLIRTransformUtils
-)
-
 add_mlir_library(MhloPasses
   broadcast_propagation.cc
   collapse_elementwise_map.cc
@@ -213,6 +192,29 @@ add_mlir_library(HloToLinalgUtils
   MhloTypeConversion
   MLIRBufferizationDialect
   MLIRComplexDialect
+  MLIRIR
+  MLIRPass
+  MLIRRewrite
+  MLIRTransformUtils
+)
+
+add_mlir_library(ChloPasses
+  chlo_legalize_to_hlo.cc
+  chlo_legalize_to_hlo_pass.cc
+  sparse_chlo_legalize_to_linalg.cc
+
+  DEPENDS
+  MLIRhlo_opsIncGen
+  MLIRChloLegalizeToHloIncGen
+  MLIRMhloPassIncGen
+  MLIRLmhloPassIncGen
+
+  LINK_COMPONENTS
+  Core
+
+  LINK_LIBS PUBLIC
+  ChloDialect
+  HloToLinalgUtils
   MLIRIR
   MLIRPass
   MLIRRewrite

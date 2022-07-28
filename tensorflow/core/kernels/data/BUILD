@@ -615,6 +615,17 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "optional_ops_util",
+    srcs = ["optional_ops_util.cc"],
+    hdrs = ["optional_ops_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
     name = "optional_ops",
     srcs = ["optional_ops.cc"],
     hdrs = ["optional_ops.h"],
@@ -624,6 +635,7 @@ tf_kernel_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":optional_ops_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

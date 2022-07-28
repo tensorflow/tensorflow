@@ -38,6 +38,7 @@ filegroup(
     ] + [
         "math_utils.cc",
         "tensor_utils.cc",
+        "uniform_dequantize_op.cc",
         "uniform_quantized_dot_ops.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
@@ -46,6 +47,7 @@ filegroup(
 tf_kernel_library(
     name = "kernels",
     srcs = [
+        "uniform_dequantize_op.cc",
         "uniform_quantized_dot_ops.cc",
     ],
     deps = [
@@ -74,6 +76,20 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_dequantize_op_test",
+    size = "small",
+    srcs = ["uniform_dequantize_op_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

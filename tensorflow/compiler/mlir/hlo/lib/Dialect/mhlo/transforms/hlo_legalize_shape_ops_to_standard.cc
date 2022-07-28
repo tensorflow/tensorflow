@@ -52,8 +52,8 @@ struct ComputeReshapeShapeConversion
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     auto* ctx = op->getContext();
-    Value neg_one = rewriter.create<arith::ConstantIndexOp>(loc, -1);
-    auto index_type = rewriter.getIndexType();
+    Value negOne = rewriter.create<arith::ConstantIndexOp>(loc, -1);
+    auto indexType = rewriter.getIndexType();
     auto numElements = adaptor.getOperands()[0];
     auto targetShapeType =
         adaptor.getOperands()[1].getType().cast<ShapedType>();
@@ -66,13 +66,13 @@ struct ComputeReshapeShapeConversion
                         : rewriter.create<arith::IndexCastOp>(
                               loc, extentType, adaptor.getOperands()[1]);
     Value newShapeRank =
-        rewriter.create<shape::RankOp>(loc, index_type, newShape);
+        rewriter.create<shape::RankOp>(loc, indexType, newShape);
     // The product begins with a -1 seed which will cancel out a -1 extent in
     // the input shape if there is one. If there is not, this computed result
     // will never be used, so it's okay to compute a negative number of
     // elements.
     auto accountedNumEls =
-        rewriter.create<shape::ReduceOp>(loc, newShape, neg_one);
+        rewriter.create<shape::ReduceOp>(loc, newShape, negOne);
     {
       PatternRewriter::InsertionGuard g(rewriter);
       rewriter.setInsertionPointToEnd(accountedNumEls.getBody());
@@ -81,7 +81,7 @@ struct ComputeReshapeShapeConversion
       rewriter.create<shape::YieldOp>(
           loc, rewriter.create<arith::MulIOp>(loc, lhs, rhs).getResult());
     }
-    Value missing_dim_val = rewriter.create<arith::DivUIOp>(
+    Value missingDimVal = rewriter.create<arith::DivUIOp>(
         loc, numElements, accountedNumEls->getResult(0));
 
     // Create the final target shape with a possible dynamic extent replace with
@@ -92,12 +92,12 @@ struct ComputeReshapeShapeConversion
     auto gen = rewriter.create<tensor::GenerateOp>(
         loc, targetShapeType, dynamicExtent,
         [&](OpBuilder& b, Location loc, ValueRange indices) {
-          Value extent = b.create<shape::GetExtentOp>(loc, index_type, newShape,
+          Value extent = b.create<shape::GetExtentOp>(loc, indexType, newShape,
                                                       indices[0]);
           Value useMissingDimVal = b.create<arith::CmpIOp>(
-              loc, arith::CmpIPredicate::eq, extent, neg_one);
+              loc, arith::CmpIPredicate::eq, extent, negOne);
           Value dimVal = b.create<arith::SelectOp>(loc, useMissingDimVal,
-                                                   missing_dim_val, extent);
+                                                   missingDimVal, extent);
           dimVal = targetShapeType.getElementType().isIndex()
                        ? dimVal
                        : b.create<arith::IndexCastOp>(

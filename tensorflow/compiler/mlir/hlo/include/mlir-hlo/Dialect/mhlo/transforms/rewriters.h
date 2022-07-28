@@ -149,6 +149,11 @@ void populateRankSpecializationToSCFPatterns(MLIRContext *context,
 void populateSparseRewritingPatterns(RewritePatternSet *patterns,
                                      MLIRContext *ctx);
 
+/// Populates sparse ops in CHLO to linalg rewriting patterns.
+void populateLegalizeSparseChloToLinalgPatterns(MLIRContext *context,
+                                                TypeConverter &typeConverter,
+                                                RewritePatternSet *patterns);
+
 }  // namespace mhlo
 
 namespace chlo {

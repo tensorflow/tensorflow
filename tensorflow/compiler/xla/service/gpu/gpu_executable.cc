@@ -909,9 +909,14 @@ static Status ExecuteJitRt(const std::string& module_name,
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
 
-  // TODO(b/233902617): Collect diagnostic messages and report them back to the
-  // caller through errors.
+  // Collect all emitted diagnostic messages.
   jitrt::DiagnosticEngine diagnostic_engine;
+  std::string diagnostic;
+  diagnostic_engine.AddHandler([&](jitrt::Diagnostic& d) {
+    llvm::raw_string_ostream(diagnostic) << d.str();
+    return mlir::success();
+  });
+
   opts.diagnostic_engine = &diagnostic_engine;
 
   // Get the default executable. We do not support specialization because
@@ -920,9 +925,12 @@ static Status ExecuteJitRt(const std::string& module_name,
 
   // Execute with the prepared call frame.
   executable.Execute(call_frame, opts);
-  if (auto err = executable.ReturnResults(converter, &call_frame))
-    return InternalError("Failed to execute JitRt executable: %s.",
-                         tfrt::StrCat(err));
+  if (auto err = executable.ReturnResults(converter, &call_frame)) {
+    return InternalError(
+        "Failed to execute JitRt executable: %s.",
+        tfrt::StrCat(err,
+                     diagnostic.empty() ? "" : tfrt::StrCat(": ", diagnostic)));
+  }
 
   return MaybeSyncAndProfile(
       run_options, start_micros,

@@ -656,11 +656,12 @@ inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
 #endif
 
 template <typename IndicesT, typename UpdatesT>
-inline void ScatterNd(const RuntimeShape& indices_shape,
-                      const IndicesT* indices_data,
-                      const RuntimeShape& updates_shape,
-                      const UpdatesT* updates_data,
-                      const RuntimeShape& output_shape, UpdatesT* output_data) {
+inline TfLiteStatus ScatterNd(const RuntimeShape& indices_shape,
+                              const IndicesT* indices_data,
+                              const RuntimeShape& updates_shape,
+                              const UpdatesT* updates_data,
+                              const RuntimeShape& output_shape,
+                              UpdatesT* output_data) {
   ruy::profiler::ScopeLabel label("ScatterNd");
 
   int n_slices = 1;
@@ -683,18 +684,24 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
     remain_flat_size = dims_to_count[i];
   }
 
+  if (n_slices * slice_size > updates_shape.FlatSize()) {
+    return kTfLiteError;
+  }
   memset(output_data, 0, sizeof(UpdatesT) * output_flat_size);
   for (int i = 0; i < n_slices; ++i) {
     int to_pos = 0;
     for (int j = 0; j < indices_nd; ++j) {
       IndicesT idx = indices_data[i * indices_nd + j];
-      TFLITE_DCHECK(0 <= idx && idx < output_shape.Dims(j));
       to_pos += idx * dims_to_count[j];
+    }
+    if (to_pos < 0 || to_pos + slice_size > output_flat_size) {
+      return kTfLiteError;
     }
     for (int j = 0; j < slice_size; j++) {
       output_data[to_pos + j] += updates_data[i * slice_size + j];
     }
   }
+  return kTfLiteOk;
 }
 
 template <typename T>

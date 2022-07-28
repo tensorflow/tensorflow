@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/test.h"
@@ -33,6 +36,10 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace {
+
+using ::testing::Property;
+using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
 
 #if defined(PLATFORM_GOOGLE)
 using ::testing::EqualsProto;
@@ -477,6 +484,85 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
                        }
                   )pb")));
 #endif
+}
+
+TEST(XPlanuUtilsTest, TestInstantEventDoesNotFail) {
+  XPlane xplane;
+  XPlaneBuilder xplane_builder(&xplane);
+  XEventMetadata* event_metadata1 = xplane_builder.GetOrCreateEventMetadata(1);
+  XEventMetadata* event_metadata2 = xplane_builder.GetOrCreateEventMetadata(2);
+
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event1 = line.AddEvent(*event_metadata1);
+  XEventBuilder event2 = line.AddEvent(*event_metadata2);
+
+  event1.SetOffsetNs(1);
+  event1.SetDurationNs(0);
+  event2.SetOffsetNs(1);
+  event2.SetDurationNs(0);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  EXPECT_THAT(aggregated_xplane.lines(),
+              UnorderedElementsAre(Property(&XLine::events, SizeIs(2))));
+}
+
+TEST(XplaneutilsTest, TestEventMetadataStatsAreCopied) {
+  XPlane xplane;
+  XPlaneBuilder xplane_builder(&xplane);
+  XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
+
+  XStatsBuilder<XEventMetadata> stats(event_metadata, &xplane_builder);
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      "TestFunction");
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event = line.AddEvent(*event_metadata);
+  event.SetDurationNs(0);
+  event.SetOffsetNs(0);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  XPlaneVisitor visitor = CreateTfXPlaneVisitor(&aggregated_xplane);
+
+  XEventMetadataVisitor metadata_visitor(&visitor, visitor.GetEventMetadata(1));
+  std::optional<XStatVisitor> stat = metadata_visitor.GetStat(StatType::kTfOp);
+
+  ASSERT_TRUE(stat.has_value());
+  EXPECT_EQ(stat->Name(), "tf_op");
+  EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
+}
+
+TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
+  XPlane xplane;
+  XPlaneBuilder xplane_builder(&xplane);
+  XEventMetadata* event_metadata = xplane_builder.GetOrCreateEventMetadata(1);
+
+  XStatsBuilder<XEventMetadata> stats(event_metadata, &xplane_builder);
+  stats.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      *xplane_builder.GetOrCreateStatMetadata("TestFunction"));
+  XLineBuilder line = xplane_builder.GetOrCreateLine(1);
+  line.SetName(kTensorFlowOpLineName);
+  XEventBuilder event = line.AddEvent(*event_metadata);
+  event.SetDurationNs(0);
+  event.SetOffsetNs(0);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  XPlaneVisitor visitor = CreateTfXPlaneVisitor(&aggregated_xplane);
+
+  XEventMetadataVisitor metadata_visitor(&visitor, visitor.GetEventMetadata(1));
+  std::optional<XStatVisitor> stat = metadata_visitor.GetStat(StatType::kTfOp);
+
+  ASSERT_TRUE(stat.has_value());
+  EXPECT_EQ(stat->Name(), "tf_op");
+  EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
 }
 
 }  // namespace

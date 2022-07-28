@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_NORMALIZATION_H_
 
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -58,6 +62,32 @@ class MeanStdDevNormalization : public GPUOperation {
 MeanStdDevNormalization CreateMeanStdDevNormalization(
     const OperationDef& definition, const GpuInfo& gpu_info, const BHWC& shape,
     float variance_bias = 1.0e-8f, bool two_step = true);
+
+// MeanStdDevNormalization fusion works with this subgraph
+//       input
+//       /    \
+//      |    mean
+//       \    /
+//     substraction
+//       /    \
+//      |      |
+//      |     pow
+//      |      |
+//      |     mean
+//      |      |
+//      |     add
+//      |      |
+//      |    rsqrt
+//      |      |
+//       \    /
+//    multiplication
+//          |
+//        output
+absl::Status TryMeanStdDevNormalization(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace gpu
 }  // namespace tflite

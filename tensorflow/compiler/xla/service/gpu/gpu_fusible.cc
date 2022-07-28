@@ -17,9 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <numeric>
+#include <optional>
 #include <stack>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -56,12 +60,23 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
+// Whether `instr` retains the most-minor non-degenerated dimension compared to
+// its 0th operand.
+bool RetainsMostMinorDimension(const HloInstruction& instr) {
+  return LayoutUtil::Minor(
+             ShapeUtil::DropDegenerateDimensions(instr.shape()).layout(), 0) ==
+         LayoutUtil::Minor(
+             ShapeUtil::DropDegenerateDimensions(instr.operand(0)->shape())
+                 .layout(),
+             0);
+}
+
 }  // namespace
 
-bool IsPhysicallyTransposing(const HloInstruction& instr) {
+bool ReadsUncoalesced(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
     for (const HloInstruction* fused_instr : instr.fused_instructions()) {
-      if (IsPhysicallyTransposing(*fused_instr)) {
+      if (ReadsUncoalesced(*fused_instr)) {
         return true;
       }
     }
@@ -69,8 +84,14 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
 
   // A fusion iterates over its output in physically-contiguous order. This
   // applies "upwards" to operands.  Only an operator that changes an operand's
-  // physical layout can create a "bad" memory access pattern.
-  return instr.opcode() == HloOpcode::kCopy ||
+  // physical layout can create an uncoalesced memory access pattern. Note that
+  // memory access does not need to be fully contiguous for coalescing. When the
+  // most-minor dimension is retained, coalescing may work to some extend.
+  return (instr.opcode() == HloOpcode::kCopy &&
+          !RetainsMostMinorDimension(instr)) ||
+         (instr.opcode() == HloOpcode::kReshape &&
+          !ShapeUtil::ReshapeIsBitcast(instr.operand(0)->shape(),
+                                       instr.shape())) ||
          (instr.opcode() == HloOpcode::kTranspose &&
           !ShapeUtil::TransposeIsBitcast(instr.operand(0)->shape(),
                                          instr.shape(), instr.dimensions()));
@@ -219,8 +240,13 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   }
 
   // Do not fuse into fusions if the resulting kernel would suffer from
-  // uncoalesced reads due to a transposed memory access pattern.
-  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
+  // uncoalesced reads due to a transposed memory access pattern, unless shared
+  // memory transposes can be used to ensure read coalescing.
+  if (IsInputFusibleReduction(consumer) && ReadsUncoalesced(producer)) {
+    return "fusing the producer would break read coalescing";
+  } else if (IsLoopFusible(consumer) &&
+             (ReadsUncoalesced(producer) || ReadsUncoalesced(consumer)) &&
+             !FusionCanBeEmittedAsShmemTranspose(producer, consumer)) {
     return "fusing the producer would break read coalescing";
   }
 
@@ -285,7 +311,9 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-  if (IsPhysicallyTransposing(producer)) {
+  // TODO(tjoerg): Relax this restriction. The shared memory transpose emitter
+  // supports multi-output fusion.
+  if (ReadsUncoalesced(producer)) {
     return false;
   }
   return true;

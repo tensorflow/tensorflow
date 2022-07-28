@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <map>
@@ -901,19 +902,26 @@ Tensor* InferenceContext::GetTensor(ValueId id) {
 absl::Status InferenceContext::SetInputTensor(ValueId id,
                                               const TensorFloat32& tensor,
                                               CLCommandQueue* queue) {
-  return GetTensor(id)->WriteData(queue, tensor);
+  Tensor* gpu_tensor = GetTensor(id);
+  TensorDescriptor descriptor_with_data = gpu_tensor->GetDescriptor();
+  descriptor_with_data.UploadData(tensor);
+  return gpu_tensor->UploadDescriptorData(descriptor_with_data, queue);
 }
 
 absl::Status InferenceContext::GetOutputTensor(ValueId id,
                                                CLCommandQueue* queue,
                                                TensorFloat32* result) {
-  const auto& gpu_tensor = *GetTensor(id);
-  const auto dst_shape = BHWC(gpu_tensor.Batch(), gpu_tensor.Height(),
-                              gpu_tensor.Width(), gpu_tensor.Channels());
+  const Tensor* gpu_tensor = GetTensor(id);
+  const auto dst_shape = BHWC(gpu_tensor->Batch(), gpu_tensor->Height(),
+                              gpu_tensor->Width(), gpu_tensor->Channels());
   result->id = id;
   result->shape = dst_shape;
   result->data.resize(dst_shape.DimensionsProduct());
-  return gpu_tensor.ReadData(queue, result);
+
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(gpu_tensor->ToDescriptor(&desc, queue));
+  desc.DownloadData(result);
+  return absl::OkStatus();
 }
 
 flatbuffers::Offset<data::InferenceContext> InferenceContext::Encode(

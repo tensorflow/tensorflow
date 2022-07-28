@@ -60,6 +60,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import tracing_utils
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
@@ -438,7 +439,7 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
 
   Args:
     checkpoint_factory_map: A dictionary mapping trackable objects to
-      _CheckpointFactoryData.
+      a list of `_CheckpointFactoryData`.
 
   Returns:
     Tuple of (
@@ -450,23 +451,20 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   saveable_fn_map = object_identity.ObjectIdentityDictionary()
 
   for obj, factory_data_list in checkpoint_factory_map.items():
-    for factory_data in factory_data_list:
-      saveable_factory = factory_data.factory
-      attribute_name = factory_data.name
+    if resource_variable_ops.is_resource_variable(obj) or not factory_data_list:
+      # There is no need to trace the save and restore functions for variables.
+      continue
 
-      # If object revives as a resource (or TPU/Mirrored) variable,
-      # there is no need to trace the save and restore functions.
-      if (resource_variable_ops.is_resource_variable(obj) or
-          resource_variable_ops.is_resource_variable(saveable_factory) or
-          not callable(saveable_factory)):
-        continue
-      concrete_save, concrete_restore = (
-          saveable_object_util.trace_save_restore_functions(
-              saveable_factory, obj))
-      if not concrete_save:
-        continue
-      saveable_fn_map.setdefault(obj, {})[attribute_name] = (concrete_save,
-                                                             concrete_restore)
+    if factory_data_list[0].name == trackable_utils.SERIALIZE_TO_TENSORS_NAME:
+      # Trace Trackable save and restore functions.
+      assert len(factory_data_list) == 1
+      saveable_fn_map[obj] = {trackable_utils.SERIALIZE_TO_TENSORS_NAME: (
+          tracing_utils.trace_save_and_restore(obj))}
+    else:
+      # Trace deprecated SaveableObject save and restore functions.
+      saveable_fn_map[obj] = (
+          saveable_object_util.trace_save_restore_function_map(
+              obj, factory_data_list))
   return saveable_fn_map
 
 

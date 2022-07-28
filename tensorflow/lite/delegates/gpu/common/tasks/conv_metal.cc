@@ -45,7 +45,7 @@ struct GlobalIdsParams {
   std::vector<std::string> group_ids;
   std::vector<std::string> local_sizes;
   std::vector<std::string> local_ids;
-  int3 block_size;
+  ConvolutionMetal::ConvParams::BlockSize block_size;
   int3 launch_order;
   bool linear_wh;
   bool linear_whs;
@@ -61,13 +61,10 @@ std::string GlobalIdsGen(const GlobalIdsParams& params) {
   launch_remap[params.launch_order.z] = 2;
   if (params.linear_whs) {
     c += "  int linear_whs = " + params.global_ids[0] + ";\n";
-    c += "  int Z = (linear_whs / " + params.task_size_wh + ") * " +
-         std::to_string(params.block_size.z) + ";\n";
+    c += "  int S = linear_whs / " + params.task_size_wh + ";\n";
     c += "  int linear_wh = linear_whs % " + params.task_size_wh + ";\n";
-    c += "  int Y = (linear_wh / " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.y) + ";\n";
-    c += "  int X = (linear_wh % " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.x) + ";\n";
+    c += "  int Y = linear_wh / " + params.task_size_w + ";\n";
+    c += "  int X = linear_wh % " + params.task_size_w + ";\n";
   } else if (params.linear_wh) {
     if (params.launch_order.x == 0) {
       c += "  int linear_wh = " + params.global_ids[0] + ";\n";
@@ -75,43 +72,42 @@ std::string GlobalIdsGen(const GlobalIdsParams& params) {
       c += "  int linear_wh = " + params.group_ids[launch_remap.x] + " * " +
            params.local_sizes[0] + " + " + params.local_ids[0] + ";\n";
     }
-    c += "  int Y = (linear_wh / " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.y) + ";\n";
-    c += "  int X = (linear_wh % " + params.task_size_w + ") * " +
-         std::to_string(params.block_size.x) + ";\n";
+    c += "  int Y = linear_wh / " + params.task_size_w + ";\n";
+    c += "  int X = linear_wh % " + params.task_size_w + ";\n";
     if (params.launch_order.y == 1) {
-      c += "  int Z = " + params.global_ids[1] + " * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int S = " + params.global_ids[1] + ";\n";
     } else {
-      c += "  int Z = (" + params.group_ids[launch_remap.y] + " * " +
-           params.local_sizes[1] + " + " + params.local_ids[1] + ") * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int S = " + params.group_ids[launch_remap.y] + " * " +
+           params.local_sizes[1] + " + " + params.local_ids[1] + ";\n";
     }
   } else {
     if (params.launch_order.x == 0) {
-      c += "  int X = " + params.global_ids[0] + " * " +
-           std::to_string(params.block_size.x) + ";\n";
+      c += "  int X = " + params.global_ids[0] + ";\n";
     } else {
-      c += "  int X = (" + params.group_ids[launch_remap.x] + " * " +
-           params.local_sizes[0] + " + " + params.local_ids[0] + ") * " +
-           std::to_string(params.block_size.x) + ";\n";
+      c += "  int X = " + params.group_ids[launch_remap.x] + " * " +
+           params.local_sizes[0] + " + " + params.local_ids[0] + ";\n";
     }
     if (params.launch_order.y == 1) {
-      c += "  int Y = " + params.global_ids[1] + " * " +
-           std::to_string(params.block_size.y) + ";\n";
+      c += "  int Y = " + params.global_ids[1] + ";\n";
     } else {
-      c += "  int Y = (" + params.group_ids[launch_remap.y] + " * " +
-           params.local_sizes[1] + " + " + params.local_ids[1] + ") * " +
-           std::to_string(params.block_size.y) + ";\n";
+      c += "  int Y = " + params.group_ids[launch_remap.y] + " * " +
+           params.local_sizes[1] + " + " + params.local_ids[1] + ";\n";
     }
     if (params.launch_order.z == 2) {
-      c += "  int Z = " + params.global_ids[2] + " * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int S = " + params.global_ids[2] + ";\n";
     } else {
-      c += "  int Z = (" + params.group_ids[launch_remap.z] + " * " +
-           params.local_sizes[2] + " + " + params.local_ids[2] + ") * " +
-           std::to_string(params.block_size.z) + ";\n";
+      c += "  int S = " + params.group_ids[launch_remap.z] + " * " +
+           params.local_sizes[2] + " + " + params.local_ids[2] + ";\n";
     }
+  }
+  if (params.block_size.x != 1) {
+    c += "  X *= " + std::to_string(params.block_size.x) + ";\n";
+  }
+  if (params.block_size.y != 1) {
+    c += "  Y *= " + std::to_string(params.block_size.y) + ";\n";
+  }
+  if (params.block_size.s != 1) {
+    c += "  S *= " + std::to_string(params.block_size.s) + ";\n";
   }
   return c;
 }
@@ -168,7 +164,7 @@ std::string GenerateConvolution(const ConvolutionMetal::ConvParams& params,
       params.weights_upload_type ==
       ConvolutionMetal::WeightsUploadType::LOCAL_MEM_BY_THREADS;
   const int local_mem_size =
-      params.block_size.z * 4 * params.src_depth_loop_size;
+      params.block_size.s * 4 * params.src_depth_loop_size;
 
   const bool use_filters_constants =
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
@@ -188,14 +184,14 @@ kernel void ComputeFunction(
 )";
   c += "    uint3 ugid[[thread_position_in_grid]]){\n";
   c += GlobalIdsGen(ids_params);
-  c += "  if (Z >= args.dst_tensor.Slices()) return;\n";
+  c += "  if (S >= args.dst_tensor.Slices()) return;\n";
   bool late_xy_check = use_local_mem;
   if (!late_xy_check && !params.linear_whs) {
     c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
          "return;\n";
   }
   if (params.groups_support) {
-    c += "      int conv_group_id = Z / args.dst_group_size;\n";
+    c += "      int conv_group_id = S / args.dst_group_size;\n";
     c += "      int src_start_slice = conv_group_id * args.src_group_size;\n";
     c += "      int src_end_slice = src_start_slice + args.src_group_size;\n";
   }
@@ -206,11 +202,11 @@ kernel void ComputeFunction(
   const std::string src_group_slices = params.groups_support
                                            ? "args.src_group_size"
                                            : "args.src_tensor.Slices()";
-  for (int z = 0; z < params.block_size.z; ++z) {
+  for (int s = 0; s < params.block_size.s; ++s) {
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_i =
-            std::to_string(z) + std::to_string(y) + std::to_string(x);
+            std::to_string(s) + std::to_string(y) + std::to_string(x);
         c +=
             "  ACCUM_FLT4 r" + s_i + " = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
       }
@@ -233,19 +229,19 @@ kernel void ComputeFunction(
     std::string kern_x = params.x_kernel_is_1 ? "" : " * args.kernel_size_x";
     std::string kern_y = params.y_kernel_is_1 ? "" : " * args.kernel_size_y";
     std::string dst_offset =
-        params.need_dst_loop ? " + Z * 4 * " + src_group_slices : "";
+        params.need_dst_loop ? " + S * 4 * " + src_group_slices : "";
     if (!params.need_dst_loop) {
       c += "  " + addr_space + " FLT4* tmp = args.weights.GetPtr();\n";
     } else {
       if (params.different_weights_for_height) {
         c += "  " + addr_space +
-             " FLT4* tmp = args.weights.GetPtr() + (Z * "
+             " FLT4* tmp = args.weights.GetPtr() + (S * "
              "args.src_tensor.Height() + Y * " +
-             std::to_string(params.block_size.z) +
+             std::to_string(params.block_size.s) +
              ") * 4 * args.src_tensor.Slices();\n";
       } else {
         c += "  " + addr_space +
-             " FLT4* tmp = args.weights.GetPtr() + Z * 4 * " +
+             " FLT4* tmp = args.weights.GetPtr() + S * 4 * " +
              src_group_slices + kern_x + kern_y + ";\n";
       }
     }
@@ -350,7 +346,7 @@ kernel void ComputeFunction(
       }
     }
   }
-  c += "  int s = " + src_group_start_slice + ";\n";
+  c += "  int src_s = " + src_group_start_slice + ";\n";
   if (params.need_src_loop) {
     c += "  do {\n";
   }
@@ -397,7 +393,7 @@ kernel void ComputeFunction(
           }
         } else {
           c += "    src" + s_yx + " = args.src_tensor.Read(c_x" +
-               std::to_string(x) + ", c_y" + std::to_string(y) + ", s);\n";
+               std::to_string(x) + ", c_y" + std::to_string(y) + ", src_s);\n";
         }
       }
     }
@@ -415,15 +411,15 @@ kernel void ComputeFunction(
     if (use_filters_constants) {
       name = "args.weights.GetPtr()";
     }
-    for (int z = 0; z < params.block_size.z; ++z) {
+    for (int s = 0; s < params.block_size.s; ++s) {
       for (int ch = 0; ch < 4; ++ch) {
         for (int y = 0; y < params.block_size.y; ++y) {
           for (int x = 0; x < params.block_size.x; ++x) {
             std::string s_id = std::to_string(y) + std::to_string(x);
             std::string r_id =
-                std::to_string(z) + std::to_string(y) + std::to_string(x);
+                std::to_string(s) + std::to_string(y) + std::to_string(x);
             std::string f_val =
-                name + "[" + std::to_string(z * 4 + ch + offset) + "]";
+                name + "[" + std::to_string(s * 4 + ch + offset) + "]";
             std::string s_val = "src" + s_id;
             std::string r_val = "r" + r_id;
             if (params.weights_layout == WeightsLayout::kOSpatialIOGroupO4I4) {
@@ -443,20 +439,20 @@ kernel void ComputeFunction(
   };
   declare_src();
   read_src();
-  c += "    s += 1;\n";
+  c += "    src_s += 1;\n";
   conv_core(0);
   for (int i = 1; i < params.src_depth_loop_size; ++i) {
     read_src();
-    conv_core(i * params.block_size.z * 4);
-    c += "    s += 1;\n";
+    conv_core(i * params.block_size.s * 4);
+    c += "    src_s += 1;\n";
   }
   if (!use_filters_constants) {
     c += "    tmp += " +
-         std::to_string(params.block_size.z * 4 * params.src_depth_loop_size) +
+         std::to_string(params.block_size.s * 4 * params.src_depth_loop_size) +
          ";\n";
   }
   if (params.need_src_loop) {
-    c += "  } while (s < " + src_group_end_slice + ");\n";
+    c += "  } while (src_s < " + src_group_end_slice + ");\n";
   }
   if (!params.x_kernel_is_1) {
     c += "  x++;\n";
@@ -476,34 +472,34 @@ kernel void ComputeFunction(
     for_every_yx([](const std::string& s_yx, const std::string& s_x,
                     const std::string& s_y, int x, int y) {
       return "  int offset_" + s_yx + " = args.dst_tensor.GetAddress(X + " +
-             s_x + ", Y + " + s_y + ", Z);";
+             s_x + ", Y + " + s_y + ", S);";
     });
   }
 
   std::string bias_name = "args.biases.GetPtr()";
   if (params.need_dst_loop) {
-    c += "  device FLT4* bias_loc = args.biases.GetPtr() + Z;\n";
+    c += "  device FLT4* bias_loc = args.biases.GetPtr() + S;\n";
     bias_name = "bias_loc";
   }
   for (int y = 0; y < params.block_size.y; ++y) {
     for (int x = 0; x < params.block_size.x; ++x) {
-      for (int z = 0; z < params.block_size.z; ++z) {
+      for (int s = 0; s < params.block_size.s; ++s) {
         std::string r_id =
-            std::to_string(z) + std::to_string(y) + std::to_string(x);
+            std::to_string(s) + std::to_string(y) + std::to_string(x);
         c += "  r" + r_id + " += TO_ACCUM_TYPE(" + bias_name + "[" +
-             std::to_string(z) + "]);\n";
+             std::to_string(s) + "]);\n";
       }
     }
   }
-  for (int z = 0; z < params.block_size.z; ++z) {
-    const std::string s_z = std::to_string(z);
-    c += "  if (Z + " + s_z + " < args.dst_tensor.Slices()) {\n";
+  for (int s = 0; s < params.block_size.s; ++s) {
+    const std::string s_s = std::to_string(s);
+    c += "  if (S + " + s_s + " < args.dst_tensor.Slices()) {\n";
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_x = std::to_string(x);
         const std::string s_yx = s_y + s_x;
-        const std::string s_zyx = s_z + s_yx;
+        const std::string s_syx = s_s + s_yx;
         bool need_check_x = x >= 1;
         bool need_check_y = y >= 1;
         std::string check;
@@ -519,16 +515,16 @@ kernel void ComputeFunction(
         } else {
           c += "    {\n";
         }
-        c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
+        c += "      FLT4 value = FLT4(r" + s_syx + ");\n";
         if (definition.dst_tensors[0].IsLinear()) {
           c += "      int linear_index = offset_" + s_yx +
-               " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
+               " + args.dst_tensor.SliceStride() * " + s_s + ";\n";
           c += "      args.dst_tensor.Write<LinearIndex::linear_index>(value, "
                "X + " +
-               s_x + ", Y + " + s_y + ", Z + " + s_z + ");\n";
+               s_x + ", Y + " + s_y + ", S + " + s_s + ");\n";
         } else {
           c += "      args.dst_tensor.Write(value, X + " + s_x + ", Y + " +
-               s_y + ", Z + " + s_z + ");\n";
+               s_y + ", S + " + s_s + ");\n";
         }
         c += "    }\n";
       }
@@ -568,36 +564,38 @@ std::vector<uint8_t> ReorderBiasesForConv(
 }
 
 int GetGroupsCount(const BHWC& dst_shape, const int3& wg_size,
-                   const int3& block_size) {
+                   const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
 
   int grid_x = DivideRoundUp(dst_shape.w, block_size.x);
   int grid_y = DivideRoundUp(dst_shape.h, block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, block_size.z);
+  int grid_z = DivideRoundUp(dst_slices, block_size.s);
 
   return DivideRoundUp(grid_x, wg_size.x) * DivideRoundUp(grid_y, wg_size.y) *
          DivideRoundUp(grid_z, wg_size.z);
 }
 
-int GetGroupsCountForLinearWH(const BHWC& dst_shape, const int3& wg_size,
-                              const int3& block_size) {
+int GetGroupsCountForLinearWH(
+    const BHWC& dst_shape, const int3& wg_size,
+    const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
 
   int grid_x = DivideRoundUp(dst_shape.w, block_size.x);
   int grid_y = DivideRoundUp(dst_shape.h, block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, block_size.z);
+  int grid_z = DivideRoundUp(dst_slices, block_size.s);
 
   return DivideRoundUp(grid_x * grid_y, wg_size.x) *
          DivideRoundUp(grid_z, wg_size.y);
 }
 
-int GetGroupsCountForLinearWHS(const BHWC& dst_shape, const int3& wg_size,
-                               const int3& block_size) {
+int GetGroupsCountForLinearWHS(
+    const BHWC& dst_shape, const int3& wg_size,
+    const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   const int dst_slices = DivideRoundUp(dst_shape.c, 4);
 
   int grid_x = DivideRoundUp(dst_shape.w, block_size.x);
   int grid_y = DivideRoundUp(dst_shape.h, block_size.y);
-  int grid_z = DivideRoundUp(dst_slices, block_size.z);
+  int grid_z = DivideRoundUp(dst_slices, block_size.s);
 
   return DivideRoundUp(grid_x * grid_y * grid_z, wg_size.x);
 }
@@ -649,7 +647,8 @@ struct WorkGroupSizeOption {
 WorkGroupSizeOption CreateWorkGroupSizeOption(
     const int3& work_group_size,
     WorkGroupSizeOption::ThreadMapping mapping_type, float penalty,
-    const BHWC& dst_shape, const int3& block_size) {
+    const BHWC& dst_shape,
+    const ConvolutionMetal::ConvParams::BlockSize& block_size) {
   WorkGroupSizeOption wg;
   wg.work_group_size = work_group_size;
   wg.thread_mapping = mapping_type;
@@ -703,7 +702,11 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   params.x_kernel_is_1 = x_kernel_is_1;
   params.y_kernel_is_1 = y_kernel_is_1;
   params.src_depth_loop_size = 1;
-  params.block_size = block_size;
+  params.block_size.b = 1;
+  params.block_size.x = block_size.x;
+  params.block_size.y = block_size.y;
+  params.block_size.z = 1;
+  params.block_size.s = block_size.z;
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
 
   std::vector<WorkGroupSizeOption> options;
@@ -772,8 +775,9 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
     params.work_group_size = optimum_wg.work_group_size;
     params.work_group_launch_order = int3(2, 0, 1);
   }
-  int total_elements =
-      params.block_size.x * params.block_size.y * params.block_size.z;
+  int total_elements = params.block_size.b * params.block_size.x *
+                       params.block_size.y * params.block_size.z *
+                       params.block_size.s;
   if (total_elements == 1) {
     if (src_slices % 4 == 0) {
       params.src_depth_loop_size = 4;
@@ -788,7 +792,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA7A8(const AppleInfo& apple_info,
   if (params.src_depth_loop_size == src_slices) {
     params.need_src_loop = false;
   }
-  if (params.block_size.z == dst_slices) {
+  if (params.block_size.s == dst_slices) {
     params.need_dst_loop = false;
   }
   const bool use_filters_constants =
@@ -834,15 +838,19 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
   params.x_kernel_is_1 = x_kernel_is_1;
   params.y_kernel_is_1 = y_kernel_is_1;
   params.src_depth_loop_size = 1;
-  params.block_size = block_size;
+  params.block_size.b = 1;
+  params.block_size.x = block_size.x;
+  params.block_size.y = block_size.y;
+  params.block_size.z = 1;
+  params.block_size.s = block_size.z;
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
   params.weights_layout = WeightsLayout::kOSpatialIOGroupO4I4;
-  int g1 = GetGroupsCount(dst_shape, params.work_group_size, block_size);
-  int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
-  int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
+  int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
+  int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, params.block_size);
+  int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, params.block_size);
   if (g2 < g1) {
     params.linear_wh = true;
     params.work_group_size = int3(32, 1, 1);
@@ -855,8 +863,9 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
     params.linear_whs = true;
     params.work_group_size = int3(32, 1, 1);
   }
-  int total_elements =
-      params.block_size.x * params.block_size.y * params.block_size.z;
+  int total_elements = params.block_size.b * params.block_size.x *
+                       params.block_size.y * params.block_size.z *
+                       params.block_size.s;
   if (total_elements == 1) {
     if (src_slices % 4 == 0) {
       params.src_depth_loop_size = 4;
@@ -871,7 +880,7 @@ ConvolutionMetal::ConvParams GetConvParamsForA9AndHigher(
   if (params.src_depth_loop_size == src_slices) {
     params.need_src_loop = false;
   }
-  if (params.block_size.z == dst_slices) {
+  if (params.block_size.s == dst_slices) {
     params.need_dst_loop = false;
   }
   const bool use_filters_constants =
@@ -900,7 +909,11 @@ ConvolutionMetal::ConvParams GetConvParams(const GpuInfo& gpu_info,
     }
   } else {
     ConvolutionMetal::ConvParams params;
-    params.block_size = int3(1, 1, 4);
+    params.block_size.b = 1;
+    params.block_size.x = 1;
+    params.block_size.y = 1;
+    params.block_size.z = 1;
+    params.block_size.s = 4;
     params.work_group_size = int3(8, 4, 1);
     params.work_group_launch_order = int3(2, 0, 1);
     params.src_depth_loop_size = 1;
@@ -1000,7 +1013,7 @@ int3 ConvolutionMetal::GetGridSize() const {
   int grid_x =
       DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), params_.block_size.x);
   int grid_y = DivideRoundUp(dst_[0]->Height(), params_.block_size.y);
-  int grid_z = DivideRoundUp(dst_[0]->Slices(), params_.block_size.z);
+  int grid_z = DivideRoundUp(dst_[0]->Slices(), params_.block_size.s);
 
   int3 group_size(params_.work_group_size);
   int3 wg;
@@ -1036,7 +1049,7 @@ void ConvolutionMetal::UploadBiases(
   bias_desc.memory_type = params_.GetMemoryType();
   bias_desc.data =
       ReorderBiasesForConv(biases, weights_layout_desc.type,
-                           AlignByN(biases.shape.v, params_.block_size.z * 4));
+                           AlignByN(biases.shape.v, params_.block_size.s * 4));
   bias_desc.size = bias_desc.data.size();
   args_.AddObject("biases",
                   std::make_unique<BufferDescriptor>(std::move(bias_desc)));
@@ -1054,11 +1067,11 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
     params.groups_support = true;
     const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
     const int dst_group_slices = dst_slices / attr.groups;
-    if (dst_group_slices % params.block_size.z != 0) {
-      if (params.block_size.z == 4 && dst_group_slices % 2 == 0) {
-        params.block_size.z = 2;
+    if (dst_group_slices % params.block_size.s != 0) {
+      if (params.block_size.s == 4 && dst_group_slices % 2 == 0) {
+        params.block_size.s = 2;
       } else {
-        params.block_size.z = 1;
+        params.block_size.s = 1;
       }
     }
   }

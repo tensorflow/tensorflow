@@ -2220,6 +2220,7 @@ tf_cc_test(
     srcs = ["real_imag_expander_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_creation_utils",
         ":hlo_matchers",
         ":hlo_parser",
         ":hlo_pass",
@@ -2235,6 +2236,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -6675,8 +6677,34 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         "//tensorflow/compiler/xla:permutation_util",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gather_simplifier",
+    srcs = ["gather_simplifier.cc"],
+    hdrs = ["gather_simplifier.h"],
+    deps = [
+        ":gather_scatter_utils",
+        ":hlo",
+        ":hlo_creation_utils",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "gather_simplifier_test",
+    srcs = ["gather_simplifier_test.cc"],
+    deps = [
+        ":gather_simplifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

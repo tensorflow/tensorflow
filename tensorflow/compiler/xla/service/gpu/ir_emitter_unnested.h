@@ -166,6 +166,8 @@ class IrEmitterUnnested : public IrEmitter {
   // generated code will have empty 'content'.
   Status EmitLmhloRegion(mlir::Region* region);
 
+  static void GetDependentDialects(mlir::DialectRegistry& registry);
+
  private:
   IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                     IrEmitterContext* ir_emitter_context);

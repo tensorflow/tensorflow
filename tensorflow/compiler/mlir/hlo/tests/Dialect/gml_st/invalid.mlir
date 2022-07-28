@@ -137,26 +137,6 @@ func.func @point_op_different_rank() -> !gml_st.point {
 
 // -----
 
-func.func @point_op_of_point_op_expected_empty_static_indices() -> !gml_st.point {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  %1 = gml_st.point %0 [0, 0] : !gml_st.tile<64x32> to !gml_st.point
-  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a set of type PointType}}
-  %2 = gml_st.point %1 [0, 0] : !gml_st.point to !gml_st.point
-  func.return %2 : !gml_st.point
-}
-
-// -----
-
-func.func @point_op_of_point_op_expected_empty_dynamic_indices(%i: index) -> !gml_st.point {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  %1 = gml_st.point %0 [%i, %i] : !gml_st.tile<64x32> to !gml_st.point
-  // expected-error@+1 {{'gml_st.point' op expected empty indices and static_indices for a set of type PointType}}
-  %2 = gml_st.point %1 [%i, %i] : !gml_st.point to !gml_st.point
-  func.return %2 : !gml_st.point
-}
-
-// -----
-
 func.func @point_op_mismatch_indices_and_static_indices(%i: index) -> !gml_st.point {
   %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // expected-error@+1 {{expected 0 dynamic index values}}

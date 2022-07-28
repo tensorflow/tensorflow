@@ -1309,7 +1309,7 @@ LogicalResult YieldOp::verify() {
            << tensorOuts.size()
            << " to match the number of yield operands = " << values().size();
 
-  TypeRange tensorTypes(llvm::makeArrayRef(tensorOuts));
+  TypeRange tensorTypes{ValueRange{tensorOuts}};
   for (auto &item :
        llvm::enumerate(llvm::zip(tensorTypes, getOperandTypes()))) {
     Type outType, resultType;
@@ -1366,35 +1366,24 @@ mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult PointOp::verify() {
-  auto supersetTy = superset().getType();
-  if (supersetTy.isa<PointType>()) {
-    if (!static_indices().empty() || !dynamic_indices().empty()) {
-      return emitOpError(
-          "expected empty indices and static_indices for a set of type "
-          "PointType");
+  auto tileShape = superset().getType().cast<TileType>().getShape();
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          getOperation(), "index", tileShape.size(), static_indices(),
+          dynamic_indices(), ShapedType::isDynamicStrideOrOffset))) {
+    return failure();
+  }
+  // Check whether the known indices are in-bounds of known dimension sizes.
+  for (auto dimAndIndex : llvm::zip(tileShape, static_indices())) {
+    auto dimSize = std::get<0>(dimAndIndex);
+    auto index =
+        std::get<1>(dimAndIndex).dyn_cast<mlir::IntegerAttr>().getInt();
+    if (index == ShapedType::kDynamicStrideOrOffset) continue;
+    if (index < 0) {
+      return emitOpError("expected index = ") << index << " to be non-negative";
     }
-  } else {
-    auto tileTy = supersetTy.cast<TileType>();
-    auto tileShape = tileTy.getShape();
-    if (failed(mlir::verifyListOfOperandsOrIntegers(
-            getOperation(), "index", tileShape.size(), static_indices(),
-            dynamic_indices(), ShapedType::isDynamicStrideOrOffset))) {
-      return failure();
-    }
-    // Check whether the known indices are in-bounds of known dimension sizes.
-    for (auto dimAndIndex : llvm::zip(tileShape, static_indices())) {
-      auto dimSize = std::get<0>(dimAndIndex);
-      auto index =
-          std::get<1>(dimAndIndex).dyn_cast<mlir::IntegerAttr>().getInt();
-      if (index == ShapedType::kDynamicStrideOrOffset) continue;
-      if (index < 0) {
-        return emitOpError("expected index = ")
-               << index << " to be non-negative";
-      }
-      if (dimSize != ShapedType::kDynamicSize && index >= dimSize) {
-        return emitOpError("expected index = ")
-               << index << " to be between 0 and " << (dimSize - 1);
-      }
+    if (dimSize != ShapedType::kDynamicSize && index >= dimSize) {
+      return emitOpError("expected index = ")
+             << index << " to be between 0 and " << (dimSize - 1);
     }
   }
   return success();
@@ -1682,43 +1671,13 @@ LogicalResult DropDimsOp::inferReturnTypes(
   return failure();
 }
 
-//===----------------------------------------------------------------------===//
-// TransposeDimsOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TransposeDimsOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
-  Type argTy = adaptor.superset().getType();
-
-  // If the argument is of point type, so is the result.
-  if (auto pointTy = argTy.dyn_cast<PointType>()) {
-    inferredReturnTypes.push_back(argTy);
-    return success();
-  }
-
-  // If the argument is of tile type, we can transpose the type's dimensions.
-  if (auto tileTy = argTy.dyn_cast<TileType>()) {
-    auto argShape = tileTy.getShape();
-    SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
-        adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
-    auto resultTy = TileType::get(ctx, resultShape);
-    inferredReturnTypes.push_back(resultTy);
-    return success();
-  }
-
-  return failure();
-}
-
-Value TransposeDimsOp::compose(OpBuilder &builder) {
-  // We can compose with a TileOp operand which has a SpaceOp operand, or
-  // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
-  // strides)) is replaced by tile(transpose(space), transpose(offsets),
-  // transpose(sizes), transpose(strides)). transpose_tile(space) is replaced by
-  // transpose(space).
-  Operation *definingOp = superset().getDefiningOp();
+namespace {
+// Composition with a superset by selecting a subset of dimensions from the
+// superset. Both the dimensions to select, and the order in which they should
+// be selected, are specified by 'dims'.
+Value selectDimsFromSuperset(OpBuilder &builder, Location loc, Type type,
+                             Value superset, ArrayRef<int64_t> dims) {
+  Operation *definingOp = superset.getDefiningOp();
   auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(definingOp);
   auto tileOp = llvm::dyn_cast_or_null<TileOp>(definingOp);
   if (tileOp) {
@@ -1727,19 +1686,16 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
   }
   if (!spaceOp) return {};
 
-  auto loc = getLoc();
-  ArrayRef<int64_t> perm = permutation();
-  int64_t rank = perm.size();
-
-  // Create a new space op that has the permutation applied.
+  // Create a new space op consisting of the subset of dimensions defined by
+  // 'dims'.
   SmallVector<Value> dynamicDims;
   SmallVector<Attribute> staticDims;
   SmallVector<int64_t> shape;
   auto originalShape = spaceOp.getType().getShape();
-  dynamicDims.reserve(spaceOp.dynamic_sizes().size());
+  const size_t rank = dims.size();
   staticDims.reserve(rank);
   shape.reserve(rank);
-  for (int64_t dim : perm) {
+  for (const int64_t dim : dims) {
     shape.push_back(originalShape[dim]);
     staticDims.push_back(spaceOp.static_sizes()[dim]);
     if (ShapedType::isDynamic(staticDims.back().cast<IntegerAttr>().getInt())) {
@@ -1751,7 +1707,7 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
                                            builder.getArrayAttr(staticDims));
   if (!tileOp) return newSpace;
 
-  // Otherwise we need to apply the permutation to the 'tileOp' operand.
+  // Otherwise we need to extract 'dims' dimensions from the 'tileOp' operand.
   SmallVector<Value> inputTileOffsets, inputTileSizes, inputTileStrides;
   SmallVector<int64_t> inputStaticOffsets, inputStaticSizes, inputStaticStrides;
   inputStaticOffsets.reserve(rank);
@@ -1760,7 +1716,7 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
   inputTileOffsets.reserve(tileOp.offsets().size());
   inputTileSizes.reserve(tileOp.sizes().size());
   inputTileStrides.reserve(tileOp.strides().size());
-  for (int64_t dim : perm) {
+  for (const int64_t dim : dims) {
     if (tileOp.isDynamicOffset(dim)) {
       inputTileOffsets.push_back(tileOp.getDynamicOffset(dim));
       inputStaticOffsets.push_back(ShapedType::kDynamicStrideOrOffset);
@@ -1781,11 +1737,60 @@ Value TransposeDimsOp::compose(OpBuilder &builder) {
     }
   }
 
-  return builder.create<TileOp>(loc, getType(), newSpace, inputTileOffsets,
+  return builder.create<TileOp>(loc, type, newSpace, inputTileOffsets,
                                 inputTileSizes, inputTileStrides,
                                 builder.getI64ArrayAttr(inputStaticOffsets),
                                 builder.getI64ArrayAttr(inputStaticSizes),
                                 builder.getI64ArrayAttr(inputStaticStrides));
+}
+}  // namespace
+
+Value DropDimsOp::compose(OpBuilder &builder) {
+  // We can compose with a TileOp operand which has a SpaceOp operand, or
+  // compose with a SpaceOp operand.
+  return selectDimsFromSuperset(builder, getLoc(), getType(), superset(),
+                                remaining_dims());
+}
+
+//===----------------------------------------------------------------------===//
+// TransposeDimsOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TransposeDimsOp::inferReturnTypes(
+    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
+  const Type argTy = adaptor.superset().getType();
+
+  // If the argument is of point type, so is the result.
+  if (auto pointTy = argTy.dyn_cast<PointType>()) {
+    inferredReturnTypes.push_back(argTy);
+    return success();
+  }
+
+  // If the argument is of tile type, we can transpose the type's dimensions.
+  if (auto tileTy = argTy.dyn_cast<TileType>()) {
+    auto argShape = tileTy.getShape();
+    const SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
+        adaptor.permutation(), [&](const auto &d) { return argShape[d]; }));
+    auto resultTy = TileType::get(ctx, resultShape);
+    inferredReturnTypes.push_back(resultTy);
+    return success();
+  }
+
+  return failure();
+}
+
+Value TransposeDimsOp::compose(OpBuilder &builder) {
+  // We can compose with a TileOp operand which has a SpaceOp operand, or
+  // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
+  // strides)) is replaced by tile(transpose(space), transpose(offsets),
+  // transpose(sizes), transpose(strides)). transpose_tile(space) is replaced by
+  // transpose(space).
+
+  return selectDimsFromSuperset(builder, getLoc(), getType(), superset(),
+                                permutation());
 }
 
 LogicalResult TransposeDimsOp::verify() {
@@ -2061,11 +2066,14 @@ Value DynamicBroadcastInDimOp::fuse(Location loc, Value subset,
   }
 
   // Collapse the subset to operate only on corresponding dimensions.
+  // TODO(frgossen): Only generate this when needed.
   auto collapsedSubset =
       builder.create<DropDimsOp>(loc, subset, broadcast_dimensionsAttr());
 
   // Find the expanding dimensions. If corresponding operand and result
   // dimensions are different then the dimension is expanding.
+  // TODO(frgossen): Use info from known expanding and known non-expanding
+  // dimensions here.
   SmallVector<Value> operandExpandingDims;
   for (const auto &it : llvm::enumerate(broadcast_dimensions())) {
     auto operandDim = operandDims[it.index()];

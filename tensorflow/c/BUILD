@@ -7,6 +7,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "if_google",
+    "if_not_mobile",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -659,7 +660,13 @@ tf_cuda_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",
-    ],
+    ] + if_not_mobile([
+        "//tensorflow/core/kernels:tensor_list",
+        "//tensorflow/core/kernels:tensor_list_util",
+        "//tensorflow/core/kernels:variant_ops_util",
+        "//tensorflow/core/kernels/data:optional_ops_util",
+        "//tensorflow/core/platform:abi",
+    ]),
 )
 
 tf_cuda_library(

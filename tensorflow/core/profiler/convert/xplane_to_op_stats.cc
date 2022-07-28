@@ -80,9 +80,19 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
-  return MakePerfEnv(
-      GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
-      UniToGiga(cap.memory_bandwidth()));
+  if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
+    return MakePerfEnv(
+        GigaToTera(GetFlopMaxThroughputPerSM(cap)) * cap.num_cores(),
+        UniToGiga(cap.memory_bandwidth()));
+  } else {
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(&device_plane);
+    auto peak_tera_flops_per_second =
+        visitor.GetStat(StatType::kDevCapPeakTeraflopsPerSecond);
+    auto peak_hbm_bw_giga_bytes_per_second =
+        visitor.GetStat(StatType::kDevCapPeakHbmBwGigabytesPerSecond);
+    return MakePerfEnv(peak_tera_flops_per_second->DoubleValue(),
+                       peak_hbm_bw_giga_bytes_per_second->DoubleValue());
+  }
 }
 
 void SetRunEnvironment(const XSpace& space, RunEnvironment* env) {
@@ -136,8 +146,12 @@ void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
   const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
-  std::vector<const XPlane*> device_planes =
-      FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
+  bool is_gpu = device_planes.empty();
+  if (is_gpu) {
+    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  }
+
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
@@ -200,9 +214,12 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
         ComputePrecisionStats(nonoverlapped_step_events);
   }
 
-  CoreDetails& details =
-      (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
-  details.set_hostname(Hostname(space));
+  // TODO(bvandermoon): Add the TPU equivalent for setting core details hostname
+  if (is_gpu) {
+    CoreDetails& details =
+        (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
+    details.set_hostname(Hostname(space));
+  }
   return op_stats;
 }
 

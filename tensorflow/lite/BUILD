@@ -529,7 +529,6 @@ cc_library(
     ],
     deps = [
         ":allocation",
-        ":arena_planner",
         ":external_cpu_backend_context",
         ":graph_info",
         ":kernel_api",
@@ -546,6 +545,8 @@ cc_library(
         ":type_to_tflitetype",
         ":util",
         ":version",
+        "@flatbuffers//:runtime_cc",
+        "@ruy//ruy:denormal",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/c:common_internal",
@@ -561,9 +562,14 @@ cc_library(
         "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
-        "@flatbuffers//:runtime_cc",
-        "@ruy//ruy:denormal",
-    ],
+    ] + select({
+        ":tflite_use_simple_memory_planner": [
+            ":simple_planner",
+        ],
+        "//conditions:default": [
+            ":arena_planner",
+        ],
+    }),
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 

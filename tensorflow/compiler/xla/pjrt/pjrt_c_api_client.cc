@@ -76,9 +76,8 @@ void PjRtCApiClient::InitDevices() {
 
   for (size_t i = 0; i < n; ++i) {
     PJRT_Device* device = devices_args.devices[i];
-    std::unique_ptr<PjRtCApiDevice>& cpp_device =
-        owned_devices_.emplace_back(std::make_unique<PjRtCApiDevice>(device));
-    cpp_device->SetClient(this);
+    std::unique_ptr<PjRtCApiDevice>& cpp_device = owned_devices_.emplace_back(
+        std::make_unique<PjRtCApiDevice>(device, this));
     devices_.push_back(cpp_device.get());
     c_to_cpp_device_map_[device] = cpp_device.get();
     // Map the wrapped PjRtDevice* to the PjRtCApiDevice* that wraps it.
@@ -153,7 +152,7 @@ absl::string_view PjRtCApiClient::platform_version() const {
 }
 
 StatusOr<std::optional<std::string>> PjRtCApiClient::ExecutableFingerprint(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   return wrapped_->ExecutableFingerprint(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
@@ -169,13 +168,14 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   return wrapped_->SerializeExecutable(
       *PjRtCApiExecutable::GetWrapped(&executable));
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::DeserializeExecutable(
-    absl::string_view serialized, CompileOptions options) {
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCApiClient::DeserializeExecutable(absl::string_view serialized,
+                                      CompileOptions options) {
   return WrapExecutable(wrapped_->DeserializeExecutable(serialized, options));
 }
 
@@ -184,11 +184,11 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return wrapped_->UnsafeBufferPointer(PjRtCApiBuffer::GetWrapped(buffer));
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::WrapExecutable(
-    StatusOr<std::unique_ptr<PjRtExecutable>> to_wrap) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::WrapExecutable(
+    StatusOr<std::unique_ptr<PjRtLoadedExecutable>> to_wrap) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       std::move(to_wrap));
-  return std::unique_ptr<PjRtExecutable>(
+  return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<PjRtCApiExecutable>(this, std::move(executable)));
 }
 
@@ -203,8 +203,10 @@ const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------
 
-PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device) : device_(device) {
+PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
+    : client_(client), device_(device) {
   wrapped_ = device_->device;
+  InitAttributes();
 }
 
 PjRtClient* PjRtCApiDevice::client() const { return client_; }
@@ -239,6 +241,45 @@ bool PjRtCApiDevice::IsAddressable() const {
   return args.is_addressable;
 }
 
+void PjRtCApiDevice::InitAttributes() {
+  attributes_ = {};
+  PJRT_Device_Attributes_Args args;
+  args.struct_size = PJRT_Device_Attributes_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_Attributes(&args), api);
+
+  for (int i = 0; i < args.num_attributes; ++i) {
+    const auto& attribute = args.attributes[i];
+    std::string attribute_name(attribute.name, attribute.name_size);
+    switch (attribute.type) {
+      case PJRT_Device_Attribute::PJRT_Device_Attribute_kString: {
+        std::string string_value(attribute.string_value, attribute.value_size);
+        attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
+        break;
+      }
+      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64: {
+        attributes_[attribute_name] =
+            PjRtDeviceAttribute(attribute.int64_value);
+        break;
+      }
+      case PJRT_Device_Attribute::PJRT_Device_Attribute_kInt64List: {
+        const int64_t* array_ptr(attribute.int64_array_value);
+        std::vector<int64_t> int64_array(array_ptr,
+                                         array_ptr + attribute.value_size);
+        attributes_[attribute_name] = PjRtDeviceAttribute(int64_array);
+        break;
+      }
+    }
+  }
+}
+
+const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+PjRtCApiDevice::Attributes() const {
+  return attributes_;
+}
+
 absl::string_view PjRtCApiDevice::device_kind() const {
   PJRT_Device_Kind_Args args;
   args.struct_size = PJRT_Device_Kind_Args_STRUCT_SIZE;
@@ -264,8 +305,8 @@ int PjRtCApiDevice::local_hardware_id() const {
 
 // ------------------------------- Executables ---------------------------------
 
-PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
-                                       std::unique_ptr<PjRtExecutable> wrapped)
+PjRtCApiExecutable::PjRtCApiExecutable(
+    PjRtCApiClient* client, std::unique_ptr<PjRtLoadedExecutable> wrapped)
     : client_(client),
       executable_(
           new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
@@ -443,7 +484,7 @@ PjRtCApiExecutable::ExecutePortable(
   return out;
 }
 
-PjRtExecutable* PjRtCApiExecutable::wrapped() const {
+PjRtLoadedExecutable* PjRtCApiExecutable::wrapped() const {
   return executable_->executable.get();
 }
 
@@ -571,6 +612,26 @@ bool PjRtCApiBuffer::IsDeleted() {
   const PJRT_Api* api = pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Buffer_IsDeleted(&args), api);
   return args.is_deleted;
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
+    PjRtDevice* dst_device) {
+  if (dst_device->client() == client_) {
+    PJRT_Buffer_CopyToDevice_Args args;
+    args.struct_size = PJRT_Buffer_CopyToDevice_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.buffer = buffer_;
+    args.dst_device =
+        tensorflow::down_cast<PjRtCApiDevice*>(dst_device)->c_device();
+    const PJRT_Api* api = pjrt_c_api();
+    RETURN_STATUS_IF_ERROR(api->PJRT_Buffer_CopyToDevice(&args), api);
+    return std::unique_ptr<PjRtBuffer>(
+        std::make_unique<PjRtCApiBuffer>(client_, args.dst_buffer));
+  } else {
+    // TODO(b/239735405) Copying across different clients where `dst_device` is
+    // not a PjRtCApiDevice raises an error.
+    return wrapped_->CopyToDevice(dst_device);
+  }
 }
 
 bool PjRtCApiBuffer::IsOnCpu() const {

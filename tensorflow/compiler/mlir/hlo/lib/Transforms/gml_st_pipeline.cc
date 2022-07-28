@@ -48,8 +48,8 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
   // Bufferization-related passes.
   pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
-  pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
 
   // Convert Linalg + GmlSt to SCF loops.

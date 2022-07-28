@@ -10726,6 +10726,66 @@ ENTRY entry {
                   op::DynamicSlice(op::Pad(_, op::Constant()), _, _, _, _), _));
 }
 
+TEST_F(SpmdPartitioningTest, KeepPartitionedNonSlicedDimension) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p = bf16[16,128,128,384]{3,2,1,0} parameter(0), sharding={replicated}
+  %constant.1165 = s32[] constant(0), sharding={replicated}
+  constant.1151 = s32[] constant(192), sharding={replicated}
+  broadcast.1152 = s32[2]{0} broadcast(constant.1151), dimensions={}, sharding={replicated}
+  slice.1576 = s32[1]{0} slice(broadcast.1152), slice={[0:1]}, sharding={replicated}
+  reshape.1888 = s32[] reshape(slice.1576), sharding={replicated}
+  slice.1546 = s32[1]{0} slice(broadcast.1152), slice={[1:2]}, sharding={replicated}
+  reshape.1890 = s32[] reshape(slice.1546), sharding={replicated}
+  constant.861 = bf16[] constant(0), sharding={replicated}
+  broadcast.862 = bf16[16,512,512,384]{3,2,1,0} broadcast(constant.861), dimensions={}, sharding={devices=[2,2,1,1]0,1,2,3}
+  %c = bf16[16,128,128,384]{3,2,1,0} copy(p), sharding={devices=[2,2,1,1]0,1,2,3}
+  add.228 = bf16[16,128,128,384]{3,2,1,0} add(c, c), sharding={devices=[2,2,1,1]0,1,2,3}
+  ROOT dynamic-update-slice.111 = bf16[16,512,512,384]{3,2,1,0} dynamic-update-slice(broadcast.862, add.228, constant.1165, reshape.1888, reshape.1890, /*index=5*/constant.1165), sharding={devices=[2,2,1,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::DynamicSlice(AllOf(op::DynamicUpdateSlice(),
+                                     op::Shape("bf16[8,512,512,384]")),
+                               _, _, _, _));
+}
+
+TEST_F(SpmdPartitioningTest,
+       KeepPartitionedNonSlicedDimensionWithConstantIndices) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p1 = bf16[16,192,192,384]{3,2,1,0} parameter(0), sharding={replicated}
+  p2 = bf16[16,128,128,384]{3,2,1,0} parameter(1), sharding={replicated}
+  c1 = bf16[16,192,192,384]{3,2,1,0} copy(p1), sharding={devices=[2,2,2,1]0,1,2,3,4,5,6,7}
+  c2 = bf16[16,128,128,384]{3,2,1,0} copy(p2), sharding={devices=[2,2,2,1]0,1,2,3,4,5,6,7}
+  constant.1163 = bf16[] constant(0), sharding={replicated}
+  constant.1165 = s32[] constant(0), sharding={replicated}
+  pad.179 = bf16[16,224,224,384]{3,2,1,0} pad(c1, constant.1163), padding=0_0x16_16x16_16x0_0, sharding={devices=[2,2,2,1]0,1,2,3,4,5,6,7}
+  add.439 = bf16[16,128,128,384]{3,2,1,0} add(c2, c2), sharding={devices=[2,2,2,1]0,1,2,3,4,5,6,7}
+  constant.1070 = s32[] constant(48), sharding={replicated}
+  dynamic-update-slice.128 = bf16[16,224,224,384]{3,2,1,0} dynamic-update-slice(pad.179, add.439, constant.1165, constant.1070, constant.1070, /*index=5*/constant.1165), sharding={devices=[2,2,2,1]0,1,2,3,4,5,6,7}
+  ROOT c = bf16[16,224,224,384]{3,2,1,0} copy(dynamic-update-slice.128), sharding={devices=[2,2,2,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::DynamicSlice(
+          AllOf(op::DynamicUpdateSlice(), op::Shape("bf16[8,224, 224,384]")), _,
+          _, _, _)));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

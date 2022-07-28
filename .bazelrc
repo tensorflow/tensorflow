@@ -231,6 +231,11 @@ build:mkl_aarch64 --define=build_with_openmp=true
 build:mkl_aarch64 --define=build_with_acl=true
 build:mkl_aarch64 -c opt
 
+# Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
+# with Eigen threadpool support
+build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
+build:mkl_aarch64_threadpool -c opt
+
 # This config refers to building CUDA op kernels with nvcc.
 build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain

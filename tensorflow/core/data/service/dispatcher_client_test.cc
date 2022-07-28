@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -44,6 +45,20 @@ using ::testing::AllOf;
 using ::testing::HasSubstr;
 
 constexpr const char kProtocol[] = "grpc";
+
+DataServiceMetadata GetDefaultMetadata() {
+  StructuredValue decoded_spec;
+  TensorShapeProto::Dim* dim =
+      decoded_spec.mutable_tensor_shape_value()->add_dim();
+  dim->set_size(1);
+  dim->set_name(absl::StrCat("dim"));
+
+  DataServiceMetadata metadata;
+  metadata.set_element_spec(decoded_spec.SerializeAsString());
+  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  metadata.set_cardinality(kUnknownCardinality);
+  return metadata;
+}
 
 class DispatcherClientTest : public ::testing::Test {
  protected:
@@ -69,9 +84,7 @@ class DispatcherClientTest : public ::testing::Test {
 };
 
 TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(RangeDataset(10), metadata));
@@ -82,7 +95,7 @@ TEST_F(DispatcherClientTest, GetDataServiceMetadata) {
 }
 
 TEST_F(DispatcherClientTest, DatasetDoesNotExist) {
-  DataServiceMetadata metadata;
+  DataServiceMetadata metadata = GetDefaultMetadata();
   EXPECT_THAT(
       dispatcher_client_->GetDataServiceMetadata(
           /*dataset_id=*/"not-found", metadata),
@@ -96,9 +109,7 @@ TEST_F(DispatcherClientTest, GetDataServiceConfig) {
 }
 
 TEST_F(DispatcherClientTest, RegisterDatasetWithExplicitId) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(
       const std::string dataset_id1,
@@ -115,9 +126,7 @@ TEST_F(DispatcherClientTest, RegisterDatasetWithExplicitId) {
 }
 
 TEST_F(DispatcherClientTest, DatasetsDoNotMatch) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(
       const std::string dataset_id1,
@@ -137,9 +146,7 @@ TEST_F(DispatcherClientTest, DatasetsDoNotMatch) {
 }
 
 TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(kInfiniteCardinality);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(InfiniteDataset(), metadata));
@@ -166,9 +173,7 @@ TEST_F(DispatcherClientTest, EnableCrossTrainerCache) {
 }
 
 TEST_F(DispatcherClientTest, CreateNamedJob) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(RangeDataset(10), metadata));
@@ -192,9 +197,7 @@ TEST_F(DispatcherClientTest, CreateNamedJob) {
 }
 
 TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
-  DataServiceMetadata metadata;
-  metadata.set_element_spec("encoded_element_spec");
-  metadata.set_compression(DataServiceMetadata::COMPRESSION_SNAPPY);
+  DataServiceMetadata metadata = GetDefaultMetadata();
   metadata.set_cardinality(10);
   TF_ASSERT_OK_AND_ASSIGN(const std::string dataset_id,
                           RegisterDataset(RangeDataset(10), metadata));

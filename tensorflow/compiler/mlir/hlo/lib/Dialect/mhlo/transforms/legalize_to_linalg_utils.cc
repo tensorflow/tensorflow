@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -93,7 +94,10 @@ Value preSparsify(Operation* op, llvm::SmallVector<Value, 2>& values, Type rtp,
   // Apply for semi-ring operations that lower to elaborate code
   // (any sign-op, any elt-wise conversion, or an integral abs-op).
   if (isa<mhlo::SignOp>(op) || isa<mhlo::ConvertOp>(op) ||
-      (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op))) {
+      (isa<mhlo::AbsOp>(op) && hasIntegralShapeType(op)) ||
+      isa<chlo::AsinOp>(op) || isa<chlo::AsinhOp>(op) ||
+      isa<chlo::AtanOp>(op) || isa<chlo::AtanhOp>(op) ||
+      isa<chlo::BesselI1eOp>(op)) {
     if (!sparse_tensor::getSparseTensorEncoding(op->getResult(0).getType()) &&
         !sparse_tensor::getSparseTensorEncoding(op->getOperand(0).getType()))
       return Value();

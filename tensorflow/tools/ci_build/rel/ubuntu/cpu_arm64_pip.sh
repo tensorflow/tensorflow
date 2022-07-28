@@ -56,8 +56,8 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 py_ver=$(python -c 'import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))')
 
 # Export optional variables for running pip_new.sh
-export TF_BUILD_FLAGS="--config=mkl_aarch64 --copt=-mtune=generic --copt=-march=armv8-a \
-    --copt=-O3 --copt=-fopenmp --copt=-flax-vector-conversions --linkopt=-lgomp"
+export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --copt=-march=armv8-a \
+    --copt=-O3 --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium --verbose_failures=true --test_keep_going"
@@ -92,7 +92,7 @@ export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} \
     -//tensorflow/python/kernel_tests/nn_ops:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:conv3d_backprop_filter_v2_grad_test \
     -//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
-    -//tensorflow/python/kernel_tests/nn_ops:pooling_ops_3d_test_cpu \
+    -//tensorflow/python/kernel_tests/quantization_ops:quantization_ops_test \
     -//tensorflow/python/ops/parallel_for:math_test \
     -//tensorflow/python/training:server_lib_test"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"

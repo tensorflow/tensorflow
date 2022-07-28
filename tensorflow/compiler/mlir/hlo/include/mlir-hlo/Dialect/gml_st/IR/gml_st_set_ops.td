@@ -69,7 +69,7 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 def GMLST_PointOp : GMLST_Op<"point", [
     NoSideEffect,
     DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let arguments = (ins AnySet:$superset,
+  let arguments = (ins GMLST_TileType:$superset,
                        Variadic<Index>:$dynamic_indices,
                        I64ArrayAttr:$static_indices);
   let results = (outs GMLST_PointType:$result);
@@ -122,7 +122,8 @@ def GMLST_TileOp : GMLST_Op<"tile", [
 
 def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
     NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
   let summary = [{
     Drops dimensions of a subset.
   }];

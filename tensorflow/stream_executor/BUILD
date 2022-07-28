@@ -36,6 +36,7 @@ cc_library(
         "launch_dim.h",
     ],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor:launch_dim",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
     ],
@@ -43,10 +44,10 @@ cc_library(
 
 cc_library(
     name = "device_description",
-    srcs = ["device_description.cc"],
     hdrs = ["device_description.h"],
     deps = [
         ":launch_dim",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
@@ -85,8 +86,11 @@ cc_library(
         ":allocator_stats",
         ":data_type",
         ":dnn_proto_cc",
-        ":host_or_device_scalar",
         ":stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
+        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
+        "//tensorflow/compiler/xla/stream_executor:launch_dim",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
@@ -133,6 +137,9 @@ cc_library(
         ":dnn_proto_cc",
         ":kernel_cache_config",
         ":stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
+        "//tensorflow/compiler/xla/stream_executor:launch_dim",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
@@ -146,9 +153,9 @@ cc_library(
 
 cc_library(
     name = "kernel_spec",
-    srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -158,12 +165,16 @@ cc_library(
 cc_library(
     name = "kernel_cache_config",
     hdrs = ["kernel_cache_config.h"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
+    ],
 )
 
 cc_library(
     name = "module_spec",
     hdrs = ["module_spec.h"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor:module_spec",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ],
@@ -197,18 +208,17 @@ cc_library(
     deps = [
         ":data_type",
         ":dnn_proto_cc",
-        ":host_or_device_scalar",
         ":platform",
         ":stream_executor_headers",
-        ":stream_executor_internal",
         ":stream_executor_pimpl_header",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -348,8 +358,11 @@ cc_library(
         ":allocator_stats",
         ":data_type",
         ":dnn_proto_cc",
-        ":host_or_device_scalar",
         ":stream_executor_headers",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
+        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
+        "//tensorflow/compiler/xla/stream_executor:launch_dim",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
@@ -515,6 +528,8 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
@@ -605,6 +620,10 @@ cc_library(
         ":allocator_stats",
         ":dnn_proto_cc",
         ":host_or_device_scalar",
+        "//tensorflow/compiler/xla/stream_executor:kernel_cache_config",
+        "//tensorflow/compiler/xla/stream_executor:kernel_spec",
+        "//tensorflow/compiler/xla/stream_executor:module_spec",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/cuda:cuda_dnn_headers",
         "//tensorflow/stream_executor/lib",

@@ -31,7 +31,7 @@ StatusOr<bool> OpExpanderPass::Run(
   std::vector<HloInstruction*> matching_instructions;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    absl::c_copy_if(computation->instructions(),
+    absl::c_copy_if(computation->MakeInstructionPostOrder(),
                     std::back_inserter(matching_instructions),
                     [&](HloInstruction* inst) {
                       return InstructionMatchesPattern(inst) &&

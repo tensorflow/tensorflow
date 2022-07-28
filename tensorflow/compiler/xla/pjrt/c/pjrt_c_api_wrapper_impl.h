@@ -44,10 +44,12 @@ struct PJRT_Client {
 struct PJRT_Device {
   // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
+  // The device specific attributes which are initialized once per device.
+  std::vector<PJRT_Device_Attribute> attributes;
 };
 
 struct PJRT_Executable {
-  std::unique_ptr<xla::PjRtExecutable> executable;
+  std::unique_ptr<xla::PjRtLoadedExecutable> executable;
   PJRT_Client* client;
   // These pointers are a subset of `client`'s `addressable_devices`, i.e. those
   // addressed by the compiled executable program. `client` owns the objects
@@ -81,6 +83,7 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);
 PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
+PJRT_Error* PJRT_Device_Attributes(PJRT_Device_Attributes_Args* args);
 PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 PJRT_Error* PJRT_Device_LocalHardwareId(PJRT_Device_LocalHardwareId_Args* args);
 
@@ -98,6 +101,7 @@ PJRT_Error* PJRT_Buffer_OnDeviceSizeInBytes(
     PJRT_Buffer_OnDeviceSizeInBytes_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
+PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 
 // Helper macros and functions

@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
 
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -26,7 +29,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-
 namespace {
 std::string GenerateCode() {
   std::string c = R"(
@@ -171,6 +173,7 @@ absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
   consumed_nodes->insert(slice_node.node->id);
   return absl::OkStatus();
 }
+
 }  // namespace
 
 GPUOperation CreateConvPointwise(const OperationDef& definition,

@@ -21,22 +21,35 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Quantize input_val using given inv_scale and zero_point, using the formula:
-// quantized_val = input_val * inv_scale + zero_point
+// Quantize eigen Tensor input_tensor using given inv_scale and zero_point,
+// using the formula:
+// quantized_val = floor(input_val * inv_scale + 0.5f) + zero_point
 //
 // The caller is reponsible for the validity of the inv_scale (Avoid precision
 // loss from taking inverse, and ensure that inv_scale is a finite number.)
-template <typename Tin, typename Tout>
-void AffineQuantize(const Tin& input_tensor, float inv_scale,
+template <typename ConstTensorTin, typename TensorTout>
+void AffineQuantize(const ConstTensorTin& input_tensor, float inv_scale,
                     int32_t zero_point, int32_t quantization_min_val,
-                    int32_t quantization_max_val, Tout& quantized_tensor) {
+                    int32_t quantization_max_val, TensorTout quantized_tensor) {
   quantized_tensor = ((input_tensor.template cast<float>() * inv_scale + 0.5f)
                           .floor()
                           .template cast<int32_t>() +
                       zero_point)
                          .cwiseMin(quantization_max_val)
                          .cwiseMax(quantization_min_val)
-                         .template cast<typename Tout::Scalar>();
+                         .template cast<typename TensorTout::Scalar>();
+}
+
+// Dequantize eigen Tensor input_tensor using given scale and zero_point, using
+// the formula:
+// dequantized_val = (input_val - zero_point) * scale
+template <typename ConstTensorTin, typename TensorTout>
+void AffineDequantize(const ConstTensorTin& input_tensor, float scale,
+                      int32_t zero_point, TensorTout dequantized_tensor) {
+  dequantized_tensor = (((input_tensor.template cast<int32_t>() - zero_point))
+                            .template cast<float>() *
+                        scale)
+                           .template cast<typename TensorTout::Scalar>();
 }
 
 // Given a portion of input float tensor, quantizes the data and writes output

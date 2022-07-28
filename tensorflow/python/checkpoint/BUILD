@@ -195,10 +195,10 @@ py_library(
     srcs_version = "PY3",
     tags = ["no_pip"],
     deps = [
-        ":util",
         "//tensorflow/python:util",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:converter",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

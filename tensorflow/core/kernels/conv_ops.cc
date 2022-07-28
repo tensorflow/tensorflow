@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -698,6 +699,15 @@ class Conv2DOp : public BinaryOp<T> {
 
     // If there is nothing to compute, return.
     if (out_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If the input is empty, result can only be due to padding.
+    if (input.NumElements() == 0) {
+      // Zero-out output and return.
+      functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                           output->template flat<T>());
+
       return;
     }
 

@@ -126,6 +126,12 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
     builder.clone(*global_op)->setAttr("lmhlo.alloc", attr);
   }
 
+  // If 'op' is a gpu.launch_func, clone referenced gpu.module.
+  if (auto launch_func_op = llvm::dyn_cast<mlir::gpu::LaunchFuncOp>(op)) {
+    builder.clone(*mlir::SymbolTable::lookupNearestSymbolFrom(
+        op, launch_func_op.getKernelModuleName()));
+  }
+
   auto func_type = builder.getType<mlir::FunctionType>(
       mlir::TypeRange(arguments), mlir::TypeRange());
   auto func_name = op->getParentOfType<mlir::func::FuncOp>().getName();
@@ -230,7 +236,11 @@ Emit(mlir::func::FuncOp func_op,
 
 // Returns the data to rewrite op without changing the IR.
 static llvm::Expected<RewriteData> Match(Operation* op) {
-  mlir::SmallVector<Value, 4> arguments = op->getOperands();
+  mlir::SmallVector<Value> arguments;
+  llvm::copy_if(
+      op->getOperands(), std::back_inserter(arguments),
+      // Filter block/thread size arguments of gpu.launch_func.
+      [](Value value) { return value.getType().isa<mlir::ShapedType>(); });
   mlir::SetVector<Value> captures;
   getUsedValuesDefinedAbove(op->getRegions(), captures);
   llvm::copy(captures, std::back_inserter(arguments));
@@ -448,7 +458,8 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
       walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
-      walk(mlir::lmhlo::SortOp()).wasInterrupted())
+      walk(mlir::lmhlo::SortOp()).wasInterrupted() ||
+      walk(mlir::gpu::LaunchFuncOp()).wasInterrupted())
     return mlir::failure();
 
   if (rewrites.empty()) {
