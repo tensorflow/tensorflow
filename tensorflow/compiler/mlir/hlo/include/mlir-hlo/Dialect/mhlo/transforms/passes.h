@@ -50,6 +50,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
     bool legalizeBroadcasts = true, bool expandCompositions = true);
 
+// Lowers from sparse ops in CHLO dialect to Linalg dialect.
+std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeSparseChloToLinalgPass();
+
 // canonicalize reduction ops to be suitable for codegen.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createHloCanonicalizeReductionPass();

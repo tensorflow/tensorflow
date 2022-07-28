@@ -803,6 +803,37 @@ cc_library(
 )
 
 cc_library(
+    name = "sparse_chlo_legalize_to_linalg",
+    srcs = ["lib/Dialect/mhlo/transforms/sparse_chlo_legalize_to_linalg.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":legalize_to_linalg_utils",
+        ":map_mhlo_to_scalar_op",
+        ":mhlo_pass_details",
+        ":type_conversion",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TensorUtils",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "legalize_to_linalg",
     srcs = ["lib/Dialect/mhlo/transforms/legalize_to_linalg.cc"],
     hdrs = [
@@ -1537,6 +1568,7 @@ cc_library(
         ":mhlo_pass_details",
         ":mhlo_to_mhlo_lowering_patterns",
         ":shape_component_analysis",
+        ":sparse_chlo_legalize_to_linalg",  # build-cleaner: keep
         ":transforms_pass_details",
         ":unfuse_batch_norm",  # build-cleaner: keep
         ":userange_analysis",

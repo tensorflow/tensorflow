@@ -26,6 +26,11 @@ def ChloLegalizeToHloPass : Pass<"chlo-legalize-to-hlo", "func::FuncOp"> {
   ];
 }
 
+def ChloLegalizeToLinalgPass : Pass<"sparse-chlo-legalize-to-linalg", "func::FuncOp"> {
+  let summary = "Legalize from sparse ops in CHLO dialect to Linalg dialect.";
+  let constructor = "createLegalizeSparseChloToLinalgPass()";
+}
+
 def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::FuncOp"> {
   let summary = "canonicalize reduction ops to be suitable for codegen.";
   let constructor = "createHloCanonicalizeReductionPass()";
