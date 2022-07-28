@@ -1839,8 +1839,8 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
           return ir_array.EmitReadArrayElement(index, builder);
         });
   }
-  launch_config.logical_order = EnableLogicalIndexGenerationForOutput(
-      launch_config, launch_dimensions, operand_arrays, output_element_arrays);
+  // TODO(b/237581536): Remove the feature to iterate output in logical order.
+  launch_config.logical_order = false;
   TF_ASSIGN_OR_RETURN(
       auto element_generator,
       fused_emitter.GetGenerator(*fused_computation->root_instruction()));

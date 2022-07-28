@@ -44,7 +44,7 @@ ENTRY swap_conv {
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
 // CHECK-LABEL: ENTRY
-// CHECK:   [[FILTER:%[^ ]+]] = f32[1,30,30,512]{2,1,3,0}
+// CHECK:   [[FILTER:%[^ ]+]] = f32[1,30,30,512]{2,1,3,0} reverse
 // CHECK:   [[INPUT:%[^ ]+]] = f32[512,128,3,3]{3,2,0,1}
 // CHECK:   %cudnn-conv = (f32[1,32,32,128]{2,1,3,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[1,30,30,512]{2,1,3,0} [[FILTER]], f32[512,128,3,3]{3,2,0,1} [[INPUT]]), window={size=3x3 pad=2_2x2_2 rhs_reversal=1x1}, dim_labels=b01f_io01->b01f
       )");

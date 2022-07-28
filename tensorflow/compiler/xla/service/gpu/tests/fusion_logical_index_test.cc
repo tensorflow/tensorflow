@@ -22,7 +22,8 @@ namespace {
 
 class FusionLogicalIndexTest : public GpuCodegenTest {};
 
-TEST_F(FusionLogicalIndexTest, FusionLogicalIndexStore) {
+// TODO(b/237581536): Remove the feature to iterate output in logical order.
+TEST_F(FusionLogicalIndexTest, DISABLED_FusionLogicalIndexStore) {
   const char* hlo_text = R"(
 HloModule TestModule
 

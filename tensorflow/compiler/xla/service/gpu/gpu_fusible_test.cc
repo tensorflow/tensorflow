@@ -46,7 +46,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_ElementwiseProducer) {
   const HloInstruction* exp =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(exp->opcode(), HloOpcode::kExp);
-  EXPECT_FALSE(IsPhysicallyTransposing(*exp));
+  EXPECT_FALSE(ReadsUncoalesced(*exp));
 }
 
 TEST_F(GpuFusibleTest, IsPhysicallyTransposing_MixedLayoutProducer) {
@@ -78,7 +78,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_MixedLayoutProducer) {
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(1);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kSelect);
-  EXPECT_TRUE(IsPhysicallyTransposing(*loop_fusion));
+  EXPECT_TRUE(ReadsUncoalesced(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest,
@@ -111,7 +111,7 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(1);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kSelect);
-  EXPECT_FALSE(IsPhysicallyTransposing(*loop_fusion));
+  EXPECT_FALSE(ReadsUncoalesced(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest, IsPhysicallyTransposing_CopyProducer) {
@@ -131,7 +131,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_CopyProducer) {
   const HloInstruction* copy =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
-  EXPECT_TRUE(IsPhysicallyTransposing(*copy));
+  EXPECT_TRUE(ReadsUncoalesced(*copy));
 }
 
 TEST_F(GpuFusibleTest, IsPhysicallyTransposing_PhysicalTranspose) {
@@ -151,7 +151,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_PhysicalTranspose) {
   const HloInstruction* transpose =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(transpose->opcode(), HloOpcode::kTranspose);
-  EXPECT_TRUE(IsPhysicallyTransposing(*transpose));
+  EXPECT_TRUE(ReadsUncoalesced(*transpose));
 }
 
 TEST_F(GpuFusibleTest, IsPhysicallyTransposing_LayoutChangingFusionProducer) {
@@ -182,7 +182,7 @@ TEST_F(GpuFusibleTest, IsPhysicallyTransposing_LayoutChangingFusionProducer) {
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kCopy);
-  EXPECT_TRUE(IsPhysicallyTransposing(*loop_fusion));
+  EXPECT_TRUE(ReadsUncoalesced(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest,
@@ -207,7 +207,7 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* loop_fusion =
       module->entry_computation()->root_instruction()->operand(0);
   ASSERT_EQ(loop_fusion->fused_expression_root()->opcode(), HloOpcode::kAdd);
-  EXPECT_FALSE(IsPhysicallyTransposing(*loop_fusion));
+  EXPECT_FALSE(ReadsUncoalesced(*loop_fusion));
 }
 
 TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {
@@ -1029,9 +1029,9 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test_module
     ENTRY entry {
-      p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
-      copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
-      ROOT add = f32[16,16,16,16]{0,1,2,3} add(copy, copy)
+      p0 = f32[16,16,16]{2,1,0} parameter(0)
+      copy = f32[16,16,16]{0,2,1} copy(p0)
+      ROOT add = f32[16,16,16]{0,2,1} add(copy, copy)
     })")
                     .ValueOrDie();
 

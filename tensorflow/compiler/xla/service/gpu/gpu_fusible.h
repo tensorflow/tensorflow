@@ -54,7 +54,7 @@ bool IsLoopFusible(const HloInstruction& instr);
 
 // Whether the op tranposes the physical data layout. Fusing such ops may lead
 // to uncoalesced data access and may thus not be beneficial.
-bool IsPhysicallyTransposing(const HloInstruction& instr);
+bool ReadsUncoalesced(const HloInstruction& instr);
 
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
