@@ -1598,6 +1598,7 @@ def HLO_ConvolutionOp : HLO_Op<"convolution", [NoSideEffect]> {
     ConvolutionAttributes.attributes);
 
   let results = (outs HLO_Tensor);
+  let hasCanonicalizer = 1;
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 
@@ -1752,6 +1753,7 @@ def HLO_DotGeneralOp: HLO_ShapedInterfaceOp<"dot_general", [NoSideEffect]> {
   );
 
   let results = (outs HLO_Tensor);
+  let hasCanonicalizer = 1;
   // DotGeneral op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;

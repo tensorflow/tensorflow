@@ -1120,6 +1120,46 @@ LogicalResult DotGeneralOp::verify() {
   return success();
 }
 
+namespace {
+// Handle the generic case of DotGeneral and convert to a regulat DotOp.
+struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
+  using OpRewritePattern<DotGeneralOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DotGeneralOp dot,
+                                PatternRewriter& rewriter) const override {
+    auto lhs = dot.lhs();
+    auto rhs = dot.rhs();
+    auto lhsTy = lhs.getType().cast<ShapedType>();
+    auto rhsTy = rhs.getType().cast<ShapedType>();
+
+    if (lhsTy.getRank() != 2) return failure();
+    if (rhsTy.getRank() != 2) return failure();
+
+    auto nums = dot.dot_dimension_numbers();
+    if (!nums.getLhsBatchingDimensions().empty()) return failure();
+    if (!nums.getRhsBatchingDimensions().empty()) return failure();
+
+    auto lhsContract = nums.getLhsContractingDimensions();
+    auto rhsContract = nums.getRhsContractingDimensions();
+    if (lhsContract.size() != 1 || rhsContract.size() != 1) return failure();
+
+    if (lhsContract.front() != 1) return failure();
+    if (rhsContract.front() != 0) return failure();
+
+    rewriter.replaceOpWithNewOp<mhlo::DotOp>(
+        dot, dot.getType(), lhs, rhs,
+        dot.precision_config().getValueOr(nullptr));
+
+    return success();
+  }
+};
+}  // namespace
+
+void DotGeneralOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                               MLIRContext* context) {
+  results.add<DotGeneralToDot>(context);
+}
+
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -2295,7 +2335,97 @@ SmallVector<int64_t> inferConvolutionOpReturnShape(
 
   return outputDimensions;
 }
+
+// Some mhlo.convolutions are dot products, specifically when there is no
+// padding and no spatial dimensions. DotGeneralOp is general enough that it
+// can sufficiently describe it.
+struct ConvolutionIsDotOrMul : public OpRewritePattern<mhlo::ConvolutionOp> {
+  using OpRewritePattern<mhlo::ConvolutionOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
+                                PatternRewriter& rewriter) const override {
+    auto lhs = op.lhs();
+    auto rhs = op.rhs();
+    auto lhsTy = lhs.getType().cast<RankedTensorType>();
+    auto rhsTy = rhs.getType().cast<RankedTensorType>();
+    auto resultTy = op.getResult().getType().cast<ShapedType>();
+
+    if (lhsTy.getRank() != 2) return failure();
+    if (rhsTy.getRank() != 2) return failure();
+
+    if (op.batch_group_count() != 1) return failure();
+
+    // There should not be any padding if this is a matmul.
+    auto dNums = op.dimension_numbers();
+    assert(!op.padding() || op.padding()->empty());
+    assert(dNums.getKernelSpatialDimensions().empty());
+
+    auto lhsContractDim = dNums.getInputFeatureDimension();
+    auto rhsBatchDim = dNums.getKernelOutputFeatureDimension();
+    auto rhsContractDim = dNums.getKernelInputFeatureDimension();
+    auto outBatchDim = dNums.getOutputBatchDimension();
+    auto outFeatureDim = dNums.getOutputFeatureDimension();
+
+    // If the input features are not grouped then we can directly convert to an
+    // mhlo.dot_general.
+    if (op.feature_group_count() == 1) {
+      // We can swap the lhs and rhs sides to avoid a transpose.
+      if (outBatchDim == 1 && outFeatureDim == 0) {
+        std::swap(lhs, rhs);
+        std::swap(outBatchDim, outFeatureDim);
+        std::swap(lhsContractDim, rhsContractDim);
+      }
+
+      auto dotNums = DotDimensionNumbersAttr::get(
+          op.getContext(), {}, {}, {lhsContractDim}, {rhsContractDim});
+      auto dotOp = rewriter.create<mhlo::DotGeneralOp>(
+          op.getLoc(), op.getType(), lhs, rhs, dotNums,
+          op.precision_config().getValueOr(nullptr));
+
+      rewriter.replaceOp(op, dotOp.getResult());
+      return success();
+    }
+
+    if (op.feature_group_count() == lhsTy.getDimSize(lhsContractDim)) {
+      if (!rhsTy.hasStaticShape()) return failure();
+      if (!lhsTy.hasStaticShape()) return failure();
+      if (rhsTy.getDimSize(rhsContractDim) != 1) return failure();
+
+      rhsTy = RankedTensorType::get({rhsTy.getDimSize(rhsBatchDim)},
+                                    rhsTy.getElementType());
+      rhs = rewriter.create<mhlo::ReshapeOp>(op.getLoc(), rhsTy, rhs);
+
+      rhsTy = RankedTensorType::get(lhsTy.getShape(), rhsTy.getElementType());
+      rhs = rewriter.create<mhlo::BroadcastInDimOp>(
+          op.getLoc(), rhsTy, rhs, rewriter.getI64TensorAttr({1}));
+
+      lhs = rewriter.create<mhlo::ConvertOp>(
+          op.getLoc(), lhsTy.clone(resultTy.getElementType()), lhs);
+      rhs = rewriter.create<mhlo::ConvertOp>(
+          op.getLoc(), rhsTy.clone(resultTy.getElementType()), rhs);
+
+      auto mulTy =
+          RankedTensorType::get(lhsTy.getShape(), resultTy.getElementType());
+      auto mul = rewriter.create<mhlo::MulOp>(op.getLoc(), mulTy, lhs, rhs)
+                     .getResult();
+
+      mul = rewriter.create<mhlo::TransposeOp>(
+          op.getLoc(), resultTy, mul,
+          rewriter.getI64TensorAttr({outBatchDim, outFeatureDim}));
+
+      rewriter.replaceOp(op, mul);
+      return success();
+    }
+
+    return failure();
+  }
+};
+
 }  // namespace
+
+void ConvolutionOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                                MLIRContext* context) {
+  results.add<ConvolutionIsDotOrMul>(context);
+}
 
 /*
  * We intend to verify the following properties
@@ -8604,7 +8734,7 @@ static ParseResult parseConvolutionDimensionsRaw(
   int64_t kernelInputFeatureDimension = 0;
   int64_t kernelOutputFeatureDimension = 0;
   SmallVector<int64_t> kernelSpatialDimensions;
-  int64_t outputBatchDimension = 0;
+  int64_t outBatchDimension = 0;
   int64_t outputFeatureDimension = 0;
   SmallVector<int64_t> outputSpatialDimensions;
   if (failed(parseStruct(
@@ -8625,7 +8755,7 @@ static ParseResult parseConvolutionDimensionsRaw(
                 return parser.parseInteger(kernelOutputFeatureDimension);
               },
               [&]() { return parseDims(parser, kernelSpatialDimensions); },
-              [&]() { return parser.parseInteger(outputBatchDimension); },
+              [&]() { return parser.parseInteger(outBatchDimension); },
               [&]() { return parser.parseInteger(outputFeatureDimension); },
               [&]() { return parseDims(parser, outputSpatialDimensions); },
           }))) {
@@ -8637,7 +8767,7 @@ static ParseResult parseConvolutionDimensionsRaw(
       parser.getBuilder().getContext(), inputBatchDimension,
       inputFeatureDimension, inputSpatialDimensions,
       kernelInputFeatureDimension, kernelOutputFeatureDimension,
-      kernelSpatialDimensions, outputBatchDimension, outputFeatureDimension,
+      kernelSpatialDimensions, outBatchDimension, outputFeatureDimension,
       outputSpatialDimensions);
   return success();
 }
@@ -8813,13 +8943,13 @@ ParseResult parseConvolutionDimensions(AsmParser& parser,
     return failure();
   }
   llvm::SmallVector<int64_t> outputSpatialDimensions = parsedDims.first;
-  int64_t outputBatchDimension = parsedDims.second[IOBatch];
-  int64_t outputFeatureDimension = parsedDims.second[IOFeature];
+  const int64_t outBatchDimension = parsedDims.second[IOBatch];
+  const int64_t outputFeatureDimension = parsedDims.second[IOFeature];
   dnums = ConvDimensionNumbersAttr::get(
       parser.getBuilder().getContext(), inputBatchDimension,
       inputFeatureDimension, inputSpatialDimensions,
       kernelInputFeatureDimension, kernelOutputFeatureDimension,
-      kernelSpatialDimensions, outputBatchDimension, outputFeatureDimension,
+      kernelSpatialDimensions, outBatchDimension, outputFeatureDimension,
       outputSpatialDimensions);
 
   return success();
