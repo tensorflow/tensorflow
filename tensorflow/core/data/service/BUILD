@@ -899,6 +899,7 @@ cc_library(
 
 tf_cc_test(
     name = "validate_utils_test",
+    size = "small",
     srcs = ["validate_utils_test.cc"],
     deps = [
         ":validate_utils",
