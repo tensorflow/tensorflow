@@ -572,10 +572,10 @@ TF_CALL_uint32(REGISTER_GPU_KERNELS);
 
 #define REGISTER_KERNELS(type)                               \
   REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")           \
-                            .Device(DEVICE_DEFAULT)          \
-                            .TypeConstraint<type>("dtype")   \
-                            .HostMemory("resource"),         \
-                        AssignVariableOp<CPUDevice, type>);
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("resource"),       \
+                          AssignVariableOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
