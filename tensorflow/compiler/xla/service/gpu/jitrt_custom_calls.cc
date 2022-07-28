@@ -846,16 +846,15 @@ static bool ConvFuseSideInputdFn(runtime::KernelContext* ctx, void** args,
 
 namespace {
 struct Infeed {
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef config) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   CustomCall::RemainingArgs args, StringRef config) const;
   static Infeed Handler() { return Infeed(); }
 };
 }  // namespace
 
-LogicalResult Infeed::operator()(const ServiceExecutableRunOptions* run_options,
-                                 CustomCall::RemainingArgs args,
-                                 StringRef config) const {
+Error Infeed::operator()(const ServiceExecutableRunOptions* run_options,
+                         CustomCall::RemainingArgs args,
+                         StringRef config) const {
   VLOG(3) << "Infeeding to GPU";
 
   se::Stream* stream = run_options->stream();
@@ -863,23 +862,26 @@ LogicalResult Infeed::operator()(const ServiceExecutableRunOptions* run_options,
       GetOrCreateInfeedManager(stream->parent())->BlockingGetNextDestination();
 
   // Check that we have correct number of arguments.
-  if (args.size() != source_buffers.leaf_count()) return failure();
+  if (args.size() != source_buffers.leaf_count())
+    return MakeStringError("Incorrect number of arguments");
 
-  // TODO(ezhulenev): Report human-readable error messages through errors.
   size_t index = 0;
   for (auto& source : source_buffers.leaves()) {
     // Get the destination buffer.
     auto dest = args.get<jitrt::StridedMemrefView>(index);
-    if (failed(dest)) return failure();
+    if (failed(dest))
+      return MakeStringError("Failed to get the destination buffer");
 
     // Get the source buffer shape.
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), source.first);
 
     // Check that destination shape matches the source shape.
-    // TODO(ezhulenev): Report human-readable error similar to infeed_thunk.
     Shape dest_shape = ToShape(*dest);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) return failure();
+    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+      return MakeStringError(
+          "The destination shape does not match the source shape");
+    }
 
     se::DeviceMemoryBase dest_address = GetDeviceAddress(*dest);
     se::ScopedDeviceMemory<uint8_t>& buffer = source.second;
@@ -890,11 +892,11 @@ LogicalResult Infeed::operator()(const ServiceExecutableRunOptions* run_options,
 
   // TODO(ezhulenev): Make this function async?
   Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) return failure();
+  if (!block_status.ok()) return AsError(block_status);
 
   VLOG(3) << "Infeeding to GPU complete";
 
-  return success();
+  return Error::success();
 }
 
 static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -912,16 +914,15 @@ static bool Infeed(runtime::KernelContext* ctx, void** args, void** attrs) {
 
 namespace {
 struct Outfeed {
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           CustomCall::RemainingArgs args,
-                           StringRef config) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   CustomCall::RemainingArgs args, StringRef config) const;
   static Outfeed Handler() { return Outfeed(); }
 };
 }  // namespace
 
-LogicalResult Outfeed::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    CustomCall::RemainingArgs args, StringRef config) const {
+Error Outfeed::operator()(const ServiceExecutableRunOptions* run_options,
+                          CustomCall::RemainingArgs args,
+                          StringRef config) const {
   VLOG(3) << "Outfeeding from GPU";
 
   se::Stream* stream = run_options->stream();
@@ -930,22 +931,26 @@ LogicalResult Outfeed::operator()(
       outfeed_manager->BlockingGetNextDestination();
 
   // Check that we have correct number of arguments.
-  if (args.size() != dest_buffers->leaf_count()) return failure();
+  if (args.size() != dest_buffers->leaf_count())
+    return MakeStringError("Incorrect number of arguments");
 
   size_t index = 0;
   for (auto& dest : dest_buffers->leaves()) {
     // Get the source buffer.
     auto source = args.get<jitrt::StridedMemrefView>(index);
-    if (failed(source)) return failure();
+    if (failed(source))
+      return MakeStringError("Failed to get the source buffer");
 
     // Get the source buffer shape.
     const Shape& dest_shape =
         ShapeUtil::GetSubshape(dest_buffers->shape(), dest.first);
 
     // Check that destination shape matches the source shape.
-    // TODO(ezhulenev): Report human-readable error similar to outfeed_thunk.
     Shape source_shape = ToShape(*source);
-    if (!ShapeUtil::Equal(dest_shape, source_shape)) return failure();
+    if (!ShapeUtil::Equal(dest_shape, source_shape)) {
+      return MakeStringError(
+          "The destination shape does not match the source shape");
+    }
 
     se::DeviceMemoryBase source_address = GetDeviceAddress(*source);
     std::unique_ptr<OutfeedBuffer>& buffer = dest.second;
@@ -959,11 +964,11 @@ LogicalResult Outfeed::operator()(
   }
 
   Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) return failure();
+  if (!block_status.ok()) return AsError(block_status);
 
   VLOG(3) << "Outfeeding from GPU complete";
 
-  return success();
+  return Error::success();
 }
 
 static bool Outfeed(runtime::KernelContext* ctx, void** args, void** attrs) {
