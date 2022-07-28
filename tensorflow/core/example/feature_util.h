@@ -132,8 +132,12 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-namespace tensorflow {
+// Must come after the import for absl::string_view.
+#ifdef ABSL_HAVE_STD_STRING_VIEW
+#include <string_view>
+#endif
 
+namespace tensorflow {
 namespace internal {
 
 // TODO(gorban): Update all clients in a followup CL.
@@ -208,6 +212,47 @@ struct FeatureTrait<
   using Type = std::string;
 };
 
+// Port of the C++20 `requires` expressions.
+template <typename... T, typename F>
+constexpr bool Requires(F) {
+  return std::is_invocable<F, T...>::value;
+}
+
+struct NoneSuch {};
+
+// True if the Feature map in a tf.Example supports heterogenous lookup.
+// See https://abseil.io/tips/144.
+inline constexpr bool kFeatureMapHasHeterogeneousLookup =
+    Requires<const decltype(Features::default_instance().feature())>(
+        [](auto&& c) -> decltype(c.find(NoneSuch{})) {});
+
+// Converts an `absl::string_view` into a string-type compatible for use in the
+// protobuf library (e.g. as lookup keys in `proto2::Map` or as elements addable
+// to a `proto2::RepeatedPtrField`) depending on the BUILD mode.
+//
+// NOTE: While the newest versions of `proto2::Map` support heterogenous lookup,
+// it does so through `std::string_view`. If the type is just an alias (as noted
+// by `ABSL_USES_STD_STRING_VIEW`) then nothing more needs to be done; however,
+// when the type is not an alias an explicit conversion to is necessary.
+//
+// NOTE: This conversion is only necessary until the migration for protobuf to
+// take a dependency on ABSL is complete.
+inline auto ProtoMapKey(absl::string_view str) {
+  if constexpr (kFeatureMapHasHeterogeneousLookup) {
+#ifdef ABSL_USES_STD_STRING_VIEW
+    return str;
+#else
+#ifdef ABSL_HAVE_STD_STRING_VIEW
+    return std::string_view(str.data(), str.size());
+#else
+    return std::string(str);
+#endif
+#endif
+  } else {
+    return std::string(str);
+  }
+}
+
 }  //  namespace internal
 
 // Returns true if sequence_example has a feature_list with the specified key.
@@ -246,7 +291,7 @@ template <typename FeatureType, typename ProtoType>
 const typename internal::RepeatedFieldTrait<FeatureType>::Type&
 GetFeatureValues(absl::string_view key, const ProtoType& proto) {
   return GetFeatureValues<FeatureType>(
-      GetFeatures(proto).feature().at(std::string(key)));
+      GetFeatures(proto).feature().at(internal::ProtoMapKey(key)));
 }
 
 // Returns a mutable repeated field of a feature values.
@@ -260,7 +305,7 @@ template <typename FeatureType, typename ProtoType>
 typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
     absl::string_view key, ProtoType* proto) {
   ::tensorflow::Feature& feature =
-      (*GetFeatures(proto)->mutable_feature())[std::string(key)];
+      (*GetFeatures(proto)->mutable_feature())[internal::ProtoMapKey(key)];
   return GetFeatureValues<FeatureType>(&feature);
 }
 
@@ -269,26 +314,14 @@ typename internal::RepeatedFieldTrait<FeatureType>::Type* GetFeatureValues(
 // Example, Features.
 template <typename ProtoType>
 const Feature& GetFeature(absl::string_view key, const ProtoType& proto) {
-  return GetFeatures(proto).feature().at(std::string(key));
+  return GetFeatures(proto).feature().at(internal::ProtoMapKey(key));
 }
 
 // Returns a mutable Feature proto for the specified key, creates a new if
 // necessary. Supported types for the proto: Example, Features.
 template <typename ProtoType>
-Feature* GetFeature(const std::string& key, ProtoType* proto) {
-  return &(*GetFeatures(proto)->mutable_feature())[key];
-}
-
-// Same as above, supports absl::string_view.
-template <typename ProtoType>
 Feature* GetFeature(absl::string_view key, ProtoType* proto) {
-  return &(*GetFeatures(proto)->mutable_feature())[std::string(key)];
-}
-
-// Same as above, supports const char*.
-template <typename ProtoType>
-Feature* GetFeature(const char* key, ProtoType* proto) {
-  return &(*GetFeatures(proto)->mutable_feature())[std::string(key)];
+  return &(*GetFeatures(proto)->mutable_feature())[internal::ProtoMapKey(key)];
 }
 
 // Returns a repeated field with features corresponding to a feature_list key.
@@ -356,7 +389,11 @@ void AppendFeatureValues(const ContainerType& container, Feature* feature) {
   // RepeatedFieldBackInserter, the difference is RFBI isn't compatible with
   // types that we want to convert (e.g. absl::string_view -> std::string).
   for (const auto& elt : container) {
-    *values->Add() = elt;
+    if constexpr (internal::is_string<FeatureType>::value) {
+      *values->Add() = std::string(elt);
+    } else {
+      *values->Add() = elt;
+    }
   }
 }
 
@@ -364,40 +401,13 @@ void AppendFeatureValues(const ContainerType& container, Feature* feature) {
 // obtainable from the (proto, key) combination.
 template <typename IteratorType, typename ProtoType>
 void AppendFeatureValues(IteratorType first, IteratorType last,
-                         const std::string& key, ProtoType* proto) {
-  AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
-}
-// Same as above, supports absl::string_view.
-template <typename IteratorType, typename ProtoType>
-void AppendFeatureValues(IteratorType first, IteratorType last,
                          absl::string_view key, ProtoType* proto) {
-  AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
-}
-
-// Same as above, supports const char*.
-template <typename IteratorType, typename ProtoType>
-void AppendFeatureValues(IteratorType first, IteratorType last, const char* key,
-                         ProtoType* proto) {
   AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
 }
 
 // Copies all elements from the container into a feature.
 template <typename ContainerType, typename ProtoType>
-void AppendFeatureValues(const ContainerType& container, const std::string& key,
-                         ProtoType* proto) {
-  AppendFeatureValues<ContainerType>(container,
-                                     GetFeature(key, GetFeatures(proto)));
-}
-// Same as above, supports absl::string_view.
-template <typename ContainerType, typename ProtoType>
 void AppendFeatureValues(const ContainerType& container, absl::string_view key,
-                         ProtoType* proto) {
-  AppendFeatureValues<ContainerType>(container,
-                                     GetFeature(key, GetFeatures(proto)));
-}
-// Same as above, supports const char*.
-template <typename ContainerType, typename ProtoType>
-void AppendFeatureValues(const ContainerType& container, const char* key,
                          ProtoType* proto) {
   AppendFeatureValues<ContainerType>(container,
                                      GetFeature(key, GetFeatures(proto)));
@@ -407,21 +417,7 @@ void AppendFeatureValues(const ContainerType& container, const char* key,
 // Features or Example proto.
 template <typename ValueType, typename ProtoType>
 void AppendFeatureValues(std::initializer_list<ValueType> container,
-                         const std::string& key, ProtoType* proto) {
-  AppendFeatureValues<ValueType>(container,
-                                 GetFeature(key, GetFeatures(proto)));
-}
-// Same as above, supports absl::string_view.
-template <typename ValueType, typename ProtoType>
-void AppendFeatureValues(std::initializer_list<ValueType> container,
                          absl::string_view key, ProtoType* proto) {
-  AppendFeatureValues<ValueType>(container,
-                                 GetFeature(key, GetFeatures(proto)));
-}
-// Same as above, supports const char*.
-template <typename ValueType, typename ProtoType>
-void AppendFeatureValues(std::initializer_list<ValueType> container,
-                         const char* key, ProtoType* proto) {
   AppendFeatureValues<ValueType>(container,
                                  GetFeature(key, GetFeatures(proto)));
 }
