@@ -42,8 +42,9 @@ StatusOr<HloInstruction*> TransformStartIndices(HloInstruction* indices,
   // Flatten indices, making it two-dimensional.
   if (rank > 2) {
     TF_ASSIGN_OR_RETURN(indices, CollapseFirstNDims(indices, rank - 1));
+  } else if (rank == 1) {
+    TF_ASSIGN_OR_RETURN(indices, InsertDegenerateDims(indices, {0}));
   }
-
   return indices;
 }
 

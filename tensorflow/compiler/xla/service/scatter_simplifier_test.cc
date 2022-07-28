@@ -226,5 +226,31 @@ TEST_F(ScatterSimplifierTest, MakesScatterDimensionsLeadingInUpdates) {
   )");
 }
 
+TEST_F(ScatterSimplifierTest, ZeroDimScatterIndices) {
+  // Verifies that zero-dimensional scatter indices are transformed correctly.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule scatter_simplifier
+
+    scatter_computation {
+      %p0 = f32[] parameter(0)
+      ROOT result = f32[] parameter(1)
+    }
+    ENTRY kernel_entry {
+      operand = f32[4,4] parameter(0)
+      indices = s32[2] parameter(1)
+      update = f32[3,3] parameter(2)
+      ROOT scatter = f32[4,4]{1,0} scatter(operand, indices, update),
+          update_window_dims={0,1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0,1},
+          index_vector_dim=0,
+          to_apply=scatter_computation
+    })";
+
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
+      CHECK: scatter(
+    )");
+}
+
 }  // namespace
 }  // namespace xla

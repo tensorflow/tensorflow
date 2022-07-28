@@ -6690,6 +6690,7 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":op_expander_pass",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core/platform:statusor",

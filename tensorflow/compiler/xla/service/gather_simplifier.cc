@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/gather_scatter_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -32,6 +33,14 @@ namespace xla {
 StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
     HloInstruction* inst) {
   auto* gather = DynCast<HloGatherInstruction>(inst);
+
+  // If any slice size is 0, we can just return a constant zero.
+  if (absl::c_linear_search(gather->gather_slice_sizes(), 0)) {
+    auto* zero = gather->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(gather->shape().element_type())));
+    return gather->AddInstruction(
+        HloInstruction::CreateBroadcast(gather->shape(), zero, {}));
+  }
 
   const auto& dims = gather->gather_dimension_numbers();
   int operand_rank =
@@ -95,6 +104,8 @@ StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
   if (start_indices_dims.size() > 1) {
     TF_ASSIGN_OR_RETURN(result,
                         ExpandFirstDimIntoNDims(result, start_indices_dims));
+  } else if (start_indices_dims.empty()) {
+    TF_ASSIGN_OR_RETURN(result, ElideDegenerateDims(result, {0}));
   }
 
   // Move the offset dims to the final locations.

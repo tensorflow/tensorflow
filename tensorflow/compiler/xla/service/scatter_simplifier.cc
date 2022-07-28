@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/scatter_simplifier.h"
 
 #include <algorithm>
-#include <iostream>
 #include <iterator>
 #include <utility>
 #include <vector>
@@ -60,6 +59,8 @@ StatusOr<HloInstruction*> FlattenAndTransposeUpdates(
   // Collapse scatter dimensions to one.
   if (num_scatter_dims > 1) {
     TF_ASSIGN_OR_RETURN(updates, CollapseFirstNDims(updates, num_scatter_dims));
+  } else if (num_scatter_dims == 0) {
+    TF_ASSIGN_OR_RETURN(updates, InsertDegenerateDims(updates, {0}));
   }
 
   // Insert size 1 dimensions.

@@ -131,5 +131,53 @@ TEST_F(GatherSimplifierTest, CollapsesSomeDims) {
   )");
 }
 
+TEST_F(GatherSimplifierTest, ZeroDimStartIndices) {
+  // Verifies that a zero-dimensional start indices tensor doesn't contribute
+  // any dimensions to the output.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule gather_simplifier
+
+    ENTRY kernel_entry {
+      operand = f32[8,16] parameter(0)
+      indices = s32[2] parameter(1)
+
+      ROOT gather = f32[8,16] gather(f32[8,16] operand, s32[2] indices),
+          offset_dims={0,1},
+          collapsed_slice_dims={},
+          start_index_map={0,1},
+          index_vector_dim=0,
+          slice_sizes={8,16}
+    })";
+
+  // The shape check is sufficient.
+  RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
+      CHECK: gather(
+  )");
+}
+
+TEST_F(GatherSimplifierTest, ZeroSizeSlice) {
+  // Verifies that slices of size zero result in a constant result.
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule gather_simplifier
+
+    ENTRY kernel_entry {
+      operand = f32[0,2] parameter(0)
+      indices = s32[3] parameter(1)
+
+      ROOT gather = f32[3,2] gather(f32[0,2] operand, s32[3]{0} indices),
+          offset_dims={1},
+          collapsed_slice_dims={0},
+          start_index_map={0},
+          index_vector_dim=1,
+          slice_sizes={0,2}
+    })";
+
+  // The shape check is sufficient.
+  RunAndFilecheckHloRewrite(kModuleStr, GatherSimplifier(), R"(
+      CHECK: %[[ZERO:.*]] = f32[] constant(0) 
+      CHECK: ROOT {{.*}} = f32[3,2]{1,0} broadcast(%[[ZERO]]), dimensions={} 
+  )");
+}
+
 }  // namespace
 }  // namespace xla
