@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "tensorflow/lite/delegates/gpu/common/flops_util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/prelu.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -320,15 +321,29 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
   }
 }
 
-void ThinPointwiseFuser::AddReluNode(const ReLUAttributes& attr) {
-  op_name_ += "->relu";
-  std::string elementwise_code;
-  CreateReLU(attr, op_def_.precision, &args_, &elementwise_code);
-  for (const auto& out_value : outputs_) {
-    const std::string elementwise_new_code = absl::StrReplaceAll(
-        elementwise_code, {{"in_value", out_value}, {"out_value", out_value}});
+void ThinPointwiseFuser::AddElementwiseNode(ElementwiseDescriptor&& op_desc) {
+  auto status = args_.Merge(std::move(op_desc.args), "");
+  for (int i = 0; i < outputs_.size(); ++i) {
+    const std::string elementwise_new_code =
+        absl::StrReplaceAll(op_desc.code, {{"in_value", outputs_[i]},
+                                           {"out_value", outputs_[i]},
+                                           {"X_COORD", "X"},
+                                           {"Y_COORD", "Y"},
+                                           {"S_COORD", std::to_string(i)}});
     code_ += "  {  " + elementwise_new_code + "  }\n";
   }
+}
+
+void ThinPointwiseFuser::AddReluNode(const ReLUAttributes& attr) {
+  ElementwiseDescriptor op_desc = CreateReLU(attr, op_def_.precision);
+  op_name_ += "->relu";
+  AddElementwiseNode(std::move(op_desc));
+}
+
+void ThinPointwiseFuser::AddPreluNode(const PReLUAttributes& attr) {
+  ElementwiseDescriptor op_desc = CreatePReLU(attr, op_def_.src_tensors[0]);
+  op_name_ += "->prelu";
+  AddElementwiseNode(std::move(op_desc));
 }
 
 void ThinPointwiseFuser::AddConvNode(const GpuInfo& gpu_info,

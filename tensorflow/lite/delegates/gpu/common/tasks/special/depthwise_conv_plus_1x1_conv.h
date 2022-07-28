@@ -37,6 +37,7 @@ class ThinPointwiseFuser {
   void AddConvNode(const GpuInfo& gpu_info,
                    const Convolution2DAttributes& attr);
   void AddReluNode(const ReLUAttributes& attr);
+  void AddPreluNode(const PReLUAttributes& attr);
   void AddDepthwiseConvNode(const GpuInfo& gpu_info,
                             const DepthwiseConvolution2DAttributes& attr);
   GPUOperation Finalize(const GpuInfo& gpu_info,
@@ -44,6 +45,7 @@ class ThinPointwiseFuser {
   std::string GetOperationName() const { return op_name_; }
 
  private:
+  void AddElementwiseNode(ElementwiseDescriptor&& op_desc);
   void AddConvData(const Convolution2DAttributes& conv_attr);
   void AddDepthwiseConvData(const DepthwiseConvolution2DAttributes& dw_attr);
   void CreateConstantsGpuBuffer(const GpuInfo& gpu_info);
