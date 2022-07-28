@@ -2426,6 +2426,14 @@ def _convert_pad(pfor_input):
   return wrap(array_ops.pad(t, paddings, mode="CONSTANT"), True)
 
 
+@RegisterPFor("PadV2")
+def _convert_pad_v2(pfor_input):
+  t = pfor_input.stacked_input(0)
+  paddings = pfor_input.unstacked_input(1)
+  paddings = array_ops.concat([[[0, 0]], paddings], 0)
+  return wrap(array_ops.pad_v2(t, paddings, mode="CONSTANT"), True)
+
+
 @RegisterPFor("Split")
 def _convert_split(pfor_input):
   split_dim = pfor_input.unstacked_input(0)
