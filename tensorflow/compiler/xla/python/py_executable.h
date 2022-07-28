@@ -31,17 +31,6 @@ limitations under the License.
 
 namespace xla {
 
-class PyToken {
- public:
-  PyToken() = default;
-  explicit PyToken(PjRtFuture<Status> future) : future_(std::move(future)) {}
-
-  Status Await();
-
- private:
-  PjRtFuture<Status> future_;
-};
-
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
 // b) to add Python-specific functionality.
@@ -79,9 +68,6 @@ class PyExecutable : public std::enable_shared_from_this<PyExecutable> {
   bool is_deleted() { return executable_->IsDeleted(); }
 
   StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args);
-
-  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
       absl::Span<PyBuffer::object const> args);
 
   // Takes args indexed by argid then deviceid, transposes them, and passes to

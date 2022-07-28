@@ -2643,23 +2643,6 @@ def TestFactory(xla_backend,
 
   tests.append(DeviceAssignmentTest)
 
-  class TokenTest(ComputationTest):
-    """Tests related to PyToken."""
-
-    def testToken(self):
-      c = self._NewComputation()
-      ops.Mul(
-          ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float32)),
-          ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float32)))
-      compiled_c = self.backend.compile(c.build())
-      results, token = compiled_c.execute_with_token([])
-      token.block_until_ready()
-      self.assertLen(results, 1)
-      np.testing.assert_allclose(
-          results[0].to_py(), np.float32([-3, 6.6, 2.4, -2.1]), rtol=3e-3)
-
-  tests.append(TokenTest)
-
   class HostCallbackTest(ComputationTest):
     """Tests related to HostCallback."""
 
