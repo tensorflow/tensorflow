@@ -31,13 +31,12 @@ namespace {
 absl::Status CreateTextureBuffer(id<MTLBuffer> buffer, uint64_t buffer_offset,
                                  const TensorDescriptor& descriptor,
                                  id<MTLTexture>* texture) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
+  std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
   if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
-    const int slices = DivideRoundUp(shape.c, 4);
-    const size_t flt4_count = shape.b * shape.w * shape.h * shape.d * slices;
-    const size_t data_size = flt4_count * 4 * SizeOf(descriptor.GetDataType());
+    const size_t data_size = storage_dims[0] * descriptor.GetElementSize() *
+                             SizeOf(descriptor.GetDataType());
     MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
-    texture_desc.width = flt4_count;
+    texture_desc.width = storage_dims[0];
     texture_desc.pixelFormat =
         DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
     texture_desc.textureType = MTLTextureTypeTextureBuffer;
@@ -61,15 +60,14 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device,
                                   const TensorDescriptor& descriptor,
                                   id<MTLBuffer>* buffer,
                                   id<MTLTexture>* texture) {
-  const BHWDC& shape = descriptor.GetBHWDCShape();
+  std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
   const void* data_ptr =
       descriptor.GetData().empty() ? nullptr : descriptor.GetData().data();
-  const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.GetStorageType()) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER: {
-      const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
-                               4 * SizeOf(descriptor.GetDataType());
+      const size_t data_size = storage_dims[0] * descriptor.GetElementSize() *
+                               SizeOf(descriptor.GetDataType());
       if (data_ptr) {
         *buffer = [device newBufferWithBytes:data_ptr
                                       length:data_size
@@ -91,8 +89,8 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device,
           texture2DDescriptorWithPixelFormat:DataTypeToRGBAPixelFormat(
                                                  descriptor.GetDataType(),
                                                  false)
-                                       width:shape.w * shape.b * shape.d
-                                      height:shape.h * slices
+                                       width:storage_dims[0]
+                                      height:storage_dims[1]
                                    mipmapped:NO];
       texture_desc.textureType = MTLTextureType2D;
       texture_desc.usage =
@@ -110,9 +108,9 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device,
     }
     case TensorStorageType::TEXTURE_3D: {
       MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
-      texture_desc.width = shape.w * shape.b;
-      texture_desc.height = shape.h;
-      texture_desc.depth = slices * shape.d;
+      texture_desc.width = storage_dims[0];
+      texture_desc.height = storage_dims[1];
+      texture_desc.depth = storage_dims[2];
       texture_desc.pixelFormat =
           DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
       texture_desc.textureType = MTLTextureType3D;
@@ -131,9 +129,9 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device,
     }
     case TensorStorageType::TEXTURE_ARRAY: {
       MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
-      texture_desc.width = shape.w * shape.b;
-      texture_desc.height = shape.h;
-      texture_desc.arrayLength = slices * shape.d;
+      texture_desc.width = storage_dims[0];
+      texture_desc.height = storage_dims[1];
+      texture_desc.arrayLength = storage_dims[2];
       texture_desc.pixelFormat =
           DataTypeToRGBAPixelFormat(descriptor.GetDataType(), false);
       texture_desc.textureType = MTLTextureType2DArray;
@@ -257,41 +255,6 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   }
 
   return absl::OkStatus();
-}
-
-int3 MetalSpatialTensor::GetFullTensorRegion() const {
-  const BHWDC& shape = descriptor_.GetBHWDCShape();
-  switch (descriptor_.GetStorageType()) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_3D:
-    case TensorStorageType::IMAGE_BUFFER:
-      return {shape.w * shape.b, shape.h, shape.d * Slices()};
-    case TensorStorageType::TEXTURE_2D:
-      return {shape.w * shape.b * shape.d, shape.h * Slices(), 1};
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return {shape.w * shape.b * shape.d, shape.h, 1};
-    case TensorStorageType::UNKNOWN:
-      return {-1, -1, -1};
-  }
-}
-
-uint64_t MetalSpatialTensor::GetMemorySizeInBytes() const {
-  const BHWDC& shape = descriptor_.GetBHWDCShape();
-  const int flt_size = SizeOf(descriptor_.GetDataType());
-  const int flt4_size = 4 * flt_size;
-  switch (descriptor_.GetStorageType()) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::TEXTURE_ARRAY:
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::TEXTURE_3D:
-      return flt4_size * shape.b * shape.w * shape.h * shape.d * Slices();
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return flt_size * shape.w * shape.h * shape.c * shape.b * shape.d;
-    default:
-      return 0;
-  }
 }
 
 absl::Status MetalSpatialTensor::CreateFromDescriptor(
@@ -421,13 +384,10 @@ absl::Status CreateTensorSharedImage2DBuffer(id<MTLBuffer> buffer,
                                              int row_bytes_alignment,
                                              MetalSpatialTensor* result,
                                              uint64_t buffer_offset) {
-  const BHWDC shape = descriptor.GetBHWDCShape();
-  const int width = shape.b * shape.w * shape.d;
-  const int height = shape.h * DivideRoundUp(shape.c, 4);
-  const int channels =
-      descriptor.GetStorageType() == TensorStorageType::SINGLE_TEXTURE_2D
-          ? shape.c
-          : 4;
+  std::vector<uint64_t> storage_dims = descriptor.GetStorageDims();
+  const int width = storage_dims[0];
+  const int height = storage_dims[1];
+  const int channels = descriptor.GetElementSize();
   MTLTextureDescriptor* texture_desc = [[MTLTextureDescriptor alloc] init];
   texture_desc.width = width;
   texture_desc.height = height;

@@ -208,6 +208,38 @@ std::vector<uint64_t> TensorDescriptor::GetStorageDims() const {
   }
 }
 
+int3 TensorDescriptor::GetFullTensorRegion() const {
+  std::vector<uint64_t> storage_dims = GetStorageDims();
+  switch (storage_type_) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      // 1D resources
+      return int3(static_cast<int>(storage_dims[0]), 1, 1);
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      // 2D resources
+      return int3(static_cast<int>(storage_dims[0]),
+                  static_cast<int>(storage_dims[1]), 1);
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      // 3D resources
+      return int3(static_cast<int>(storage_dims[0]),
+                  static_cast<int>(storage_dims[1]),
+                  static_cast<int>(storage_dims[2]));
+    case TensorStorageType::UNKNOWN:
+      return {-1, -1, -1};
+  }
+}
+uint64_t TensorDescriptor::GetMemorySizeInBytes() const {
+  std::vector<uint64_t> storage_dims = GetStorageDims();
+  uint64_t total_size = 1;
+  for (int i = 0; i < storage_dims.size(); ++i) {
+    total_size *= storage_dims[i];
+  }
+  const int element_size = GetElementSize() * SizeOf(data_type_);
+  return total_size * element_size;
+}
+
 int TensorDescriptor::GetElementSize() const {
   if (storage_type_ == TensorStorageType::SINGLE_TEXTURE_2D) {
     return shape_.c;

@@ -65,8 +65,9 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   TensorStorageType GetStorageType() const {
     return descriptor_.GetStorageType();
   }
-
-  uint64_t GetMemorySizeInBytes() const;
+  uint64_t GetMemorySizeInBytes() const {
+    return descriptor_.GetMemorySizeInBytes();
+  }
 
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     id<MTLDevice> device);
@@ -90,7 +91,6 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   absl::Status WriteData(id<MTLDevice> device, const void* ptr);
   absl::Status ReadData(id<MTLDevice> device, void* ptr) const;
 
-  int3 GetFullTensorRegion() const;
   void Release();
 
   id<MTLBuffer> memory_;

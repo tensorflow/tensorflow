@@ -131,7 +131,13 @@ class TensorDescriptor : public GPUObjectDescriptor {
   absl::Status UpdateToSupportedStorageType(const GpuInfo& gpu_info,
                                             const BHWC& shape);
 
+  // shape must be initialized when using this function
   std::vector<uint64_t> GetStorageDims() const;
+  // shape must be initialized when using this function
+  int3 GetFullTensorRegion() const;
+  // shape must be initialized when using this function
+  uint64_t GetMemorySizeInBytes() const;
+  // shape must be initialized when using this function
   int GetElementSize() const;
 
   void SetUseBufferForWriteOnlyTexture2d(bool value) {
