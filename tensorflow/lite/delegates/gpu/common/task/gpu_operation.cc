@@ -20,8 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/substitute.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
 namespace tflite {
@@ -168,10 +169,19 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
 
 absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
   linkable_count_ += 1;
-  std::string code = operation->elementwise_code_;
+  std::string code = "{\n" + operation->elementwise_code_ + "\n}";
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
   operation->args_.RenameArgs(unique_postfix, &code);
-  elementwise_code_ += "{\n" + code + "\n}\n";
+  if (elementwise_code_.empty()) {
+    elementwise_code_ = code;
+  } else {
+    const std::string new_value_name = "interm_value" + unique_postfix;
+    code = absl::StrReplaceAll(code, {{"in_value", new_value_name}});
+    elementwise_code_ =
+        absl::StrReplaceAll(elementwise_code_, {{"out_value", new_value_name}});
+    elementwise_code_ = "{\n  FLT4 " + new_value_name + ";\n" +
+                        elementwise_code_ + "\n" + code + "\n}\n";
+  }
   RETURN_IF_ERROR(args_.Merge(std::move(operation->args_), unique_postfix));
   for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {
     definition_.src_tensors.push_back(
