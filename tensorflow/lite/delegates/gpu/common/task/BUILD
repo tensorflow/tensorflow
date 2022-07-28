@@ -14,6 +14,7 @@ cc_library(
         ":gpu_object_desc",
         ":serialization_base_cc_fbs",
         ":tensor_desc",
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",

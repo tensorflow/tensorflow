@@ -167,8 +167,11 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
   return *this;
 }
 
-absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
-  linkable_count_ += 1;
+absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
+                                        GPUOperation* operation) {
+  const auto prev_type = definition_.dst_tensors[0].GetDataType();
+  definition_.dst_tensors[0] = operation->definition_.dst_tensors[0];
+  linkable_count_ += (operation->linkable_count_ + 1);
   std::string code = "{\n" + operation->elementwise_code_ + "\n}";
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
   operation->args_.RenameArgs(unique_postfix, &code);
@@ -179,8 +182,9 @@ absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
     code = absl::StrReplaceAll(code, {{"in_value", new_value_name}});
     elementwise_code_ =
         absl::StrReplaceAll(elementwise_code_, {{"out_value", new_value_name}});
-    elementwise_code_ = "{\n  FLT4 " + new_value_name + ";\n" +
-                        elementwise_code_ + "\n" + code + "\n}\n";
+    elementwise_code_ = "{\n" + GetTypeDeclaration(gpu_info, prev_type, 4) +
+                        " " + new_value_name + ";\n" + elementwise_code_ +
+                        "\n" + code + "\n}\n";
   }
   RETURN_IF_ERROR(args_.Merge(std::move(operation->args_), unique_postfix));
   for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {

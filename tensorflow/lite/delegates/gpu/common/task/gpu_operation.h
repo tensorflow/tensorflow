@@ -93,7 +93,7 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  absl::Status AddOperation(GPUOperation* operation);
+  absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
 
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);

@@ -122,10 +122,6 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
 }
 }  // namespace
 
-absl::Status ClOperation::AddOperation(ClOperation* operation) {
-  return operation_->AddOperation(operation->operation_.get());
-}
-
 absl::Status ClOperation::UpdateParams() {
   for (int i = 0; i < operation_->GetSrcTensorsNames().size(); ++i) {
     const auto* cl_spatial_tensor =

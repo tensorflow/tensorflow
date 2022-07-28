@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -552,7 +553,9 @@ absl::Status Arguments::ResolveSelector(
       // x_coord can have batch size property of link_object
       ResolveObjectNames(object_name, names, &x_coord);
       const std::string new_value_name = value_name + "_final";
-      *result = "{\n  FLT4 " + new_value_name + ";\n" + it->second + "\n";
+      *result = "{\n" +
+                GetTypeDeclaration(gpu_info, tensor_desc->GetDataType(), 4) +
+                " " + new_value_name + ";\n" + it->second + "\n";
       ReplaceAllWords("in_value", value_name, result);
       ReplaceAllWords("out_value", new_value_name, result);
       ReplaceAllWords("X_COORD", x_coord, result);
