@@ -38,10 +38,7 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
         texture_mem_owner_(true) {}
   MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture,
                      bool memory_owner, bool texture_mem_owner,
-                     const BHWC& shape, const TensorDescriptor& descriptor);
-  MetalSpatialTensor(id<MTLBuffer> buffer, id<MTLTexture> texture,
-                     bool memory_owner, bool texture_mem_owner,
-                     const BHWDC& shape, const TensorDescriptor& descriptor);
+                     const TensorDescriptor& descriptor);
 
   // Move only
   MetalSpatialTensor(MetalSpatialTensor&& tensor);
@@ -54,12 +51,14 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
 
-  int Width() const override { return shape_.w; }
-  int Height() const override { return shape_.h; }
-  int Depth() const override { return shape_.d; }
-  int Channels() const override { return shape_.c; }
-  int Slices() const override { return DivideRoundUp(shape_.c, 4); }
-  int Batch() const override { return shape_.b; }
+  int Width() const override { return descriptor_.GetBHWDCShape().w; }
+  int Height() const override { return descriptor_.GetBHWDCShape().h; }
+  int Depth() const override { return descriptor_.GetBHWDCShape().d; }
+  int Channels() const override { return descriptor_.GetBHWDCShape().c; }
+  int Slices() const override {
+    return DivideRoundUp(descriptor_.GetBHWDCShape().c, 4);
+  }
+  int Batch() const override { return descriptor_.GetBHWDCShape().b; }
 
   TensorDescriptor GetDescriptor() const override { return descriptor_; }
   DataType GetDataType() const { return descriptor_.GetDataType(); }
@@ -98,7 +97,6 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   id<MTLTexture> texture_mem_;
   bool memory_owner_;
   bool texture_mem_owner_;
-  BHWDC shape_;
   TensorDescriptor descriptor_;
   // for use with TEXTURE_2D and when texture created from buffer.
   int aligned_texture_width_;
