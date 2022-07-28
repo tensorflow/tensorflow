@@ -662,7 +662,6 @@ cc_library(
     srcs = ["jitrt_custom_calls.cc"],
     hdrs = ["jitrt_custom_calls.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]),
-    local_defines = ["XLA_ENABLE_XLIR=1"],
     tags = ["manual"],
     visibility = ["//visibility:private"],
     deps = [

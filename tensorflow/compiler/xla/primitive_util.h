@@ -22,13 +22,10 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-
-#if XLA_ENABLE_XLIR
-#include "tfrt/dtype/dtype.h"  // from @tf_runtime
-#endif  // XLA_ENABLE_XLIR
 
 namespace xla {
 namespace primitive_util {
@@ -411,10 +408,6 @@ bool IsCanonicalRepresentation(PrimitiveType type) {
       return false;
   }
 }
-
-#if XLA_ENABLE_XLIR
-PrimitiveType TfrtToPrimitiveType(tfrt::DType dtype);
-#endif  // XLA_ENABLE_XLIR
 
 }  // namespace primitive_util
 }  // namespace xla

@@ -117,6 +117,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":shape_util",
+        ":status_macros",
         ":statusor",
         ":types",
         ":util",
@@ -355,19 +356,18 @@ cc_library(
         "shape.h",
         "shape_util.h",
     ],
-    local_defines = select({
-        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["XLA_ENABLE_XLIR=1"],
-        "//conditions:default": [],
-    }),
     visibility = ["//visibility:public"],
     deps = [
         ":permutation_util",
+        ":protobuf_util",
         ":status",
         ":status_macros",
         ":statusor",
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -376,12 +376,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["@tf_runtime//:dtype"],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -449,10 +444,7 @@ tf_cc_test(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
-    ] + select({
-        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["@tf_runtime//:dtype"],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 tf_cc_test(

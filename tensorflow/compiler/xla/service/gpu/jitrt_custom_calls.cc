@@ -23,7 +23,6 @@
 
 #include "llvm/ExecutionEngine/Orc/Mangling.h"
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
@@ -83,8 +82,6 @@ using tfrt::MakeStringError;
 using tfrt::jitrt::CustomCall;
 using tfrt::jitrt::DirectCustomCallLibrary;
 using tfrt::jitrt::Executable;
-
-using xla::primitive_util::TfrtToPrimitiveType;
 
 namespace se = ::stream_executor;
 namespace jitrt = ::tfrt::jitrt;
@@ -269,8 +266,53 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 
 // -------------------------------------------------------------------------- //
 
+static PrimitiveType ToPrimitiveType(tfrt::DType dtype) {
+  switch (dtype) {
+    // Unsigned integer types.
+    case tfrt::DType::UI8:
+      return PrimitiveType::U8;
+    case tfrt::DType::UI16:
+      return PrimitiveType::U16;
+    case tfrt::DType::UI32:
+      return PrimitiveType::U32;
+    case tfrt::DType::UI64:
+      return PrimitiveType::U64;
+
+    // Signed integer types.
+    case tfrt::DType::I1:
+      return PrimitiveType::PRED;
+    case tfrt::DType::I8:
+      return PrimitiveType::S8;
+    case tfrt::DType::I16:
+      return PrimitiveType::S16;
+    case tfrt::DType::I32:
+      return PrimitiveType::S32;
+    case tfrt::DType::I64:
+      return PrimitiveType::S64;
+
+    // Floating point types.
+    case tfrt::DType::F16:
+      return PrimitiveType::F16;
+    case tfrt::DType::F32:
+      return PrimitiveType::F32;
+    case tfrt::DType::F64:
+      return PrimitiveType::F64;
+    case tfrt::DType::BF16:
+      return PrimitiveType::BF16;
+
+    // Complex types.
+    case tfrt::DType::Complex64:
+      return PrimitiveType::C64;
+    case tfrt::DType::Complex128:
+      return PrimitiveType::C128;
+
+    default:
+      LOG(FATAL) << "Unsupported data type: " << dtype;
+  }
+}
+
 static Shape ToShape(const jitrt::StridedMemrefView& memref) {
-  PrimitiveType type = TfrtToPrimitiveType(memref.dtype);
+  PrimitiveType type = ToPrimitiveType(memref.dtype);
 
   // Recover `minor_to_major` dimensions permutation from strides.
   auto indexed_strides_range =
@@ -346,7 +388,7 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     int element_count = 1;
     for (int size : source->sizes) element_count *= size;
     device_buffers.emplace_back(DeviceBufferPair{
-        TfrtToPrimitiveType(source->dtype), element_count,
+        ToPrimitiveType(source->dtype), element_count,
         GetDeviceAddress(*source), GetDeviceAddress(*destination)});
   }
   return device_buffers;
@@ -1147,9 +1189,8 @@ LogicalResult Cholesky::operator()(
 
   CholeskyParams params{n,        batch_size,       uplo,
                         a_buffer, workspace_buffer, info_buffer};
-  auto executed =
-      RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
-                  TfrtToPrimitiveType(operand.dtype), &params, stream);
+  auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
+                              ToPrimitiveType(operand.dtype), &params, stream);
   if (!executed.ok()) return failure();
 
   return success();
@@ -1257,7 +1298,7 @@ LogicalResult TriangularSolve::operator()(
       b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
       [](int64_t a, int64_t b) { return a * b; });
 
-  PrimitiveType elem_type = TfrtToPrimitiveType(b.dtype);
+  PrimitiveType elem_type = ToPrimitiveType(b.dtype);
   int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_type);
   int64_t a_batch_stride = left_side ? m * m * elem_size : n * n * elem_size;
   int64_t b_batch_stride = m * n * elem_size;

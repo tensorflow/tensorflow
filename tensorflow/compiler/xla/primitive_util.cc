@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -246,53 +247,6 @@ bool IsPrimitiveTypeName(absl::string_view name) {
   auto found = map.find(std::string(name));
   return found != map.end();
 }
-
-#if XLA_ENABLE_XLIR
-PrimitiveType TfrtToPrimitiveType(tfrt::DType dtype) {
-  switch (dtype) {
-    // Unsigned integer types.
-    case tfrt::DType::UI8:
-      return PrimitiveType::U8;
-    case tfrt::DType::UI16:
-      return PrimitiveType::U16;
-    case tfrt::DType::UI32:
-      return PrimitiveType::U32;
-    case tfrt::DType::UI64:
-      return PrimitiveType::U64;
-
-    // Signed integer types.
-    case tfrt::DType::I1:
-      return PrimitiveType::PRED;
-    case tfrt::DType::I8:
-      return PrimitiveType::S8;
-    case tfrt::DType::I16:
-      return PrimitiveType::S16;
-    case tfrt::DType::I32:
-      return PrimitiveType::S32;
-    case tfrt::DType::I64:
-      return PrimitiveType::S64;
-
-    // Floating point types.
-    case tfrt::DType::F16:
-      return PrimitiveType::F16;
-    case tfrt::DType::F32:
-      return PrimitiveType::F32;
-    case tfrt::DType::F64:
-      return PrimitiveType::F64;
-    case tfrt::DType::BF16:
-      return PrimitiveType::BF16;
-
-    // Complex types.
-    case tfrt::DType::Complex64:
-      return PrimitiveType::C64;
-    case tfrt::DType::Complex128:
-      return PrimitiveType::C128;
-
-    default:
-      LOG(FATAL) << "Unsupported data type: " << dtype;
-  }
-}
-#endif  // XLA_ENABLE_XLIR
 
 }  // namespace primitive_util
 }  // namespace xla
