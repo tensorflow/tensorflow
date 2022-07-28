@@ -44,7 +44,6 @@ func.func @dynamic_broadcast_in_dim_at_tile(%arg : tensor<?x?xf32>,
   %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
       { broadcast_dimensions = [:i64 0, 2] }
-  %space = gml_st.space [%d0, %d1, %d2] : !gml_st.tile<?x?x?>
   %bcast_sub = gml_st.materialize %bcast[%tile]
       : tensor<?x?x?xf32>[!gml_st.tile<3x4x?>]
   func.return %bcast_sub : tensor<3x4x?xf32>
@@ -84,7 +83,6 @@ func.func @dynamic_broadcast_in_dim_at_point(%arg : tensor<?x?xf32>,
   %bcast = gml_st.dynamic_broadcast_in_dim ins(%arg: tensor<?x?xf32>)
       outs(%dst: tensor<?x?x?xf32>)
       { broadcast_dimensions = [:i64 0, 2] }
-  %space = gml_st.space [%d0, %d1, %d2] : !gml_st.tile<?x?x?>
   %bcast_sub = gml_st.materialize %bcast[%point]
       : tensor<?x?x?xf32>[!gml_st.point]
   func.return %bcast_sub : f32
