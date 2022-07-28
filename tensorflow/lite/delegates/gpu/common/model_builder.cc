@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -345,9 +346,19 @@ class CastOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(GetTensorInfo(context, tflite_node->inputs->data[0],
                                     &input_tensor_info));
       if (input_tensor_info.producers.size() != 1 ||
-          input_tensor_info.consumers.size() != 1 ||
-          !IsLogicalCode(input_tensor_info.producers[0].second->builtin_code)) {
+          input_tensor_info.consumers.size() != 1) {
         return absl::UnavailableError("Not supported cast case");
+      }
+      // If the cast is an output, do the cast to float on CPU.
+      TensorInfo output_tensor_info;
+      RETURN_IF_ERROR(GetTensorInfo(context, tflite_node->outputs->data[0],
+                                    &output_tensor_info));
+      if (output_tensor_info.consumers.size() != 1) {
+        return absl::UnavailableError(
+            "Cast from bool not supported for outputs");
+      }
+      if (IsLogicalCode(input_tensor_info.producers[0].second->builtin_code)) {
+        return absl::OkStatus();
       }
     }
     return CheckGpuDelegateCompatibility(context, tflite_node, registration);
@@ -3131,9 +3142,13 @@ TfLiteIntArray* GetOpsToReplace(
       allowed_in_types.push_back(kTfLiteInt32);
       allowed_out_types.push_back(kTfLiteFloat32);
       allowed_out_types.push_back(kTfLiteInt32);
+      allowed_out_types.push_back(kTfLiteBool);
     }
     if (registration->builtin_code == kTfLiteBuiltinOneHot) {
       allowed_in_types.push_back(kTfLiteInt32);
+    }
+    if (registration->builtin_code == kTfLiteBuiltinSelectV2) {
+      allowed_in_types.push_back(kTfLiteBool);
     }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
