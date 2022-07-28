@@ -396,27 +396,37 @@ FailureOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
 
 // -------------------------------------------------------------------------- //
 
+Error AsError(Status s) { return MakeStringError(s.error_message()); }
+
+template <typename T>
+Error AsError(StatusOr<T>& s) {
+  assert(!s.ok());
+  return AsError(s.status());
+}
+
+// -------------------------------------------------------------------------- //
+
 namespace {
 struct LaunchFunc {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           JitRtKernelsCache* kernels_cache,
-                           int32_t grid_size_x, int32_t grid_size_y,
-                           int32_t grid_size_z, int32_t block_size_x,
-                           int32_t block_size_y, int32_t block_size_z,
-                           CustomCall::RemainingArgs args, StringRef ptx,
-                           StringRef name) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   JitRtKernelsCache* kernels_cache, int32_t grid_size_x,
+                   int32_t grid_size_y, int32_t grid_size_z,
+                   int32_t block_size_x, int32_t block_size_y,
+                   int32_t block_size_z, CustomCall::RemainingArgs args,
+                   StringRef ptx, StringRef name) const;
 
   static LaunchFunc Handler() { return LaunchFunc(); }
 };
 }  // namespace
 
-LogicalResult LaunchFunc::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    JitRtKernelsCache* kernels_cache, int32_t grid_size_x, int32_t grid_size_y,
-    int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
-    int32_t block_size_z, CustomCall::RemainingArgs args, StringRef ptx,
-    StringRef name) const {
+Error LaunchFunc::operator()(const ServiceExecutableRunOptions* run_options,
+                             JitRtKernelsCache* kernels_cache,
+                             int32_t grid_size_x, int32_t grid_size_y,
+                             int32_t grid_size_z, int32_t block_size_x,
+                             int32_t block_size_y, int32_t block_size_z,
+                             CustomCall::RemainingArgs args, StringRef ptx,
+                             StringRef name) const {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -430,7 +440,7 @@ LogicalResult LaunchFunc::operator()(
   if (kernel == nullptr) {
     auto created = CreateKernel(absl::string_view(name.data(), name.size()),
                                 args.size(), ptx.data(), {}, executor);
-    if (!created.ok()) return failure();
+    if (!created.ok()) return AsError(created);
 
     kernel =
         kernels_cache->Set(executor, ptx.data(), name, std::move(*created));
@@ -457,16 +467,15 @@ LogicalResult LaunchFunc::operator()(
       continue;
     }
 
-    // Unsupported argument type.
-    return failure();
+    return MakeStringError("Unsupported argumeent type");
   }
 
   // Execute device kernel on a main stream.
   auto executed =
       ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions, stream);
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
-  return success();
+  return Error::success();
 }
 
 static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -493,28 +502,26 @@ static bool LaunchFunc(runtime::KernelContext* ctx, void** args, void** attrs) {
 namespace {
 struct Gemm {
   LLVM_ATTRIBUTE_ALWAYS_INLINE
-  LogicalResult operator()(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           JitRtGemmConfigCache* configs,
-                           jitrt::StridedMemrefView lhs,
-                           jitrt::StridedMemrefView rhs,
-                           jitrt::StridedMemrefView out, int64_t algorithm,
-                           double alpha_real, double alpha_imag, double beta,
-                           DotDimensionNumbers dot_dims, int64_t uid) const;
+  Error operator()(const ServiceExecutableRunOptions* run_options,
+                   const DebugOptions* debug_options,
+                   JitRtGemmConfigCache* configs, jitrt::StridedMemrefView lhs,
+                   jitrt::StridedMemrefView rhs, jitrt::StridedMemrefView out,
+                   int64_t algorithm, double alpha_real, double alpha_imag,
+                   double beta, DotDimensionNumbers dot_dims,
+                   int64_t uid) const;
 
   static Gemm Handler() { return Gemm(); }
 };
 }  // namespace
 
-LogicalResult Gemm::operator()(const ServiceExecutableRunOptions* run_options,
-                               const DebugOptions* debug_options,
-                               JitRtGemmConfigCache* configs,
-                               jitrt::StridedMemrefView lhs,
-                               jitrt::StridedMemrefView rhs,
-                               jitrt::StridedMemrefView out, int64_t algorithm,
-                               double alpha_real, double alpha_imag,
-                               double beta, DotDimensionNumbers dot_dims,
-                               int64_t uid) const {
+Error Gemm::operator()(const ServiceExecutableRunOptions* run_options,
+                       const DebugOptions* debug_options,
+                       JitRtGemmConfigCache* configs,
+                       jitrt::StridedMemrefView lhs,
+                       jitrt::StridedMemrefView rhs,
+                       jitrt::StridedMemrefView out, int64_t algorithm,
+                       double alpha_real, double alpha_imag, double beta,
+                       DotDimensionNumbers dot_dims, int64_t uid) const {
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
@@ -528,7 +535,7 @@ LogicalResult Gemm::operator()(const ServiceExecutableRunOptions* run_options,
     auto cfg = GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag,
                              beta, dot_dims.lhs_batch, dot_dims.lhs_contract,
                              dot_dims.rhs_batch, dot_dims.rhs_contract);
-    if (!cfg.ok()) return failure();
+    if (!cfg.ok()) return AsError(cfg);
     config = configs->Set(uid, std::move(*cfg));
   }
 
@@ -536,9 +543,9 @@ LogicalResult Gemm::operator()(const ServiceExecutableRunOptions* run_options,
     return RunGemm(*config, lhs_data, rhs_data, output_data, stream);
   }();
 
-  if (!executed.ok()) return failure();
+  if (!executed.ok()) return AsError(executed);
 
-  return success();
+  return Error::success();
 }
 
 static bool Gemm(runtime::KernelContext* ctx, void** args, void** attrs) {
@@ -719,7 +726,7 @@ struct Conv {
 
     // Convert descriptor to the Conv config.
     StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
-    if (!config.ok()) return MakeStringError(config.status().error_message());
+    if (!config.ok()) return AsError(config);
 
     // Prepare buffer arguments.
     std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
@@ -741,7 +748,7 @@ struct Conv {
     auto st = RunGpuConv(*config, buffers, result_buffer, scratch_buffer,
                          run_options->stream(), opts);
     if (!st.ok() || !run_options->stream()->ok()) {
-      return MakeStringError(st.error_message());
+      return AsError(st);
     }
 
     return Error::success();
