@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 // TODO(skyewm): remove when everything goes through C API
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
@@ -165,6 +166,80 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
   args.id = device_id;
   RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
+}
+
+static Status ValidateCompileOption(CompileOptions options) {
+  if (options.argument_layouts.has_value()) {
+    return xla::Unimplemented(
+        "argument_layouts in CompileOptions is not supported.");
+  }
+  if (options.compile_portable_executable) {
+    return xla::Unimplemented(
+        "compile_portable_executable in CompileOptions is not supported.");
+  }
+  if (options.profile_version != 0) {
+    return xla::Unimplemented(
+        "profile_version in CompileOptions is not supported.");
+  }
+  if (options.multi_slice_config != nullptr) {
+    return xla::Unimplemented(
+        "multi_slice_config in CompileOptions is not supported.");
+  }
+  return xla::OkStatus();
+}
+
+// Convert `CompileOptions` to `PJRT_CompileOptions`. `device_assignment_str`
+// will be used for serialized DeviceAssignment storage.
+static StatusOr<PJRT_CompileOptions> ConvertCppCompileOptionsToCCompileOptions(
+    CompileOptions options, std::string* device_assignment_str) {
+  PJRT_CompileOptions c_options;
+  c_options.struct_size = PJRT_CompileOptions_STRUCT_SIZE;
+  c_options.parameter_is_tupled_arguments =
+      options.parameter_is_tupled_arguments;
+  c_options.device_ordinal = options.executable_build_options.device_ordinal();
+  c_options.num_replicas = options.executable_build_options.num_replicas();
+  c_options.num_partitions = options.executable_build_options.num_partitions();
+  c_options.use_spmd_partitioning =
+      options.executable_build_options.use_spmd_partitioning();
+  c_options.allow_spmd_sharding_propagation_to_output =
+      options.executable_build_options
+          .allow_spmd_sharding_propagation_to_output();
+
+  if (options.executable_build_options.has_device_assignment()) {
+    DeviceAssignmentProto device_assignment_proto;
+    TF_RETURN_IF_ERROR(
+        options.executable_build_options.device_assignment().Serialize(
+            &device_assignment_proto));
+    *device_assignment_str = device_assignment_proto.SerializeAsString();
+    c_options.device_assignment = device_assignment_str->c_str();
+    c_options.device_assignment_size = device_assignment_str->size();
+  } else {
+    c_options.device_assignment_size = 0;
+    c_options.device_assignment = nullptr;
+  }
+  return c_options;
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  TF_RETURN_IF_ERROR(ValidateCompileOption(options));
+  PJRT_Client_Compile_Args args;
+  args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  std::string device_assignment_str;
+  TF_ASSIGN_OR_RETURN(PJRT_CompileOptions c_options,
+                      ConvertCppCompileOptionsToCCompileOptions(
+                          options, &device_assignment_str));
+  args.options = &c_options;
+  std::string module_str = tensorflow::SerializeMlirModule(module);
+  args.module = module_str.c_str();
+  args.module_size = module_str.size();
+
+  RETURN_STATUS_IF_ERROR(c_api_->PJRT_Client_Compile(&args), c_api_);
+  std::unique_ptr<PjRtLoadedExecutable> ret =
+      std::make_unique<PjRtCApiExecutable>(this, args.executable);
+  return ret;
 }
 
 StatusOr<std::string> PjRtCApiClient::SerializeExecutable(
@@ -321,6 +396,12 @@ PjRtCApiExecutable::PjRtCApiExecutable(
     : client_(client),
       executable_(
           new PJRT_Executable{std::move(wrapped), client->pjrt_c_client()}) {
+  InitDevices();
+}
+
+PjRtCApiExecutable::PjRtCApiExecutable(PjRtCApiClient* client,
+                                       PJRT_Executable* executable)
+    : client_(client), executable_(executable) {
   InitDevices();
 }
 

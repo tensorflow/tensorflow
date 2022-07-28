@@ -21,7 +21,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
 // TODO(b/238999986): Remove this.
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
@@ -148,6 +150,96 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
   return nullptr;
 }
 
+// Searches `device_list` for a PJRT_Device* that wraps a provided
+// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
+// returned. Otherwise, returns nullptr.
+static PJRT_Device* FindDeviceWrapper(
+    xla::PjRtDevice* cpp_device, absl::Span<PJRT_Device* const> device_list) {
+  for (PJRT_Device* device : device_list) {
+    if (device->device == cpp_device) {
+      return device;
+    }
+  }
+  return nullptr;
+}
+
+static void PopulatePjrtExecutableAddressableDevices(
+    PJRT_Executable* executable) {
+  CHECK(executable->client != nullptr) << ": client was null";
+  absl::Span<xla::PjRtDevice* const> cpp_devices =
+      executable->executable->addressable_devices();
+  const size_t num_addressable_devices = cpp_devices.size();
+  std::vector<PJRT_Device*>& exec_devices = executable->addressable_devices;
+  exec_devices.reserve(num_addressable_devices);
+
+  const std::vector<PJRT_Device*>& client_devices =
+      executable->client->addressable_devices;
+
+  CHECK(client_devices.size() >= num_addressable_devices)
+      << ": client->addressable_devices is not bigger than "
+         "executable->addressable_devices()";
+
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    xla::PjRtDevice* cpp_device = cpp_devices[i];
+    PJRT_Device* device = FindDeviceWrapper(cpp_device, client_devices);
+    CHECK(device != nullptr)
+        << ": No PJRT_Device* found in client->addressable_devices"
+        << " that wraps executable->addressable_devices()[" << i << "] ("
+        << cpp_devices[i] << ")";
+    exec_devices.push_back(device);
+  }
+}
+
+static xla::StatusOr<xla::CompileOptions>
+ConvertCCompileOptionstoCppCompileOptions(PJRT_CompileOptions* c_option) {
+  xla::CompileOptions ret;
+  ret.parameter_is_tupled_arguments = c_option->parameter_is_tupled_arguments;
+  if (c_option->device_ordinal != -1) {
+    ret.executable_build_options.set_device_ordinal(c_option->device_ordinal);
+  }
+  ret.executable_build_options.set_num_replicas(c_option->num_replicas);
+  ret.executable_build_options.set_num_partitions(c_option->num_partitions);
+  ret.executable_build_options.set_use_spmd_partitioning(
+      c_option->use_spmd_partitioning);
+  ret.executable_build_options.set_allow_spmd_sharding_propagation_to_output(
+      c_option->allow_spmd_sharding_propagation_to_output);
+  if (c_option->device_assignment_size > 0) {
+    absl::string_view device_assignment_str(c_option->device_assignment,
+                                            c_option->device_assignment_size);
+    xla::DeviceAssignmentProto proto;
+    proto.ParseFromString(device_assignment_str);
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::DeviceAssignment> device_assignment,
+        xla::DeviceAssignment::Deserialize(proto));
+    ret.executable_build_options.set_device_assignment(*device_assignment);
+  }
+  return ret;
+}
+
+PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_Compile_Args", PJRT_Client_Compile_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_CompileOptions",
+                                                PJRT_CompileOptions_STRUCT_SIZE,
+                                                args->options->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      xla::CompileOptions options,
+      ConvertCCompileOptionstoCppCompileOptions(args->options));
+  absl::string_view module_str(args->module, args->module_size);
+  mlir::MLIRContext context;
+  PJRT_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                        xla::ParseMlirModuleString(module_str, context));
+
+  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+                        args->client->client->Compile(*module, options));
+  // TODO(b/237545405): Implement creation methods for PJRT_Executable.
+  args->executable = new PJRT_Executable{std::move(executable), args->client};
+  PopulatePjrtExecutableAddressableDevices(args->executable);
+  args->executable->populated = true;
+  return nullptr;
+}
+
 // --------------------------------- Devices -----------------------------------
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args) {
@@ -234,46 +326,6 @@ PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args) {
   args->executable_name = executable_name.data();
   args->executable_name_size = executable_name.size();
   return nullptr;
-}
-
-// Searches `device_list` for a PJRT_Device* that wraps a provided
-// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
-// returned. Otherwise, returns nullptr.
-static PJRT_Device* FindDeviceWrapper(
-    xla::PjRtDevice* cpp_device, absl::Span<PJRT_Device* const> device_list) {
-  for (PJRT_Device* device : device_list) {
-    if (device->device == cpp_device) {
-      return device;
-    }
-  }
-  return nullptr;
-}
-
-static void PopulatePjrtExecutableAddressableDevices(
-    PJRT_Executable* executable) {
-  CHECK(executable->client != nullptr) << ": client was null";
-  absl::Span<xla::PjRtDevice* const> cpp_devices =
-      executable->executable->addressable_devices();
-  const size_t num_addressable_devices = cpp_devices.size();
-  std::vector<PJRT_Device*>& exec_devices = executable->addressable_devices;
-  exec_devices.reserve(num_addressable_devices);
-
-  const std::vector<PJRT_Device*>& client_devices =
-      executable->client->addressable_devices;
-
-  CHECK(client_devices.size() >= num_addressable_devices)
-      << ": client->addressable_devices is not bigger than "
-         "executable->addressable_devices()";
-
-  for (int i = 0; i < num_addressable_devices; ++i) {
-    xla::PjRtDevice* cpp_device = cpp_devices[i];
-    PJRT_Device* device = FindDeviceWrapper(cpp_device, client_devices);
-    CHECK(device != nullptr)
-        << ": No PJRT_Device* found in client->addressable_devices"
-        << " that wraps executable->addressable_devices()[" << i << "] ("
-        << cpp_devices[i] << ")";
-    exec_devices.push_back(device);
-  }
 }
 
 PJRT_Error* PJRT_Executable_AddressableDevices(

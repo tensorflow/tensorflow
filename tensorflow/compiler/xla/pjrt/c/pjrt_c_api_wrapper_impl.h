@@ -79,6 +79,7 @@ PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args);
 PJRT_Error* PJRT_Client_AddressableDevices(
     PJRT_Client_AddressableDevices_Args* args);
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
+PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 
 PJRT_Error* PJRT_Device_Id(PJRT_Device_Id_Args* args);
 PJRT_Error* PJRT_Device_ProcessIndex(PJRT_Device_ProcessIndex_Args* args);

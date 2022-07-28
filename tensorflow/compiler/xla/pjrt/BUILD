@@ -638,6 +638,7 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     deps = [
         ":pjrt_client",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

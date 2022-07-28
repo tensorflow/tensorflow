@@ -68,6 +68,7 @@ typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
+typedef struct PJRT_Executable PJRT_Executable;
 
 typedef struct {
   size_t struct_size;
@@ -184,6 +185,51 @@ const size_t PJRT_Client_LookupDevice_Args_STRUCT_SIZE =
 // Returns a PJRT_Device* with the specified ID as returned by PJRT_Device_Id.
 typedef PJRT_Error* PJRT_Client_LookupDevice(
     PJRT_Client_LookupDevice_Args* args);
+
+// TODO(jieying): add debug_option.
+// TODO(b/240560013): consider putting some of option fields in priv.
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  // If true, the supplied module expects its arguments to be wrapped in a
+  // tuple and passed as a single parameter.
+  bool parameter_is_tupled_arguments;
+  // If set, this is the device to build the computation for. A value of -1
+  // indicates this option has not been set.
+  int device_ordinal;
+  // The number of replicas of this computation that are to be executed.
+  int num_replicas;
+  // The number of partitions in this computation.
+  int num_partitions;
+  // Whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning;
+  // Whether to allow sharding propagation to propagate to the outputs.
+  bool allow_spmd_sharding_propagation_to_output;
+  const char* device_assignment;  // Serialized device assignment.
+  size_t device_assignment_size;
+} PJRT_CompileOptions;
+const size_t PJRT_CompileOptions_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_CompileOptions, device_assignment_size);
+
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // Serialized MLIR module. Only needs to stay alive for the duration of the
+  // Compile call.
+  const char* module;
+  size_t module_size;
+  // Only needs to stay alive for the duration of the Compile call.
+  PJRT_CompileOptions* options;
+  PJRT_Executable* executable;  // out
+} PJRT_Client_Compile_Args;
+
+const size_t PJRT_Client_Compile_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Client_Compile_Args, executable);
+
+// Compiles an MLIR module with given `options`.
+typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 
 // --------------------------------- Devices -----------------------------------
 
@@ -313,7 +359,6 @@ typedef PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
-typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_Buffer PJRT_Buffer;
 
 typedef struct {
@@ -534,6 +579,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Devices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_ProcessIndex);
