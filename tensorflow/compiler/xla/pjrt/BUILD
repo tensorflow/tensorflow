@@ -212,6 +212,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "pjrt_compiler",
+    srcs = ["pjrt_compiler.cc"],
+    hdrs = ["pjrt_compiler.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "pjrt_compiler_test",
+    srcs = ["pjrt_compiler_test.cc"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_compiler",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
