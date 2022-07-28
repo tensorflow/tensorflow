@@ -167,24 +167,41 @@ class SideInputsTest(parameterized.TestCase):
     self.assertEqual(f(g), tf_f(g))
 
   @unittest.skip("Feature not implemented")
-  @parameterized.parameters(
-      tf.constant,
-      int)
-  def test_nested_tf_function_with_capture(self, capture_type):
+  def test_inner_nested_tf_function_raise_error(self):
     @tf.function
     def tf_f():
+
       @tf.function
       def tf_g():
         cx = tf.func.experimental.capture(lambda: x)
         return cx
+
       return tf_g()
+
+    x = tf.constant(0)  # pylint: disable=unused-variable
+    with self.assertRaisesRegex(
+        NotImplementedError, "Manual side input usage for inner nested"):
+      tf_f()
+
+  @unittest.skip("Feature not implemented")
+  @parameterized.parameters(
+      tf.constant,
+      int)
+  def test_outer_nested_tf_function_with_global_capture(self, capture_type):
+    @tf.function
+    def tf_f():
+
+      @tf.function
+      def tf_g(x):
+        return x
+
+      cx = tf.func.experimental.capture(lambda: x)
+      return tf_g(cx)
 
     x = capture_type(0)  # pylint: disable=unused-variable
     self.assertEqual(tf_f(), tf.constant(0))
     x = capture_type(1)
     self.assertEqual(tf_f(), tf.constant(1))
-    # Test the outer function doesn't have any captures
-    self.assertEmpty(tf_f._stateful_fn._all_captures)
 
   @unittest.skip("Feature not implemented")
   def test_non_callable_function_raise_error(self):
