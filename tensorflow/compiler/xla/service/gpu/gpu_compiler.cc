@@ -23,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/numbers.h"
@@ -86,7 +87,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gather_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
-#include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -186,9 +186,6 @@ limitations under the License.
 
 #if XLA_ENABLE_XLIR
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pass_utils.h"
-#include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
-#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
-#include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -287,25 +284,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 }  // end anonymous namespace
 
 using OwnedThunkSchedule = GpuExecutable::OwnedThunkSchedule;
-using OwnedBefBuffer = GpuExecutable::OwnedBefBuffer;
 using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
-
-StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
-    Compiler* compiler, se::StreamExecutor* executor) const {
-  TF_ASSIGN_OR_RETURN(
-      HloModuleConfig hlo_module_config,
-      HloModule::CreateModuleConfigFromProto(bef_executable_.hlo_module_proto(),
-                                             GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(bef_executable_.hlo_module_proto(),
-                                 hlo_module_config));
-  auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
-  return GpuExecutable::LoadFromBef(
-      std::move(hlo_module), bef_executable_.bef(),
-      bef_executable_.entry_func_attrs(), gpu_compiler->GetGpuVersion(executor),
-      executor);
-}
 
 GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
                          const char* target_triple, const char* data_layout)
@@ -863,47 +842,6 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if XLA_ENABLE_XLIR
-static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
-                                           llvm::StringRef entry_function_name,
-                                           llvm::ArrayRef<int64_t> buffer_sizes,
-                                           HloModule* hlo_module) {
-  // Forward collective permute attributes for use by the lowering pipeline.
-  mlir::OpBuilder builder(mlir_module.getContext());
-  mlir::IntegerAttr replica_count_attr =
-      builder.getI64IntegerAttr(hlo_module->config().replica_count());
-  mlir::IntegerAttr num_partitions_attr =
-      builder.getI64IntegerAttr(hlo_module->config().num_partitions());
-  mlir::func::FuncOp func =
-      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
-  func->setAttr("replica_count", replica_count_attr);
-  func->setAttr("num_partitions", num_partitions_attr);
-
-  // LMHLO -> TFRT Dialect
-  TF_RETURN_IF_ERROR(tensorflow::ConvertLmhloToTfrtGpuWithBinary(
-      mlir_module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes));
-
-  if (DumpingEnabledForHloModule(*hlo_module)) {
-    DumpToFileInDirOrStdout(*hlo_module, "tfrt_gpu", mlir_module);
-  }
-
-  // TFRT Dialect -> BEF
-  std::string bef;
-  llvm::raw_string_ostream bef_ostream(bef);
-  if (tfrt::MLIRToBEFTranslate(mlir_module, bef_ostream).failed()) {
-    return InternalError("Failed to lower TFRT Dialect to BEF.");
-  }
-
-  if (DumpingEnabledForHloModule(*hlo_module)) {
-    DumpToFileInDirOrStdout(*hlo_module, "", "bef", bef);
-  }
-
-  auto ptr = static_cast<uint8_t*>(
-      tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
-  std::copy(bef.begin(), bef.end(), ptr);
-  return OwnedBefBuffer(ptr, {bef.size()});
-}
-
 static StatusOr<OwnedJitRtProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
@@ -968,9 +906,7 @@ struct CompileModuleResults {
   std::unique_ptr<llvm::Module> llvm_module;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::vector<BufferAllocation> allocations;
-  std::variant<OwnedThunkSchedule, OwnedBefBuffer, OwnedJitRtProgram>
-      executable;
-  GpuExecutable::OwnedGpuContextCache gpu_ctx_cache;
+  std::variant<OwnedThunkSchedule, OwnedJitRtProgram> executable;
   EntryFunctionAttributes entry_func_attrs;
   std::vector<GpuExecutable::ConstantInfo> constants;
   OutputInfoMap output_info;
@@ -1070,7 +1006,6 @@ static Status CompileModuleToLlvmIrImpl(
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
     bool supports_runtime_managed_constants =
-        !IsBefThunkEnabled(hlo_module->config()) &&
         // TODO(b/218907125): Implement this feature for ROCm as well.
         platform_id != se::rocm::kROCmPlatformId &&
         hlo_module->config().debug_options().xla_gpu_enable_shared_constants();
@@ -1090,25 +1025,6 @@ static Status CompileModuleToLlvmIrImpl(
   }
 
 #if XLA_ENABLE_XLIR
-  if (IsBefExecutableEnabled(hlo_module->config())) {
-    std::vector<int64_t> buffer_sizes;
-    llvm::transform(
-        results->allocations, std::back_inserter(buffer_sizes),
-        [](const BufferAllocation& allocation) { return allocation.size(); });
-    TF_ASSIGN_OR_RETURN(results->executable,
-                        LowerToBef(*mlir_module, entry_function.getName(),
-                                   buffer_sizes, hlo_module));
-    if (stream_exec) {
-      auto& bef_buffer = std::get<OwnedBefBuffer>(results->executable);
-      llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
-                                        bef_buffer.get_deleter().size);
-      TF_ASSIGN_OR_RETURN(results->gpu_ctx_cache,
-                          GpuExecutable::CreatePreloadedGpuContextCache(
-                              bef_array, stream_exec));
-    }
-    return OkStatus();
-  }
-
   if (IsJitRtExecutableEnabled(hlo_module->config())) {
     std::vector<int64_t> buffer_sizes;
     llvm::transform(
@@ -1425,8 +1341,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
            std::move(compile_module_results.allocations),
            std::move(buffer_assignment_proto),
            [buffer_assignment] { return buffer_assignment->ToVerboseString(); },
-           std::move(module),
-           std::move(compile_module_results.gpu_ctx_cache)}));
+           std::move(module)}));
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -1443,15 +1358,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
   gpu_executable->set_debug_info(buffer_assignment->GetStats().ToString());
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
-}
-
-StatusOr<std::unique_ptr<AotCompilationResult>>
-GpuCompiler::LoadAotCompilationResult(
-    const std::string& serialized_aot_result) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AotCompilationResult> aot_result,
-      GpuAotCompilationResult::FromString(serialized_aot_result));
-  return aot_result;
 }
 
 GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
@@ -1477,85 +1383,7 @@ GpuDeviceInfo GetGpuDeviceInfo(se::StreamExecutor* stream_exec) {
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
-#if XLA_ENABLE_XLIR
-  CHECK(options.PlatformId() == se::cuda::kCudaPlatformId);
-  CHECK(options.executor() != nullptr);
-  auto stream_exec = options.executor();
-
-  std::vector<std::unique_ptr<HloModule>> modules =
-      module_group->ConsumeModules();
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
-
-  for (const auto& module : modules) {
-    XLA_SCOPED_LOGGING_TIMER(
-        "GpuCompiler::CompileAheadOfTime - compiling one HloModule");
-
-    if (!options.run_backend_only()) {
-      uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
-      tensorflow::profiler::TraceMe activity(
-          [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-          tensorflow::profiler::TraceMeLevel::kInfo);
-      TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), stream_exec,
-                                           options.device_allocator()));
-
-      TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
-
-      uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
-
-      // This won't record values for calls that error out (because if they
-      // error out we have no way of telling how far through the process we
-      // got).
-      RecordHloPassesDuration(end_usecs - start_usecs);
-    }
-
-    std::string slow_compilation_msg =
-        absl::StrCat("Compiling module ", module->name());
-    auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
-
-    llvm::LLVMContext llvm_context;
-
-    GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
-
-    if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
-      HloCostAnalysis::Options options{ShapeSizeBytesFunction()};
-      options.set_bytes_per_second(
-          stream_exec->GetDeviceDescription().memory_bandwidth());
-      GpuHloCostAnalysis cost_analysis(options);
-      TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-      VLOG(1) << "HLO memory read+written for " << module->name() << " "
-              << tensorflow::strings::HumanReadableNumBytes(
-                     cost_analysis.bytes_accessed());
-      if (module->config().hlo_profiling_enabled()) {
-        LOG(ERROR) << "--xla_hlo_profile for GPU is unsupported.";
-      }
-    }
-
-    CompileModuleResults compile_module_results;
-    TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
-        module.get(), &llvm_context, target_triple_, data_layout_,
-        stream_exec->platform()->Name(), stream_exec->platform()->id(),
-        gpu_device_info,
-        stream_exec->GetDeviceDescription().cuda_compute_capability(),
-        stream_exec->GetDeviceDescription().rocm_compute_capability(),
-        GetCanShareBuffer(), pointer_size_, &compile_module_results));
-
-    if (!std::holds_alternative<OwnedBefBuffer>(
-            compile_module_results.executable)) {
-      return FailedPrecondition("Expected BefBuffer is not supplied.");
-    }
-    const auto& bef_buffer =
-        std::get<OwnedBefBuffer>(compile_module_results.executable);
-    const std::string bef(reinterpret_cast<char*>(bef_buffer.get()),
-                          bef_buffer.get_deleter().size);
-
-    results.emplace_back(std::make_unique<GpuAotCompilationResult>(
-        module->ToProto(), bef, compile_module_results.entry_func_attrs));
-  }
-
-  return std::move(results);
-#else   // XLA_ENABLE_XLIR
-  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
-#endif  // XLA_ENABLE_XLIR
+  return Unimplemented("");
 }
 
 HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
@@ -1683,7 +1511,6 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
   bool supports_runtime_managed_constants =
-      !IsBefThunkEnabled(module_config) &&
       // TODO(b/218907125): Implement this feature for ROCm as well.
       compiler->PlatformId() != se::rocm::kROCmPlatformId;
   if (supports_runtime_managed_constants) {

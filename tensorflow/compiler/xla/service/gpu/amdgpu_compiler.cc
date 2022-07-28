@@ -113,12 +113,9 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
 
-  if (!IsBefEnabled(hlo_module->config())) {
-    // Transform TriangularSolve ops into custom-calls, so we can add temp
-    // memory. XLIR allocates temp memory, and so the custom-call implementation
-    // for TriangularSolve is not needed.
-    post_pipeline.AddPass<TriangularSolveRewriter>();
-  }
+  // Transform TriangularSolve ops into custom-calls, so we can add temp
+  // memory.
+  post_pipeline.AddPass<TriangularSolveRewriter>();
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 

@@ -62,23 +62,7 @@ check_deps(
     disallowed_deps = select({
         ":is_xlir_enabled": [],
         "//conditions:default": [
-            ":xlir_kernels",
-            ":xlir_opdefs",
             ":jitrt_custom_calls",
-            "@tf_runtime//:basic_kernels_alwayslink",
-            "@tf_runtime//:basic_kernels_opdefs",
-            "@tf_runtime//:befexecutor",
-            "@tf_runtime//:core_runtime",
-            "@tf_runtime//:hostcontext",
-            "@tf_runtime//:mlirtobef_translate",
-            "@tf_runtime//:support",
-            "@tf_runtime//:tensor_opdefs",
-            "@tf_runtime//:OpBaseTdFiles",
-            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            "@tf_runtime//backends/gpu:gpu_opdefs",
-            "@tf_runtime//backends/gpu:gpu_types",
-            "@tf_runtime//backends/gpu:gpu_wrapper",
-            "@tf_runtime//backends/gpu:GpuOpBaseTdFile",
         ],
     }),
     deps = [
@@ -89,8 +73,7 @@ check_deps(
         ":launch_dimensions",
         ":parallel_loop_emitter",
         ":target_util",
-        # XLIR targets should only depend on TFRT if BEF thunk/executable is
-        # enabled.
+        # XLIR targets should only depend on TFRT if JitRt is enabled.
         ":gpu_compiler",
         ":gpu_executable",
         ":nccl_utils",
@@ -635,29 +618,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xlir_kernels",
-    srcs = ["xlir_kernels.cc"],
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":nccl_collective_thunks",
-        ":nccl_utils",
-        ":xlir_opdefs",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/service:custom_call_status_internal",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
-        "@tf_runtime//backends/gpu:gpu_kernels_detail",
-        "@tf_runtime//backends/gpu:gpu_types",
-        "@tf_runtime//backends/gpu:gpu_wrapper",
-    ],
-    alwayslink = True,  # Contains TFRT kernel registration
-)
-
-cc_library(
     name = "jitrt_custom_calls",
     srcs = ["jitrt_custom_calls.cc"],
     hdrs = ["jitrt_custom_calls.h"],
@@ -695,7 +655,6 @@ cc_library(
 cc_library(
     name = "gpu_executable",
     srcs = [
-        "bef_thunk.cc",
         "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
@@ -711,7 +670,6 @@ cc_library(
         "while_thunk.cc",
     ],
     hdrs = [
-        "bef_thunk.h",
         "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
@@ -821,60 +779,13 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
     ]) + select({
         ":is_xlir_enabled": [
-            ":xlir_kernels",
-            ":xlir_opdefs",
             ":jitrt_custom_calls",
-            "@llvm-project//llvm:Support",
-            "@llvm-project//mlir:GPUTransforms",
-            "@llvm-project//mlir:Pass",
-            "@llvm-project//mlir:TransformUtils",
-            "//tensorflow/compiler/mlir:name_utils",
-            "//tensorflow/compiler/mlir/hlo:lhlo",
-            "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_tfrt_gpu",
-            "//tensorflow/compiler/mlir/xla:attribute_exporter",
-            "//tensorflow/stream_executor/gpu:gpu_executor_header",
-            "@tf_runtime//:basic_kernels_alwayslink",
-            "@tf_runtime//:basic_kernels_opdefs",
-            "@tf_runtime//:bef",
             "@tf_runtime//backends/jitrt",
             "@tf_runtime//backends/jitrt:diagnostics",
             "@tf_runtime//backends/jitrt:jitrt_compiler",
-            "@tf_runtime//:befexecutor",
-            "@tf_runtime//:beftomlir",
-            "@tf_runtime//:core_runtime",
-            "@tf_runtime//:hostcontext",
-            "@tf_runtime//:init_tfrt_dialects",
-            "@tf_runtime//:mlirtobef_translate",
-            "@tf_runtime//:support",
-            "@tf_runtime//:tensor_alwayslink",
-            "@tf_runtime//backends/gpu:gpu_executor",
-            "@tf_runtime//backends/gpu:gpu_kernels_alwayslink",
-            "@tf_runtime//backends/gpu:gpu_opdefs",
-            "@tf_runtime//backends/gpu:gpu_passes",
-            "@tf_runtime//backends/gpu:gpu_types",
         ],
         "//conditions:default": [],
     }),
-)
-
-# Target used as --@rules_cuda//cuda:cuda_runtime when BefThunk is enabled.
-# TFRT uses this target to link against CUDA libraries. Using TFRT's own
-# cuda_stubs would duplicate symbols from stream_executor's stubs.
-cc_library(
-    name = "cuda_runtime_for_xlir",
-    tags = ["manual"],  # Build NCCL only if --config=experimental_tfrt_gpu.
-    deps = if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:cublas_lt_stub",
-        "//tensorflow/stream_executor/cuda:cublas_stub",
-        "//tensorflow/stream_executor/cuda:cuda_stub",
-        "//tensorflow/stream_executor/cuda:cudart_stub",
-        "//tensorflow/stream_executor/cuda:cudnn_stub",
-        "//tensorflow/stream_executor/cuda:cufft_stub",
-        "//tensorflow/stream_executor/cuda:cusolver_stub",
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@tf_runtime//backends/gpu:cuda_stubs",
-    ]),
 )
 
 cc_library(
@@ -1855,10 +1766,6 @@ cc_library(
     ] + select({
         ":is_xlir_enabled": [
             "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:pass_utils",
-            "@tf_runtime//:mlirtobef_translate",
-            "@tf_runtime//:support",
-            "@tf_runtime//:bef",
-            "@tf_runtime//backends/gpu:gpu_executor",
         ],
         "//conditions:default": [],
     }),
@@ -1976,14 +1883,16 @@ tf_cc_test(
     srcs = [
         "gpu_aot_compilation_test.cc",
     ],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_jitrt_executable",
+    },
     tags = [
+        "broken",  # b/239679478: Switching AOT support from BEF to JitRt.
         "gpu",
-        "manual",  # Requires --//tensorflow/compiler/xla/service/gpu:enable_bef_executable=true
         "no_oss",
         "no_rocm",
-        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false
-        "notap",
-        # positives in msan.
+        "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "notap",  # b/239679478: Switching AOT support from BEF to JitRt.
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -2714,38 +2623,6 @@ cc_library(
     ],
 )
 
-# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_thunk
-# See tap/tensorflow.xla_gpu_tfrt.
-# TODO(b/187959015): Expand test patterns; see cl/377552996.
-test_suite(
-    name = "bef_thunk_tests",
-    tests = [
-        # Disabled: Repeated Kernel BefThunk invocations prolong test duration.
-        # E.g., it takes ~1300s for 256x128 matrix.
-        # "//tensorflow/compiler/xla/client/lib:svd_test_gpu",
-        "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
-        "//tensorflow/compiler/xla/service/gpu:custom_call_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:gemm_broadcast_folding_rewrite_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:gpu_alignment_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:gpu_copy_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
-        "//tensorflow/compiler/xla/tests:cholesky_test_gpu",
-        "//tensorflow/compiler/xla/tests:convolution_test_cudnn_frontend_disabled_gpu",
-        "//tensorflow/compiler/xla/tests:dot_operation_test_gpu",
-        "//tensorflow/compiler/xla/tests:local_client_execute_test_gpu",
-        "//tensorflow/compiler/xla/tests:multioutput_fusion_test_gpu",
-        "//tensorflow/compiler/xla/tests:outfeed_in_nested_computation_test_gpu",
-        "//tensorflow/compiler/xla/tests:scatter_test_gpu",
-        "//tensorflow/compiler/xla/tests:select_and_scatter_test_gpu",
-        "//tensorflow/compiler/xla/tests:tuple_test_gpu",
-        "//tensorflow/compiler/xla/tests:while_test_gpu",
-    ] + if_google([
-        # Currently fails in OSS.
-        "//tensorflow/compiler/xla/tests:convolution_test_gpu",
-    ]),
-)
-
 # These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_jitrt_executable
 # See tap/tensorflow.xla_gpu_jitrt.
 test_suite(
@@ -2756,7 +2633,6 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         "//tensorflow/compiler/xla/service/gpu/tests:add_preds.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:all_reduce.hlo.test",
-        "//tensorflow/compiler/xla/service/gpu/tests:bef_executable_test_gpu",
         "//tensorflow/compiler/xla/service/gpu/tests:concat.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:constant.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:copy.hlo.test",

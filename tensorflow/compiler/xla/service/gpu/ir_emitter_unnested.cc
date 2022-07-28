@@ -77,7 +77,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/bef_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
@@ -1001,16 +1000,6 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    operand_slices.push_back(conv_result_slice);
-    operand_slices.push_back(scratch_slice);
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Thunk> thunk,
-        CreateBefThunk(GetThunkInfo(op), op, std::move(operand_slices)));
-    AddThunkToThunkSequence(std::move(thunk));
-    return OkStatus();
-  }
-
   auto apply_layout = [](const Shape& shape,
                          mlir::ArrayRef<int64_t> minor_to_major) {
     return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
@@ -1121,14 +1110,9 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
   TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
 
-  std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(thunk, CreateBefThunk(GetThunkInfo(op), op, {a, b, c}));
-  } else {
-    TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
-    thunk = std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config), a,
-                                        b, c);
-  }
+  TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
+  auto thunk =
+      std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config), a, b, c);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1150,17 +1134,11 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(bias, GetAllocationSlice(matmul.getBias()));
   }
 
-  std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(
-        thunk, CreateBefThunk(GetThunkInfo(op), op, {a, b, c, d, bias}));
-  } else {
-    TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
-                        cublas_lt::MatmulPlan::For(matmul));
-    thunk = std::make_unique<CublasLtMatmulThunk>(
-        GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
-        bias);
-  }
+  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
+                      cublas_lt::MatmulPlan::For(matmul));
+  auto thunk = std::make_unique<CublasLtMatmulThunk>(
+      GetThunkInfo(op), std::move(plan), matmul.getAlgorithm(), a, b, c, d,
+      bias);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1273,16 +1251,6 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto info_buffer,
                       GetAllocationSlice(cholesky_op.getInfo()));
 
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    std::vector<BufferAllocation::Slice> buffers = {
-        operand_buffer, a_buffer, workspace_buffer, info_buffer};
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Thunk> thunk,
-        CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
-    AddThunkToThunkSequence(std::move(thunk));
-    return OkStatus();
-  }
-
   ThunkSequence thunks;
 
   if (operand_buffer != a_buffer) {
@@ -1369,71 +1337,41 @@ Status IrEmitterUnnested::EmitCustomCallThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(results, values_to_slices(custom_call.getOutput()));
   }
 
-  std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    auto values_to_non_optional_slices = [&](mlir::ValueRange values)
-        -> StatusOr<std::vector<BufferAllocation::Slice>> {
-      std::vector<BufferAllocation::Slice> slices;
-      for (mlir::Value value : values) {
-        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                            GetAllocationSlice(value));
-        slices.push_back(slice);
-      }
-      return slices;
-    };
+  CustomCallThunk::CustomCallTarget custom_call_target;
 
-    TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> inputs,
-                        values_to_non_optional_slices(custom_call.getArgs()));
-    TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> outputs,
-                        values_to_non_optional_slices(custom_call.getOutput()));
-    std::vector<BufferAllocation::Slice> buffers;
-    buffers.reserve(inputs.size() + outputs.size());
-    for (const auto& buffer : inputs) {
-      buffers.push_back(buffer);
-    }
-    for (const auto& buffer : outputs) {
-      buffers.push_back(buffer);
-    }
-    TF_ASSIGN_OR_RETURN(
-        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(buffers)));
-  } else {
-    CustomCallThunk::CustomCallTarget custom_call_target;
-
-    // For information about this calling convention, see
-    // xla/g3doc/custom_call.md.
-    switch (custom_call.getApiVersion()) {
-      case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
-        using original_call_type =
-            void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                     const char* /*opaque*/, size_t /*opaque_len*/);
-        custom_call_target = [call_target](CustomCallThunk::Stream stream,
-                                           void** buffers, const char* opaque,
-                                           size_t opaque_len,
-                                           XlaCustomCallStatus*) {
-          auto typed_call_target =
-              reinterpret_cast<original_call_type>(call_target);
-          typed_call_target(stream, buffers, opaque, opaque_len);
-        };
-        break;
-      case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
-      case mlir::mhlo::CustomCallApiVersion::
-          API_VERSION_STATUS_RETURNING_UNIFIED:
-        using status_returning_call_type =
-            void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
-                     const char* /*opaque*/, size_t /*opaque_len*/,
-                     XlaCustomCallStatus* /*status*/);
-        custom_call_target =
-            reinterpret_cast<status_returning_call_type>(call_target);
-        break;
-      default:
-        return InternalError("Unknown custom-call API version enum value: %d",
-                             custom_call.getApiVersion());
-    }
-
-    thunk = std::make_unique<CustomCallThunk>(
-        GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
-        std::move(results), custom_call.getBackendConfig().str());
+  // For information about this calling convention, see
+  // xla/g3doc/custom_call.md.
+  switch (custom_call.getApiVersion()) {
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      using original_call_type =
+          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/);
+      custom_call_target = [call_target](CustomCallThunk::Stream stream,
+                                         void** buffers, const char* opaque,
+                                         size_t opaque_len,
+                                         XlaCustomCallStatus*) {
+        auto typed_call_target =
+            reinterpret_cast<original_call_type>(call_target);
+        typed_call_target(stream, buffers, opaque, opaque_len);
+      };
+      break;
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+    case mlir::mhlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
+      using status_returning_call_type =
+          void (*)(CustomCallThunk::Stream /*stream*/, void** /*buffers*/,
+                   const char* /*opaque*/, size_t /*opaque_len*/,
+                   XlaCustomCallStatus* /*status*/);
+      custom_call_target =
+          reinterpret_cast<status_returning_call_type>(call_target);
+      break;
+    default:
+      return InternalError("Unknown custom-call API version enum value: %d",
+                           custom_call.getApiVersion());
   }
+
+  auto thunk = std::make_unique<CustomCallThunk>(
+      GetThunkInfo(op), std::move(custom_call_target), std::move(operands),
+      std::move(results), custom_call.getBackendConfig().str());
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
@@ -1455,14 +1393,6 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   auto fft_length_values = fft_op.getFftLength().getValues<int64_t>();
   std::vector<int64_t> fft_length(fft_length_values.begin(),
                                   fft_length_values.end());
-
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Thunk> thunk,
-        CreateBefThunk(GetThunkInfo(op), op, {arg_slice, dest_slice}));
-    AddThunkToThunkSequence(std::move(thunk));
-    return OkStatus();
-  }
 
   AddThunkToThunkSequence(
       std::make_unique<FftThunk>(GetThunkInfo(op), fft_type, fft_length,
@@ -2964,13 +2894,7 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   auto casted = mlir::cast<OpT>(op);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
                       GetAllocationSlice(casted.getOperand()));
-  std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(thunk,
-                        CreateBefThunk(GetThunkInfo(op), op, {result_slice}));
-  } else {
-    thunk = std::make_unique<ThunkType>(GetThunkInfo(op), result_slice);
-  }
+  auto thunk = std::make_unique<ThunkType>(GetThunkInfo(op), result_slice);
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
@@ -2996,22 +2920,13 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*destination_buffer=*/result_slice,
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   } else {
-    std::unique_ptr<Thunk> thunk;
-    if (IsBefThunkEnabled(hlo_module_config_)) {
-      std::vector<BufferAllocation::Slice> buffers = {source_slice,
-                                                      result_slice};
-      TF_ASSIGN_OR_RETURN(thunk, CreateBefCollectiveThunk(
-                                     GetThunkInfo(op), op, std::move(buffers),
-                                     replica_count, partition_count));
-    } else {
-      const NcclCollectivePermuteThunk::Buffer buffer = {
-          /*element_count=*/ShapeUtil::ElementsIn(shape),
-          /*source_buffer=*/source_slice,
-          /*destination_buffer=*/result_slice};
-      thunk = std::make_unique<NcclCollectivePermuteThunk>(
-          GetThunkInfo(op), collective_permute_op, replica_count,
-          partition_count, buffer);
-    }
+    const NcclCollectivePermuteThunk::Buffer buffer = {
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/result_slice};
+    auto thunk = std::make_unique<NcclCollectivePermuteThunk>(
+        GetThunkInfo(op), collective_permute_op, replica_count, partition_count,
+        buffer);
     AddThunkToThunkSequence(std::move(thunk));
   }
   return OkStatus();
@@ -3065,28 +2980,9 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   if (should_use_nccl_thunk) {
-    std::unique_ptr<Thunk> thunk;
-    if (IsBefThunkEnabled(hlo_module_config_) &&
-        (mlir::isa<mlir::lmhlo::AllGatherOp>(op) ||
-         mlir::isa<mlir::lmhlo::AllReduceOp>(op) ||
-         mlir::isa<mlir::lmhlo::ReduceScatterOp>(op) ||
-         mlir::isa<mlir::lmhlo::AllToAllOp>(op))) {
-      std::vector<BufferAllocation::Slice> arg_buffers;
-      arg_buffers.reserve(buffers.size() * 2);
-      for (const auto& buffer : buffers) {
-        arg_buffers.push_back(buffer.source_buffer);
-      }
-      for (const auto& buffer : buffers) {
-        arg_buffers.push_back(buffer.destination_buffer);
-      }
-      TF_ASSIGN_OR_RETURN(
-          thunk,
-          CreateBefCollectiveThunk(GetThunkInfo(op), op, std::move(arg_buffers),
-                                   replica_count, partition_count));
-    } else {
-      thunk = std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
-                                              /*buffers=*/std::move(buffers));
-    }
+    auto thunk =
+        std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
+                                        /*buffers=*/std::move(buffers));
     // Record thunks for all-reduce-start ops as the done ops need them.
     TF_RETURN_IF_ERROR(MaybeAddAllReduceStartThunkToMap(
         all_reduce_start_thunks_, op, thunk.get()));
@@ -3181,16 +3077,9 @@ StatusOr<std::vector<BufferAllocation::Slice>> IrEmitterUnnested::GetSlices(
 Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
   mlir::Operation::operand_range operands =
       mlir::cast<mlir::lmhlo::InfeedOp>(op).getOutputs();
-  std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(auto slices, GetSlices(operands));
-    TF_ASSIGN_OR_RETURN(
-        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(slices)));
-  } else {
-    TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
-    thunk = std::make_unique<InfeedThunk>(GetThunkInfo(op),
-                                          std::move(shaped_slices));
-  }
+  TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
+  auto thunk =
+      std::make_unique<InfeedThunk>(GetThunkInfo(op), std::move(shaped_slices));
   AddThunkToThunkSequence(std::move(thunk));
 
   return OkStatus();
@@ -3199,16 +3088,9 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   mlir::Operation::operand_range operands =
       mlir::cast<mlir::lmhlo::OutfeedOp>(op).getInputs();
-  std::unique_ptr<Thunk> thunk;
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    TF_ASSIGN_OR_RETURN(auto slices, GetSlices(operands));
-    TF_ASSIGN_OR_RETURN(
-        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(slices)));
-  } else {
-    TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
-    thunk = std::make_unique<OutfeedThunk>(GetThunkInfo(op),
-                                           std::move(shaped_slices));
-  }
+  TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
+  auto thunk = std::make_unique<OutfeedThunk>(GetThunkInfo(op),
+                                              std::move(shaped_slices));
   AddThunkToThunkSequence(std::move(thunk));
 
   return OkStatus();
@@ -3325,15 +3207,9 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunkImpl(
   AnnotateThunkLaunchDimensions(launch_dimensions,
                                 std::string(kernel->getName()), module_);
 
-  if (IsBefThunkEnabled(hlo_module_config_)) {
-    return CreateBefKernelThunk(thunk_info, non_constant_buffers,
-                                std::string(kernel->getName()),
-                                launch_dimensions);
-  } else {
-    return {std::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
-                                          std::string(kernel->getName()),
-                                          launch_dimensions)};
-  }
+  return {std::make_unique<KernelThunk>(thunk_info, non_constant_buffers,
+                                        std::string(kernel->getName()),
+                                        launch_dimensions)};
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildKernelThunk(
@@ -5445,11 +5321,6 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
-    if (IsBefEnabled(hlo_module_config_)) {
-      // XLIR allocates temp memory, and so the custom-call implementation for
-      // TriangularSolve is not needed.
-      return OkStatus();
-    }
     return InternalError(
         "TriangularSolve is implemented as a custom-call; we do not expect to "
         "lower a true HLO TriangularSolve op.");

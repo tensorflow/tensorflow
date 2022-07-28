@@ -393,12 +393,8 @@ message DebugOptions {
   // logging a warning and proceeding with fallback.
   bool xla_gpu_strict_conv_algorithm_picker = 156;
 
-  // If true, enable XLIR to compile gpu programs to TFRT BEF.
-  bool xla_gpu_bef_executable = 161;
-
-  // If true, enable XLIR to compile thunks to TFRT BEF.
-  // This flag has no effect when xla_gpu_bef_executable is true.
-  bool xla_gpu_bef_thunk = 162;
+  reserved 161;  // Was xla_gpu_bef_executable
+  reserved 162;  // Was xla_gpu_bef_thunk
 
   // If true, enable XLIR to compile gpu programs to JitRt.
   bool xla_gpu_jitrt_executable = 169;
