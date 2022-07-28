@@ -726,13 +726,22 @@ bool InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (!instruction->has_sharding() && instruction->shape().IsArray()) {
+  if (!instruction->has_sharding()) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || !user->sharding().IsManual() ||
           user->IsCustomCall("SPMDFullToShardShape"))
         continue;
-      instruction->set_sharding(
-          HloSharding::Manual(user->sharding().metadata()));
+      if (instruction->shape().IsArray()) {
+        instruction->set_sharding(
+            HloSharding::Manual(user->sharding().metadata()));
+      } else {
+        std::optional<HloSharding> user_sharding =
+            ShardingPropagation::GetShardingFromUser(*instruction, *user,
+                                                     aggressiveness, is_spmd);
+        if (user_sharding) {
+          instruction->set_sharding(*user_sharding);
+        }
+      }
       return true;
     }
   }
@@ -1759,6 +1768,10 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
       HloSharding new_sharding = operand->sharding().GetSubSharding(
           operand->shape(), {instruction->tuple_index()});
+      if (new_sharding.IsManual()) {
+        instruction->set_sharding(new_sharding);
+        return true;
+      }
       return MaybeImproveInstructionSharding(
           std::move(new_sharding), instruction, may_combine_partial_sharding,
           /*allow_aggressive_resharding=*/
