@@ -45,8 +45,8 @@ std::string MultiplyAccumulate(const GpuInfo& gpu_info,
 }
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const DepthwiseConvolution2DAttributes& dw_attr,
+    CalculationsPrecision precision, const TensorDescriptor& src_desc,
+    const GpuInfo& gpu_info, const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr, const BHWC* dst_shape) {
   const auto dw_shape = dw_attr.weights.shape;
   const auto conv_shape = conv_attr.weights.shape;
@@ -58,7 +58,7 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       conv_attr.padding.prepended.h == 0 && conv_attr.padding.appended.w == 0 &&
       conv_attr.padding.appended.h == 0;
   if (gpu_info.IsApple()) {
-    if (definition.precision == CalculationsPrecision::F16) {
+    if (precision == CalculationsPrecision::F16) {
       bool recommended_dw = dw_shape.i <= 16 &&
                             dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
       bool recommended_conv =
@@ -78,8 +78,8 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
     if (dst_shape) {
       const int dst_slices = DivideRoundUp(dst_shape->c, 4);
       int task_size = dst_shape->b * dst_shape->h * dst_shape->w * dst_slices;
-      int block_size = GetRecommendedBlockSizeForConv(
-          gpu_info, definition.precision, task_size);
+      int block_size =
+          GetRecommendedBlockSizeForConv(gpu_info, precision, task_size);
       if (block_size < 4 && dst_slices >= 2) {
         return false;
       }
@@ -87,9 +87,9 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
         return false;
       }
     }
-    if (definition.precision == CalculationsPrecision::F16 &&
-        definition.src_tensors[0].SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
-        definition.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
+    if (precision == CalculationsPrecision::F16 &&
+        src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
+        src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       bool recommended_dw = dw_shape.i <= 16 &&
                             dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 16;
       bool recommended_conv =
@@ -99,7 +99,7 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
       return false;
     }
   } else {
-    if (definition.precision == CalculationsPrecision::F16) {
+    if (precision == CalculationsPrecision::F16) {
       bool recommended_dw = dw_shape.i <= 32 &&
                             dw_shape.i * dw_shape.h * dw_shape.w <= 3 * 3 * 32;
       bool recommended_conv =
@@ -208,18 +208,16 @@ void ThinPointwiseFuser::CreateConstantsGpuBuffer(const GpuInfo& gpu_info) {
                   std::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
-void ThinPointwiseFuser::AddDepthwiseConvNode(
-    const GpuInfo& gpu_info, const TensorDescriptor& src_desc,
-    const DepthwiseConvolution2DAttributes& attr) {
-  AddDepthwiseConvData(attr);
-  args_.AddInt("stride_x", attr.strides.w);
-  args_.AddInt("padding_x", -attr.padding.prepended.w);
-  args_.AddInt("dilation_x", attr.dilations.w);
-  args_.AddInt("stride_y", attr.strides.h);
-  args_.AddInt("padding_y", -attr.padding.prepended.h);
-  args_.AddInt("dilation_y", attr.dilations.h);
-
+void ThinPointwiseFuser::Init(CalculationsPrecision precision,
+                              const TensorDescriptor& src_desc,
+                              int output_batch, int output_width,
+                              int output_height) {
+  op_def_.precision = precision;
   op_def_.src_tensors.push_back(src_desc);
+  weights_counter_ = 0;
+  output_shape_.b = output_batch;
+  output_shape_.w = output_width;
+  output_shape_.h = output_height;
 
   code_ += "MAIN_FUNCTION($0) {\n";
   if (src_desc.HasAxis(Axis::BATCH)) {
@@ -237,6 +235,22 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
       "\n";
   code_ += "    return; \n";
   code_ += "  } \n";
+}
+
+void ThinPointwiseFuser::AddDepthwiseConvNode(
+    const GpuInfo& gpu_info, const DepthwiseConvolution2DAttributes& attr) {
+  AddDepthwiseConvData(attr);
+  op_name_ += "dw_conv";
+  output_shape_.c = attr.weights.shape.i;
+  flops_ += GetDepthwiseConvolutionFlops(output_shape_, attr.weights.shape);
+  args_.AddInt("stride_x", attr.strides.w);
+  args_.AddInt("padding_x", -attr.padding.prepended.w);
+  args_.AddInt("dilation_x", attr.dilations.w);
+  args_.AddInt("stride_y", attr.strides.h);
+  args_.AddInt("padding_y", -attr.padding.prepended.h);
+  args_.AddInt("dilation_y", attr.dilations.h);
+
+  const auto& src_desc = op_def_.src_tensors[0];
   int intermediate_depth = DivideRoundUp(attr.weights.shape.i, 4);
   for (int d = 0; d < intermediate_depth; ++d) {
     code_ += "  FLT4 dw_res_" + std::to_string(d) + " = args.constants.Read(" +
@@ -307,6 +321,7 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
 }
 
 void ThinPointwiseFuser::AddReluNode(const ReLUAttributes& attr) {
+  op_name_ += "->relu";
   std::string elementwise_code;
   CreateReLU(attr, op_def_.precision, &args_, &elementwise_code);
   for (const auto& out_value : outputs_) {
@@ -319,6 +334,9 @@ void ThinPointwiseFuser::AddReluNode(const ReLUAttributes& attr) {
 void ThinPointwiseFuser::AddConvNode(const GpuInfo& gpu_info,
                                      const Convolution2DAttributes& attr) {
   AddConvData(attr);
+  op_name_ += "->conv1x1";
+  output_shape_.c = attr.weights.shape.o;
+  flops_ += GetConvolutionFlops(output_shape_, attr.weights.shape);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   for (int d = 0; d < dst_slices; ++d) {
@@ -349,11 +367,6 @@ void ThinPointwiseFuser::AddConvNode(const GpuInfo& gpu_info,
   code_ += "}\n";
 }
 
-void ThinPointwiseFuser::Init(CalculationsPrecision precision) {
-  op_def_.precision = precision;
-  weights_counter_ = 0;
-}
-
 GPUOperation ThinPointwiseFuser::Finalize(const GpuInfo& gpu_info,
                                           const TensorDescriptor& dst_desc) {
   op_def_.dst_tensors.push_back(dst_desc);
@@ -363,25 +376,12 @@ GPUOperation ThinPointwiseFuser::Finalize(const GpuInfo& gpu_info,
   result.AddSrcTensor("src_tensor", op_def_.src_tensors[0]);
   result.AddDstTensor("dst_tensor", op_def_.dst_tensors[0]);
   result.code_ = code_;
+  result.flops_ = flops_;
   result.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
   if (gpu_info.IsMali()) {
     result.compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
   return result;
-}
-
-GPUOperation CreateDepthwiseConvPlus1x1Conv(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, ReLUAttributes* relu_attr_ptr) {
-  ThinPointwiseFuser fuser;
-  fuser.Init(definition.precision);
-  fuser.AddDepthwiseConvNode(gpu_info, definition.src_tensors[0], dw_attr);
-  if (relu_attr_ptr) {
-    fuser.AddReluNode(*relu_attr_ptr);
-  }
-  fuser.AddConvNode(gpu_info, conv_attr);
-  return fuser.Finalize(gpu_info, definition.dst_tensors[0]);
 }
 
 absl::Status TryDepthwiseConvPlus1x1Conv(
@@ -393,6 +393,7 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
         gpu_info.IsApple() || gpu_info.IsAMD())) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
+  std::set<NodeId> fused_nodes;
   auto* dw_node = graph.GetNode(first_node_id);
   if (dw_node == nullptr) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
@@ -410,6 +411,7 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   if (consumers.size() != 1) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
+  fused_nodes.insert(dw_node->id);
 
   Node* next_node;
   next_node = consumers[0];
@@ -424,6 +426,7 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   if (OperationTypeFromString(next_node->operation.type) ==
       OperationType::RELU) {
     relu_node = next_node;
+    fused_nodes.insert(relu_node->id);
     auto relu_outputs = graph.FindOutputs(relu_node->id);
     consumers = graph.FindConsumers(relu_outputs[0]->id);
     if (consumers.size() != 1) {
@@ -435,6 +438,7 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   }
 
   auto* conv_node = next_node;
+  fused_nodes.insert(conv_node->id);
   if (OperationTypeFromString(conv_node->operation.type) !=
       OperationType::CONVOLUTION_2D) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
@@ -447,42 +451,31 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   auto conv_attr =
       absl::any_cast<Convolution2DAttributes>(conv_node->operation.attributes);
   auto conv_outputs = graph.FindOutputs(conv_node->id);
-  OperationDef op_def;
-  op_def.precision = precision;
-  auto it = tensor_descriptors.find(dw_inputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.src_tensors.push_back(it->second);
-  }
-  it = tensor_descriptors.find(conv_outputs[0]->id);
-  if (it != tensor_descriptors.end()) {
-    op_def.dst_tensors.push_back(it->second);
-  }
-  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, gpu_info, dw_attr, conv_attr,
+
+  const TensorDescriptor& src_desc =
+      tensor_descriptors.find(dw_inputs[0]->id)->second;
+  const TensorDescriptor& dst_desc =
+      tensor_descriptors.find(conv_outputs[0]->id)->second;
+  if (!IsDepthwiseConvPlus1x1ConvSupported(precision, src_desc, gpu_info,
+                                           dw_attr, conv_attr,
                                            &conv_outputs[0]->tensor.shape)) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(dw_inputs, conv_outputs, gpu_subgraph);
-  ReLUAttributes* relu_attr_ptr = relu_node ? &relu_attributes : nullptr;
-  auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, gpu_info, dw_attr,
-                                                  conv_attr, relu_attr_ptr);
+
+  ThinPointwiseFuser fuser;
+  auto dw_shape = dw_outputs[0]->tensor.shape;
+  fuser.Init(precision, src_desc, dw_shape.b, dw_shape.w, dw_shape.h);
+  fuser.AddDepthwiseConvNode(gpu_info, dw_attr);
+  if (relu_node) {
+    fuser.AddReluNode(relu_attributes);
+  }
+  fuser.AddConvNode(gpu_info, conv_attr);
+  auto operation = fuser.Finalize(gpu_info, dst_desc);
   *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
-  (*gpu_op)->flops_ = GetDepthwiseConvolutionFlops(dw_outputs[0]->tensor.shape,
-                                                   dw_attr.weights.shape) +
-                      GetConvolutionFlops(conv_outputs[0]->tensor.shape,
-                                          conv_attr.weights.shape);
-  std::string fused_nodes = std::to_string(dw_node->id);
-  if (relu_node) {
-    fused_nodes += " " + std::to_string(relu_node->id);
-  }
-  fused_nodes += " " + std::to_string(conv_node->id);
-  gpu_subgraph->operations[0].name =
-      "depthwise_conv_plus_1x1_conv " + fused_nodes;
-  consumed_nodes->insert(dw_node->id);
-  if (relu_node) {
-    consumed_nodes->insert(relu_node->id);
-  }
-  consumed_nodes->insert(conv_node->id);
+  gpu_subgraph->operations[0].name = fuser.GetOperationName();
+  consumed_nodes->insert(fused_nodes.begin(), fused_nodes.end());
   return absl::OkStatus();
 }
 

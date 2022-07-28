@@ -32,15 +32,16 @@ namespace gpu {
 
 class ThinPointwiseFuser {
  public:
-  void Init(CalculationsPrecision precision);
+  void Init(CalculationsPrecision precision, const TensorDescriptor& src_desc,
+            int output_batch, int output_width, int output_height);
   void AddConvNode(const GpuInfo& gpu_info,
                    const Convolution2DAttributes& attr);
   void AddReluNode(const ReLUAttributes& attr);
   void AddDepthwiseConvNode(const GpuInfo& gpu_info,
-                            const TensorDescriptor& src_desc,
                             const DepthwiseConvolution2DAttributes& attr);
   GPUOperation Finalize(const GpuInfo& gpu_info,
                         const TensorDescriptor& dst_desc);
+  std::string GetOperationName() const { return op_name_; }
 
  private:
   void AddConvData(const Convolution2DAttributes& conv_attr);
@@ -52,13 +53,10 @@ class ThinPointwiseFuser {
   std::vector<std::string> outputs_;
   std::vector<float> gpu_data_;
   int weights_counter_ = 0;
+  std::string op_name_;
+  uint64_t flops_ = 0;
+  BHWC output_shape_;
 };
-
-GPUOperation CreateDepthwiseConvPlus1x1Conv(
-    const OperationDef& definition, const GpuInfo& gpu_info,
-    const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr,
-    ReLUAttributes* relu_attr_ptr = nullptr);
 
 absl::Status TryDepthwiseConvPlus1x1Conv(
     const GpuInfo& gpu_info, CalculationsPrecision precision,
