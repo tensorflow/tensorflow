@@ -695,6 +695,11 @@ class PjRtClient {
   // host and used in a call to CopyToRemoteDevice. None of the recv buffers
   // will become ready until *all* of the sends have completed.
   //
+  // If MakeCrossHostReceiveBuffers returns an error, then `notifier` will not
+  // be called. Otherwise `notifier` will be called exactly once. In the case
+  // where `notifier` is called with an error status, then the PjRtBuffers
+  // returned by MakeCrossHostReceiveBuffers will never yield data.
+  //
   // See note on semantics of cross-device copies in the class definition
   // comment for PjRtClient.
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
