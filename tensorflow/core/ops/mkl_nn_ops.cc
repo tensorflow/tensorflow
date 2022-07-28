@@ -697,7 +697,7 @@ on the quantized input.
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_QuantizedConv2D")
+REGISTER_OP("_FusedQuantizedConv2D")
     .Input("device_inputs: Tdevice_inputs")
     .Input("host_inputs: Thost_inputs")
     .Output("device_outputs: Tdevice_outputs")
@@ -722,7 +722,7 @@ REGISTER_OP("_QuantizedConv2D")
     .Attr("alpha: float = 0.0")
     .SetShapeFn(shape_inference::FusedQuantizedConv2DShape);
 
-REGISTER_OP("_QuantizedDepthwiseConv2D")
+REGISTER_OP("_FusedQuantizedDepthwiseConv2D")
     .Input("device_inputs: Tdevice_inputs")
     .Input("host_inputs: Thost_inputs")
     .Output("device_outputs: Tdevice_outputs")

@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class QuantizedConv2DPerchannelTest : public OpsTestBase {
+class QuantizedConv2DPerChannelTest : public OpsTestBase {
  protected:
   void TestSmall(const bool old_api) {
     const int stride = 1;

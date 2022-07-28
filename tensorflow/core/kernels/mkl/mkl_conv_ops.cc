@@ -2447,10 +2447,10 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
     quantized_fusions::bias_relu_requantize, 3);
 #undef LABEL
 #define LABEL
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
                                              MklQuantizedConvOp, qint32, qint32,
                                              false, quantized_fusions::none, -1)
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedDepthwiseConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint32, qint32,
                                              true, quantized_fusions::none, -1)
 #undef LABEL
@@ -2468,32 +2468,32 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES(
     quantized_fusions::bias_sum_relu_requantize, 4);
 #undef LABEL
 #define LABEL
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
                                              MklQuantizedConvOp, qint8, qint8,
                                              false, quantized_fusions::none,
                                              -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
                                              MklQuantizedConvOp, quint8, qint8,
                                              false, quantized_fusions::none,
                                              -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
                                              MklQuantizedConvOp, quint8, quint8,
                                              false, quantized_fusions::none,
                                              -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedConv2D",
                                              MklQuantizedConvOp, qint8, quint8,
                                              false, quantized_fusions::none,
                                              -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedDepthwiseConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint8, qint8,
                                              true, quantized_fusions::none, -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedDepthwiseConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, quint8, qint8,
                                              true, quantized_fusions::none, -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedDepthwiseConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, quint8, quint8,
                                              true, quantized_fusions::none, -1);
-REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_QuantizedDepthwiseConv2D",
+REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
                                              MklQuantizedConvOp, qint8, quint8,
                                              true, quantized_fusions::none, -1);
 #undef LABEL

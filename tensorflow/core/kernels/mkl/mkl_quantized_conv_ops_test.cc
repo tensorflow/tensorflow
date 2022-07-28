@@ -63,7 +63,7 @@ class QuantizedConv2DTest : public OpsTestBase {
                        .Finalize(node_def()));
     } else {
       TF_EXPECT_OK(
-          NodeDefBuilder("quantized_conv_op", "_QuantizedConv2D")
+          NodeDefBuilder("quantized_conv_op", "_FusedQuantizedConv2D")
               .Attr("Thost_inputs", {DataTypeToEnum<Tinput>::v(), DT_QINT8,
                                      DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT})
               .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
@@ -499,7 +499,7 @@ class QuantizedConv2DTest : public OpsTestBase {
                        .Finalize(node_def()));
     } else {
       TF_EXPECT_OK(NodeDefBuilder("quantized_depthwise_conv_op",
-                                  "_QuantizedDepthwiseConv2D")
+                                  "_FusedQuantizedDepthwiseConv2D")
                        .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT,
                                               DT_FLOAT, DT_FLOAT, DT_FLOAT})
                        .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
@@ -541,7 +541,7 @@ class QuantizedConv2DTest : public OpsTestBase {
     } else {
       TF_EXPECT_OK(
           NodeDefBuilder("quantized_depthwise_conv_op",
-                         "_QuantizedDepthwiseConv2D")
+                         "_FusedQuantizedDepthwiseConv2D")
               .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
                                      DT_FLOAT, DT_FLOAT, DT_FLOAT})
               .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
@@ -585,7 +585,7 @@ class QuantizedConv2DTest : public OpsTestBase {
     } else {
       TF_EXPECT_OK(
           NodeDefBuilder("quantized_depthwise_conv_op",
-                         "_QuantizedDepthwiseConv2D")
+                         "_FusedQuantizedDepthwiseConv2D")
               .Attr("Thost_inputs", {DT_QUINT8, DT_QINT8, DT_FLOAT, DT_FLOAT,
                                      DT_FLOAT, DT_FLOAT, DT_FLOAT})
               .Attr("Thost_outputs", {DT_QINT32, DT_FLOAT, DT_FLOAT})
@@ -866,9 +866,9 @@ class QuantizedConvTest : public OpsTestBase {
     }
 
     TF_EXPECT_OK(
-        NodeDefBuilder("quantized_conv_op", is_depthwise
-                                                ? "_QuantizedDepthwiseConv2D"
-                                                : "_QuantizedConv2D")
+        NodeDefBuilder("quantized_conv_op",
+                       is_depthwise ? "_FusedQuantizedDepthwiseConv2D"
+                                    : "_FusedQuantizedConv2D")
             .Attr("Thost_inputs", input_types)
             .Attr("Thost_outputs", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
             .Attr("Tdevice_inputs", std::vector<DataType>())
@@ -961,7 +961,7 @@ class QuantizedConvTest : public OpsTestBase {
       input_types.push_back(DT_FLOAT);  // min_freezed_output};
     }
     TF_EXPECT_OK(
-        NodeDefBuilder("quantized_conv_op", "_QuantizedConv2D")
+        NodeDefBuilder("quantized_conv_op", "_FusedQuantizedConv2D")
             .Attr("Thost_inputs", input_types)
             .Attr("Thost_outputs", {data_types["out_type"], DT_FLOAT, DT_FLOAT})
             .Attr("Tdevice_inputs", std::vector<DataType>())
