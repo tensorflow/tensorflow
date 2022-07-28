@@ -297,6 +297,20 @@ const size_t PJRT_Device_Kind_Args_STRUCT_SIZE =
 // e.g., "Tesla V100-SXM2-16GB".
 typedef PJRT_Error* PJRT_Device_Kind(PJRT_Device_Kind_Args* args);
 
+typedef struct {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  const char* debug_string;  // out
+  size_t debug_string_size;  // out
+} PJRT_Device_DebugString_Args;
+const size_t PJRT_Device_DebugString_Args_STRUCT_SIZE =
+    PJRT_STRUCT_SIZE(PJRT_Device_DebugString_Args, debug_string_size);
+
+// Debug string suitable for logging when errors occur. Should be verbose
+// enough to describe the current device unambiguously.
+typedef PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args);
+
 // ------------------------------- Executables ---------------------------------
 
 typedef struct PJRT_Executable PJRT_Executable;
@@ -527,6 +541,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Attributes);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_DebugString);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

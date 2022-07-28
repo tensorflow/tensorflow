@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape.h"
-
 // TODO(b/238999986): Remove this.
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
@@ -204,6 +203,16 @@ PJRT_Error* PJRT_Device_LocalHardwareId(
       "PJRT_Device_LocalHardwareId_Args",
       PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE, args->struct_size));
   args->local_hardware_id = args->device->device->local_hardware_id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_DebugString(PJRT_Device_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_DebugString_Args", PJRT_Device_DebugString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->debug_string = args->device->device->DebugString().data();
+  args->debug_string_size = args->device->device->DebugString().size();
   return nullptr;
 }
 
