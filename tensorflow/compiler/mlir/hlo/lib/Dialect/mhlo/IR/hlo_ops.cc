@@ -3256,6 +3256,18 @@ LogicalResult ClampOp::verify() {
   return success();
 }
 
+LogicalResult ClampOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> /*location*/, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  ClampOp::Adaptor adaptor(operands, attributes, regions);
+  RankedTensorType operandType =
+      adaptor.operand().getType().cast<RankedTensorType>();
+  inferredReturnShapes.emplace_back(operandType.getShape(),
+                                    operandType.getElementType());
+  return success();
+}
+
 LogicalResult ClampOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {

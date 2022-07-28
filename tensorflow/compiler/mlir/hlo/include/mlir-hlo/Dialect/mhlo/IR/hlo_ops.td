@@ -1498,7 +1498,8 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
 }
 
 def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
-  SameOperandsAndResultElementType, HLO_BroadcastingElementwise]> {
+  SameOperandsAndResultElementType, HLO_BroadcastingElementwise,
+  InferTensorType]> {
   let summary = "Clamp operator";
   let description = [{
     Clamps an operand to within the range between a minimum and maximum value.
@@ -1518,6 +1519,17 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
   let results = (outs HLO_Tensor);
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // Method from InferTypeOpInterface interface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isCompatibleForMhloTypeInference(std::get<0>(it), std::get<1>(it)))
+          return false;
+      return true;
+    }
+  }];
 }
 
 def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
