@@ -175,6 +175,42 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "pjrt_client_test_cpu",
+    srcs = ["pjrt_client_test.cc"],
+    defines = ["PJRT_CLIENT_TEST_CPU"],
+    deps = [
+        ":pjrt_client",
+        ":tfrt_cpu_pjrt_client",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "pjrt_client_test_gpu",
+    srcs = ["pjrt_client_test.cc"],
+    defines = ["PJRT_CLIENT_TEST_GPU"],
+    tags = [
+        "no_oss",
+        "notap",
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":gpu_device",
+        ":pjrt_client",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 cc_library(
     name = "utils",
     srcs = ["utils.cc"],
