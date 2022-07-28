@@ -13,9 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#include "tensorflow/compiler/xla/stream_executor/lib/numbers.h"
 
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include <stdlib.h>
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+namespace stream_executor {
+namespace port {
+
+bool safe_strto32(const char* str, int32* value) {
+  char* endptr;
+  *value = strtol(str, &endptr, 10);  // NOLINT
+  if (endptr != str) {
+    while (isspace(*endptr)) ++endptr;
+  }
+  return *str != '\0' && *endptr == '\0';
+}
+
+// Convert strings to floating point values.
+// Leading and trailing spaces are allowed.
+// Values may be rounded on over- and underflow.
+bool safe_strto32(const std::string& str, int32* value) {
+  return port::safe_strto32(str.c_str(), value);
+}
+
+}  // namespace port
+}  // namespace stream_executor

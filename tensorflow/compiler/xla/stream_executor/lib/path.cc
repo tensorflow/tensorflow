@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/lib/path.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/path.h"
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 

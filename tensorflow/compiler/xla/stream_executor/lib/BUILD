@@ -15,6 +15,14 @@ package_group(
 
 cc_library(
     name = "lib",
+    srcs = glob(
+        [
+            "**/*.cc",
+        ],
+        exclude = [
+            "**/*test*",
+        ],
+    ),
     hdrs = glob(["**/*.h"]),
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
@@ -27,9 +35,7 @@ cc_library(
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform",
-        "//tensorflow/compiler/xla/stream_executor/lib",
     ] + if_static([
         "//tensorflow/core/platform:env_impl",
     ]),

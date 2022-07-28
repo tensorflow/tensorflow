@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/platform.h"
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
+#include "tensorflow/compiler/xla/stream_executor/platform/google/initialize.h"
+#else
+#include "tensorflow/compiler/xla/stream_executor/platform/default/initialize.h"
+#endif
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_

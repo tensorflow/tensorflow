@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/lib/demangle.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/demangle.h"
 
 #if (__GNUC__ >= 4 || (__GNUC__ >= 3 && __GNUC_MINOR__ >= 4)) && \
     !defined(__mips__)

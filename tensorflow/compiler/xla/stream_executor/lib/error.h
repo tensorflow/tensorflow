@@ -13,45 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/lib/process_state.h"
+// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
 
-#if defined(PLATFORM_WINDOWS)
-#include <direct.h>
-#include <stdlib.h>
-#include <WinSock2.h>
-#else
-#include <errno.h>
-#include <unistd.h>
-#endif
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ERROR_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ERROR_H_
 
-#include <memory>
+#include "tensorflow/core/protobuf/error_codes.pb.h"  // IWYU pragma: export
 
 namespace stream_executor {
 namespace port {
 
-std::string Hostname() {
-  char hostname[1024];
-  gethostname(hostname, sizeof hostname);
-  hostname[sizeof hostname - 1] = 0;
-  return std::string(hostname);
-}
-
-bool GetCurrentDirectory(std::string* dir) {
-  size_t len = 128;
-  std::unique_ptr<char[]> a(new char[len]);
-  for (;;) {
-    char* p = getcwd(a.get(), len);
-    if (p != nullptr) {
-      *dir = p;
-      return true;
-    } else if (errno == ERANGE) {
-      len += len;
-      a.reset(new char[len]);
-    } else {
-      return false;
-    }
-  }
-}
+namespace error = tensorflow::error;
 
 }  // namespace port
 }  // namespace stream_executor
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_ERROR_H_

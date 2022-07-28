@@ -13,9 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_DEMANGLE_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_DEMANGLE_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include <string>
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+
+namespace stream_executor {
+namespace port {
+
+std::string Demangle(const char* mangled);
+
+}  // namespace port
+}  // namespace stream_executor
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_DEMANGLE_H_

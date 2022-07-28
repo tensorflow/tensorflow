@@ -13,9 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PLATFORM_H_
-#define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PLATFORM_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
 
 #include "tensorflow/compiler/xla/stream_executor/platform/platform.h"
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PLATFORM_H_
+// Include appropriate platform-dependent implementations
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
+#include "tensorflow/compiler/xla/stream_executor/platform/google/dso_loader.h"
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
+#include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
+#else
+#error Define the appropriate PLATFORM_<foo> macro for this platform
+#endif
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_

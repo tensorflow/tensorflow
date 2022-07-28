@@ -13,9 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_THREAD_OPTIONS_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_THREAD_OPTIONS_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include "tensorflow/core/platform/env.h"
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+namespace stream_executor {
+namespace port {
+
+using tensorflow::ThreadOptions;
+
+}  // namespace port
+}  // namespace stream_executor
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LIB_THREAD_OPTIONS_H_

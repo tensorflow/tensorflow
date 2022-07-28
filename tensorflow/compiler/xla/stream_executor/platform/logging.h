@@ -13,9 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
-#define TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_LOGGING_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_LOGGING_H_
 
-#include "tensorflow/compiler/xla/stream_executor/lib/human_readable.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/core/platform/logging.h"
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
+#if !(defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
+      defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
+      defined(__EMSCRIPTEN__) || defined(PLATFORM_CHROMIUMOS))
+
+#define PCHECK(invocation) CHECK(invocation)
+
+#endif
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_PLATFORM_LOGGING_H_
