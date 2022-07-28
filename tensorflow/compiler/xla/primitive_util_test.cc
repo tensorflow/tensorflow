@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/primitive_util.h"
 
+#include <array>
 #include <numeric>
 #include <string>
 
@@ -27,6 +28,10 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+#if XLA_ENABLE_XLIR
+using tfrt::DType;
+#endif  // XLA_ENABLE_XLIR
 
 TEST(PrimitiveUtilTest, StringToPrimitiveType) {
   auto expect_ok_and_equal = [](const std::string& str,
@@ -300,6 +305,43 @@ TEST(PrimitiveUtilTest, CastPreservesValues) {
     }
   }
 }
+
+#if XLA_ENABLE_XLIR
+struct TfrtToPrimitiveTypeTestCase {
+  DType dtype;
+  PrimitiveType primitive_type;
+};
+
+constexpr std::array<TfrtToPrimitiveTypeTestCase, 15>
+    kTfrtToPrimitiveTypeTestCases = {{
+        {DType::UI8, PrimitiveType::U8},
+        {DType::UI16, PrimitiveType::U16},
+        {DType::UI32, PrimitiveType::U32},
+        {DType::UI64, PrimitiveType::U64},
+        {DType::I1, PrimitiveType::PRED},
+        {DType::I8, PrimitiveType::S8},
+        {DType::I16, PrimitiveType::S16},
+        {DType::I32, PrimitiveType::S32},
+        {DType::I64, PrimitiveType::S64},
+        {DType::F16, PrimitiveType::F16},
+        {DType::F32, PrimitiveType::F32},
+        {DType::F64, PrimitiveType::F64},
+        {DType::BF16, PrimitiveType::BF16},
+        {DType::Complex64, PrimitiveType::C64},
+        {DType::Complex128, PrimitiveType::C128},
+    }};
+
+class TfrtToPrimitiveTypeTest
+    : public ::testing::TestWithParam<TfrtToPrimitiveTypeTestCase> {};
+
+TEST_P(TfrtToPrimitiveTypeTest, TfrtToPrimitiveType) {
+  EXPECT_EQ(GetParam().primitive_type,
+            primitive_util::TfrtToPrimitiveType(GetParam().dtype));
+}
+
+INSTANTIATE_TEST_SUITE_P(TfrtToPrimitiveType, TfrtToPrimitiveTypeTest,
+                         ::testing::ValuesIn(kTfrtToPrimitiveTypeTestCases));
+#endif  // XLA_ENABLE_XLIR
 
 }  // namespace
 }  // namespace xla
