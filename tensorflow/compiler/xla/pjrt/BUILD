@@ -152,6 +152,7 @@ cc_library(
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -212,12 +213,25 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "pjrt_executable",
+    hdrs = ["pjrt_executable.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "pjrt_compiler",
     srcs = ["pjrt_compiler.cc"],
     hdrs = ["pjrt_compiler.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        ":pjrt_client",
+        ":pjrt_executable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

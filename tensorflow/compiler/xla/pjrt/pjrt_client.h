@@ -33,18 +33,15 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 
@@ -515,6 +512,28 @@ class PjRtClient {
   // the same platform and version as this one.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
       absl::string_view serialized, CompileOptions options) = 0;
+
+  // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
+  // returned executable is loaded by this client. The same checks are made as
+  // in Load that the serialized executable is compatible with the client.
+  // LoadSerializedExecutable will materialize CompileOptions from within the
+  // serialized executable unlike 'DeserializeExecutable' above that accepts
+  // CompileOptions.
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+  LoadSerializedExecutable(absl::string_view serialized) const {
+    return Unimplemented("Loading serialized executable not supported.");
+  }
+
+  // Loads the executable returns aa PjRtLoadedExecutable runnable by this
+  // client. Returns an error if the PjRtExecutable was created with an
+  // incompatible topology or client.
+  // PjRtExecutable contains a copy of the CompileOptions that was used to
+  // generate the executable. Load will use the CompileOptions from within the
+  // executable.
+  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable) {
+    return Unimplemented("Loading executable not supported.");
+  }
 
   // Creates a buffer on the device without initializing or copying any data.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
@@ -1073,46 +1092,15 @@ struct ExecuteOptions {
   ExecutionMode execution_mode = ExecutionMode::kDefault;
 };
 
-// Static device memory usage for a compiled program.
-// The on-device memory needed to run an executable is at least
-//   generated_code_size_in_bytes
-//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
-//   + temp_size_in_bytes.
-struct CompiledMemoryStats {
-  int64_t generated_code_size_in_bytes = 0;
-  int64_t argument_size_in_bytes = 0;
-  int64_t output_size_in_bytes = 0;
-  // How much argument is reused for output.
-  int64_t alias_size_in_bytes = 0;
-  int64_t temp_size_in_bytes = 0;
-
-  std::string DebugString() const;
-};
-
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
 // when passed to the execution.
-class PjRtLoadedExecutable {
+class PjRtLoadedExecutable : public PjRtExecutable {
  public:
   virtual ~PjRtLoadedExecutable() = default;
 
   virtual PjRtClient* client() const = 0;
-
-  // Unique name for this executable, e.g., HloModule name.
-  virtual absl::string_view name() const = 0;
-
-  virtual int num_replicas() const = 0;
-
-  virtual int num_partitions() const = 0;
-
-  virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
-
-  // Return memory stats that allow callers to estimate device memory usage
-  // when running this executable.
-  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
-    return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
-  }
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 
@@ -1132,10 +1120,6 @@ class PjRtLoadedExecutable {
   // addressable_devices()[i] is the Device to which
   // addressable_device_logical_ids()[i] is assigned.
   virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
-
-  // Return an HloModule (optimized) per partition.
-  virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const = 0;
 
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable

@@ -55,7 +55,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
 
   class PjRtTestCompiler : public PjRtCompiler {
    public:
-    StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+    StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, const XlaComputation& computation,
         const PjRtDeviceTopology& topology, PjRtClient* client) override {
       return tensorflow::errors::Unimplemented("test compiler!");

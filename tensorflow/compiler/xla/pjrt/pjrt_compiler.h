@@ -47,9 +47,7 @@ class PjRtCompiler {
 
   // Compiles the 'computation' and returns a 'PjRtExecutable'. The returned
   // PjRtExecutable must be loaded by a compatible client before execution.
-  // TODO(b/240299401): Actually return PjRtExecutable instead of
-  // PjRtLoadedExecutable.
-  virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+  virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
       const PjRtDeviceTopology& topology, PjRtClient* client) = 0;
 };
@@ -68,10 +66,7 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 // Returns error::NotFound if a compiler has not been registered for the
 // platform. Forwards errors returned from the registered compiler in case of a
 // compilation failure.
-//
-// TODO(b/240299401): Actually return PjRtExecutable instead of
-// PjRtLoadedExecutable.
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCompile(
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtDeviceTopology& topology, PjRtClient* client = nullptr);
 

@@ -42,7 +42,7 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
   (*compiler_registry)[platform_name] = std::move(compiler);
 }
 
-StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCompile(
+StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtDeviceTopology& topology, PjRtClient* client) {
   absl::ReaderMutexLock l(&registry_mutex);
