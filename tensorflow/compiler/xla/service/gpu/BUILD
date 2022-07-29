@@ -544,6 +544,7 @@ tf_cuda_library(
     deps = if_gpu_is_configured([
         ":gpu_executable_run_options",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//tensorflow/compiler/xla:debug_options_flags",
