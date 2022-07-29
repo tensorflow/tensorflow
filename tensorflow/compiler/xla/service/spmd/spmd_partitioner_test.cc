@@ -108,6 +108,30 @@ ENTRY entry {
                           op::Shape("s32[2,3]")));
 }
 
+TEST_F(SpmdPartitioningTest, SingleDeviceCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %constant = s32[2,3]{1,0} constant({{1,1,1},{1,1,1}}),
+    sharding={maximal device=0}
+  %cc = s32[2,3] custom-call(%constant), custom_call_target="SomeCustomCall",
+    sharding={maximal device=0}
+  ROOT %copy = s32[2,3]{1,0} copy(%cc), sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* custom_call = FindInstruction(module.get(), "cc.1");
+  EXPECT_NE(custom_call, nullptr);
+  EXPECT_NE(custom_call->parent(), module->entry_computation());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Copy(op::AllReduce(
+                              op::Select(op::Broadcast(op::Compare()),
+                                         op::Conditional(), op::Broadcast()))),
+                          op::Shape("s32[2,3]")));
+}
+
 TEST_F(SpmdPartitioningTest, SingleDeviceToSingleDevice) {
   absl::string_view hlo_string = R"(
 HloModule module
