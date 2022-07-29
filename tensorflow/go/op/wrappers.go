@@ -17234,10 +17234,11 @@ func FloorDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+// Returns element-wise remainder of division.
 //
-// true, this follows Python semantics in that the result here is consistent
-// with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+// This follows Python semantics in that the
+// result here is consistent with a flooring divide. E.g.
+// `floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
 //
 // *NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
