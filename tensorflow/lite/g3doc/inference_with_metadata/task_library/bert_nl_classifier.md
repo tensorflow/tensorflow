@@ -120,6 +120,38 @@ See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_nl_classifier.h)
 for more details.
 
+## Run inference in Python
+
+### Step 1: Install the pip package
+
+```
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
+```python
+# Imports
+from tflite_support.task import text
+from tflite_support.task import core
+from tflite_support.task import processor
+
+# Initialization
+base_options = core.BaseOptions(file_name=model_path)
+options = text.BertNLClassifierOptions(base_options=base_options)
+classifier = text.BertNLClassifier.create_from_options(options)
+
+# Alternatively, you can create a BertNLClassifier in the following manner:
+# classifier = text.BertNLClassifier.create_from_file(model_path)
+
+# Run inference
+text_classification_result = classifier.classify(text)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/text/bert_nl_classifier.py)
+for more options to configure `BertNLClassifier`.
+
 ## Example results
 
 Here is an example of the classification results of movie reviews using the

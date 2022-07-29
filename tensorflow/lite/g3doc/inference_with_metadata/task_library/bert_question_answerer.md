@@ -122,6 +122,38 @@ See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/bert_question_answerer.h)
 for more details.
 
+## Run inference in Python
+
+### Step 1: Install the pip package
+
+```
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
+```python
+# Imports
+from tflite_support.task import text
+from tflite_support.task import core
+from tflite_support.task import processor
+
+# Initialization
+base_options = core.BaseOptions(file_name=model_path)
+options = text.BertQuestionAnswererOptions(base_options=base_options)
+answerer = text.BertQuestionAnswerer.create_from_options(options)
+
+# Alternatively, you can create a BertQuestionAnswerer in the following manner:
+# answerer = text.BertQuestionAnswerer.create_from_file(model_path)
+
+# Run inference
+bert_qa_result = answerer.answer(context, question)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/text/bert_question_answerer.py)
+for more options to configure `BertQuestionAnswerer`.
+
 ## Example results
 
 Here is an example of the answer results of
