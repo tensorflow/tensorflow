@@ -284,7 +284,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           mat0.setZero();
           select_slice =
               ((tensor_in_slice - tensor_out_slice.broadcast(bcast)).abs() <
-               tensor_in_slice.constant(1e-5))
+               tensor_in_slice.constant(T(1e-5)))
                   .select(out_backprop_slice.broadcast(bcast), mat0);
 
           output->tensor<T, 5>()
@@ -461,7 +461,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
               out_backprop.tensor<T, 5>().slice(src_indices, src_sizes);
           // Divide by the size of the actual patch (psize * rsize * csize).
           float divide_size = rsize * csize * psize * 1.0f;
-          slices *= slices.constant(1.0f / divide_size);
+          slices *= slices.constant(T(1.0f / divide_size));
 
           output->tensor<T, 5>()
               .slice(dst_indices, dst_sizes)
@@ -788,6 +788,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
 
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

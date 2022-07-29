@@ -48,6 +48,14 @@ def GetTestConfigs():
 @test_util.with_eager_op_as_function
 class PoolingTest(test.TestCase):
 
+  def _DtypesToTest(self, use_gpu):
+    if use_gpu:
+      return [dtypes.float32]
+    else:
+      # It is important that float32 comes before float16 here, as we will be
+      # using its gradients as reference for bf16 gradients.
+      return [dtypes.float32, dtypes.bfloat16]
+
   def _VerifyOneTest(self, pool_func, input_sizes, window, strides, padding,
                      data_format, expected, use_gpu):
     """Verifies the output values of the pooling function.
@@ -68,26 +76,27 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.cached_session(use_gpu=use_gpu):
-      t = constant_op.constant(x, shape=input_sizes)
-      window = [1] + list(window) + [1]
-      strides = [1] + list(strides) + [1]
-      if data_format == "NCDHW":
-        t = test_util.NHWCToNCHW(t)
-        window = test_util.NHWCToNCHW(window)
-        strides = test_util.NHWCToNCHW(strides)
-      t = pool_func(
-          t,
-          ksize=window,
-          strides=strides,
-          padding=padding,
-          data_format=data_format)
-      if data_format == "NCDHW":
-        t = test_util.NCHWToNHWC(t)
-      vals = self.evaluate(t)
-    # Verifies values.
-    actual = vals.flatten()
-    self.assertAllClose(expected, actual)
+    for dtype in self._DtypesToTest(use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
+        t = constant_op.constant(x, shape=input_sizes, dtype=dtype)
+        ksize = [1] + list(window) + [1]
+        strides_a = [1] + list(strides) + [1]
+        if data_format == "NCDHW":
+          t = test_util.NHWCToNCHW(t)
+          ksize = test_util.NHWCToNCHW(ksize)
+          strides_a = test_util.NHWCToNCHW(strides_a)
+        t = pool_func(
+            t,
+            ksize=ksize,
+            strides=strides_a,
+            padding=padding,
+            data_format=data_format)
+        if data_format == "NCDHW":
+          t = test_util.NCHWToNHWC(t)
+        vals = self.evaluate(t)
+        # Verifies values.
+        actual = vals.flatten()
+        self.assertAllCloseAccordingToType(expected, actual)
 
   def _VerifyValues(self, pool_func, input_sizes, window, strides,
                     padding, expected):
@@ -125,22 +134,24 @@ class PoolingTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
-  def testMaxPool3dGrad(self):
+  def testAvgPool3dGrad(self):
     with self.assertRaises(
         (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
-      with self.cached_session():
-        orig_input_shape = constant_op.constant(
-            1879048192, shape=[5], dtype=dtypes.int32)
-        grad = constant_op.constant(
-            1, shape=[1, 3, 2, 4, 2], dtype=dtypes.float32)
-        t = gen_nn_ops.AvgPool3DGrad(
-            orig_input_shape=orig_input_shape,
-            grad=grad,
-            ksize=[1, 1, 1, 1, 1],
-            strides=[1, 1, 1, 1, 1],
-            padding="SAME",
-            data_format="NDHWC")
-        self.evaluate(t)
+      use_gpu = test.is_gpu_available(cuda_only=True)
+      for dtype in self._DtypesToTest(use_gpu):
+        with self.cached_session():
+          orig_input_shape = constant_op.constant(
+              1879048192, shape=[5], dtype=dtypes.int32)
+          grad = constant_op.constant(
+              1, shape=[1, 3, 2, 4, 2], dtype=dtype)
+          t = gen_nn_ops.AvgPool3DGrad(
+              orig_input_shape=orig_input_shape,
+              grad=grad,
+              ksize=[1, 1, 1, 1, 1],
+              strides=[1, 1, 1, 1, 1],
+              padding="SAME",
+              data_format="NDHWC")
+          self.evaluate(t)
 
   def testMaxPool3dValidPadding(self):
     expected_output = [40.0, 41.0, 42.0]
@@ -270,59 +281,74 @@ class PoolingTest(test.TestCase):
     total_size = 1
     for s in input_sizes:
       total_size *= s
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
-    x = np.arange(1, total_size + 1, dtype=np.float32)
-    with self.cached_session(use_gpu=use_gpu):
-      input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
-      err_g_margin = 1e-3
-      err_gg_margin = 1.5e-2
-      if pool_func == nn_ops.avg_pool3d:
-        func_name = "avg_pool3d"
-        x_init_value = None
-      else:
-        x_init_value = np.asfarray(np.arange(1, total_size + 1),
-                                   dtype=np.float32).reshape(input_sizes)
-        func_name = "max_pool3d"
+    # float32 should always run before bfloat16 so as to compare results
+    for dtype in self._DtypesToTest(use_gpu):
+      # Initializes the input tensor with array containing incrementing
+      # numbers from 1.
+      x = np.arange(1, total_size + 1)
+      with self.cached_session(use_gpu=use_gpu):
+        input_tensor = constant_op.constant(x, shape=input_sizes, name="input", dtype=dtype)
+        if dtype != dtypes.bfloat16:
+          err_g_margin = 1e-3
+          err_gg_margin = 1.5e-2
+        else:
+          err_g_margin = 1.5e-2
+          err_gg_margin = 1.5e-2
 
-      ksize = [1, window[0], window[1], window[2], 1]
-      strides = [1, strides[0], strides[1], strides[2], 1]
-      t = input_tensor
+        if pool_func == nn_ops.avg_pool3d:
+          func_name = "avg_pool3d"
+          x_init_value = None
+        else:
+          x_init_value = np.asfarray(np.arange(1, total_size + 1),
+                                    dtype=np.float32).reshape(input_sizes)
+          func_name = "max_pool3d"
 
-      if data_format == "NCDHW":
-        ksize = test_util.NHWCToNCHW(ksize)
-        strides = test_util.NHWCToNCHW(strides)
-        t = test_util.NHWCToNCHW(t)
-        output_sizes = test_util.NHWCToNCHW(output_sizes)
+        ksize = [1, window[0], window[1], window[2], 1]
+        strides_a = [1, strides[0], strides[1], strides[2], 1]
+        t = input_tensor
 
-      t = pool_func(
-          t,
-          ksize=ksize,
-          strides=strides,
-          padding=padding,
-          data_format=data_format,
-          name=func_name)
-      t_g = gradients_impl.gradients(t**2, input_tensor)[0]
+        if data_format == "NCDHW":
+          ksize = test_util.NHWCToNCHW(ksize)
+          strides_a = test_util.NHWCToNCHW(strides_a)
+          t = test_util.NHWCToNCHW(t)
+          output_sizes = test_util.NHWCToNCHW(output_sizes)
 
-      err_g = gradient_checker.compute_gradient_error(
-          input_tensor,
-          input_sizes,
-          t,
-          output_sizes,
-          x_init_value=x_init_value,
-          delta=1e-2)
-      err_gg = gradient_checker.compute_gradient_error(
-          input_tensor,
-          input_sizes,
-          t_g,
-          input_sizes,
-          x_init_value=x_init_value,
-          delta=1e-2)
+        t_p = pool_func(
+            t,
+            ksize=ksize,
+            strides=strides_a,
+            padding=padding,
+            data_format=data_format,
+            name=func_name)
+        t_g = gradients_impl.gradients(t_p**2, t)[0]
+        t_gg = gradients_impl.gradients(t_g**2, t_p)[0]
 
-    print("%s gradient error = " % func_name, err_g)
-    self.assertLess(err_g, err_g_margin)
-    print("%s second-order gradient error = " % func_name, err_gg)
-    self.assertLess(err_gg, err_gg_margin)
+        err_g = gradient_checker.compute_gradient_error(
+            input_tensor,
+            input_sizes,
+            t_p,
+            output_sizes,
+            x_init_value=x_init_value,
+            delta=1e-2)
+        err_gg = gradient_checker.compute_gradient_error(
+            input_tensor,
+            input_sizes,
+            t_g,
+            input_sizes,
+            x_init_value=x_init_value,
+            delta=1e-2)
+        if (dtype == dtypes.float32):
+          ref_t_g = t_g
+          ref_t_gg = t_gg
+          print("%s gradient error = " % func_name, err_g)
+          self.assertLess(err_g, err_g_margin)
+          print("%s second-order gradient error = " % func_name, err_gg)
+          self.assertLess(err_gg, err_gg_margin)
+        elif (dtype == dtypes.bfloat16):
+          # Compare bf16 gradients to fp32 gradients, since bf16 numerical
+          # gradients are too imprecise.
+          self.assertAllClose(t_g, ref_t_g, err_g_margin, err_g_margin)
+          self.assertAllClose(t_gg, ref_t_gg, err_gg_margin, err_gg_margin)
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
