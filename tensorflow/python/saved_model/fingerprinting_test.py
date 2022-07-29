@@ -55,7 +55,9 @@ class FingerprintingTest(test.TestCase):
     fingerprint_def = self._read_fingerprint(
         file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
     # We cannot check the value due to non-determinism in serialization.
-    self.assertGreater(fingerprint_def.graph_def_hash, 0)
+    self.assertGreater(fingerprint_def.graph_def_checksum, 0)
+    self.assertEqual(fingerprint_def.graph_def_program_hash,
+                     16358308617800096964)
 
 
 if __name__ == "__main__":
