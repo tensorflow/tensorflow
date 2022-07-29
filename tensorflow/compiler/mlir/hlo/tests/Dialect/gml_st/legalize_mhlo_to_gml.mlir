@@ -35,6 +35,31 @@ func.func @dynamic_broadcast_in_dim_expansion_behavior_known(
   func.return %0 : tensor<?x?x?xf32>
 }
 
+// CHECK-LABEL: @dynamic_broadcast_in_dim_with_known_expanding
+// CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?xf32>, %[[SHAPE:.*]]: tensor<4xindex>
+func.func @dynamic_broadcast_in_dim_with_known_expanding(%arg : tensor<?x?x?xf32>, %shape : tensor<4xindex>) -> tensor<?x?x?x?xf32> {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2
+  // CHECK-DAG: %[[C3:.*]] = arith.constant 3
+  // CHECK-DAG: %[[SHAPE_D0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+  // CHECK-DAG: %[[SHAPE_D1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+  // CHECK-DAG: %[[SHAPE_D2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
+  // CHECK-DAG: %[[SHAPE_D3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
+  // CHECK-DAG: %[[INIT:.*]] = linalg.init_tensor [%[[SHAPE_D0]], %[[SHAPE_D1]], %[[SHAPE_D2]], %[[SHAPE_D3]]] : tensor<?x?x?x?xf32>
+  // CHECK-NEXT: %[[BCAST:.*]] = gml_st.dynamic_broadcast_in_dim
+  // CHECK-SAME: ins(%[[ARG]] : tensor<?x?x?xf32>)
+  // CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?x?xf32>)
+  // CHECK-SAME: {broadcast_dimensions = [:i64 0, 2, 3], known_expanding_dimensions = [:i64 0], known_nonexpanding_dimensions = [:i64 2]}
+  // CHECK:     return %[[BCAST]]
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape) {
+      broadcast_dimensions = dense<[0, 2, 3]> : tensor<3xi64>,
+      known_expanding_dimensions = dense<[0]> : tensor<1xi64>,
+      known_nonexpanding_dimensions = dense<[2]> : tensor<1xi64> }
+      : (tensor<?x?x?xf32>, tensor<4xindex>) -> tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
+}
+
 func.func @simple_gather(%operand : tensor<3x3xf32>,
                          %indices: tensor<3x2xi64>) -> tensor<3xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {
